@@ -70,7 +70,7 @@ def test_constant_derived_domain_counts_are_complete(
         "late_producer_dag": 19,
     }
     assert target_counts == {
-        "gap_fill_stacked_spine": 48,
+        "gap_fill_stacked_spine": 49,
         "primary_puf_qrf": 65,
         "late_producer_dag": 70,
     }
@@ -199,14 +199,14 @@ def test_constant_derived_domain_counts_are_complete(
         for step in local_steps
     )
     assert all(step["kernel"].startswith("kernel:") for step in take_up_steps)
-    assert len(battery["metric_registry"]) == 134
+    assert len(battery["metric_registry"]) == 135
     assert len(battery["joint_metric_registry"]) == 1
     assert "metric_counts" not in battery
     assert "declared_surface" not in battery
     assert "completeness" not in battery
     battery_views = derive_battery_registry_views(battery)
     assert battery_views["metric_counts"] == {
-        "boolean_incidence": 51,
+        "boolean_incidence": 52,
         "categorical_tvd": 4,
         "monetary_sign_separated": 79,
     }
@@ -232,8 +232,8 @@ def test_constant_derived_domain_counts_are_complete(
     for knob in ("k", "pi_hi", "seed"):
         assert selection["exact_k"][knob]["required"] is True
         assert selection["exact_k"][knob]["default"] is None
-    assert len(catalogs["columns"]) == 176
-    assert len(resolved_us_spec.columns) == 176
+    assert len(catalogs["columns"]) == 177
+    assert len(resolved_us_spec.columns) == 177
     assert Counter(artifact.kind for artifact in resolved_us_spec.artifacts) == {
         "producer_node": 38,
         "virtual_output": 18,

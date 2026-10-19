@@ -1044,7 +1044,11 @@ def test_legacy_entrypoint_publication_matches_origin_main_golden(
         # Legacy materializer version 4 similarly changes only checkpoint
         # identity metadata here, invalidating pre-fix finalized checkpoints
         # that skipped the CPS-reported Social Security restoration on resume.
-        "manifest": "7037ca123fc822856db26bfaf13a44e5e2abee127d4c096aae70b69d31c99bdb",
+        # Carrying reported SSI receipt (receives_ssi) re-derives the pool's
+        # engine-input provisioning counts and remaining-stage manifest digest,
+        # which the checkpoint identity binds; pool_h5 and agreement are
+        # unchanged.
+        "manifest": "923a343837417da8b20dd4775665545ebd41d1f53810c7a2347590e1afb7fb67",
     }
 
 

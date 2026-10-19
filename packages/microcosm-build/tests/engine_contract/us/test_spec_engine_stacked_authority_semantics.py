@@ -70,16 +70,16 @@ def test_authority_projection_is_field_and_byte_identical_to_live_generation_zer
     assert projected == live
     assert stacked_identity_bytes(projected) == _canonical_bytes(live)
     assert projected["sha256"] == (
-        "9d4a9672a0f03039b1fe874b9fe21ed575be0d29f14afc396d03cdf5c809bdd2"
+        "440977fa465cca8e05cb8e31a40ac2e72555a793fd2ca32e7d80e01dcaec3aa9"
     )
     assert {
         name: component["sha256"] for name, component in projected["components"].items()
     } == {
         "declared_surface": (
-            "5b5a4470e2612365f253e933833bb08b8f9c857ea0bc175b958ead9a74abee01"
+            "8264f272205075bd00fd274c95d287f602c3ae1ce206e03ecca21dc1f1b34c2c"
         ),
         "gap_fill_plan": (
-            "f41319a95750a441676bc6599b1de6bb49a87b45d83b9263d627c402cfe8e750"
+            "ec733ce3595b209d7eb6bdd96fe5a52ffceadfa2f2841325ae9d663d7791a9cd"
         ),
         "joint_metric_registry": (
             "cacc6c11e114dbae3aaa2761cc6b3fcb1191cd9b689b1c2bd096614c51ebff8b"
@@ -88,7 +88,7 @@ def test_authority_projection_is_field_and_byte_identical_to_live_generation_zer
             "777979b267e7307581b39d14b7232b6ee2712e3da0029fffc090396ebd849166"
         ),
         "metric_registry": (
-            "d75cb9b29f8b0a9a085471a11f4c19c32ba04cbe5419053df94ea81cbe6125a9"
+            "510ecde42dfe8812491238eae5da249355a9b138ddcf499a8d1d3c7cafde99a4"
         ),
         "post_puf_transfer_surface": (
             "a31e8a9512ec829c98745ed9ca2177e66d529bdc4b096ecfa2b4452f7bd41d73"
