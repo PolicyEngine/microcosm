@@ -124,6 +124,21 @@ def test_declaration_that_does_not_reproduce_its_recorded_bytes_is_refused():
         reconstructed_schema(reformatted, marker_for(reformatted))
 
 
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        b"[]",
+        b'"graph"',
+        # A graph object whose node list has the wrong type.
+        b'{"country":"uk","nodes":{},"sources":[]}',
+    ],
+    ids=["array", "string", "node_list_of_wrong_type"],
+)
+def test_declaration_that_is_not_a_graph_is_refused(declaration):
+    with pytest.raises(ValueError, match="recorded declaration is not a graph"):
+        reconstructed_schema(declaration, marker_for(declaration))
+
+
 def test_marker_must_name_the_declaration_it_was_built_from():
     other_declaration = graph_to_json(compiled_default_population_graph().graph).encode(
         "utf-8"

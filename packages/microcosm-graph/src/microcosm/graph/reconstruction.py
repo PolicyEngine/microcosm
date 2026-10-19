@@ -230,8 +230,16 @@ def reconstructed_schema(
         raise ValueError(
             "Graph reconstruction: declaration must be UTF-8 JSON."
         ) from error
+    try:
+        declared = graph_from_json(text)
+    except TypeError as error:
+        # The serializer reports JSON of the wrong shape (an array where the
+        # graph object belongs, say) as a TypeError; recorded files are data.
+        raise ValueError(
+            f"Graph reconstruction: the recorded declaration is not a graph ({error})."
+        ) from error
     schema = graph_schema(
-        compile_graph(graph_from_json(text)),
+        compile_graph(declared),
         extensions={RECONSTRUCTION_EXTENSION: checked},
     )
     _require(
