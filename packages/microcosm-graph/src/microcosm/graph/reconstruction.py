@@ -41,9 +41,24 @@ DECLARATION_ROLE = "declaration"
 # ``recorded``: the build wrote the revision itself. ``caller_asserted``: the
 # build recorded none, and whoever ran the reconstruction supplied it.
 REVISION_ORIGINS = frozenset({"recorded", "caller_asserted"})
-# Whether a digest the build itself recorded for the file was matched, or the
-# build recorded none and the file is bound only by the digest listed here.
-INPUT_VERIFICATIONS = frozenset({"recorded_digest_matched", "no_recorded_digest"})
+# How an input's bytes compare with the digests the build itself recorded:
+# - ``recorded_digest_matched``: every recorded digest matched.
+# - ``fallback_digest_matched``: the build marked one recorded digest as taken
+#   before it rewrote the file. That digest was skipped, and another digest the
+#   build recorded matched.
+# - ``only_stale_digest_recorded``: every digest the build recorded for the file
+#   is marked as taken before the rewrite, so nothing it recorded checks the
+#   current bytes.
+# - ``no_recorded_digest``: the build recorded none.
+# In the last two cases the file is bound only by the digest listed here.
+INPUT_VERIFICATIONS = frozenset(
+    {
+        "recorded_digest_matched",
+        "fallback_digest_matched",
+        "only_stale_digest_recorded",
+        "no_recorded_digest",
+    }
+)
 RECONSTRUCTION_SCOPE = (
     "Rebuilt after the build from its recorded graph declaration. Operations "
     "carry no execution, cache or gate state; nothing here was observed running."

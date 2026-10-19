@@ -18,7 +18,8 @@ import os
 import shutil
 import stat
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, NoReturn
 
@@ -91,6 +92,26 @@ _RUN_MANIFEST_REASON = (
     "declaration-only reconstruction"
 )
 _BUILD_FIELDS = ("build_kind", "release_role", "release_id", "build_id", "created_at")
+# The note the UK drivers wrote beside the candidate manifest's digest in
+# build.json. The close step then appended the staging receipts
+# (``staging_delivery``, ``staged_dataset``) to the manifest and refreshed only
+# sha256sums.txt, so the digest beside the note is of the manifest as first
+# written. ``_refresh_completion`` (cb0d39045, merged with #1057 on 2026-09-30)
+# reissues build.json over the final bytes and removes the note; dense builds
+# closed by the driver merged with #901 (2026-09-29) until then kept it.
+STAGING_RECEIPTS_NOTE = "staging receipts are appended after publication"
+
+
+@dataclass(frozen=True)
+class _RecordedDigest:
+    """One digest a build file recorded for another file."""
+
+    recorder: str
+    sha256: str
+    size_bytes: int | None = None
+    # Set when the recorder says the digest was taken before the file was
+    # rewritten, so a mismatch is expected rather than evidence of tampering.
+    stale_note: str | None = None
 
 
 def _refuse(message: str) -> NoReturn:
@@ -148,14 +169,16 @@ def _json_object(payload: bytes, name: str) -> dict[str, object]:
 
 def _recorded_digests(
     payloads: Mapping[str, bytes], records: Mapping[str, dict[str, object]]
-) -> dict[str, list[tuple[str, str, int | None]]]:
-    """Digests the build itself recorded, as ``name -> [(recorder, sha256, size)]``."""
+) -> dict[str, list[_RecordedDigest]]:
+    """Digests the build itself recorded, by the name of the file they cover."""
 
-    recorded: dict[str, list[tuple[str, str, int | None]]] = {}
+    recorded: dict[str, list[_RecordedDigest]] = {}
     if SHA256SUMS_FILENAME in payloads:
         listing = payloads[SHA256SUMS_FILENAME].decode("utf-8")
         for digest, name in parse_sha256sums(listing):
-            recorded.setdefault(name, []).append((SHA256SUMS_FILENAME, digest, None))
+            recorded.setdefault(name, []).append(
+                _RecordedDigest(SHA256SUMS_FILENAME, digest)
+            )
     completion = records.get(COMPLETION_NAME, {})
     manifest_record = completion.get("rowwise_candidate_manifest")
     if isinstance(manifest_record, dict) and "sha256" in manifest_record:
@@ -164,14 +187,55 @@ def _recorded_digests(
             f"{COMPLETION_NAME} records an unexpected candidate manifest name",
         )
         size = manifest_record.get("size_bytes")
+        note = manifest_record.get("note")
         recorded.setdefault(MANIFEST_FILENAME, []).append(
-            (
+            _RecordedDigest(
                 COMPLETION_NAME,
                 str(manifest_record["sha256"]),
                 size if type(size) is int else None,
+                note if note == STAGING_RECEIPTS_NOTE else None,
             )
         )
     return recorded
+
+
+def _verification(
+    name: str, payload: bytes, records: Sequence[_RecordedDigest]
+) -> tuple[str, list[dict[str, object]]]:
+    """Check ``payload`` against its recorded digests: ``(state, stale records)``.
+
+    A mismatch is refused, except against a record that says it was taken
+    before the file was rewritten. Such a record is skipped and reported, and
+    the file counts as verified only if another recorded digest matches it.
+    """
+
+    digest, size = hashlib.sha256(payload).hexdigest(), len(payload)
+    matched, skipped = [], []
+    for record in records:
+        if record.sha256 == digest and record.size_bytes in (None, size):
+            matched.append(record.recorder)
+        elif record.stale_note is not None:
+            skipped.append(record)
+        else:
+            _refuse(f"{name} does not match the digest recorded in {record.recorder}")
+    stale = [
+        {
+            "name": name,
+            "recorded_in": record.recorder,
+            "sha256": record.sha256,
+            "bytes": record.size_bytes,
+            "note": record.stale_note,
+            "checked_against": matched,
+        }
+        for record in skipped
+    ]
+    if not records:
+        return "no_recorded_digest", stale
+    if not skipped:
+        return "recorded_digest_matched", stale
+    return (
+        "fallback_digest_matched" if matched else "only_stale_digest_recorded"
+    ), stale
 
 
 def _recorded_code(manifest: Mapping[str, object]) -> tuple[str | None, bool | None]:
@@ -203,6 +267,24 @@ def _recorded_code(manifest: Mapping[str, object]) -> tuple[str | None, bool | N
         f"{MANIFEST_FILENAME} records a malformed working-tree flag",
     )
     return commit, dirty  # type: ignore[return-value]
+
+
+def _stale_digest_warning(stale: Mapping[str, Any]) -> str:
+    """Name a recorded digest skipped as stale, and what checked the file instead."""
+
+    skipped = (
+        f"{stale['recorded_in']} records the digest {stale['name']} had before the "
+        "staging receipts were appended, as its note says"
+    )
+    if stale["checked_against"]:
+        return (
+            f"{skipped}, so {stale['name']} was checked against "
+            f"{', '.join(stale['checked_against'])} instead."
+        )
+    return (
+        f"{skipped}, and the build recorded no later digest, so nothing the build "
+        f"recorded checks {stale['name']}."
+    )
 
 
 def _source_revision(
@@ -318,15 +400,13 @@ def reconstruct_uk_publication(
         if name in payloads
     }
     recorded = _recorded_digests(payloads, records)
-    verified = {}
+    verification: dict[str, str] = {}
+    stale_digests: list[dict[str, object]] = []
     for name, payload in payloads.items():
-        for recorder, digest, size in recorded.get(name, []):
-            _require(
-                hashlib.sha256(payload).hexdigest() == digest
-                and size in (None, len(payload)),
-                f"{name} does not match the digest recorded in {recorder}",
-            )
-        verified[name] = bool(recorded.get(name))
+        verification[name], stale_records = _verification(
+            name, payload, recorded.get(name, [])
+        )
+        stale_digests.extend(stale_records)
     manifest = records.get(MANIFEST_FILENAME, {})
     git_commit, git_dirty, origin = _source_revision(
         build, _recorded_code(manifest), revision
@@ -341,9 +421,7 @@ def reconstruct_uk_publication(
                 "role": _INPUT_ROLES[name],
                 "sha256": hashlib.sha256(payload).hexdigest(),
                 "bytes": len(payload),
-                "verification": "recorded_digest_matched"
-                if verified[name]
-                else "no_recorded_digest",
+                "verification": verification[name],
             }
             for name, payload in payloads.items()
         ],
@@ -380,7 +458,8 @@ def reconstruct_uk_publication(
         )
     elif git_dirty is None:
         warnings.append("The build did not record whether its working tree was clean.")
-    if not verified[DECLARATION_NAME]:
+    warnings.extend(_stale_digest_warning(stale) for stale in stale_digests)
+    if verification[DECLARATION_NAME] == "no_recorded_digest":
         warnings.append(
             f"The build recorded no digest for {DECLARATION_NAME}; it is bound only "
             "by the digest in the reconstruction marker."
@@ -402,6 +481,7 @@ def reconstruct_uk_publication(
             "sources": len(graph["sources"]),
         },
         "inputs": marker["inputs"],
+        "stale_recorded_digests": stale_digests,
         "missing": [
             {"name": name, "reason": _ABSENT_REASONS[name]}
             for name in sorted(_ABSENT_REASONS)
