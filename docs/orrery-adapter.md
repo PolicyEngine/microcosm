@@ -24,6 +24,14 @@ Microcosm executes. The direct API performs steps 2 and 3 in memory. A saved
 schema lets another process repeat step 3 without importing the original graph
 construction code.
 
+That process needs none of the build runtime either. `microcosm.graph.orrery`
+and the modules it imports use only the standard library, and `microcosm.graph`
+loads its runtime exports (the executor, content store, kernels, codecs and
+evidence capture, which need numpy, pandas and microcosm-frame) on first
+access. A test runs the projection, with an execution overlay, and the command
+in an interpreter that refuses to import numpy, pandas, microcosm-frame or the
+store. The package's declared dependencies are unchanged.
+
 A kernel is the implementation of one graph operation, with a declared input,
 output, numerical and execution contract.
 
@@ -243,6 +251,39 @@ npx orrery --input build/graph.orrery.json --output build/graph.orrery.html
 Native evidence links and saved-schema relative references are rebased to the
 command's output directory; keep the referenced files available with the HTML.
 
+`collect_execution_evidence` returns the execution overlay: the
+`microcosm.graph.execution-evidence.v1` object that the projection embeds at
+`metadata.execution`. `microcosm.graph.execution_overlay` saves it as its own
+file, so a later projection needs only the schema and that file, not the store:
+
+```python
+from microcosm.graph.execution_overlay import (
+    execution_overlay_bytes,
+    load_execution_overlay,
+)
+
+Path("build/graph.execution.json").write_bytes(execution_overlay_bytes(execution))
+
+# Later, in a process without the store, numpy, pandas or microcosm-frame:
+schema = json.loads(Path("build/graph.schema.json").read_bytes())
+overlay = load_execution_overlay(Path("build/graph.execution.json"))
+Path("build/graph.orrery.json").write_text(
+    orrery_json_from_schema(schema, execution=overlay), encoding="utf-8"
+)
+```
+
+The file is the overlay's canonical JSON: UTF-8, sorted keys and no
+whitespace. It has none of the transport tags for numbers JavaScript cannot
+represent; the projection adds those. Reading it back gives an equal object,
+so the projection is byte-identical to projecting the in-memory overlay. The
+reader takes only a regular file within the schema's 32 MiB serialized limit,
+which evidence collection and projection already apply to the overlay. It
+refuses duplicate keys, non-finite numbers, values outside the schema's JSON
+bounds and any other protocol. The overlay's graph binding and records are
+checked when it is projected. Its native-evidence links are relative to the
+directory it was collected for (`reference_base`), so project into that
+directory, beside the linked files.
+
 Other countries supply the same three inputs: a presentation dictionary (groups,
 scope, optional labels and references), an artifact-summary registry keyed by
 artifact type, and driver wiring that calls `save_graph_schema`,
@@ -256,6 +297,11 @@ that case, pass the attempt's `graph.schema.json` and
 `graph-evidence/execution.evidence.json`, and the same store. The spine sidecar
 identifies its native index under the checkpoint directory; use that directory's
 `graph.schema.json` and `node-graph` store. Orrery JSON and HTML remain opt-in.
+When UK finalize exports `graph.orrery.json` from recorded execution, it also
+writes the overlay it projected as `graph.execution.json` and registers it as a
+build output, so `graph.schema.json` and `graph.execution.json` reproduce the
+export byte for byte without the store. The overlay is not part of the Orrery
+publication set (see [UK graph publication](orrery-publication.md)).
 
 The final national schema, declaration and inventory all include the appended
 `uk.full.national.readback` operation. Earlier endpoint runs remain separate
@@ -267,6 +313,183 @@ inputs and platform, and checks required store payload digests. Graph/manifest
 mismatches, missing required bytes and corrupt files refuse export. Unavailable
 gate-blocked outputs, omitted operations and unconfigured summary providers are
 explicit. Earlier phases not supplied to the exporter remain unknown.
+
+## Reconstructed declarations
+
+A build from before #1144 recorded its graph declaration, but not the run
+binding that execution export validates, so its execution cannot be shown.
+`microcosm.graph.reconstruction` rebuilds that build's schema from the recorded
+declaration alone and marks it as reconstructed:
+
+```python
+from microcosm.graph.reconstruction import (
+    code_revision,
+    reconstructed_schema,
+    reconstruction_marker,
+)
+
+marker = reconstruction_marker(
+    git_commit=recorded_commit,
+    git_dirty=False,
+    revision_origin="recorded",
+    reconstruction_revision=code_revision(__file__),
+    inputs=inputs,  # one {name, role, sha256, bytes, verification} per file read
+)
+schema = reconstructed_schema(declaration_bytes, marker)
+```
+
+Only the declaration comes from the build. The schema's `graph` section and
+`graph_sha256` reproduce the recorded file byte for byte. Its `compiled`,
+`fields` and `input_bindings` sections, and the Orrery document projected from
+it, are computed by the code running the reconstruction. A reconstruction made
+at another revision can therefore differ in those parts, which is why the
+marker records that revision separately from the build's.
+
+The marker is the producer extension `microcosm.reconstruction`:
+
+```json
+{
+  "protocol": "microcosm.graph.reconstruction.v1",
+  "reconstructed": true,
+  "basis": "declaration_only",
+  "source_revision": {
+    "git_commit": "<full lowercase commit>",
+    "git_dirty": false,
+    "origin": "recorded"
+  },
+  "reconstruction_revision": {
+    "git_commit": "<full lowercase commit, or null>",
+    "git_dirty": false
+  },
+  "inputs": [
+    {"name": "graph.json", "role": "declaration", "sha256": "<hex>",
+     "bytes": 4096, "verification": "no_recorded_digest"},
+    {"name": "rowwise_candidate_manifest.json", "role": "code_pin",
+     "sha256": "<hex>", "bytes": 2048, "verification": "recorded_digest_matched"}
+  ],
+  "scope": "Rebuilt after the build from its recorded graph declaration, the only part taken from the build: ..."
+}
+```
+
+- **`source_revision`:** the code that declared the graph. `origin` is
+  `recorded` when the build wrote the revision itself, and `caller_asserted`
+  when the build recorded none and the caller supplied one. `git_dirty` is
+  `null` when the build did not record it.
+- **`reconstruction_revision`:** the code that performed the reconstruction,
+  and so computed every section except the declaration. `code_revision(path)`
+  reads it from the git checkout that tracks `path` (the reconstructing
+  module's own file), not from the current directory. Both fields are `null`
+  when no checkout tracks that file, as for an installed wheel. `git_dirty` is
+  `null` alone when git could not check the working tree.
+- **`inputs`:** every file the reconstruction read, in name order, by digest
+  and size. Exactly one input is the declaration, and its digest equals the
+  schema's `graph_sha256`. `verification` compares the file with the digests
+  the build itself recorded for it:
+
+  | Value | Meaning |
+  | --- | --- |
+  | `recorded_digest_matched` | Every recorded digest matched. |
+  | `fallback_digest_matched` | The build marked one recorded digest as taken before it rewrote the file. That digest was skipped, and another recorded digest matched. |
+  | `only_stale_digest_recorded` | Every recorded digest is marked as taken before the rewrite, so nothing the build recorded checks the file. |
+  | `no_recorded_digest` | The build recorded no digest for the file. |
+
+  In the last two cases the file is bound only by the digest in the marker.
+- **Exact bytes:** `reconstructed_schema` refuses a declaration that the
+  current serializer would not write byte for byte. The schema's `graph`
+  section is therefore the recorded file, not a reinterpretation of it. A file
+  that is not a graph declaration at all, such as a JSON array, is also refused
+  with a `ValueError`.
+- **Where it travels:** the marker is saved in `graph.schema.json`, so any
+  later projection of the saved schema keeps it. Orrery documents show it at
+  `metadata.microcosm.extensions["microcosm.reconstruction"]`.
+  `validate_reconstruction(schema)` returns the marker, or `None` for a schema
+  that was not reconstructed.
+- **No execution claims:** a reconstructed document has no activities,
+  artifacts, statuses or `metadata.execution`. No operation appears as
+  executed, cached or gated. CI parses one with Orrery's public parser
+  (`tools/orrery-contract/verify-reconstruction.mjs`).
+
+### UK builds before #1144
+
+UK dense and national builds from before #1144 wrote `graph.json` beside their
+outputs, and recorded their code revision in `rowwise_candidate_manifest.json`.
+This command turns such a build's output directory into a reconstructed
+publication:
+
+```sh
+uv run python -m microcosm.build.uk_runtime.orrery_reconstruction \
+  --build path/to/past-build \
+  --output path/to/reconstructed-publication
+```
+
+The declaration is the build's own `graph.json`. It is not rebuilt by running
+the UK graph builders at the current revision. The declaration format has not
+changed since the UK graph driver, so a recorded file reproduces byte for byte;
+one that does not is refused. Everything derived from it (the schema's
+compiled sections and the Orrery document) is computed by the code running the
+command, and the marker records that code's revision as
+`reconstruction_revision`.
+
+The build directory is only read. The command:
+
+- **Reads:** `graph.json`, which is required, and also `build.json`,
+  `rowwise_candidate_manifest.json` and `sha256sums.txt` where present. Links,
+  devices and inputs over 32 MiB are refused.
+- **Checks recorded digests:** a file whose bytes disagree with a digest the
+  build recorded for it is refused. `build.json` binds the candidate manifest,
+  and `sha256sums.txt` binds the files it lists. One exception covers the dense
+  driver merged with #901 (2026-09-29). It recorded the manifest's digest in
+  `build.json` with the note `staging receipts are appended after
+  publication`, then appended `staging_delivery` and `staged_dataset` to the
+  manifest and refreshed only `sha256sums.txt`. `build.json` was reissued over
+  the final bytes, without the note, only from #1057 (2026-09-30). A
+  `build.json` digest with that exact note that no longer matches is skipped
+  and reported, and the manifest must then match `sha256sums.txt`
+  (`fallback_digest_matched`). A build run with `--no-staging` or
+  `--no-staged-dataset` wrote no digest list, so its manifest is reported as
+  `only_stale_digest_recorded`, with a warning.
+- **Resolves the revision:** it takes the candidate manifest's `git_commit`
+  and `git_dirty`, which must agree with the copy under `identity.code`.
+  `--revision` must match that commit, or supplies one when the build recorded
+  none; that revision is marked `caller_asserted`. With neither, it refuses.
+- **Refuses later builds:** a build that records Orrery evidence
+  (`graph.schema.json` or `execution.evidence.json`) is exported with
+  `python -m microcosm.graph.orrery` instead.
+- **Refuses missing declarations:** a directory without `graph.json` is refused,
+  and the refusal names the build records that were found. Staged bundles never
+  carried `graph.json`, and builds from before the UK graph driver never wrote
+  it.
+
+It writes a new directory with the layout of a normal publication, and moves the
+directory into place only after every file is written. The output must not
+exist, and must not be the build directory or lie inside it once `..` and links
+are resolved:
+
+| File | Contents |
+| --- | --- |
+| `graph.schema.json` | Compiler schema of the recorded declaration, with the reconstruction marker |
+| `graph.orrery.json` | Orrery document, titled `UK · reconstructed declaration (<commit>)` |
+| `orrery.upload.json` | Publication inventory (roles `graph` and `schema`); its publication ID is derived from the files' digests |
+| `orrery.reconstruction.json` | Summary report; not in the inventory |
+
+The summary report, of which the command prints a short version, lists:
+
+- the inputs and how each was verified;
+- the source revision and the reconstruction revision;
+- the recorded digests skipped as stale, each with its note and the records the
+  file was checked against instead;
+- the expected files that are missing;
+- evidence found but not bound to operations: run manifests,
+  `evidence-index.json`, `operations.json` and the content store;
+- warnings, for a dirty or unrecorded working tree in the build or the
+  reconstruction, an unknown reconstruction revision, a caller-asserted
+  revision, a skipped stale digest, or a declaration the build recorded no
+  digest for. Before #1144, the last one applies to every build.
+
+Output is deterministic: reconstructing the same build twice from the same
+code revision gives identical bytes and the same publication ID. The command
+uploads nothing and starts no emitter service, so publishing the directory
+remains a separate step.
 
 ## Orrery evidence panels
 

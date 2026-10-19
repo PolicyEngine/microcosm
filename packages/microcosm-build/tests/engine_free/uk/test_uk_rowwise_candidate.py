@@ -7,6 +7,7 @@ the retired rowwise tool pinned them, plus the tool's stub.
 """
 
 # ruff: noqa: F403, F405
+from microcosm.build.calibration_epoch_telemetry import CALIBRATION_MAX_EPOCH_ROWS
 from test_support.microcosm_build.uk_rowwise_candidate import *
 
 
@@ -563,15 +564,71 @@ def test_staging_epoch_stride_keeps_the_forwarded_rows_bounded():
     assert stride(2, None) == 10 and stride(2, 300) == 10
     assert stride(2000, None) == 10
     # dense + ten probes + refit at 2,000 epochs: 24,000 epochs -> 2,400 rows
+    # on the stride, plus each of the twelve solves' first epoch
     assert stride(2000, 55000) == 10
     assert stride(10000, 55000) == 50
     assert stride(100000, None) == 42
     for epochs, households in ((2000, 55000), (10000, 55000), (100000, None)):
         solves = 1 if households is None else 2 + rowwise_cli.BUDGET_ITERS
         assert (
-            epochs * solves / stride(epochs, households)
-            <= builder._STAGING_MAX_EPOCH_ROWS
+            epochs * solves / stride(epochs, households) <= CALIBRATION_MAX_EPOCH_ROWS
         )
+
+
+def test_uk_thinned_epochs_forward_each_solve_first_epoch():
+    """A UK size run no longer than the stride keeps its solves apart.
+
+    The dense solve, each budget-search probe and the refit all run
+    ``--epochs`` and restart the epoch counter at 1. Forwarding each solve's
+    first epoch beside its last makes the epoch fall at every boundary, which
+    is how the calibration-diagnostics build monitor starts a new solver pass
+    (microcosm#1292).
+    """
+
+    epochs = 5
+    forwarded_rows: list[dict[str, object]] = []
+    observer = rowwise_staging.thinned_epochs(
+        forwarded_rows.append,
+        every=rowwise_staging.staging_epoch_every(
+            SimpleNamespace(epochs=epochs, dataset_households=55000)
+        ),
+    )
+    # The dense solve's reports carry no phase; probe epochs are flagged.
+    solve_contexts = [
+        {},
+        {"phase": "size_search", "budget_search": True},
+        {"phase": "size_search", "budget_search": True},
+        {"phase": "size_refit"},
+    ]
+
+    for solve_context in solve_contexts:
+        for epoch in range(1, epochs + 1):
+            observer(
+                {
+                    **solve_context,
+                    "kind": "calibration_epoch",
+                    "epoch": epoch,
+                    "epochs": epochs,
+                    "loss": 1.0 / epoch,
+                }
+            )
+
+    assert [(row.get("phase"), row["epoch"]) for row in forwarded_rows] == [
+        (solve_context.get("phase"), epoch)
+        for solve_context in solve_contexts
+        for epoch in (1, epochs)
+    ]
+    # The staging contract records the probe flag as 1 or null.
+    assert [row.get("budget_search") for row in forwarded_rows] == [
+        None,
+        None,
+        1,
+        1,
+        1,
+        1,
+        None,
+        None,
+    ]
 
 
 def test_remote_dataset_staging_is_refused_up_front_without_credential_or_repo(

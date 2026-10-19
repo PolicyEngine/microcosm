@@ -26,11 +26,13 @@ from microcosm.build.staging_dataset import StagedDatasetDelivery
 from microcosm.graph import ContentStore
 from microcosm.graph.canonical import canonical_json
 from microcosm.graph.evidence import collect_execution_evidence, load_run_evidence
+from microcosm.graph.execution_overlay import execution_overlay_bytes
 from microcosm.graph.orrery import orrery_json_from_schema
 
 RECEIPT_NAME = "orrery.publication.json"
 INVENTORY_NAME = "orrery.upload.json"
 EVIDENCE_MANIFEST_NAME = "orrery.evidence-manifest.json"
+EXECUTION_OVERLAY_NAME = "graph.execution.json"
 FAILURE_MARKER_NAME = "orrery.failure.json"
 FAILURE_BUNDLE_DIRECTORY = "orrery-failure"
 # How long a build waits for a first upload result after the durable enqueue.
@@ -141,6 +143,18 @@ def finalize_graph(
                         roles[run[field]["path"]] = role
             payload = orrery_json_from_schema(schema, execution=execution).encode()
             materialize_bytes(payload, output / "graph.orrery.json")
+            # The overlay is the projection's only input besides the schema,
+            # so a later projection can start from these two files. It is a
+            # registered build output but not part of the Orrery publication:
+            # the emitter's file roles and the runs service's contract do not
+            # admit it yet.
+            unpublished: list[str] = []
+            if execution is not None:
+                materialize_bytes(
+                    execution_overlay_bytes(execution),
+                    output / EXECUTION_OVERLAY_NAME,
+                )
+                unpublished.append(EXECUTION_OVERLAY_NAME)
             for url in _urls(json.loads(payload)):
                 name = url.split("#", 1)[0]
                 if re.fullmatch(r"upstream-[a-f0-9]{64}\.json", name):
@@ -149,7 +163,7 @@ def finalize_graph(
                     roles[name] = "upstream"
             # Keep exact sources outside the build's temporary directory and
             # outside HF's immutable receipt snapshot, including when offline.
-            names = list(roles)
+            names = [*roles, *unpublished]
             preserved = Path(args.attempt_evidence) / "orrery-publication"
             for name in roles:
                 materialize_bytes((output / name).read_bytes(), preserved / name)
@@ -169,7 +183,7 @@ def finalize_graph(
                 raise RuntimeError("Local graph inventory service is unavailable.")
             materialize_bytes(canonical_json(inventory), preserved / INVENTORY_NAME)
             materialize_bytes(canonical_json(inventory), output / INVENTORY_NAME)
-            names = [*roles, INVENTORY_NAME]
+            names = [*roles, *unpublished, INVENTORY_NAME]
             receipt = {
                 "version": 1,
                 "publication_id": inventory["publication_id"],

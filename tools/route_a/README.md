@@ -212,10 +212,16 @@ uploads reach the dashboard's staging repository, the records for its Build
 progress tab include the release's run ID and candidate release ID, current status/stage,
 timestamps, messages and stage details from `progress.json`, the event history
 from `events.ndjson`, and calibration epoch/loss/budget-search information from
-`calibration_progress.json`. The builder emits stages for loading the base,
-source enrichments, target compilation, calibration, export/gates, diagnostics
-and manifests, and uploads attached diagnostics as they are written. Completion
-records status `passed`; reported failures record status `failed`.
+`calibration_progress.json`. That file and the hosted telemetry carry each
+solve's first and last epoch and every tenth epoch between them, the rule the
+UK build follows too (`microcosm.build.calibration_epoch_telemetry`); the
+stride grows past ten only when the run's solves total more than 24,000
+epochs. Because each solve's rows start at epoch 1, the epoch falls wherever
+the refit begins, even when `--epochs` is ten or fewer. The builder emits
+stages for loading the base, source enrichments, target compilation,
+calibration, export/gates, diagnostics and manifests, and uploads attached
+diagnostics as they are written. Completion records status `passed`; reported
+failures record status `failed`.
 
 Telemetry is written locally under
 `<release-out>/staging/runs/<release-id>/` and uploaded under
