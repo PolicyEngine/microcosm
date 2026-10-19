@@ -6,7 +6,7 @@ import json
 import pytest
 
 from microcosm.build.uk_runtime import full_build_cli as cli
-from microcosm.build.uk_runtime import spine_build
+from microcosm.build.uk_runtime import hmrc_uprating, spine_build
 from microcosm.build.uk_runtime.national_frame import (
     load_uk_national_frame,
     write_uk_national_frame,
@@ -38,6 +38,11 @@ def checkpoint_argv(tmp_path, toy_ladder, monkeypatch):
     monkeypatch.setattr(spine_build, "_rules_engine", lambda: object())
     monkeypatch.setattr(
         spine_build, "_rules_engine_provenance", lambda: {"version": "fixture"}
+    )
+    # The engine stands in here, so its freeze check does too: the preparation
+    # runs it before reading any input (microcosm#1095).
+    monkeypatch.setattr(
+        hmrc_uprating, "assert_installed_engine_is_pinned", lambda: "fixture"
     )
     argv = [
         "--release-role",
