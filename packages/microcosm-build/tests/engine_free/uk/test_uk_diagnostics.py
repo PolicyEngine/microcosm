@@ -49,7 +49,7 @@ def _fixture_hierarchy(name: str, geography_level: str) -> CalibrationHierarchy:
         "country": "E92000001",
         "local_authority": "E09000001",
         "constituency": "E14000001",
-        "brma": "S33000001",
+        "brma": "S33999999",
     }
     return CalibrationHierarchy(
         provider=HierarchyNode("fixture", "Fixture provider"),
@@ -1414,6 +1414,71 @@ def test_a_withheld_row_inside_ten_percent_counts_nowhere() -> None:
     assert brma["n_within_10pct"] == 1
 
 
+def test_every_brma_row_states_its_ten_household_verdict() -> None:
+    """María's ruling of 2026-10-19 on the fourth review of #1305.
+
+    Every BRMA row carries ``carrier_floor_met``, false exactly where its model
+    figures are withheld, so the release contract can warn about a thin row
+    the build never flagged.
+    """
+
+    payload, _ = _thin_and_wide_brma_payload()
+    verdicts = {
+        row["target_name"]: row["metadata"]["carrier_floor_met"]
+        for row in payload["targets"]
+    }
+    assert verdicts == {
+        "thin_brma_target": False,
+        "wide_brma_target": True,
+        "other_brma_target": True,
+    }
+
+
+def test_the_published_options_are_settings_only() -> None:
+    """The fourth review of #1305: an outcome key added to the allow-list
+    passed every test. Each key here is a setting the solve was given; a new
+    one is added here, after checking that it holds no outcome."""
+
+    from microcosm.diagnostics import (
+        UK_WITHHELD_PUBLISHED_ITERATE_FIELDS,
+        UK_WITHHELD_PUBLISHED_OPTIONS,
+    )
+
+    assert UK_WITHHELD_PUBLISHED_OPTIONS == {
+        "budget_basis",
+        "epochs",
+        "feasible_draw_pi_hi",
+        "gate_initialization_supplied",
+        "iterate_selection",
+        "l1_lambda",
+        "l1_penalty",
+        "l2_anchor",
+        "l2_anchor_weights_supplied",
+        "l2_basis",
+        "l2_lambda",
+        "l2_penalty",
+        "learning_rate",
+        "mass",
+        "mass_parametrization",
+        "mass_reason",
+        "matrix_format",
+        "max_weight_ratio",
+        "method",
+        "seed",
+        "target_loss_cap",
+        "target_loss_scales",
+        "target_loss_weights",
+        "target_records",
+        "warm_start_weights",
+    }
+    assert UK_WITHHELD_PUBLISHED_ITERATE_FIELDS == {
+        "rule",
+        "selected_epoch",
+        "epochs_executed",
+        "epoch_convention",
+    }
+
+
 def test_no_loss_over_every_row_survives_in_the_payload() -> None:
     """The third review of #1305: the solve's options kept its iterate's loss.
 
@@ -1528,18 +1593,24 @@ def test_written_rows_flag_every_row_while_any_is_withheld() -> None:
     assert uk_withhold_brma_figures(flagged, frozenset()) == [rows[0]]
 
 
-def test_the_report_guard_refuses_any_mention_of_a_withheld_row() -> None:
+def test_the_report_guard_refuses_any_mention_of_a_withheld_row(capsys) -> None:
     """María's ruling of 2026-10-19: no gate output names a withheld row.
 
     The third review of #1305 found more than fifteen shapes that slipped
     past a guard looking for figures beside a name. The guard now refuses the
     name, the gate key and the area code themselves, in any case, anywhere.
+    The fourth found that its message named the place, and a failed receipt
+    sends the message on: it is now constant, and the place stays on stderr.
     """
 
-    from microcosm.build.uk_runtime.diagnostics import uk_refuse_named_withheld_rows
+    from microcosm.build.uk_runtime.diagnostics import (
+        UK_WITHHELD_ROW_NAMED_MESSAGE,
+        UKWithheldRowNamedError,
+        uk_refuse_named_withheld_rows,
+    )
 
-    names = frozenset({"ons.rent.private_rent_brma@S33000011@2025"})
-    keys = frozenset({"private_rent/S33000011/rent/private_rent_brma"})
+    names = frozenset({"ons.rent.private_rent_brma@S33999999@2025"})
+    keys = frozenset({"private_rent/S33999999/rent/private_rent_brma"})
     (key,) = keys
 
     def guard(report):
@@ -1555,7 +1626,7 @@ def test_the_report_guard_refuses_any_mention_of_a_withheld_row() -> None:
                         "withheld_targets": 1,
                         "family_sizes": {"private_rent": 7},
                         "failing_targets": {
-                            "private_rent/S33000002/rent/private_rent_brma": 0.3
+                            "private_rent/S33999998/rent/private_rent_brma": 0.3
                         },
                     },
                 }
@@ -1570,13 +1641,17 @@ def test_the_report_guard_refuses_any_mention_of_a_withheld_row() -> None:
         {"names": [key], "errors": [-0.4]},
         {"failures": [f"{key} is 40 per cent out"]},
         {"failures": [f"err=-4.0e-01 for {key.upper()}"]},
-        {"failures": ["ons.rent.private_rent_brma@S33000011 failed"]},
-        {"failures": ["S33000011 is beyond the bound"]},
+        {"failures": ["ons.rent.private_rent_brma@S33999999 failed"]},
+        {"failures": ["S33999999 is beyond the bound"]},
         {"dormant_exclusions": [key]},
     ):
-        with pytest.raises(ValueError, match="names a withheld row") as excinfo:
+        with pytest.raises(UKWithheldRowNamedError) as excinfo:
             guard(report)
-        assert "40" not in str(excinfo.value)
+        message = str(excinfo.value)
+        assert message == UK_WITHHELD_ROW_NAMED_MESSAGE
+        for label in (key, "S33999999", "failing_targets", "failures", "40"):
+            assert label.casefold() not in message.casefold()
+        assert "names a withheld row" in capsys.readouterr().err
     # Nothing withheld: nothing to guard.
     uk_refuse_named_withheld_rows(
         {"failing_targets": {key: -0.4}}, names=frozenset(), keys=frozenset()

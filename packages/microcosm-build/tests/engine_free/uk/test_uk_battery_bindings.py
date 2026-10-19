@@ -2483,7 +2483,7 @@ class TestWithheldBrmaRows:
     fit gates decide on the published rows and count the withheld ones.
     """
 
-    WITHHELD = "private_rent/S33000001/rent/private_rent_brma"
+    WITHHELD = "private_rent/S33999999/rent/private_rent_brma"
 
     @staticmethod
     def _rows(flag: bool = True) -> list[dict]:
@@ -2499,14 +2499,14 @@ class TestWithheldBrmaRows:
         rows += [
             {
                 "family": "private_rent",
-                "area_code": "S33000001",
+                "area_code": "S33999999",
                 "metric": "rent/private_rent_brma",
                 "relative_error": -0.4,
                 "model_figures_withheld": flag,
             },
             {
                 "family": "private_rent",
-                "area_code": "S33000002",
+                "area_code": "S33999998",
                 "metric": "rent/private_rent_brma",
                 "relative_error": 0.02,
             },
@@ -2593,6 +2593,25 @@ class TestWithheldBrmaRows:
         assert self.WITHHELD not in result.details["reviewed_exclusions"]
         assert self.WITHHELD not in result.details["dormant_exclusions"]
         assert self.WITHHELD not in result.details["stale_exclusions"]
+        self._guard(result)
+
+    def test_a_withheld_rows_entry_for_another_line_is_set_aside(
+        self, monkeypatch, uk_gates
+    ) -> None:
+        """The fourth review of #1305: an out-of-line entry named the row.
+
+        An entry scoped to the national line is listed as set aside on the
+        local one; for a withheld row it is left out of that list too.
+        """
+
+        result = self._evaluate(
+            monkeypatch,
+            uk_gates,
+            "uk_local_target_fit",
+            self._rows(),
+            register={self.WITHHELD: _receipt(release_lines=("national",))},
+        )
+        assert "out_of_line_exclusions" not in result.details
         self._guard(result)
 
     def test_family_fit_rests_on_the_published_rows(

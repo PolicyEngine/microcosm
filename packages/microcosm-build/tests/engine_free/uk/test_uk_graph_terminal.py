@@ -900,14 +900,14 @@ def _run_final_gate_kernel(monkeypatch, *, brma_row: bool = False, solved=None):
                 source="fixture",
                 family="private_rent",
                 hierarchy=uk_fixture_hierarchy(
-                    "brma_rent", level="brma", geography_id="S33000001"
+                    "brma_rent", level="brma", geography_id="S33999999"
                 ),
                 metadata={
                     "geography_level": "brma",
-                    "geography_id": "S33000001",
+                    "geography_id": "S33999999",
                     "materialization": "uk_local_surface",
                     "area_type": "brma",
-                    "area_code": "S33000001",
+                    "area_code": "S33999999",
                     "metric": "rent/private_rent_brma",
                 },
             )
@@ -1124,7 +1124,7 @@ def test_the_gate_kernel_keeps_a_withheld_brma_row_out_of_its_gates(monkeypatch)
 
     solved: list = []
     stored = _run_final_gate_kernel(monkeypatch, brma_row=True, solved=solved)
-    key = "private_rent/S33000001/rent/private_rent_brma"
+    key = "private_rent/S33999999/rent/private_rent_brma"
     document = json.loads(stored.artifacts["gate_report"])
     outcomes = {row["id"]: row for row in document["report"]["outcomes"]}
     fit = outcomes["uk_local_target_fit"]

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import math
+import sys
 from collections.abc import Collection, Mapping, Sequence
 from importlib import resources as importlib_resources
 from pathlib import Path
@@ -1055,6 +1056,22 @@ def uk_withhold_brma_figures(
     return out
 
 
+#: The guard's one message (the fourth review of #1305). A failed receipt
+#: keeps an exception's message and the emitter sends it on, so it names no
+#: place: a report path can carry the withheld row's key, and beside the
+#: public register, its status.
+UK_WITHHELD_ROW_NAMED_MESSAGE = (
+    "The gate report names a withheld row; the build's local stderr says where."
+)
+
+
+class UKWithheldRowNamedError(ValueError):
+    """A written gate report names a withheld row (microcosm#1262)."""
+
+    def __init__(self) -> None:
+        super().__init__(UK_WITHHELD_ROW_NAMED_MESSAGE)
+
+
 def uk_refuse_named_withheld_rows(
     payload: object, *, names: frozenset[str], keys: frozenset[str]
 ) -> None:
@@ -1065,7 +1082,12 @@ def uk_refuse_named_withheld_rows(
     a reason to name one, and a name beside a figure or a verdict would give
     the row back. A withheld row's name, gate key or area code, in any case,
     in any key or string of the report, stops the build before the report
-    leaves it. The message names the place only.
+    leaves it. The error's message is constant; the place goes to this
+    machine's stderr only.
+
+    It matches literal text, and a bare area code: one family is bound per
+    BRMA today, and a second would stop the build on its published rows
+    until the guard matched each withheld row's own keys instead.
     """
 
     areas = {key.split("/")[1] for key in keys if key.count("/") >= 2}
@@ -1076,7 +1098,8 @@ def uk_refuse_named_withheld_rows(
     def check(text: str, path: str) -> None:
         folded = text.casefold()
         if any(label in folded for label in labels):
-            raise ValueError(f"{path} names a withheld row.")
+            print(f"error: {path} names a withheld row.", file=sys.stderr)
+            raise UKWithheldRowNamedError
 
     def walk(value: object, path: str) -> None:
         if isinstance(value, Mapping):
@@ -1316,7 +1339,16 @@ def uk_calibration_diagnostics_payload(
         else withheld
     )
     for row in target_rows:
-        if str(row["name"]) in withheld:
+        name = str(row["name"])
+        if geography.get(name) == "brma":
+            # Every BRMA row states its ten-household verdict, so the release
+            # contract can see one that skipped the floor (María's ruling of
+            # 2026-10-19 on the fourth review of #1305: it warns).
+            row["metadata"] = {
+                **dict(row.get("metadata") or {}),
+                "carrier_floor_met": name not in withheld,
+            }
+        if name in withheld:
             for field in _MODEL_FIGURE_FIELDS:
                 if field in row:
                     row[field] = None

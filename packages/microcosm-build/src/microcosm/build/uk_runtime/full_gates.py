@@ -238,8 +238,9 @@ def build_full_gate_context(
             national_errors[target.row_name] = float(solved_rows[index].relative_error)
     # A BRMA row's model figures leave the build only when ten distinct source
     # households carry them (María's ruling of 2026-10-17, microcosm#1262).
-    # The gates decide on every row; the flag tells the bindings and the
-    # writers which rows to write by name only.
+    # The fit gates decide on the published rows and count the withheld ones
+    # (María's ruling of 2026-10-19); the flag tells the bindings and the
+    # writers which rows those are.
     withheld = uk_withheld_brma_rows(
         problem,
         solution.weights,
