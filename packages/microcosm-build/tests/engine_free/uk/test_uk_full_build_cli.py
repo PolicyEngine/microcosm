@@ -501,7 +501,7 @@ def test_cli_cold_and_required_replay_recreate_dataset_and_sidecars(
 def test_the_dense_gate_replay_signs_a_bound_attempt_the_contract_accepts(
     tmp_path, monkeypatch
 ):
-    """The six local outcomes of the graph's terminal document become a signed
+    """The seven local outcomes of the graph's terminal document become a signed
     battery report bound to the attempt, which the dense contract verifies."""
     from microcosm.build.uk_runtime.graph_national import replay_uk_dense_gate_battery
     from microcosm.data.contract import _check_uk_dense_gate_report
@@ -1044,7 +1044,7 @@ def test_main_runs_the_logbook_envelope_around_a_dense_build(tmp_path, monkeypat
     assert row.disposition == "iterating"
     assert row.artifact_location.endswith(f"{STEM}.h5")
     assert "published" in row.phases_reached
-    # The six local gates resolve in the signed local report; every other
+    # The seven local gates resolve in the signed local report; every other
     # gate in the graph's full document, by its outcome position.
     assert row.gate_verdicts and all(
         item["verdict"] == "passed" for item in row.gate_verdicts.values()
@@ -1877,7 +1877,7 @@ def test_blocked_gates_partition_failures_by_criticality(tmp_path, monkeypatch, 
     report = json.loads(
         Path(manifest["outputs"]["local_gate_report"]["path"]).read_text()
     )
-    # The local battery report carries the graph's outcomes for its six
+    # The local battery report carries the graph's outcomes for its seven
     # gates, blocked ones included, and is never shippable.
     assert set(report["gates"]) == set(UK_LOCAL_GATE_SCOPE)
     for gate_id in ("uk_local_area_support", "uk_local_weight_ratio"):
