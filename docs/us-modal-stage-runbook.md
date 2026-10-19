@@ -223,8 +223,13 @@ python3 tools/modal_us_stage_plan.py validate plan.json
 #    attempt of the run that may still be running.
 MICROCOSM_MODAL_PLAN=plan.json modal run tools/modal_us_stage.py
 
-# 4. Run the stage. --detach keeps it running if this terminal goes away;
-#    the receipt lands on the runs volume either way. Set "max_wall_seconds"
+# 4. Run the stage. --spawn returns once the stage is spawned, and --detach
+#    keeps the app up after this client exits, so a terminal or Mac that goes
+#    away can't cancel it. Without --spawn the client waits on the call, and
+#    on 2026-10-19 a waiting call was cancelled 99 s after its Mac went to
+#    sleep. Read the outcome from the runs volume: a receipt under
+#    runs/<run_id>/receipts/, or an attempt record whose outcome is refused or
+#    error (see modal_us_stage.main). Set "max_wall_seconds"
 #    in the plan to cap the cost below the class's hard timeout: the runner
 #    stops the tool then (SIGTERM to the tool's process group, which the
 #    tool runs in alone, so a stage child it spawned stops too; SIGKILL to
@@ -240,7 +245,7 @@ MICROCOSM_MODAL_PLAN=plan.json modal run tools/modal_us_stage.py
 #    comes off it (see "Preemption and restarts" below). A stop at the
 #    budget writes a receipt, so launching the same plan again gets the
 #    whole budget again.
-MICROCOSM_MODAL_PLAN=plan.json modal run --detach tools/modal_us_stage.py --run
+MICROCOSM_MODAL_PLAN=plan.json modal run --detach tools/modal_us_stage.py --run --spawn
 
 # 5. Fetch the state and verify it against the receipt. A receipt whose
 #    status is not COMPLETED, or that says stopped_at_budget, does not
@@ -342,7 +347,7 @@ python3 tools/modal_us_stage_plan.py digest <that dir>/acs_multispine_staging.h5
 # expect f335f573…; then run the printed `modal volume put …` line
 MICROCOSM_MODAL_PLAN=docs/us-modal-stage-example-plan.json modal run tools/modal_us_stage.py
 MICROCOSM_MODAL_PLAN=docs/us-modal-stage-example-plan.json \
-  modal run --detach tools/modal_us_stage.py --run
+  modal run --detach tools/modal_us_stage.py --run --spawn
 ```
 
 ## Acceptance attempt: 23 September materialize on the state surface
@@ -863,7 +868,7 @@ MICROCOSM_MODAL_PLAN=docs/us-modal-stage-route-a-base-plan.json \
 #    throttles CPU use above the limit (the request), and memory above
 #    112 GiB would bill above that.
 MICROCOSM_MODAL_PLAN=docs/us-modal-stage-route-a-base-plan.json \
-  modal run --detach tools/modal_us_stage.py --run
+  modal run --detach tools/modal_us_stage.py --run --spawn
 
 # 5. Fetch the receipts and base-out only, not the 44 GB of checkpoints,
 #    and verify base-out against the receipt. verify-receipt refuses a
@@ -1240,7 +1245,7 @@ bash staging-inputs.sh
 # disk admission, write probe, PYTHONHASHSEED, ledger and receipt state.
 MICROCOSM_MODAL_PLAN="$PLAN" modal run tools/modal_us_stage.py
 # Run: the plan requests non-preemptible placement and a 16-hour budget.
-MICROCOSM_MODAL_PLAN="$PLAN" modal run --detach tools/modal_us_stage.py --run
+MICROCOSM_MODAL_PLAN="$PLAN" modal run --detach tools/modal_us_stage.py --run --spawn
 
 # After completion, fetch the entire state (including logs) and receipts.
 R=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["run_id"])' "$PLAN")
