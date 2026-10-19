@@ -577,6 +577,29 @@ def test_existing_output_is_refused_and_failure_leaves_no_partial_output(
     assert sorted(path.name for path in tmp_path.iterdir()) == ["build", "existing"]
 
 
+@pytest.mark.parametrize(
+    "output_parts",
+    [
+        ("build",),
+        ("build", "publication"),
+        ("elsewhere", "..", "build", "publication"),
+        ("link-to-build", "publication"),
+    ],
+    ids=["the_build_itself", "inside", "through_a_parent_reference", "through_a_link"],
+)
+def test_output_inside_the_build_directory_is_refused(tmp_path, output_parts):
+    build = write_pre_1144_build(tmp_path / "build")
+    (tmp_path / "elsewhere").mkdir()
+    (tmp_path / "link-to-build").symlink_to(build, target_is_directory=True)
+    listing = sorted(path.name for path in build.iterdir())
+
+    with pytest.raises(ValueError, match="inside the build directory"):
+        reconstruct_uk_publication(build, tmp_path.joinpath(*output_parts))
+
+    # The build is only read: nothing was written into it, not even staging.
+    assert sorted(path.name for path in build.iterdir()) == listing
+
+
 def test_declaration_behind_a_symbolic_link_is_refused(tmp_path):
     build = write_pre_1144_build(tmp_path / "build")
     elsewhere = tmp_path / "elsewhere.json"

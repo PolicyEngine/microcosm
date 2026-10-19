@@ -325,6 +325,21 @@ def _build_identity(*records: Mapping[str, object]) -> dict[str, str]:
     return identity
 
 
+def _within(directory: Path, candidate: Path) -> bool:
+    """Whether ``candidate`` is ``directory`` or lies beneath it, links resolved.
+
+    Each existing ancestor of the resolved path is compared with ``directory``
+    as a file, so ``..``, symbolic links and case-insensitive file systems
+    cannot disguise the build directory.
+    """
+
+    resolved = candidate.resolve()
+    return any(
+        ancestor.exists() and os.path.samefile(ancestor, directory)
+        for ancestor in (resolved, *resolved.parents)
+    )
+
+
 def _unused_evidence(build: Path) -> list[dict[str, str]]:
     found = []
     for name in sorted(os.listdir(build)):
@@ -375,6 +390,10 @@ def reconstruct_uk_publication(
 
     build, output = Path(build), Path(output)
     _require(build.is_dir(), f"build directory {build} does not exist")
+    _require(
+        not _within(build, output),
+        f"output {output} is inside the build directory {build}, which is only read",
+    )
     _require(not os.path.lexists(output), f"output {output} already exists")
     recorded_evidence = [
         name
@@ -553,7 +572,9 @@ def main(argv: list[str] | None = None) -> int:
         "--output",
         type=Path,
         required=True,
-        help="new publication directory; it must not exist",
+        help=(
+            "new publication directory, outside the build directory; it must not exist"
+        ),
     )
     parser.add_argument(
         "--revision",
