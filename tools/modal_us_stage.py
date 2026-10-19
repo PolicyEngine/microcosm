@@ -1175,15 +1175,17 @@ def main(run: bool = False, spawn: bool = False) -> None:
     (``_run_stage``) writes nothing. A killed container leaves an attempt
     record whose ``last_seen_epoch`` stops advancing.
     ``modal.FunctionCall.from_id(<id>).get()``, run with the modal tool's
-    interpreter, blocks until the call ends. It returns the receipt, or
-    re-raises the error of a rejected, refused or failed attempt, since
-    ``_run_stage`` re-raises each of them.
+    interpreter, blocks until the call ends. It returns the receipt
+    (COMPLETED or FAILED), or re-raises the error of an attempt that raised:
+    a rejected plan, a refusal or an exception, which ``_run_stage``
+    re-raises. Every attempt of a run shares its run_id, so match the attempt
+    record by ``modal.function_call_id`` and the receipt by ``attempt_id``.
     """
 
     assert _LOADED is not None
     plan_data, plan = _LOADED
     if spawn and not run:
-        raise SystemExit("--spawn needs --run")
+        raise SystemExit("--spawn needs --run (and modal run --detach)")
     if not run:
         report = check_stage.remote(plan_data)
         print(json.dumps(report, indent=2))

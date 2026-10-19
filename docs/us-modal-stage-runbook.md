@@ -223,9 +223,9 @@ python3 tools/modal_us_stage_plan.py validate plan.json
 #    attempt of the run that may still be running.
 MICROCOSM_MODAL_PLAN=plan.json modal run tools/modal_us_stage.py
 
-# 4. Run the stage. --spawn returns once the stage is spawned, and --detach
-#    keeps the app up after this client exits, so a terminal or Mac that goes
-#    away can't cancel it. Without --spawn the client waits on the call, and
+# 4. Run the stage. --spawn returns once the stage is spawned, and under
+#    --detach a probe on 2026-10-19 saw the spawned call finish after its
+#    client exited (client sleep was not tested). Without --spawn the client waits on the call, and
 #    on 2026-10-19 a waiting call was cancelled 99 s after its Mac went to
 #    sleep. Read the outcome from the runs volume: a receipt under
 #    runs/<run_id>/receipts/, or an attempt record whose outcome is refused or

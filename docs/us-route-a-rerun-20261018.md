@@ -273,12 +273,22 @@ if [ -e "$LOCAL/base.fc" ]; then
   echo "REFUSED: $LOCAL/base.fc records spawned call $(cat "$LOCAL/base.fc"); check it before another paid launch"
   exit 1
 fi
-"$LSUBMIT" route-a-rerun-20261018-base "$LOCAL/base.launchd.log" "$PREP" \
+# launchd appends to its log, so each attempt gets its own.
+ATTEMPT_LOG=$LOCAL/base.launchd.$(date -u +%Y%m%dT%H%M%SZ).log
+"$LSUBMIT" route-a-rerun-20261018-base "$ATTEMPT_LOG" "$PREP" \
   /usr/bin/env MICROCOSM_MODAL_PLAN="$PLAN" \
   "$MODAL" run --detach tools/modal_us_stage.py --run --spawn
-until grep -q '"function_call_id"' "$LOCAL/base.launchd.log" 2>/dev/null; do sleep 5; done
-grep -o 'fc-[A-Za-z0-9]*' "$LOCAL/base.launchd.log" | head -1 > "$LOCAL/base.fc"
-test -s "$LOCAL/base.fc"
+# Wait at most 30 minutes for this attempt's call id. Stop early if the launcher
+# exits without one (a refused check or an auth error).
+for _ in $(seq 360); do
+  grep -q '"function_call_id"' "$ATTEMPT_LOG" 2>/dev/null && break
+  state=$(launchctl print "gui/$(id -u)/com.maxghenis.claude893.route-a-rerun-20261018-base" 2>/dev/null || true)
+  case "$state" in *"state = running"*|*"state = spawn scheduled"*) ;; *) break ;; esac
+  sleep 5
+done
+FC=$(sed -n 's/.*"function_call_id": "\(fc-[A-Za-z0-9]*\)".*/\1/p' "$ATTEMPT_LOG" | sed -n 1p)
+test -n "$FC" || { echo "No call id in $ATTEMPT_LOG; read it before anything else"; exit 1; }
+echo "$FC" > "$LOCAL/base.fc"
 ```
 
 `--spawn` returns once the stage is spawned and prints its `function_call_id`.
@@ -385,37 +395,54 @@ the two stages' completed-prefix evidence remains in the fresh reference root.
 ### 5. Fetch, compare and hand off
 
 After the Modal base completes, fetch only the receipt, output and context.
-A spawned stage ends in one of these states, read from `microcosm-us-stage-runs`:
+Every paid attempt shares the plan's run id, `R=$(python3 -c 'import
+json,sys; print(json.load(open(sys.argv[1]))["run_id"])' "$PLAN")`, so
+`runs/$R/attempts/` can hold earlier attempts' records. Read the record whose
+`modal.function_call_id` equals `$(cat "$LOCAL/base.fc")`, and the receipt
+whose `attempt_id` equals that record's `attempt_id`. This call ends in one
+of these states on `microcosm-us-stage-runs`:
 
-- **A receipt** under `runs/$R/receipts/`
-  (`"$MODAL" volume ls microcosm-us-stage-runs "runs/$R/receipts"`). The
-  stage COMPLETED or FAILED; step 5 below accepts only COMPLETED.
-- **An attempt record** under `runs/$R/attempts/` whose `outcome` is
-  `refused` or `error`, with no receipt: the stage refused or raised.
-- **An attempt record whose `last_seen_epoch` is more than about 300 s old**
-  while no receipt exists: the container was killed.
-- **No attempt record**, and `FunctionCall.get()` raises: the plan was rejected
-  before an attempt was recorded (`_run_stage`).
+- **A receipt** under `runs/$R/receipts/` with this attempt's `attempt_id`.
+  The stage COMPLETED or FAILED; step 5 below accepts only COMPLETED.
+- **This attempt's record** with `outcome` `refused` or `error`, and no
+  receipt: the stage refused or raised.
+- **This attempt's record with a `last_seen_epoch` more than about 300 s old**,
+  and no receipt: the container was killed.
+- **No record for this call**, and `FunctionCall.get()` raises: the plan was
+  rejected before an attempt was recorded (`_run_stage`).
 
 Only the first leads to a hand-off. The others are failures; any relaunch
-needs Max's go. Check the CLI's downloaded directory layout before selecting
-`RECEIPT`.
+needs Max's go.
 
 ```bash
 R=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["run_id"])' "$PLAN")
 FETCH=$LOCAL/modal-runs/$R
 mkdir -p "$FETCH/state"
 "$MODAL" volume get microcosm-us-stage-runs "runs/$R/receipts" "$FETCH/"
+"$MODAL" volume get microcosm-us-stage-runs "runs/$R/attempts" "$FETCH/"
 "$MODAL" volume get microcosm-us-stage-runs "runs/$R/state/base-out" "$FETCH/state/"
 "$MODAL" volume get microcosm-us-stage-runs \
   "runs/$R/state/base-checkpoints/stage_run_context.json" "$FETCH/"
-RECEIPT=$(python3 - "$FETCH" <<'PY'
+# This call's receipt: its attempt record names the call, the receipt the attempt.
+RECEIPT=$(python3 - "$FETCH" "$(cat "$LOCAL/base.fc")" <<'PY'
+import json
 import sys
 from pathlib import Path
-paths = list((Path(sys.argv[1]) / "receipts").glob("all-*.json"))
-if len(paths) != 1:
-    raise SystemExit("REFUSED: expected one attempt receipt; inspect all receipts manually")
-print(paths[0])
+fetch, call = Path(sys.argv[1]), sys.argv[2]
+records = [
+    json.loads(p.read_text()) for p in (fetch / "attempts").glob("all-*.json")
+]
+mine = [r for r in records if (r.get("modal") or {}).get("function_call_id") == call]
+if len(mine) != 1:
+    raise SystemExit(f"REFUSED: {len(mine)} attempt records for call {call}")
+attempt = mine[0]["attempt_id"]
+receipts = [
+    p for p in (fetch / "receipts").glob("all-*.json")
+    if json.loads(p.read_text()).get("attempt_id") == attempt
+]
+if len(receipts) != 1:
+    raise SystemExit(f"REFUSED: {len(receipts)} receipts for attempt {attempt}")
+print(receipts[0])
 PY
 )
 CONTEXT=$FETCH/stage_run_context.json
@@ -466,18 +493,21 @@ the two stage-001 checkpoints. Modal mirrors its copy to the runs volume
 
 ```bash
 SCRATCH=$(mktemp -d)
+trap 'rm -rf "$SCRATCH"' EXIT
+MODAL_001=$SCRATCH/001_pre_clone_enrichment.frame.h5
 "$MODAL" volume get microcosm-us-stage-runs \
   "runs/$R/state/base-checkpoints/001_pre_clone_enrichment.frame.h5" "$SCRATCH/"
+# The receipt's digest for this file must match what was fetched.
+EXPECTED=$(python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); print(next(o["sha256"] for o in r["outputs"] if o["path"].endswith("001_pre_clone_enrichment.frame.h5")))' "$RECEIPT")
+test "$(shasum -a 256 "$MODAL_001" | cut -c1-64)" = "$EXPECTED"
 CLASS=$LOCAL/lineage-class-check-stage001.json
 "$W/.venv/bin/python" tools/route_a/lineage_class_check.py \
-  "$REFROOT/base-checkpoints/001_pre_clone_enrichment.frame.h5" \
-  "$SCRATCH/001_pre_clone_enrichment.frame.h5" "$CLASS"
-rm -rf "$SCRATCH"
+  "$REFROOT/base-checkpoints/001_pre_clone_enrichment.frame.h5" "$MODAL_001" "$CLASS"
 ```
 
-Before the check, confirm that the fetched file's sha256 is the one
-`compare-lineage` printed for Modal. Exit 0 means the difference is inside the
-class. Then run the rest of the step 5 block by hand from `mkdir -p
+The fetched file must hash to the receipt's digest for it, the same digest
+`compare-lineage` printed for Modal. The scratch copy is removed on any exit.
+Exit 0 means the difference is inside the class. Then run the rest of the step 5 block by hand from `mkdir -p
 "$RUN/base-out"`, and copy `$CLASS` and the check script into `$RUN/base-sup/`.
 Add a `lineage_exception` entry (ruling, check file, verdict) to `RESULT.json`
 and name the exception in `ACCEPTED`. Exit 1 stops for Max.
@@ -515,19 +545,33 @@ if [ "$GUARDS_ONLY" = 1 ]; then CHECK_NAME=guards; else CHECK_NAME=checks; fi
 . "$SETTINGS"
 CHECKS=$LOCAL/release-checks
 mkdir -p "$CHECKS"
-# supervised NAME RSS_GIB RAM_GIB DISK_GIB WALL_S CPU_S -- ARGV...
+# supervised NAME RSS_GIB RAM_GIB DISK_GIB WALL_S CPU_S INPUT... -- ARGV...
 # Prints the child's return code, or 99 when the supervisor refused or killed it.
-# The config records W's HEAD and the sha256 of every file argument. A check
-# whose recorded config is identical is not rerun: its result is reused, and
-# the reuse is logged. A different config (a new register, say) refuses with
-# 99. Move that check's -config.json and -sup aside to rerun it.
+# The config records W's HEAD and the sha256 of each named INPUT (inputs only:
+# an output file would change between passes). A check whose recorded config
+# is identical is not rerun: its result is reused, and the reuse is logged. A
+# different config (a new register, say) refuses with 99. Move that check's
+# -config.json and -sup aside to rerun it.
 supervised() {
   local name=$1 rss=$2 ram=$3 disk=$4 wall=$5 cpu=$6 rendered
-  shift 7
+  local inputs=()
+  shift 6
+  while [ $# -gt 0 ] && [ "$1" != "--" ]; do inputs+=("$1"); shift; done
+  [ $# -gt 0 ] || { echo "$name: no -- before ARGV" >&2; echo 99; return; }
+  shift
   rendered=$(mktemp)
   python3 -c '
 import hashlib, json, os, subprocess, sys
-output, worktree, rss, ram, disk, wall, cpu, *argv = sys.argv[1:]
+output, worktree, rss, ram, disk, wall, cpu, count, *rest = sys.argv[1:]
+inputs, argv = rest[: int(count)], rest[int(count):]
+
+def sha256(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as stream:
+        for block in iter(lambda: stream.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
 gib = 1024 ** 3
 config = {
     "cwd": worktree,
@@ -544,16 +588,15 @@ config["source_identity"] = {
     "worktree_head": subprocess.check_output(
         ["git", "-C", worktree, "rev-parse", "HEAD"], text=True
     ).strip(),
-    # Relative arguments resolve in the worktree, where the check runs.
-    "file_sha256": {
-        arg: hashlib.sha256(open(os.path.join(worktree, arg), "rb").read()).hexdigest()
-        for arg in argv
-        if os.path.isfile(os.path.join(worktree, arg)) and not arg.endswith("/python")
-    },
+    # Relative inputs resolve in the worktree, where the check runs.
+    "input_sha256": {path: sha256(os.path.join(worktree, path)) for path in inputs},
 }
 with open(output, "w") as stream:
     json.dump(config, stream, indent=2, sort_keys=True)
-' "$rendered" "$W" "$rss" "$ram" "$disk" "$wall" "$cpu" "$@"
+' "$rendered" "$W" "$rss" "$ram" "$disk" "$wall" "$cpu" "${#inputs[@]}" \
+    ${inputs[@]+"${inputs[@]}"} "$@" || {
+    echo "$name: could not render the config" >&2; rm -f "$rendered"; echo 99; return
+  }
   if [ -e "$CHECKS/$name-sup" ]; then
     if ! cmp -s "$rendered" "$CHECKS/$name-config.json"; then
       echo "$name: recorded config differs from this run's; move $name-config.json and $name-sup aside to rerun" >&2
@@ -580,7 +623,8 @@ else:
     print(result["returncode"])
 ' "$CHECKS/$name-sup/RESULT.json"
 }
-fixture_rc=$(supervised guard-fixture 8 6 30 3600 3600 -- \
+fixture_rc=$(supervised guard-fixture 8 6 30 3600 3600 \
+  tools/sweep_us_post_export_scoring.py test_support/microcosm_build/us_post_export_scoring.py -- \
   "$W/.venv/bin/python" -c '
 import sys
 from pathlib import Path
@@ -590,7 +634,8 @@ _write_engine_h5(_load_builder(), Path(sys.argv[1]) / "guard-fixture", _GUARD_HO
 ' "$LOCAL")
 [ "$fixture_rc" = 0 ] || { echo "Guard fixture failed ($fixture_rc)"; exit 1; }
 SMALL_H5=$LOCAL/guard-fixture/populace_us_2024.h5
-sweep_rc=$(supervised guard-sweep 16 12 30 21600 43200 -- \
+sweep_rc=$(supervised guard-sweep 16 12 30 21600 43200 \
+  "$SMALL_H5" tools/sweep_us_post_export_scoring.py -- \
   "$W/.venv/bin/python" tools/sweep_us_post_export_scoring.py \
   --dataset-path "$SMALL_H5" --batch-size 3 --reforms-per-worker 4 \
   --output "$LOCAL/guard-sweep.json")
@@ -598,7 +643,9 @@ sweep_rc=$(supervised guard-sweep 16 12 30 21600 43200 -- \
 if [ "$GUARDS_ONLY" = 1 ]; then echo 'Guard checks passed; gate dry run deferred'; exit 0; fi
 test -f "$RUN/base-sup/ACCEPTED" || { echo "The base is not ACCEPTED (step 5)"; exit 1; }
 EXTRA=($RELEASE_EXTRA_ARGS)
-gate_rc=$(supervised gate-dry-run 64 40 30 21600 43200 -- \
+gate_rc=$(supervised gate-dry-run 64 40 30 21600 43200 \
+  "$RUN/base-out/base_populace_us_2024_puf_support.h5" "$FEED" "$QRF_TAIL_EXCLUSIONS" \
+  "$SSI" "$SCF" tools/dry_run_us_release_gates.py tools/build_us_fiscal_refresh_release.py -- \
   "$W/.venv/bin/python" tools/dry_run_us_release_gates.py \
   --json-out "$LOCAL/dry-run-gates.json" -- \
   --base-h5 "$RUN/base-out/base_populace_us_2024_puf_support.h5" \
@@ -612,18 +659,21 @@ gate_rc=$(supervised gate-dry-run 64 40 30 21600 43200 -- \
 case "$gate_rc" in
   0) echo 'Release guards completed cleanly' ;;
   2) echo 'AT-RISK: review dry-run-gates.json before starting release'
-     python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print("report status:", d["status"])' "$LOCAL/dry-run-gates.json"
+     # The report must be this run's: a stale one would not say exit 2.
+     python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["exit_code"] == 2, d["exit_code"]; print("report status:", d["status"])' "$LOCAL/dry-run-gates.json"
      exit 2 ;;
   *) echo "Release guard dry run failed ($gate_rc)"; exit 1 ;;
 esac
 BASH
 } > "$LOCAL/release-$CHECK_NAME.sh.new"
-# Never rewrite a script a running job is reading: lsubmit refuses a live label,
-# so check first, then move the new script into place.
-if launchctl list | grep -q "route-a-rerun-20261018-$CHECK_NAME\$"; then
-  launchctl list | grep "route-a-rerun-20261018-$CHECK_NAME\$"
-  echo "remove the finished job's label (launchctl remove) or wait for the running one"; exit 1
-fi
+# Never rewrite a script a running job is reading. lsubmit refuses a running
+# label and replaces a finished one; check the same state first, without a
+# pipe (grep -q under pipefail can SIGPIPE launchctl and read as no match).
+state=$(launchctl print "gui/$(id -u)/com.maxghenis.claude893.route-a-rerun-20261018-$CHECK_NAME" 2>/dev/null || true)
+case "$state" in
+  *"state = running"*|*"state = spawn scheduled"*)
+    echo "route-a-rerun-20261018-$CHECK_NAME is running; wait for it"; exit 1 ;;
+esac
 mv "$LOCAL/release-$CHECK_NAME.sh.new" "$LOCAL/release-$CHECK_NAME.sh"
 "$LSUBMIT" "route-a-rerun-20261018-$CHECK_NAME" "$LOCAL/$CHECK_NAME.launchd.log" "$PREP" \
   /bin/bash "$LOCAL/release-$CHECK_NAME.sh"
@@ -632,6 +682,11 @@ mv "$LOCAL/release-$CHECK_NAME.sh.new" "$LOCAL/release-$CHECK_NAME.sh"
 Wait for the checks job to finish. Inspect its exit status and both reports;
 an exit 2 requires operator review of AT-RISK findings before continuing.
 A failed sweep or a certain gate failure blocks release.
+
+Records written by an earlier form of this helper have no `source_identity`,
+so they are refused as a different config. To keep one, check that it ran on
+the same worktree HEAD and inputs, then move it aside and rerun, or rewrite its
+`-config.json` in the new form. Don't edit its result.
 
 ### 6b. Renew the QRF tail register (d1711)
 

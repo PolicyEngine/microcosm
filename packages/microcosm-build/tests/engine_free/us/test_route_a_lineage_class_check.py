@@ -118,6 +118,48 @@ def test_anything_outside_the_class_fails(
     assert any(problem in entry for entry in verdict["problems"])
 
 
+def test_each_value_within_tolerance_but_the_total_beyond_it_fails(
+    check, monkeypatch, tmp_path
+):
+    # Every value moves by at most 5e-13 relative, but signed values cancel,
+    # so the column total moves by about 5e-7 relative.
+    local = _tables([1e6, -999999.0, 0.0])
+    modal = _tables([1e6 * (1 + 5e-13), -999999.0, 0.0])
+    rc, verdict = _run(check, monkeypatch, tmp_path, local, modal)
+    assert rc == 1
+    [difference] = verdict["differences"]
+    assert difference["max_rel"] <= check.REL_TOL < difference["sum_rel_diff"]
+    assert any("difference above" in entry for entry in verdict["problems"])
+
+
+def test_a_dtype_change_fails(check, monkeypatch, tmp_path):
+    modal = _tables([1.0, 2.0, 3.0])
+    modal["person"]["age"] = modal["person"]["age"].astype(float)
+    rc, verdict = _run(check, monkeypatch, tmp_path, _tables([1.0, 2.0, 3.0]), modal)
+    assert rc == 1
+    assert any("dtype" in entry for entry in verdict["problems"])
+
+
+def test_a_renamed_column_fails(check, monkeypatch, tmp_path):
+    # Same shape, different names (an extra column is caught as a shape change).
+    modal = _tables([1.0, 2.0, 3.0])
+    modal["person"] = modal["person"].rename(columns={"age": "age_years"})
+    rc, verdict = _run(check, monkeypatch, tmp_path, _tables([1.0, 2.0, 3.0]), modal)
+    assert rc == 1
+    assert any("column names or order" in entry for entry in verdict["problems"])
+
+
+def test_nans_at_the_same_positions_with_an_ulp_difference_pass(
+    check, monkeypatch, tmp_path
+):
+    local = _tables([1.0, np.nan, 3.0])
+    modal = _tables([1.0, np.nan, 3.0 * (1 + 4e-16)])
+    rc, verdict = _run(check, monkeypatch, tmp_path, local, modal)
+    assert rc == 0
+    [difference] = verdict["differences"]
+    assert difference["rows_differ"] == 1
+
+
 def test_a_missing_table_fails(check, monkeypatch, tmp_path):
     modal = _tables([1.0, 2.0, 3.0])
     del modal["household"]
