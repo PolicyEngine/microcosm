@@ -1135,23 +1135,46 @@ def _stderr_progress(line: str) -> None:
     print(line, file=sys.stderr, flush=True)
 
 
+def _binds_brma_rows(args: argparse.Namespace) -> bool:
+    """Whether the request can bind Scotland's BRMA rent rows.
+
+    They bind on area BRMAs when the selected geographies include them
+    (microcosm#1262), and a thin one's model figures stay in the build.
+    """
+
+    levels = getattr(args, "target_geographies", None)
+    return getattr(args, "brma_localisation", "area") == "area" and (
+        levels is None or "brma" in levels
+    )
+
+
 def _solve_observer(args: argparse.Namespace, telemetry):
     """Readable stderr lines plus the thinned staging rows of every solve.
 
     The dense solve, the informed size search and the refit share this one
     observer; the size events carry the ``phase`` the stderr line names and
-    the staging row records.
+    the staging row records. An epoch's loss covers every row, so a request
+    that can bind BRMA rows forwards its epochs without it: the staging rows
+    and the emitter carry null, and only the local stderr line keeps it
+    (the third review of #1305).
     """
     from .solve_progress import uk_solve_progress_callback
 
+    withhold_loss = _binds_brma_rows(args)
     sinks = [uk_solve_progress_callback(_stderr_progress)]
     sinks.append(
-        thinned_epochs(emit_calibration_progress, every=staging_epoch_every(args))
+        thinned_epochs(
+            emit_calibration_progress,
+            every=staging_epoch_every(args),
+            withhold_loss=withhold_loss,
+        )
     )
     if telemetry is not None:
         sinks.append(
             thinned_epochs(
-                telemetry.calibration_progress, every=staging_epoch_every(args)
+                telemetry.calibration_progress,
+                every=staging_epoch_every(args),
+                withhold_loss=withhold_loss,
             )
         )
 

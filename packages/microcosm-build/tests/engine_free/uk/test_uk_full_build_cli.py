@@ -647,22 +647,47 @@ def test_a_withheld_brma_row_projects_over_the_published_rows(tmp_path, monkeypa
     ]
 
 
-def test_a_published_size_receipt_drops_its_all_row_totals_while_rows_are_withheld():
+def test_a_published_size_receipt_keeps_only_its_allow_list_while_rows_are_withheld():
+    """The third review of #1305: an allow-list, not a deny-list.
+
+    Every field a reader of the manifest uses stays; the losses, the refit's
+    distances, the search's probes and any field nobody listed read null.
+    """
     from microcosm.build.uk_runtime.graph_terminal import _published_size_receipt
 
     receipt = {
         "requested_households": 2,
+        "realized_households": 2,
+        "pool_households": 4,
+        "protected_carriers": 1,
+        "refit_epochs": 10,
+        "selection_epochs": 10,
+        "selection_l0_lambda": 1e-7,
+        "selection_receipt": {"design": "sampford"},
+        "selection_search_bracket": {"lower": 1e-10, "upper": 1e-5},
         "dense_loss": 0.2,
         "compact_loss": 0.3,
         "max_target_scaled_change": 0.4,
+        "compact_loss_under_dense_weights": 0.35,
+        "refit_l2": {"chi_square_distance_to_anchor": 0.01},
+        "selection_budget_search": {"probes": [{"loss": 0.5}]},
+        "a_field_nobody_listed": 0.6,
     }
     assert _published_size_receipt(receipt, withheld=0) == receipt
     published = _published_size_receipt(receipt, withheld=1)
-    assert published["requested_households"] == 2
-    assert all(
-        published[field] is None
-        for field in ("dense_loss", "compact_loss", "max_target_scaled_change")
-    )
+    kept = {
+        "requested_households",
+        "realized_households",
+        "pool_households",
+        "protected_carriers",
+        "refit_epochs",
+        "selection_epochs",
+        "selection_l0_lambda",
+        "selection_receipt",
+        "selection_search_bracket",
+    }
+    for key, value in receipt.items():
+        assert published[key] == (value if key in kept else None), key
     assert "1 row(s)" in published["withheld_totals_note"]
     assert receipt["dense_loss"] == 0.2
     assert _published_size_receipt(None, withheld=1) is None
@@ -1368,6 +1393,92 @@ def test_invalid_local_telemetry_bundle_is_a_warning_not_the_runs_failure(
     assert manifest["staged_dataset"]["status"] == "skipped"
     rows = spool_rows(out)
     assert rows and rows[0].disposition == "iterating"
+
+
+def _staged_epoch_rows(out) -> list[dict]:
+    run_id = single_run_id(out)
+    path = out / "staging" / "runs" / run_id / "calibration_progress.json"
+    rows: list[dict] = []
+
+    def walk(value):
+        if isinstance(value, dict):
+            if "epoch" in value and "loss" in value:
+                rows.append(value)
+            for item in value.values():
+                walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+
+    walk(json.loads(path.read_text()))
+    return rows
+
+
+@pytest.mark.parametrize(
+    "extra,withheld", [((), True), (("--target-geographies", "la"), False)]
+)
+def test_a_request_that_can_bind_brma_rows_stages_its_epochs_without_loss(
+    tmp_path, monkeypatch, capsys, extra, withheld
+):
+    """The third review of #1305: an epoch's loss covers every row.
+
+    A request that can bind BRMA rows stages its epochs, and sends them to
+    the emitter, with a null loss; only the local stderr line keeps it. A
+    request that binds none keeps the loss in the staged rows.
+    """
+    pytest.importorskip("tables")
+    emitted: list[dict] = []
+    monkeypatch.setattr(
+        cli, "emit_calibration_progress", lambda event: emitted.append(dict(event))
+    )
+    status, out = run_dense_main(
+        tmp_path,
+        monkeypatch,
+        *extra,
+        staging="--staging-local-only",
+        on_prepare=_drive_epochs,
+    )
+    assert status == 0
+    rows = _staged_epoch_rows(out)
+    assert rows and emitted
+    losses = {row["loss"] for row in rows} | {event["loss"] for event in emitted}
+    assert (losses == {None}) is withheld
+    # The local stderr line keeps the last epoch's loss either way.
+    assert "loss 0.25" in capsys.readouterr().err
+
+
+def test_the_thinned_epochs_null_the_loss_on_request():
+    from microcosm.build.uk_runtime.rowwise_staging import thinned_epochs
+
+    seen: list[dict] = []
+    forward = thinned_epochs(seen.append, every=1, withhold_loss=True)
+    forward({"kind": "calibration_epoch", "epoch": 1, "epochs": 1, "loss": 0.25})
+    assert seen == [
+        {"kind": "calibration_epoch", "epoch": 1, "epochs": 1, "loss": None}
+    ]
+    seen.clear()
+    thinned_epochs(seen.append, every=1)(
+        {"kind": "calibration_epoch", "epoch": 1, "epochs": 1, "loss": 0.25}
+    )
+    assert seen[0]["loss"] == 0.25
+
+
+@pytest.mark.parametrize(
+    "localisation,levels,binds",
+    [
+        ("area", None, True),
+        ("area", ("la", "brma"), True),
+        ("area", ("la",), False),
+        ("none", None, False),
+    ],
+)
+def test_a_request_binds_brma_rows_only_on_area_brmas_it_selects(
+    localisation, levels, binds
+):
+    from types import SimpleNamespace
+
+    args = SimpleNamespace(brma_localisation=localisation, target_geographies=levels)
+    assert cli._binds_brma_rows(args) is binds
 
 
 def test_telemetry_content_refusal_never_aborts_the_solve(

@@ -788,8 +788,10 @@ def test_both_gate_kernels_are_registered():
     assert type(registry.get(UKFullHoldoutKernel.ref)) is UKFullHoldoutKernel
 
 
-def _run_final_gate_kernel(monkeypatch, *, brma_row: bool = False):
+def _run_final_gate_kernel(monkeypatch, *, brma_row: bool = False, solved=None):
     """Run the terminal gate kernel on a two-household fixture.
+
+    ``solved``, a list, receives the calibration result the kernel decodes.
 
     ``brma_row`` adds a Scottish BRMA rent row far from its target: its two
     carriers sit under the ten-household floor, so its figures are withheld
@@ -957,6 +959,8 @@ def _run_final_gate_kernel(monkeypatch, *, brma_row: bool = False):
     )
     ordered = decode_problem(problem_bytes)
     result = calibrate(initial, targets, weight_entity="household", epochs=1, seed=42)
+    if solved is not None:
+        solved.append(result)
     frame = result.frame
 
     def artifact(payload, raw=False):
@@ -1120,7 +1124,8 @@ def test_the_gate_kernel_writes_a_withheld_brma_row_by_name_only(monkeypatch):
         uk_refuse_withheld_figures,
     )
 
-    stored = _run_final_gate_kernel(monkeypatch, brma_row=True)
+    solved: list = []
+    stored = _run_final_gate_kernel(monkeypatch, brma_row=True, solved=solved)
     key = "private_rent/S33000001/rent/private_rent_brma"
     document = json.loads(stored.artifacts["gate_report"])
     outcomes = {row["id"]: row for row in document["report"]["outcomes"]}
@@ -1154,9 +1159,42 @@ def test_the_gate_kernel_writes_a_withheld_brma_row_by_name_only(monkeypatch):
     (row,) = [r for r in diagnostics["targets"] if r["target_name"] == "brma_rent"]
     assert row["final_estimate"] is None and row["initial_estimate"] is None
     assert row.get("final_loss_contribution") is None
-    # The totals cover the published rows (María's ruling of 2026-10-18).
+    # The totals cover the published rows (María's ruling of 2026-10-18), and
+    # no loss over every row survives, in the options or anywhere else (the
+    # third review of #1305).
     assert diagnostics["loss_trajectory"] == []
     assert diagnostics["uk_diagnostics"]["model_figures_withheld"]["targets"] == 1
+    (result,) = solved
+    receipt = dict(result.options.get("iterate_selection_receipt") or {})
+    every_row = [
+        float(result.final_loss),
+        float(result.initial_loss),
+        *(
+            float(receipt[field])
+            for field in ("selected_loss_float32", "closing_iterate_loss_float32")
+            if isinstance(receipt.get(field), float)
+        ),
+    ]
+
+    def numbers(value):
+        if isinstance(value, bool):
+            return
+        if isinstance(value, (int, float)):
+            yield float(value)
+        elif isinstance(value, dict):
+            for item in value.values():
+                yield from numbers(item)
+        elif isinstance(value, list):
+            for item in value:
+                yield from numbers(item)
+
+    import math
+
+    for document in (diagnostics, json.loads(stored.artifacts["gate_report"])):
+        for number in numbers(document):
+            assert not any(
+                math.isclose(number, loss, rel_tol=1e-9) for loss in every_row
+            )
 
 
 def test_the_gate_kernel_fails_closed_on_a_binding_that_leaks(monkeypatch):

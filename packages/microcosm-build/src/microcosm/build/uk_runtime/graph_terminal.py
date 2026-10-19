@@ -1596,12 +1596,46 @@ def _reviewed_exclusions_stood_on(gate_rows: Mapping[str, Mapping]) -> dict:
     return record
 
 
-#: The size receipt's totals over every row; with a row withheld they would
-#: give it back by difference against the published rows (microcosm#1262).
-_SIZE_RECEIPT_ALL_ROW_TOTALS = (
-    "dense_loss",
-    "compact_loss",
-    "max_target_scaled_change",
+#: The size receipt's fields a manifest publishes while any row is withheld:
+#: counts, settings, the draw and its search bracket. Every other field reads
+#: null, the losses over every row, the search's probes and the refit's
+#: distances among them (microcosm#1262, the third review of #1305).
+_SIZE_RECEIPT_PUBLISHED_WHILE_WITHHELD = frozenset(
+    {
+        "baseline_floored_rows",
+        "baseline_mass_share_certainties",
+        "baseline_pi_floor",
+        "boundary_draws",
+        "certainty_share",
+        "certification",
+        "household_ids",
+        "households",
+        "inclusion_probabilities",
+        "method",
+        "pi_hi",
+        "pool_households",
+        "pool_row_indices",
+        "problem_sha256",
+        "protected",
+        "protected_carriers",
+        "realized_households",
+        "refit_baseline",
+        "refit_epochs",
+        "refit_iterate_selection",
+        "requested_households",
+        "seed",
+        "selection_budget_basis",
+        "selection_epochs",
+        "selection_l0_lambda",
+        "selection_pi_hi",
+        "selection_receipt",
+        "selection_reused",
+        "selection_search_bracket",
+        "selection_search_pi_hi",
+        "stretch_reference",
+        "support",
+        "zero_target_rows",
+    }
 )
 
 
@@ -1610,21 +1644,23 @@ def _published_size_receipt(
 ) -> dict[str, object] | None:
     """The size receipt as a manifest publishes it.
 
-    While any row's model figures are withheld, its totals over every row
-    read null and a note says why; the stored receipt keeps them.
+    While any row's model figures are withheld, only the fields on the
+    allow-list keep their values and a note says why; the stored receipt
+    keeps them all.
     """
 
     if size_receipt is None:
         return None
-    published = dict(size_receipt)
-    if withheld:
-        for field in _SIZE_RECEIPT_ALL_ROW_TOTALS:
-            if field in published:
-                published[field] = None
-        published["withheld_totals_note"] = (
-            f"{', '.join(_SIZE_RECEIPT_ALL_ROW_TOTALS)} cover every row, and "
-            f"{withheld} row(s) have their model figures withheld (microcosm#1262)."
-        )
+    if not withheld:
+        return dict(size_receipt)
+    published = {
+        key: (value if key in _SIZE_RECEIPT_PUBLISHED_WHILE_WITHHELD else None)
+        for key, value in size_receipt.items()
+    }
+    published["withheld_totals_note"] = (
+        "Only counts, settings and the draw are published: "
+        f"{withheld} row(s) have their model figures withheld (microcosm#1262)."
+    )
     return published
 
 

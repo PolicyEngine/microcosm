@@ -35,7 +35,10 @@ from microcosm.calibrate.diagnostics import past_cap_census
 from microcosm.calibrate.solve import CalibrationResult
 from microcosm.diagnostics import (
     UK_DIAGNOSTICS_SCHEMA_VERSION,
+    UK_MODEL_FIGURE_FIELDS,
     UK_TARGET_GEOGRAPHY_LEVELS,
+    UK_WITHHELD_PUBLISHED_ITERATE_FIELDS,
+    UK_WITHHELD_PUBLISHED_OPTIONS,
     CalibrationDiagnosticsV8,
     DiagnosticsWriteOutcome,
     failed_diagnostics_outcome,
@@ -72,15 +75,9 @@ _AREA_FIT_LIMIT = 15
 #: #1305 review, UKDS CD137 clause 8); the support gate covers constituencies
 #: and authorities, not the partial BRMA grain.
 UK_BRMA_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS = 10
-#: The fields of a target row that the model's weights produce.
-_MODEL_FIGURE_FIELDS = (
-    "initial_estimate",
-    "final_estimate",
-    "relative_error",
-    "within_tolerance",
-    "final_capped_scaled_error",
-    "final_loss_contribution",
-)
+#: The fields of a target row that the model's weights produce (the shared
+#: tuple the release contract checks too).
+_MODEL_FIGURE_FIELDS = UK_MODEL_FIGURE_FIELDS
 _WITHHELD_NOTE = (
     "model figures withheld: fewer than 10 distinct source households carry this row"
 )
@@ -1124,7 +1121,7 @@ _WITHHELD_TOTALS_NOTE = (
     "fraction_within_10pct and past_cap_census are restated over the published "
     "rows, on the solve's own loss weights, scales and cap (initial_loss at the "
     "input weights, the rows' initial estimates); loss_trajectory, the solve's "
-    "path over every row, is empty."
+    "path over every row, is empty, and options keep their settings only."
 )
 
 
@@ -1186,6 +1183,7 @@ def _restate_totals_over_published_rows(
         else None
     )
     payload["loss_trajectory"] = []
+    payload["options"] = uk_published_options(dict(payload.get("options") or {}))
     payload["past_cap_census"] = past_cap_census(
         SimpleNamespace(
             options=getattr(result, "options", None),
@@ -1198,6 +1196,30 @@ def _restate_totals_over_published_rows(
         "totals_basis": "published_rows",
         "note": _WITHHELD_TOTALS_NOTE,
     }
+
+
+def uk_published_options(options: Mapping[str, object]) -> dict[str, object]:
+    """A payload's solve options while any row is withheld (microcosm#1262).
+
+    The third review of #1305: the solve keeps its best iterate's loss over
+    every row in ``iterate_selection_receipt``, and that loss less the
+    restated final loss gives the withheld rows' contribution back. Settings
+    on the allow-list stay; every other option, and the receipt's two
+    iterate losses, read null.
+    """
+
+    published: dict[str, object] = {}
+    for key, value in options.items():
+        if key in UK_WITHHELD_PUBLISHED_OPTIONS:
+            published[key] = value
+        elif key == "iterate_selection_receipt" and isinstance(value, Mapping):
+            published[key] = {
+                field: (item if field in UK_WITHHELD_PUBLISHED_ITERATE_FIELDS else None)
+                for field, item in value.items()
+            }
+        else:
+            published[key] = None
+    return published
 
 
 def _target_pass_rates(

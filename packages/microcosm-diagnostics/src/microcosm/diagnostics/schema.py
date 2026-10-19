@@ -580,6 +580,56 @@ class UKConsumptionDrift(DiagnosticsModel):
     shares: dict[NonBlankText, UKDriftValue] = Field(min_length=1)
 
 
+#: The fields of a target row that the model's weights produce. A row whose
+#: model figures a UK build withholds carries none of them (microcosm#1262).
+UK_MODEL_FIGURE_FIELDS: Final[tuple[str, ...]] = (
+    "initial_estimate",
+    "final_estimate",
+    "relative_error",
+    "within_tolerance",
+    "final_capped_scaled_error",
+    "final_loss_contribution",
+)
+#: The solve options a UK payload keeps while any row is withheld: settings,
+#: not outcomes. Every other option reads null, since an outcome recorded
+#: there may cover every row, as the iterate-selection receipt's losses do
+#: (microcosm#1262).
+UK_WITHHELD_PUBLISHED_OPTIONS: Final[frozenset[str]] = frozenset(
+    {
+        "budget_basis",
+        "epochs",
+        "feasible_draw_pi_hi",
+        "gate_initialization_supplied",
+        "iterate_selection",
+        "l1_lambda",
+        "l1_penalty",
+        "l2_anchor",
+        "l2_anchor_weights_supplied",
+        "l2_basis",
+        "l2_lambda",
+        "l2_penalty",
+        "learning_rate",
+        "mass",
+        "mass_parametrization",
+        "mass_reason",
+        "matrix_format",
+        "max_weight_ratio",
+        "method",
+        "seed",
+        "target_loss_cap",
+        "target_loss_scales",
+        "target_loss_weights",
+        "target_records",
+        "warm_start_weights",
+    }
+)
+#: The iterate-selection receipt's fields kept while any row is withheld; its
+#: selected and closing iterates' losses cover every row and read null.
+UK_WITHHELD_PUBLISHED_ITERATE_FIELDS: Final[frozenset[str]] = frozenset(
+    {"rule", "selected_epoch", "epochs_executed", "epoch_convention"}
+)
+
+
 class UKWithheldModelFigures(DiagnosticsModel):
     """Target rows whose model figures stay in the build (microcosm#1262).
 

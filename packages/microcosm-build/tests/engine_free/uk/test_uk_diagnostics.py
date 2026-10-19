@@ -1255,8 +1255,13 @@ def test_a_thin_brma_row_keeps_its_place_but_not_its_model_figures() -> None:
     assert family["n_targets"] == 1 and family["worst_target"] == wide["name"]
 
 
-def _thin_and_wide_brma_payload(thin_values=(1.0,) * 6 + (0.0,) * 8):
-    """The thin/wide BRMA fixture's diagnostics payload and its result."""
+def _thin_and_wide_brma_payload(
+    thin_values=(1.0,) * 6 + (0.0,) * 8, extra_options=None
+):
+    """The thin/wide BRMA fixture's diagnostics payload and its result.
+
+    ``extra_options`` joins the result's options, as a solve records them.
+    """
 
     n = 14
     sources = [0, 0, 1, 1, 2, 2, 3, 4, 5, 6, 7, 8, 9, 10]
@@ -1305,6 +1310,10 @@ def _thin_and_wide_brma_payload(thin_values=(1.0,) * 6 + (0.0,) * 8):
     )
     registry = TargetRegistry(specs, country="uk")
     result = score_targets(frame, registry.to_target_set(), weights=weights)
+    if extra_options:
+        from dataclasses import replace
+
+        result = replace(result, options={**result.options, **extra_options})
     support = pd.DataFrame(
         columns=[
             "geography_level",
@@ -1370,6 +1379,64 @@ def test_no_published_total_gives_a_withheld_row_back() -> None:
     assert payload["final_loss"] == pytest.approx(result.final_loss, rel=1e-12)
     assert payload["loss_trajectory"] == pytest.approx(list(result.loss_trajectory))
     assert "model_figures_withheld" not in payload["uk_diagnostics"]
+
+
+def _numbers(value):
+    if isinstance(value, bool):
+        return
+    if isinstance(value, (int, float)):
+        yield float(value)
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from _numbers(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _numbers(item)
+
+
+def test_no_loss_over_every_row_survives_in_the_payload() -> None:
+    """The third review of #1305: the solve's options kept its iterate's loss.
+
+    ``iterate_selection_receipt`` held the selected iterate's loss over every
+    row, which less the restated final loss gave the withheld row back. While
+    a row is withheld the options keep their settings only, and no number in
+    the payload equals a loss over every row.
+    """
+
+    import math
+
+    receipt = {
+        "rule": "best_feasible_loss",
+        "selected_epoch": 3,
+        "epochs_executed": 5,
+        "epoch_convention": "completed_optimizer_updates; zero is start",
+        "selected_loss_float32": 0.2617,
+        "closing_iterate_loss_float32": 0.2711,
+    }
+    extra = {
+        "iterate_selection_receipt": receipt,
+        "budget_search": {"probes": [{"loss": 0.3119}]},
+        "an_outcome_nobody_listed": 0.2903,
+    }
+    payload, result = _thin_and_wide_brma_payload(extra_options=extra)
+    options = payload["options"]
+    assert options["iterate_selection_receipt"] == {
+        **receipt,
+        "selected_loss_float32": None,
+        "closing_iterate_loss_float32": None,
+    }
+    assert options["budget_search"] is None
+    assert options["an_outcome_nobody_listed"] is None
+    assert options["method"] == "score_only"
+    every_row = (result.final_loss, result.initial_loss, 0.2617, 0.2711, 0.3119)
+    for number in _numbers(payload):
+        assert not any(math.isclose(number, loss, rel_tol=1e-9) for loss in every_row)
+    # With nothing withheld the options stay as the solve wrote them.
+    payload, _ = _thin_and_wide_brma_payload(
+        thin_values=(1.0,) * 14, extra_options=extra
+    )
+    assert payload["options"]["iterate_selection_receipt"] == receipt
+    assert payload["options"]["an_outcome_nobody_listed"] == 0.2903
 
 
 def test_the_restated_totals_match_the_solve_and_drop_a_pushed_out_row() -> None:
