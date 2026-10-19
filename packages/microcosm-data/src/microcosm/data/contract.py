@@ -63,8 +63,11 @@ from microcosm.diagnostics import (
     CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
     SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS,
     UK_DIAGNOSTICS_SCHEMA_VERSION,
+    UK_MODEL_FIGURE_FIELDS,
     UK_OPTIONAL_TARGET_GEOGRAPHY_LEVELS,
     UK_TARGET_GEOGRAPHY_LEVELS,
+    UK_WITHHELD_PUBLISHED_ITERATE_FIELDS,
+    UK_WITHHELD_PUBLISHED_OPTIONS,
     parse_calibration_diagnostics,
 )
 
@@ -6208,6 +6211,66 @@ def _check_us_stored_input_evidence(
             )
 
 
+def _check_uk_withheld_totals(
+    diagnostics: Mapping, withheld: set[str], failures: list[str]
+) -> None:
+    """While a row is withheld, no total over every row and no rollup names it.
+
+    microcosm#1262 (the third review of #1305): the loss trajectory is empty,
+    the options keep their published settings only, with the iterate
+    receipt's losses null, and neither the past-cap census nor the weakest
+    families or areas name a withheld row.
+    """
+
+    file = "calibration_diagnostics.json"
+    if diagnostics.get("loss_trajectory"):
+        failures.append(f"{file} withholds rows but keeps a loss trajectory.")
+    options = diagnostics.get("options")
+    for key, value in options.items() if isinstance(options, Mapping) else ():
+        if key == "iterate_selection_receipt" and isinstance(value, Mapping):
+            kept = sorted(
+                field
+                for field, item in value.items()
+                if field not in UK_WITHHELD_PUBLISHED_ITERATE_FIELDS
+                and item is not None
+            )
+            if kept:
+                failures.append(
+                    f"{file} withholds rows but options.iterate_selection_receipt "
+                    f"keeps {kept}."
+                )
+        elif key not in UK_WITHHELD_PUBLISHED_OPTIONS and value is not None:
+            failures.append(f"{file} withholds rows but options.{key} is not null.")
+    named: set[str] = set()
+    census = diagnostics.get("past_cap_census")
+    if isinstance(census, Mapping):
+        named |= {
+            str(row.get("name"))
+            for row in census.get("pushed_out_rows") or ()
+            if isinstance(row, Mapping)
+        }
+    uk = diagnostics.get("uk_diagnostics")
+    if isinstance(uk, Mapping):
+        named |= {
+            str(row.get("worst_target"))
+            for row in uk.get("weakest_families") or ()
+            if isinstance(row, Mapping)
+        }
+        areas = uk.get("weakest_areas_by_fit")
+        if isinstance(areas, Mapping):
+            for block in ("bottom_by_fit", "countries"):
+                named |= {
+                    str(row.get("worst_target"))
+                    for row in areas.get(block) or ()
+                    if isinstance(row, Mapping)
+                }
+    if named & withheld:
+        failures.append(
+            f"{file} names {len(named & withheld)} withheld row(s) in its past-cap "
+            "census or its rollups."
+        )
+
+
 def _check_local_area_calibration_diagnostics(
     diagnostics: Mapping, failures: list[str]
 ) -> None:
@@ -6250,6 +6313,7 @@ def _check_local_area_calibration_diagnostics(
     )
     seen_names: set[str] = set()
     withheld_rows = 0
+    withheld_names: set[str] = set()
     for index, row in enumerate(targets):
         if not isinstance(row, Mapping):
             failures.append(
@@ -6278,15 +6342,8 @@ def _check_local_area_calibration_diagnostics(
         )
         if withheld:
             withheld_rows += 1
-            figures = {
-                field: row.get(field)
-                for field in (
-                    "initial_estimate",
-                    "final_estimate",
-                    "relative_error",
-                    "final_loss_contribution",
-                )
-            }
+            withheld_names.add(str(name))
+            figures = {field: row.get(field) for field in UK_MODEL_FIGURE_FIELDS}
             if any(value is not None for value in figures.values()):
                 failures.append(
                     f"calibration_diagnostics.json target row {index} withholds "
@@ -6315,6 +6372,8 @@ def _check_local_area_calibration_diagnostics(
             f"counts {declared!r} withheld rows, but {withheld_rows} rows withhold "
             "their model figures."
         )
+    if withheld_rows:
+        _check_uk_withheld_totals(diagnostics, withheld_names, failures)
     if not isinstance(households, int) or households <= 0:
         failures.append(
             "calibration_diagnostics.json must carry a positive integer "

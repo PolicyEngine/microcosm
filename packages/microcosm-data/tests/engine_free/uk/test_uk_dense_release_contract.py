@@ -488,6 +488,17 @@ def _withheld_diagnostics(**row_overrides) -> dict:
             withheld_row,
         ],
         "uk_diagnostics": {"model_figures_withheld": {"targets": 1}},
+        "loss_trajectory": [],
+        "options": {
+            "method": "adam",
+            "budget_search": None,
+            "iterate_selection_receipt": {
+                "rule": "best_feasible_loss",
+                "selected_epoch": 3,
+                "selected_loss_float32": None,
+                "closing_iterate_loss_float32": None,
+            },
+        },
     }
 
 
@@ -512,6 +523,59 @@ def test_a_withheld_row_is_held_to_its_note(overrides, message) -> None:
     dc._check_local_area_calibration_diagnostics(
         _withheld_diagnostics(**overrides), failures
     )
+    assert any(message in failure for failure in failures), failures
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["within_tolerance", "final_capped_scaled_error", "final_loss_contribution"],
+)
+def test_a_withheld_row_carries_none_of_its_model_fields(field) -> None:
+    """The third review of #1305: every model field, from the shared tuple."""
+
+    failures: list[str] = []
+    dc._check_local_area_calibration_diagnostics(
+        _withheld_diagnostics(**{field: 0.05}), failures
+    )
+    assert any("withholds its model figures but carries one" in f for f in failures)
+
+
+@pytest.mark.parametrize(
+    "mutate,message",
+    [
+        (lambda d: d.update(loss_trajectory=[0.4, 0.3]), "keeps a loss trajectory"),
+        (
+            lambda d: d["options"]["iterate_selection_receipt"].update(
+                selected_loss_float32=0.3
+            ),
+            "iterate_selection_receipt keeps ['selected_loss_float32']",
+        ),
+        (
+            lambda d: d["options"].update(budget_search={"probes": [{"loss": 0.4}]}),
+            "options.budget_search is not null",
+        ),
+        (
+            lambda d: d.update(past_cap_census={"pushed_out_rows": [{"name": "brma"}]}),
+            "names 1 withheld row(s)",
+        ),
+        (
+            lambda d: d["uk_diagnostics"].update(
+                weakest_families=[{"family": "private_rent", "worst_target": "brma"}]
+            ),
+            "names 1 withheld row(s)",
+        ),
+    ],
+    ids=["trajectory", "iterate-loss", "budget-search", "census", "rollup"],
+)
+def test_no_total_over_every_row_ships_beside_a_withheld_row(mutate, message) -> None:
+    """While a row is withheld, the totals and rollups cannot give it back."""
+
+    diagnostics = _withheld_diagnostics()
+    failures: list[str] = []
+    dc._check_local_area_calibration_diagnostics(diagnostics, failures)
+    assert failures == []
+    mutate(diagnostics)
+    dc._check_local_area_calibration_diagnostics(diagnostics, failures)
     assert any(message in failure for failure in failures), failures
 
 
