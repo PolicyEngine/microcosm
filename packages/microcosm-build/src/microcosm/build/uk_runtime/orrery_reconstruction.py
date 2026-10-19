@@ -4,9 +4,12 @@ UK dense and national builds from before microcosm#1144 wrote their graph
 declaration (``graph.json``) and their code pin, but no run binding, so their
 recorded execution cannot be validated. This module projects the recorded
 declaration alone into the normal publication layout, marked as reconstructed
-by :mod:`microcosm.graph.reconstruction`. It reads only the build directory,
-executes no kernel and uploads nothing: the publication directory is submitted
-later, if at all, through the usual publication path.
+by :mod:`microcosm.graph.reconstruction`. Only the declaration's bytes come
+from the build: the schema's compiled sections and the Orrery document are
+computed by the code running this module, whose revision the marker records
+beside the build's. It reads only the build directory, executes no kernel and
+uploads nothing: the publication directory is submitted later, if at all,
+through the usual publication path.
 """
 
 from __future__ import annotations
@@ -30,6 +33,7 @@ from microcosm.graph.reconstruction import (
     DECLARATION_ONLY,
     DECLARATION_ROLE,
     GIT_COMMIT_PATTERN,
+    code_revision,
     reconstructed_schema,
     reconstruction_marker,
 )
@@ -430,10 +434,14 @@ def reconstruct_uk_publication(
     git_commit, git_dirty, origin = _source_revision(
         build, _recorded_code(manifest), revision
     )
+    # The code computing the schema's sections and the Orrery projection,
+    # identified from this module's file rather than the working directory.
+    reconstructing = code_revision(Path(__file__))
     marker = reconstruction_marker(
         git_commit=git_commit,
         git_dirty=git_dirty,
         revision_origin=origin,
+        reconstruction_revision=reconstructing,
         inputs=[
             {
                 "name": name,
@@ -477,6 +485,22 @@ def reconstruct_uk_publication(
         )
     elif git_dirty is None:
         warnings.append("The build did not record whether its working tree was clean.")
+    if reconstructing["git_commit"] is None:
+        warnings.append(
+            "The code running this reconstruction is not a file tracked by a git "
+            "checkout, so the marker records no reconstruction revision."
+        )
+    elif reconstructing["git_dirty"] is None:
+        warnings.append(
+            "git could not say whether the working tree running this "
+            "reconstruction was clean."
+        )
+    elif reconstructing["git_dirty"]:
+        warnings.append(
+            "This reconstruction ran from a working tree with uncommitted changes, "
+            "so its reconstruction revision does not fully identify the code that "
+            "compiled the schema and projected the Orrery document."
+        )
     warnings.extend(_stale_digest_warning(stale) for stale in stale_digests)
     if verification[DECLARATION_NAME] == "no_recorded_digest":
         warnings.append(
@@ -491,6 +515,7 @@ def reconstruct_uk_publication(
         "publication_id": publication_id,
         "published_files": [item["name"] for item in published] + [INVENTORY_NAME],
         "source_revision": marker["source_revision"],
+        "reconstruction_revision": marker["reconstruction_revision"],
         "build": _build_identity(manifest, records.get(COMPLETION_NAME, {})),
         "declaration": {
             "name": DECLARATION_NAME,
@@ -534,9 +559,18 @@ def summary_text(report: Mapping[str, Any], output: Path) -> str:
         if revision["origin"] == "recorded"
         else "asserted with --revision"
     )
+    reconstructing = report["reconstruction_revision"]
+    if reconstructing["git_commit"] is None:
+        reconstructed_by = "unknown revision"
+    else:
+        tree = {False: "clean", True: "uncommitted changes"}.get(
+            reconstructing["git_dirty"], "working tree not checked"
+        )
+        reconstructed_by = f"{reconstructing['git_commit']} ({tree})"
     lines = [
         f"Wrote a reconstructed Orrery publication (declaration only) to {output}",
         f"  revision: {revision['git_commit']} ({origin})",
+        f"  reconstructed by: {reconstructed_by}",
         f"  declaration: {declaration['name']}, "
         f"{_count(declaration['operations'], 'operation')}, "
         f"{_count(declaration['sources'], 'source')}",

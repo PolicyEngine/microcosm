@@ -276,16 +276,28 @@ binding that execution export validates, so its execution cannot be shown.
 declaration alone and marks it as reconstructed:
 
 ```python
-from microcosm.graph.reconstruction import reconstructed_schema, reconstruction_marker
+from microcosm.graph.reconstruction import (
+    code_revision,
+    reconstructed_schema,
+    reconstruction_marker,
+)
 
 marker = reconstruction_marker(
     git_commit=recorded_commit,
     git_dirty=False,
     revision_origin="recorded",
+    reconstruction_revision=code_revision(__file__),
     inputs=inputs,  # one {name, role, sha256, bytes, verification} per file read
 )
 schema = reconstructed_schema(declaration_bytes, marker)
 ```
+
+Only the declaration comes from the build. The schema's `graph` section and
+`graph_sha256` reproduce the recorded file byte for byte. Its `compiled`,
+`fields` and `input_bindings` sections, and the Orrery document projected from
+it, are computed by the code running the reconstruction. A reconstruction made
+at another revision can therefore differ in those parts, which is why the
+marker records that revision separately from the build's.
 
 The marker is the producer extension `microcosm.reconstruction`:
 
@@ -299,19 +311,30 @@ The marker is the producer extension `microcosm.reconstruction`:
     "git_dirty": false,
     "origin": "recorded"
   },
+  "reconstruction_revision": {
+    "git_commit": "<full lowercase commit, or null>",
+    "git_dirty": false
+  },
   "inputs": [
     {"name": "graph.json", "role": "declaration", "sha256": "<hex>",
      "bytes": 4096, "verification": "no_recorded_digest"},
     {"name": "rowwise_candidate_manifest.json", "role": "code_pin",
      "sha256": "<hex>", "bytes": 2048, "verification": "recorded_digest_matched"}
   ],
-  "scope": "Rebuilt after the build from its recorded graph declaration. ..."
+  "scope": "Rebuilt after the build from its recorded graph declaration, the only part taken from the build: ..."
 }
 ```
 
-- **`source_revision`:** `origin` is `recorded` when the build wrote the
-  revision itself, and `caller_asserted` when the build recorded none and the
-  caller supplied one. `git_dirty` is `null` when the build did not record it.
+- **`source_revision`:** the code that declared the graph. `origin` is
+  `recorded` when the build wrote the revision itself, and `caller_asserted`
+  when the build recorded none and the caller supplied one. `git_dirty` is
+  `null` when the build did not record it.
+- **`reconstruction_revision`:** the code that performed the reconstruction,
+  and so computed every section except the declaration. `code_revision(path)`
+  reads it from the git checkout that tracks `path` (the reconstructing
+  module's own file), not from the current directory. Both fields are `null`
+  when no checkout tracks that file, as for an installed wheel. `git_dirty` is
+  `null` alone when git could not check the working tree.
 - **`inputs`:** every file the reconstruction read, in name order, by digest
   and size. Exactly one input is the declaration, and its digest equals the
   schema's `graph_sha256`. `verification` compares the file with the digests
@@ -326,10 +349,10 @@ The marker is the producer extension `microcosm.reconstruction`:
 
   In the last two cases the file is bound only by the digest in the marker.
 - **Exact bytes:** `reconstructed_schema` refuses a declaration that the
-  current serializer would not write byte for byte. The schema therefore
-  describes the recorded file, not a reinterpretation of it. A file that is not
-  a graph declaration at all, such as a JSON array, is also refused with a
-  `ValueError`.
+  current serializer would not write byte for byte. The schema's `graph`
+  section is therefore the recorded file, not a reinterpretation of it. A file
+  that is not a graph declaration at all, such as a JSON array, is also refused
+  with a `ValueError`.
 - **Where it travels:** the marker is saved in `graph.schema.json`, so any
   later projection of the saved schema keeps it. Orrery documents show it at
   `metadata.microcosm.extensions["microcosm.reconstruction"]`.
@@ -353,9 +376,13 @@ uv run python -m microcosm.build.uk_runtime.orrery_reconstruction \
   --output path/to/reconstructed-publication
 ```
 
-The declaration is the build's own `graph.json`, never one re-derived from
-current code. The declaration format has not changed since the UK graph driver,
-so a recorded file reproduces byte for byte; one that does not is refused.
+The declaration is the build's own `graph.json`. It is not rebuilt by running
+the UK graph builders at the current revision. The declaration format has not
+changed since the UK graph driver, so a recorded file reproduces byte for byte;
+one that does not is refused. Everything derived from it (the schema's
+compiled sections and the Orrery document) is computed by the code running the
+command, and the marker records that code's revision as
+`reconstruction_revision`.
 
 The build directory is only read. The command:
 
@@ -402,18 +429,21 @@ are resolved:
 The summary report, of which the command prints a short version, lists:
 
 - the inputs and how each was verified;
-- the recorded digests skipped as stale, each with its note and the digest
-  lists the file was checked against instead;
+- the source revision and the reconstruction revision;
+- the recorded digests skipped as stale, each with its note and the records the
+  file was checked against instead;
 - the expected files that are missing;
 - evidence found but not bound to operations: run manifests,
   `evidence-index.json`, `operations.json` and the content store;
-- warnings, for a dirty or unrecorded working tree, a caller-asserted revision,
-  a skipped stale digest, or a declaration the build recorded no digest for.
-  Before #1144, the last one applies to every build.
+- warnings, for a dirty or unrecorded working tree in the build or the
+  reconstruction, an unknown reconstruction revision, a caller-asserted
+  revision, a skipped stale digest, or a declaration the build recorded no
+  digest for. Before #1144, the last one applies to every build.
 
-Output is deterministic: reconstructing the same build twice gives identical
-bytes and the same publication ID. The command uploads nothing and starts no
-emitter service, so publishing the directory remains a separate step.
+Output is deterministic: reconstructing the same build twice from the same
+code revision gives identical bytes and the same publication ID. The command
+uploads nothing and starts no emitter service, so publishing the directory
+remains a separate step.
 
 ## Orrery evidence panels
 
