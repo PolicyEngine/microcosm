@@ -41,7 +41,9 @@ or `uv sync --all-packages --all-extras`. To keep both countries set up, point
 
 PR CI (`.github/workflows/test.yml`) has `lint`, `engine-free`, `engine-us`,
 `engine-uk`, `integration-uk`, and `wheels` jobs, plus the
-`select-countries` orchestration job.
+`select-countries` orchestration job. It runs for pull requests into any base
+branch, so a stacked pull request, whose base is another pull request's
+branch, gets the same jobs; pushes run it only for `main`.
 `tools/ci_test_plan.py` is the only authority for test-directory ownership, CI
 job assignment, country ownership, US timing-report categories, and
 changed-path country selection. Its `TEST_GROUPS` registry defines every valid
