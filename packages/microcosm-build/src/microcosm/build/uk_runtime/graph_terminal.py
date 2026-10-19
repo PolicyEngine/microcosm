@@ -14,6 +14,7 @@ import json
 import sys
 from collections.abc import Mapping
 from dataclasses import asdict, replace
+from functools import cache
 from importlib import metadata
 from pathlib import Path
 from types import SimpleNamespace
@@ -60,6 +61,7 @@ from .high_value_homes import (
     load_uk_high_value_home_stock_facts,
     load_vendored_obr_hvcts_facts,
 )
+from .local_doctrine import UK_LOCAL_L0_SEARCH_FLOOR
 from .national_frame import (
     UK_RELEASE_EXPORT_DROPPED_COLUMNS,
     _read_uk_national_tables,
@@ -700,8 +702,39 @@ def _source_gate_evidence(context: KernelContext, engine):
     }
 
 
+@cache
+def uk_terminal_only_code_hash() -> str:
+    """The source hash of the high-value homes code the calibrated gates run.
+
+    The high-value homes evidence is computed on the calibrated pool alone.
+    The source preflight runs the gate kernel's code and the dense solve keys
+    on the preflight, so this code keys the calibrated node through its
+    parameters, not the kernel's hash (microcosm#1306 review). An edit to
+    ``high_value_home_gates`` re-keys the calibrated gates and what follows
+    them, never the solve. ``high_value_homes`` also feeds the target
+    kernels, which hash it, so an edit to it still re-solves: a disclosure fix
+    between two builds that must reuse the solve belongs in
+    ``high_value_home_gates`` alone.
+
+    Hashed once per process, as the code was imported: an edit to the files
+    while a build runs cannot fail the calibrated gates after the solve.
+    """
+    from . import high_value_home_gates, high_value_homes
+
+    return source_hash(high_value_home_gates, high_value_homes)
+
+
 class UKFullGateKernel(KernelBase):
+    """The calibrated gate battery: every terminal gate, on the final weights.
+
+    Its terminal gates read the gate-only registers, so it keys on the full
+    country fingerprint and a sign-off re-keys it. The source preflight runs
+    under :class:`UKFullPreflightGateKernel` (microcosm#1301).
+    """
+
     ref = "uk.full-gates@1"
+    #: The battery phases this kernel evaluates; any other is refused.
+    phases: tuple[str, ...] = ("terminal",)
     capabilities = Capabilities(
         Determinism.DETERMINISTIC,
         numeric=Numeric.BITWISE,
@@ -714,14 +747,23 @@ class UKFullGateKernel(KernelBase):
         self.engine = coverage_engine
         self.engine_identity = engine_identity
 
-    def implementation_hash(self) -> str:
-        from .. import gate_battery
+    def _country_resources(self) -> str:
+        """Every packaged UK resource, the gate-only registers included."""
         from ..country_spec import load_country_spec
+
+        return load_country_spec("uk").fingerprint
+
+    def implementation_hash(self) -> str:
+        # The gate evaluators (``gates``) and the register loaders
+        # (``terminal_gates``) decide the report as much as the bindings do,
+        # so an edit to either re-keys the gate nodes (microcosm#1301).
+        from .. import gate_battery, gates
         from . import (
             battery_bindings,
             diagnostics,
             full_gates,
             local_rowwise,
+            terminal_gates,
             weighted_integrity,
         )
 
@@ -731,19 +773,30 @@ class UKFullGateKernel(KernelBase):
                     "code": source_hash(
                         sys.modules[__name__],
                         gate_battery,
+                        gates,
                         battery_bindings,
                         full_gates,
                         local_rowwise,
+                        terminal_gates,
                         weighted_integrity,
                         diagnostics,
                     ),
-                    "country_resources": load_country_spec("uk").fingerprint,
+                    "country_resources": self._country_resources(),
                 }
             )
         ).hexdigest()
 
     def run(self, context: KernelContext) -> KernelResult:
         from microcosm.calibrate.artifacts import decode_problem, decode_solution
+
+        phase = str(context.params["phase"])
+        if phase not in self.phases:
+            # Each phase keys on its own country resources (microcosm#1301):
+            # a node bound to the other kernel would be keyed on the wrong set.
+            raise ValueError(
+                f"{type(self).__name__} evaluates the {', '.join(self.phases)} "
+                f"phase only, not {phase!r}."
+            )
 
         from ..gate_battery import (
             EvidenceContext,
@@ -766,6 +819,13 @@ class UKFullGateKernel(KernelBase):
             raise ValueError(
                 "UK full gate engine identity differs from its declared binding."
             )
+        if (
+            context.params["phase"] == "terminal"
+            and context.params.get("terminal_code") != uk_terminal_only_code_hash()
+        ):
+            raise ValueError(
+                "UK full gate terminal-only code differs from its declared binding."
+            )
         selection = json.loads(context.artifacts["selection"].payload)["receipt"]
         gates = uk_full_gate_manifest(selection)
         from ..gate_battery import _gates_manifest_payload, _json_safe
@@ -786,7 +846,6 @@ class UKFullGateKernel(KernelBase):
                     MassChangeRecord(**record) for record in state["mass_log"]
                 ),
             )
-        phase = str(context.params["phase"])
         diagnostics = []
         support = []
         output_artifacts = {}
@@ -970,6 +1029,26 @@ class UKFullGateKernel(KernelBase):
         )
 
 
+class UKFullPreflightGateKernel(UKFullGateKernel):
+    """The source preflight, keyed on the solve's country resources.
+
+    The dense solve takes the preflight report as an input, so the
+    preflight's key is part of the solve's. Its gates read no gate-only
+    register (``solve_scope``), so it keys on the solve fingerprint: a
+    sign-off between the two release builds leaves it, and so the solve, a
+    cache hit (microcosm#1301). The code it runs is the calibrated kernel's.
+    """
+
+    ref = "uk.full-gates.preflight@1"
+    phases = ("preflight",)
+
+    def _country_resources(self) -> str:
+        """Every packaged UK resource but the gate-only registers."""
+        from .solve_scope import uk_solve_fingerprint
+
+        return uk_solve_fingerprint()
+
+
 def append_uk_full_gate_nodes(
     graph: Graph,
     *,
@@ -977,13 +1056,24 @@ def append_uk_full_gate_nodes(
     spine_stage_names: tuple[str, ...],
     engine_identity: str,
     review_date,
+    gate_review_date=None,
     sample_fraction: float = 1.0,
     release_candidate: bool = False,
     spine_provenance: ArtifactInput | None = None,
     input_population: str = "uk.full.pool",
-    skip_holdout: bool = False,
+    skip_holdout: bool = True,
 ) -> Graph:
-    """Own source preflight before solve and final diagnostics after installation."""
+    """Own source preflight before solve and final diagnostics after installation.
+
+    ``review_date`` is the solve clock: target compilation and the source
+    preflight evaluate reviewed entries on it. ``gate_review_date`` (default:
+    the solve clock) is the calibrated gates' clock, the date their reviewed
+    exclusions are evaluated on (microcosm#1301). It may not precede the
+    solve clock, and only the calibrated node carries it, so a later gate
+    clock re-keys the calibrated gates and what follows them, never the solve.
+    """
+    from datetime import date
+
     from microcosm.calibrate.artifacts import PROBLEM_TYPE, RESULT_TYPE, SOLUTION_TYPE
 
     from ..gate_battery import _gates_manifest_payload
@@ -1006,6 +1096,19 @@ def append_uk_full_gate_nodes(
             _gates_manifest_payload(uk_full_gate_manifest())
         ).decode(),
     }
+    # The calibrated gates' own clock; absent or equal to the solve clock, the
+    # calibrated node's parameters are the shared ones, byte for byte.
+    gate_params = params
+    if gate_review_date is not None:
+        gate_clock = str(gate_review_date)
+        if date.fromisoformat(gate_clock) < date.fromisoformat(params["review_date"]):
+            raise ValueError(
+                f"The gate review date {gate_clock} precedes the solve review "
+                f"date {params['review_date']}: the calibrated gates may not "
+                "evaluate reviewed exclusions before the solve's own clock."
+            )
+        if gate_clock != params["review_date"]:
+            gate_params = {**params, "review_date": gate_clock}
     provenance = (
         (replace(spine_provenance, name="spine_provenance"),)
         if spine_provenance
@@ -1040,7 +1143,7 @@ def append_uk_full_gate_nodes(
     )
     preflight = Node(
         "uk.full.gates.preflight",
-        UKFullGateKernel.ref,
+        UKFullPreflightGateKernel.ref,
         population=input_population,
         params={**params, "phase": "preflight"},
         artifact_inputs=common,
@@ -1087,7 +1190,13 @@ def append_uk_full_gate_nodes(
         population=calibration.population,
         inputs=population_slices(population_columns(graph, calibration.population)),
         sources=sources,
-        params={**params, "phase": "terminal"},
+        # Only the calibrated node keys on the code only it runs, so an edit to
+        # that code never re-keys the preflight and the solve after it.
+        params={
+            **gate_params,
+            "phase": "terminal",
+            "terminal_code": uk_terminal_only_code_hash(),
+        },
         artifact_inputs=(
             *common,
             *build_state,
@@ -1134,11 +1243,10 @@ def append_uk_full_gate_nodes(
 def register_uk_full_gate_kernels(
     registry: KernelRegistry, *, coverage_engine, engine_identity: str
 ) -> None:
-    registry.register(
-        UKFullGateKernel(
-            coverage_engine=coverage_engine, engine_identity=engine_identity
+    for kernel in (UKFullPreflightGateKernel, UKFullGateKernel):
+        registry.register(
+            kernel(coverage_engine=coverage_engine, engine_identity=engine_identity)
         )
-    )
 
     registry.register(UKFullHoldoutKernel())
 
@@ -1157,7 +1265,6 @@ class UKFullHoldoutKernel(KernelBase):
     )
 
     def implementation_hash(self) -> str:
-        from ..country_spec import load_country_spec
         from . import (
             dataset_size,
             graph_targets,
@@ -1166,6 +1273,7 @@ class UKFullHoldoutKernel(KernelBase):
             national_doctrine,
             target_weights,
         )
+        from .solve_scope import uk_solve_fingerprint
 
         return hashlib.sha256(
             canonical_json(
@@ -1180,7 +1288,9 @@ class UKFullHoldoutKernel(KernelBase):
                         target_weights,
                         dependencies=self.capabilities.dependencies,
                     ),
-                    "country_resources": load_country_spec("uk").fingerprint,
+                    # The holdout repeats the solve: it keys on the solve
+                    # fingerprint, as the target kernels do (microcosm#1301).
+                    "country_resources": uk_solve_fingerprint(),
                 }
             )
         ).hexdigest()
@@ -1202,9 +1312,19 @@ class UKFullHoldoutKernel(KernelBase):
             report = {
                 "report_only": True,
                 "skipped": True,
-                "reason": "Explicit development request; no holdout claim.",
+                "reason": "Not requested: opt-in diagnostic; no out-of-sample claim.",
             }
         else:
+            # microcosm#1301: each fold's size search runs under the doctrine
+            # floor (select_uk_dataset_size's default); refuse a holdout that
+            # would measure folds under another floor than the build's search.
+            floor = context.params.get("selection_l0_search_floor")
+            if floor is not None and floor != UK_LOCAL_L0_SEARCH_FLOOR:
+                raise ValueError(
+                    f"The size search ran under an L0 floor of {floor!r}; the "
+                    "rotated holdout's fold searches run under the doctrine's "
+                    f"{UK_LOCAL_L0_SEARCH_FLOOR!r}."
+                )
             inputs = reconstruct_uk_full_problem_inputs(context)
             original = decode_problem(context.artifacts["problem"].payload)
             if original.entity_ids != tuple(
@@ -1284,6 +1404,10 @@ def uk_full_holdout_node(
             "selection_initial_lambda": (
                 None if size is None else size.params.get("initial_lambda")
             ),
+            # microcosm#1301: and under the same L0 search floor.
+            "selection_l0_search_floor": (
+                None if size is None else size.params.get("l0_search_floor")
+            ),
             # microcosm#1124: the size stages' L2 penalties, present only when on.
             **(
                 {}
@@ -1306,7 +1430,7 @@ def uk_full_holdout_node(
             ),
         ),
         artifact_outputs=(ArtifactOutput("holdout", FULL_HOLDOUT_TYPE),),
-        description="Preserve five rotated local-target holdouts with national constraints fixed in training and unchanged sizing doctrine.",
+        description="Optional (--rotated-holdout): preserve five rotated local-target holdouts with national constraints fixed in training and unchanged sizing doctrine; otherwise record that none was requested.",
     )
 
 
@@ -1419,6 +1543,32 @@ def _gate_rows(document: Mapping) -> dict[str, dict]:
     return rows
 
 
+def _reviewed_exclusions_stood_on(gate_rows: Mapping[str, Mapping]) -> dict:
+    """The names of the reviewed exclusions each signed-exclusion gate stood on.
+
+    One sorted list per gate a dense release names in its limitations, empty
+    when the gate stood on none or the report lacks it; dormant entries are
+    left out, as the release assembler leaves them out. The full gate report
+    does not ship, so the release contract holds the coverage's names and
+    the manifest's limitations to this record (microcosm#1301).
+    """
+    from microcosm.data.contract import _UK_DENSE_SIGNED_EXCLUSION_GATES
+
+    record: dict[str, list[str]] = {}
+    for gate_id in _UK_DENSE_SIGNED_EXCLUSION_GATES:
+        row = gate_rows.get(gate_id)
+        details = row.get("details") if isinstance(row, Mapping) else None
+        details = details if isinstance(details, Mapping) else {}
+        excluded = details.get("reviewed_exclusions")
+        dormant = set(map(str, details.get("dormant_exclusions") or ()))
+        record[gate_id] = (
+            sorted(set(map(str, excluded)) - dormant)
+            if isinstance(excluded, Mapping)
+            else []
+        )
+    return record
+
+
 def _fit_rows(target_rows: pd.DataFrame, materialization: Mapping[str, str]):
     """Split the terminal target diagnostics into local and national rows."""
     kinds = target_rows["name"].map(materialization)
@@ -1459,6 +1609,7 @@ def rowwise_candidate_manifest_from_graph(
     """
     from microcosm.calibrate.artifacts import decode_problem
 
+    from .battery_bindings import uk_area_support_below_floor
     from .calibration_run import UK_LOCAL_GATE_SCOPE
     from .diagnostics import uk_fit_by_family, uk_support_limited_misses
     from .graph_targets import registry_from_payload
@@ -1504,6 +1655,11 @@ def rowwise_candidate_manifest_from_graph(
             )
         )
     )
+    # The gate node writes each area's floor flag (microcosm#1278); a table
+    # without one is flagged here under the same floors.
+    if "support_below_floor" not in support.columns:
+        support["support_below_floor"] = uk_area_support_below_floor(support)
+    support["support_below_floor"] = support["support_below_floor"].astype(bool)
     holdout = json.loads(
         _graph_payload(final_manifest, store, "uk.full.holdout", "holdout")
     )
@@ -1811,20 +1967,16 @@ def rowwise_candidate_manifest_from_graph(
             ),
             "rotated_holdout": diagnostics["uk_diagnostics"].get("rotated_holdout"),
         },
+        # Area counts only: the manifest ships in a release, and a level's
+        # minima would be one area's support figures (microcosm#1301). The
+        # figures stay in the area-support table.
         "support": {
-            "min_assigned_households": int(support["assigned_households"].min()),
-            "min_nonzero_households": int(support["nonzero_households"].min()),
-            "min_effective_sample_size": float(support["effective_sample_size"].min()),
+            "areas_checked": int(len(support)),
+            "areas_below_floor": int(support["support_below_floor"].sum()),
             "by_geography_level": {
                 str(level): {
-                    "min_assigned_households": int(rows["assigned_households"].min()),
-                    "min_nonzero_households": int(rows["nonzero_households"].min()),
-                    "min_effective_sample_size": float(
-                        rows["effective_sample_size"].min()
-                    ),
-                    "min_nonzero_source_households": int(
-                        rows["nonzero_source_households"].min()
-                    ),
+                    "areas_checked": int(len(rows)),
+                    "areas_below_floor": int(rows["support_below_floor"].sum()),
                 }
                 for level, rows in support.groupby("geography_level", sort=True)
             },
@@ -1883,6 +2035,7 @@ def rowwise_candidate_manifest_from_graph(
                 (surface.get("measure_exclusions") or {}).items()
             )
         },
+        "reviewed_exclusions_stood_on": _reviewed_exclusions_stood_on(gate_rows),
         "blocked_at_f100": bool(blocking_failures),
         "blocking_failures": blocking_failures,
         "diagnostic_failures": diagnostic_lines,

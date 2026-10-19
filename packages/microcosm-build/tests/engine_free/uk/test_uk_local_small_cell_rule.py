@@ -226,8 +226,12 @@ def test_no_committed_rule_is_about_to_lapse():
 
 def test_the_committed_membership_defers_each_rules_cells():
     # The regenerated references carry the signed rules' deferrals: the
-    # council-tax band cells under 50 dwellings (band G 3, band H 7, band I 6)
-    # and the higher rate taxpayer cells HMRC publishes at 5,000 or fewer.
+    # council-tax band cells under 50 dwellings (band G 3, band H 7, band I 6),
+    # the higher rate taxpayer cells HMRC publishes at 5,000 or fewer, and the
+    # derived high-value homes authority cells under 400 homes (948 cells less
+    # the 350 kept: 192 over £1m, 101 over £1.5m and 57 over £2m;
+    # microcosm#1301). The constituency cells are deferred level-wide first,
+    # so that rule reaches the authorities only.
     cells: dict[str, Counter] = {}
     for deferral in _committed("local_target_reference_membership.json")[
         "signed_deferrals"
@@ -235,6 +239,7 @@ def test_the_committed_membership_defers_each_rules_cells():
         if deferral["reason_id"] in {
             "council_tax_band_household_floor",
             "hmrc_rounded_thousand_floor",
+            "hvcts_la_household_floor",
         }:
             cells.setdefault(deferral["reason_id"], Counter())[
                 deferral["geography_level"]
@@ -244,6 +249,7 @@ def test_the_committed_membership_defers_each_rules_cells():
         "hmrc_rounded_thousand_floor": Counter(
             {"constituency": 155, "local_authority": 37}
         ),
+        "hvcts_la_household_floor": Counter({"local_authority": 598}),
     }
 
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import base64
 from datetime import date, datetime
-from types import SimpleNamespace
+from types import MappingProxyType, SimpleNamespace
 from unittest.mock import patch
 
 import numpy as np
@@ -52,6 +52,7 @@ from microcosm.build.uk_runtime.terminal_gates import (
 from microcosm.build.uk_runtime.weighted_integrity import UKReviewedExclusion
 from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.frame import engine_tables
+from tools.generate_uk_local_target_references import SUPPORT_FLOOR_DEFERRED_AREA_IDS
 
 KEY = base64.b64encode(b"\x07" * 32).decode("ascii")
 #: The shared exclusion-expiry clock, fixed inside the committed registers'
@@ -1669,18 +1670,26 @@ class TestPreflightBindings:
         # microcosm#1240 adds 2,679 high-value homes cells (575 constituencies
         # and 318 authorities in England and Wales, three thresholds), six of
         # them deferred by the two micro-authorities' support floor.
-        assert result.details["candidate_targets"] == 24_269
-        assert result.details["reference_targets"] == 26_065
-        # Only the 1,796 signed area deferrals and absences remain (2,100
+        # microcosm#1207 adds 1,050 DESNZ energy cells (350 authorities in
+        # Great Britain, three rows), 1,040 of them compiled: the support
+        # floor defers five, Orkney and Shetland's gas-connected cells are
+        # deferred, and the Isles of Scilly, Orkney and Shetland have no gas
+        # kWh row. microcosm#1301 defers 2,323 of the high-value homes cells:
+        # all 1,725 constituency cells, which the region rows now control,
+        # and the 598 authority cells under the 400-home floor.
+        assert result.details["candidate_targets"] == 22_986
+        assert result.details["reference_targets"] == 27_115
+        # Only the 4,129 signed area deferrals and absences remain (2,100
         # before microcosm#929 bound the Welsh and Scottish council-tax cells;
         # Shetland band H is the one Scottish support deferral; microcosm#1123
         # adds the three higher rate taxpayer gaps; microcosm#1240 the six
         # high-value homes cells above; microcosm#1278 signs the two
         # small-cell rules, which defer 16 council-tax band cells and 192
-        # higher-rate cells); the 1,011 household rows are ordinary
-        # Chronicle-compiled references.
+        # higher-rate cells; microcosm#1207 the ten energy cells above;
+        # microcosm#1301 the 2,323 high-value homes cells above); the 1,011
+        # household rows are ordinary Chronicle-compiled references.
         exclusions = result.details["reviewed_exclusions"]
-        assert len(exclusions) == 1_796
+        assert len(exclusions) == 4_129
         households = [
             name for name in exclusions if str(name).startswith("households@")
         ]
@@ -1715,8 +1724,8 @@ def test_area_support_binding_resolves_register_and_rejects_expired_entry(
     binding = UK_GATE_REGISTRY["area_support"]
     # The committed register carries the two micro local authorities Maria
     # excluded on the measured K=4 shortfalls (microcosm#762 A4); the
-    # synthetic roster carries them below the floor so the committed entries
-    # apply instead of reading as unknown.
+    # synthetic roster carries them below the floor, at made-up figures, so
+    # the committed entries apply instead of reading as unknown.
     support = pd.DataFrame(
         {
             "geography_level": [
@@ -1726,10 +1735,10 @@ def test_area_support_binding_resolves_register_and_rejects_expired_entry(
                 "local_authority",
             ],
             "area_code": ["E14000001", "E06000001", "E06000053", "E09000001"],
-            "assigned_households": [50, 50, 7, 14],
-            "nonzero_households": [50, 50, 7, 14],
-            "effective_sample_size": [50.0, 50.0, 6.8, 12.1],
-            "nonzero_source_households": [50, 50, 7, 14],
+            "assigned_households": [50, 50, 30, 40],
+            "nonzero_households": [50, 50, 30, 40],
+            "effective_sample_size": [50.0, 50.0, 30.0, 40.0],
+            "nonzero_source_households": [50, 50, 30, 40],
         }
     )
     monkeypatch.setattr(
@@ -1763,7 +1772,11 @@ def test_area_support_binding_resolves_register_and_rejects_expired_entry(
         " Per microcosm#762 A14 the authority's own local-authority cells are "
         "signed-deferred (`local_authority_support_floor_excluded`)."
     )
-    assert all(record.reason.endswith(a14_suffix) for record in exclusions.values())
+    # The exclusions are gate-only (microcosm#1301): only the areas whose cells
+    # the reference generator defers on its own constants may claim A14.
+    deferred = {f"local_authority/{area}" for area in SUPPORT_FLOOR_DEFERRED_AREA_IDS}
+    for key, record in exclusions.items():
+        assert record.reason.endswith(a14_suffix) is (key in deferred), key
 
     monkeypatch.setattr(
         battery_bindings,
@@ -1987,7 +2000,11 @@ def test_measured_local_quality_failure_blocks_release(
     battery.run_phase(
         "terminal",
         EvidenceContext(
-            frame=frame, artifacts={"local_target_diagnostics": diagnostics}
+            frame=frame,
+            artifacts={
+                "local_target_diagnostics": diagnostics,
+                "exclusions_evaluated_on": CLOCK,
+            },
         ),
     )
     with pytest.raises(GateBatteryBlockedError):
@@ -2238,3 +2255,277 @@ def test_weight_gate_bindings_fold_support_families_before_evaluating() -> None:
     assert ess.details["evaluated_on"] == "family_folded_weights"
     assert ess.details["family_folded"]["n_records"] == 2
     assert ess.details["n_records"] == 4
+
+
+def _receipt(
+    *,
+    approved_on: str = "2026-10-01",
+    expires_on: str = "2027-01-01",
+    release_lines: tuple[str, ...] | None = ("local",),
+) -> UKReviewedExclusion:
+    return UKReviewedExclusion(
+        reason="synthetic reviewed exclusion",
+        approved_by="reviewer",
+        adjudication="microcosm#1301",
+        approved_on=approved_on,
+        expires_on=expires_on,
+        release_lines=release_lines,
+    )
+
+
+class TestLocalTargetFitRegister:
+    """The local cells' own target-fit register (microcosm#1301).
+
+    Synthetic cells and errors only: an entry lifts the fence for its cell,
+    on the shared review date and on its release line, and the register
+    cannot rot.
+    """
+
+    CELL = "council_tax/LA_A/band_c"
+
+    @staticmethod
+    def _diagnostics(error: float) -> pd.DataFrame:
+        return pd.DataFrame(
+            [
+                {
+                    "family": "council_tax",
+                    "area_code": area,
+                    "metric": "band_c",
+                    "relative_error": value,
+                }
+                for area, value in (("LA_A", error), ("LA_B", 0.01))
+            ]
+        )
+
+    def _evaluate(
+        self,
+        monkeypatch,
+        uk_gates,
+        register: dict[str, UKReviewedExclusion],
+        error: float,
+        *,
+        line: str | None = "local",
+        parameters=None,
+    ) -> GateResult:
+        import microcosm.build.uk_runtime.battery_bindings as battery_bindings
+
+        monkeypatch.setattr(
+            battery_bindings,
+            "uk_default_local_target_fit_reviewed_exclusions",
+            lambda: MappingProxyType(register),
+        )
+        entry = {entry.id: entry for entry in uk_gates.gates}["uk_local_target_fit"]
+        artifacts = {
+            "local_target_diagnostics": self._diagnostics(error),
+            "exclusions_evaluated_on": CLOCK,
+        }
+        if line is not None:
+            artifacts["release_line"] = line
+        return UK_GATE_REGISTRY["target_fit"].evaluate(
+            EvidenceContext(artifacts=artifacts),
+            entry.parameters if parameters is None else parameters,
+        )
+
+    def test_the_spec_names_the_local_register(self, uk_gates) -> None:
+        from microcosm.build.uk_runtime.weighted_integrity import (
+            UK_LOCAL_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE,
+        )
+
+        entry = {entry.id: entry for entry in uk_gates.gates}["uk_local_target_fit"]
+        assert entry.parameters["reviewed_exclusions_resource"] == (
+            UK_LOCAL_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE
+        )
+        assert UK_GATE_REGISTRY["target_fit"].required_artifacts(entry.parameters) == {
+            "local_target_diagnostics",
+            "exclusions_evaluated_on",
+        }
+
+    def test_an_unsigned_breach_fails(self, monkeypatch, uk_gates) -> None:
+        result = self._evaluate(monkeypatch, uk_gates, {}, -0.30)
+        assert result.passed is False
+        assert result.details["failing_targets"] == {self.CELL: -0.30}
+        assert result.details["exclusions_evaluated_on"] == CLOCK.isoformat()
+
+    def test_an_in_force_entry_lifts_the_fence_for_its_cell(
+        self, monkeypatch, uk_gates
+    ) -> None:
+        result = self._evaluate(monkeypatch, uk_gates, {self.CELL: _receipt()}, -0.30)
+        assert result.passed is True
+        assert result.details["failing_targets"] == {}
+        assert set(result.details["reviewed_exclusions"]) == {self.CELL}
+        assert result.details["exclusions_evaluated_on"] == CLOCK.isoformat()
+        assert "out_of_line_exclusions" not in result.details
+
+    def test_a_stale_entry_fails(self, monkeypatch, uk_gates) -> None:
+        result = self._evaluate(monkeypatch, uk_gates, {self.CELL: _receipt()}, -0.10)
+        assert result.passed is False
+        assert result.details["stale_exclusions"] == [self.CELL]
+
+    @pytest.mark.parametrize(
+        "window,detail",
+        [
+            (("2026-01-01", "2026-02-01"), "expired_exclusions"),
+            (("2026-12-01", "2027-03-01"), "premature_exclusions"),
+        ],
+    )
+    def test_an_out_of_force_entry_fails_on_the_review_date(
+        self, monkeypatch, uk_gates, window, detail
+    ) -> None:
+        approved_on, expires_on = window
+        record = _receipt(approved_on=approved_on, expires_on=expires_on)
+        result = self._evaluate(monkeypatch, uk_gates, {self.CELL: record}, -0.30)
+        assert result.passed is False
+        assert result.details[detail] == [self.CELL]
+        assert result.details["failing_targets"] == {self.CELL: -0.30}
+
+    def test_an_entry_scoped_to_the_national_line_stands_aside(
+        self, monkeypatch, uk_gates
+    ) -> None:
+        record = _receipt(release_lines=("national",))
+        result = self._evaluate(monkeypatch, uk_gates, {self.CELL: record}, -0.30)
+        assert result.passed is False
+        assert result.details["failing_targets"] == {self.CELL: -0.30}
+        assert result.details["release_line"] == "local"
+        assert result.details["out_of_line_exclusions"] == [self.CELL]
+
+    def test_a_missing_review_date_is_evidence_absent(self, uk_gates) -> None:
+        phase = evaluate_phase(
+            uk_gates,
+            "terminal",
+            EvidenceContext(
+                artifacts={"local_target_diagnostics": self._diagnostics(-0.30)}
+            ),
+            registry=UK_GATE_REGISTRY,
+        )
+        outcome = {o.entry.id: o for o in phase.outcomes}["uk_local_target_fit"]
+        assert outcome.status is GateStatus.EVIDENCE_ABSENT
+        assert outcome.reason == "missing evidence: exclusions_evaluated_on"
+
+    def test_the_national_register_is_refused_on_the_local_surface(
+        self, monkeypatch, uk_gates
+    ) -> None:
+        entry = {entry.id: entry for entry in uk_gates.gates}["uk_local_target_fit"]
+        parameters = {
+            **entry.parameters,
+            "reviewed_exclusions_resource": "target_fit_reviewed_exclusions.json",
+        }
+        with pytest.raises(ValueError, match="local exclusion register"):
+            self._evaluate(monkeypatch, uk_gates, {}, -0.30, parameters=parameters)
+
+
+class TestGateOnlyAreaSupport:
+    """Area-support exclusions excuse an area at the gate only (microcosm#1301).
+
+    Synthetic areas and support figures: a local-authority or constituency
+    key is honoured on its line, an entry scoped to another line stands aside
+    unchecked, and the bound-despite-floor approvals stay window-checked.
+    """
+
+    ROSTER = {
+        "constituency": ("PCON_A", "PCON_B"),
+        "local_authority": ("LA_A", "LA_B", "LA_C"),
+    }
+
+    @staticmethod
+    def _support() -> pd.DataFrame:
+        # PCON_B, LA_B and LA_C sit below the floors; the rest clear them.
+        return pd.DataFrame(
+            {
+                "geography_level": ["constituency"] * 2 + ["local_authority"] * 3,
+                "area_code": ["PCON_A", "PCON_B", "LA_A", "LA_B", "LA_C"],
+                "assigned_households": [80, 20, 80, 20, 60],
+                "nonzero_households": [80, 20, 80, 20, 60],
+                "effective_sample_size": [80.0, 20.0, 80.0, 20.0, 20.0],
+                "nonzero_source_households": [80, 20, 80, 20, 60],
+            }
+        )
+
+    def _evaluate(
+        self,
+        monkeypatch,
+        uk_gates,
+        exclusions: dict[str, UKReviewedExclusion],
+        *,
+        bound: dict[str, UKReviewedExclusion] | None = None,
+    ) -> GateResult:
+        import microcosm.build.uk_runtime.battery_bindings as battery_bindings
+
+        monkeypatch.setattr(
+            battery_bindings,
+            "_local_area_roster",
+            lambda _resource, _levels: self.ROSTER,
+        )
+        monkeypatch.setattr(
+            battery_bindings,
+            "load_uk_local_area_support_exclusion_register",
+            lambda *_args, **_kwargs: {
+                "exclusions": exclusions,
+                "bound_despite_support_floor": bound or {},
+            },
+        )
+        entry = {entry.id: entry for entry in uk_gates.gates}["uk_local_area_support"]
+        context = EvidenceContext(
+            artifacts={
+                "uk_area_support_summary": self._support(),
+                "exclusions_evaluated_on": CLOCK,
+                "release_line": "local",
+            }
+        )
+        return UK_GATE_REGISTRY["area_support"].evaluate(context, entry.parameters)
+
+    def test_local_authority_and_constituency_keys_are_honoured(
+        self, monkeypatch, uk_gates
+    ) -> None:
+        keys = ("constituency/PCON_B", "local_authority/LA_B", "local_authority/LA_C")
+        result = self._evaluate(
+            monkeypatch, uk_gates, {key: _receipt() for key in keys}
+        )
+        assert result.passed is True, result.failures
+        assert set(result.details["reviewed_exclusions"]) == set(keys)
+        assert result.details["excluded_area_count"] == 3
+        assert "out_of_line_exclusions" not in result.details
+
+    def test_an_entry_scoped_to_another_line_stands_aside(
+        self, monkeypatch, uk_gates
+    ) -> None:
+        # Out of its window as well: an entry that stands aside is not checked.
+        aside = _receipt(
+            approved_on="2026-01-01",
+            expires_on="2026-02-01",
+            release_lines=("national",),
+        )
+        result = self._evaluate(
+            monkeypatch,
+            uk_gates,
+            {
+                "constituency/PCON_B": _receipt(),
+                "local_authority/LA_B": aside,
+                "local_authority/LA_C": _receipt(),
+            },
+        )
+        assert result.passed is False
+        assert "invalid_reviewed_exclusions" not in result.details
+        assert {failure.split(":", 1)[0] for failure in result.failures} == {
+            "local_authority/LA_B"
+        }
+        assert result.details["release_line"] == "local"
+        assert result.details["out_of_line_exclusions"] == ["local_authority/LA_B"]
+
+    def test_bound_despite_floor_approvals_are_window_checked_on_every_line(
+        self, monkeypatch, uk_gates
+    ) -> None:
+        expired = _receipt(
+            approved_on="2026-01-01", expires_on="2026-02-01", release_lines=None
+        )
+        aside = _receipt(release_lines=("national",))
+        result = self._evaluate(
+            monkeypatch,
+            uk_gates,
+            {"local_authority/LA_B": aside},
+            bound={"census_households": expired},
+        )
+        assert result.passed is False
+        assert result.details["invalid_reviewed_exclusions"] == [
+            "bound_despite_support_floor/census_households"
+        ]
+        assert result.details["out_of_line_exclusions"] == ["local_authority/LA_B"]

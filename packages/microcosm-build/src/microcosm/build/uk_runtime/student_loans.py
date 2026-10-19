@@ -36,6 +36,34 @@ STUDENT_LOAN_SEED = 42
 YEAR_RULE = "calibration_year"
 STUDENT_LOAN_ENUM_DOMAIN = ("NONE", "PLAN_1", "PLAN_2", "PLAN_5")
 EXCLUDED_ENGLAND_REGIONS = ("SCOTLAND", "WALES", "NORTHERN_IRELAND")
+#: A borrower's course starts this many years before they left full-time
+#: education (FRS EDUCLEFT), the length of a first degree in England and
+#: Wales; without an answer the course starts at 18 (microcosm#868).
+ASSUMED_COURSE_YEARS = 3
+DEFAULT_COURSE_START_AGE = 18
+#: Adults who report an outstanding loan but no repayment are borrowers below
+#: the threshold. They are read in the two nations whose starters from 2012/13
+#: hold Plan 2 loans; a Scottish (Plan 4) or Northern Irish (Plan 1) answer
+#: assigns no plan here (María's ruling of 2026-10-16, microcosm#868).
+OUTSTANDING_LOAN_REGIONS_EXCLUDED = ("SCOTLAND", "NORTHERN_IRELAND")
+NOT_IN_EDUCATION = "NOT_IN_EDUCATION"
+START_YEAR_FORMULA = (
+    "year - age + age_left_full_time_education - 3 where "
+    "age_left_full_time_education > 0, else year - age + 18"
+)
+REPORTED_OUTSTANDING_TEST = (
+    "reports_outstanding_student_loan and current_education == NOT_IN_EDUCATION"
+)
+#: No Plan 5 loan is repaid before April 2026 (SLC), so before then a borrower
+#: who repays started a course before Plan 5 existed: a repayer whose dates
+#: point to a course from 2023/24 takes Plan 2, and SLC's published zero of
+#: Plan 5 borrowers above the threshold in academic year 2024/25 holds
+#: (microcosm#868). The year is fixed, not derived from the cohort: with
+#: three-year courses a 2023/24 starter leaves in 2026 and first repays in
+#: April 2027, so a 2026 build would let a repayer take Plan 5 a year before
+#: the assumed cohort repays. Revisit it when the build year moves (Vahid's
+#: review of microcosm#1299).
+PLAN_5_REPAYMENTS_FROM = 2026
 PLAN_SALTS = {
     "PLAN_5": "student_loan_plan_5",
     "PLAN_2": "student_loan_plan_2",
@@ -181,11 +209,18 @@ def assign_student_loan_plans(
 ) -> UKStudentLoansResult:
     """Assign reported cohorts, then top up PLAN_5 before PLAN_2.
 
-    Each top-up realises the plan's shortfall against the SLC liable stock by
-    the identity-keyed greedy walk in :func:`_walk_top_up`, so the realised
-    mass sits within one skipped person's weight of the shortfall rather than
-    being a Bernoulli draw whose outcome for a shortfall of about one weight
-    is zero or two rows (microcosm#1049).
+    A reported borrower repays (``student_loan_repayments > 0``) or, in
+    England or Wales, reports an outstanding loan and is not in full-time
+    education; their course starts :data:`ASSUMED_COURSE_YEARS` before they
+    left full-time education (microcosm#868). Before
+    :data:`PLAN_5_REPAYMENTS_FROM` a repayer never takes Plan 5, which nobody
+    repays before April 2026. Each top-up realises the plan's
+    shortfall against the SLC liable stock by the identity-keyed greedy walk
+    in :func:`_walk_top_up`, so the realised mass sits within one skipped
+    person's weight of the shortfall rather than being a Bernoulli draw whose
+    outcome for a shortfall of about one weight is zero or two rows
+    (microcosm#1049). The Plan 2 walk takes nobody in full-time education: a
+    student is not yet liable to repay.
     """
 
     validate_uk_national_frame(frame)
@@ -197,6 +232,9 @@ def assign_student_loan_plans(
         "age",
         "student_loan_repayments",
         "highest_education",
+        "current_education",
+        "reports_outstanding_student_loan",
+        "age_left_full_time_education",
     }
     missing = sorted(required - set(person.columns))
     if missing:
@@ -218,6 +256,20 @@ def assign_student_loan_plans(
     ).to_numpy(dtype=float)
     if not np.isfinite(age).all() or not np.isfinite(repayments).all():
         raise ValueError("Student-loan age and repayment inputs must be finite.")
+    age_left = pd.to_numeric(
+        person["age_left_full_time_education"], errors="coerce"
+    ).to_numpy(dtype=float)
+    if not np.isfinite(age_left).all():
+        raise ValueError("Student-loan education-leaving ages must be finite.")
+    in_education = (
+        np.asarray(
+            [_enum_name(value) for value in person["current_education"]], dtype=object
+        )
+        != NOT_IN_EDUCATION
+    )
+    reports_outstanding = person["reports_outstanding_student_loan"].to_numpy(
+        dtype=bool
+    )
     weights_by_household = pd.Series(
         frame.weights_for("household").values,
         index=household["household_id"],
@@ -226,23 +278,42 @@ def assign_student_loan_plans(
         person["person_household_id"].map(weights_by_household).to_numpy(dtype=float)
     )
     person_lineage = _person_lineage(person, household)
-    start_year = year - age + 18
-    has_repayments = repayments > 0.0
+    start_year = course_start_year(year=year, age=age, age_left=age_left)
+    reported = has_reported_student_loan(
+        repayments=repayments,
+        reports_outstanding=reports_outstanding,
+        in_education=in_education,
+        region_names=region_names,
+    )
     plan = np.full(len(person), "NONE", dtype=object)
-    plan[has_repayments & (start_year < PLAN_1_BEFORE)] = "PLAN_1"
-    plan[has_repayments & (start_year >= PLAN_5_FROM)] = "PLAN_5"
-    plan[has_repayments & (plan == "NONE")] = "PLAN_2"
+    plan[reported & (start_year < PLAN_1_BEFORE)] = "PLAN_1"
+    may_repay_plan_5 = year >= PLAN_5_REPAYMENTS_FROM
+    plan[
+        reported & (start_year >= PLAN_5_FROM) & (may_repay_plan_5 | ~(repayments > 0))
+    ] = "PLAN_5"
+    plan[reported & (plan == "NONE")] = "PLAN_2"
     reported_plan = plan.copy()
     receipts: dict[str, UKStudentLoanPlanReceipt] = {}
     for plan_name in PLAN_PRIORITY:
         stock = _stock(stocks, plan_name, year)
         current_england = float(person_weights[(plan == plan_name) & is_england].sum())
         shortfall = max(0.0, stock - current_england)
+        if plan_name == "PLAN_2":
+            # Liable borrowers have left education; their course dates from
+            # the age they left it.
+            cohort_start, not_a_student = start_year, ~in_education
+        else:
+            # Plan 5 starters from 2023/24 have mostly not left education, so
+            # the age they left it cannot date them: the walk keeps the age
+            # rule and takes students.
+            cohort_start = year - age + DEFAULT_COURSE_START_AGE
+            not_a_student = np.ones(len(person), dtype=bool)
         eligible = (
             (plan == "NONE")
             & is_england
             & (education == "TERTIARY")
-            & _plan_age_cohort_eligibility(plan_name, age=age, start_year=start_year)
+            & not_a_student
+            & _plan_age_cohort_eligibility(plan_name, age=age, start_year=cohort_start)
         )
         eligible_mass = float(person_weights[eligible].sum())
         eligible_index = np.flatnonzero(eligible)
@@ -420,6 +491,47 @@ def _walk_top_up(
     return np.asarray(taken, dtype=int), len(skipped), lightest
 
 
+def course_start_year(
+    *, year: int, age: np.ndarray, age_left: np.ndarray
+) -> np.ndarray:
+    """The year a borrower's course started (microcosm#868).
+
+    The year they left full-time education less :data:`ASSUMED_COURSE_YEARS`;
+    with no leaving age (0), the year they turned
+    :data:`DEFAULT_COURSE_START_AGE`, the rule before #868.
+    """
+
+    left = np.asarray(age_left, dtype=float)
+    age = np.asarray(age, dtype=float)
+    return np.where(
+        left > 0,
+        year - age + left - ASSUMED_COURSE_YEARS,
+        year - age + DEFAULT_COURSE_START_AGE,
+    )
+
+
+def has_reported_student_loan(
+    *,
+    repayments: np.ndarray,
+    reports_outstanding: np.ndarray,
+    in_education: np.ndarray,
+    region_names: np.ndarray,
+) -> np.ndarray:
+    """Who the FRS reports as a borrower (microcosm#868).
+
+    A repayer anywhere, as before; and in England or Wales an adult who
+    reports an outstanding loan (SLOS) and is not in full-time education, a
+    borrower below the repayment threshold.
+    """
+
+    below_threshold = (
+        np.asarray(reports_outstanding, dtype=bool)
+        & ~np.asarray(in_education, dtype=bool)
+        & ~np.isin(region_names, OUTSTANDING_LOAN_REGIONS_EXCLUDED)
+    )
+    return (np.asarray(repayments, dtype=float) > 0.0) | below_threshold
+
+
 def _plan_age_cohort_eligibility(
     plan: str,
     *,
@@ -480,11 +592,16 @@ def _assert_student_loans_stage_parameters(
                 "assign_student_loan_plan_cohorts",
                 {
                     "year_rule": YEAR_RULE,
-                    "start_year_formula": "year - age + 18",
+                    "start_year_formula": START_YEAR_FORMULA,
                     "reported_repayment_test": "student_loan_repayments > 0",
                     "reported_country_gate": False,
+                    "reported_outstanding_test": REPORTED_OUTSTANDING_TEST,
+                    "reported_outstanding_region_exclusions": list(
+                        OUTSTANDING_LOAN_REGIONS_EXCLUDED
+                    ),
                     "plan_1_before": PLAN_1_BEFORE,
                     "plan_5_from": PLAN_5_FROM,
+                    "plan_5_repayments_from": PLAN_5_REPAYMENTS_FROM,
                     "enum_domain": list(STUDENT_LOAN_ENUM_DOMAIN),
                     "plan_4_imputation": False,
                 },
@@ -499,6 +616,7 @@ def _assert_student_loans_stage_parameters(
                     "year_rule": YEAR_RULE,
                     "age_min": PLAN_5_MIN_AGE,
                     "age_max": PLAN_5_MAX_AGE,
+                    "cohort_start_formula": "year - age + 18",
                     "cohort_start_min": PLAN_5_FROM,
                     "eligible_region_exclusions": region_exclusions,
                     "highest_education": "TERTIARY",
@@ -518,6 +636,8 @@ def _assert_student_loans_stage_parameters(
                     "year_rule": YEAR_RULE,
                     "age_min": PLAN_2_MIN_AGE,
                     "age_max": PLAN_2_MAX_AGE,
+                    "cohort_start_formula": START_YEAR_FORMULA,
+                    "current_education": NOT_IN_EDUCATION,
                     "cohort_start_min": PLAN_1_BEFORE,
                     "cohort_start_max_exclusive": PLAN_5_FROM,
                     "eligible_region_exclusions": region_exclusions,

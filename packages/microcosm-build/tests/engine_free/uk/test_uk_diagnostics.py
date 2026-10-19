@@ -157,9 +157,6 @@ def test_local_weakest_rollups_pin_family_area_and_country_shapes() -> None:
         "worst_target",
         "worst_abs_relative_error",
         "loss_contribution",
-        "nonzero_households",
-        "nonzero_source_households",
-        "effective_sample_size",
     }
     assert [row["country"] for row in areas["countries"]] == [
         "England",
@@ -176,6 +173,29 @@ def test_local_weakest_rollups_pin_family_area_and_country_shapes() -> None:
     assert trimmed["limit"] == 1
     assert trimmed["n_areas_scored"] == 2
     assert [row["area_code"] for row in trimmed["bottom_by_fit"]] == ["W07000041"]
+
+    # The rows ship in a release, so they carry the area's floor flag, never
+    # its rows, ESS or sources (microcosm#1301).
+    flagged = uk_weakest_areas_by_fit(
+        rows, support.assign(support_below_floor=[True, False])
+    )
+    assert {
+        row["area_code"]: row["support_below_floor"] for row in flagged["bottom_by_fit"]
+    } == {"W07000041": True, "E09000001": False}
+    assert all(
+        type(row["support_below_floor"]) is bool for row in flagged["bottom_by_fit"]
+    )
+    for row in flagged["bottom_by_fit"]:
+        assert not {
+            "nonzero_households",
+            "nonzero_source_households",
+            "effective_sample_size",
+        } & set(row)
+    # Only the codes are required of the support table.
+    codes_only = uk_weakest_areas_by_fit(
+        rows, support.loc[:, ["geography_level", "area_code"]]
+    )
+    assert codes_only["bottom_by_fit"] == areas["bottom_by_fit"]
 
 
 def test_local_fit_diagnostics_filter_national_rows_and_pin_support_shape() -> None:
@@ -216,24 +236,35 @@ def test_local_fit_diagnostics_filter_national_rows_and_pin_support_shape() -> N
         "share_failing_cells_in_bottom_ess_decile": 1.0,
         "spearman_worst_abs_relative_error_vs_ess": -1.0,
         "worst_areas": [
-            {
-                "area_code": "E14000001",
-                "worst_abs_relative_error": 0.3,
-                "rows": 2,
-                "ess": 1.0,
-                "sources": 1,
-            },
-            {
-                "area_code": "E14000002",
-                "worst_abs_relative_error": 0.05,
-                "rows": 20,
-                "ess": 20.0,
-                "sources": 20,
-            },
+            {"area_code": "E14000001", "worst_abs_relative_error": 0.3},
+            {"area_code": "E14000002", "worst_abs_relative_error": 0.05},
         ],
     }
     assert result["la"]["n_failing_cells"] == 1
     assert result["la"]["spearman_worst_abs_relative_error_vs_ess"] is None
+
+    # With the floor flag in the support table, each worst area carries it in
+    # place of its rows, ESS and sources (microcosm#1301).
+    flagged = uk_support_limited_misses(
+        diagnostics,
+        {
+            grain: frame.assign(support_below_floor=True)
+            for grain, frame in support.items()
+        },
+        max_abs_relative_error=0.25,
+    )
+    assert flagged["constituency"]["worst_areas"] == [
+        {
+            "area_code": "E14000001",
+            "worst_abs_relative_error": 0.3,
+            "support_below_floor": True,
+        },
+        {
+            "area_code": "E14000002",
+            "worst_abs_relative_error": 0.05,
+            "support_below_floor": True,
+        },
+    ]
 
     rows = [
         _local_target_row(
@@ -644,6 +675,58 @@ def test_consumption_drift_compares_design_and_final_weights() -> None:
     )
     with pytest.raises(ValueError, match="align"):
         uk_consumption_drift(household, design[:3], final)
+    assert "full_rate_vat_base" not in drift["totals"]
+
+
+def test_consumption_drift_carries_the_full_rate_vat_base() -> None:
+    """Consumption times the ETB VAT stage's full-rate share (#1207)."""
+
+    from microcosm.build.uk_runtime.diagnostics import uk_consumption_drift
+
+    household = pd.DataFrame(_consumption_columns(4))
+    household["full_rate_vat_expenditure_rate"] = [0.5, 0.5, 0.25, 0.0]
+    design = np.array([1.0, 1.0, 1.0, 1.0])
+    final = np.array([2.0, 0.0, 1.0, 1.0])
+
+    drift = uk_consumption_drift(household, design, final)
+
+    base = drift["totals"]["full_rate_vat_base"]
+    assert base["design"] == pytest.approx(120.0 * (0.5 + 0.5 + 0.25))
+    assert base["final"] == pytest.approx(120.0 * (2 * 0.5 + 0.25))
+
+
+def test_consumption_drift_carries_the_stage_s_kwh() -> None:
+    """The electricity and gas kWh at both weights, from the spend (#1207)."""
+
+    from microcosm.build.uk_runtime.diagnostics import uk_consumption_drift
+    from microcosm.build.uk_runtime.domestic_energy_targets import (
+        household_energy_kwh,
+        household_energy_prices,
+    )
+
+    household = pd.DataFrame(_consumption_columns(4))
+    household["electricity_consumption"] = [900.0, 1100.0, 700.0, 1300.0]
+    household["gas_consumption"] = [800.0, 0.0, 950.0, 0.0]
+    household["region"] = ["LONDON", "WALES", "SCOTLAND", "NORTHERN_IRELAND"]
+    design = np.array([1.0, 1.0, 1.0, 1.0])
+    final = np.array([2.0, 0.0, 1.0, 1.0])
+
+    drift = uk_consumption_drift(household, design, final)
+
+    kwh = household_energy_kwh(
+        household["electricity_consumption"],
+        household["gas_consumption"],
+        region=household["region"],
+        prices=household_energy_prices(),
+    )
+    for name in ("electricity_kwh", "gas_kwh"):
+        assert drift["totals"][name]["design"] == pytest.approx(design @ kwh[name])
+        assert drift["totals"][name]["final"] == pytest.approx(final @ kwh[name])
+    assert drift["totals"]["gas_kwh"]["design"] > 0
+    without_region = uk_consumption_drift(
+        household.drop(columns="region"), design, final
+    )
+    assert "electricity_kwh" not in without_region["totals"]
 
 
 def test_payload_carries_the_consumption_drift_when_the_frame_has_it() -> None:

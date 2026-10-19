@@ -209,7 +209,7 @@ class TestE6Receipt:
                 "is_SP_age": "person",
                 "dla": "person",
                 "pip": "person",
-                "hbai_household_net_income": "household",
+                "hbai_household_net_income_before_reset_to_zero": "household",
                 "current_education": "person",
             }
 
@@ -226,7 +226,9 @@ class TestE6Receipt:
                     "is_SP_age": np.ones(person_rows),
                     "dla": np.zeros(person_rows),
                     "pip": np.zeros(person_rows),
-                    "hbai_household_net_income": np.full(household_rows, 100.0),
+                    "hbai_household_net_income_before_reset_to_zero": np.full(
+                        household_rows, 100.0
+                    ),
                     "current_education": np.full(
                         person_rows, "NOT_IN_EDUCATION", dtype=object
                     ),

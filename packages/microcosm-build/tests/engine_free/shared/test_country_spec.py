@@ -921,6 +921,7 @@ class TestUKCountryPackage:
         assert legacy_rows == (
             "degenerate_reviewed_exclusions.json",
             "target_fit_reviewed_exclusions.json",
+            "local_target_fit_reviewed_exclusions.json",
             "efrs_parity_known_gaps.json",
             "efrs_parity_reference.json",
             "frs_release.json",
@@ -931,6 +932,8 @@ class TestUKCountryPackage:
             "hmrc_cgt_conditioning_facts.json",
             "hmrc_cgt_asset_type_facts.json",
             "hmrc_property_rental_income_facts.json",
+            "hmrc_stamp_tax_facts.json",
+            "dwp_move_to_uc_facts.json",
             "obr_hvcts_costing_facts.json",
             "hmrc_itl_taxpayer_counts.json",
             "hmrc_uprating_engine_pins.json",
@@ -1008,6 +1011,7 @@ class TestUKCountryPackage:
             "cross_grain_declarations.json",
             "uprating_holds.json",
             "ons_spree_tenure_dwellings.json",
+            "desnz_local_energy_facts.json",
             "local_small_cell_rule.json",
             "hmrc_spi_table_3_11_uk_rows.json",
         )
@@ -1026,8 +1030,11 @@ class TestUKCountryPackage:
         # retired (#901).
         # microcosm#1063 also adds cgt_residential_split after the anchor, and
         # microcosm#1106 property_components after the regional uprating;
-        # microcosm#1240 high_value_home_support between them.
-        assert len(spec.sources.stages) == 41
+        # microcosm#1240 high_value_home_support between them, microcosm#1112
+        # regional_home_values after it, and microcosm#1095 property_purchases
+        # after property_components and uc_legacy_closure_take_up after
+        # uc_capital_coherence.
+        assert len(spec.sources.stages) == 45
         assert not {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.intersection(
             stage.stage for stage in spec.sources.stages
         )
@@ -1058,6 +1065,7 @@ class TestExistingPackagesGeneralize:
             "spec/vintages.yaml",
             "degenerate_reviewed_exclusions.json",
             "target_fit_reviewed_exclusions.json",
+            "local_target_fit_reviewed_exclusions.json",
             "efrs_parity_known_gaps.json",
             "efrs_parity_reference.json",
             "frs_release.json",
@@ -1068,6 +1076,8 @@ class TestExistingPackagesGeneralize:
             "hmrc_cgt_conditioning_facts.json",
             "hmrc_cgt_asset_type_facts.json",
             "hmrc_property_rental_income_facts.json",
+            "hmrc_stamp_tax_facts.json",
+            "dwp_move_to_uc_facts.json",
             "obr_hvcts_costing_facts.json",
             "hmrc_itl_taxpayer_counts.json",
             "hmrc_uprating_engine_pins.json",
@@ -1145,6 +1155,7 @@ class TestExistingPackagesGeneralize:
             "cross_grain_declarations.json",
             "uprating_holds.json",
             "ons_spree_tenure_dwellings.json",
+            "desnz_local_energy_facts.json",
             "local_small_cell_rule.json",
             "hmrc_spi_table_3_11_uk_rows.json",
         )
@@ -1154,7 +1165,7 @@ class TestExistingPackagesGeneralize:
 
         references = {reference.name: reference for reference in spec.target_references}
         assert (
-            len(references) == 1283
+            len(references) == 1319
         )  # microcosm#1095: + 4, the two national 15_19 sex bands split into ages 15, 16-17 and 18-19; microcosm#1106: + 13 SPI property amounts; microcosm#1113: + 1 ONS 07.2.2 household road fuel; PolicyEngine/chronicle#280 lane: 705 + 33 HMRC liabilities rows (Table 2.5, three
         # measures by eleven bands) + 26 SPI savings-interest rows (two measures by
         # thirteen bands) + 360 SPI Table 3.11 region-tier rows (three measures by
@@ -1180,7 +1191,14 @@ class TestExistingPackagesGeneralize:
         # microcosm#1123: the 12 nation household control cells and the 24
         # ITL Table 2.2 marginal-rate cells;
         # microcosm#1106: the 13 SPI Table 3.7 net property-income amounts by
-        # total-income band, bound unscaled once the x1.9 exclusion retired
+        # total-income band, bound unscaled once the x1.9 exclusion retired;
+        # microcosm#1207: the 9 DfT BUS01a bus journey rows (London and the
+        # eight English regions outside London); microcosm#1095: less DWP's
+        # five-or-more-children UC count, a diagnostic beside the two-child
+        # limit rows; microcosm#1301: the 30 high-value homes region cells
+        # (three thresholds over England's regions and Wales), which the
+        # national line drops after the compile, less the North East and
+        # Wales rows over £2m, signed out below the small-cell floor
         assert references["obr.esa"].value_operation == "calendar_year_window"
         assert references["dwp.uc.households"].value_operation == (
             "monthly_window_sum_average"

@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import tempfile
 from collections.abc import Iterable, Mapping
 from dataclasses import replace
 from pathlib import Path
@@ -114,12 +115,31 @@ from microcosm.build.uk_runtime.lcfs_consumption import (
     BUS_FARE_LCFS_CODES,
     UKLCFSConsumptionStageTransform,
 )
+from microcosm.build.uk_runtime.legacy_closure_take_up import (
+    UKLegacyClosureTakeUpStageTransform,
+)
 from microcosm.build.uk_runtime.nts_bus_travel import UKNTSBusTravelStageTransform
 from microcosm.build.uk_runtime.pension_credit_take_up import (
     UKPensionCreditTakeUpStageTransform,
 )
+from microcosm.build.uk_runtime.private_school_attendance import (
+    UKPrivateSchoolAttendanceStageTransform,
+)
 from microcosm.build.uk_runtime.property_components import (
     UKPropertyComponentsStageTransform,
+)
+from microcosm.build.uk_runtime.property_purchases import (
+    PROPERTY_PURCHASE_BAND_IDS,
+    PROPERTY_PURCHASE_KINDS,
+    UKPropertyPurchasesStageTransform,
+    UKPropertyPurchaseTarget,
+    UKPropertyPurchaseTargets,
+    property_purchase_uniforms,
+    sdlt_region_mask,
+    select_property_purchasers,
+)
+from microcosm.build.uk_runtime.regional_home_values import (
+    UKRegionalHomeValuesStageTransform,
 )
 from microcosm.build.uk_runtime.regional_uprating import (
     UKRegionalPropertyUpratingStageTransform,
@@ -175,7 +195,7 @@ _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 41
+UK_FIXTURE_STAGE_COUNT = 45
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
@@ -448,6 +468,11 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
             "PAREAMT": 13.0,
             "REDAMT": 20.0,
             "SLREPAMT": 2.0,
+            # SLOS ("outstanding student loan?") follows a no to SLREPAY, so a
+            # repayer answers no; EDUCLEFT dates each adult's course
+            # (microcosm#868).
+            "SLOS": 2,
+            "EDUCLEFT": 16 + household_id % 8,
             "SSPADJ": 1.0,
             "SMPADJ": 0.5,
             "SPPADJ": 0.25,
@@ -521,6 +546,9 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "PERSON": 1,
                 "BENEFIT": benefit,
                 "VAR2": variant,
+                # ESAGROUP on the ESA rows: the support group on odd households,
+                # the work-related activity group on even ones.
+                "VAR3": (2 if household_id % 2 else 1) if benefit == 16 else 0,
                 "BENAMT": amount,
                 "UCSTART": "",
                 "UCHOUSEL": "",
@@ -545,6 +573,7 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                     "PERSON": 1,
                     "BENEFIT": 95,
                     "VAR2": 0,
+                    "VAR3": 0,
                     "BENAMT": 8.0,
                     "UCSTART": ("07/01/2024", "01/15/2022", "")[household_id % 9 // 3],
                     "UCHOUSEL": 50.0 if household_id % 2 else "",
@@ -567,6 +596,12 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 if household_id % 8 in (2, 3)
                 else "",
                 "JOBBUS": 2 if household_id % 2 else 1,
+                # Every tenth adult directs a company they own more than half
+                # of, as their first job (microcosm#1095).
+                "DIRECTOR": 1 if household_id % 10 == 0 else 2,
+                "NATURE": 4,
+                "DIRPERC": 2 if household_id % 10 == 0 else -1,
+                "DIVIDEND": 1000.0 if household_id % 10 == 0 else 0.0,
             }
         )
         pensions.append(
@@ -813,9 +848,13 @@ def _was_donor() -> pd.DataFrame:
             "GORR8": np.take([8, 11, 12, 1], position % 4),
             "DVPriRntR8": private_rent,
             "DVCTaxAmtAnnualR8": 900.0 + rows * 10.0,
-            # Net rent where the household holds property beyond its home.
+            # Net rent where the household lets property: buy-to-let, not every
+            # other house. With rent on every other house too, no recipient
+            # drew any other house, so the frame held no other residential
+            # stock and the purchases stage could not run its scaled fit
+            # (microcosm#1095).
             "DVNetRentAmtAnnualR8_aggr": np.where(
-                (other_houses > 0.0) | (buy_to_let > 0.0), 2_000.0 + rows * 40.0, 0.0
+                buy_to_let > 0.0, 2_000.0 + rows * 40.0, 0.0
             ),
             "HFINWNTR8_Sum": gross_financial - consumer_debt - student_loans,
             "HFINWNTR8_exSLC_Sum": gross_financial - consumer_debt,
@@ -1443,6 +1482,92 @@ _FIXTURE_PRIS_EXPENSES_PER_PROFIT = 1.0
 _FIXTURE_PRIS_INDIVIDUALS_SHARE = 0.99
 
 
+#: The fixture's purchase targets: a share of each kind's eligible
+#: England-and-Northern-Ireland owner weight, priced from bands in multiples of
+#: a floor scaled to the synthetic donor's small stocks (count, mean), so the
+#: stage fits a real threshold and scale on the small frame. Production
+#: targets carry HMRC's GBP 40,000 floor.
+_FIXTURE_PURCHASE_RATE = 0.25
+_FIXTURE_PURCHASE_MINIMUM = 1_000.0
+_FIXTURE_PURCHASE_BANDS = (
+    (60.0, 1.5),
+    (30.0, 3.0),
+    (14.0, 6.0),
+    (3.0, 11.0),
+    (2.0, 15.0),
+    (1.0, 40.0),
+)
+#: The share of its non-residential value target the fixture's purchasers'
+#: stock carries: above the stage's 80% floor, so the stage runs the stock-cap
+#: fit, as the national spine's non-residential purchases do.
+_FIXTURE_STOCK_CAP_FIT = 0.9
+
+
+def _property_purchase_targets(frame: Frame) -> UKPropertyPurchaseTargets:
+    """Synthetic purchase targets sized to the frame ``property_purchases`` reads.
+
+    The count is a fixed share of each kind's eligible owner weight, found with
+    the stage's own selection and streams. The non-residential value asks a
+    ninth more than the purchasers' stock, so the stage buys at the stock; the
+    additional-dwelling value lies midway between the price floor and the
+    stock, so the stage scales its band draws. One kind runs each fit, as on
+    the national spine.
+    """
+
+    household = frame.table("household")
+    weights = np.asarray(frame.weights_for("household").values, dtype=float)
+    sdlt = sdlt_region_mask(household["region"])
+    ids = household["household_id"].to_numpy()
+    targets = {}
+    for kind in PROPERTY_PURCHASE_KINDS:
+        stock = pd.to_numeric(household[kind.stock], errors="raise").to_numpy(
+            dtype=float
+        )
+        eligible = (stock >= _FIXTURE_PURCHASE_MINIMUM) & (weights > 0) & sdlt
+        if not eligible.any():
+            # The synthetic frame holds no stock of this kind: not imputed.
+            targets[kind.name] = None
+            continue
+        transactions = _FIXTURE_PURCHASE_RATE * float(weights[eligible].sum())
+        event_uniforms, _ = property_purchase_uniforms(ids, kind)
+        purchased, _ = select_property_purchasers(
+            stock=stock,
+            weights=weights,
+            sdlt_mask=sdlt,
+            event_uniforms=event_uniforms,
+            transactions=transactions,
+            minimum_price=_FIXTURE_PURCHASE_MINIMUM,
+            property_type=kind.name,
+        )
+        fitted = weights * (purchased & sdlt)
+        floor = _FIXTURE_PURCHASE_MINIMUM * float(fitted.sum())
+        capacity = float(np.dot(stock, fitted))
+        if not capacity > floor:
+            raise RuntimeError(
+                f"The fixture's {kind.name} purchasers hold no stock above the floor."
+            )
+        targets[kind.name] = UKPropertyPurchaseTarget(
+            property_type=kind.name,
+            transactions=transactions,
+            value=(
+                capacity / _FIXTURE_STOCK_CAP_FIT
+                if kind.name == "non_residential"
+                else (floor + capacity) / 2.0
+            ),
+            band_ids=PROPERTY_PURCHASE_BAND_IDS,
+            band_transactions=tuple(count for count, _ in _FIXTURE_PURCHASE_BANDS),
+            band_values=tuple(
+                count * mean * _FIXTURE_PURCHASE_MINIMUM
+                for count, mean in _FIXTURE_PURCHASE_BANDS
+            ),
+            minimum_price=_FIXTURE_PURCHASE_MINIMUM,
+        )
+    return UKPropertyPurchaseTargets(
+        additional_residential=targets["additional_residential"],
+        non_residential=targets["non_residential"],
+    )
+
+
 def _property_rental_facts(frame: Frame) -> HMRCPropertyRentalFacts:
     """Synthetic PRIS facts sized to the frame ``property_components`` reads.
 
@@ -1765,6 +1890,7 @@ def _build_implementations(
     cgt_badr_parameters: UKCGTBADRParameters,
     cgt_asset_type_facts: HMRCCGTAssetTypeFacts | None = None,
     property_rental_facts: HMRCPropertyRentalFacts | None = None,
+    property_purchase_targets: UKPropertyPurchaseTargets | None = None,
 ) -> tuple[dict[str, object], dict[str, Frame]]:
     engine = PolicyEngineUKEngine()
     contract = load_uk_take_up_contract()
@@ -1848,6 +1974,13 @@ def _build_implementations(
             donor_table=spi_donor,
             facts=property_rental_facts,
         ),
+        "regional_home_values": UKRegionalHomeValuesStageTransform(
+            stage=stages["regional_home_values"]
+        ),
+        "property_purchases": UKPropertyPurchasesStageTransform(
+            stage=stages["property_purchases"],
+            targets=property_purchase_targets,
+        ),
         "lcfs_consumption": UKLCFSConsumptionStageTransform(
             stage=stages["lcfs_consumption"],
             engine=engine,
@@ -1895,6 +2028,9 @@ def _build_implementations(
         "uc_capital_coherence": UKUCCapitalCoherenceStageTransform(
             stage=stages["uc_capital_coherence"]
         ),
+        "uc_legacy_closure_take_up": UKLegacyClosureTakeUpStageTransform(
+            stage=stages["uc_legacy_closure_take_up"]
+        ),
         "pension_credit_take_up": UKPensionCreditTakeUpStageTransform(
             stage=stages["pension_credit_take_up"], engine=engine
         ),
@@ -1939,6 +2075,11 @@ def _build_implementations(
         ),
         "student_loans": UKStudentLoansStageTransform(
             stage=stages["student_loans"], calibration_year=2025
+        ),
+        "private_school_attendance": UKPrivateSchoolAttendanceStageTransform(
+            stage=stages["private_school_attendance"],
+            engine=engine,
+            calibration_year=2025,
         ),
         "age_tail": UKAgeTailStageTransform(stage=stages["age_tail"]),
     }
@@ -2086,6 +2227,20 @@ def generate(output: Path) -> None:
     )
     build_kwargs["property_rental_facts"] = property_rental_facts
     implementations, _ = _build_implementations(**build_kwargs)
+    # The purchase targets are sized to the frame property_purchases reads.
+    prefix = stages[: stage_names.index("property_purchases")]
+    prefix_names = {stage.stage for stage in prefix}
+    before_purchases = _run_legacy_plan(
+        prefix,
+        {name: impl for name, impl in implementations.items() if name in prefix_names},
+    )
+    property_purchase_targets = _property_purchase_targets(before_purchases)
+    _write_json(
+        sources / "property_purchase_targets.json",
+        property_purchase_targets.payload(),
+    )
+    build_kwargs["property_purchase_targets"] = property_purchase_targets
+    implementations, _ = _build_implementations(**build_kwargs)
     prefix = stages[: stage_names.index("cgt_residential_split")]
     prefix_names = {stage.stage for stage in prefix}
     after_redraw = _run_legacy_plan(
@@ -2139,6 +2294,7 @@ def generate(output: Path) -> None:
             "cgt_distribution": "cgt_distribution.json",
             "cgt_asset_type_facts": "cgt_asset_type_facts.json",
             "property_rental_facts": "property_rental_facts.json",
+            "property_purchase_targets": "property_purchase_targets.json",
         },
         "cgt_parameters": cgt_parameters.__dict__,
         "cgt_badr_parameters": cgt_badr_parameters.__dict__,
@@ -2169,12 +2325,55 @@ def generate(output: Path) -> None:
 def _parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=_DEFAULT_OUTPUT)
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help=(
+            "regenerate into a temporary directory and fail if any file differs "
+            "from, or is missing in, --output"
+        ),
+    )
     return parser.parse_args(argv)
+
+
+def _differing_files(generated: Path, committed: Path) -> list[str]:
+    """The relative paths whose bytes differ, or which one side lacks."""
+
+    def files(root: Path) -> dict[str, Path]:
+        return {
+            path.relative_to(root).as_posix(): path
+            for path in root.rglob("*")
+            if path.is_file()
+        }
+
+    new, old = files(generated), files(committed)
+    return sorted(
+        path
+        for path in new.keys() | old.keys()
+        if path not in new
+        or path not in old
+        or new[path].read_bytes() != old[path].read_bytes()
+    )
 
 
 def main(argv: Iterable[str] | None = None) -> int:
     args = _parse_args(argv)
-    generate(args.output.resolve())
+    output = args.output.resolve()
+    if not args.check:
+        generate(output)
+        return 0
+    # The fixture does not depend on where it is written, so a fresh copy in a
+    # scratch directory must equal the committed one byte for byte.
+    with tempfile.TemporaryDirectory() as scratch:
+        generated = Path(scratch) / output.name
+        generate(generated)
+        differing = _differing_files(generated, output)
+    for path in differing:
+        print(f"differs: {path}")
+    if differing:
+        print(f"{len(differing)} file(s) differ from {output}")
+        return 1
+    print(f"{output} regenerates byte-identically")
     return 0
 
 

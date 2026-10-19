@@ -17,6 +17,14 @@ import pandas as pd
 from microcosm.build.uk_runtime.atomic_area_support import (
     without_uk_native_alias_columns,
 )
+from microcosm.build.uk_runtime.high_value_homes import (
+    high_value_home_mask,
+    uk_high_value_home_thresholds,
+)
+from microcosm.build.uk_runtime.hmrc_income import (
+    LOSS_RELIEF_COLUMN,
+    self_employment_income_after_loss_relief,
+)
 from microcosm.build.uk_runtime.income_tax_rate_classes import (
     UK_RATE_CLASS_ALLOCATION,
     UK_RATE_CLASS_ENGINE_FLOAT32_STEPS,
@@ -120,6 +128,122 @@ def cgt_taxable_income_from_components(parts: Mapping[str, Any]) -> np.ndarray:
     return np.maximum(0.0, values["net_income"] - allowances)
 
 
+#: DfT BUS01 boardings from the NTS trips the frame carries (microcosm#1207):
+#: each household's trips on the series times the boardings per trip the
+#: lcfs stage priced that series at, by the household's region (Wales is
+#: unpriced and no row binds it). Reserved names: a persisted column of
+#: either would bypass the stage's factor.
+_BUS_BOARDING_MEASURES = {
+    "bus_in_london_boardings": "bus_in_london_trips",
+    "other_local_bus_boardings": "other_local_bus_trips",
+}
+
+
+def household_bus_boardings(frame: Any, variable: str) -> np.ndarray:
+    """A household's boardings on one bus series, in the frame's household order."""
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.bus_fare_pricing import bus_fare_prices
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_VENDORED_RESOURCES,
+        bus_pricing_operation,
+    )
+
+    trips_column = _BUS_BOARDING_MEASURES[variable]
+    declared = bus_pricing_operation(
+        load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    )
+    if declared is None:
+        raise KeyError("the lcfs stage declares no bus pricing")
+    prices = bus_fare_prices(declared, allowed_resources=UK_LCFS_VENDORED_RESOURCES)
+    person = frame.table("person")
+    household = frame.table("household")
+    trips = person[trips_column].to_numpy(dtype=float)
+    if not np.isfinite(trips).all() or (trips < 0).any():
+        raise ValueError(f"{trips_column} must be finite and non-negative.")
+    if variable == "bus_in_london_boardings":
+        # London's buses carry every resident's bus-in-London trips, wherever
+        # they live: the series is priced once, at London's factor.
+        per_trip = np.full(len(person), prices.london.boardings_per_trip)
+    else:
+        region_by_household = pd.Series(
+            household["region"].astype(str).to_numpy(),
+            index=household["household_id"].to_numpy(),
+        )
+        region = region_by_household.loc[
+            person["person_household_id"].to_numpy()
+        ].to_numpy()
+        per_trip = np.asarray(
+            [
+                prices.other_by_region[name].boardings_per_trip
+                if name in prices.other_by_region
+                else 0.0
+                for name in region
+            ]
+        )
+    boardings = (
+        pd.Series(trips * per_trip)
+        .groupby(person["person_household_id"].to_numpy())
+        .sum()
+    )
+    return boardings.reindex(
+        household["household_id"].to_numpy(), fill_value=0.0
+    ).to_numpy(dtype=float)
+
+
+#: Owner-occupied homes over each high-value threshold, one indicator per
+#: household: the measure of the region rows that control the family's area
+#: cells on the local line (microcosm#1301). The indicator is the stored
+#: main_residence_value and tenure_type through ``high_value_home_mask`` at the
+#: threshold's frame-basis value, as the local metrics and the release gates
+#: read them, never an engine-uprated value. Reserved names: a persisted column
+#: of any would bypass the mask.
+_HIGH_VALUE_HOME_MEASURES = {
+    "owner_occupied_home_over_gbp_1m": "over_gbp_1m",
+    "owner_occupied_home_over_gbp_1_5m": "over_gbp_1_5m",
+    "owner_occupied_home_over_gbp_2m": "over_gbp_2m",
+}
+_HIGH_VALUE_HOME_COLUMNS = ("main_residence_value", "tenure_type")
+
+
+def household_high_value_home(frame: Any, variable: str) -> np.ndarray:
+    """One for an owner-occupied household whose stored home value is over the threshold."""
+
+    threshold_id = _HIGH_VALUE_HOME_MEASURES[variable]
+    threshold = {
+        candidate.threshold_id: candidate
+        for candidate in uk_high_value_home_thresholds()
+    }[threshold_id]
+    household = frame.table("household")
+    missing = [column for column in _HIGH_VALUE_HOME_COLUMNS if column not in household]
+    if missing:
+        raise ValueError(f"{variable} needs the stored household columns {missing}.")
+    return high_value_home_mask(
+        household["main_residence_value"].to_numpy(dtype=float),
+        household["tenure_type"].to_numpy(),
+        threshold_basis_gbp=threshold.basis_gbp,
+    ).astype(float)
+
+
+#: HMRC's statistics count the year's profit after losses brought forward,
+#: which policyengine-uk keeps apart in loss_relief: the self-employment rows
+#: read that profit, and every row on HMRC's total income (its bands, its
+#: amounts, its regional filters) reads total income with that profit
+#: (microcosm#1095). The engine's total_income adds the profit before the
+#: relief, so the total-income measure swaps the one for the other.
+UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF = "self_employment_income_after_loss_relief"
+UK_TOTAL_INCOME_AFTER_LOSS_RELIEF = "total_income_after_loss_relief"
+_LOSS_RELIEF_MEASURES = (
+    UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF,
+    UK_TOTAL_INCOME_AFTER_LOSS_RELIEF,
+)
+_LOSS_RELIEF_MEASURE_COMPONENTS = (
+    "self_employment_income",
+    LOSS_RELIEF_COLUMN,
+    "total_income",
+)
+
+
 #: Every binding key that names a measured variable: a dated CGT measure in
 #: any of them must carry its own measurement period (microcosm#1014 bands
 #: and filters on dated measures, not only gates and values).
@@ -214,6 +338,61 @@ def compute_uk_measure_input(
         return (
             cgt_taxable_income_from_components(parts),
             "engine_components:capital_gains_tax_taxable_income",
+        )
+
+    if variable in _BUS_BOARDING_MEASURES:
+        if entity != "household":
+            raise KeyError(f"bus boardings are household-only: {entity}")
+        return (
+            household_bus_boardings(frame, variable),
+            f"stage_boardings_per_trip:{_BUS_BOARDING_MEASURES[variable]}",
+        )
+
+    if variable in _HIGH_VALUE_HOME_MEASURES:
+        if entity != "household":
+            raise KeyError(f"high-value home measures are household-only: {entity}")
+        return (
+            household_high_value_home(frame, variable),
+            f"frame_columns:high_value_home_mask:{_HIGH_VALUE_HOME_MEASURES[variable]}",
+        )
+
+    if variable in _LOSS_RELIEF_MEASURES:
+        if entity != "person":
+            raise KeyError(f"{variable} is person-only: {entity}")
+        person = frame.table("person")
+        if variable == UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF and (
+            "self_employment_income" in person
+        ):
+            # A binding on a stored column reads the frame's own value, as the
+            # rows read self_employment_income before the move; the profit
+            # after the relief is read the same way (microcosm#1095).
+            stored_relief = (
+                person[LOSS_RELIEF_COLUMN].to_numpy(dtype=float)
+                if LOSS_RELIEF_COLUMN in person
+                else np.zeros(len(person))
+            )
+            return (
+                self_employment_income_after_loss_relief(
+                    person["self_employment_income"].to_numpy(dtype=float),
+                    stored_relief,
+                ),
+                "frame_columns:self_employment_income_less_loss_relief",
+            )
+        profit = compute_uk_measure_input(
+            frame, simulation, "person", "self_employment_income", year
+        )[0]
+        relief = compute_uk_measure_input(
+            frame, simulation, "person", LOSS_RELIEF_COLUMN, year
+        )[0]
+        after = self_employment_income_after_loss_relief(profit, relief)
+        if variable == UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF:
+            return after, "engine_components:self_employment_income_less_loss_relief"
+        total = compute_uk_measure_input(
+            frame, simulation, "person", "total_income", year
+        )[0]
+        return (
+            np.asarray(total, dtype=float) - np.asarray(profit, dtype=float) + after,
+            "engine_components:total_income_with_profit_after_loss_relief",
         )
 
     if variable in UC_TARGET_VARIABLES:
@@ -513,6 +692,34 @@ def _engine_scratch_frame(
     return engine_frame, dropped
 
 
+def engine_bus_pricing_parameters(
+    tax_benefit_system: Any, year: int
+) -> dict[str, dict[str, float]]:
+    """policyengine-uk's bus boardings per trip and yield per boarding by area.
+
+    Read at ``year`` in the resolver's own period form (the engine resolves
+    a year to its 1 January instant) for every area the stage prices
+    (``UK_ENGINE_BUS_AREA_BY_STAGE_AREA``); raises AttributeError when the
+    engine carries no such parameters.
+    """
+
+    from microcosm.build.uk_runtime.bus_fare_pricing import (
+        UK_ENGINE_BUS_AREA_BY_STAGE_AREA,
+    )
+
+    parameters = getattr(tax_benefit_system, "parameters", None)
+    if parameters is None:
+        raise AttributeError("the engine exposes no parameters")
+    bus = parameters(str(int(year))).gov.dft.bus
+    return {
+        name: {
+            area: float(getattr(getattr(bus, name), area))
+            for area in UK_ENGINE_BUS_AREA_BY_STAGE_AREA.values()
+        }
+        for name in ("boardings_per_trip", "yield_per_boarding")
+    }
+
+
 class UKMeasureResolver:
     """B2 measure provider backed by a policyengine-uk Microsimulation."""
 
@@ -580,6 +787,22 @@ class UKMeasureResolver:
             raise ValueError(
                 "CGT calibration measures must not be persisted as source inputs: "
                 f"{sorted(reserved)}"
+            )
+        persisted_boardings = sorted(
+            set(_BUS_BOARDING_MEASURES) & set(map(str, frame.table("household")))
+        )
+        if persisted_boardings:
+            raise ValueError(
+                "Bus boarding measures must not be persisted as source inputs: "
+                f"{persisted_boardings}"
+            )
+        persisted_high_value = sorted(
+            set(_HIGH_VALUE_HOME_MEASURES) & set(map(str, frame.table("household")))
+        )
+        if persisted_high_value:
+            raise ValueError(
+                "High-value home measures must not be persisted as source inputs: "
+                f"{persisted_high_value}"
             )
         self.simulation = factory(dataset=str(source_path))
         validate_uc_claimant_input(self.simulation, frame.table("person"), self.year)
@@ -657,12 +880,18 @@ class UKMeasureResolver:
             | UC_PAID_TARGET_VARIABLES
         ):
             return entity == "benunit"
+        if variable in _BUS_BOARDING_MEASURES or variable in _HIGH_VALUE_HOME_MEASURES:
+            return entity == "household"
         cgt_measure = _cgt_model_measure(variable, self.year)
         if cgt_measure is not None:
             return entity == "person" and self.knows(entity, cgt_measure[0])
         if variable == _CGT_TAXABLE_INCOME:
             return entity == "person" and all(
                 self.knows("person", name) for name in _CGT_TAXABLE_INCOME_COMPONENTS
+            )
+        if variable in _LOSS_RELIEF_MEASURES:
+            return entity == "person" and all(
+                self.knows("person", name) for name in _LOSS_RELIEF_MEASURE_COMPONENTS
             )
         definition = self.simulation.tax_benefit_system.variables.get(variable)
         if definition is None or entity not in _ENTITY_ID:
@@ -680,7 +909,11 @@ class UKMeasureResolver:
         return getattr(definition, "value_type", None) in (int, float)
 
     def entity_for(self, variable: str) -> str | None:
+        if variable in _BUS_BOARDING_MEASURES or variable in _HIGH_VALUE_HOME_MEASURES:
+            return "household"
         if _cgt_model_measure(variable, self.year) is not None:
+            return "person"
+        if variable in _LOSS_RELIEF_MEASURES:
             return "person"
         if (
             variable
@@ -936,8 +1169,54 @@ class UKMeasureResolver:
         self._counterfactuals[key] = simulation
         return simulation
 
+    def _bus_engine_parity(self) -> dict[str, Any]:
+        """The engine's bus pricing against the lcfs stage's, computed once.
+
+        Report only (microcosm#1207): the engine prices bus fares from the
+        trips the dataset carries at its own boardings per trip and yield per
+        boarding, so the receipt records how far those stand from the ones the
+        stage priced at. An engine without them records why it has none.
+        """
+
+        cached = getattr(self, "_bus_parity", None)
+        if cached is not None:
+            return cached
+        from microcosm.build.country_spec import load_country_spec
+        from microcosm.build.uk_runtime.bus_fare_pricing import (
+            bus_engine_parity,
+            bus_fare_prices,
+        )
+        from microcosm.build.uk_runtime.lcfs_consumption import (
+            UK_LCFS_VENDORED_RESOURCES,
+            bus_pricing_operation,
+        )
+
+        declared = bus_pricing_operation(
+            load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+        )
+        try:
+            if declared is None:
+                raise AttributeError("the lcfs stage declares no bus pricing")
+            engine = engine_bus_pricing_parameters(
+                getattr(self.simulation, "tax_benefit_system", None), self.year
+            )
+        except AttributeError as error:
+            parity: dict[str, Any] = {
+                "report_only": True,
+                "available": False,
+                "reason": str(error),
+            }
+        else:
+            parity = bus_engine_parity(
+                bus_fare_prices(declared, allowed_resources=UK_LCFS_VENDORED_RESOURCES),
+                engine,
+            )
+        self._bus_parity = parity
+        return parity
+
     def receipt(self) -> dict[str, Any]:
         receipt = dict(self._receipt)
+        receipt["bus_engine_parity"] = self._bus_engine_parity()
         if getattr(self, "_engine_weight_scale", None) is not None:
             receipt["engine_weight_scale"] = float(self._engine_weight_scale)
         if getattr(self, "_engine_scratch_dropped_columns", ()):
@@ -998,12 +1277,19 @@ def load_uk_calibration_measure_exclusions(
     else:
         text = Path(path).read_text(encoding="utf-8")
     payload = json.loads(text)
+    # Schema 3 adds the signed sparse-band support floor (microcosm#1095 U3),
+    # which ``support_floor.load_uk_support_floor_declaration`` reads.
+    schema_version = payload.get("schema_version")
     allowed_top = {"schema_version", "exclusions"}
+    if schema_version == 3:
+        allowed_top.add("support_floor")
     unknown = sorted(set(payload) - allowed_top)
     if unknown:
         raise ValueError(f"unknown top-level exclusion key(s): {unknown}")
-    if payload.get("schema_version") != 2:
-        raise ValueError("UK calibration measure exclusions schema_version must be 2.")
+    if schema_version not in (2, 3):
+        raise ValueError(
+            "UK calibration measure exclusions schema_version must be 2 or 3."
+        )
     exclusions = payload.get("exclusions")
     if not isinstance(exclusions, list):
         raise ValueError("UK calibration measure exclusions must contain a list.")

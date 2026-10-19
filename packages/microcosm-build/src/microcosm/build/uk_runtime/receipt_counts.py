@@ -8,11 +8,56 @@ group by difference. A count a gate must read exactly, such as the zero a
 check requires, stays a count of zero. A share follows the same rule: an
 unweighted share is floored to two decimals, since an exact one gives back
 its count, and a weighted share carried by one to nine records is "<10".
+
+Ten is CD171's working minimum, and no study the build reads sets a higher
+one. The UK Data Service catalogue entries were read for conditions beyond
+the End User Licence (microcosm#1278): the FRS 2024-25 (SN 9563) has none
+(checked 2026-10-16), and neither have the LCFS, ETB, WAS and NTS studies
+(checked 2026-10-14). The SPI 2022-23 Public Use Tape (SN 9422, checked
+2026-10-16) adds two: no attempt may be made to attribute a record to a named
+individual, and material that includes analyses of the tape goes to HMRC at
+least ten working days before it is distributed or published.
 """
 
 from __future__ import annotations
 
 import math
+from typing import Any
+
+import numpy as np
+
+#: The lineage a stage receipt counts distinct support by: support copies
+#: repeat their source household, so a cell is counted in sources, not rows.
+SOURCE_HOUSEHOLD_COLUMN = "household_source_id"
+
+
+def source_household_ids(household: Any, *, stage: str) -> np.ndarray:
+    """Every household row's source household, for a receipt's support counts.
+
+    A table without the column is refused, and so is one with a null in it: a
+    null drops out of a distinct count or counts as one source, so a cell
+    would read fewer sources than it rests on.
+    """
+
+    if SOURCE_HOUSEHOLD_COLUMN not in household.columns:
+        raise ValueError(
+            f"{stage} counts support by {SOURCE_HOUSEHOLD_COLUMN!r}, which the "
+            "frame does not carry."
+        )
+    ids = household[SOURCE_HOUSEHOLD_COLUMN]
+    if ids.isna().any():
+        raise ValueError(
+            f"{stage} counts support by {SOURCE_HOUSEHOLD_COLUMN!r}, which is null "
+            "on some rows: every row needs its source household."
+        )
+    return ids.to_numpy()
+
+
+def distinct_count(source_ids: np.ndarray, mask: np.ndarray) -> int:
+    """The distinct source households behind a cell."""
+
+    selected = np.asarray(source_ids)[np.asarray(mask, dtype=bool)]
+    return int(len(np.unique(selected)))
 
 
 def rounded_count(count: int) -> int | str:
@@ -57,6 +102,26 @@ def extreme_count(count: int) -> int | str:
     if value < 100:
         return "50-99"
     return (value + 50) // 100 * 100
+
+
+def support_band(count: int) -> int | str:
+    """A cell's survey support as a band, never as a count.
+
+    Zero exact, as the other counts here, then "<10", "10-29" and "30+": the
+    band a stage receipt gives beside the cell's weighted figures, counted on
+    distinct source households.
+    """
+
+    value = int(count)
+    if value < 0:
+        raise ValueError(f"a record count cannot be negative: {value}.")
+    if value == 0:
+        return 0
+    if value < 10:
+        return "<10"
+    if value < 30:
+        return "10-29"
+    return "30+"
 
 
 def floored_share(share: float) -> float:

@@ -28,6 +28,10 @@ from microcosm.build.uk_runtime import (
     frs_take_up,
     spine_build,
 )
+from microcosm.build.uk_runtime.birth_month import (
+    UK_BIRTH_MONTH_COLUMN,
+    uk_months_since_last_birthday,
+)
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.frs_council_tax import (
     frs_council_tax_operation_parameters,
@@ -38,6 +42,7 @@ from microcosm.build.uk_runtime.frs_relationships import (
 )
 from microcosm.build.uk_runtime.frs_spine import (
     FRS_SPINE_TABLES,
+    OWNER_MANAGER_COLUMNS,
     REGION_MAP,
     SCOTTISH_WATER_CHARGES_REDUCTION_RECIPIENT_SHARE,
     UC_CAPITAL_UNAVAILABLE,
@@ -60,6 +65,12 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_national_frame,
     uk_time_period,
     validate_uk_national_frame,
+)
+from microcosm.build.uk_runtime.spi_support import (
+    SPI_SYNTHETIC_SUPPORT_CHANNEL,
+    create_uk_spi_support_tables,
+    support_channel_column,
+    support_source_id_column,
 )
 from microcosm.frame import Frame, WeightKind, engine_tables
 
@@ -290,6 +301,9 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "PAREAMT": 13.0,
         "REDAMT": 100.0,
         "SLREPAMT": 2.0,
+        # A repayer answers no to SLOS; EDUCLEFT dates the course (#868).
+        "SLOS": 2,
+        "EDUCLEFT": 21,
         "SSPADJ": 1.0,
         "SMPADJ": 0.5,
         "SPPADJ": 0.25,
@@ -413,6 +427,11 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "SEEND": "",
                 "SEJBLONG": "",
                 "JOBBUS": 1,
+                # Not a director: the owner-manager inputs keep their defaults.
+                "DIRECTOR": 2,
+                "NATURE": 4,
+                "DIRPERC": -1,
+                "DIVIDEND": 0.0,
             }
         ],
         "benefits": [
@@ -442,6 +461,8 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "PERSON": 1,
                 "BENEFIT": 16,
                 "VAR2": 3,
+                # ESAGROUP: 1 work-related activity group, 3 assessment phase.
+                "VAR3": 1,
                 "BENAMT": 4.0,
                 "UCSTART": "",
                 "UCHOUSEL": "",
@@ -452,6 +473,8 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "PERSON": 1,
                 "BENEFIT": 16,
                 "VAR2": 4,
+                # ESAGROUP: 1 work-related activity group, 3 assessment phase.
+                "VAR3": 3,
                 "BENAMT": 5.0,
                 "UCSTART": "",
                 "UCHOUSEL": "",
@@ -1140,6 +1163,7 @@ def test_direct_person_mapping_values_are_ported(tmp_path: Path) -> None:
     assert other["property_income"] == pytest.approx(8 * WEEKS_IN_YEAR)
     assert adult["employment_income"] == pytest.approx(10 * WEEKS_IN_YEAR)
     assert adult["self_employment_income"] == pytest.approx(3 * WEEKS_IN_YEAR)
+    assert adult["trading_loss"] == 0.0
     assert adult["private_pension_income"] == pytest.approx(15 * WEEKS_IN_YEAR)
     assert adult["tax_free_savings_income"] == pytest.approx(1 * WEEKS_IN_YEAR)
     assert adult["savings_interest_income"] == pytest.approx(3.5 * WEEKS_IN_YEAR)
@@ -1271,6 +1295,71 @@ def test_frs_spine_refuses_an_adult_tab_without_sppadj(tmp_path: Path) -> None:
         build_uk_frs_spine_frame(tmp_path, stage=stage)
 
 
+@pytest.mark.parametrize(
+    ("job", "sic", "expected"),
+    [
+        # A director owning more than half of the company, as their first job,
+        # in a trade: like a sole owner, main employment, trading.
+        (
+            {"DIRECTOR": 1, "NATURE": 4, "DIRPERC": 2, "JOBTYPE": 1},
+            84,
+            (True, True, True, True, False, 900.0),
+        ),
+        # NATURE 1 names a director too; SIC division 68 is real estate.
+        (
+            {"DIRECTOR": 2, "NATURE": 1, "DIRPERC": 3, "JOBTYPE": 1},
+            68,
+            (True, True, True, False, True, 900.0),
+        ),
+        # A second job's company: no SIC, so neither trade nor property.
+        (
+            {"DIRECTOR": 1, "NATURE": 4, "DIRPERC": 1, "JOBTYPE": 2},
+            84,
+            (True, True, False, False, False, 900.0),
+        ),
+        # Less than half of the company: an investor, not an owner.
+        (
+            {"DIRECTOR": 1, "NATURE": 4, "DIRPERC": 4, "JOBTYPE": 1},
+            84,
+            (False, False, False, False, False, 0.0),
+        ),
+    ],
+)
+def test_owner_managers_come_from_the_job_tab(
+    tmp_path: Path, job: dict, sic: int, expected: tuple
+) -> None:
+    """A director owning at least half of a company stands as its sole owner
+    or partner (María's ruling of 2026-10-16, microcosm#1095)."""
+
+    tables = _fixture_tables()
+    tables["job"][0].update({**job, "DIVIDEND": 900.0})
+    adult_1 = next(row for row in tables["adult"] if row["SERNUM"] == 1)
+    adult_1["SIC"] = sic
+    frame = build_uk_frs_spine_frame(tmp_path, stage=_write_fixture(tmp_path, tables))
+    person = frame.table("person")
+    adult = person.loc[person["person_id"] == 1001].iloc[0]
+
+    assert tuple(adult[column] for column in OWNER_MANAGER_COLUMNS) == expected
+    # Nobody else in the fixture holds a job: the inputs keep their defaults.
+    others = person.loc[person["person_id"] != 1001, list(OWNER_MANAGER_COLUMNS)]
+    assert not others.iloc[:, :5].to_numpy().any()
+    assert (others["owned_company_income_share"] == 0).all()
+
+
+def test_frs_spine_refuses_a_job_tab_without_the_director_answers(
+    tmp_path: Path,
+) -> None:
+    tables = _fixture_tables()
+    tables["job"] = [
+        {key: value for key, value in row.items() if key != "DIRPERC"}
+        for row in tables["job"]
+    ]
+    stage = _write_fixture(tmp_path, tables)
+
+    with pytest.raises(KeyError, match="owner-managers cannot be set"):
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
+
+
 def test_is_blind_reads_blind_registration_on_the_adult_and_child_tabs(
     tmp_path: Path,
 ) -> None:
@@ -1298,6 +1387,120 @@ def test_is_blind_reads_blind_registration_on_the_adult_and_child_tabs(
     stage = _write_fixture(tmp_path / "unasked")
     person = build_uk_frs_spine_frame(tmp_path / "unasked", stage=stage).table("person")
     assert not person["is_blind"].any()
+
+
+def test_esa_support_group_is_read_from_the_esa_rows(tmp_path: Path) -> None:
+    """``esa_includes_support_component`` reads ESAGROUP (VAR3) on ESA rows.
+
+    The fixture's adult in household 1 reports ESA in the work-related activity
+    group and in the assessment phase, so the column is false for them and
+    true for everyone else, the engine's own default (microcosm#1095).
+    """
+
+    stage = _write_fixture(tmp_path / "groups")
+    person = build_uk_frs_spine_frame(tmp_path / "groups", stage=stage).table("person")
+    group = person.set_index("person_id")["esa_includes_support_component"]
+    assert group.dtype == bool
+    assert group.to_dict() == {1001: False, 1002: True, 2001: True}
+
+    # One ESA row in the support group is enough.
+    tables = _fixture_tables()
+    esa_rows = [row for row in tables["benefits"] if row["BENEFIT"] == 16]
+    esa_rows[0]["VAR3"] = 2
+    stage = _write_fixture(tmp_path / "support", tables)
+    person = build_uk_frs_spine_frame(tmp_path / "support", stage=stage).table("person")
+    assert person["esa_includes_support_component"].all()
+
+    # A benefits tab without VAR3 refuses rather than set nobody's group.
+    tables = _fixture_tables()
+    tables["benefits"] = [
+        {key: value for key, value in row.items() if key != "VAR3"}
+        for row in tables["benefits"]
+    ]
+    stage = _write_fixture(tmp_path / "unasked", tables)
+    with pytest.raises(KeyError, match="no VAR3 column"):
+        build_uk_frs_spine_frame(tmp_path / "unasked", stage=stage)
+
+
+@pytest.mark.parametrize(
+    ("code", "expected"),
+    [(1, False), (2, True), (3, False), (0, True)],
+    ids=["work_related_activity", "support", "assessment", "no_group"],
+)
+def test_each_esa_group_code_sets_the_support_component_on_its_own(
+    tmp_path: Path, code: int, expected: bool
+) -> None:
+    """One ESA row with one ESAGROUP code, so each code is pinned on its own
+    (Vahid's review of microcosm#1299): the work-related activity group (1)
+    and the assessment phase (3) lie outside the support group (2), and any
+    other code records no group, which leaves the engine's default."""
+
+    tables = _fixture_tables()
+    esa_rows = [row for row in tables["benefits"] if row["BENEFIT"] == 16]
+    kept = esa_rows[0]
+    tables["benefits"] = [
+        row for row in tables["benefits"] if row["BENEFIT"] != 16 or row is kept
+    ]
+    kept["VAR3"] = code
+    stage = _write_fixture(tmp_path / f"code_{code}", tables)
+    person = build_uk_frs_spine_frame(tmp_path / f"code_{code}", stage=stage).table(
+        "person"
+    )
+    group = person.set_index("person_id")["esa_includes_support_component"]
+    assert group.to_dict() == {1001: expected, 1002: True, 2001: True}
+
+
+def test_birth_months_are_spread_at_the_frs_weights_and_kept_by_copies(
+    tmp_path: Path,
+) -> None:
+    """The spine stores ``months_since_last_birthday`` spread the engine's way
+    at each household's GROSS4, and an SPI support copy keeps its source
+    person's months (Vahid's review of microcosm#1271)."""
+
+    tables = _fixture_tables()
+    # Both adults are then men aged 40: one stratum holding households of
+    # weight 10 and 20. A person alone in a stratum sits mid-year whatever the
+    # weight, so without this the months could not tell the weights apart.
+    adult_2 = next(row for row in tables["adult"] if row["SERNUM"] == 2)
+    adult_2["SEX"] = 1
+    stage = _write_fixture(tmp_path, tables)
+    frame = build_uk_frs_spine_frame(tmp_path, stage=stage)
+    person = frame.table("person")
+
+    gross4 = {row["SERNUM"]: float(row["GROSS4"]) for row in tables["househol"]}
+    weights = person["person_household_id"].map(gross4).to_numpy(dtype=float)
+    assert not np.isnan(weights).any()
+    draw = {
+        "age": person["age"].to_numpy(),
+        "is_male": person["gender"].eq("MALE").to_numpy(),
+        "person_ids": person["person_id"].to_numpy(),
+    }
+    expected = uk_months_since_last_birthday(**draw, weights=weights)
+    equal_weights = uk_months_since_last_birthday(**draw, weights=np.ones(len(person)))
+
+    np.testing.assert_array_equal(person[UK_BIRTH_MONTH_COLUMN].to_numpy(), expected)
+    # The fixture can tell the FRS weights from equal weights, and no month is
+    # left at zero.
+    assert not np.array_equal(expected, equal_weights)
+    assert (expected > 0.0).all()
+
+    tables_with_weights = engine_tables(frame)
+    support = create_uk_spi_support_tables(
+        person=tables_with_weights["person"],
+        benunit=tables_with_weights["benunit"],
+        household=tables_with_weights["household"],
+        spi_household_count=None,
+    )
+    copies = support.person[
+        support.person[support_channel_column("person")]
+        == SPI_SYNTHETIC_SUPPORT_CHANNEL
+    ]
+    assert len(copies) == len(person)
+    source_months = person.set_index("person_id")[UK_BIRTH_MONTH_COLUMN]
+    np.testing.assert_array_equal(
+        copies[UK_BIRTH_MONTH_COLUMN].to_numpy(),
+        source_months.loc[copies[support_source_id_column("person")]].to_numpy(),
+    )
 
 
 def test_person_types_follow_the_adult_and_child_tables(tmp_path: Path) -> None:
@@ -1516,6 +1719,7 @@ def test_scottish_disability_payments_land_in_the_pip_and_dla_columns() -> None:
             "person_id": [1001, 1001, 1002, 1002, 1003, 1003, 1001, 1002],
             "benefit": [117, 118, 121, 122, 96, 1, 69, 70],
             "var2": [0] * 8,
+            "var3": [0] * 8,
             "benamt": [110.40, 28.70, 72.65, 28.70, 73.90, 29.20, 9.0, 11.0],
         }
     )
@@ -1527,7 +1731,11 @@ def test_scottish_disability_payments_land_in_the_pip_and_dla_columns() -> None:
     assert weekly["pip_m_reported"].tolist() == pytest.approx([28.70, 0.0, 0.0])
     assert weekly["dla_sc_reported"].tolist() == pytest.approx([0.0, 72.65, 29.20])
     assert weekly["dla_m_reported"].tolist() == pytest.approx([0.0, 28.70, 0.0])
-    reported = pe_person.drop(columns="winter_fuel_allowance_reported")
+    # With no ESA rows, nobody's ESA group is recorded outside the support group.
+    assert pe_person["esa_includes_support_component"].all()
+    reported = pe_person.drop(
+        columns=["winter_fuel_allowance_reported", "esa_includes_support_component"]
+    )
     assert reported.to_numpy().sum() == pytest.approx(
         (110.40 + 28.70 + 72.65 + 28.70 + 73.90 + 29.20) * WEEKS_IN_YEAR
     )
@@ -3422,6 +3630,28 @@ class TestUCStartUpPeriod:
 
         with pytest.raises(KeyError, match="job.sejblong"):
             build_uk_frs_spine_frame(tmp_path, stage=stage)
+
+
+def test_a_self_employment_loss_goes_to_trading_loss(tmp_path: Path) -> None:
+    # uk-data#528, pe-uk#2085: SEINCAM2 carries a loss as a negative amount;
+    # the engine takes profits in self_employment_income, never below zero,
+    # and the year's loss in trading_loss as a positive amount.
+    tables = _fixture_tables()
+    adult_2 = next(row for row in tables["adult"] if row["SERNUM"] == 2)
+    adult_2["SEINCAM2"] = -4.0
+    stage = _write_fixture(tmp_path, tables)
+    person = build_uk_frs_spine_frame(tmp_path, stage=stage).table("person")
+    by_id = person.set_index("person_id")
+
+    assert by_id.loc[2001, "self_employment_income"] == 0.0
+    assert by_id.loc[2001, "trading_loss"] == pytest.approx(4 * WEEKS_IN_YEAR)
+    assert by_id.loc[1001, "self_employment_income"] == pytest.approx(3 * WEEKS_IN_YEAR)
+    assert by_id.loc[1001, "trading_loss"] == 0.0
+    # Never both, and never negative.
+    assert not (
+        (person["self_employment_income"] > 0) & (person["trading_loss"] > 0)
+    ).any()
+    assert (person["trading_loss"] >= 0).all()
 
 
 def _gainful_flags(tmp_path: Path, tables) -> dict[int, bool]:

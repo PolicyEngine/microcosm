@@ -123,6 +123,15 @@ def test_graph_driver_dry_run_prints_the_operation_inventory(
     assert plan["configuration"]["target_families"] == [
         "census_households/constituency"
     ]
+    # microcosm#1301: a sized request warm-started below the solver's default
+    # floor plans its size nodes under the doctrine's L0 floor.
+    sized = ["--dataset-households", "150000", "--selection-initial-lambda", "2.5e-8"]
+    assert cli.main([*argv, *sized]) == 0
+    plan = json.loads(capsys.readouterr().out)
+    calibration = plan["configuration"]["calibration"]
+    assert calibration["selection_initial_lambda"] == 2.5e-8
+    assert calibration["selection_l0_search_floor"] == 1e-10
+    assert any(node["id"].endswith(".size_search") for node in plan["nodes"])
     assert not output_dir.exists()
 
 
@@ -382,20 +391,28 @@ def test_dense_candidate_manifest_has_no_size_sidecars(tmp_path):
     assert builder._SIZE_RUN_ONLY_OUTPUTS == {"dense_reference", "selection"}
 
 
+_DOCTRINE_SIZE = "150000"
+
+
 @pytest.mark.parametrize(
     ("extra", "needle"),
     [
         (["--dataset-households", "50000"], "dataset_households 50000"),
+        # microcosm#1301: the amended doctrine refuses the old size.
         (
-            ["--dataset-households", "100000", "--selection-pi-hi", "0.9"],
+            ["--dataset-households", "100000"],
+            "dataset_households 100000 != doctrine 150000",
+        ),
+        (
+            ["--dataset-households", _DOCTRINE_SIZE, "--selection-pi-hi", "0.9"],
             "selection_pi_hi 0.9",
         ),
         (
-            ["--dataset-households", "100000", "--refit-l2-lambda", "0"],
+            ["--dataset-households", _DOCTRINE_SIZE, "--refit-l2-lambda", "0"],
             "refit_l2_lambda",
         ),
         (
-            ["--dataset-households", "100000", "--selection-seed", "7"],
+            ["--dataset-households", _DOCTRINE_SIZE, "--selection-seed", "7"],
             "selection_seed 7",
         ),
     ],
@@ -444,16 +461,16 @@ def test_the_doctrine_size_is_a_release_size_and_any_other_a_candidate(tmp_path)
             ]
         )
 
-    assert UK_LOCAL_DATASET_HOUSEHOLDS == 100_000
+    assert str(UK_LOCAL_DATASET_HOUSEHOLDS) == _DOCTRINE_SIZE
     # The role fills the size doctrine, so the bare request carries it.
-    assert size_doctrine_drift(parsed("--dataset-households", "100000")) == []
+    assert size_doctrine_drift(parsed("--dataset-households", _DOCTRINE_SIZE)) == []
     assert size_doctrine_drift(parsed()) == []
     assert size_doctrine_drift(parsed("--dataset-households", "60000"))
     # A selection penalty or a resumed selection is not the doctrine's draw.
     with_selection_l2 = size_doctrine_drift(
         parsed(
             "--dataset-households",
-            "100000",
+            _DOCTRINE_SIZE,
             "--selection-l2-lambda",
             "0.5",
             "--selection-l2-anchor",
@@ -463,7 +480,7 @@ def test_the_doctrine_size_is_a_release_size_and_any_other_a_candidate(tmp_path)
         )
     )
     assert any("selection L2 penalty" in item for item in with_selection_l2)
-    resumed = parsed("--dataset-households", "100000")
+    resumed = parsed("--dataset-households", _DOCTRINE_SIZE)
     resumed.resume_size_checkpoint = tmp_path / "checkpoint"
     assert any(
         "resume_size_checkpoint" in item for item in size_doctrine_drift(resumed)
@@ -474,6 +491,66 @@ def test_the_doctrine_size_is_a_release_size_and_any_other_a_candidate(tmp_path)
         builder._validate_cli_args(parsed("--dataset-households", "60000"))
     except ValueError as error:
         assert "size doctrine" not in str(error)
+
+
+@pytest.mark.parametrize(
+    ("argv_tail", "message"),
+    [
+        # microcosm#1301: refused at parse time, never clamped in the search.
+        (
+            ["--selection-initial-lambda", "2.5e-8"],
+            "--selection-initial-lambda requires --dataset-households",
+        ),
+        (
+            ["--dataset-households", "10", "--selection-initial-lambda", "1e-11"],
+            "--selection-initial-lambda: .*outside the size search's L0 bracket",
+        ),
+        (
+            ["--dataset-households", "10", "--selection-initial-lambda", "20"],
+            "--selection-initial-lambda: .*outside the size search's L0 bracket",
+        ),
+        (
+            ["--dataset-households", "10", "--selection-initial-lambda", "0"],
+            "--selection-initial-lambda: initial_lambda must be",
+        ),
+    ],
+)
+def test_selection_initial_lambda_is_sized_and_inside_the_search_bracket(
+    tmp_path, argv_tail, message
+):
+    builder = _load_builder_module()
+    args = builder._parse_args(
+        [
+            "--input-h5",
+            str(tmp_path / "spine.h5"),
+            "--release-role",
+            "dense",
+            "--ladder",
+            str(tmp_path / "ladder.npz"),
+            "--out",
+            str(tmp_path / "out"),
+            *argv_tail,
+        ]
+    )
+    with pytest.raises(ValueError, match=message):
+        builder._validate_cli_args(args)
+
+
+def test_the_release_warm_start_below_the_default_floor_is_admitted(tmp_path):
+    """2.5e-8, the release builds' warm start, is below the solver's default
+    floor but inside the size search's bracket, so the CLI admits it."""
+    builder = _load_builder_module()
+    args = builder._parse_args(
+        _dense_argv(
+            tmp_path,
+            "--dataset-households",
+            _DOCTRINE_SIZE,
+            "--selection-initial-lambda",
+            "2.5e-8",
+        )
+    )
+    builder._validate_cli_args(args)
+    assert args.selection_initial_lambda == 2.5e-8
 
 
 def test_staging_epoch_stride_keeps_the_forwarded_rows_bounded():
@@ -706,9 +783,10 @@ def test_dense_role_requires_the_ladder(tmp_path) -> None:
         (["--candidate-clone-counts", "2,4", "--dry-run"], "--candidate-clone-counts"),
         (["--engine-blocks", "2"], "--engine-blocks"),
         (["--households-only"], "--households-only"),
-        (["--skip-holdout"], "--skip-holdout"),
+        (["--rotated-holdout"], "--rotated-holdout"),
         (["--dataset-households", "10"], "--dataset-households"),
         (["--selection-seed", "3"], "--selection-seed"),
+        (["--selection-initial-lambda", "2.5e-8"], "--selection-initial-lambda"),
         (["--selection-pi-hi", "0.5"], "--selection-pi-hi"),
         (["--baseline-pi-floor", "0.1"], "--baseline-pi-floor"),
         (["--no-size-checkpoint"], "--no-size-checkpoint"),
@@ -725,6 +803,23 @@ def test_national_role_refusal_table(tmp_path, extra, needle) -> None:
     with pytest.raises(ValueError, match="--release-role national refuses") as excinfo:
         builder._validate_cli_args(args)
     assert needle in str(excinfo.value)
+
+
+def test_the_rotated_holdout_is_an_opt_in_on_the_dense_line(tmp_path) -> None:
+    """microcosm#1301: dense skips the holdout unless --rotated-holdout asks;
+    the national line has no holdout and keeps recording false."""
+    builder = _load_builder_module()
+    dense = builder._parse_args(_dense_argv(tmp_path))
+    assert dense.skip_holdout is True
+    rotated = builder._parse_args(_dense_argv(tmp_path, "--rotated-holdout"))
+    assert rotated.skip_holdout is False
+    builder._validate_cli_args(rotated)
+    national = builder._parse_args(_role_argv(tmp_path, "national"))
+    assert national.skip_holdout is False
+    # The old spelling is gone, not aliased: a launcher that still passes it
+    # fails at parse.
+    with pytest.raises(SystemExit):
+        builder._parse_args(_dense_argv(tmp_path, "--skip-holdout"))
 
 
 def test_national_role_refuses_release_candidate_with_the_seam_reason(tmp_path):

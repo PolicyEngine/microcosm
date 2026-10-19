@@ -2,6 +2,7 @@
 
 # ruff: noqa: F403, F405
 from test_support.microcosm_build.uk_cgt_observation_period import *
+from test_support.microcosm_build.uk_local_rowwise import COMMITTED_BINDING_NOW
 
 
 @pytest.mark.parametrize("route", ["national", "local"])
@@ -92,6 +93,7 @@ def test_dated_cgt_fit_restores_base2024_values_with_fitted_weights(
             national_rows=national,
             restore=restore,
             epochs=2,
+            now=COMMITTED_BINDING_NOW,
         )
         fitted = result.frame
     assert all(spec.period == 2025 for spec in registry.specs)

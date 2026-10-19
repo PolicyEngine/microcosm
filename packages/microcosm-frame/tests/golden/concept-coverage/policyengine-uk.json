@@ -78,6 +78,10 @@
    {
     "entity": "person",
     "name": "self_employment_income"
+   },
+   {
+    "entity": "person",
+    "name": "trading_loss"
    }
   ],
   "fact:person.has_disability": [
@@ -100,6 +104,10 @@
    {
     "entity": "person",
     "name": "self_employment_income"
+   },
+   {
+    "entity": "person",
+    "name": "trading_loss"
    }
   ],
   "fact:person.parent_1_person_id": [
@@ -209,6 +217,10 @@
    },
    {
     "entity": "benunit",
+    "name": "would_claim_uc_at_legacy_closure"
+   },
+   {
+    "entity": "benunit",
     "name": "would_claim_uc_childcare"
    },
    {
@@ -229,7 +241,7 @@
    }
   ]
  },
- "covered_count": 40,
+ "covered_count": 42,
  "covered_inputs": [
   {
    "entity": "person",
@@ -321,6 +333,10 @@
   },
   {
    "entity": "person",
+   "name": "trading_loss"
+  },
+  {
+   "entity": "person",
    "name": "would_claim_adult_dependants_grant"
   },
   {
@@ -385,6 +401,10 @@
   },
   {
    "entity": "benunit",
+   "name": "would_claim_uc_at_legacy_closure"
+  },
+  {
+   "entity": "benunit",
    "name": "would_claim_uc_childcare"
   },
   {
@@ -393,8 +413,8 @@
   }
  ],
  "engine": "policyengine-uk",
- "engine_version": "2.130.1",
- "input_count": 299,
+ "engine_version": "2.134.4",
+ "input_count": 302,
  "schema_sha256": "5a55669d0447a686692911a6327ae298f19741dde29559f2654a75807878a141",
  "structural_inputs": [
   {
@@ -458,6 +478,10 @@
   {
    "entity": "household",
    "name": "accommodation_type"
+  },
+  {
+   "entity": "household",
+   "name": "additional_residential_property_purchased"
   },
   {
    "entity": "person",
@@ -944,6 +968,10 @@
    "name": "local_authority"
   },
   {
+   "entity": "person",
+   "name": "loss_relief"
+  },
+  {
    "entity": "household",
    "name": "lpg_kg"
   },
@@ -1022,6 +1050,10 @@
   {
    "entity": "person",
    "name": "ni_class_3"
+  },
+  {
+   "entity": "household",
+   "name": "non_residential_property_purchased"
   },
   {
    "entity": "household",
@@ -1332,10 +1364,6 @@
    "name": "tax_reported"
   },
   {
-   "entity": "person",
-   "name": "trading_loss"
-  },
-  {
    "entity": "household",
    "name": "transport_consumption"
   },
@@ -1426,10 +1454,6 @@
   {
    "entity": "benunit",
    "name": "working_tax_credit_run_on"
-  },
-  {
-   "entity": "benunit",
-   "name": "would_claim_uc_at_legacy_closure"
   },
   {
    "entity": "household",

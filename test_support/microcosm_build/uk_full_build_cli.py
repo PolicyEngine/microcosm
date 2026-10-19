@@ -28,6 +28,7 @@ from microcosm.build.logbook import LOGBOOK_ROW_FIELDS, load_spool_rows
 from microcosm.build.logbook_adoption import local_artifact_reference
 from microcosm.build.uk_runtime import full_build_cli as cli
 from microcosm.build.uk_runtime.calibration_run import UK_LOCAL_GATE_SCOPE
+from microcosm.build.uk_runtime.dataset_size import uk_size_search_bracket
 from microcosm.build.uk_runtime.full_certification import FULL_CERTIFICATION_TYPE
 from microcosm.build.uk_runtime.full_gates import (
     classify_full_gate_outcomes,
@@ -284,6 +285,12 @@ def failure_lines(failed) -> dict[str, str]:
     return {str(gate_id): str(line) for gate_id, line in failed}
 
 
+#: The ``uk_local_area_support`` details the synthetic evidence nodes report,
+#: when a test sets them (the real gate's details over a synthetic table, say);
+#: otherwise every gate reports empty details.
+AREA_SUPPORT_DETAILS: dict | None = None
+
+
 def gate_payload(phase, failed=None, release_candidate=False):
     gates = uk_full_gate_manifest(SELECTION)
     lines = failure_lines(failed)
@@ -296,7 +303,12 @@ def gate_payload(phase, failed=None, release_candidate=False):
                 GateResult(
                     name=entry.id,
                     passed=entry.id not in lines,
-                    details={},
+                    details=(
+                        dict(AREA_SUPPORT_DETAILS)
+                        if entry.id == "uk_local_area_support"
+                        and AREA_SUPPORT_DETAILS is not None
+                        else {}
+                    ),
                     failures=(lines[entry.id],) if entry.id in lines else (),
                 ),
             )
@@ -471,11 +483,13 @@ def surface_payload() -> bytes:
     )
 
 
-def diagnostics_payload() -> bytes:
+def diagnostics_payload(*, rotated_holdout: bool = False) -> bytes:
     # A legacy-schema stand-in, like the rowwise-tool candidate fixture in the
     # assembler tests: the assembler validates only the current schema
     # (microcosm#1007), which the real gate kernel emits; this fake drives the
-    # driver's plumbing, not the diagnostics contract.
+    # driver's plumbing, not the diagnostics contract. The holdout is the
+    # measured report only when the request opted in (microcosm#1301), else
+    # the schema's bare skip marker, as the real gate kernel records it.
     return canonical_json(
         {
             "schema_version": 6,
@@ -507,10 +521,20 @@ def diagnostics_payload() -> bytes:
                 "weights": {"n_nonzero": 2},
                 "weakest_families": [],
                 "weakest_areas_by_fit": {},
-                "rotated_holdout": holdout_payload_dict(),
+                "rotated_holdout": holdout_payload_dict()
+                if rotated_holdout
+                else {"skipped": True},
             },
         }
     )
+
+
+#: The synthetic holdout node's report when the request did not opt in.
+SKIPPED_HOLDOUT = {
+    "report_only": True,
+    "skipped": True,
+    "reason": "Not requested: opt-in diagnostic; no out-of-sample claim.",
+}
 
 
 def holdout_payload_dict() -> dict:
@@ -581,7 +605,9 @@ class Evidence(KernelBase):
         }
         if phase == "terminal":
             artifacts.update(
-                calibration_diagnostics=diagnostics_payload(),
+                calibration_diagnostics=diagnostics_payload(
+                    rotated_holdout=bool(context.params.get("rotated_holdout"))
+                ),
                 target_diagnostics_csv=TARGET_ROWS_CSV,
                 area_support_csv=SUPPORT_CSV,
                 high_value_home_support_csv=HV_SUPPORT_CSV,
@@ -593,9 +619,12 @@ class Holdout(Evidence):
     ref = "uk.test.cli-holdout@1"
 
     def run(self, context):
+        rotated = bool(context.params.get("rotated_holdout"))
         return KernelResult(
             artifacts={
-                "holdout": canonical_json(holdout_payload_dict()),
+                "holdout": canonical_json(
+                    holdout_payload_dict() if rotated else SKIPPED_HOLDOUT
+                ),
                 "selection": canonical_json(
                     {"registry": {"country": "uk", "specs": []}, "receipt": SELECTION}
                 ),
@@ -614,14 +643,20 @@ class SizeReceipt(Evidence):
 
 
 def size_receipt(households: int) -> dict:
-    """The stand-in size receipt of a build that realized its request."""
+    """The stand-in size receipt of a build that realized its request.
 
+    Its search ran in the doctrine's L0 bracket (microcosm#1301), which the
+    pre-flight checks on a sized release.
+    """
+
+    lower, upper = uk_size_search_bracket()
     return {
         "method": "exact_k_informed_l0",
         "requested_households": households,
         "realized_households": households,
         "selection_pi_hi": 0.5,
         "baseline_pi_floor": 0.5,
+        "selection_search_bracket": {"lower": lower, "upper": upper},
     }
 
 
@@ -742,6 +777,7 @@ def run_dense_main(
             failed,
             release_candidate="--release-candidate" in extra,
             size_households=households,
+            rotated_holdout="--rotated-holdout" in extra,
         )
         if build is None
         else build
@@ -769,13 +805,23 @@ def graph_dense_bundle(tmp_path, monkeypatch, *extra, staging="--no-staging") ->
     return out
 
 
-def prepared(tmp_path, failed=None, *, release_candidate=False, size_households=None):
+def prepared(
+    tmp_path,
+    failed=None,
+    *,
+    release_candidate=False,
+    size_households=None,
+    rotated_holdout=False,
+):
     """The synthetic prepared build; its gate nodes evaluate in the request's
     posture (``release_candidate``), as the real gate nodes do. A sized
-    request (``size_households``) adds a stand-in size refit receipt."""
+    request (``size_households``) adds a stand-in size refit receipt. The
+    holdout is measured only when the request opted in (``rotated_holdout``,
+    microcosm#1301); otherwise the holdout node records the skip marker."""
     # Only a release-candidate request adds the parameter, so every other
-    # synthetic build keeps its node keys.
+    # synthetic build keeps its node keys; likewise the holdout opt-in.
     posture = {"release_candidate": True} if release_candidate else {}
+    rotation = {"rotated_holdout": True} if rotated_holdout else {}
     frame = _frame()
     fixture = tmp_path / "fixture.txt"
     fixture.write_text("constant source")
@@ -817,7 +863,7 @@ def prepared(tmp_path, failed=None, *, release_candidate=False, size_households=
             "uk.full.gates.calibrated",
             Evidence.ref,
             population=root.id,
-            params={"phase": "terminal", "failed": failed, **posture},
+            params={"phase": "terminal", "failed": failed, **posture, **rotation},
             artifact_outputs=(
                 ArtifactOutput("gate_report", FULL_GATE_REPORT_TYPE),
                 ArtifactOutput("calibration_diagnostics", FULL_DIAGNOSTICS_TYPE),
@@ -832,6 +878,7 @@ def prepared(tmp_path, failed=None, *, release_candidate=False, size_households=
             "uk.full.holdout",
             Holdout.ref,
             population=root.id,
+            params=rotation,
             artifact_outputs=(
                 ArtifactOutput("holdout", FULL_HOLDOUT_TYPE),
                 ArtifactOutput("selection", TARGET_SELECTION_TYPE),

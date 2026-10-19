@@ -2538,21 +2538,22 @@ def area_support_shortfalls(
     minimum_effective_sample_size: float,
     minimum_distinct_sources: int,
 ) -> list[str]:
-    """The support floors one area misses, worded as :func:`area_support_gate` reports them."""
+    """The support floors one area misses, worded as :func:`area_support_gate` reports them.
+
+    Each shortfall names the floor, never the area's measured value: the
+    gate's failures and its reviewed-exclusion details ship in a signed
+    release file, and an area's rows, ESS and distinct sources are per-area
+    support figures a release withholds (microcosm#1301). The figures stay
+    in the build's area-support table.
+    """
 
     shortfalls = []
     if rows < minimum_rows:
-        shortfalls.append(f"rows {int(rows)} < {minimum_rows}")
+        shortfalls.append(f"rows < {minimum_rows}")
     if effective_sample_size < minimum_effective_sample_size:
-        shortfalls.append(
-            "ESS "
-            f"{float(effective_sample_size):.6g} < "
-            f"{float(minimum_effective_sample_size):.6g}"
-        )
+        shortfalls.append(f"ESS < {float(minimum_effective_sample_size):.6g}")
     if sources < minimum_distinct_sources:
-        shortfalls.append(
-            f"distinct sources {int(sources)} < {minimum_distinct_sources}"
-        )
+        shortfalls.append(f"distinct sources < {minimum_distinct_sources}")
     return shortfalls
 
 
@@ -2602,7 +2603,13 @@ def area_support_gate(
 
     ``area_support`` is the long-form candidate receipt.  The independently
     declared ``area_roster`` is load-bearing: a missing weak area cannot make
-    the minima look better by disappearing from the evidence table.
+    the gate look better by disappearing from the evidence table.
+
+    The details and failures carry no per-area support figures
+    (microcosm#1301): a failure and a reviewed exclusion name the floors the
+    area misses, and each geography level reports how many areas were
+    checked and how many sit below a floor. A level's minima would be one
+    area's figures, so they are not reported either.
     """
 
     levels = tuple(str(level) for level in geography_levels)
@@ -2693,6 +2700,7 @@ def area_support_gate(
     failures: list[str] = []
     used_exclusions: dict[str, dict[str, object]] = {}
     stale_exclusions: list[str] = []
+    below_floor = dict.fromkeys(levels, 0)
     for row in rows.sort_values(["geography_level", "area_code"]).itertuples(
         index=False
     ):
@@ -2705,15 +2713,11 @@ def area_support_gate(
             minimum_effective_sample_size=minimum_effective_sample_size,
             minimum_distinct_sources=minimum_distinct_sources,
         )
+        if shortfalls:
+            below_floor[row.geography_level] += 1
         record = exclusions.get(key)
         if record is not None and shortfalls:
-            used_exclusions[key] = {
-                "shortfalls": shortfalls,
-                "rows": int(row.nonzero_households),
-                "ess": float(row.effective_sample_size),
-                "sources": int(row.nonzero_source_households),
-                "record": dict(record),
-            }
+            used_exclusions[key] = {"shortfalls": shortfalls, "record": dict(record)}
         elif record is not None:
             stale_exclusions.append(key)
             failures.append(
@@ -2730,19 +2734,13 @@ def area_support_gate(
         for key in unknown_exclusions
     )
 
-    by_level: dict[str, dict[str, object]] = {}
-    for level in levels:
-        level_rows = rows.loc[rows["geography_level"] == level]
-        by_level[level] = {
-            "areas_checked": int(len(level_rows)),
-            "minimum_rows": int(level_rows["nonzero_households"].min()),
-            "minimum_effective_sample_size": float(
-                level_rows["effective_sample_size"].min()
-            ),
-            "minimum_distinct_sources": int(
-                level_rows["nonzero_source_households"].min()
-            ),
+    by_level = {
+        level: {
+            "areas_checked": int((rows["geography_level"] == level).sum()),
+            "areas_below_floor": below_floor[level],
         }
+        for level in levels
+    }
     return GateResult(
         name="area_support",
         passed=not failures,
