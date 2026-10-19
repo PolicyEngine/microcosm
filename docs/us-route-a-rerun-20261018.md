@@ -427,22 +427,36 @@ Each check runs under `tools/route_a/supervise.py`, like step 4, so the RSS
 cap, RAM and disk admission and the disk floor apply. The dry run's limits
 follow the driver's preflight stage scaled up to a full base load; the sweep's
 follow its measured 4.75 GiB peak. A supervisor refusal prints its reason and
-returns 99.
+returns 99. The fixture and sweep don't need the base, so they can run while it
+builds: generate and submit the script with `GUARDS_ONLY=1` (job
+`route-a-rerun-20261018-guards`), then again with `GUARDS_ONLY=0` (job
+`route-a-rerun-20261018-checks`) once `ACCEPTED` exists. The second run reuses the recorded guard results.
 
 ```bash
+GUARDS_ONLY=${GUARDS_ONLY:-0}
+# Separate files: bash reads a running script as it goes, so never rewrite one in use.
+if [ "$GUARDS_ONLY" = 1 ]; then CHECK_NAME=guards; else CHECK_NAME=checks; fi
 {
   echo '#!/bin/bash'
   echo 'set -euo pipefail'
-  declare -p W PREP LOCAL RUN SETTINGS
+  declare -p W PREP LOCAL RUN SETTINGS GUARDS_ONLY
   cat <<'BASH'
 . "$SETTINGS"
 CHECKS=$LOCAL/release-checks
 mkdir -p "$CHECKS"
 # supervised NAME RSS_GIB RAM_GIB DISK_GIB WALL_S CPU_S -- ARGV...
 # Prints the child's return code, or 99 when the supervisor refused or killed it.
+# A check that already has a supervisor directory is not rerun: its recorded
+# result is reused (move a failed attempt's -config.json and -sup aside to retry).
 supervised() {
   local name=$1 rss=$2 ram=$3 disk=$4 wall=$5 cpu=$6
   shift 7
+  if [ -e "$CHECKS/$name-sup" ]; then
+    if [ ! -f "$CHECKS/$name-sup/RESULT.json" ]; then
+      echo "$name: supervisor directory without RESULT.json; still running or crashed" >&2
+      echo 99; return
+    fi
+  else
   python3 -c '
 import json, sys
 output, worktree, rss, ram, disk, wall, cpu, *argv = sys.argv[1:]
@@ -463,6 +477,7 @@ with open(output, "x") as stream:
 ' "$CHECKS/$name-config.json" "$W" "$rss" "$ram" "$disk" "$wall" "$cpu" "$@"
   "$W/.venv/bin/python" "$PREP/tools/route_a/supervise.py" \
     "$CHECKS/$name-sup" "$CHECKS/$name-config.json" >&2 || true
+  fi
   python3 -c '
 import json, sys
 result = json.load(open(sys.argv[1]))
@@ -488,6 +503,8 @@ sweep_rc=$(supervised guard-sweep 16 12 30 21600 43200 -- \
   --dataset-path "$SMALL_H5" --batch-size 3 --reforms-per-worker 4 \
   --output "$LOCAL/guard-sweep.json")
 [ "$sweep_rc" = 0 ] || { echo "Guard sweep failed ($sweep_rc)"; exit 1; }
+if [ "$GUARDS_ONLY" = 1 ]; then echo 'Guard checks passed; gate dry run deferred'; exit 0; fi
+test -f "$RUN/base-sup/ACCEPTED"
 EXTRA=($RELEASE_EXTRA_ARGS)
 gate_rc=$(supervised gate-dry-run 64 40 30 21600 43200 -- \
   "$W/.venv/bin/python" tools/dry_run_us_release_gates.py \
@@ -506,9 +523,9 @@ case "$gate_rc" in
   *) echo "Release guard dry run failed ($gate_rc)"; exit 1 ;;
 esac
 BASH
-} > "$LOCAL/release-checks.sh"
-"$LSUBMIT" route-a-rerun-20261018-checks "$LOCAL/checks.launchd.log" "$PREP" \
-  /bin/bash "$LOCAL/release-checks.sh"
+} > "$LOCAL/release-$CHECK_NAME.sh"
+"$LSUBMIT" "route-a-rerun-20261018-$CHECK_NAME" "$LOCAL/$CHECK_NAME.launchd.log" "$PREP" \
+  /bin/bash "$LOCAL/release-$CHECK_NAME.sh"
 ```
 
 Wait for the checks job to finish. Inspect its exit status and both reports;
