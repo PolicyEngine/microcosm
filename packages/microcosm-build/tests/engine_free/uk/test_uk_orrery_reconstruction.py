@@ -21,6 +21,7 @@ from microcosm_emitter.orrery.service.queue import publication_inventory
 
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.staging_dataset import refresh_sha256sums_entry
+from microcosm.build.uk_runtime import orrery_reconstruction
 from microcosm.build.uk_runtime.graph import uk_spine_endpoint, uk_spine_graph
 from microcosm.build.uk_runtime.graph_build import UKFullBuildConfig, uk_full_graph
 from microcosm.build.uk_runtime.graph_calibration import UKGraphCalibrationConfig
@@ -314,6 +315,61 @@ def test_marker_names_the_recorded_revision_and_every_input_digest(tmp_path):
     assert inputs["graph.json"]["verification"] == "no_recorded_digest"
     assert inputs[MANIFEST_FILENAME]["role"] == "code_pin"
     assert inputs[MANIFEST_FILENAME]["verification"] == "recorded_digest_matched"
+
+
+def test_marker_records_the_code_that_ran_the_reconstruction_beside_the_source(
+    tmp_path, monkeypatch
+):
+    looked_up = []
+
+    def reconstructing_checkout(path):
+        looked_up.append(Path(path))
+        return {"git_commit": OTHER_COMMIT, "git_dirty": True}
+
+    monkeypatch.setattr(orrery_reconstruction, "code_revision", reconstructing_checkout)
+    build = write_pre_1144_build(tmp_path / "build")
+
+    report = reconstruct_uk_publication(build, tmp_path / "publication")
+
+    marker = validate_reconstruction(read_json(tmp_path / "publication" / SCHEMA_NAME))
+    # The revision is looked up from the reconstructing module's own file, not
+    # from whatever directory the command runs in.
+    assert looked_up == [Path(orrery_reconstruction.__file__)]
+    assert marker["source_revision"] == {
+        "git_commit": RECORDED_COMMIT,
+        "git_dirty": False,
+        "origin": "recorded",
+    }
+    assert marker["reconstruction_revision"] == {
+        "git_commit": OTHER_COMMIT,
+        "git_dirty": True,
+    }
+    assert report["reconstruction_revision"] == marker["reconstruction_revision"]
+    assert any(
+        "reconstruction ran from a working tree with uncommitted changes" in warning
+        for warning in report["warnings"]
+    )
+
+
+def test_unknown_reconstruction_revision_is_recorded_as_unknown(
+    tmp_path, monkeypatch, capsys
+):
+    monkeypatch.setattr(
+        orrery_reconstruction,
+        "code_revision",
+        lambda path: {"git_commit": None, "git_dirty": None},
+    )
+    build = write_pre_1144_build(tmp_path / "build")
+    output = tmp_path / "publication"
+
+    assert main(["--build", str(build), "--output", str(output)]) == 0
+
+    report = read_json(output / REPORT_NAME)
+    assert report["reconstruction_revision"] == {"git_commit": None, "git_dirty": None}
+    assert any(
+        "no reconstruction revision" in warning for warning in report["warnings"]
+    )
+    assert "reconstructed by: unknown revision" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize("layout", [DENSE_REFRESHED_COMPLETION, NATIONAL_COMPLETION])
@@ -619,6 +675,7 @@ def test_cli_writes_the_publication_and_prints_a_summary(tmp_path, capsys):
     printed = capsys.readouterr().out
     assert str(output) in printed
     assert RECORDED_COMMIT in printed
+    assert "reconstructed by: " in printed
     assert "declaration only" in printed
     assert (output / GRAPH_NAME).is_file()
     with pytest.raises(SystemExit) as refusal:

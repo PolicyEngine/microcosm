@@ -16,6 +16,7 @@ from microcosm.graph.reconstruction import (
     DECLARATION_ONLY,
     RECONSTRUCTION_EXTENSION,
     RECONSTRUCTION_PROTOCOL,
+    code_revision,
     reconstructed_schema,
     reconstruction_marker,
     validate_reconstruction,
@@ -32,6 +33,11 @@ _RECONSTRUCTION_VERIFY = (
     _TEST_PATHS.repository / "tools" / "orrery-contract" / "verify-reconstruction.mjs"
 )
 RECORDED_COMMIT = "0123456789abcdef0123456789abcdef01234567"
+# The revision of the code that ran the reconstruction, later than the build's.
+RECONSTRUCTING_REVISION = {
+    "git_commit": "89abcdef0123456789abcdef0123456789abcdef",
+    "git_dirty": False,
+}
 
 
 def recorded_declaration() -> bytes:
@@ -55,6 +61,7 @@ def marker_for(declaration: bytes, **revision_overrides) -> dict:
         "git_commit": RECORDED_COMMIT,
         "git_dirty": False,
         "revision_origin": "recorded",
+        "reconstruction_revision": RECONSTRUCTING_REVISION,
         **revision_overrides,
     }
     return reconstruction_marker(
@@ -98,6 +105,74 @@ def test_reconstructed_schema_carries_the_marker_into_orrery_metadata():
     document = orrery_document_from_schema(schema)
     carried = document["metadata"]["microcosm"]["extensions"][RECONSTRUCTION_EXTENSION]
     assert carried == marker
+
+
+def test_marker_records_the_reconstructing_code_apart_from_the_source_revision():
+    declaration = recorded_declaration()
+
+    marker = marker_for(declaration)
+    unknown = marker_for(
+        declaration,
+        reconstruction_revision={"git_commit": None, "git_dirty": None},
+    )
+
+    # The declaration's bytes come from the source revision; the compiled
+    # sections and the Orrery projection come from the reconstructing code.
+    assert marker["source_revision"]["git_commit"] == RECORDED_COMMIT
+    assert marker["reconstruction_revision"] == RECONSTRUCTING_REVISION
+    assert unknown["reconstruction_revision"] == {"git_commit": None, "git_dirty": None}
+    assert "reconstruction_revision" in marker["scope"]
+    schema = reconstructed_schema(declaration, marker)
+    assert validate_reconstruction(schema)["reconstruction_revision"] == (
+        RECONSTRUCTING_REVISION
+    )
+
+
+def run_git(checkout, *arguments) -> str:
+    return subprocess.run(
+        [
+            "git",
+            "-C",
+            str(checkout),
+            "-c",
+            "user.name=Reconstruction fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "-c",
+            "commit.gpgsign=false",
+            *arguments,
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def test_code_revision_names_the_checkout_that_tracks_the_file(tmp_path):
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    run_git(checkout, "init", "--quiet")
+    reconstructing_code = checkout / "reconstruct.py"
+    reconstructing_code.write_text("VERSION = 1\n")
+    run_git(checkout, "add", "reconstruct.py")
+    run_git(checkout, "commit", "--quiet", "-m", "Add the reconstructing code")
+    head = run_git(checkout, "rev-parse", "HEAD")
+
+    assert code_revision(reconstructing_code) == {
+        "git_commit": head,
+        "git_dirty": False,
+    }
+    reconstructing_code.write_text("VERSION = 2\n")
+    assert code_revision(reconstructing_code) == {"git_commit": head, "git_dirty": True}
+    # A file no checkout tracks (an installed copy that happens to sit inside
+    # a checkout, or one outside any) identifies no revision.
+    untracked_copy = checkout / "installed.py"
+    untracked_copy.write_text("VERSION = 2\n")
+    outside_any_checkout = tmp_path / "outside.py"
+    outside_any_checkout.write_text("VERSION = 2\n")
+    unknown = {"git_commit": None, "git_dirty": None}
+    assert code_revision(untracked_copy) == unknown
+    assert code_revision(outside_any_checkout) == unknown
 
 
 def test_reconstructed_document_claims_no_execution():
@@ -210,6 +285,26 @@ def _other_protocol(marker: dict) -> None:
     marker["protocol"] = "microcosm.graph.reconstruction.v0"
 
 
+def _no_reconstruction_revision(marker: dict) -> None:
+    del marker["reconstruction_revision"]
+
+
+def _short_reconstruction_commit(marker: dict) -> None:
+    marker["reconstruction_revision"]["git_commit"] = "89abcde"
+
+
+def _textual_reconstruction_dirty_flag(marker: dict) -> None:
+    marker["reconstruction_revision"]["git_dirty"] = "no"
+
+
+def _dirty_flag_without_a_reconstruction_commit(marker: dict) -> None:
+    marker["reconstruction_revision"] = {"git_commit": None, "git_dirty": False}
+
+
+def _reconstruction_revision_with_an_origin(marker: dict) -> None:
+    marker["reconstruction_revision"]["origin"] = "recorded"
+
+
 @pytest.mark.parametrize(
     "corrupt",
     [
@@ -228,6 +323,11 @@ def _other_protocol(marker: dict) -> None:
         _recorded_basis,
         _not_reconstructed,
         _other_protocol,
+        _no_reconstruction_revision,
+        _short_reconstruction_commit,
+        _textual_reconstruction_dirty_flag,
+        _dirty_flag_without_a_reconstruction_commit,
+        _reconstruction_revision_with_an_origin,
     ],
     ids=lambda corrupt: corrupt.__name__.strip("_"),
 )

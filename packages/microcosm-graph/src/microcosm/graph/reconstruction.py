@@ -3,10 +3,14 @@
 A build that recorded its graph declaration but no run binding cannot have its
 execution verified, yet its declared graph is still exact. A reconstructed
 schema projects that recorded declaration alone and carries a marker in its
-producer extensions: the marker says the schema was rebuilt afterwards, names
-the code revision that declared the graph, and binds every input file by
-digest. Because the marker lives in ``graph.schema.json``, any later
-projection of the saved schema keeps it, and Orrery documents show it under
+producer extensions: the marker says the schema was rebuilt afterwards and
+binds every input file by digest. It names two code revisions: the one that
+declared the graph (``source_revision``) and the one that performed the
+reconstruction (``reconstruction_revision``). Only the declaration's bytes come
+from the build. The schema's ``compiled``, ``fields`` and ``input_bindings``
+sections, and any Orrery projection of it, are computed by the reconstructing
+code. Because the marker lives in ``graph.schema.json``, any later projection
+of the saved schema keeps it, and Orrery documents show it under
 ``metadata.microcosm.extensions``. Nothing here presents an operation as
 executed; no receipt, cache or gate state is attached.
 """
@@ -15,7 +19,9 @@ from __future__ import annotations
 
 import hashlib
 import re
+import subprocess
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 
 from .decl import compile_graph
 from .schema import _plain_json, graph_schema
@@ -29,6 +35,7 @@ __all__ = [
     "RECONSTRUCTION_EXTENSION",
     "RECONSTRUCTION_PROTOCOL",
     "REVISION_ORIGINS",
+    "code_revision",
     "reconstructed_schema",
     "reconstruction_marker",
     "validate_reconstruction",
@@ -60,13 +67,24 @@ INPUT_VERIFICATIONS = frozenset(
     }
 )
 RECONSTRUCTION_SCOPE = (
-    "Rebuilt after the build from its recorded graph declaration. Operations "
-    "carry no execution, cache or gate state; nothing here was observed running."
+    "Rebuilt after the build from its recorded graph declaration, the only part "
+    "taken from the build: the compiled sections and this projection come from "
+    "the code at reconstruction_revision. Operations carry no execution, cache "
+    "or gate state; nothing here was observed running."
 )
 _MARKER_FIELDS = frozenset(
-    {"protocol", "reconstructed", "basis", "source_revision", "inputs", "scope"}
+    {
+        "protocol",
+        "reconstructed",
+        "basis",
+        "source_revision",
+        "reconstruction_revision",
+        "inputs",
+        "scope",
+    }
 )
 _REVISION_FIELDS = frozenset({"git_commit", "git_dirty", "origin"})
+_RECONSTRUCTION_REVISION_FIELDS = frozenset({"git_commit", "git_dirty"})
 _INPUT_FIELDS = frozenset({"name", "role", "sha256", "bytes", "verification"})
 # A full lowercase SHA-1 or SHA-256 git object name; abbreviations are refused.
 GIT_COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
@@ -118,6 +136,24 @@ def _validated_marker(value: object) -> dict[str, object]:
         "source revision dirty flag must be true, false or null",
     )
     _require(revision["origin"] in REVISION_ORIGINS, "source revision origin")
+    reconstruction = marker["reconstruction_revision"]
+    _require(
+        type(reconstruction) is dict
+        and set(reconstruction) == _RECONSTRUCTION_REVISION_FIELDS,
+        "reconstruction revision fields",
+    )
+    commit = reconstruction["git_commit"]
+    _require(
+        commit is None
+        or (type(commit) is str and GIT_COMMIT_PATTERN.fullmatch(commit) is not None),
+        "reconstruction revision must be a full lowercase git commit or null",
+    )
+    _require(
+        type(reconstruction["git_dirty"]) in (bool, type(None))
+        and (commit is not None or reconstruction["git_dirty"] is None),
+        "reconstruction revision dirty flag must be true, false or, without a "
+        "commit, null",
+    )
     inputs = marker["inputs"]
     _require(type(inputs) is list and bool(inputs), "marker inputs")
     names = []
@@ -152,18 +188,61 @@ def _declaration_input(marker: Mapping[str, object]) -> Mapping[str, object]:
     return next(item for item in inputs if item["role"] == DECLARATION_ROLE)
 
 
+def code_revision(path: str | Path) -> dict[str, object]:
+    """The git commit and working-tree state of the checkout that tracks ``path``.
+
+    Pass the file of the code performing the reconstruction. git runs in that
+    file's directory, not the current one, and the file must be tracked there:
+    an installed copy that happens to sit inside some checkout (a virtual
+    environment within a repository, say) identifies no revision. Both values
+    are ``None`` when no checkout tracks the file, so an unknown revision is
+    never recorded as a clean one.
+    """
+
+    location = Path(path).resolve()
+    unknown: dict[str, object] = {"git_commit": None, "git_dirty": None}
+
+    def git(*arguments: str) -> str | None:
+        try:
+            result = subprocess.run(
+                ["git", "-C", str(location.parent), *arguments],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        except OSError:
+            return None
+        return result.stdout if result.returncode == 0 else None
+
+    if git("ls-files", "--error-unmatch", "--", location.name) is None:
+        return unknown
+    head = git("rev-parse", "HEAD")
+    commit = None if head is None else head.strip()
+    if commit is None or GIT_COMMIT_PATTERN.fullmatch(commit) is None:
+        return unknown
+    changes = git("status", "--porcelain", "--untracked-files=no")
+    return {
+        "git_commit": commit,
+        "git_dirty": None if changes is None else bool(changes.strip()),
+    }
+
+
 def reconstruction_marker(
     *,
     git_commit: str,
     git_dirty: bool | None,
     revision_origin: str,
+    reconstruction_revision: Mapping[str, object],
     inputs: Sequence[Mapping[str, object]],
 ) -> dict[str, object]:
-    """Return a validated marker naming the revision and every input read.
+    """Return a validated marker naming both revisions and every input read.
 
-    Each input is a mapping with ``name`` (a plain file name), ``role``,
-    ``sha256``, ``bytes`` and ``verification``; exactly one has role
-    ``declaration``. Inputs are listed in name order.
+    ``git_commit``, ``git_dirty`` and ``revision_origin`` describe the code that
+    declared the graph. ``reconstruction_revision`` is :func:`code_revision` of
+    the code performing the reconstruction, which computes every section of the
+    schema except the declaration itself. Each input is a mapping with ``name``
+    (a plain file name), ``role``, ``sha256``, ``bytes`` and ``verification``;
+    exactly one has role ``declaration``. Inputs are listed in name order.
     """
 
     ordered = sorted(
@@ -179,6 +258,7 @@ def reconstruction_marker(
                 "git_dirty": git_dirty,
                 "origin": revision_origin,
             },
+            "reconstruction_revision": dict(reconstruction_revision),
             "inputs": ordered,
             "scope": RECONSTRUCTION_SCOPE,
         }
