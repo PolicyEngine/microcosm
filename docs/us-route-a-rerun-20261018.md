@@ -400,7 +400,8 @@ RUN=$RUN_ROOT/run-${C:0:12}
   python3 tools/modal_us_stage_plan.py compare-lineage "$RECEIPT" \
     --reference "$REF" --run-context "$CONTEXT" > "$LINEAGE"
   mkdir -p "$RUN/base-out"
-  cp -p "$FETCH/state/base-out/"* "$RUN/base-out/"
+  # APFS clone: the run copy shares the fetched blocks, so it costs no extra disk.
+  cp -pc "$FETCH/state/base-out/"* "$RUN/base-out/"
   python3 tools/modal_us_stage_plan.py verify-receipt "$RECEIPT" \
     --state-root "$RUN" --prefix base-out --strict
   H5=$RUN/base-out/base_populace_us_2024_puf_support.h5
