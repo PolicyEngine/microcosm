@@ -1464,21 +1464,42 @@ def test_the_thinned_epochs_null_the_loss_on_request():
 
 
 @pytest.mark.parametrize(
-    "localisation,levels,binds",
+    "role,localisation,levels,binds",
     [
-        ("area", None, True),
-        ("area", ("la", "brma"), True),
-        ("area", ("la",), False),
-        ("none", None, False),
+        ("dense", "area", None, True),
+        ("dense", "area", ("la", "brma"), True),
+        ("dense", "area", ("la",), False),
+        ("dense", "none", None, False),
+        ("national", "area", None, False),
     ],
 )
 def test_a_request_binds_brma_rows_only_on_area_brmas_it_selects(
-    localisation, levels, binds
+    role, localisation, levels, binds
 ):
     from types import SimpleNamespace
 
-    args = SimpleNamespace(brma_localisation=localisation, target_geographies=levels)
+    args = SimpleNamespace(
+        release_role=role, brma_localisation=localisation, target_geographies=levels
+    )
     assert cli._binds_brma_rows(args) is binds
+
+
+def test_a_national_request_stages_its_epochs_with_their_loss(tmp_path, monkeypatch):
+    """The fourth review of #1305: a national run staged a null loss.
+
+    The national role shares the dense role's parser defaults, but binds no
+    BRMA row, so its staged epochs keep their loss.
+    """
+
+    args = cli.parse_args(_national_argv(tmp_path))
+    assert cli._binds_brma_rows(args) is False
+    emitted: list[dict] = []
+    monkeypatch.setattr(
+        cli, "emit_calibration_progress", lambda event: emitted.append(dict(event))
+    )
+    observer = cli._solve_observer(args, None)
+    observer({"kind": "calibration_epoch", "epoch": 1, "epochs": 1, "loss": 0.25})
+    assert [event["loss"] for event in emitted] == [0.25]
 
 
 def test_telemetry_content_refusal_never_aborts_the_solve(

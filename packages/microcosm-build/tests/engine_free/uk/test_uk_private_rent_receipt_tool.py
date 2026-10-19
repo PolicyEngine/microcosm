@@ -210,6 +210,22 @@ def test_a_group_of_fewer_than_ten_published_rows_reads_withheld():
     }
 
 
+def test_all_reads_withheld_while_a_group_it_covers_does():
+    """The fourth review of #1305: "all" less England and Wales gave a floored
+    Scottish group's counts back."""
+
+    summary, _ = tool.rent_row_fit(_rent_weighting(thin_brma=True, per_group=10))
+    scotland = summary["ons.rent.private_rent_brma Scotland"]
+    assert scotland["withheld"] == "fewer than 10 published rows"
+    assert scotland["rows"] == 9
+    assert summary["ons.rent.private_rent England"]["share_within_10pct"] == 1.0
+    assert summary["all"] == {
+        "withheld": tool.ALL_WITH_A_GROUP_WITHHELD,
+        "rows": 29,
+        "rows_withheld": 1,
+    }
+
+
 def test_carriers_follow_the_problem_axis_and_its_positive_weights():
     keys = pd.Series(["k1", "k2", "k3"], index=pd.Index([10, 11, 12]))
     out = tool.carriers_on([12, 10, 13], np.array([1.0, 0.0, 0.0]), keys)

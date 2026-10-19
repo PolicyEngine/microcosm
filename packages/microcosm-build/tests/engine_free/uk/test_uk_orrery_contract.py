@@ -384,12 +384,14 @@ def test_the_published_result_summary_withholds_a_thin_brma_row():
     }
 
 
-def test_a_size_summary_over_brma_rows_publishes_no_all_row_total():
+@pytest.mark.parametrize("level", ["brma", "statistical_scope"])
+def test_a_size_summary_over_brma_rows_publishes_no_all_row_total(level):
+    """Either spelling of the level is a BRMA row (the fourth review of #1305)."""
     from types import SimpleNamespace
 
     from microcosm.build.uk_runtime.orrery_contract import _size_summary
 
-    _, ordered, payload = _brma_problem()
+    _, ordered, payload = _brma_problem(level=level)
     receipt = {
         "method": "full_pool",
         "problem_sha256": ordered.sha256,

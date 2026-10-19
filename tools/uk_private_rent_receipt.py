@@ -150,6 +150,10 @@ HOUSEHOLD_COLUMNS = (
 )
 #: The withheld note a summary gives a weighting it cannot floor.
 NO_SOURCE_KEYS = "no source keys for this weighting's households"
+#: "all" less the published groups would give a withheld group's counts
+#: back, so it is summarised only while every group it covers is (the fourth
+#: review of #1305).
+ALL_WITH_A_GROUP_WITHHELD = "a group it covers reads withheld"
 
 
 # ----------------------------------------------------------------------------
@@ -460,6 +464,17 @@ def rent_row_fit(weighting: Weighting) -> tuple[dict[str, Any], list[dict[str, A
         )
         for group, positions in sorted(families.items())
     }
+    floored = [
+        value
+        for group, value in summary.items()
+        if group != "all" and "withheld" in value and value.get("rows")
+    ]
+    if floored and "withheld" not in summary.get("all", {"withheld": None}):
+        summary["all"] = {
+            "withheld": ALL_WITH_A_GROUP_WITHHELD,
+            "rows": summary["all"]["rows"],
+            **({"rows_withheld": withheld["all"]} if withheld.get("all") else {}),
+        }
     return summary, audit
 
 

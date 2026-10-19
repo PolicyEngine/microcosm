@@ -1138,13 +1138,17 @@ def _stderr_progress(line: str) -> None:
 def _binds_brma_rows(args: argparse.Namespace) -> bool:
     """Whether the request can bind Scotland's BRMA rent rows.
 
-    They bind on area BRMAs when the selected geographies include them
-    (microcosm#1262), and a thin one's model figures stay in the build.
+    Only the dense role binds local rows, on area BRMAs when the selected
+    geographies include them (microcosm#1262), and a thin one's model figures
+    stay in the build. The national role binds none, so its staged epochs
+    keep their loss (the fourth review of #1305).
     """
 
     levels = getattr(args, "target_geographies", None)
-    return getattr(args, "brma_localisation", "area") == "area" and (
-        levels is None or "brma" in levels
+    return (
+        getattr(args, "release_role", "dense") == "dense"
+        and getattr(args, "brma_localisation", "area") == "area"
+        and (levels is None or "brma" in levels)
     )
 
 

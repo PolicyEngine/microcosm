@@ -2944,15 +2944,23 @@ def verify(
         )
         if not reused:
             warnings.append("build 2 did not reuse build 1's solve")
-        differing = sum(
-            1
-            for errors_1, errors_2 in (
-                (build_1.national_errors, build_2.national_errors),
-                (build_1.local_errors, build_2.local_errors),
-            )
-            for key in set(errors_1) | set(errors_2)
-            if errors_1.get(key) != errors_2.get(key)
-        ) + len(build_1.local_withheld ^ build_2.local_withheld)
+        # A row withheld in one build and published in the other differs once
+        # (the fourth review of #1305).
+        differing = len(
+            {
+                (line, key)
+                for line, errors_1, errors_2 in (
+                    ("national", build_1.national_errors, build_2.national_errors),
+                    ("local", build_1.local_errors, build_2.local_errors),
+                )
+                for key in set(errors_1) | set(errors_2)
+                if errors_1.get(key) != errors_2.get(key)
+            }
+            | {
+                ("local", key)
+                for key in build_1.local_withheld ^ build_2.local_withheld
+            }
+        )
         if differing:
             warnings.append(f"{differing} target rows differ from build 1")
         comparison = {

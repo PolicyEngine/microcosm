@@ -821,6 +821,46 @@ def test_a_withheld_row_that_gives_its_error_is_refused(repo, tmp_path, capsys):
     assert "withheld row's relative error" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize(
+    "details,message",
+    [
+        (
+            {"targets_checked": 1, "withheld_targets": 0},
+            "counts different withheld rows",
+        ),
+        (
+            {
+                "targets_checked": 1,
+                "withheld_targets": 1,
+                "failing_targets": {BRMA_CELL: -0.4},
+            },
+            "names a row targets.csv withholds",
+        ),
+    ],
+    ids=["count", "named"],
+)
+def test_the_fit_details_agree_with_the_withheld_rows(details, message):
+    """The fourth review of #1305: removing either check failed no test."""
+
+    published = {"private_rent/E06000001/rent/private_rent": 0.02}
+    withheld = frozenset({BRMA_CELL})
+    TOOL._check_fit_details(
+        "uk_local_target_fit",
+        {"status": "passed", "details": {"targets_checked": 1, "withheld_targets": 1}},
+        published,
+        0.25,
+        withheld,
+    )
+    with pytest.raises(TOOL.InputError, match=message):
+        TOOL._check_fit_details(
+            "uk_local_target_fit",
+            {"status": "failed", "details": details},
+            published,
+            0.25,
+            withheld,
+        )
+
+
 def test_public_outputs_carry_no_figures(build_1, repo, tmp_path, capsys):
     out = tmp_path / "draft"
     assert draft(build_1, repo, out) == 0
@@ -2058,6 +2098,30 @@ def test_verify_reports_row_drift_and_no_solve_reuse(build_1, repo, tmp_path):
     assert result["comparison"]["solve_reused"] is False
     assert result["comparison"]["rows_differing"] == 1
     assert "build 2 did not reuse build 1's solve" in result["warnings"]
+
+
+def test_a_row_withheld_in_one_build_only_differs_once(repo, tmp_path):
+    """The fourth review of #1305: it was counted as an error change and as a
+    withholding change."""
+
+    local = (*LOCAL, ("private_rent", "S33999999", "rent/private_rent_brma", 0.0312))
+    build_1 = write_run(
+        tmp_path / "build-1",
+        registers=build_1_registers(),
+        local=local,
+        withheld=frozenset({BRMA_CELL}),
+    )
+    registers = _signed_off(build_1, repo, tmp_path)
+    build_2 = write_run(
+        tmp_path / "build-2",
+        registers=registers,
+        attempt_id=ATTEMPT_2,
+        clock=GATE_CLOCK,
+        local=local,
+    )
+    status, result = verify(build_2, repo, tmp_path, "--build-1", str(build_1))
+    assert status == 0, result["failures"]
+    assert result["comparison"]["rows_differing"] == 1
 
 
 @pytest.mark.parametrize(
