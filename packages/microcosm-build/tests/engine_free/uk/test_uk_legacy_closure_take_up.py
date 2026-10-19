@@ -234,6 +234,9 @@ def test_the_weighted_share_claiming_matches_dwps_rate() -> None:
         assert share == pytest.approx(rate, abs=0.03)
     assert result.evidence()["combinations"]["child_tax_credit"]["support"] == "30+"
     assert result.evidence()["p_basis"] == "spine_design_weights_great_britain"
+    # Both sides of the share claiming rest on thousands of sources: it is given.
+    share = result.evidence()["great_britain_weighted_share_claiming_at_closure"]
+    assert isinstance(share, float)
 
 
 def test_draws_are_keyed_by_benunit_identity() -> None:
@@ -329,28 +332,69 @@ def test_p_is_measured_over_great_britain_and_applied_in_northern_ireland() -> N
     np.testing.assert_allclose(probability, (0.8 - 0.25) / (1 - 0.25))
 
 
-def test_an_unreachable_rate_is_flagged_only_on_ten_or_more_sources() -> None:
-    # Eleven of twelve units claim anyway: p exceeds DWP's rate, so none is drawn.
+def test_an_unreachable_rate_is_flagged_only_on_ten_or_more_sources_a_side() -> None:
+    # Twenty of thirty units claim anyway: p (two thirds) exceeds DWP's rate,
+    # so none is drawn, and both sides of p rest on ten or more sources.
     kwargs = dict(
-        combination=np.array(["esa_income"] * 12, dtype=object),
-        drawn=np.ones(12, dtype=bool),
-        claims_anyway=np.arange(12) < 11,
-        weights=np.ones(12),
-        rates={"esa_income": 0.8, "all": 0.8},
+        combination=np.array(["esa_income"] * 30, dtype=object),
+        drawn=np.ones(30, dtype=bool),
+        claims_anyway=np.arange(30) < 20,
+        weights=np.ones(30),
+        rates={"esa_income": 0.5, "all": 0.5},
+        great_britain=np.ones(30, dtype=bool),
     )
     probability, receipt = lc.legacy_closure_claim_probabilities(
-        **kwargs, source_ids=np.arange(12)
+        **kwargs, source_ids=np.arange(30)
     )
     np.testing.assert_array_equal(probability, 0.0)
     assert receipt["esa_income"]["rate_unreachable"] is True
-    assert receipt["esa_income"]["support"] == "10-29"
-    # Twelve support copies of three households: the cell rests on fewer
+    assert receipt["esa_income"]["support"] == "30+"
+    # Thirty support copies of three households: the cell rests on fewer
     # than ten sources, so neither the flag nor the support is given.
     _, receipt = lc.legacy_closure_claim_probabilities(
-        **kwargs, source_ids=np.arange(12) % 3
+        **kwargs, source_ids=np.arange(30) % 3
     )
     assert receipt["esa_income"]["rate_unreachable"] == "<10"
     assert receipt["esa_income"]["support"] == "<10"
+    # Thirty sources, one of them claiming anyway: the flag would say on which
+    # side of the rate that one unit's weight share lies, so it is withheld.
+    _, receipt = lc.legacy_closure_claim_probabilities(
+        **dict(kwargs, claims_anyway=np.arange(30) < 1), source_ids=np.arange(30)
+    )
+    assert receipt["esa_income"]["rate_unreachable"] == "<10"
+
+
+def test_a_combination_without_great_britain_units_has_no_flag() -> None:
+    _, receipt = lc.legacy_closure_claim_probabilities(
+        combination=np.array(["esa_income"] * 12, dtype=object),
+        drawn=np.ones(12, dtype=bool),
+        claims_anyway=np.zeros(12, dtype=bool),
+        weights=np.ones(12),
+        rates={"esa_income": 0.5, "all": 0.5},
+        great_britain=np.zeros(12, dtype=bool),
+        source_ids=np.arange(12),
+    )
+    # Northern Ireland only: there is no p, so no flag, not "<10".
+    assert receipt["esa_income"]["rate_unreachable"] is None
+
+
+def test_the_share_claiming_hides_a_small_side() -> None:
+    # Forty Great Britain units on forty sources, two claiming anyway at a
+    # rate they already exceed, so only those two claim: the share times the
+    # drawn weight would give their weight back, so it is withheld.
+    n = 40
+    frame = _frame(
+        {"child_tax_credit_reported": np.full(n, 400.0)},
+        would_claim_uc=np.arange(n) < 2,
+        weights=np.ones(n),
+    )
+    evidence = lc.assign_uc_claim_at_legacy_closure(
+        frame, rates={"child_tax_credit": 0.01, "all": 0.8}
+    ).evidence()
+    assert evidence["great_britain_drawn_benunit_weight"] == pytest.approx(40.0)
+    assert evidence["great_britain_weighted_share_claiming_at_closure"] == "<10"
+    # The flag is withheld too: one side of p rests on two sources.
+    assert evidence["combinations"]["child_tax_credit"]["rate_unreachable"] == "<10"
 
 
 def test_the_receipt_aggregates_cover_great_britain_only() -> None:
@@ -439,16 +483,16 @@ def test_the_stage_refuses_a_frame_without_lineage() -> None:
 
 
 def test_the_stage_measures_p_over_great_britain() -> None:
-    # Twelve Great Britain units, six claiming anyway (p = 0.5, below the
-    # rate of 0.6), and twelve Northern Irish units claiming anyway, which a
+    # Twenty Great Britain units, ten claiming anyway (p = 0.5, below the rate
+    # of 0.6), and twenty Northern Irish units claiming anyway, which a
     # UK-wide p would count (0.75, above it): only the Great Britain basis
-    # leaves the rate reachable.
-    n = 24
+    # leaves the rate reachable. Each side of p rests on ten sources.
+    n = 40
     frame = _frame(
         {"child_tax_credit_reported": np.full(n, 400.0)},
-        would_claim_uc=np.r_[np.arange(12) < 6, np.ones(12, dtype=bool)],
+        would_claim_uc=np.r_[np.arange(20) < 10, np.ones(20, dtype=bool)],
         weights=np.ones(n),
-        regions=["NORTH_WEST"] * 12 + ["NORTHERN_IRELAND"] * 12,
+        regions=["NORTH_WEST"] * 20 + ["NORTHERN_IRELAND"] * 20,
     )
     combinations = lc.assign_uc_claim_at_legacy_closure(frame, rates=_RATES).evidence()[
         "combinations"

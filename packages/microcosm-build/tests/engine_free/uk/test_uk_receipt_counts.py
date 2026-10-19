@@ -52,10 +52,11 @@ def test_extreme_count(count, expected) -> None:
 
 @pytest.mark.parametrize(
     ("count", "expected"),
-    [(0, "0"), (1, "<10"), (9, "<10"), (10, "10-29"), (29, "10-29"), (30, "30+")],
+    [(0, 0), (1, "<10"), (9, "<10"), (10, "10-29"), (29, "10-29"), (30, "30+")],
 )
 def test_support_band(count, expected) -> None:
-    # An empty cell reads "0", never "<10" beside a zero weight.
+    # An empty cell reads 0, as the other counts here, never "<10" beside a
+    # zero weight.
     assert support_band(count) == expected
 
 

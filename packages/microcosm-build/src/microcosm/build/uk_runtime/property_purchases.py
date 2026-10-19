@@ -664,7 +664,13 @@ def impute_property_purchase_prices(
     # Copies of one source can sit on both sides, so each side is counted on
     # its own distinct sources, not as the fit's less the other side's.
     uncapped_sources = sources(fitted & ~at_cap)
-    eligible_sources = sources((stock >= minimum) & (weights > 0) & sdlt_mask)
+    eligible = (stock >= minimum) & (weights > 0) & sdlt_mask
+    eligible_sources = sources(eligible)
+    # The eligible owner weight less the fitted transactions is the eligible
+    # owners who do not buy, and so is that weight times one less the event
+    # rate: both are given only where neither the buyers nor the others rest
+    # on one to nine sources.
+    eligible_small = 0 < min(fitted_sources, sources(eligible & ~fitted)) < 10
     fitted_value = float(np.dot(prices, weights * sdlt_mask))
     at_cap_share = float(weights[at_cap].sum()) / fitted_count if fitted_count else 0.0
     # The share at the cap is withheld where the fit or either side of it
@@ -683,8 +689,16 @@ def impute_property_purchase_prices(
         "value_shortfall_share": small_cell_share(
             max(0.0, 1.0 - fitted_value / target.value), fitted_sources
         ),
-        "eligible_owner_weight": small_cell_share(eligible_weight, eligible_sources),
-        "event_rate": small_cell_share(fitted_count / eligible_weight, fitted_sources),
+        "eligible_owner_weight": (
+            "<10"
+            if eligible_small
+            else small_cell_share(eligible_weight, eligible_sources)
+        ),
+        "event_rate": (
+            "<10"
+            if eligible_small
+            else small_cell_share(fitted_count / eligible_weight, fitted_sources)
+        ),
         "price_scale": (
             None if scale is None else small_cell_share(scale, fitted_sources)
         ),

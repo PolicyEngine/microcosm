@@ -274,10 +274,41 @@ def test_a_fit_on_fewer_than_ten_sources_withholds_the_share_at_the_cap() -> Non
 
 
 def test_an_empty_cell_reads_zero() -> None:
-    # No purchase outside the fit regions: "0" beside a zero weight, not "<10".
+    # No purchase outside the fit regions: 0 beside a zero weight, not "<10".
     receipt = _capped_receipt(12, 28, np.arange(40))
     assert receipt["purchases_outside_sdlt_regions_weight"] == 0.0
-    assert receipt["outside_sdlt_regions_support"] == "0"
+    assert receipt["outside_sdlt_regions_support"] == 0
+
+
+def _non_buyer_receipt(buyers: int, others: int, sources: np.ndarray) -> dict:
+    """Every row eligible in the fit regions; the ``others`` hold the latest
+    events, so exactly ``buyers`` rows buy."""
+
+    n = buyers + others
+    uniforms = np.r_[np.full(buyers, 0.01), np.full(others, 0.99)]
+    return pp.impute_property_purchase_prices(
+        stock=np.full(n, 200_000.0),
+        weights=np.ones(n),
+        sdlt_mask=np.ones(n, dtype=bool),
+        event_uniforms=uniforms,
+        price_uniforms=np.random.default_rng(3).random(n),
+        target=_target(transactions=float(buyers), value=buyers * 150_000.0),
+        source_ids=sources,
+    ).receipt
+
+
+def test_the_eligible_weight_hides_a_small_side_that_does_not_buy() -> None:
+    # Thirty-eight of forty eligible rows buy; the two that do not copy one
+    # source. The eligible weight less the fitted transactions would give that
+    # source's weight back, and so would the event rate: both are withheld.
+    receipt = _non_buyer_receipt(38, 2, np.r_[np.arange(38), 100, 100])
+    assert receipt["fitted_transactions"] == pytest.approx(38.0)
+    assert receipt["eligible_owner_weight"] == "<10"
+    assert receipt["event_rate"] == "<10"
+    # Twenty-two others on their own sources: both are given.
+    receipt = _non_buyer_receipt(38, 22, np.arange(60))
+    assert receipt["eligible_owner_weight"] == pytest.approx(60.0)
+    assert receipt["event_rate"] == pytest.approx(38 / 60)
 
 
 def test_infeasible_targets_refuse() -> None:

@@ -221,7 +221,8 @@ def legacy_closure_claim_probabilities(
     applies to every unit of the combination. The expected weighted share of
     Great Britain's drawn units claiming at the closure is ``r`` wherever
     ``p <= r``. The receipt bands each cohort on its distinct source
-    households and flags an unreachable rate only where ten or more carry it.
+    households and flags an unreachable rate only where ten or more carry p
+    and neither of its sides rests on one to nine.
     """
 
     gb = (
@@ -253,8 +254,17 @@ def legacy_closure_claim_probabilities(
             0.0 if p >= 1 else float(np.clip((rate - p) / (1 - p), 0.0, 1.0))
         )
 
-        # The flag rests on p, so on Great Britain's sources.
-        flag = bool(p > rate) if count(basis) >= 10 else "<10"
+        # The flag rests on p, so on Great Britain's sources, and says on which
+        # side of DWP's rate p lies: it is given only where ten or more sources
+        # carry p and neither the units claiming anyway nor the others rest on
+        # one to nine. A combination with no Great Britain unit has no p.
+        sides = (count(basis & claims_anyway), count(basis & ~claims_anyway))
+        if not basis.any():
+            flag: bool | str | None = None
+        elif count(basis) < 10 or 0 < min(sides) < 10:
+            flag = "<10"
+        else:
+            flag = bool(p > rate)
         receipt[str(key)] = {
             "rate": rate,
             "rate_source": "combination" if key in rates else "all_households",
@@ -347,23 +357,33 @@ def assign_uc_claim_at_legacy_closure(
         mass_log=frame.mass_log,
     )
     validate_uk_national_frame(result)
+
     # Great Britain's weighted aggregates only, DWP's universe; a figure one to
     # nine source households carry is "<10" (UKDS disclosure control).
+    def sources(mask: np.ndarray) -> int:
+        return int(len(np.unique(source_ids[mask])))
+
     gb_drawn = drawn & great_britain
-    gb_sources = int(len(np.unique(source_ids[gb_drawn])))
+    gb_sources = sources(gb_drawn)
     drawn_weight = float(weights[gb_drawn].sum())
+    claiming = gb_drawn & flag
+    # The share claiming times the drawn weight gives back either side, so the
+    # share is given only where neither side rests on one to nine sources.
+    share_small = 0 < min(sources(claiming), sources(gb_drawn & ~flag)) < 10
+    if not drawn_weight:
+        share: float | str | None = None
+    elif share_small:
+        share = "<10"
+    else:
+        share = small_cell_share(
+            float(weights[claiming].sum()) / drawn_weight, gb_sources
+        )
     receipt = {
         "combinations": combinations_drawn,
         "great_britain_drawn_benunit_weight": small_cell_share(
             drawn_weight, gb_sources
         ),
-        "great_britain_weighted_share_claiming_at_closure": (
-            small_cell_share(
-                float(weights[gb_drawn & flag].sum()) / drawn_weight, gb_sources
-            )
-            if drawn_weight
-            else None
-        ),
+        "great_britain_weighted_share_claiming_at_closure": share,
         "p_basis": "spine_design_weights_great_britain",
     }
     return UKLegacyClosureTakeUpResult(frame=result, receipt=receipt)
