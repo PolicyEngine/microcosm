@@ -313,10 +313,18 @@ The marker is the producer extension `microcosm.reconstruction`:
   revision itself, and `caller_asserted` when the build recorded none and the
   caller supplied one. `git_dirty` is `null` when the build did not record it.
 - **`inputs`:** every file the reconstruction read, in name order, by digest
-  and size. `verification` is `recorded_digest_matched` when a digest the build
-  itself recorded for that file matched, and `no_recorded_digest` when the
-  build recorded none. Exactly one input is the declaration, and its digest
-  equals the schema's `graph_sha256`.
+  and size. Exactly one input is the declaration, and its digest equals the
+  schema's `graph_sha256`. `verification` compares the file with the digests
+  the build itself recorded for it:
+
+  | Value | Meaning |
+  | --- | --- |
+  | `recorded_digest_matched` | Every recorded digest matched. |
+  | `fallback_digest_matched` | The build marked one recorded digest as taken before it rewrote the file. That digest was skipped, and another recorded digest matched. |
+  | `only_stale_digest_recorded` | Every recorded digest is marked as taken before the rewrite, so nothing the build recorded checks the file. |
+  | `no_recorded_digest` | The build recorded no digest for the file. |
+
+  In the last two cases the file is bound only by the digest in the marker.
 - **Exact bytes:** `reconstructed_schema` refuses a declaration that the
   current serializer would not write byte for byte. The schema therefore
   describes the recorded file, not a reinterpretation of it.
@@ -354,7 +362,17 @@ The build directory is only read. The command:
   devices and inputs over 32 MiB are refused.
 - **Checks recorded digests:** a file whose bytes disagree with a digest the
   build recorded for it is refused. `build.json` binds the candidate manifest,
-  and `sha256sums.txt` binds the files it lists.
+  and `sha256sums.txt` binds the files it lists. One exception covers the dense
+  driver merged with #901 (2026-09-29). It recorded the manifest's digest in
+  `build.json` with the note `staging receipts are appended after
+  publication`, then appended `staging_delivery` and `staged_dataset` to the
+  manifest and refreshed only `sha256sums.txt`. `build.json` was reissued over
+  the final bytes, without the note, only from #1057 (2026-09-30). A
+  `build.json` digest with that exact note that no longer matches is skipped
+  and reported, and the manifest must then match `sha256sums.txt`
+  (`fallback_digest_matched`). A build run with `--no-staging` or
+  `--no-staged-dataset` wrote no digest list, so its manifest is reported as
+  `only_stale_digest_recorded`, with a warning.
 - **Resolves the revision:** it takes the candidate manifest's `git_commit`
   and `git_dirty`, which must agree with the copy under `identity.code`.
   `--revision` must match that commit, or supplies one when the build recorded
@@ -380,12 +398,14 @@ directory into place only after every file is written:
 The summary report, of which the command prints a short version, lists:
 
 - the inputs and how each was verified;
+- the recorded digests skipped as stale, each with its note and the digest
+  lists the file was checked against instead;
 - the expected files that are missing;
 - evidence found but not bound to operations: run manifests,
   `evidence-index.json`, `operations.json` and the content store;
 - warnings, for a dirty or unrecorded working tree, a caller-asserted revision,
-  or a declaration the build recorded no digest for. Before #1144, the last one
-  applies to every build.
+  a skipped stale digest, or a declaration the build recorded no digest for.
+  Before #1144, the last one applies to every build.
 
 Output is deterministic: reconstructing the same build twice gives identical
 bytes and the same publication ID. The command uploads nothing and starts no
