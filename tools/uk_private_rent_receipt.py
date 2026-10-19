@@ -12,9 +12,10 @@ entries rest on measured figures rather than on a gate:
   their target, how many are more than 25% out, and the median error. A row
   enters a summary only when ten distinct source households of positive
   weight carry it at that weighting, as the build's BRMA rule counts them;
-  the others are counted, never summarised. A weighting whose households
-  have no source keys (``--pool`` gives the design and dense ones) is not
-  summarised at all.
+  the others are counted, never summarised, and a group is summarised only
+  over ten or more published rows. A weighting whose households have no
+  source keys (``--pool`` gives the design and dense ones) is not summarised
+  at all.
 - **Rents by region and bedrooms.** The mean monthly rent of private renters
   with a positive rent, by nation, region and LHA category (B to E).
 - **PIPR by district and bedrooms.** ONS's calendar-2025 mean rents by local
@@ -90,6 +91,7 @@ from microcosm.build.uk_runtime.private_rent_localisation import (
     rent_categories,
 )
 from microcosm.build.uk_runtime.receipt_counts import (
+    distinct_carriers,
     outside_work_trees,
     rounded_count,
 )
@@ -171,10 +173,13 @@ def floored_share(numerator: int, denominator: int) -> float | str | None:
 
 
 def _carriers(values: Iterable[object]) -> int:
-    """Distinct source households, a blank key counting for none."""
+    """Distinct source households, a blank key counting for none.
 
-    series = pd.Series(np.asarray(list(values), dtype=object))
-    return int(series[series != ""].nunique())
+    The receipts' one rule (``receipt_counts.distinct_carriers``);
+    :func:`with_carriers` has blanked the rows of zero weight.
+    """
+
+    return distinct_carriers(values)
 
 
 def with_carriers(frame: pd.DataFrame, *, frs_only: bool = False) -> pd.DataFrame:
@@ -358,7 +363,21 @@ def _area_nation(code: str) -> str:
 
 
 def _fit_summary(relative: np.ndarray, withheld: int = 0) -> dict[str, Any]:
+    """A group's fit over its published rows.
+
+    A group of fewer than ten published rows reads withheld, its counts
+    only: a median over one or two rows is a row's own error, which the
+    receipt's no-single-district-or-BRMA rule forbids (the third review of
+    #1305).
+    """
+
     error = np.abs(relative)
+    if error.size < MIN_GROUP_CELLS:
+        return {
+            "withheld": f"fewer than {MIN_GROUP_CELLS} published rows",
+            "rows": int(error.size),
+            **({"rows_withheld": int(withheld)} if withheld else {}),
+        }
     out = {
         "rows": int(error.size),
         "share_within_10pct": round(float(np.mean(error <= 0.10)), 3)

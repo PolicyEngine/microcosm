@@ -112,33 +112,53 @@ def test_a_cell_with_rows_but_no_counted_carrier_reads_under_ten():
     assert tool.weighted_share(np.ones(20, dtype=bool), weight, blank[::-1]) == 1.0
 
 
-def _rent_weighting(carriers=True, *, thin_brma=False):
-    """Three rent rows and a tenure row over 40 households.
+def _rent_weighting(carriers=True, *, thin_brma=False, per_group=12):
+    """``per_group`` English, Welsh and Scottish BRMA rent rows, and a tenure
+    row, over 40 households.
 
-    The English row covers households 0-19, the Welsh one 20-39 and the
-    BRMA row all forty, or households 0-2 when ``thin_brma``; each household
-    is its own source household.
+    The English rows cover households 0-19, the Welsh ones 20-39 and the
+    BRMA rows all forty; with ``thin_brma`` the first BRMA row covers 0-2
+    only. Each household is its own source household.
     """
 
-    metadata = (
-        {"contract_target_id": "ons.rent.private_rent", "area_code": "E06000001"},
-        {"contract_target_id": "ons.rent.private_rent", "area_code": "W06000001"},
-        {"contract_target_id": "ons.rent.private_rent_brma", "area_code": "S33000001"},
+    metadata = [
+        *(
+            {"contract_target_id": "ons.rent.private_rent", "area_code": f"E06{i:06d}"}
+            for i in range(per_group)
+        ),
+        *(
+            {"contract_target_id": "ons.rent.private_rent", "area_code": f"W06{i:06d}"}
+            for i in range(per_group)
+        ),
+        *(
+            {
+                "contract_target_id": "ons.rent.private_rent_brma",
+                "area_code": f"S33{i:06d}",
+            }
+            for i in range(per_group)
+        ),
         {"contract_target_id": "ons.tenure.private_rent", "area_code": "E06000001"},
-    )
-    rows = np.zeros((4, 40))
-    rows[0, :20] = 1.0
-    rows[1, 20:] = 1.0
-    rows[2, : 3 if thin_brma else 40] = 1.0
-    rows[3] = 5.0
+    ]
+    rows = np.zeros((len(metadata), 40))
+    rows[:per_group, :20] = 1.0
+    rows[per_group : 2 * per_group, 20:] = 1.0
+    rows[2 * per_group : 3 * per_group] = 1.0
+    if thin_brma:
+        rows[2 * per_group, 3:] = 0.0
+    rows[-1] = 5.0
     weights = np.where(np.arange(40) < 20, 105.0, 70.0) / 20
+    targets = np.array(
+        [100.0] * (2 * per_group)
+        + [15.75 if thin_brma and i == 0 else 175.0 for i in range(per_group)]
+        + [1.0]
+    )
     return tool.Weighting(
         name="design",
         matrix=sparse.csr_array(rows),
         weights=weights,
-        names=("e", "w", "s", "t"),
-        targets=np.array([100.0, 100.0, 15.75 if thin_brma else 175.0, 1.0]),
-        metadata=metadata,
+        names=tuple(f"row{i}" for i in range(len(metadata))),
+        targets=targets,
+        metadata=tuple(metadata),
         carriers=(
             np.array([f"s{i}" for i in range(40)], dtype=object) if carriers else None
         ),
@@ -147,12 +167,12 @@ def _rent_weighting(carriers=True, *, thin_brma=False):
 
 def test_rent_rows_are_scored_by_family_and_nation() -> None:
     summary, rows = tool.rent_row_fit(_rent_weighting())
-    assert [row["target_name"] for row in rows] == ["e", "w", "s"]
-    assert [row["source_households"] for row in rows] == [20, 20, 40]
-    assert summary["all"]["rows"] == 3
-    assert summary["all"]["rows_over_25pct"] == 1
+    assert len(rows) == 36
+    assert [row["source_households"] for row in rows[::12]] == [20, 20, 40]
+    assert summary["all"]["rows"] == 36
+    assert summary["all"]["rows_over_25pct"] == 12
     assert summary["ons.rent.private_rent England"]["share_within_10pct"] == 1.0
-    assert summary["ons.rent.private_rent Wales"]["rows_over_25pct"] == 1
+    assert summary["ons.rent.private_rent Wales"]["rows_over_25pct"] == 12
     assert summary["ons.rent.private_rent_brma Scotland"]["median_abs_error"] == 0.0
     assert "rows_withheld" not in summary["all"]
 
@@ -165,24 +185,29 @@ def test_a_rent_row_on_fewer_than_ten_households_is_counted_never_summarised():
     """
 
     summary, rows = tool.rent_row_fit(_rent_weighting(thin_brma=True))
-    assert rows[2]["source_households"] == 3
-    assert summary["all"] == {
-        "rows": 2,
-        "share_within_10pct": 0.5,
-        "rows_over_25pct": 1,
-        "median_abs_error": summary["all"]["median_abs_error"],
-        "rows_withheld": 1,
-    }
-    assert summary["ons.rent.private_rent_brma Scotland"] == {
-        "rows": 0,
-        "share_within_10pct": None,
-        "rows_over_25pct": 0,
-        "median_abs_error": None,
-        "rows_withheld": 1,
-    }
+    assert rows[24]["source_households"] == 3
+    assert summary["all"]["rows"] == 35 and summary["all"]["rows_withheld"] == 1
+    brma = summary["ons.rent.private_rent_brma Scotland"]
+    assert brma["rows"] == 11 and brma["rows_withheld"] == 1
+    assert brma["median_abs_error"] == 0.0
     # Without the households' keys no row can be floored, so none is summarised.
     summary, rows = tool.rent_row_fit(_rent_weighting(carriers=False))
-    assert summary == {"withheld": tool.NO_SOURCE_KEYS} and len(rows) == 3
+    assert summary == {"withheld": tool.NO_SOURCE_KEYS} and len(rows) == 36
+
+
+def test_a_group_of_fewer_than_ten_published_rows_reads_withheld():
+    """The third review of #1305: a median over one row is that row's error."""
+
+    summary, _ = tool.rent_row_fit(_rent_weighting(thin_brma=True, per_group=3))
+    assert summary["ons.rent.private_rent_brma Scotland"] == {
+        "withheld": "fewer than 10 published rows",
+        "rows": 2,
+        "rows_withheld": 1,
+    }
+    assert summary["ons.rent.private_rent England"] == {
+        "withheld": "fewer than 10 published rows",
+        "rows": 3,
+    }
 
 
 def test_carriers_follow_the_problem_axis_and_its_positive_weights():

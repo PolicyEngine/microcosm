@@ -1256,7 +1256,7 @@ def test_a_thin_brma_row_keeps_its_place_but_not_its_model_figures() -> None:
 
 
 def _thin_and_wide_brma_payload(
-    thin_values=(1.0,) * 6 + (0.0,) * 8, extra_options=None
+    thin_values=(1.0,) * 6 + (0.0,) * 8, extra_options=None, thin_target=10.0
 ):
     """The thin/wide BRMA fixture's diagnostics payload and its result.
 
@@ -1288,7 +1288,7 @@ def _thin_and_wide_brma_payload(
             hierarchy=_fixture_hierarchy(name, "brma"),
         )
         for name, measure, value in (
-            ("thin_brma_target", "thin_measure", 10.0),
+            ("thin_brma_target", "thin_measure", thin_target),
             ("wide_brma_target", "wide_measure", 10.0),
             ("other_brma_target", "other_measure", 7.5),
         )
@@ -1392,6 +1392,26 @@ def _numbers(value):
     elif isinstance(value, list):
         for item in value:
             yield from _numbers(item)
+
+
+def test_a_withheld_row_inside_ten_percent_counts_nowhere() -> None:
+    """The third review of #1305: no test had a withheld row inside 10%.
+
+    The thin row now misses its target by about 3%. Of the published rows
+    one is inside 10% and one is not, so the fraction is a half; counting the
+    numerator over every row would make it one.
+    """
+
+    payload, _ = _thin_and_wide_brma_payload(thin_target=6.2)
+    rows = {row["target_name"]: row for row in payload["targets"]}
+    assert rows["thin_brma_target"]["final_estimate"] is None
+    assert payload["fraction_within_10pct"] == 0.5
+    (brma,) = [
+        row
+        for row in payload["uk_diagnostics"]["target_pass_rates_by_geography_level"]
+        if row["geography_level"] == "brma"
+    ]
+    assert brma["n_within_10pct"] == 1
 
 
 def test_no_loss_over_every_row_survives_in_the_payload() -> None:

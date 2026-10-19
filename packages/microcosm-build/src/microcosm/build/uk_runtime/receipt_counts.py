@@ -22,6 +22,7 @@ least ten working days before it is distributed or published.
 from __future__ import annotations
 
 import math
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -148,6 +149,26 @@ def small_cell_share(share: float, count: int) -> float | str:
     if 0 < value < 10:
         return "<10"
     return float(share)
+
+
+def distinct_carriers(
+    keys: Iterable[object], weights: Iterable[float] | None = None
+) -> int:
+    """How many source households carry a figure: the receipts' one rule.
+
+    A carrier is a distinct, non-blank source household key on a row of
+    positive weight. A row of zero weight adds nothing to a figure, so it
+    carries none; this is the rule the build's BRMA withholding counts by
+    (microcosm#1262). Without ``weights`` every row counts as weighted.
+    """
+
+    keys = list(keys)
+    if weights is not None:
+        weights = [float(weight) for weight in weights]
+        if len(weights) != len(keys):
+            raise ValueError("carrier keys and weights must align.")
+        keys = [key for key, weight in zip(keys, weights, strict=True) if weight > 0]
+    return len({str(key) for key in keys if key is not None and str(key) != ""})
 
 
 def outside_work_trees(path: Path | str, *, what: str) -> Path:

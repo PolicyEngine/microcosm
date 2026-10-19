@@ -515,6 +515,34 @@ def test_london_clones_read_their_own_areas_list(
     )
 
 
+@pytest.mark.parametrize("full_scale", [True, False])
+def test_the_rent_kernel_reads_its_strictness_off_the_node(
+    full_scale, toy_ladder, tmp_path, monkeypatch
+) -> None:
+    """The third review of #1305: the kernel, not just the node, honours it.
+
+    Hard-coding the kernel's strictness passed every test; the kernel must
+    hand ``localise_rents`` the node's own ``strict_cells``.
+    """
+    seen: list[bool] = []
+    original = prl.localise_rents
+
+    def recording(**kwargs):
+        seen.append(kwargs["strict"])
+        return original(**kwargs)
+
+    monkeypatch.setattr(prl, "localise_rents", recording)
+    _, ladder_path = toy_ladder
+    graph, registry, paths = _graph(1, tmp_path, full_scale=full_scale)
+    run_graph(
+        compile_graph(graph),
+        sources=_sources(tmp_path, ladder_path, paths),
+        store=ContentStore(tmp_path / "store"),
+        kernels=registry,
+    )
+    assert seen == [full_scale]
+
+
 def test_none_mode_adds_no_private_rent_node(tmp_path) -> None:
     graph, _, _ = _graph(1, tmp_path, mode="none")
     assert "uk.full.private_rent" not in compile_graph(graph).order

@@ -31,6 +31,17 @@ from .graph_national import NATIONAL_GATE_REPORT_TYPE, NATIONAL_TARGET_TYPE
 from .graph_targets import TARGET_SELECTION_TYPE, registry_from_payload
 from .graph_terminal import FULL_GATE_REPORT_TYPE
 
+
+def _summary_level(metadata) -> str:
+    """A target's geography level as the diagnostics read it: ``la`` and
+    ``statistical_scope`` are the local-authority and BRMA levels."""
+
+    from .diagnostics import _GEOGRAPHY_LEVEL_ALIASES
+
+    level = str(metadata.get("geography_level", "")).strip().lower()
+    return _GEOGRAPHY_LEVEL_ALIASES.get(level, level)
+
+
 #: A summary row's fields that the result's weights produce.
 _SUMMARY_MODEL_FIELDS = (
     "initial",
@@ -59,7 +70,7 @@ def _withhold_summary_rows(data: dict, result, ordered) -> None:
         result.frame,
         rows,
         {
-            target.row_name: str(metadata.get("geography_level", ""))
+            target.row_name: _summary_level(metadata)
             for target, metadata in zip(
                 ordered.problem.targets, ordered.target_metadata, strict=True
             )
@@ -185,10 +196,7 @@ def _size_summary(context: ArtifactSummaryContext) -> dict:
     # Totals over every row: with a BRMA row withheld they would give it back
     # by difference (microcosm#1262). Without the weights behind them this
     # summary cannot tell, so a problem that binds BRMA rows publishes none.
-    if any(
-        str(metadata.get("geography_level", "")) == "brma"
-        for metadata in problem.target_metadata
-    ):
+    if any(_summary_level(metadata) == "brma" for metadata in problem.target_metadata):
         for key in ("dense_loss", "compact_loss", "max_target_scaled_change"):
             if key in summary:
                 summary[key] = None

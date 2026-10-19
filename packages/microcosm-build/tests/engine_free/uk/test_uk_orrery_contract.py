@@ -270,8 +270,9 @@ def test_unavailable_checkpoint_bytes_are_named_not_linked(tmp_path):
     assert "gone.json" not in saved.read_text()
 
 
-def _brma_problem(n: int = 4):
-    """An ordered problem over ``n`` households binding one Scottish BRMA row."""
+def _brma_problem(n: int = 4, level: str = "brma"):
+    """An ordered problem over ``n`` households binding one Scottish BRMA row,
+    its level spelt ``level``."""
     import numpy as np
     import pandas as pd
 
@@ -308,7 +309,7 @@ def _brma_problem(n: int = 4):
         entity_ids=list(range(n)),
         target_metadata=[
             {"geography_level": "constituency"},
-            {"geography_level": "brma"},
+            {"geography_level": level},
         ],
         bindings={},
     )
@@ -407,3 +408,72 @@ def test_a_size_summary_over_brma_rows_publishes_no_all_row_total():
         overview[field] is None
         for field in ("dense_loss", "compact_loss", "max_target_scaled_change")
     )
+
+
+@pytest.mark.parametrize("level", ["brma", "statistical_scope"])
+def test_the_registered_result_provider_withholds_a_thin_brma_row(level, monkeypatch):
+    """The third review of #1305: through the provider, not the helper alone.
+
+    Deleting the withholding call from the registered provider failed no
+    test, and a row spelt ``statistical_scope`` escaped it.
+    """
+    from types import SimpleNamespace
+
+    import numpy as np
+
+    from microcosm.build.uk_runtime import orrery_contract
+    from microcosm.calibrate.artifacts import RESULT_TYPE
+
+    frame, ordered, _ = _brma_problem(level=level)
+
+    def row(name, target, estimate):
+        return SimpleNamespace(
+            name=name,
+            target=target,
+            initial_estimate=estimate,
+            final_estimate=estimate,
+            relative_error=(estimate - target) / target,
+            within_tolerance=False,
+        )
+
+    result = SimpleNamespace(
+        weights=np.ones(4),
+        initial_weights=np.ones(4),
+        frame=SimpleNamespace(
+            table=frame.table,
+            weights_for=lambda entity: SimpleNamespace(
+                kind=SimpleNamespace(value="calibrated")
+            ),
+        ),
+        weight_entity="household",
+        diagnostics=[
+            row(ordered.problem.names[0], 4.0, 4.0),
+            row(ordered.problem.names[1], 40.0, 4.0),
+        ],
+        target_loss_weights=np.ones(2),
+        target_loss_scales=np.array([4.0, 40.0]),
+        target_loss_cap=10.0,
+        final_loss=0.45,
+        l0_lambda=0.0,
+        options={"target_loss_cap": 10.0},
+    )
+    monkeypatch.setattr(
+        orrery_contract, "summary_result", lambda context: (result, ordered)
+    )
+    context = SimpleNamespace(
+        node_id="uk.full.dense",
+        run=SimpleNamespace(
+            compiled=SimpleNamespace(predecessors={"uk.full.dense": []}),
+            manifest=SimpleNamespace(nodes={}),
+        ),
+    )
+    provider = orrery_contract.UK_SUMMARY_PROVIDERS[
+        (RESULT_TYPE.name, RESULT_TYPE.schema_version)
+    ]
+    data = provider(context)
+    published, withheld = data["tables"]["targets"]
+    assert published["achieved"] == 4.0
+    assert withheld["model_figures_withheld"] is True
+    assert withheld["achieved"] is None and withheld["relative_error"] is None
+    assert data["overview"]["final_loss"] == 0.0
+    assert data["overview"]["model_figures_withheld"]["targets"] == 1

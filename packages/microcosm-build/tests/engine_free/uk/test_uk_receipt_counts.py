@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from microcosm.build.uk_runtime.receipt_counts import (
+    distinct_carriers,
     extreme_count,
     floored_share,
     rounded_count,
@@ -88,3 +89,13 @@ def test_small_cell_share() -> None:
     assert small_cell_share(0.25, 40) == pytest.approx(0.25)
     with pytest.raises(ValueError, match="negative"):
         small_cell_share(0.1, -1)
+
+
+def test_distinct_carriers_count_keyed_rows_of_positive_weight() -> None:
+    """The receipts' one carrier rule (the third review of #1305)."""
+
+    keys = ["a", "a", "b", "", None, "c"]
+    assert distinct_carriers(keys) == 3
+    assert distinct_carriers(keys, [1.0, 0.0, 2.0, 1.0, 1.0, 0.0]) == 2
+    with pytest.raises(ValueError, match="align"):
+        distinct_carriers(keys, [1.0])
