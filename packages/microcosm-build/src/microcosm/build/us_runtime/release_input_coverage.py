@@ -135,6 +135,7 @@ from microcosm.build.us_runtime.workers_compensation import (
 )
 
 __all__ = [
+    "REPORTED_SSI_RECEIPT_CONSISTENCY_FAILURE_PREFIX",
     "US_ASEC_REPORTED_RECEIPT_REQUIRED_INPUTS",
     "US_ASEC_REPORTED_SSI_RECEIPT_REQUIRED_INPUTS",
     "US_CGD_ROUTE_REQUIRED_INPUTS",
@@ -739,18 +740,30 @@ def us_release_input_coverage_gate(
     )
 
 
+#: Every consistency failure line starts with this, so preflight can classify
+#: row-dependent receipt failures apart from absent or degenerate columns.
+REPORTED_SSI_RECEIPT_CONSISTENCY_FAILURE_PREFIX = "Reported SSI receipt consistency: "
+#: The harmonized native ACS SSI amount a stacked ACS row carries instead of
+#: ``SSI_VAL`` (``acs_inputs.map_acs_native_inputs``).
+_ACS_REPORTED_SSI_AMOUNT = "ssi_reported"
+
+
 def us_reported_ssi_receipt_consistency_failures(
     person: Any,
 ) -> tuple[tuple[str, ...], dict[str, object]]:
-    """Check ``receives_ssi`` against the SSI take-up anchor on a person table.
+    """Check ``receives_ssi`` against the reported amount and take-up anchor.
 
-    Two invariants hold for every person the column marks, by construction of
-    :func:`~microcosm.build.us_runtime.cps_carried.reported_ssi_receipt` and
-    the take-up stage's reporter anchor:
+    For every person the column marks:
 
-    - they report a positive ``SSI_VAL`` (checked where ``SSI_VAL`` is
-      observed; a stacked ACS row carries no ``SSI_VAL``); and
-    - they are anchored SSI claimants: ``takes_up_ssi_if_eligible`` is true.
+    - **Reported amount.** The person's own reported amount is positive:
+      ``SSI_VAL`` on a CPS-measured row, or the native ACS ``ssi_reported`` on
+      a stacked ACS row. Stacked rows carry exactly one of the two. A marked
+      row with neither observed fails.
+    - **Take-up anchor.** On a CPS-measured row (``SSI_VAL`` observed),
+      ``takes_up_ssi_if_eligible`` is true, because the SSI take-up stage
+      anchors every ``SSI_VAL`` reporter as a claimant. A stacked ACS row is
+      outside that anchor (the stage anchors CPS reporters only) and is
+      counted, not judged.
 
     A table without ``receives_ssi`` returns no failures; the coverage gate
     already fails a required column that is absent.
@@ -768,30 +781,52 @@ def us_reported_ssi_receipt_consistency_failures(
         "rows": int(len(receipt)),
         "receipt_rows": int(receipt.sum()),
     }
-    if US_SSI_TAKE_UP_ANCHOR in person.columns:
-        amount = pd.to_numeric(person[US_SSI_TAKE_UP_ANCHOR], errors="coerce").to_numpy(
-            dtype=np.float64
+    cps_amount = _optional_amount(person, US_SSI_TAKE_UP_ANCHOR)
+    acs_amount = _optional_amount(person, _ACS_REPORTED_SSI_AMOUNT)
+    if cps_amount is not None or acs_amount is not None:
+        cps_observed = (
+            ~np.isnan(cps_amount)
+            if cps_amount is not None
+            else np.zeros(len(receipt), dtype=bool)
         )
-        observed = ~np.isnan(amount)
-        without_amount = int((receipt & observed & ~(amount > 0.0)).sum())
-        details["receipt_rows_without_positive_ssi_val"] = without_amount
+        amount = np.where(
+            cps_observed,
+            np.nan_to_num(cps_amount) if cps_amount is not None else 0.0,
+            acs_amount if acs_amount is not None else np.nan,
+        )
+        without_amount = int((receipt & ~(np.nan_to_num(amount) > 0.0)).sum())
+        details["receipt_rows_without_positive_reported_amount"] = without_amount
         if without_amount:
             failures.append(
-                f"receives_ssi: {without_amount} person row(s) are marked as "
-                "reported SSI recipients without a positive SSI_VAL."
+                f"{REPORTED_SSI_RECEIPT_CONSISTENCY_FAILURE_PREFIX}receives_ssi: "
+                f"{without_amount} person row(s) are marked as reported SSI "
+                "recipients without a positive reported SSI amount (SSI_VAL or "
+                "ACS ssi_reported)."
             )
+    else:
+        cps_observed = np.zeros(len(receipt), dtype=bool)
     take_up_column = US_SSI_TAKE_UP_OUTPUT_COLUMNS[0]
     if take_up_column in person.columns:
         take_up = _boolean_values(person[take_up_column], take_up_column)
-        without_take_up = int((receipt & ~take_up).sum())
+        without_take_up = int((receipt & cps_observed & ~take_up).sum())
         details["receipt_rows_without_take_up"] = without_take_up
+        details["receipt_rows_outside_take_up_anchor"] = int(
+            (receipt & ~cps_observed).sum()
+        )
         if without_take_up:
             failures.append(
-                f"receives_ssi: {without_take_up} reported SSI recipient row(s) "
+                f"{REPORTED_SSI_RECEIPT_CONSISTENCY_FAILURE_PREFIX}receives_ssi: "
+                f"{without_take_up} CPS-measured reported SSI recipient row(s) "
                 "carry takes_up_ssi_if_eligible = False; the SSI take-up stage "
                 "anchors every SSI_VAL reporter as a claimant."
             )
     return tuple(failures), details
+
+
+def _optional_amount(person: Any, column: str) -> np.ndarray | None:
+    if column not in person.columns:
+        return None
+    return pd.to_numeric(person[column], errors="coerce").to_numpy(dtype=np.float64)
 
 
 def _boolean_values(values: Any, column: str) -> np.ndarray:

@@ -153,6 +153,11 @@ _ACS_NATIVE_INPUT_CONTRACTS: Mapping[
         ("SSIP", "ADJINC"),
         "SSIP * ADJINC / 1_000_000",
     ),
+    "receives_ssi": (
+        "person",
+        ("SSIP",),
+        "SSIP > 0; blank is no reported receipt",
+    ),
     "acs_social_security_income": (
         "person",
         ("SSP", "ADJINC"),

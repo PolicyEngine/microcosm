@@ -988,16 +988,6 @@ columns:
     domain: primary_puf_qrf_nontransfer
     public_stability: internal
     unit_waiver: policyengine_us_unit_unavailable
-- key: person.receives_ssi
-  contract:
-    entity: person
-    dtype: bool
-    unit: boolean
-    definition_period: month
-    vintage: vintage:target_2024
-    nullable: false
-    domain: source_operator_cps_carried
-    public_stability: internal
 - key: person.receives_wic
   contract:
     entity: person

@@ -373,8 +373,11 @@ def reported_ssi_receipt(person: pd.DataFrame) -> np.ndarray:
     """Return each person's own reported SSI receipt, for ``receives_ssi``.
 
     A person reports receipt when their annual ``SSI_VAL`` is positive and at
-    least one reported reason is their own: disabled, blind, other, or no
-    reason recorded. ``SSI_VAL`` is the take-up stage's reporter anchor
+    least one reported reason is their own (disabled, blind or other). A
+    positive amount with no reason recorded is also treated as own receipt:
+    the dictionary marks reason code 0 not in universe, and no such row occurs
+    among the pinned default's 1,510 reporters, so this is an assumption, not
+    a dictionary rule. ``SSI_VAL`` is the take-up stage's reporter anchor
     (``ssi_take_up.US_SSI_TAKE_UP_ANCHOR``), so every person marked here is
     also an anchored SSI claimant; the release coverage gate checks it.
 
@@ -416,8 +419,13 @@ def reported_ssi_receipt(person: pd.DataFrame) -> np.ndarray:
         _integer_source(person, column)
         for column in CPS_REPORTED_SSI_REASON_RAW_COLUMNS
     )
-    on_behalf_of_child_only = np.isin(first, payee_codes) & np.isin(
-        second, [0, *payee_codes]
+    # Order-free: every recorded (nonzero) reason is a payee code, and at least
+    # one reason is recorded. Code 0 is not in universe, not a reason.
+    first_payee_or_blank = np.isin(first, [0, *payee_codes])
+    second_payee_or_blank = np.isin(second, [0, *payee_codes])
+    any_recorded = (first != 0) | (second != 0)
+    on_behalf_of_child_only = (
+        first_payee_or_blank & second_payee_or_blank & any_recorded
     )
     return reported & ~on_behalf_of_child_only
 

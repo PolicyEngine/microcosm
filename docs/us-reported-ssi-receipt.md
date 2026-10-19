@@ -22,13 +22,16 @@ receipt-keyed rule depends only on modeled SSI.
 respondent gave. A person is marked when:
 
 - their annual `SSI_VAL` is positive; and
-- at least one reported reason is their own (disabled, blind or other), or no
-  reason is recorded.
+- not every recorded reason is a child-payee code (below). A positive amount
+  with no reason recorded counts as own receipt. That is an assumption: the
+  dictionary marks reason code 0 not in universe, and no such row occurs
+  among the pinned default's 1,510 reporters.
 
 Two groups are deliberately not marked:
 
-- **Payees for a child.** A respondent whose only reasons are "on behalf of a
-  disabled child" or "on behalf of a blind child" (`RESNSSI` codes 3 and 4;
+- **Payees for a child.** A respondent whose recorded reasons, in either
+  position, are all "on behalf of a disabled child" or "on behalf of a blind
+  child" (`RESNSSI` codes 3 and 4;
   [2024 ASEC data dictionary](https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf))
   is the child's payee, and the amount on their record is the child's
   benefit. On the pinned default these are 133 rows (446,000 weighted people
@@ -52,9 +55,14 @@ SSI formula for every reporter, so SSI reforms would no longer move them. The
 
 The producer runs before cloning, so PUF tax-detail clones carry the same
 value as their ASEC source person. This is the same as `SSI_VAL` itself, the
-take-up anchor and the other receipt inputs. The stacked ACS chain transfers
-it with the other CPS-carried person inputs (family
-`source_operator_cps_carried`).
+take-up anchor and the other receipt inputs.
+
+ACS measures SSI receipt itself, so ACS rows never take it from a CPS donor.
+`acs_inputs.map_acs_native_inputs` maps `receives_ssi` from a positive `SSIP`
+(the person's past-12-month SSI income; blank below age 15 is no receipt),
+and the multispine pool lists it among the inputs complete on both spines
+(`_POOL_NATIVE_COMPLETE_OUTPUTS`), so it is never a QRF transfer target. ACS
+records no reason for receipt, so ACS rows cannot exclude child payees.
 
 ## Release contract
 
@@ -63,11 +71,17 @@ with no reviewed exclusion
 (`release_input_coverage.US_ASEC_REPORTED_SSI_RECEIPT_REQUIRED_INPUTS`). The
 same gate checks two invariants on the export's person table:
 
-- every marked person reports a positive `SSI_VAL` (where `SSI_VAL` is
-  observed); and
-- every marked person carries `takes_up_ssi_if_eligible`. The take-up stage
-  anchors every `SSI_VAL` reporter as a claimant, and the receipt is a subset
-  of those reporters.
+- every marked person reports a positive amount of their own: `SSI_VAL` on a
+  CPS-measured row, or the native ACS `ssi_reported` on a stacked ACS row; and
+- every marked CPS-measured person carries `takes_up_ssi_if_eligible`. The
+  take-up stage anchors every `SSI_VAL` reporter as a claimant, and the
+  receipt is a subset of those reporters. The stage does not anchor ACS
+  `SSIP` reporters, so stacked ACS rows are counted
+  (`receipt_rows_outside_take_up_anchor`), not judged.
+
+Both are row-dependent, so release preflight treats a failure as at risk on
+the L0 path, where the household selection can drop the inconsistent records,
+and as certain on the full-pool path.
 
 The published default fails the gate on `receives_ssi` until a national build
 persists it.

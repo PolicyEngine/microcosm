@@ -517,8 +517,9 @@ class TestAsecReportedSsiReceiptInputGuarantee:
             "evaluated": True,
             "rows": 4,
             "receipt_rows": 2,
-            "receipt_rows_without_positive_ssi_val": 0,
+            "receipt_rows_without_positive_reported_amount": 0,
             "receipt_rows_without_take_up": 0,
+            "receipt_rows_outside_take_up_anchor": 0,
         }
 
     def test_candidate_without_receipt_fails_as_absent(self) -> None:
@@ -555,8 +556,9 @@ class TestAsecReportedSsiReceiptInputGuarantee:
 
         assert not result.passed
         assert result.failures == (
-            "receives_ssi: 1 person row(s) are marked as reported SSI recipients "
-            "without a positive SSI_VAL.",
+            "Reported SSI receipt consistency: receives_ssi: 1 person row(s) are "
+            "marked as reported SSI recipients without a positive reported SSI "
+            "amount (SSI_VAL or ACS ssi_reported).",
         )
 
     def test_receipt_without_take_up_fails(self) -> None:

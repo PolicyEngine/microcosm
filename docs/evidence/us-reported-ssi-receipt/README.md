@@ -11,14 +11,17 @@ values.
   same bytes as `-20260915`).
 - **Model:** PolicyEngine-US `origin/main` at `fab18b7d6b` and
   PolicyEngine/policyengine-us#10145 at `f450d4ab00`, with policyengine-core
-  3.33.2. The two differ only in Colorado, so the tables below use the
-  #10145 head.
+  3.33.2. The #10145 head branches from an older main, and the two trees
+  differ in 59 files, including the New Mexico and Texas supplements and
+  other state taxes. The receipt deltas reported here are identical on both
+  trees; among the reported levels, only Colorado's differs. The tables use
+  the #10145 head.
 - **Variants:** each adds person columns to an in-memory copy of the dataset:
 
   | Variant | Change |
   |---|---|
   | `base` | None; `receives_ssi` takes the engine default `False`. |
-  | `receipt` | `receives_ssi` as `cps_carried.reported_ssi_receipt` defines it (positive `SSI_VAL`, excluding on-behalf-of-child-only payees). |
+  | `receipt` | `receives_ssi` from positive `SSI_VAL`, excluding on-behalf-of-child-only payees (`RESNSSI1` 3/4 with `RESNSSI2` 0/3/4). The pinned default has no row whose only payee code is in `RESNSSI2`, so this equals `cps_carried.reported_ssi_receipt` on it. |
   | `receipt_asec_only` | The same, on ASEC rows only; PUF tax-detail clones stay `False`. |
   | `receipt_any` | `SSI_VAL > 0` without the payee exclusion. |
   | `criteria_anchor` | Diagnostic: `meets_ssi_disability_criteria = True` for under-65 own-reason reporters on the PUF channel; no receipt. |
@@ -37,9 +40,12 @@ aggregate except the `medicaid` dollar value. That value spreads a fixed
 total over enrollees, so it is not reported. Colorado totals are complete; the
 main-branch Colorado supplement reproduces the US hub's full-dataset $233.22M.
 
-The variants change inputs only; nothing is recalibrated. In a rebuild the
-SSI take-up priors are re-solved against SSA counts, so the federal SSI
-changes in the two diagnostic variants overstate a rebuilt effect.
+The variants change inputs only; nothing is recalibrated. These are
+fixed-weight sensitivities on today's default, not the effects of a rebuilt
+default. In a rebuild the SSI take-up priors are re-solved against SSA
+counts, so the federal SSI changes in the two diagnostic variants overstate
+a rebuilt effect. The default has no ACS rows, so the ACS mapping does not
+enter these numbers.
 
 ## Survey reporters versus modeled SSI (2026, `base`)
 

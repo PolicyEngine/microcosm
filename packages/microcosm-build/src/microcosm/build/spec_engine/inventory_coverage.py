@@ -348,13 +348,13 @@ EXPECTED_LEGACY_RELEASE_REGEX = EXPECTED_RELEASE_REGEX.replace(
 EXPECTED_HASHES = {
     "acs_group_predictors": "a927bb7ecf3e84f54c93583ab79318654514ac546aefafba67da5285615fbd60",
     "acs_person_predictors": "878c788a6f037d7aca12b3586ea034eff04f3034ffa11935a736493042551f25",
-    # The reported SSI receipt input (receives_ssi) joins the early
-    # source_operator_cps_carried family, moving the stacked authority, the
-    # early families, the gap-fill schedule and the checkpoint identity.
-    "authority": "440977fa465cca8e05cb8e31a40ac2e72555a793fd2ca32e7d80e01dcaec3aa9",
-    "early_families": "957d01150b83a8496d975fe0377406752566b4718cb885ce344e535c62dcaa00",
-    "full_checkpoint": "a614ea5de1587784194001fb513d9be41b4fe889a29e4e7678370aa53e6b2e62",
-    "gap_fill_schedule": "2fe45e3492a34d34dd0ca7545afd3f607a58a595cd8195772e0c0a77b3fa006c",
+    "authority": "9d4a9672a0f03039b1fe874b9fe21ed575be0d29f14afc396d03cdf5c809bdd2",
+    "early_families": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd",
+    # Reported SSI receipt (receives_ssi) becomes an assembled native pool
+    # input, which moves the pool engine-input provisioning the checkpoint
+    # identity binds; no transfer, seed or authority component changes.
+    "full_checkpoint": "9682de0316d09df4ed7f4182c930c55736d49ba2f98220db9a1a4c872707a2f8",
+    "gap_fill_schedule": "1c31f9868f7884347cc19cf1ff65da43f950b9114941a715bab168246db414a7",
     "graph_nodes": "40cd51ffdfe2e9d9d08d48c08e8ded9de1e4b134783bab05c4abc6ad5c72ca1e",
     "geography_assignment": "44e7f5f6cd7ceeef85d532c3d46306d03de4f4ee811376e6d29920742746b65c",
     "late_families": "d91f9ff0eb52f43e7b6eed3d5c58c37abe1620c3a11021da15dae9c10e16d382",
@@ -429,7 +429,7 @@ EXPECTED_INVENTORY_COUNTS: Mapping[str, int] = {
     "adapter_surfaces": 13,
     "authority_components": 9,
     "early_families": 13,
-    "early_targets": 49,
+    "early_targets": 48,
     "itemization_batches": 5,
     "itemization_targets": 37,
     "late_groups": 19,
@@ -444,7 +444,7 @@ EXPECTED_INVENTORY_COUNTS: Mapping[str, int] = {
     "producer_nodes": 38,
     "producer_virtual_resources": 75,
     "release_rungs": 5,
-    "resolved_references": 335,
+    "resolved_references": 334,
     "seed_owner_bindings": 112,
     "seed_owner_rows": 54,
     "seed_sites": 53,
@@ -458,7 +458,7 @@ EXPECTED_INVENTORY_COUNTS: Mapping[str, int] = {
     "take_up_pipeline_steps": 28,
     "take_up_programs": 17,
     "typed_artifacts": 84,
-    "typed_columns": 177,
+    "typed_columns": 176,
     "typed_entities": 8,
     "typed_scopes": 7,
 }
@@ -735,7 +735,7 @@ def build_inventory_coverage(
         "early_gap_fill_plan_exact",
         clauses={
             "early family count differs": len(early) == 13,
-            "early target count differs": early_targets == 49,
+            "early target count differs": early_targets == 48,
             "early family content digest differs": sha256_json(early)
             == EXPECTED_HASHES["early_families"],
             "compiled gap-fill plan differs": _json_equal(

@@ -6,7 +6,7 @@
   "country": "us",
   "documentation_sha256": "0931cbd3aae2abcd8c072b78eba40c1c006b1bf7fa23c6a6681f9a895e47070e",
   "field_usage": {
-    "authored_normative_field_count": 32427,
+    "authored_normative_field_count": 32404,
     "claim_count": 49,
     "claims": [
       {
@@ -33,8 +33,8 @@
         ],
         "mode": "legacy_behavior",
         "pointer_class": "all",
-        "pointer_count": 802,
-        "pointer_sha256": "eaf3cc45daebdba940e20e7bf2c995e7fc0bd5219935a963e7fca60c87111409",
+        "pointer_count": 797,
+        "pointer_sha256": "55c2c0cd2d652216ed35f2d2667f52fe00229eb4336507bef9758397a1e24a17",
         "rationale": null,
         "relative_sink_prefix": "/battery_contract",
         "source_prefix": "/authored/spec~1battery.yaml",
@@ -136,8 +136,8 @@
         "legacy_sinks": [],
         "mode": "compiler_semantic",
         "pointer_class": "all",
-        "pointer_count": 1682,
-        "pointer_sha256": "3d4e279e146edbd4f8976e995adfccd5c239c114a920d3f8367a9c14cb0a8ecd",
+        "pointer_count": 1673,
+        "pointer_sha256": "a983c0d68e980a31bd1ad41e7ef3c0cb3db9a7ee4d73454ae46f81eb6d1bb427",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/spec~1catalogs.yaml/columns",
@@ -334,8 +334,8 @@
         ],
         "mode": "legacy_behavior",
         "pointer_class": "family_execution",
-        "pointer_count": 1778,
-        "pointer_sha256": "4241e87db4b4fb80301fa4a68e6b501c75a92a34397a2317b3fda4ba511c9a4e",
+        "pointer_count": 1769,
+        "pointer_sha256": "cd395f41c1cc425c734dc344607de043f3506b4ec2e727a29130fc4304f351e3",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/spec~1imputation.yaml/families",
@@ -772,20 +772,20 @@
         "verifier": "vintages"
       }
     ],
-    "configuration_field_count": 42207,
-    "consumed_field_count": 42207,
+    "configuration_field_count": 42184,
+    "consumed_field_count": 42184,
     "generation0_effect_counts": {
-      "legacy_behavior": 38512,
-      "no_generation0_effect": 3695
+      "legacy_behavior": 38498,
+      "no_generation0_effect": 3686
     },
     "mode_counts": {
-      "compiler_semantic": 27726,
+      "compiler_semantic": 27717,
       "front_end_validation": 354,
       "identity_only": 103,
-      "legacy_behavior": 14024
+      "legacy_behavior": 14010
     },
     "multiple_primary_use_field_count": 0,
-    "pointer_inventory_sha256": "f7fc40691182cf138e5023f28ced3fbf7761ff5c66455868eeeeb85b8a7ea93e",
+    "pointer_inventory_sha256": "8f655670b9794adae905ede64bdceba6395eeb8d642b6c5896d5c516f1f6a6a7",
     "resolved_binding_field_count": 9780,
     "unused_field_count": 0
   },
@@ -799,7 +799,7 @@
       "adapter_surfaces": 13,
       "authority_components": 9,
       "early_families": 13,
-      "early_targets": 49,
+      "early_targets": 48,
       "itemization_batches": 5,
       "itemization_targets": 37,
       "late_groups": 19,
@@ -814,7 +814,7 @@
       "producer_nodes": 38,
       "producer_virtual_resources": 75,
       "release_rungs": 5,
-      "resolved_references": 335,
+      "resolved_references": 334,
       "seed_owner_bindings": 112,
       "seed_owner_rows": 54,
       "seed_sites": 53,
@@ -828,7 +828,7 @@
       "take_up_pipeline_steps": 28,
       "take_up_programs": 17,
       "typed_artifacts": 84,
-      "typed_columns": 177,
+      "typed_columns": 176,
       "typed_entities": 8,
       "typed_scopes": 7
     },
@@ -965,14 +965,14 @@
         ],
         "expected": {
           "families": 13,
-          "sha256": "957d01150b83a8496d975fe0377406752566b4718cb885ce344e535c62dcaa00",
+          "sha256": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd",
           "targets": 48
         },
         "failures": [],
         "observed": {
           "families": 13,
-          "families_sha256": "957d01150b83a8496d975fe0377406752566b4718cb885ce344e535c62dcaa00",
-          "targets": 49
+          "families_sha256": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd",
+          "targets": 48
         },
         "status": "covered"
       },
@@ -992,7 +992,7 @@
         "expected": "complete ordered early family and transfer authority projections",
         "failures": [],
         "observed": {
-          "families_sha256": "957d01150b83a8496d975fe0377406752566b4718cb885ce344e535c62dcaa00"
+          "families_sha256": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd"
         },
         "status": "covered"
       },
@@ -1010,11 +1010,11 @@
           "legacy_adapter.stacked_checkpoint_static_components"
         ],
         "expected": {
-          "sha256": "2fe45e3492a34d34dd0ca7545afd3f607a58a595cd8195772e0c0a77b3fa006c"
+          "sha256": "1c31f9868f7884347cc19cf1ff65da43f950b9114941a715bab168246db414a7"
         },
         "failures": [],
         "observed": {
-          "sha256": "2fe45e3492a34d34dd0ca7545afd3f607a58a595cd8195772e0c0a77b3fa006c"
+          "sha256": "1c31f9868f7884347cc19cf1ff65da43f950b9114941a715bab168246db414a7"
         },
         "status": "covered"
       },
@@ -1840,11 +1840,11 @@
           "legacy_adapter.stacked_checkpoint_static_components"
         ],
         "expected": {
-          "sha256": "440977fa465cca8e05cb8e31a40ac2e72555a793fd2ca32e7d80e01dcaec3aa9"
+          "sha256": "9d4a9672a0f03039b1fe874b9fe21ed575be0d29f14afc396d03cdf5c809bdd2"
         },
         "failures": [],
         "observed": {
-          "sha256": "440977fa465cca8e05cb8e31a40ac2e72555a793fd2ca32e7d80e01dcaec3aa9"
+          "sha256": "9d4a9672a0f03039b1fe874b9fe21ed575be0d29f14afc396d03cdf5c809bdd2"
         },
         "status": "covered"
       },
@@ -1887,7 +1887,7 @@
             "alpha",
             "zeta"
           ],
-          "sha256": "a614ea5de1587784194001fb513d9be41b4fe889a29e4e7678370aa53e6b2e62"
+          "sha256": "9682de0316d09df4ed7f4182c930c55736d49ba2f98220db9a1a4c872707a2f8"
         },
         "failures": [],
         "observed": {
@@ -1911,7 +1911,7 @@
             "alpha",
             "zeta"
           ],
-          "sha256": "a614ea5de1587784194001fb513d9be41b4fe889a29e4e7678370aa53e6b2e62"
+          "sha256": "9682de0316d09df4ed7f4182c930c55736d49ba2f98220db9a1a4c872707a2f8"
         },
         "status": "covered"
       },
@@ -1975,7 +1975,7 @@
             "take_up_contract",
             "us_qbi_reconciliation_contract"
           ],
-          "sha256": "0574ce2942f63b13ffc946ac5f9da7fb7c84c8845469ce87b11fceaa646ddb31"
+          "sha256": "ba069fa7507ff84d3ceae95dbbe84952a3714d2ae154f3f8c50a4b93c61a5892"
         },
         "status": "covered"
       },
@@ -2599,7 +2599,7 @@
       "country": "us",
       "schema_id": "country_spec",
       "schema_version": 1,
-      "spec_sha256": "ba67a7d945443f3fa27f63cd5440ec31ede776ee7326e4a2d0845bc7b64d8c2e"
+      "spec_sha256": "0887aba600be33e0eea818a36cbed142dba3df3977781577583e4d05b5a3eb26"
     }
   },
   "report_schema_version": 3,
@@ -2609,7 +2609,7 @@
     "country": "us",
     "schema_id": "country_spec",
     "schema_version": 1,
-    "spec_sha256": "ba67a7d945443f3fa27f63cd5440ec31ede776ee7326e4a2d0845bc7b64d8c2e"
+    "spec_sha256": "0887aba600be33e0eea818a36cbed142dba3df3977781577583e4d05b5a3eb26"
   },
   "status": "pass"
 }

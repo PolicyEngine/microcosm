@@ -366,12 +366,12 @@ is asserted.
 """
 
 POOL_PROJECTION_INPUT_PROVISION_COUNTS: tuple[tuple[str, int], ...] = (
-    ("assembled_native_engine_input", 5),
+    ("assembled_native_engine_input", 6),
     ("declared_absent_engine_input", 762),
     ("declared_deferred_null_input", 3),
     ("derived_schedule_d_input", 1),
     ("frame_structural_engine_input", 10),
-    ("materialized_pool_input_surface", 123),
+    ("materialized_pool_input_surface", 122),
     ("preserved_stacked_engine_input", 4),
     ("seed_stage_program_contract", 17),
     ("unprovisioned_source_input", 1),
@@ -383,7 +383,7 @@ tool re-derives every engine-pinned quantity this module carries.
 """
 
 POOL_REMAINING_STAGE_INPUT_MANIFEST_SHA256 = (
-    "f39cdd77c253539dc70b6c7f72ba904d448cec9476df94ed2caabd4550bf1b3a"
+    "6619d6ef343fe8339101fb06869d19b8c422aaf6aa14080b4f3294cf3a7ec89a"
 )
 """Pinned content digest of all 1,059 post-transfer consumer/input rows."""
 
@@ -676,6 +676,10 @@ _POOL_NATIVE_COMPLETE_OUTPUTS: Mapping[str, frozenset[str]] = {
             "age",
             "is_female",
             "is_household_head",
+            # Reported SSI receipt is measured on both arms: the CPS-carried
+            # producer reads SSI_VAL and ``map_acs_native_inputs`` reads ACS
+            # SSIP, so a donor never supplies it.
+            "receives_ssi",
             # The parent ids are complete on both arms without a transfer:
             # the eligibility operator resolves them on the CPS projection
             # and ``map_acs_native_inputs`` writes the ACS spine's declared

@@ -54,11 +54,15 @@ def _person(amounts: list[float], first: list[int], second: list[int]) -> pd.Dat
 
 
 def _expected(amounts: list[float], first: list[int], second: list[int]) -> list[bool]:
+    # Independent oracle: a payee is someone whose recorded (nonzero) reasons
+    # are all child-payee codes.
     payee = CPS_REPORTED_SSI_ON_BEHALF_OF_CHILD_REASON_CODES
-    return [
-        bool(np.nan_to_num(amount) > 0) and not (one in payee and two in payee | {0})
-        for amount, one, two in zip(amounts, first, second, strict=True)
-    ]
+    expected = []
+    for amount, one, two in zip(amounts, first, second, strict=True):
+        recorded = {reason for reason in (one, two) if reason != 0}
+        payee_only = bool(recorded) and recorded <= payee
+        expected.append(bool(np.nan_to_num(amount) > 0) and not payee_only)
+    return expected
 
 
 def test_reason_codes_follow_the_asec_data_dictionary() -> None:
@@ -81,6 +85,8 @@ def test_reason_codes_follow_the_asec_data_dictionary() -> None:
         (9_600.0, 3, 0, False),  # only on behalf of a disabled child
         (9_600.0, 4, 0, False),  # only on behalf of a blind child
         (9_600.0, 3, 4, False),  # both child-payee reasons
+        (9_600.0, 0, 3, False),  # child-payee reason recorded second only
+        (9_600.0, 0, 1, True),  # own reason recorded second only
         (9_600.0, 3, 1, True),  # payee who also receives SSI in own right
         (9_600.0, 1, 3, True),
         (-50.0, 1, 0, False),  # nonpositive amounts never mark
@@ -211,13 +217,35 @@ def test_consistency_check_skips_a_table_without_receipt() -> None:
     assert details == {"evaluated": False}
 
 
-def test_consistency_check_ignores_rows_without_an_observed_amount() -> None:
-    # A stacked ACS row carries no SSI_VAL; only the take-up arm applies to it.
-    failures, details = us_reported_ssi_receipt_consistency_failures(
-        _consistency_person([True, True], [np.nan, 9_600.0], [True, True])
+def test_consistency_check_judges_acs_rows_by_their_native_amount() -> None:
+    # A stacked ACS row carries ssi_reported instead of SSI_VAL. Its amount
+    # arm uses ssi_reported; it sits outside the CPS take-up anchor, so its
+    # take-up is counted but not judged.
+    person = pd.DataFrame(
+        {
+            "receives_ssi": [True, True, True],
+            "SSI_VAL": [9_600.0, np.nan, np.nan],
+            "ssi_reported": [np.nan, 8_400.0, 0.0],
+            "takes_up_ssi_if_eligible": [True, False, True],
+        }
     )
-    assert failures == ()
-    assert details["receipt_rows_without_positive_ssi_val"] == 0
+    failures, details = us_reported_ssi_receipt_consistency_failures(person)
+    assert details["receipt_rows_without_positive_reported_amount"] == 1
+    assert details["receipt_rows_without_take_up"] == 0
+    assert details["receipt_rows_outside_take_up_anchor"] == 2
+    assert len(failures) == 1
+    assert "without a positive reported SSI amount" in failures[0]
+
+    consistent = person.assign(ssi_reported=[np.nan, 8_400.0, 1.0])
+    assert us_reported_ssi_receipt_consistency_failures(consistent)[0] == ()
+
+
+def test_consistency_check_fails_a_marked_row_with_no_observed_amount() -> None:
+    failures, details = us_reported_ssi_receipt_consistency_failures(
+        _consistency_person([True], [np.nan], [True])
+    )
+    assert details["receipt_rows_without_positive_reported_amount"] == 1
+    assert failures != ()
 
 
 def test_consistency_check_rejects_incomplete_or_nonboolean_receipt() -> None:
@@ -251,11 +279,14 @@ def test_consistency_check_fails_exactly_on_violations(rows) -> None:
     )
 
     observed = ~np.isnan(ssi_val)
-    without_amount = int(np.sum(receipt & observed & ~(np.nan_to_num(ssi_val) > 0)))
-    without_take_up = int(np.sum(receipt & ~take_up))
+    without_amount = int(np.sum(receipt & ~(np.nan_to_num(ssi_val) > 0)))
+    without_take_up = int(np.sum(receipt & observed & ~take_up))
     assert details["receipt_rows"] == int(receipt.sum())
-    assert details["receipt_rows_without_positive_ssi_val"] == without_amount
+    assert details["receipt_rows_without_positive_reported_amount"] == without_amount
     assert details["receipt_rows_without_take_up"] == without_take_up
+    assert details["receipt_rows_outside_take_up_anchor"] == int(
+        np.sum(receipt & ~observed)
+    )
     assert (failures == ()) == (without_amount == 0 and without_take_up == 0)
 
 

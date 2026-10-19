@@ -195,6 +195,26 @@ def test_acs_income_mapping_adjusts_native_dollars_without_splitting_aggregates(
     assert result.native_inputs["employment_income_before_lsr"]["missing_rows"] == 1
 
 
+def test_acs_reported_ssi_receipt_is_positive_native_ssip() -> None:
+    result = map_acs_native_inputs(_acs_frame())
+    person = result.frame.table("person")
+
+    # The adult reports SSIP; the 12-year-old is below the ACS income
+    # universe, so the blank is no reported receipt.
+    assert person["receives_ssi"].tolist() == [True, False]
+    assert pd.api.types.is_bool_dtype(person["receives_ssi"])
+    assert result.native_inputs["receives_ssi"]["source_columns"] == ["SSIP"]
+    assert result.native_inputs["receives_ssi"]["missing_rows"] == 0
+
+    zero = map_acs_native_inputs(_hours_frame(SSIP=[0.0, np.nan]))
+    assert zero.frame.table("person")["receives_ssi"].tolist() == [False, False]
+
+
+def test_acs_reported_ssi_receipt_refuses_non_numeric_ssip() -> None:
+    with pytest.raises(ValueError, match="non-numeric"):
+        map_acs_native_inputs(_hours_frame(SSIP=["many", np.nan]))
+
+
 def test_acs_housing_mapping_preserves_rent_without_synthesizing_model_rent() -> None:
     result = map_acs_native_inputs(_acs_frame())
     person = result.frame.table("person")

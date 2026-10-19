@@ -205,6 +205,7 @@ def map_acs_native_inputs(frame: Frame) -> AcsNativeInputResult:
         output="ssi_reported",
         register=native,
     )
+    _map_reported_ssi_receipt(person, register=native)
     _map_adjusted_person_amount(
         person,
         source="SSP",
@@ -693,6 +694,38 @@ def _nullable_source_codes(
             f"within [{minimum}, {maximum}]."
         )
     return values
+
+
+def _map_reported_ssi_receipt(
+    person: pd.DataFrame,
+    *,
+    register: dict[str, Mapping[str, Any]],
+) -> None:
+    """Map ``receives_ssi`` from the respondent's own past-12-month ACS SSIP.
+
+    A positive ``SSIP`` is reported SSI receipt, the ACS counterpart of the CPS
+    rule in ``cps_carried.reported_ssi_receipt``. A blank (ACS asks income of
+    people aged 15 and older) is no reported receipt; the SSI disability stage
+    enforces that the blank occurs only below 15. A non-numeric value is
+    refused. ACS records no reason for receipt, so a payee receiving SSI on
+    behalf of a child cannot be told apart here.
+    """
+
+    if "SSIP" not in person:
+        return
+    raw = person["SSIP"]
+    amount = pd.to_numeric(raw, errors="coerce")
+    if (raw.notna() & amount.isna()).any():
+        raise ValueError("ACS SSIP contains non-numeric values.")
+    _add_native(
+        person,
+        "receives_ssi",
+        (amount.fillna(0.0) > 0.0).to_numpy(dtype=bool),
+        entity="person",
+        source_columns=("SSIP",),
+        transformation="SSIP > 0; blank is no reported receipt",
+        register=register,
+    )
 
 
 def _map_adjusted_person_amount(
