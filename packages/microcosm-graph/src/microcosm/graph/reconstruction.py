@@ -18,6 +18,7 @@ executed; no receipt, cache or gate state is attached.
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import subprocess
 from collections.abc import Mapping, Sequence
@@ -188,6 +189,33 @@ def _declaration_input(marker: Mapping[str, object]) -> Mapping[str, object]:
     return next(item for item in inputs if item["role"] == DECLARATION_ROLE)
 
 
+def _git_environment() -> dict[str, str] | None:
+    """This process's environment without the variables that choose git's repository.
+
+    The names removed are the installed git's own list of variables local to
+    one repository (``git rev-parse --local-env-vars``): ``GIT_DIR``,
+    ``GIT_WORK_TREE``, ``GIT_INDEX_FILE``, ``GIT_COMMON_DIR``,
+    ``GIT_OBJECT_DIRECTORY``, the ``git -c`` carriers ``GIT_CONFIG_PARAMETERS``
+    and ``GIT_CONFIG_COUNT``, and the rest. ``None`` when git cannot list them.
+    ``microcosm.frame.adapters.axiom`` strips the same list for its checkout
+    check; this module does not import that adapter, so that it stays light.
+    """
+
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--local-env-vars"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return None
+    if result.returncode != 0:
+        return None
+    local = frozenset(result.stdout.split())
+    return {name: value for name, value in os.environ.items() if name not in local}
+
+
 def code_revision(path: str | Path) -> dict[str, object]:
     """The git commit and working-tree state of the checkout that tracks ``path``.
 
@@ -196,11 +224,16 @@ def code_revision(path: str | Path) -> dict[str, object]:
     an installed copy that happens to sit inside some checkout (a virtual
     environment within a repository, say) identifies no revision. Both values
     are ``None`` when no checkout tracks the file, so an unknown revision is
-    never recorded as a clean one.
+    never recorded as a clean one. git runs without the caller's
+    repository-selecting variables (``GIT_DIR``, ``GIT_WORK_TREE`` and the rest),
+    so an outer git command, hook or shell cannot point it at another checkout.
     """
 
     location = Path(path).resolve()
     unknown: dict[str, object] = {"git_commit": None, "git_dirty": None}
+    environment = _git_environment()
+    if environment is None:
+        return unknown
 
     def git(*arguments: str) -> str | None:
         try:
@@ -209,6 +242,7 @@ def code_revision(path: str | Path) -> dict[str, object]:
                 check=False,
                 capture_output=True,
                 text=True,
+                env=environment,
             )
         except OSError:
             return None
