@@ -32,7 +32,7 @@ __all__ = ["POLICYENGINE_UK_CONCEPT_MAPPING", "UK_ENGINE_DEFAULT_TAKE_UP_INPUTS"
 # ---------------------------------------------------------------------------
 #
 # Which PolicyEngine-UK inputs each engine-neutral concept feeds
-# (microcosm.frame.concepts), reviewed against policyengine-uk 2.132.6. Every
+# (microcosm.frame.concepts), reviewed against policyengine-uk 2.134.4. Every
 # target is a pure input (in ``PolicyEngineUKEngine.variables``). The UK
 # loader also accepts some formula-owned variables as overrides
 # (``employment_income``, ``state_pension_reported``, ``is_household_head``);
@@ -59,6 +59,7 @@ _UK_BENUNIT_TAKE_UP = (
     "targeted_childcare",
     "tfc",
     "uc",
+    "uc_at_legacy_closure",
     "uc_childcare",
     "universal_childcare",
 )
@@ -150,6 +151,17 @@ _UK_TAKE_UP_EVIDENCE: dict[str, tuple[str, str]] = {
         "stochastic_assignment.py); a threshold alone has neither the anchor "
         "nor the population.",
     ),
+    "uc_at_legacy_closure": (
+        "Whether this family would claim Universal Credit once a legacy "
+        "means-tested benefit it receives closes (legacy_benefits_closed). "
+        "Datasets draw it at DWP's Move to Universal Credit claim rates by "
+        "legacy benefit combination. ...",
+        "The UK build draws it at DWP's Move to Universal Credit claim rates "
+        "for each combination of legacy benefits, net of the units that "
+        "would claim anyway, among units reporting a legacy benefit and not "
+        "Universal Credit (legacy_closure_take_up.py, microcosm#1095); a "
+        "threshold alone has neither the combinations nor the population.",
+    ),
     "uc_childcare": (
         "Whether this family would claim the Universal Credit childcare element "
         "if entitled. Generated stochastically in a dataset from take-up rates "
@@ -165,18 +177,10 @@ _UK_TAKE_UP_EVIDENCE: dict[str, tuple[str, str]] = {
 
 
 #: Take-up inputs of the engine the build leaves at the engine's default,
-#: with why. ``would_claim_uc_at_legacy_closure`` (policyengine-uk 2.128.0,
-#: pe-uk#2119) says whether a family DWP moves off a legacy benefit claims
-#: Universal Credit; the default is that every such family does. uk-data#534
-#: draws it at DWP's Move to UC claim rates, which are not yet a Chronicle
-#: fact (microcosm#1095).
-UK_ENGINE_DEFAULT_TAKE_UP_INPUTS: dict[str, str] = {
-    "would_claim_uc_at_legacy_closure": (
-        "Left at the engine's default (true): every family moved off a legacy "
-        "benefit claims Universal Credit. DWP's Move to UC claim rates, which "
-        "uk-data#534 draws it at, are not yet a Chronicle fact (microcosm#1095)."
-    ),
-}
+#: with why. None today: ``would_claim_uc_at_legacy_closure``
+#: (policyengine-uk 2.128.0, pe-uk#2119), the last of them, is drawn at DWP's
+#: Move to UC claim rates since they became a Chronicle fact (microcosm#1095).
+UK_ENGINE_DEFAULT_TAKE_UP_INPUTS: dict[str, str] = {}
 
 
 def _uk_take_up(program: str, entity: str) -> InputBinding:
@@ -200,7 +204,7 @@ def _uk_take_up(program: str, entity: str) -> InputBinding:
 
 POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
     engine="policyengine-uk",
-    engine_version="2.132.6",
+    engine_version="2.134.4",
     entity_correspondence={"person": "person", "household": "household"},
     input_declaration=InputDeclaration.ENGINE_TYPED,
     bindings=(

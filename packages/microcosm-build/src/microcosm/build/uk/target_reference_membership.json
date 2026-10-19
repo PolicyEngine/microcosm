@@ -10892,7 +10892,7 @@
           "matched_fact_count_overall": 7,
           "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
-          "resolved_value": 15026137524.089184,
+          "resolved_value": 10161716337.860817,
           "resolved_fact_period": "2025",
           "resolved_fact_key": "ledger_aggregate_fact_v2_1b6d55fc4ccd78bd0ae457e9"
         }
@@ -30202,7 +30202,7 @@
       "family": "high_value_homes",
       "status": "active_england_and_wales_region_tier_local_line_only",
       "active_reference_count": 28,
-      "signed_rationale": "The three high-value homes region targets (owner-occupied homes over \u00a31m, \u00a31.5m and \u00a32m at April-2026 prices) fan out over the England-and-Wales part of the region tier, the nine English regions and Wales (area_scope: Price Paid covers neither Scotland nor Northern Ireland), and select the Microcosm-derived stock the constituency and local-authority cells bind, merged beside the feed from uk/high_value_home_stock_facts.json (microcosm#1240). Each row is the cross-grain control for its area cells. They bind on the local line only (calibration_lines): the national line and the release-cut certifier drop them after the compile, since the national spine's main_residence_value is the WAS donor's, not a Land Registry placement (microcosm#1301)."
+      "signed_rationale": "The three high-value homes region targets (owner-occupied homes over \u00a31m, \u00a31.5m and \u00a32m at April-2026 prices) fan out over the England-and-Wales part of the region tier, the nine English regions and Wales (area_scope: Price Paid covers neither Scotland nor Northern Ireland), and select the Microcosm-derived stock the constituency and local-authority cells bind, merged beside the feed from uk/high_value_home_stock_facts.json (microcosm#1240). Each row is the cross-grain control for its area cells. They bind on the local line only (calibration_lines): the national line and the release-cut certifier drop them after the compile (microcosm#1301). Since microcosm#1095 the national spine reads main_residence_value off the regions' Land Registry knots too, but binding the rows there would move the national registry and solve while the knots' tails still place more homes in the top bands than the derived stock (microcosm#1112)."
     },
     {
       "family": "dwp_state_pension",

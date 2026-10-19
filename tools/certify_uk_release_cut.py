@@ -44,6 +44,7 @@ from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
 from microcosm.build.uk_runtime.high_value_homes import (
     load_uk_high_value_home_stock_facts,
 )
+from microcosm.build.uk_runtime.hmrc_uprating import assert_installed_engine_is_pinned
 from microcosm.build.uk_runtime.ledger_targets import (
     compile_uk_local_target_registry,
     compile_uk_target_registry,
@@ -92,6 +93,8 @@ def _ledger_facts_size(path: Path) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
+    # The engine freeze, before either H5 is hashed (microcosm#1095).
+    assert_installed_engine_is_pinned()
     started_at = time.perf_counter()
     started_ts = datetime.now(UTC)
     code_pin = git_code_pin(_REPOSITORY)

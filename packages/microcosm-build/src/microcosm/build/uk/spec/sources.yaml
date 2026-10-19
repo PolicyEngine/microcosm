@@ -1004,7 +1004,7 @@ stages:
   - maximum_extended_childcare_hours_usage
   nonnegative_outputs:
   - maximum_extended_childcare_hours_usage
-  notes: Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only. The Universal Credit draw's population is the benefit units with a UC claimant or partner (is_uc_claimant) aged 18 or over and under Pension Credit qualifying age (66 for everyone who can reach it in this release), the age and role conditions of policyengine-uk 2.132.6's is_uc_eligible; the engine lockstep test pins it and names the three engine cases not mirrored (16- and 17-year-old claimants under the UC Regs 2013 reg 8 exceptions, mixed-age couples on the Pension Credit route, and from 2.128.0 pension-age families moved onto Universal Credit when their legacy benefit closes, SI 2014/1230 reg 60A). So the contract rate is a share of those units, an anchor outside them stays true, and any other unit is never drawn; a unit with no claimant or partner of that age keeps its reported Housing Benefit, which a claim it cannot make no longer zeroes (#882, microcosm#867, microcosm#1095).
+  notes: Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only. The Universal Credit draw's population is the benefit units with a UC claimant or partner (is_uc_claimant) aged 18 or over and under Pension Credit qualifying age (66 for everyone who can reach it in this release), the age and role conditions of policyengine-uk 2.134.4's is_uc_eligible; the engine lockstep test pins it and names the three engine cases not mirrored (16- and 17-year-old claimants under the UC Regs 2013 reg 8 exceptions, mixed-age couples on the Pension Credit route, and from 2.128.0 pension-age families moved onto Universal Credit when their legacy benefit closes, SI 2014/1230 reg 60A). So the contract rate is a share of those units, an anchor outside them stays true, and any other unit is never drawn; a unit with no claimant or partner of that age keeps its reported Housing Benefit, which a claim it cannot make no longer zeroes (#882, microcosm#867, microcosm#1095).
 - stage: frs_person_draws
   survey: Family Resources Survey 2024-25
   source: Sourced UK take-up contract rates and identity-keyed deterministic draws.
@@ -2595,6 +2595,55 @@ stages:
   - high_value_support_copy_index
   rewrites: []
   notes: 'Spine-only, deterministic, mass-conserving support split for the dense graph''s post-geography home value map (microcosm#1240). The value node reads every owner clone''s home value off its assigned constituency''s Land Registry sale distribution at the household''s weighted rank among its region''s owners, so each seat''s homes over 2 million rest on the few households whose rank is in the top of the region; this stage copies every owner household in the top five per cent of its region six ways at equal weight, each copy carrying its index in high_value_support_copy_index (0 on roots), the explicit lineage the geography identity keys on, and the value node gives each copy its own keyed rank inside the stratum. No value is assigned and no draw is made here.'
+- stage: regional_home_values
+  survey: HM Land Registry Price Paid latest sales uprated with the UK House Price Index, owner-weighted by region (the dense value node's knots, region level)
+  source: uk/high_value_home_value_knots.json, built by tools/build_uk_high_value_home_stock.py from PolicyEngine/chronicle#343's registrations
+  grain: household
+  artifacts:
+  - role: value_knots
+    kind: public_aggregate_reference
+    resource: high_value_home_value_knots.json
+    format: json
+    runtime_sha256_required: true
+  operations:
+  - kind: assign_regional_home_values
+    knots: high_value_home_value_knots.json
+    knots_level: region
+    region_map:
+      EAST_MIDLANDS: E12000004
+      EAST_OF_ENGLAND: E12000006
+      LONDON: E12000007
+      NORTH_EAST: E12000001
+      NORTH_WEST: E12000002
+      SOUTH_EAST: E12000008
+      SOUTH_WEST: E12000009
+      WALES: W92000004
+      WEST_MIDLANDS: E12000005
+      YORKSHIRE: E12000003
+    rows: owner households (tenure owned outright or with a mortgage) with main_residence_value > 0 in the mapped regions
+    rank: weighted mid-rank of main_residence_value among the owner households of the FRS region at the spine's weights, ties broken by a keyed draw; high-value support copies take support_stratum_lower + (1 - support_stratum_lower) * draw
+    support_stratum_lower: 0.95
+    stream:
+    - sha256-u53-v1
+    - uk-spine-regional-home-values-v1
+    - 0
+    - 0
+    value: np.interp(rank, grid, region knots)
+    property_wealth: moves by the value's change, floored at 0
+    rank_basis_column: main_residence_value_rank_basis
+  - kind: record_mass_conservation_receipt
+    entity: household
+    reason: 'Regional home values assigned on the source spine: household weights pass through unchanged and total household mass is conserved.'
+    declared_factor: 1.0
+    gate_coupling: The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason.
+  outputs:
+  - main_residence_value_rank_basis
+  rewrites:
+  - main_residence_value
+  - property_wealth
+  nonnegative_outputs:
+  - main_residence_value_rank_basis
+  notes: 'The national line''s home values (microcosm#1112, microcosm#1095). The national release solves the bound spine, which has no area, so main_residence_value stayed the WAS-imputed value after the regional uprating, not a Land Registry value; the dense line reads values off the assigned constituency''s distribution only after areas exist (uk.full.property.value, microcosm#1240). This stage gives every England-and-Wales owner household with a value the one its region''s uprated Land Registry distribution holds at the household''s weighted mid-rank among the owner households of its FRS region, at the spine''s weights, ranked as the dense node ranks (ties broken by a keyed draw; the high-value support copies spread over the top stratum by their own draws), and moves property_wealth by the change. Scotland, Northern Ireland, renters and owners without a value keep theirs, and the council-tax band is untouched. The replaced value is kept in main_residence_value_rank_basis, which the dense node ranks on, so the dense line''s values, wealth and bands do not change; the release boundary drops it on both lines. The value reaches three national rows: obr.sdlt through the main-home purchase value, and ons.land.land_value and ons.land.household_land_value through property_wealth and the engine''s land intensity; corporate land value does not move. The region knots run up to each region''s largest sale and down to its smallest, as the dense line''s constituency knots do, so the national line places more homes in the top surcharge bands than the derived stock facts; the tails are to be fixed on both lines together (#1112, María''s ruling of 2026-10-17).'
 - stage: property_components
   survey: Survey of Personal Incomes Public Use Tape 2022-23 and HMRC Property Rental Income Statistics 2026 (tax year 2024-25)
   source: https://www.gov.uk/government/statistics/property-rental-income-statistics
@@ -2690,6 +2739,82 @@ stages:
   nonnegative_outputs:
   - property_rental_income
   notes: 'Fills the two landlord inputs policyengine-uk 2.123.0 adds beside property_income (microcosm#1106; PolicyEngine/policyengine-uk#2172). FRS landlords report ROYYR1 after show card K6, which nets mortgage payments and loan interest, so their profit sits below the SPI concept; the stage draws their restricted finance costs from the SPI 2022-23 tape at build-period prices (incidence by band of profit after finance costs, amount from the regime-gated QRF on the analog landlords with costs, both keyed on person_id) and adds them back to property_income, so the engine relieves the interest once as a tax reduction (decision 6, to be confirmed with Max before merge). The SPI channel keeps the costs the income stage drew. Receipts for every landlord come from PRIS 2024-25: ranked by profit, walked into Table 13''s bands at their shares of the individuals-basis landlords times the spine''s landlord weight, linear within a band, never below profit, the open top band proportional to profit with the multiplier solved to the individuals'' receipts per landlord, or held at 1 with the overshoot recorded where the floor at profit already exceeds them; receipts less profit are the deductible expenses (PRIS allowable expenses other than residential finance costs). Sub-letting rent keeps equal receipts and no expenses until Rent a Room is released. Household weights are unchanged; the receipt records the tape incidence and its realisation, the band fit, the totals against PRIS, the channel split, the residuals and the share of landlords whose household holds rental property.'
+- stage: property_purchases
+  survey: HMRC Annual Stamp Tax Statistics 2024 to 2025 (corrected 11 March 2026), Tables 6b, 8a and 8b
+  source: https://www.gov.uk/government/statistics/uk-stamp-tax-statistics
+  grain: household
+  artifacts:
+  - role: stamp_tax_facts
+    kind: public_aggregate_reference
+    resource: hmrc_stamp_tax_facts.json
+    format: json
+    runtime_sha256_required: true
+  operations:
+  - kind: verify_vendored_fact_resource
+    artifact_role: stamp_tax_facts
+    resource: hmrc_stamp_tax_facts.json
+    feed_pin: chronicle_feed.json
+    record_sets:
+    - hmrc.stamp_taxes_2024_25.table_6b.hrad.fy2024
+    - hmrc.stamp_taxes_2024_25.table_8a.individuals.fy2024
+    - hmrc.stamp_taxes_2024_25.table_8a.other_buyers.fy2024
+    - hmrc.stamp_taxes_2024_25.table_8b.individuals.fy2024
+    source_vintage: 2024-25
+    mapped_build_period: 2024
+    period_mapping: published_tax_year_equals_build_period
+    require_before_source_read: true
+    runtime_sha256_required: true
+    fail_on_mismatch: true
+  - kind: impute_annual_property_purchases
+    outputs:
+    - additional_residential_property_purchased
+    - non_residential_property_purchased
+    stocks:
+    - other_residential_property_value
+    - non_residential_property_value
+    port_of: uk-data#573 at 07f6b460f
+    minimum_price: 40000.0
+    eligibility: stock at least minimum_price, the chargeable consideration HMRC's Stamp Tax tables cover, and positive weight; at most one purchase of each kind a year
+    fit_regions:
+    - NORTH_EAST
+    - NORTH_WEST
+    - YORKSHIRE
+    - EAST_MIDLANDS
+    - WEST_MIDLANDS
+    - EAST_OF_ENGLAND
+    - LONDON
+    - SOUTH_EAST
+    - SOUTH_WEST
+    - NORTHERN_IRELAND
+    hazard: (max(stock, minimum) / weighted mean eligible stock) ** 1
+    event_score: -log1p(-u) / hazard
+    threshold: the score threshold whose weighted count of purchasers in the fit regions is closest to the transactions target, applied everywhere
+    price: min(stock, max(minimum, scale * band mean)), band drawn at the band shares, scale bisected to the value target; where the purchasers' stock cannot carry the value, every purchaser buys at its stock and the shortfall is recorded
+    minimum_value_share: 0.8
+    weights: spine_design_weights
+    streams:
+      additional_residential_property_purchased:
+        event_salt: additional_residential_property_purchased
+        price_salt: additional_residential_property_purchased_price
+        seed: 0
+      non_residential_property_purchased:
+        event_salt: non_residential_property_purchased
+        price_salt: non_residential_property_purchased_price
+        seed: 0
+    additional_residential_targets: Table 6b HRAD transactions and value, 2024-25, times individuals' shares of Table 8a residential transactions and value; Table 6b bands with the five above GBP 2m combined
+    non_residential_targets: Table 8b individuals' transactions, value and bands, 2024-25
+  - kind: record_mass_conservation_receipt
+    entity: household
+    reason: 'Annual property purchases imputed on the source spine: household weights pass through unchanged and total household mass is conserved.'
+    declared_factor: 1.0
+    gate_coupling: The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason.
+  outputs:
+  - additional_residential_property_purchased
+  - non_residential_property_purchased
+  nonnegative_outputs:
+  - additional_residential_property_purchased
+  - non_residential_property_purchased
+  notes: 'Ports uk-data#573 (a draft, at 07f6b460f; uk-data#556) at the spine''s design weights, after the regional uprating and the high-value support copies, so every copy draws on its own (microcosm#1095). policyengine-uk 2.134.1 (pe-uk#2241) makes both purchases inputs that default to nil, so without them a purchasing household pays SDLT on its main home only. A household whose stock of a kind is at least HMRC''s GBP 40,000 coverage floor, at positive weight, can buy once a year. The purchase hazard is proportional to the stock over the weighted mean eligible stock in England and Northern Ireland, where SDLT applies; each household''s exponential event score reads its own identity-keyed uniform, and the threshold whose weighted count of England-and-Northern-Ireland purchasers is closest to HMRC''s transactions applies everywhere, Scotland and Wales included, which have no target here. Prices are band means drawn at HMRC''s band shares on a second identity-keyed stream, times one scale bisected so the weighted England-and-Northern-Ireland value equals HMRC''s, never below GBP 40,000 and never above the stock. Where the purchasers'' stock cannot carry HMRC''s value, as for non-residential property on the national spine, every purchaser buys at its stock and the receipt records the shortfall, and the stage refuses below 80% of the value; uk-data#573 refuses any shortfall (María''s ruling of 2026-10-16). Targets, vendored from the pinned Chronicle feed: additional dwellings are Table 6b''s 2024-25 HRAD transactions and value (every buyer) times individuals'' shares of Table 8a''s residential transactions and value, with Table 6b''s bands and the five above GBP 2m combined; non-residential purchases are Table 8b''s 2024-25 individuals. The stage fits transactions and value only; households'' SDLT is fitted through obr.sdlt. The HRAD allocation is an assumption, as uk-data#573 says (its household lower bounds are 87,200 transactions and GBP 33.28bn), and probably overstates households'' purchases. The draws differ from uk-data''s, which read positional seeded streams; the method is the same.'
 - stage: nts_bus_travel
   survey: National Travel Survey 2002-2024
   source: Department for Transport National Travel Survey, UK Data Service SN 5340 (End User Licence, 19th edition, November 2025), DOI 10.5255/UKDA-SN-5340-19; local licensed tab files (household, individual, trip); England residents only from 2013.
@@ -4179,7 +4304,51 @@ stages:
   rewrites:
   - frs_benunit_capital
   - would_claim_uc
-  notes: Runs after the last universal_credit_reported writer and before CGT cloning. Redraws every SPI benefit unit's capital, since the channel's incomes are SPI draws and the copied FRS answer no longer belongs to the unit (uk-data#495, microcosm#1095), from weighted base-FRS units with available capital in cells of UC reporter status by financial investment income band (interest, dividends and other investment income; property income is excluded because TOTCAPB4 counts accounts and assets) by is_uc_couple (two retained FRS claimant/partner roles, independently of legal is_married) by dependent-children band. A cell with fewer than 20 donors widens in the declared coarsening order, and reporter status is never coarsened. It then applies the monotone reported-UC OR refresh. The recorded capitals add property (uk-data#495, microcosm#1095), since policyengine-uk 2.132.6 replaces every capital source with a recorded figure of 0 or more and takes it as countable, and TOTCAPB4 has no property. WAS records the property for the household, and each means test counts the claimant's and partner's own capital (UC Regs 2013 reg 18; SPCA 2002 s.5). The household reference person's benefit unit therefore holds all of the household's property, and no other unit records any (María's ruling of 2026-10-12), since that person is the one in whose name the home is owned or rented, the best single reading of the owner. The engine's proxies share household capital over every claimant or partner instead, which puts a parent's property on an adult child's claim; they apply only to a unit on the unavailable sentinel. The property counts at 90% of its value, market value less 10% for the costs of sale (UC Regs 2013 reg 49; SPC Regs 2002 reg 19); debt secured on it is not on the frame and is not netted (pe-uk#1969). Universal Credit counts other residential and non-residential property, and Pension Credit counts those and owned land. A unit that reports Universal Credit keeps its receipt and records the carrier alone for Universal Credit, since DWP assessed its capital to pay it and the property is imputed without that receipt. frs_benunit_capital stays the financial carrier, and its unavailable sentinel -1 passes through to both.
+  notes: Runs after the last universal_credit_reported writer and before CGT cloning. Redraws every SPI benefit unit's capital, since the channel's incomes are SPI draws and the copied FRS answer no longer belongs to the unit (uk-data#495, microcosm#1095), from weighted base-FRS units with available capital in cells of UC reporter status by financial investment income band (interest, dividends and other investment income; property income is excluded because TOTCAPB4 counts accounts and assets) by is_uc_couple (two retained FRS claimant/partner roles, independently of legal is_married) by dependent-children band. A cell with fewer than 20 donors widens in the declared coarsening order, and reporter status is never coarsened. It then applies the monotone reported-UC OR refresh. The recorded capitals add property (uk-data#495, microcosm#1095), since policyengine-uk 2.134.4 replaces every capital source with a recorded figure of 0 or more and takes it as countable, and TOTCAPB4 has no property. WAS records the property for the household, and each means test counts the claimant's and partner's own capital (UC Regs 2013 reg 18; SPCA 2002 s.5). The household reference person's benefit unit therefore holds all of the household's property, and no other unit records any (María's ruling of 2026-10-12), since that person is the one in whose name the home is owned or rented, the best single reading of the owner. The engine's proxies share household capital over every claimant or partner instead, which puts a parent's property on an adult child's claim; they apply only to a unit on the unavailable sentinel. The property counts at 90% of its value, market value less 10% for the costs of sale (UC Regs 2013 reg 49; SPC Regs 2002 reg 19); debt secured on it is not on the frame and is not netted (pe-uk#1969). Universal Credit counts other residential and non-residential property, and Pension Credit counts those and owned land. A unit that reports Universal Credit keeps its receipt and records the carrier alone for Universal Credit, since DWP assessed its capital to pay it and the property is imputed without that receipt. frs_benunit_capital stays the financial carrier, and its unavailable sentinel -1 passes through to both.
+- stage: uc_legacy_closure_take_up
+  survey: DWP Stat-Xplore, Households invited to Move to Universal Credit by legacy benefit and move status, notices July 2022 to June 2026
+  source: https://stat-xplore.dwp.gov.uk
+  grain: benunit
+  artifacts:
+  - role: move_to_uc_facts
+    kind: public_aggregate_reference
+    resource: dwp_move_to_uc_facts.json
+    format: json
+    runtime_sha256_required: true
+  operations:
+  - kind: verify_vendored_fact_resource
+    artifact_role: move_to_uc_facts
+    resource: dwp_move_to_uc_facts.json
+    feed_pin: chronicle_feed.json
+    record_sets:
+    - dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06
+    - dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total
+    source_vintage: July 2022 to June 2026
+    mapped_build_period: 2024
+    period_mapping: cumulative_claim_rates_applied_at_every_closure
+    require_before_source_read: true
+    runtime_sha256_required: true
+    fail_on_mismatch: true
+  - kind: draw_uc_claim_at_legacy_closure
+    output: would_claim_uc_at_legacy_closure
+    port_of: uk-data#534 at c67077a66
+    legacy_benefits:
+    - child_tax_credit
+    - working_tax_credit
+    - housing_benefit
+    - esa_income
+    - income_support
+    - jsa_income
+    true_without_draw: a member reports universal_credit_reported, would_claim_uc is true, or no member reports a legacy benefit
+    rate: claimed / (claimed + did not claim) for the combination, the all-households rate where DWP reports none
+    probability: clip((rate - p) / (1 - p), 0, 1)
+    p: the combination's weighted share of Great Britain's drawn units with would_claim_uc true, at the spine's design weights; the probability applies in Northern Ireland too
+    stream:
+      salt: would_claim_uc_at_legacy_closure
+      seed: 0
+  outputs:
+  - would_claim_uc_at_legacy_closure
+  notes: Ports uk-data#534 (a draft, at c67077a66; uk-data#492) at the spine's design weights (microcosm#1095). policyengine-uk 2.128.0 (pe-uk#2119) moves a family off a legacy benefit DWP has closed (tax credits from 2025-26) and takes its other legacy awards away; the family then claims Universal Credit if would_claim_uc or would_claim_uc_at_legacy_closure is true, and the engine's default for the second, true, put every such family on Universal Credit. The stage runs after uc_capital_coherence, the last writer of would_claim_uc and universal_credit_reported, and before pension_credit_take_up and CGT cloning, so every SPI benefit unit draws on its own final receipts and every clone carries its source's draw. A benefit unit with a member reporting Universal Credit, a unit whose would_claim_uc is true, and a unit reporting none of the six legacy means-tested benefits (child_tax_credit, working_tax_credit, housing_benefit, esa_income, income_support and jsa_income, each read as a member's <benefit>_reported above 0) is true, the engine's default. Every other unit is drawn at (r - p) / (1 - p), clipped to [0, 1], where r is DWP's claimed / (claimed + did not claim) for the unit's combination of legacy benefits (the all-households rate where DWP reports none; households still in progress are left out) and p is the combination's share of Great Britain's such units whose would_claim_uc is true, at the stage's household weights mapped to benefit units (uk-data#534's p is unweighted, as its draw precedes calibration; María's rulings of 2026-10-16 and 2026-10-17); the probability applies to the combination's units in Northern Ireland too, since DWP's rates cover Great Britain. So, in expectation, the weighted share of Great Britain's drawn units claiming at the closure in each combination is DWP's rate wherever p is at most r; where p exceeds it the probability is 0 and the receipt flags the combination (rate_unreachable), never p itself. Two limits carry over from uk-data#534. The drawn cohort includes units on the Pension Credit route, whose legacy benefits policyengine-uk does not close, and DWP's rates count every household sent a notice, entitled to Universal Credit or not. The uniform reads an identity-keyed stream on benunit_id.
 - stage: pension_credit_take_up
   survey: Family Resources Survey 2024-25
   source: 'DWP Income-related benefits: estimates of take-up, financial year ending 2024 (Pension Credit caseload take-up by component), applied to PolicyEngine-UK pre-take-up Pension Credit entitlement after the SPI income chain.'
@@ -4701,7 +4870,7 @@ stages:
   artifacts:
   - role: policy_parameters
     kind: versioned_parameter_tree
-    dependency: policyengine-uk>=2.132.6 via microcosm-build[uk]
+    dependency: policyengine-uk>=2.134.4 via microcosm-build[uk]
     parameters:
     - gov.hmrc.cgt.annual_exempt_amount
     instant_rule: raw dated parameter files evaluated at 1 June of the build period's tax year
@@ -4766,7 +4935,7 @@ stages:
   artifacts:
   - role: policy_parameters
     kind: versioned_parameter_tree
-    dependency: policyengine-uk>=2.132.6 via microcosm-build[uk]
+    dependency: policyengine-uk>=2.134.4 via microcosm-build[uk]
     parameters:
     - gov.hmrc.cgt.annual_exempt_amount
     - gov.hmrc.cgt.badr.lifetime_limit

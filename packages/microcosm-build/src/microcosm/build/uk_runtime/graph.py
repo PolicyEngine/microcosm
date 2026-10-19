@@ -278,6 +278,30 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("household", "non_residential_property_value"),
         }
     ),
+    # Engine-free: the owners' region, tenure, value and wealth, the support
+    # copies the ranking spreads, and the source household the receipt counts
+    # distinct support by (microcosm#1112, microcosm#1095).
+    "regional_home_values": frozenset(
+        {
+            ("household", "region"),
+            ("household", "tenure_type"),
+            ("household", "main_residence_value"),
+            ("household", "property_wealth"),
+            ("household", "household_is_high_value_support_copy"),
+            ("household", "household_source_id"),
+        }
+    ),
+    # Engine-free: each kind's stock, the region that marks where SDLT
+    # applies and the source household the receipt counts distinct support by
+    # (uk-data#573, microcosm#1095).
+    "property_purchases": frozenset(
+        {
+            ("household", "region"),
+            ("household", "other_residential_property_value"),
+            ("household", "non_residential_property_value"),
+            ("household", "household_source_id"),
+        }
+    ),
     # The NTS band model materializes an engine predictor (household gross
     # income) over the whole frame, an open surface like the LCFS QRF.
     "nts_bus_travel": None,
@@ -382,6 +406,23 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("benunit", "frs_benunit_capital"),
             ("benunit", "is_married"),
             ("benunit", "would_claim_uc"),
+        }
+    ),
+    # The Move to UC claim draw reads each unit's legacy and Universal Credit
+    # receipts and its would_claim_uc, after their last writers, and the source
+    # household its receipt counts distinct support by (uk-data#534,
+    # microcosm#1095).
+    "uc_legacy_closure_take_up": frozenset(
+        {
+            ("person", "child_tax_credit_reported"),
+            ("person", "working_tax_credit_reported"),
+            ("person", "housing_benefit_reported"),
+            ("person", "esa_income_reported"),
+            ("person", "income_support_reported"),
+            ("person", "jsa_income_reported"),
+            ("person", "universal_credit_reported"),
+            ("benunit", "would_claim_uc"),
+            ("household", "household_source_id"),
         }
     ),
     "uc_deduction_attributes": frozenset({("household", "region")}),
@@ -783,6 +824,24 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         "person",
         ("property_income", "property_finance_costs", "property_rental_income"),
     ),
+    # The region's Land Registry values on the spine, and the value they
+    # replace for the dense node to rank on (microcosm#1112).
+    "regional_home_values": _cells(
+        "household",
+        (
+            "main_residence_value",
+            "property_wealth",
+            "main_residence_value_rank_basis",
+        ),
+    ),
+    # Annual purchases from each kind of property stock (uk-data#573).
+    "property_purchases": _cells(
+        "household",
+        (
+            "additional_residential_property_purchased",
+            "non_residential_property_purchased",
+        ),
+    ),
     "lcfs_consumption": (
         *_cells(
             "household",
@@ -937,6 +996,9 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("benunit", "pension_credit_reported_capital", "float64"),
         _Cell("benunit", "frs_benunit_capital", "float64"),
         _Cell("benunit", "would_claim_uc", "bool"),
+    ),
+    "uc_legacy_closure_take_up": (
+        _Cell("benunit", "would_claim_uc_at_legacy_closure", "bool"),
     ),
     "pension_credit_take_up": (
         _Cell("benunit", "would_claim_pc", "bool"),

@@ -1027,6 +1027,7 @@ def prepare_full_build(
 ) -> PreparedUKFullBuild:
     from .calibration_run import load_bound_spine_checkpoint
     from .graph import uk_spine_endpoint
+    from .hmrc_uprating import assert_installed_engine_is_pinned
     from .spine_build import (
         _rules_engine,
         _rules_engine_provenance,
@@ -1034,6 +1035,8 @@ def prepare_full_build(
         prepare_uk_spine_execution,
     )
 
+    # The engine freeze, before any input is read (microcosm#1095).
+    assert_installed_engine_is_pinned()
     posture = posture_of(args)
     release = load_uk_frs_release()
     pins = {"ladder": _pin(args.ladder, args.ladder_sha256)}
@@ -2561,8 +2564,11 @@ def prepare_national_build(
     args: argparse.Namespace, *, telemetry=None, attempt: dict | None = None
 ) -> PreparedUKNationalBuild:
     """Bind the national request to its graph: the checkpoint, the doctrine, the register."""
+    from .hmrc_uprating import assert_installed_engine_is_pinned
     from .spine_build import _rules_engine, _rules_engine_provenance
 
+    # The engine freeze, before the input H5 is read (microcosm#1095).
+    assert_installed_engine_is_pinned()
     posture = posture_of(args)
     national_role.require_bound_input(args)
     release = load_uk_frs_release()
