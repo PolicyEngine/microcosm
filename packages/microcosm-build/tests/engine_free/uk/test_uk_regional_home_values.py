@@ -352,6 +352,14 @@ def test_the_cap_cell_is_banded_on_its_source_households(monkeypatch) -> None:
 def test_the_stage_refuses_a_frame_without_lineage() -> None:
     with pytest.raises(ValueError, match="household_source_id"):
         rhv.assign_regional_home_values(_frame(lineage=False))
+    # A null would drop out of the distinct count: the cap cell would read 0
+    # with rows in it.
+    frame = _frame()
+    sources = frame.table("household")["household_source_id"].astype("Int64")
+    sources.iloc[0] = None
+    frame.table("household")["household_source_id"] = sources
+    with pytest.raises(ValueError, match="null"):
+        rhv.assign_regional_home_values(frame)
 
 
 def test_the_release_drops_the_rank_basis() -> None:

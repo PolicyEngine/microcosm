@@ -145,6 +145,8 @@ def _inputs(n: int = 400, seed: int = 7) -> dict[str, np.ndarray]:
         "sdlt_mask": sdlt,
         "event_uniforms": rng.random(n),
         "price_uniforms": rng.random(n),
+        # Each row its own source household.
+        "source_ids": np.arange(n),
     }
 
 
@@ -190,7 +192,7 @@ def test_receipt_cells_on_fewer_than_ten_sources_are_banded() -> None:
     sources = np.arange(n)
     sources[-50:] = 10_000 + np.arange(50) % 3
     result = pp.impute_property_purchase_prices(
-        **inputs, target=_target(), source_ids=sources
+        **{**inputs, "source_ids": sources}, target=_target()
     )
     receipt = result.receipt
     assert (result.prices[-50:] > 0).any()
@@ -200,7 +202,7 @@ def test_receipt_cells_on_fewer_than_ten_sources_are_banded() -> None:
     # Every fit-region row belongs to one of five households.
     few = np.arange(n) % 5
     result = pp.impute_property_purchase_prices(
-        **inputs, target=_target(), source_ids=few
+        **{**inputs, "source_ids": few}, target=_target()
     )
     for field in (
         "fitted_transactions",
@@ -534,6 +536,98 @@ def test_the_stage_refuses_a_stored_output_or_a_missing_lineage() -> None:
     )
     with pytest.raises(ValueError, match="household_source_id"):
         pp.impute_property_purchases(bare, targets=_frame_targets())
+    # A null would drop out of a distinct count or count as one source.
+    nulls = _frame()
+    sources = nulls.table("household")["household_source_id"].astype("Int64")
+    sources.iloc[0] = None
+    nulls.table("household")["household_source_id"] = sources
+    with pytest.raises(ValueError, match="null"):
+        pp.impute_property_purchases(nulls, targets=_frame_targets())
+
+
+def _copies_frame():
+    """Twelve London households, support copies of three sources, each with
+    other residential stock to buy with."""
+
+    n = 12
+    ids = np.arange(1, n + 1, dtype="int64")
+    household = pd.DataFrame(
+        {
+            "household_id": ids,
+            "household_source_id": np.arange(n, dtype="int64") % 3,
+            "region": pd.array(["LONDON"] * n, dtype="string"),
+            "other_residential_property_value": np.full(n, 200_000.0),
+            "non_residential_property_value": np.zeros(n),
+        }
+    )
+    return uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": ids,
+                "person_household_id": ids,
+                "person_benunit_id": ids,
+                "age": np.full(n, 50, dtype="int64"),
+                # The node's shape anchor, the preceding stage's receipts.
+                "property_rental_income": np.zeros(n),
+            }
+        ),
+        # A context cell every graph node receives.
+        benunit=pd.DataFrame({"benunit_id": ids, "frs_benunit_capital": np.zeros(n)}),
+        household=household,
+        time_period="2024",
+        weight_kind=WeightKind.DESIGN,
+        household_weights=np.ones(n),
+    )
+
+
+def _copies_targets() -> pp.UKPropertyPurchaseTargets:
+    # Every copy buys: twelve transactions, at a value the stock carries.
+    return pp.UKPropertyPurchaseTargets(
+        additional_residential=_target(transactions=12.0, value=12 * 150_000.0),
+        non_residential=None,
+    )
+
+
+def _graph_evidence(frame) -> dict:
+    """The stage's receipt from the production node, run as a graph build runs it.
+
+    The executor hands the kernel only the cells the node declares, so a
+    column the stage reads but the node does not declare is missing here.
+    """
+
+    from microcosm.build.uk_runtime.graph import uk_spine_graph
+    from microcosm.build.uk_runtime.graph_kernels import UKStageKernel
+    from microcosm.graph.executor import _project_context
+    from microcosm.graph.population import Population
+
+    node = uk_spine_graph(source_mode="split").node("property_purchases")
+    context = _project_context(
+        node,
+        Population.from_frame(frame, "property-purchases-input"),
+        key="0" * 64,
+        sources={},
+        tolerances={},
+        numerics={},
+    )
+    stage = load_country_spec("uk").sources.stage_map()["property_purchases"]
+    transform = pp.UKPropertyPurchasesStageTransform(
+        stage=stage, targets=_copies_targets()
+    )
+    UKStageKernel("property_purchases", transform).run(context)
+    return transform.checkpoint_metadata()["evidence"]
+
+
+def test_support_copies_band_on_their_sources_in_the_stage_and_the_node() -> None:
+    # UKDS disclosure control: twelve purchasers past ten rows, but three
+    # sources, so the support reads "<10", in a direct call and through the
+    # production node as a graph build runs it (it declares the lineage).
+    frame = _copies_frame()
+    direct = pp.impute_property_purchases(frame, targets=_copies_targets())
+    for evidence in (direct.evidence(), _graph_evidence(frame)):
+        kind = evidence["kinds"][0]
+        assert kind["property_type"] == "additional_residential"
+        assert kind["purchaser_support"] == "<10"
+        assert kind["fitted_transactions"] == "<10"
 
 
 def test_the_stage_refuses_a_frame_outside_the_mapped_period() -> None:

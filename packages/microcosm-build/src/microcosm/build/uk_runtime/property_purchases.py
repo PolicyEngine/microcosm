@@ -73,8 +73,10 @@ from microcosm.build.uk_runtime.national_frame import (
     validate_uk_national_frame,
 )
 from microcosm.build.uk_runtime.receipt_counts import (
+    distinct_count,
     extreme_count,
     small_cell_share,
+    source_household_ids,
     support_band,
 )
 from microcosm.build.uk_runtime.rowwise_geography import FRS_REGION_TO_COUNTRY
@@ -166,8 +168,6 @@ PROPERTY_PURCHASE_BAND_IDS = _BAND_ORDER
 #: sheet's note), the floor on every purchase and on the stock that can buy.
 #: Chronicle carries it as a universe constraint, which vendored rows drop.
 HMRC_SDLT_MINIMUM_CONSIDERATION = 40_000.0
-#: The FRS household each row descends from, as the support floor counts it.
-_SOURCE_HOUSEHOLD_COLUMN = "household_source_id"
 _BISECTION_STEPS = 80
 
 
@@ -553,7 +553,7 @@ def impute_property_purchase_prices(
     event_uniforms: np.ndarray,
     price_uniforms: np.ndarray,
     target: UKPropertyPurchaseTarget,
-    source_ids: np.ndarray | None = None,
+    source_ids: np.ndarray,
 ) -> UKPropertyPurchaseImputation:
     """Purchase prices for one kind, fitting the weighted count and value.
 
@@ -650,12 +650,10 @@ def impute_property_purchase_prices(
     fitted_count = float(fitted_weights.sum())
     at_cap = fitted & (final >= stock)
     outside = purchased & ~sdlt_mask
-    ids = np.asarray(source_ids) if source_ids is not None else None
+    ids = np.asarray(source_ids)
 
     def sources(mask: np.ndarray) -> int:
-        """Distinct source households behind a cell (rows without lineage)."""
-
-        return int(len(np.unique(ids[mask]))) if ids is not None else int(mask.sum())
+        return distinct_count(ids, mask)
 
     # UKDS disclosure control (receipt_counts): a weighted figure one to nine
     # source households carry is "<10", and so is anything derived from it.
@@ -843,13 +841,8 @@ def impute_property_purchases(
     weight_values = np.asarray(weights.values, dtype=float)
     regions = household["region"].astype(str)
     sdlt_mask = sdlt_region_mask(regions)
-    if _SOURCE_HOUSEHOLD_COLUMN not in household.columns:
-        raise ValueError(
-            f"Property purchases count support by {_SOURCE_HOUSEHOLD_COLUMN!r}, "
-            "which the frame does not carry."
-        )
+    source_ids = source_household_ids(household, stage="The property purchases stage")
     ids = household["household_id"].to_numpy()
-    source_ids = household[_SOURCE_HOUSEHOLD_COLUMN].to_numpy()
     receipts = []
     for kind in PROPERTY_PURCHASE_KINDS:
         target = targets.for_kind(kind.name)

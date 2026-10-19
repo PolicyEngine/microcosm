@@ -56,7 +56,9 @@ from microcosm.build.uk_runtime.national_frame import (
     validate_uk_national_frame,
 )
 from microcosm.build.uk_runtime.receipt_counts import (
+    distinct_count,
     small_cell_share,
+    source_household_ids,
     support_band,
 )
 from microcosm.build.uk_runtime.uc_capital_coherence import (
@@ -111,9 +113,6 @@ LEGACY_BENEFITS: tuple[tuple[str, str], ...] = (
     ("jsa_income", "Jobseekers Allowance"),
 )
 _STREAM_SEED = 0
-#: The lineage the receipt counts distinct support by; the graph node declares
-#: it, since the executor hands a stage only its declared cells.
-_SOURCE_HOUSEHOLD_COLUMN = "household_source_id"
 
 
 def _combination_key(label: str) -> str:
@@ -210,8 +209,8 @@ def legacy_closure_claim_probabilities(
     claims_anyway: np.ndarray,
     weights: np.ndarray,
     rates: Mapping[str, float],
-    great_britain: np.ndarray | None = None,
-    source_ids: np.ndarray | None = None,
+    great_britain: np.ndarray,
+    source_ids: np.ndarray,
 ) -> tuple[np.ndarray, dict[str, dict[str, object]]]:
     """Each drawn unit's claim probability, and a receipt by combination.
 
@@ -225,20 +224,12 @@ def legacy_closure_claim_probabilities(
     and neither of its sides rests on one to nine.
     """
 
-    gb = (
-        np.ones(len(combination), dtype=bool)
-        if great_britain is None
-        else np.asarray(great_britain, dtype=bool)
-    )
+    gb = np.asarray(great_britain, dtype=bool)
     probability = np.zeros(len(combination))
     receipt: dict[str, dict[str, object]] = {}
 
     def count(mask: np.ndarray) -> int:
-        """Distinct source households behind a cell; rows without lineage."""
-
-        if source_ids is None:
-            return int(mask.sum())
-        return int(len(np.unique(np.asarray(source_ids)[mask])))
+        return distinct_count(source_ids, mask)
 
     for key in sorted(set(combination[drawn])):
         cohort = drawn & (combination == key)
@@ -307,14 +298,12 @@ def assign_uc_claim_at_legacy_closure(
         )
     if "would_claim_uc" not in benunit.columns:
         raise ValueError("The legacy closure draw needs benunit 'would_claim_uc'.")
-    if _SOURCE_HOUSEHOLD_COLUMN not in household.columns:
-        # Support copies repeat their source household, so the receipt counts
-        # distinct sources; a frame without them would count rows (UKDS
-        # disclosure control).
-        raise ValueError(
-            f"The legacy closure receipt counts support by "
-            f"{_SOURCE_HOUSEHOLD_COLUMN!r}, which the frame does not carry."
-        )
+    # The graph node declares the lineage, since the executor hands a stage
+    # only its declared cells.
+    household_sources = pd.Series(
+        source_household_ids(household, stage="The legacy closure stage"),
+        index=household["household_id"].to_numpy(),
+    )
     household_weights = frame.weights_for("household")
     weights = _household_to_benunit_weights(
         benunit,
@@ -332,7 +321,7 @@ def assign_uc_claim_at_legacy_closure(
         unit_households.map(by_household["region"].astype(str)).to_numpy()
         != "NORTHERN_IRELAND"
     )
-    source_ids = unit_households.map(by_household[_SOURCE_HOUSEHOLD_COLUMN]).to_numpy()
+    source_ids = unit_households.map(household_sources).to_numpy()
     probability, combinations_drawn = legacy_closure_claim_probabilities(
         combination=combination,
         drawn=drawn,
@@ -361,7 +350,7 @@ def assign_uc_claim_at_legacy_closure(
     # Great Britain's weighted aggregates only, DWP's universe; a figure one to
     # nine source households carry is "<10" (UKDS disclosure control).
     def sources(mask: np.ndarray) -> int:
-        return int(len(np.unique(source_ids[mask])))
+        return distinct_count(source_ids, mask)
 
     gb_drawn = drawn & great_britain
     gb_sources = sources(gb_drawn)

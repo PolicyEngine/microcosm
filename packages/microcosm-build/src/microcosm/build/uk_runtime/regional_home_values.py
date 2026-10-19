@@ -50,7 +50,12 @@ from microcosm.build.uk_runtime.property_localisation import (
     owner_mask,
     owner_uniforms,
 )
-from microcosm.build.uk_runtime.receipt_counts import rounded_count, support_band
+from microcosm.build.uk_runtime.receipt_counts import (
+    distinct_count,
+    rounded_count,
+    source_household_ids,
+    support_band,
+)
 from microcosm.build.uk_runtime.rowwise_geography import FRS_REGION_TO_REGION_CODE
 from microcosm.frame import Frame, MassChangeRecord
 
@@ -96,9 +101,6 @@ _MASS_GATE_COUPLING = (
     "The terminal family gate requires a valid mass-conserving MassChangeRecord "
     "carrying exactly this stage-specific reason."
 )
-#: The lineage the receipt counts distinct support by; the graph node declares
-#: it, since the executor hands a stage only its declared cells.
-_SOURCE_HOUSEHOLD_COLUMN = "household_source_id"
 
 
 def load_region_knots(knots: bytes | None = None) -> tuple[ValueKnots, dict]:
@@ -147,17 +149,6 @@ class UKRegionalHomeValuesResult:
         return {"stage": REGIONAL_HOME_VALUES_STAGE_NAME, **self.receipt}
 
 
-def source_count(household, mask: np.ndarray) -> int:
-    """Distinct source households behind a cell (UKDS disclosure control).
-
-    Support copies repeat their source household, so a cell is counted on
-    ``household_source_id``, which the stage refuses a frame without.
-    """
-
-    mask = np.asarray(mask, dtype=bool)
-    return int(household.loc[mask, _SOURCE_HOUSEHOLD_COLUMN].nunique())
-
-
 def assign_regional_home_values(
     frame: Frame, *, knots: bytes | None = None
 ) -> UKRegionalHomeValuesResult:
@@ -172,11 +163,9 @@ def assign_regional_home_values(
     for column in ("region", "tenure_type", "main_residence_value", "property_wealth"):
         if column not in household.columns:
             raise ValueError(f"Regional home values need {column!r}.")
-    if _SOURCE_HOUSEHOLD_COLUMN not in household.columns:
-        raise ValueError(
-            f"Regional home values count support by {_SOURCE_HOUSEHOLD_COLUMN!r}, "
-            "which the frame does not carry."
-        )
+    # The graph node declares the lineage, since the executor hands a stage
+    # only its declared cells.
+    source_ids = source_household_ids(household, stage="The regional home values stage")
     parsed, region_knots = load_region_knots(knots)
     weights = np.asarray(frame.weights_for("household").values, dtype=float)
     region = household["region"].astype(str).to_numpy()
@@ -232,7 +221,7 @@ def assign_regional_home_values(
         mass_log=(*frame.mass_log, mass),
     )
     validate_uk_national_frame(result)
-    at_cap = source_count(household, target & (new_value >= parsed.cap))
+    at_cap = distinct_count(source_ids, target & (new_value >= parsed.cap))
     receipt = {
         "knots_basis_year": parsed.basis_year,
         "knots_inputs_sha256": parsed.inputs_sha256,

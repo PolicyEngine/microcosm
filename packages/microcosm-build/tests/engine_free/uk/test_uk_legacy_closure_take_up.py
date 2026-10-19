@@ -97,6 +97,8 @@ def test_probabilities_hit_the_rate_at_the_weighted_share_already_claiming() -> 
         claims_anyway=claims_anyway,
         weights=weights,
         rates={"child_tax_credit": 0.8, "all": 0.6},
+        great_britain=np.ones(6, dtype=bool),
+        source_ids=np.arange(6),
     )
     np.testing.assert_allclose(probability[1:4], (0.8 - 0.5) / (1 - 0.5))
     # A combination DWP does not report takes the all-households rate.
@@ -113,6 +115,8 @@ def test_probabilities_clip_where_the_claimants_exceed_the_rate() -> None:
         claims_anyway=np.array([True, True, False]),
         weights=np.ones(3),
         rates={"esa_income": 0.5, "all": 0.5},
+        great_britain=np.ones(3, dtype=bool),
+        source_ids=np.arange(3),
     )
     np.testing.assert_array_equal(probability, 0.0)
 
@@ -328,6 +332,7 @@ def test_p_is_measured_over_great_britain_and_applied_in_northern_ireland() -> N
         weights=np.ones(6),
         rates={"child_tax_credit": 0.8, "all": 0.8},
         great_britain=great_britain,
+        source_ids=np.arange(6),
     )
     np.testing.assert_allclose(probability, (0.8 - 0.25) / (1 - 0.25))
 
@@ -513,3 +518,17 @@ def test_the_transform_refuses_a_frame_outside_the_mapped_period() -> None:
     # DWP's cumulative rates are mapped to build period 2024 only.
     with pytest.raises(ValueError, match="build period 2024"):
         lc.UKLegacyClosureTakeUpStageTransform(stage=stage, rates=_RATES)(frame)
+
+
+def test_the_stage_refuses_a_null_lineage() -> None:
+    frame = _frame(
+        {"esa_income_reported": np.full(3, 100.0)},
+        would_claim_uc=np.zeros(3, dtype=bool),
+        weights=np.ones(3),
+    )
+    frame.table("household")["household_source_id"] = pd.array(
+        [1, None, 3], dtype="Int64"
+    )
+    # A null would drop out of a distinct count or count as one source.
+    with pytest.raises(ValueError, match="null"):
+        lc.assign_uc_claim_at_legacy_closure(frame, rates=_RATES)
