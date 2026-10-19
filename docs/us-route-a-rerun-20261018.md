@@ -530,7 +530,7 @@ gate_rc=$(supervised gate-dry-run 64 40 30 21600 43200 -- \
   --ssi-take-up-prior-weight-basis "$SSI" \
   --ssi-take-up-prior-weight-basis-sha256 25fe8af50a99d717f3408b2de7f0849d2307d4f05b1a7d55d2703999002fff0a \
   --scf-summary-extract "$SCF" --out "$LOCAL/gate-dry-run" \
-  --release-id route-a-rerun-20261018-gate-check \
+  --release-id "populace-us-2024-gate-check-${COMMIT:0:12}" \
   --checkpoint-root "$LOCAL/gate-checkpoints" --seed 0 --no-staging "${EXTRA[@]}")
 case "$gate_rc" in
   0) echo 'Release guards completed cleanly' ;;
