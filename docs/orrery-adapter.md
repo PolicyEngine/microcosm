@@ -434,7 +434,9 @@ The build directory is only read. The command:
   it.
 
 It writes a new directory with the layout of a normal publication, and moves the
-directory into place only after every file is written:
+directory into place only after every file is written. The output must not
+exist, and must not be the build directory or lie inside it once `..` and links
+are resolved:
 
 | File | Contents |
 | --- | --- |
