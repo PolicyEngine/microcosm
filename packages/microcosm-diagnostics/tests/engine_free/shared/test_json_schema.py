@@ -21,6 +21,7 @@ from microcosm import diagnostics
 from test_support.microcosm_diagnostics.json_schema import (
     json_schema_errors,
     load_strict_json,
+    published_json_schema_errors,
 )
 from test_support.microcosm_diagnostics.payloads import (
     schema_8_payload,
@@ -683,3 +684,62 @@ def test_generator_tool_writes_and_checks_the_committed_schema(
     assert "regenerate it with" in capsys.readouterr().err
     with pytest.raises(ValueError, match="differs from the schema the models generate"):
         diagnostics.assert_calibration_diagnostics_v8_json_schema_current(written)
+
+
+LEGACY_AREA_SUPPORT_FIGURES = {
+    "nonzero_households": 60,
+    "nonzero_source_households": 55,
+    "effective_sample_size": 52.5,
+}
+
+
+def _uk_payload_with_area_fit(area_fields: dict[str, object]) -> dict:
+    """The complete UK document, its one weakest area carrying ``area_fields``."""
+
+    payload = uk_schema_8_payload()
+    (area,) = payload["uk_diagnostics"]["weakest_areas_by_fit"]["bottom_by_fit"]
+    del area["support_below_floor"]
+    area.update(area_fields)
+    return payload
+
+
+@pytest.mark.parametrize(
+    "area_fields",
+    [
+        pytest.param({"support_below_floor": True}, id="floor-flag-only"),
+        pytest.param({}, id="neither-flag-nor-figures"),
+        pytest.param(LEGACY_AREA_SUPPORT_FIGURES, id="legacy-support-figures"),
+        pytest.param(
+            {"support_below_floor": None}
+            | {field: None for field in LEGACY_AREA_SUPPORT_FIGURES},
+            id="explicit-nulls",
+        ),
+    ],
+)
+def test_published_schema_accepts_uk_area_fits_with_the_floor_flag_or_legacy_support_figures(
+    area_fields: dict[str, object],
+) -> None:
+    # Released diagnostics withhold an area's support figures and carry the
+    # floor flag instead (microcosm#1301); earlier documents carry the figures.
+    document = load_strict_json(
+        json.dumps(_uk_payload_with_area_fit(area_fields), allow_nan=False)
+    )
+    diagnostics.CalibrationDiagnosticsV8.model_validate(document)
+
+    assert published_json_schema_errors(document) == []
+
+
+def test_published_schema_and_models_refuse_a_negative_legacy_support_figure() -> None:
+    document = _uk_payload_with_area_fit(
+        LEGACY_AREA_SUPPORT_FIGURES | {"effective_sample_size": -1.0}
+    )
+
+    assert any(
+        error.startswith(
+            "$.uk_diagnostics.weakest_areas_by_fit.bottom_by_fit[0]"
+            ".effective_sample_size: "
+        )
+        for error in published_json_schema_errors(document)
+    )
+    with pytest.raises(ValidationError):
+        diagnostics.CalibrationDiagnosticsV8.model_validate(document)
