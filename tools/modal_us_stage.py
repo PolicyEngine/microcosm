@@ -1150,11 +1150,22 @@ RUNNERS = {
 
 
 @app.local_entrypoint()
-def main(run: bool = False) -> None:
-    """Check the plan (default) or, with --run, execute the stage."""
+def main(run: bool = False, spawn: bool = False) -> None:
+    """Check the plan (default) or, with --run, execute the stage.
+
+    ``--run`` waits for the stage and prints its receipt. ``--run --spawn``
+    spawns the stage, prints its function call id and returns. Under
+    ``modal run --detach`` the spawned call keeps running after this client
+    exits, so a client that sleeps or is killed cannot cancel it. A waited-on
+    call can be cancelled that way: on 2026-10-19 the Route A rerun base was
+    cancelled 99 s after the launching Mac went to sleep. Either way the
+    stage writes its receipt and attempt record to the runs volume.
+    """
 
     assert _LOADED is not None
     plan_data, plan = _LOADED
+    if spawn and not run:
+        raise SystemExit("--spawn needs --run")
     if not run:
         report = check_stage.remote(plan_data)
         print(json.dumps(report, indent=2))
@@ -1163,6 +1174,19 @@ def main(run: bool = False) -> None:
         print("CHECK OK")
         return
     runner = RUNNERS[(plan.resources.name, plan.nonpreemptible)]
+    if spawn:
+        call = runner.spawn(plan_data)
+        print(
+            json.dumps(
+                {
+                    "run_id": plan.run_id,
+                    "stage": plan.stage,
+                    "function_call_id": call.object_id,
+                },
+                indent=2,
+            )
+        )
+        return
     receipt = runner.remote(plan_data)
     brief = {
         key: receipt[key]

@@ -267,12 +267,23 @@ part of preparing this document.
 ```bash
 "$LSUBMIT" route-a-rerun-20261018-base "$LOCAL/base.launchd.log" "$PREP" \
   /usr/bin/env MICROCOSM_MODAL_PLAN="$PLAN" \
-  "$MODAL" run --detach tools/modal_us_stage.py --run
+  "$MODAL" run --detach tools/modal_us_stage.py --run --spawn
 ```
 
+`--spawn` returns once the stage is spawned and prints its
+`function_call_id`; under `--detach` the call then runs on Modal whether or not
+this Mac stays awake. Without it, the client waits on the call, and a client
+that goes away can cancel it: on 19 October the first attempt
+(`all-20261019T163840131111Z`) was cancelled after 822 s, 99 s after the Mac
+went to sleep on battery. The stage writes its receipt to
+`runs/$R/receipts/` on `microcosm-us-stage-runs` either way; step 5 waits for
+it there. To block on the call instead:
+`modal.FunctionCall.from_id("<function_call_id>").get()`.
+
 Keep launchd's default `ProcessType=Standard`; do not set `KEEPALIVE=1`.
-Use the same reviewed plan for this one paid attempt. A failure or budget stop
-does not authorize an automatic relaunch.
+Use the same reviewed plan for each paid attempt. A failure, cancellation or
+budget stop does not authorize an automatic relaunch: each relaunch is another
+paid run and needs Max's go (runbook, "The budget stop").
 
 ### 4. Produce the local reference (scheduled, supervised local work)
 
@@ -356,6 +367,9 @@ the two stages' completed-prefix evidence remains in the fresh reference root.
 ### 5. Fetch, compare and hand off
 
 After the Modal base completes, fetch only the receipt, output and context.
+Completion means a receipt under `runs/$R/receipts/`
+(`"$MODAL" volume ls microcosm-us-stage-runs "runs/$R/receipts"`); the
+attempt record under `runs/$R/attempts/` says `finished` and its `outcome`.
 Check the CLI's downloaded directory layout before selecting `RECEIPT`.
 
 ```bash
