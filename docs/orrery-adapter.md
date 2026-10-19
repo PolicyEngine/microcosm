@@ -466,7 +466,9 @@ The build directory is only read. The command:
 It writes a new directory with the layout of a normal publication, and moves the
 directory into place only after every file is written. The output must not
 exist, and must not be the build directory or lie inside it once `..` and links
-are resolved:
+are resolved. The command writes to that resolved path, so a path that passes
+through a missing folder inside the build creates nothing there, and a
+read-only build can be reconstructed:
 
 | File | Contents |
 | --- | --- |

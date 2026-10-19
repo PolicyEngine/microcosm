@@ -392,13 +392,21 @@ def reconstruct_uk_publication(
     beside the publication files, outside the upload inventory.
     """
 
-    build, output = Path(build), Path(output)
+    build, requested_output = Path(build), Path(output)
+    # Check and write the same resolved path. Otherwise a path that enters a
+    # missing folder inside the build and leaves it again with ``..`` passes
+    # the check, and creating its parents makes that folder in the build.
+    output = requested_output.resolve()
     _require(build.is_dir(), f"build directory {build} does not exist")
     _require(
         not _within(build, output),
-        f"output {output} is inside the build directory {build}, which is only read",
+        f"output {requested_output} is inside the build directory {build}, which "
+        "is only read",
     )
-    _require(not os.path.lexists(output), f"output {output} already exists")
+    _require(
+        not os.path.lexists(requested_output) and not os.path.lexists(output),
+        f"output {requested_output} already exists",
+    )
     recorded_evidence = [
         name
         for name in (SCHEMA_NAME, EVIDENCE_INDEX_NAME)

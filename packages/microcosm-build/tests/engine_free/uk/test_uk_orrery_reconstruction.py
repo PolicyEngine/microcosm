@@ -656,6 +656,44 @@ def test_output_inside_the_build_directory_is_refused(tmp_path, output_parts):
     assert sorted(path.name for path in build.iterdir()) == listing
 
 
+def _tree_snapshot(directory: Path) -> dict[str, bytes | None]:
+    """Every path under ``directory``, with each file's bytes (``None`` for a folder)."""
+
+    return {
+        path.relative_to(directory).as_posix(): (
+            None if path.is_dir() else path.read_bytes()
+        )
+        for path in sorted(directory.rglob("*"))
+    }
+
+
+@pytest.mark.parametrize(
+    "build_is_writable", [True, False], ids=["writable_build", "read_only_build"]
+)
+def test_output_leaving_a_missing_folder_inside_the_build_creates_nothing_there(
+    tmp_path, build_is_writable
+):
+    # It names a folder beside the build, so it is accepted; the folders it
+    # passes through on the way must not be created inside the build.
+    build = write_pre_1144_build(tmp_path / "build")
+    output = build / "missing" / ".." / ".." / "publication"
+    before = _tree_snapshot(build)
+    original_mode = build.stat().st_mode
+    if not build_is_writable:
+        if os.geteuid() == 0:
+            pytest.skip("root ignores directory permissions")
+        build.chmod(0o555)
+    try:
+        reconstruct_uk_publication(build, output)
+    finally:
+        build.chmod(original_mode)
+
+    assert _tree_snapshot(build) == before
+    assert sorted(path.name for path in (tmp_path / "publication").iterdir()) == (
+        sorted([GRAPH_NAME, SCHEMA_NAME, INVENTORY_NAME, REPORT_NAME])
+    )
+
+
 def test_declaration_behind_a_symbolic_link_is_refused(tmp_path):
     build = write_pre_1144_build(tmp_path / "build")
     elsewhere = tmp_path / "elsewhere.json"
