@@ -56,40 +56,11 @@ requires `ps`, denied by the sandbox. Those checks must run in the launch-day
 locked environment; the runbook's full test command includes them. This report
 does not claim certification or a fully green ordinary environment.
 
-## Sandbox and hand-off
+## Hand-off
 
-Only the assigned workspace was written. Both `git fetch origin` and staging
-files in the assigned checkout failed because Git metadata under the caller's
-repository is read-only. The intended `_worktrees/` and machine-local settings
-destinations are outside the writable sandbox too.
-
-An independent cached-main checkout with its own Git metadata was therefore
-prepared at `build/route-a-rerun-prep-main/` inside this workspace. Its branch is
-`route-a-rerun-prep`; its commit is exported in the workspace-root
-`route-a-rerun-prep.bundle` and `route-a-rerun-prep.patch`. These are portable
-changes against cached main, avoiding the assigned checkout's older parent.
-The assigned outer checkout remains **uncommitted**. It also holds copies of
-the changed files for inspection. Use the bundle/patch to integrate with main;
-do not treat the old outer checkout as a runnable current-main tree.
-
-The actual uncommitted settings fallback is
-`build/route-a-rerun-20261018/route_a.env`. The requested
-`/Users/maxghenis/PolicyEngine/_recovered/scratch-backup/893/route-a-rerun-20261018/route_a.env`
-was not written. Install it with step 1 of the launch sequence; no actual
-`route_a.env` is committed in the bundle.
-
-Outside this sandbox, recover the committed prep worktree without pushing:
-
-```bash
-PE=/Users/maxghenis/PolicyEngine
-MAIN=$PE/microcosm
-ASSIGNED=/Users/maxghenis/.subfleet/worktrees/20261015-052227-route-a-rerun-prep
-git -C "$MAIN" fetch "$ASSIGNED/route-a-rerun-prep.bundle" refs/heads/route-a-rerun-prep
-git -C "$MAIN" worktree add -b route-a-rerun-prep "$PE/_worktrees/route-a-rerun-prep" FETCH_HEAD
-```
-
-That prep tree contains reviewed runner/driver changes. On 18 October, fetch
-main again and select the build commit independently as the launch sequence
-requires. If applying to a newer prep branch, use the patch or cherry-pick the
-bundle's commit and review any conflicts. No historical run or worktree was
-modified.
+The preparation lane's sandbox could not write Git metadata, so it handed the
+change over as a bundle. The main session committed it as branch
+`route-a-rerun-prep` (PR #1289), checked out at
+`$PE/_worktrees/microcosm-route-a-rerun-prep`. The machine-local settings file
+is `$PE/_recovered/scratch-backup/893/route-a-rerun-20261018/route_a.env` and
+is never committed. No historical run or worktree was modified.

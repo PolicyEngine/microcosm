@@ -1,25 +1,19 @@
 # Route A rerun on 18 October 2026 (d1386)
 
-Prepared on 15 October against cached `origin/main`
-`412f916536b66577e4e0b42c707285085df7c302`. Fetching was denied by this
-workspace's sandbox; these findings must be checked against the commit selected
-on 18 October. Nothing in this preparation launched a build or called Modal.
+Prepared on 15 October against `origin/main`
+`412f916536b66577e4e0b42c707285085df7c302`. Nothing in this preparation
+launched a build or called Modal. The 18 October start did not happen; Max
+confirmed on 19 October that the build launches that day on current `main`
+without #1275 (d1386, d1556).
 
-Max's d1386 selects whatever has merged to `main` on 18 October. It must contain
+Max's d1386 selects whatever has merged to `main` at launch. It must contain
 `9802825200929c445856d969f4231287c185d784` (#1186, the #1178 Social Security
 fix). The base runs on Modal; release, preflights and certification run locally
 through `tools/route_a/`. Staging is enabled. Publication remains separate.
 
-The assigned checkout is an older detached commit and its shared Git metadata
-is read-only. Preparation therefore used an ignored, extracted cached-main tree
-inside the assigned workspace, with independent local Git metadata. The portable
-patch/bundle is against that main snapshot; apply it to a current-main prep
-worktree before running this sequence. No caller metadata was written.
-The requested external settings directory was also outside the writable
-sandbox. The prepared, uncommitted settings fallback is
-`build/route-a-rerun-20261018/route_a.env`; the reproducible template is
-`docs/us-route-a-rerun-20261018.env.example`. Install it at the requested
-machine-local path in step 1. Never commit `route_a.env`.
+The machine-local settings file is
+`$PE/_recovered/scratch-backup/893/route-a-rerun-20261018/route_a.env`, from
+`docs/us-route-a-rerun-20261018.env.example`. Never commit `route_a.env`.
 
 ## Inputs and registration
 
@@ -87,10 +81,13 @@ base. These observations do not bound this rerun's time or cost.
 
 A new hand-off requires a COMPLETED, non-budget-stopped receipt, strict
 `base-out` verification, the actual Modal context matching its receipt digest,
-and a reference with the chosen commit, all eleven input digests, normalized
-all-stage argv/environment, pipeline, run config, source-code digest,
-dependency versions, hash seed 0 and actual 000/001 checkpoint digests. Every
-comparison must pass. Interpreter and other thread-variable differences are
+and a reference with the chosen commit, all eleven input digests, pipeline, run
+config, source-code digest, dependency versions, hash seed 0 and actual 000/001
+checkpoint digests. Every comparison must pass. The reference's argv and
+environment are written from the plan's registry (`planned_argv(plan)`), not
+read from the local run, so their comparison only confirms the registry; the
+strict masked `run_config`, source and dependency identity, hash seed,
+pipeline and checkpoint digests carry the evidence. Interpreter and other thread-variable differences are
 reported; only hash seed is compared among thread variables. Equality covers
 two stages, not the later 22, district/ladder assignment or final export.
 Release gates and certification still run.
@@ -102,11 +99,14 @@ JSON and the supporting local evidence with this run.
 
 The old `base-sup/PROVENANCE.md` records a strict mismatch at stage 001:
 313/432,523 `person.pre_subsidy_rent` values differed, maximum absolute
-`8.7e-11`, relative `6.08e-15`. A prior session used a narrow exception. That
-does not authorize this run. Any mismatch, skipping the new local reference,
-or relaxing the hand-off needs **Max's explicit decision** with the new
-evidence. There is no automatic waiver path in this preparation. Stop before
-writing `ACCEPTED` while that decision is outstanding.
+`8.7e-11`, relative `6.08e-15`. A prior session accepted it with a scripted check.
+Max ruled on 19 October (d1712) that a repeat of exactly that class may be
+accepted for this run: every entity table has the same shape and index, totals
+are equal, and every differing value is within 1e-12 relative. The check that
+establishes this is recorded with the run's provenance. Any other mismatch,
+skipping the new local reference, or relaxing the hand-off still needs **Max's
+explicit decision** with the new evidence. Stop before writing `ACCEPTED` while
+that decision is outstanding.
 
 ## Settings to review on 18 October
 
@@ -125,10 +125,13 @@ writing `ACCEPTED` while that decision is outstanding.
   for this lineage. Re-measure and update the file and SHA together. Its four
   columns are `bond_assets`, `estate_income`,
   `long_term_capital_gains_on_collectibles`, and
-  `w2_wages_from_qualified_business`. Under d490 a new measurement may retain
-  threshold **0.75** and the same or a subset of these columns without another
-  ruling. Drop stale entries. Adding a column or lowering the threshold needs
-  Max's ruling. Its old reasons and expiry do not attest a new export. The
+  `w2_wages_from_qualified_business`. The d177/d450 waivers behind them expire
+  at the next certified build, which is this one. Max ruled on 19 October
+  (d1711) that d490 covers this build: start with this register, and if the
+  measured columns over 0.75 are the same or fewer, apply them on the same
+  terms, renewed to expire 2026-12-31 or at the next certified build. Drop
+  stale entries. Adding a column or lowering the threshold still needs Max's
+  ruling. The old reasons and expiry do not attest a new export. The
   pre-solve dry run uses base weights; the final weighted-export gate still
   determines whether the register is current.
 - `DENSE_RELEASE_D122` and `RELEASE_EXTRA_ARGS`: retain the historical dense
@@ -158,7 +161,7 @@ clean checkout of the chosen build commit. Nothing writes to the old run or
 set -euo pipefail
 PE=/Users/maxghenis/PolicyEngine
 MAIN=$PE/microcosm
-PREP=$PE/_worktrees/route-a-rerun-prep
+PREP=$PE/_worktrees/microcosm-route-a-rerun-prep
 LOCAL=$PE/_recovered/scratch-backup/893/route-a-rerun-20261018
 SETTINGS=$LOCAL/route_a.env
 PLAN=$LOCAL/base-plan.json
@@ -275,9 +278,10 @@ does not authorize an automatic relaunch.
 
 This step runs engines and must wait for machine admission. It was not run
 during preparation. Create the clean chosen-commit checkout and locked US env.
-The script below supervises each named stage with the existing local base
-limits: 100 GiB RSS cap, 80 GiB RAM/70 GiB disk admission, six-hour wall limit
-and persistent 20 GiB disk floor. Admission refusal needs a later operator
+The script below supervises each named stage with limits sized to these two
+stages, not the whole base: a 32 GiB RSS cap (the interrupted whole attempt
+peaked at 11.66 GiB), 24 GiB RAM and 30 GiB disk admission, a six-hour wall
+limit and the persistent 20 GiB disk floor. Admission refusal needs a later operator
 retry; it does not silently run on the overloaded machine. It never invokes
 `--stage all` locally.
 
@@ -325,8 +329,8 @@ config = {
     "env": {"PYTHONHASHSEED": "0", "PYTHONUNBUFFERED": "1"},
     "authorization": "d1386: local 000/001 comparison evidence only",
     "limits": {"wall_seconds": 21600, "cpu_seconds": 64800,
-               "rss_bytes": 100*gib, "available_ram_admission_bytes": 80*gib,
-               "disk_admission_bytes": 70*gib, "disk_floor_bytes": 20*gib,
+               "rss_bytes": 32*gib, "available_ram_admission_bytes": 24*gib,
+               "disk_admission_bytes": 30*gib, "disk_floor_bytes": 20*gib,
                "disk_floor_persist_seconds": 180,
                "output_bytes": 2*gib, "log_bytes": 512*1024**2},
 }
@@ -419,30 +423,74 @@ day. The dry run's inherited d490 register is a candidate to grade, not proof
 that it applies to the new weighted export. Resolve any certain failure and
 review AT-RISK results before release.
 
+Each check runs under `tools/route_a/supervise.py`, like step 4, so the RSS
+cap, RAM and disk admission and the disk floor apply. The dry run's limits
+follow the driver's preflight stage scaled up to a full base load; the sweep's
+follow its measured 4.75 GiB peak. A supervisor refusal prints its reason and
+returns 99.
+
 ```bash
 {
   echo '#!/bin/bash'
   echo 'set -euo pipefail'
-  declare -p W LOCAL RUN SETTINGS
+  declare -p W PREP LOCAL RUN SETTINGS
   cat <<'BASH'
 . "$SETTINGS"
-(cd "$W" && .venv/bin/python - "$LOCAL" <<'PY'
+CHECKS=$LOCAL/release-checks
+mkdir -p "$CHECKS"
+# supervised NAME RSS_GIB RAM_GIB DISK_GIB WALL_S CPU_S -- ARGV...
+# Prints the child's return code, or 99 when the supervisor refused or killed it.
+supervised() {
+  local name=$1 rss=$2 ram=$3 disk=$4 wall=$5 cpu=$6
+  shift 7
+  python3 -c '
+import json, sys
+output, worktree, rss, ram, disk, wall, cpu, *argv = sys.argv[1:]
+gib = 1024 ** 3
+config = {
+    "cwd": worktree,
+    "argv": argv,
+    "env": {"PYTHONHASHSEED": "0", "PYTHONUNBUFFERED": "1"},
+    "authorization": "d1386: release guard checks before the release",
+    "limits": {"wall_seconds": int(wall), "cpu_seconds": int(cpu),
+               "rss_bytes": int(rss) * gib, "available_ram_admission_bytes": int(ram) * gib,
+               "disk_admission_bytes": int(disk) * gib, "disk_floor_bytes": 20 * gib,
+               "disk_floor_persist_seconds": 180,
+               "output_bytes": 2 * gib, "log_bytes": 512 * 1024 ** 2},
+}
+with open(output, "x") as stream:
+    json.dump(config, stream, indent=2)
+' "$CHECKS/$name-config.json" "$W" "$rss" "$ram" "$disk" "$wall" "$cpu" "$@"
+  "$W/.venv/bin/python" "$PREP/tools/route_a/supervise.py" \
+    "$CHECKS/$name-sup" "$CHECKS/$name-config.json" >&2 || true
+  python3 -c '
+import json, sys
+result = json.load(open(sys.argv[1]))
+if result.get("status") == "REFUSED_ADMISSION" or result.get("refusal"):
+    print("supervisor:", result.get("status"), result.get("refusal"), file=sys.stderr)
+    print(99)
+else:
+    print(result["returncode"])
+' "$CHECKS/$name-sup/RESULT.json"
+}
+fixture_rc=$(supervised guard-fixture 8 6 30 3600 3600 -- \
+  "$W/.venv/bin/python" -c '
 import sys
 from pathlib import Path
 from tools.sweep_us_post_export_scoring import _load_builder
-from test_support.microcosm_build.us_post_export_scoring import (
-    _GUARD_HOUSEHOLDS, _write_engine_h5,
-)
+from test_support.microcosm_build.us_post_export_scoring import _GUARD_HOUSEHOLDS, _write_engine_h5
 _write_engine_h5(_load_builder(), Path(sys.argv[1]) / "guard-fixture", _GUARD_HOUSEHOLDS)
-PY
-)
+' "$LOCAL")
+[ "$fixture_rc" = 0 ] || { echo "Guard fixture failed ($fixture_rc)"; exit 1; }
 SMALL_H5=$LOCAL/guard-fixture/populace_us_2024.h5
-(cd "$W" && .venv/bin/python tools/sweep_us_post_export_scoring.py \
+sweep_rc=$(supervised guard-sweep 16 12 30 21600 43200 -- \
+  "$W/.venv/bin/python" tools/sweep_us_post_export_scoring.py \
   --dataset-path "$SMALL_H5" --batch-size 3 --reforms-per-worker 4 \
   --output "$LOCAL/guard-sweep.json")
+[ "$sweep_rc" = 0 ] || { echo "Guard sweep failed ($sweep_rc)"; exit 1; }
 EXTRA=($RELEASE_EXTRA_ARGS)
-gate_rc=0
-(cd "$W" && .venv/bin/python tools/dry_run_us_release_gates.py \
+gate_rc=$(supervised gate-dry-run 64 40 30 21600 43200 -- \
+  "$W/.venv/bin/python" tools/dry_run_us_release_gates.py \
   --json-out "$LOCAL/dry-run-gates.json" -- \
   --base-h5 "$RUN/base-out/base_populace_us_2024_puf_support.h5" \
   --ledger-facts "$FEED" --ledger-facts-sha256 "$FEED_SHA" \
@@ -451,11 +499,11 @@ gate_rc=0
   --ssi-take-up-prior-weight-basis-sha256 25fe8af50a99d717f3408b2de7f0849d2307d4f05b1a7d55d2703999002fff0a \
   --scf-summary-extract "$SCF" --out "$LOCAL/gate-dry-run" \
   --release-id route-a-rerun-20261018-gate-check \
-  --checkpoint-root "$LOCAL/gate-checkpoints" --seed 0 --no-staging "${EXTRA[@]}") || gate_rc=$?
+  --checkpoint-root "$LOCAL/gate-checkpoints" --seed 0 --no-staging "${EXTRA[@]}")
 case "$gate_rc" in
   0) echo 'Release guards completed cleanly' ;;
   2) echo 'AT-RISK: review dry-run-gates.json before starting release'; exit 2 ;;
-  *) echo 'Release guard dry run failed'; exit "$gate_rc" ;;
+  *) echo "Release guard dry run failed ($gate_rc)"; exit 1 ;;
 esac
 BASH
 } > "$LOCAL/release-checks.sh"
