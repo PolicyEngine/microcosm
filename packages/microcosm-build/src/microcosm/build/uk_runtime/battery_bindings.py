@@ -1710,18 +1710,37 @@ def _evaluate_target_fit(
                 f"the runtime loads {UK_LOCAL_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE!r}."
             )
         evidence = context.artifacts["local_target_diagnostics"]
-        errors = dict(_local_target_error_items(evidence))
+        # María's ruling of 2026-10-19 on the third review of #1305: the gate
+        # decides on the published rows. A withheld BRMA row's status against
+        # the bound would be a two-sided bound on an estimate resting on fewer
+        # than ten households, so the gate neither checks it nor reads its
+        # register entry, and counts it only.
+        withheld = uk_withheld_gate_keys(evidence)
+        errors = {
+            key: error
+            for key, error in _local_target_error_items(evidence)
+            if key not in withheld
+        }
         exclusions, out_of_line = _in_line(
             uk_default_local_target_fit_reviewed_exclusions(), context
         )
-        # A withheld BRMA row keeps its failure, by name (microcosm#1262).
+        exclusions = {
+            key: record for key, record in exclusions.items() if key not in withheld
+        }
+        out_of_line = [key for key in out_of_line if key not in withheld]
         result = uk_target_fit_gate(
             errors,
             reviewed_exclusions=exclusions,
             now=_exclusion_clock(context),
-            withheld_targets=uk_withheld_gate_keys(evidence),
             **kwargs,
         )
+        if withheld:
+            result = GateResult(
+                name=result.name,
+                passed=result.passed,
+                failures=result.failures,
+                details={**result.details, "withheld_targets": len(withheld)},
+            )
         return _with_out_of_line(result, context, out_of_line)
     if register != UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE:
         raise ValueError(

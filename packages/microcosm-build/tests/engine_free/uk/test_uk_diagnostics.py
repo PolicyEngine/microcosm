@@ -1508,47 +1508,57 @@ def test_written_rows_flag_every_row_while_any_is_withheld() -> None:
     assert uk_withhold_brma_figures(flagged, frozenset()) == [rows[0]]
 
 
-def test_the_report_guard_refuses_a_withheld_rows_figure() -> None:
-    """A gate report may name a withheld row, never beside its figures."""
+def test_the_report_guard_refuses_any_mention_of_a_withheld_row() -> None:
+    """María's ruling of 2026-10-19: no gate output names a withheld row.
 
-    from microcosm.build.uk_runtime.diagnostics import (
-        UK_WITHHELD_FIGURES_NOTE,
-        uk_refuse_withheld_figures,
-    )
+    The third review of #1305 found more than fifteen shapes that slipped
+    past a guard looking for figures beside a name. The guard now refuses the
+    name, the gate key and the area code themselves, in any case, anywhere.
+    """
 
-    names = frozenset({"thin@2025"})
-    keys = frozenset({"private_rent/S33000001/rent/private_rent_brma"})
+    from microcosm.build.uk_runtime.diagnostics import uk_refuse_named_withheld_rows
+
+    names = frozenset({"ons.rent.private_rent_brma@S33000011@2025"})
+    keys = frozenset({"private_rent/S33000011/rent/private_rent_brma"})
     (key,) = keys
 
-    def guard(details=None, failures=()):
-        uk_refuse_withheld_figures(
-            {"outcomes": [{"failures": list(failures), "details": details or {}}]},
-            names=names,
-            keys=keys,
-        )
+    def guard(report):
+        uk_refuse_named_withheld_rows(report, names=names, keys=keys)
 
+    # Counts, published rows and other areas pass.
     guard(
         {
-            "withheld_failing_targets": [key],
-            "stale_exclusions": [key],
-            "reviewed_exclusions": {key: {"reason": "Signed.", "expires_on": "x"}},
-            "failing_targets": {"private_rent/E06000001/rent/private_rent": 0.3},
-        },
-        [f"dataset: {key} is beyond the 25% bound; {UK_WITHHELD_FIGURES_NOTE}."],
+            "outcomes": [
+                {
+                    "failures": ["private_rent/E06000001/rent/private_rent +30.0%"],
+                    "details": {
+                        "withheld_targets": 1,
+                        "family_sizes": {"private_rent": 7},
+                        "failing_targets": {
+                            "private_rent/S33000002/rent/private_rent_brma": 0.3
+                        },
+                    },
+                }
+            ]
+        }
     )
-    guard(failures=[f"Gate-only sign-off of the local cell {key} (bound 0.25)."])
-    for details, failures in (
-        ({"failing_targets": {key: -0.4}}, ()),
-        ({"relative_errors": {"thin@2025": -0.4}}, ()),
-        ({"reviewed_exclusions": {key: {"relative_error": -0.4}}}, ()),
-        ({}, [f"dataset: {key} relative error -40.0% exceeds 25%."]),
-        ({}, ["thin@2025: final_estimate=6.0 against target 10.0."]),
+    for report in (
+        {"failing_targets": {key: -0.4}},
+        {"rows": [{"name": key, "relative_error": -0.4}]},
+        {"pairs": [[key, -0.4]]},
+        {key: "-41.2%"},
+        {"names": [key], "errors": [-0.4]},
+        {"failures": [f"{key} is 40 per cent out"]},
+        {"failures": [f"err=-4.0e-01 for {key.upper()}"]},
+        {"failures": ["ons.rent.private_rent_brma@S33000011 failed"]},
+        {"failures": ["S33000011 is beyond the bound"]},
+        {"dormant_exclusions": [key]},
     ):
-        with pytest.raises(ValueError, match="withheld row") as excinfo:
-            guard(details, failures)
-        assert "40" not in str(excinfo.value) and "6.0" not in str(excinfo.value)
+        with pytest.raises(ValueError, match="names a withheld row") as excinfo:
+            guard(report)
+        assert "40" not in str(excinfo.value)
     # Nothing withheld: nothing to guard.
-    uk_refuse_withheld_figures(
+    uk_refuse_named_withheld_rows(
         {"failing_targets": {key: -0.4}}, names=frozenset(), keys=frozenset()
     )
 

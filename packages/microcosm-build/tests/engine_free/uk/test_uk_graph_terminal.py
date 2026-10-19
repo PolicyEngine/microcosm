@@ -1108,21 +1108,19 @@ def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(
     assert support_csv["support_below_floor"].dtype == bool
 
 
-def test_the_gate_kernel_writes_a_withheld_brma_row_by_name_only(monkeypatch):
-    """microcosm#1305 re-review: the real bindings, through the kernel.
+def test_the_gate_kernel_keeps_a_withheld_brma_row_out_of_its_gates(monkeypatch):
+    """The third review of #1305: the real bindings, through the kernel.
 
-    The BRMA row misses its target by about 90% on two source households. It
-    keeps its failure in the gate report, without its error; the family fit,
-    the targets table, the embedded rows and the calibration diagnostics all
-    leave its figures out, and nothing the kernel writes gives them back.
+    The BRMA row misses its target by about 90% on two source households.
+    Both fit gates decide on the published rows and count it (María's ruling
+    of 2026-10-19); the targets table, the embedded rows and the calibration
+    diagnostics leave its figures out, and nothing the kernel writes gives
+    them back.
     """
     import io
     import json
 
-    from microcosm.build.uk_runtime.diagnostics import (
-        UK_WITHHELD_FIGURES_NOTE,
-        uk_refuse_withheld_figures,
-    )
+    from microcosm.build.uk_runtime.diagnostics import uk_refuse_named_withheld_rows
 
     solved: list = []
     stored = _run_final_gate_kernel(monkeypatch, brma_row=True, solved=solved)
@@ -1130,11 +1128,9 @@ def test_the_gate_kernel_writes_a_withheld_brma_row_by_name_only(monkeypatch):
     document = json.loads(stored.artifacts["gate_report"])
     outcomes = {row["id"]: row for row in document["report"]["outcomes"]}
     fit = outcomes["uk_local_target_fit"]
+    assert fit["details"]["withheld_targets"] == 1
     assert key not in fit["details"]["failing_targets"]
-    assert fit["details"]["withheld_failing_targets"] == [key]
-    assert any(
-        key in line and UK_WITHHELD_FIGURES_NOTE in line for line in fit["failures"]
-    )
+    assert not any(key in line for line in fit["failures"])
     family = outcomes["uk_local_per_family_fit"]["details"]
     assert family["withheld_targets"] == {"private_rent": 1}
     assert "private_rent" not in family["family_sizes"]
@@ -1143,7 +1139,7 @@ def test_the_gate_kernel_writes_a_withheld_brma_row_by_name_only(monkeypatch):
     ]
     assert embedded["model_figures_withheld"] is True
     assert embedded["estimate"] is None and embedded["relative_error"] is None
-    uk_refuse_withheld_figures(
+    uk_refuse_named_withheld_rows(
         document["report"], names=frozenset({embedded["name"]}), keys=frozenset({key})
     )
     table = pd.read_csv(io.BytesIO(stored.artifacts["target_diagnostics_csv"]))
@@ -1204,7 +1200,7 @@ def test_the_gate_kernel_fails_closed_on_a_binding_that_leaks(monkeypatch):
     monkeypatch.setattr(
         battery_bindings, "uk_withheld_gate_keys", lambda rows: frozenset()
     )
-    with pytest.raises(ValueError, match="withheld row"):
+    with pytest.raises(ValueError, match="names a withheld row"):
         _run_final_gate_kernel(monkeypatch, brma_row=True)
 
 

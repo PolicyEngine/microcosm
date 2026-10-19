@@ -1017,15 +1017,16 @@ class UKFullGateKernel(KernelBase):
             gates, phase=phase, context=evidence, registry=UK_GATE_REGISTRY
         )
         from .diagnostics import (
-            uk_refuse_withheld_figures,
+            uk_refuse_named_withheld_rows,
             uk_withheld_gate_keys,
             uk_withhold_brma_figures,
         )
 
         report_payload = gate_phase_report_payload(report, gates=gates)
-        # The bindings write a withheld row by name only; a report that names
-        # one beside a figure fails the build rather than leaving it.
-        uk_refuse_withheld_figures(
+        # The gates decide on the published rows and count the withheld ones
+        # (María's ruling of 2026-10-19); a report that names one fails the
+        # build rather than leaving it.
+        uk_refuse_named_withheld_rows(
             report_payload, names=withheld, keys=uk_withheld_gate_keys(diagnostics)
         )
         payload = {

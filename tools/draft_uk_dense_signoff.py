@@ -506,9 +506,9 @@ class BuildEvidence:
     measure_exclusions_from: str
     #: Local cells whose model figures the build withholds (microcosm#1262):
     #: targets.csv leaves them blank, so ``local_errors`` lacks them, and the
-    #: local fit gate names the ones beyond its bound.
+    #: local fit gate decides on the other rows and counts them (María's
+    #: ruling of 2026-10-19). Nothing signs a withheld cell.
     local_withheld: frozenset[str] = frozenset()
-    local_withheld_breaching: frozenset[str] = frozenset()
 
     def details(self, gate_id: str) -> Mapping[str, Any]:
         return self.outcomes.get(gate_id, {}).get("details") or {}
@@ -534,29 +534,6 @@ class BuildEvidence:
         return (
             self.national_errors if spec.kind == "national_row" else self.local_errors
         )
-
-    def withheld_for(self, spec: RegisterSpec) -> tuple[frozenset[str], frozenset[str]]:
-        """The register's withheld cells, and those beyond the gate's bound."""
-
-        if spec.kind == "national_row":
-            return frozenset(), frozenset()
-        return self.local_withheld, self.local_withheld_breaching
-
-    def decision_errors(self, spec: RegisterSpec) -> dict[str, float]:
-        """Errors the target-fit gate decides the same on as on build 1's.
-
-        A withheld cell's error never leaves the build. It stands in here as
-        twice the bound when the gate found it beyond the bound and as zero
-        otherwise, which is all the gate's decision reads; the stand-ins are
-        never written.
-        """
-
-        withheld, breaching = self.withheld_for(spec)
-        bound = 2.0 * self.fit_bound(spec.gate_id)
-        return {
-            **self.errors_for(spec),
-            **{key: bound if key in breaching else 0.0 for key in withheld},
-        }
 
     def identity(self) -> dict[str, Any]:
         artifacts = self.document.get("artifacts") or {}
@@ -784,27 +761,28 @@ def _check_fit_details(
 ) -> None:
     """A fit gate's details against targets.csv.
 
-    The gate checked every row, withheld ones included (microcosm#1262); it
-    names a withheld row beyond the bound in ``withheld_failing_targets``, or
-    in its exclusions, and never in ``failing_targets``.
+    The gate checks the published rows and counts the withheld ones
+    (microcosm#1262, María's ruling of 2026-10-19), so its count of withheld
+    rows must be targets.csv's and no withheld row may be among its rows.
     """
 
     if outcome.get("status") not in ("passed", "failed"):
         return
     details = outcome.get("details") or {}
-    if details.get("targets_checked") != len(errors) + len(withheld):
+    if details.get("targets_checked") != len(errors):
         raise InputError(
             f"{gate_id} checked a different number of rows than targets.csv holds."
+        )
+    if int(details.get("withheld_targets") or 0) != len(withheld):
+        raise InputError(
+            f"{gate_id} counts different withheld rows from targets.csv's."
         )
     breaching = {key for key, error in errors.items() if abs(error) > bound}
     failing = set(details.get("failing_targets") or {})
     excused = set(details.get("reviewed_exclusions") or {})
-    withheld_failing = set(details.get("withheld_failing_targets") or ())
-    if failing & withheld or withheld_failing - withheld:
-        raise InputError(
-            f"{gate_id}'s withheld failures differ from targets.csv's withheld rows."
-        )
-    if (failing | excused) - withheld != breaching:
+    if (failing | excused) & withheld:
+        raise InputError(f"{gate_id} names a row targets.csv withholds.")
+    if failing | excused != breaching:
         raise InputError(
             f"{gate_id}'s failing and excused rows differ from targets.csv's "
             "rows beyond the bound."
@@ -894,11 +872,6 @@ def load_build(run_dir: Path, *, allow_dev_build: bool = False) -> BuildEvidence
             raise InputError(f"{gate_id} failed closed; there is nothing to sign.")
         bound = float(parameters[gate_id]["max_abs_relative_error"])
         _check_fit_details(gate_id, outcome, errors, bound, hidden)
-    local_fit = outcomes["uk_local_target_fit"].get("details") or {}
-    withheld_breaching = frozenset(
-        set(local_fit.get("withheld_failing_targets") or ())
-        | (set(local_fit.get("reviewed_exclusions") or {}) & withheld)
-    )
     if (outcomes["uk_local_area_support"].get("details") or {}).get(
         "evaluation_error"
     ) is not None:
@@ -933,7 +906,6 @@ def load_build(run_dir: Path, *, allow_dev_build: bool = False) -> BuildEvidence
         measure_exclusions=measure_exclusions,
         measure_exclusions_from=measure_exclusions_from,
         local_withheld=withheld,
-        local_withheld_breaching=withheld_breaching,
     )
     below = area_support_below_floor(support, **evidence.area_floors)
     if "support_below_floor" in support and not np.array_equal(
@@ -1158,15 +1130,8 @@ def draft_target_fit(
     window: Window,
     reason: Callable[[str], str],
     margin: float = STALE_RISK_MARGIN,
-    withheld: frozenset[str] = frozenset(),
-    withheld_breaching: frozenset[str] = frozenset(),
 ) -> RegisterDraft:
     """Sign every row beyond the bound; retire what build 2 would fail.
-
-    A withheld row (microcosm#1262) has no error in ``errors``: the gate's own
-    finding, ``withheld_breaching``, says whether it is beyond the bound. It
-    is signed by key like any other row, and it has no stale-risk or
-    near-bound measure.
 
     The national register is shared with the national line, so an entry there
     that also applies on that line is never removed or replaced
@@ -1176,9 +1141,7 @@ def draft_target_fit(
 
     records = coerce_reviewed_exclusions(block, label=spec.resource)
     draft = RegisterDraft(spec=spec, before=dict(block))
-    breaching = {key for key, error in errors.items() if abs(error) > bound} | set(
-        withheld_breaching
-    )
+    breaching = {key for key, error in errors.items() if abs(error) > bound}
     clock = window.gate_clock
     shared = spec.kind == "national_row"
     _classify_failing(
@@ -1193,8 +1156,7 @@ def draft_target_fit(
         if key in breaching or not record.applies_on(LOCAL_LINE):
             continue
         local_only = record.release_lines == (LOCAL_LINE,)
-        known = key in errors or key in withheld
-        if not (known or not _in_force(record, clock) or local_only):
+        if not (key in errors or not _in_force(record, clock) or local_only):
             # An unscoped entry no local row earns may still serve the
             # national line; a reviewer decides.
             draft.review.append(key)
@@ -1212,7 +1174,7 @@ def draft_target_fit(
             draft.remove.append(key)
     signed = {*draft.add, *draft.renew, *draft.keep}
     draft.stale_risk = sorted(
-        key for key in signed if key in errors and abs(errors[key]) <= bound + margin
+        key for key in signed if abs(errors[key]) <= bound + margin
     )
     draft.near_bound = sorted(
         key
@@ -1379,7 +1341,7 @@ def predict(
             )
         else:
             result = uk_target_fit_gate(
-                evidence.decision_errors(spec),
+                evidence.errors_for(spec),
                 reviewed_exclusions=records,
                 now=clock,
                 max_abs_relative_error=evidence.fit_bound(gate_id),
@@ -2540,7 +2502,6 @@ def run_draft(args: argparse.Namespace) -> int:
             if problems:
                 not_signable[spec.gate_id] = "; ".join(problems)
         else:
-            withheld, withheld_breaching = evidence.withheld_for(spec)
             draft = draft_target_fit(
                 spec,
                 evidence.errors_for(spec),
@@ -2549,8 +2510,6 @@ def run_draft(args: argparse.Namespace) -> int:
                 window=window,
                 reason=lambda key, spec=spec: fit_reason(spec, key, evidence, notes),
                 margin=args.stale_risk_margin,
-                withheld=withheld,
-                withheld_breaching=withheld_breaching,
             )
         if draft.conflicts:
             not_signable.setdefault(
@@ -2993,10 +2952,7 @@ def verify(
             )
             for key in set(errors_1) | set(errors_2)
             if errors_1.get(key) != errors_2.get(key)
-        ) + len(
-            (build_1.local_withheld ^ build_2.local_withheld)
-            | (build_1.local_withheld_breaching ^ build_2.local_withheld_breaching)
-        )
+        ) + len(build_1.local_withheld ^ build_2.local_withheld)
         if differing:
             warnings.append(f"{differing} target rows differ from build 1")
         comparison = {

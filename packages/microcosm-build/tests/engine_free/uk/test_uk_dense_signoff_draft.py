@@ -385,11 +385,23 @@ def _target_rows(national, local, withheld=frozenset()) -> list[dict]:
 
 
 def _fit(errors: dict, block: dict, clock: date, withheld=frozenset()) -> GateResult:
-    records = coerce_reviewed_exclusions(block, label="fixture")
+    """The fit gate as its binding runs it: a ``withheld`` cell is neither
+    checked nor excused, only counted (María's ruling of 2026-10-19)."""
+    records = {
+        key: record
+        for key, record in coerce_reviewed_exclusions(block, label="fixture").items()
+        if key not in withheld
+    }
     in_line = {key: r for key, r in records.items() if r.applies_on("local")}
     result = uk_target_fit_gate(
-        errors, reviewed_exclusions=in_line, now=clock, withheld_targets=withheld
+        {key: error for key, error in errors.items() if key not in withheld},
+        reviewed_exclusions=in_line,
+        now=clock,
     )
+    if withheld:
+        result = replace(
+            result, details={**result.details, "withheld_targets": len(withheld)}
+        )
     out = sorted(set(records) - set(in_line))
     if out:
         result = replace(
@@ -719,15 +731,12 @@ def test_draft_signs_every_signable_failure_and_retires_stale_entries(
 BRMA_CELL = "private_rent/S33999999/rent/private_rent_brma"
 
 
-def test_a_withheld_failing_cell_is_signed_by_key_without_its_figures(
-    repo, tmp_path, capsys
-):
-    """microcosm#1262: a withheld BRMA cell beyond the bound is signable.
+def test_a_withheld_cell_beyond_the_bound_is_never_signed(repo, tmp_path, capsys):
+    """microcosm#1262: the gate decides on the published rows (2026-10-19).
 
-    targets.csv leaves its figures blank and the gate names its failure by
-    key only. The draft signs it like any cell, predicts build 2 passing, and
-    neither the public files nor the private review file carry its error,
-    which never left the build.
+    targets.csv leaves the withheld BRMA cell's figures blank and the gate
+    only counts it, so the draft signs the published failure alone, predicts
+    build 2 passing, and no output carries the cell's error.
     """
 
     local = (*LOCAL, ("private_rent", "S33999999", "rent/private_rent_brma", -0.4567))
@@ -744,8 +753,7 @@ def test_a_withheld_failing_cell_is_signed_by_key_without_its_figures(
     receipt = json.loads((out / "signoff_draft.json").read_text())
     assert receipt["signable"] is True
     assert receipt["registers"]["uk_local_target_fit"]["add"] == [
-        "census_households/E14999998/households",
-        BRMA_CELL,
+        "census_households/E14999998/households"
     ]
     assert receipt["predicted_build_2"]["uk_local_target_fit"] == {
         "passes": True,
@@ -758,10 +766,28 @@ def test_a_withheld_failing_cell_is_signed_by_key_without_its_figures(
         (out / "PRIVATE_review.csv").read_text(),
         capsys.readouterr().out,
     ):
-        assert "4567" not in text
-    apply_patch(repo, out / "signoff.patch")
-    entry = read_registers(repo)["uk_local_target_fit"]["exclusions"][BRMA_CELL]
-    assert entry["release_lines"] == ["local"] and "%" not in entry["reason"]
+        assert "4567" not in text and "S33999999" not in text
+
+
+def test_a_withheld_cells_entry_is_retired(repo, tmp_path):
+    """The gate sets an entry for a withheld cell aside; no row earns it."""
+
+    registers = build_1_registers()
+    registers["uk_local_target_fit"]["exclusions"][BRMA_CELL] = _entry(
+        "2026-10-01", "2026-12-01"
+    )
+    repo = make_repo(tmp_path / "repo-with-entry", registers)
+    local = (*LOCAL, ("private_rent", "S33999999", "rent/private_rent_brma", -0.4567))
+    build = write_run(
+        tmp_path / "build-1",
+        registers=registers,
+        local=local,
+        withheld=frozenset({BRMA_CELL}),
+    )
+    out = tmp_path / "draft"
+    assert draft(build, repo, out) == 0
+    receipt = json.loads((out / "signoff_draft.json").read_text())
+    assert BRMA_CELL in receipt["registers"]["uk_local_target_fit"]["remove"]
 
 
 def test_a_withheld_cell_inside_the_bound_needs_no_sign_off(repo, tmp_path):

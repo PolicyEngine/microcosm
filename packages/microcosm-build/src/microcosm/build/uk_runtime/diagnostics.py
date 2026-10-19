@@ -81,10 +81,6 @@ _MODEL_FIGURE_FIELDS = UK_MODEL_FIGURE_FIELDS
 _WITHHELD_NOTE = (
     "model figures withheld: fewer than 10 distinct source households carry this row"
 )
-#: How a gate's failure line names a withheld row: by name, with no figure.
-UK_WITHHELD_FIGURES_NOTE = (
-    "its model figures are withheld (fewer than 10 distinct source households)"
-)
 
 _COUNTRY_BY_AREA_PREFIX = {
     "E": "England",
@@ -1059,58 +1055,39 @@ def uk_withhold_brma_figures(
     return out
 
 
-_FIGURE_KEYS = frozenset(
-    {
-        "estimate",
-        "initial_estimate",
-        "final_estimate",
-        "relative_error",
-        "abs_relative_error",
-        "residual",
-    }
-)
-
-
-def uk_refuse_withheld_figures(
+def uk_refuse_named_withheld_rows(
     payload: object, *, names: frozenset[str], keys: frozenset[str]
 ) -> None:
-    """Fail closed if a written report could give a withheld row's figures back.
+    """Fail closed if a written gate report names a withheld row at all.
 
-    A withheld row may appear by its row name or gate key as a list entry, as
-    a mapping key whose value is no figure, or in text that quotes no figure:
-    a line naming it beside a percentage, an estimate or a relative error must
-    carry :data:`UK_WITHHELD_FIGURES_NOTE`, as the gates write it
-    (microcosm#1262). A gate that writes it otherwise is a bug this stops
-    before the report leaves the build.
+    María's ruling of 2026-10-19 on the third review of #1305: the fit gates
+    decide on the published rows and count the withheld ones, so no gate has
+    a reason to name one, and a name beside a figure or a verdict would give
+    the row back. A withheld row's name, gate key or area code, in any case,
+    in any key or string of the report, stops the build before the report
+    leaves it. The message names the place only.
     """
 
-    labels = names | keys
+    areas = {key.split("/")[1] for key in keys if key.count("/") >= 2}
+    labels = {label.casefold() for label in (*names, *keys, *areas) if label}
     if not labels:
         return
 
-    def mentions(text: str) -> bool:
-        return any(label in text for label in labels) and (
-            "%" in text or "estimate" in text or "relative error" in text
-        )
+    def check(text: str, path: str) -> None:
+        folded = text.casefold()
+        if any(label in folded for label in labels):
+            raise ValueError(f"{path} names a withheld row.")
 
     def walk(value: object, path: str) -> None:
         if isinstance(value, Mapping):
             for key, item in value.items():
-                if str(key) in labels and (
-                    (isinstance(item, (int, float)) and not isinstance(item, bool))
-                    or (isinstance(item, Mapping) and _FIGURE_KEYS & set(item))
-                ):
-                    raise ValueError(
-                        f"{path}.{key} gives a withheld row's model figure."
-                    )
+                check(str(key), f"{path}.{key}")
                 walk(item, f"{path}.{key}")
         elif isinstance(value, (list, tuple)):
             for position, item in enumerate(value):
                 walk(item, f"{path}[{position}]")
         elif isinstance(value, str):
-            if mentions(value) and UK_WITHHELD_FIGURES_NOTE not in value:
-                # The message names the place only: the text is what leaks.
-                raise ValueError(f"{path} names a withheld row beside a figure.")
+            check(value, path)
 
     walk(payload, "report")
 

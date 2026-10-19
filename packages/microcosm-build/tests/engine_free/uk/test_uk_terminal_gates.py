@@ -479,54 +479,6 @@ def test_target_fit_in_force_exclusion_defers_the_breach() -> None:
     assert fit.details["exclusions_evaluated_on"] == "2026-09-15"
 
 
-def test_target_fit_writes_withheld_rows_by_name_after_the_rest() -> None:
-    """microcosm#1262: a withheld row's line carries no error and no rank.
-
-    Withheld rows follow every other line in name order, so neither the text
-    nor the ordering places their errors among the published ones; an
-    expired exclusion's renewal context is kept without the error.
-    """
-
-    from microcosm.build.uk_runtime.diagnostics import UK_WITHHELD_FIGURES_NOTE
-
-    errors = {
-        "a/published": 0.30,
-        "b/published": -0.50,
-        "z/withheld": -0.90,
-        "c/withheld": 0.40,
-        "d/withheld": 0.05,
-        "e/withheld": 0.60,
-    }
-    fit = uk_target_fit_gate(
-        errors,
-        withheld_targets={"z/withheld", "c/withheld", "d/withheld", "e/withheld"},
-        reviewed_exclusions={"e/withheld": _target_fit_exclusion()},
-        now=date(2026, 10, 1),
-    )
-
-    assert not fit.passed
-    assert fit.details["failing_targets"] == {"b/published": -0.50, "a/published": 0.30}
-    assert fit.details["withheld_failing_targets"] == [
-        "c/withheld",
-        "e/withheld",
-        "z/withheld",
-    ]
-    assert fit.details["withheld_targets"] == 4
-    assert [line.split(":")[1].split()[0] for line in fit.failures[:5]] == [
-        "b/published",
-        "a/published",
-        "c/withheld",
-        "e/withheld",
-        "z/withheld",
-    ]
-    for line in fit.failures[2:5]:
-        assert UK_WITHHELD_FIGURES_NOTE in line
-        assert not any(figure in line for figure in ("90", "40", "60"))
-    assert "expired 2026-09-30" in fit.failures[3]
-    with pytest.raises(ValueError, match="were not checked"):
-        uk_target_fit_gate(errors, withheld_targets={"missing/row"})
-
-
 def test_target_fit_expired_exclusion_fails_with_renewal_context() -> None:
     fit = uk_target_fit_gate(
         {"dwp.uc.households_children_2@2025": -0.354},

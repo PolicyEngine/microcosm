@@ -2478,9 +2478,9 @@ class TestLocalTargetFitRegister:
 class TestWithheldBrmaRows:
     """The production local fit bindings on a withheld BRMA row (microcosm#1262).
 
-    María's ruling of 2026-10-17: a BRMA row resting on fewer than ten source
-    households keeps its place and its failure, without its figures. The
-    gates decide on its error; their outputs name it only.
+    María's rulings of 2026-10-17 and 2026-10-19: a BRMA row resting on fewer
+    than ten source households keeps its place without its figures, and both
+    fit gates decide on the published rows and count the withheld ones.
     """
 
     WITHHELD = "private_rent/S33000001/rent/private_rent_brma"
@@ -2534,18 +2534,25 @@ class TestWithheldBrmaRows:
         )
 
     def _guard(self, result: GateResult) -> None:
-        from microcosm.build.uk_runtime.diagnostics import uk_refuse_withheld_figures
+        from microcosm.build.uk_runtime.diagnostics import (
+            uk_refuse_named_withheld_rows,
+        )
 
-        uk_refuse_withheld_figures(
+        uk_refuse_named_withheld_rows(
             {"failures": list(result.failures), "details": result.details},
             names=frozenset(),
             keys=frozenset({self.WITHHELD}),
         )
 
-    def test_the_target_fit_keeps_the_failure_by_name_only(
+    def test_the_target_fit_decides_on_the_published_rows(
         self, monkeypatch, uk_gates
     ) -> None:
-        from microcosm.build.uk_runtime.diagnostics import UK_WITHHELD_FIGURES_NOTE
+        """María's ruling of 2026-10-19: a withheld row is neither checked nor named.
+
+        The withheld row misses its target by 40%, so a check over every row
+        would fail on it; the gate fails on the published row beyond the
+        bound alone, and counts the withheld one.
+        """
 
         result = self._evaluate(
             monkeypatch, uk_gates, "uk_local_target_fit", self._rows()
@@ -2553,21 +2560,29 @@ class TestWithheldBrmaRows:
         assert result.passed is False
         published = "private_rent/E06000004/rent/private_rent"
         assert result.details["failing_targets"] == {published: 0.30}
-        assert result.details["withheld_failing_targets"] == [self.WITHHELD]
+        assert result.details["targets_checked"] == 7
         assert result.details["withheld_targets"] == 1
-        assert result.details["targets_checked"] == 8
-        # The withheld line comes last and quotes no error.
-        assert f"{published} relative error +30.0%" in result.failures[0]
-        assert result.failures[-1] == (
-            f"microcosm_uk_2024_25: {self.WITHHELD} is beyond the 25% bound; "
-            f"{UK_WITHHELD_FIGURES_NOTE}."
-        )
-        assert not any("40" in line for line in result.failures)
+        assert "withheld_failing_targets" not in result.details
         self._guard(result)
 
-    def test_an_exclusion_on_a_withheld_row_carries_no_error(
+    def test_a_withheld_row_inside_the_bound_reads_the_same(
         self, monkeypatch, uk_gates
     ) -> None:
+        """Inside or beyond the bound, the gate's output does not move."""
+
+        rows = self._rows()
+        rows[6]["relative_error"] = 0.01
+        inside = self._evaluate(monkeypatch, uk_gates, "uk_local_target_fit", rows)
+        beyond = self._evaluate(
+            monkeypatch, uk_gates, "uk_local_target_fit", self._rows()
+        )
+        assert inside == beyond
+
+    def test_a_withheld_rows_register_entry_is_set_aside(
+        self, monkeypatch, uk_gates
+    ) -> None:
+        """An entry for a withheld row neither excuses, rots nor names it."""
+
         result = self._evaluate(
             monkeypatch,
             uk_gates,
@@ -2575,9 +2590,9 @@ class TestWithheldBrmaRows:
             self._rows(),
             register={self.WITHHELD: _receipt()},
         )
-        excused = result.details["reviewed_exclusions"][self.WITHHELD]
-        assert "relative_error" not in excused
-        assert result.details["withheld_failing_targets"] == []
+        assert self.WITHHELD not in result.details["reviewed_exclusions"]
+        assert self.WITHHELD not in result.details["dormant_exclusions"]
+        assert self.WITHHELD not in result.details["stale_exclusions"]
         self._guard(result)
 
     def test_family_fit_rests_on_the_published_rows(
@@ -2593,14 +2608,14 @@ class TestWithheldBrmaRows:
         assert result.details["withheld_targets"] == {"private_rent": 1}
         self._guard(result)
 
-    def test_an_unflagged_row_keeps_its_figures(self, monkeypatch, uk_gates) -> None:
-        """The guard bites: without the flag the error is written, and refused."""
+    def test_an_unflagged_row_is_checked_and_named(self, monkeypatch, uk_gates) -> None:
+        """The guard bites: without the flag the row is named, and refused."""
 
         result = self._evaluate(
             monkeypatch, uk_gates, "uk_local_target_fit", self._rows(flag=False)
         )
         assert result.details["failing_targets"][self.WITHHELD] == -0.4
-        with pytest.raises(ValueError, match="withheld row"):
+        with pytest.raises(ValueError, match="names a withheld row"):
             self._guard(result)
 
 

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import functools
 import math
-from collections.abc import Collection, Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from types import MappingProxyType
@@ -30,10 +30,7 @@ from microcosm.build.gates import (
     target_surface_gate as _target_surface_gate,
 )
 from microcosm.build.uk_runtime.cgt_projection import UKCGTProjection
-from microcosm.build.uk_runtime.diagnostics import (
-    UK_WITHHELD_FIGURES_NOTE,
-    uk_weight_summary,
-)
+from microcosm.build.uk_runtime.diagnostics import uk_weight_summary
 from microcosm.build.uk_runtime.weighted_integrity import (
     UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE,
     UK_LOCAL_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE,
@@ -1019,7 +1016,6 @@ def uk_target_fit_gate(
     max_abs_relative_error: float = UK_MAX_TARGET_ABS_RELATIVE_ERROR,
     reviewed_exclusions: Mapping[str, UKReviewedExclusion] | None = None,
     now: date | None = None,
-    withheld_targets: Collection[str] = (),
 ) -> GateResult:
     """Fail a UK artifact with severe shipped-weight target errors.
 
@@ -1031,14 +1027,6 @@ def uk_target_fit_gate(
     in-force entry whose target is back inside the bound is stale and fails
     (matching :func:`microcosm.build.gates.target_fit_gate`'s rot rule), so
     the register cannot outlive the defects it defers.
-
-    ``withheld_targets`` are rows whose model figures stay in the build
-    (microcosm#1262): the gate still decides on their errors, but writes them
-    by name only. A breaching one keeps its failure line, without its error,
-    after every other line and in name order, so that its place in the error
-    ordering gives nothing away; it leaves ``failing_targets`` for
-    ``withheld_failing_targets``, and an exclusion it stands on carries no
-    error. ``withheld_targets`` in the details counts them.
     """
 
     maximum = float(max_abs_relative_error)
@@ -1052,32 +1040,15 @@ def uk_target_fit_gate(
     )
     if nonfinite:
         raise ValueError(f"UK target relative errors must be finite: {nonfinite}.")
-    withheld = frozenset(str(name) for name in withheld_targets)
-    unknown = sorted(withheld - set(errors))
-    if unknown:
-        raise ValueError(f"UK withheld targets were not checked: {unknown[:5]}.")
     breaching = {name: error for name, error in errors.items() if abs(error) > maximum}
     failing: dict[str, float] = {}
-    withheld_failing: list[str] = []
     excluded: dict[str, dict[str, object]] = {}
     failures: list[str] = []
-    ordered = [
-        *sorted(
-            (name for name in breaching if name not in withheld),
-            key=lambda name: abs(breaching[name]),
-            reverse=True,
-        ),
-        *sorted(name for name in breaching if name in withheld),
-    ]
-    for name in ordered:
+    for name in sorted(breaching, key=lambda name: abs(breaching[name]), reverse=True):
         error = breaching[name]
-        hidden = name in withheld
         record = exclusions.get(name)
         breach_message = (
-            f"{UK_CANDIDATE_DATASET_NAME}: {name} is beyond the {maximum:.0%} "
-            f"bound; {UK_WITHHELD_FIGURES_NOTE}."
-            if hidden
-            else f"{UK_CANDIDATE_DATASET_NAME}: {name} relative error "
+            f"{UK_CANDIDATE_DATASET_NAME}: {name} relative error "
             f"{error:+.1%} exceeds {maximum:.0%}."
         )
         if (
@@ -1086,17 +1057,14 @@ def uk_target_fit_gate(
             and not record.premature(evaluated_on)
         ):
             excluded[name] = {
-                **({} if hidden else {"relative_error": error}),
+                "relative_error": error,
                 "reason": record.reason,
                 "approved_by": record.approved_by,
                 "adjudication": record.adjudication,
                 "expires_on": record.expires_on,
             }
             continue
-        if hidden:
-            withheld_failing.append(name)
-        else:
-            failing[name] = error
+        failing[name] = error
         if record is not None and record.expired(evaluated_on):
             failures.append(
                 f"{breach_message[:-1]}; its reviewed exclusion expired "
@@ -1111,7 +1079,7 @@ def uk_target_fit_gate(
                 f"{record.adjudication}) — correct the receipt's approved_on "
                 "or wait for it."
             )
-        elif hidden or len(failing) <= 20:
+        elif len(failing) <= 20:
             failures.append(breach_message)
 
     expired = sorted(
@@ -1152,26 +1120,22 @@ def uk_target_fit_gate(
         )
     if not errors:
         failures.append("UK target-fit evidence is empty.")
-    details: dict[str, object] = {
-        "candidate_name": UK_CANDIDATE_DATASET_NAME,
-        "targets_checked": len(errors),
-        "max_abs_relative_error": maximum,
-        "reviewed_exclusions": dict(sorted(excluded.items())),
-        "failing_targets": failing,
-        "stale_exclusions": stale,
-        "dormant_exclusions": dormant,
-        "expired_exclusions": expired,
-        "premature_exclusions": premature,
-        "exclusions_evaluated_on": evaluated_on.isoformat(),
-    }
-    if withheld:
-        details["withheld_targets"] = len(withheld)
-        details["withheld_failing_targets"] = withheld_failing
     return GateResult(
         name="target_fit",
         passed=not failures,
         failures=tuple(failures),
-        details=details,
+        details={
+            "candidate_name": UK_CANDIDATE_DATASET_NAME,
+            "targets_checked": len(errors),
+            "max_abs_relative_error": maximum,
+            "reviewed_exclusions": dict(sorted(excluded.items())),
+            "failing_targets": failing,
+            "stale_exclusions": stale,
+            "dormant_exclusions": dormant,
+            "expired_exclusions": expired,
+            "premature_exclusions": premature,
+            "exclusions_evaluated_on": evaluated_on.isoformat(),
+        },
     )
 
 
