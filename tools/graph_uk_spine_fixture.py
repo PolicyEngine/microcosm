@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import tempfile
 from collections.abc import Iterable, Mapping
 from dataclasses import replace
 from pathlib import Path
@@ -847,9 +848,13 @@ def _was_donor() -> pd.DataFrame:
             "GORR8": np.take([8, 11, 12, 1], position % 4),
             "DVPriRntR8": private_rent,
             "DVCTaxAmtAnnualR8": 900.0 + rows * 10.0,
-            # Net rent where the household holds property beyond its home.
+            # Net rent where the household lets property: buy-to-let, not every
+            # other house. With rent on every other house too, no recipient
+            # drew any other house, so the frame held no other residential
+            # stock and the purchases stage could not run its scaled fit
+            # (microcosm#1095).
             "DVNetRentAmtAnnualR8_aggr": np.where(
-                (other_houses > 0.0) | (buy_to_let > 0.0), 2_000.0 + rows * 40.0, 0.0
+                buy_to_let > 0.0, 2_000.0 + rows * 40.0, 0.0
             ),
             "HFINWNTR8_Sum": gross_financial - consumer_debt - student_loans,
             "HFINWNTR8_exSLC_Sum": gross_financial - consumer_debt,
@@ -1503,10 +1508,10 @@ def _property_purchase_targets(frame: Frame) -> UKPropertyPurchaseTargets:
 
     The count is a fixed share of each kind's eligible owner weight, found with
     the stage's own selection and streams. The non-residential value asks a
-    ninth more than the purchasers' stock, so the stage buys at the stock; any
-    other kind's value lies midway between the price floor and the stock, so
-    the stage scales its band draws. The synthetic frame holds no other
-    residential stock, so that kind is not imputed here.
+    ninth more than the purchasers' stock, so the stage buys at the stock; the
+    additional-dwelling value lies midway between the price floor and the
+    stock, so the stage scales its band draws. One kind runs each fit, as on
+    the national spine.
     """
 
     household = frame.table("household")
@@ -2320,12 +2325,55 @@ def generate(output: Path) -> None:
 def _parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=_DEFAULT_OUTPUT)
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help=(
+            "regenerate into a temporary directory and fail if any file differs "
+            "from, or is missing in, --output"
+        ),
+    )
     return parser.parse_args(argv)
+
+
+def _differing_files(generated: Path, committed: Path) -> list[str]:
+    """The relative paths whose bytes differ, or which one side lacks."""
+
+    def files(root: Path) -> dict[str, Path]:
+        return {
+            path.relative_to(root).as_posix(): path
+            for path in root.rglob("*")
+            if path.is_file()
+        }
+
+    new, old = files(generated), files(committed)
+    return sorted(
+        path
+        for path in new.keys() | old.keys()
+        if path not in new
+        or path not in old
+        or new[path].read_bytes() != old[path].read_bytes()
+    )
 
 
 def main(argv: Iterable[str] | None = None) -> int:
     args = _parse_args(argv)
-    generate(args.output.resolve())
+    output = args.output.resolve()
+    if not args.check:
+        generate(output)
+        return 0
+    # The fixture does not depend on where it is written, so a fresh copy in a
+    # scratch directory must equal the committed one byte for byte.
+    with tempfile.TemporaryDirectory() as scratch:
+        generated = Path(scratch) / output.name
+        generate(generated)
+        differing = _differing_files(generated, output)
+    for path in differing:
+        print(f"differs: {path}")
+    if differing:
+        print(f"{len(differing)} file(s) differ from {output}")
+        return 1
+    print(f"{output} regenerates byte-identically")
     return 0
 
 
