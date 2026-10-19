@@ -604,6 +604,20 @@ def test_cli_writes_the_publication_and_prints_a_summary(tmp_path, capsys):
     assert "already exists" in capsys.readouterr().err
 
 
+def test_cli_refuses_a_declaration_that_is_not_a_json_object(tmp_path, capsys):
+    build = write_pre_1144_build(tmp_path / "build", git_commit=None, git_dirty=None)
+    (build / "graph.json").write_bytes(b"[]")
+    output = tmp_path / "publication"
+
+    arguments = ["--build", str(build), "--output", str(output)]
+    with pytest.raises(SystemExit) as refusal:
+        main([*arguments, "--revision", OTHER_COMMIT])
+
+    assert refusal.value.code == 2
+    assert "recorded declaration is not a graph" in capsys.readouterr().err
+    assert not output.exists()
+
+
 def test_cli_reconstructs_a_build_closed_before_the_completion_refresh(
     tmp_path, capsys
 ):

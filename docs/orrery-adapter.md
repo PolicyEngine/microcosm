@@ -327,7 +327,9 @@ The marker is the producer extension `microcosm.reconstruction`:
   In the last two cases the file is bound only by the digest in the marker.
 - **Exact bytes:** `reconstructed_schema` refuses a declaration that the
   current serializer would not write byte for byte. The schema therefore
-  describes the recorded file, not a reinterpretation of it.
+  describes the recorded file, not a reinterpretation of it. A file that is not
+  a graph declaration at all, such as a JSON array, is also refused with a
+  `ValueError`.
 - **Where it travels:** the marker is saved in `graph.schema.json`, so any
   later projection of the saved schema keeps it. Orrery documents show it at
   `metadata.microcosm.extensions["microcosm.reconstruction"]`.
