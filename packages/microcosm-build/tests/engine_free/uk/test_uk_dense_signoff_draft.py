@@ -2141,12 +2141,18 @@ def test_the_committed_pins_are_found():
 
 def test_the_committed_pins_rewrite_and_reparse():
     # Each committed pin takes a drafted key set in place, with or without
-    # the local-line scope pin, and gives the committed one back.
+    # the local-line scope pin, and gives the committed one back. The committed
+    # pin carries the scope pin when every committed entry is local-only, as
+    # the drafter writes it, so a signed register round-trips too.
     for spec in TOOL.REGISTERS:
         if spec.loader is None:
             continue
         payload = json.loads((REPOSITORY / spec.path).read_text(encoding="utf-8"))
         committed = sorted(payload[spec.block])
+        committed_local_only = bool(committed) and all(
+            tuple(entry.get("release_lines") or ()) == (TOOL.LOCAL_LINE,)
+            for entry in payload[spec.block].values()
+        )
         for relative in TOOL.PIN_SEARCH:
             source = (REPOSITORY / relative).read_text(encoding="utf-8")
             if not TOOL.find_pins(source, spec.loader, spec.pin_block):
@@ -2167,7 +2173,7 @@ def test_the_committed_pins_rewrite_and_reparse():
                     drafted,
                     spec.loader,
                     committed,
-                    local_only=False,
+                    local_only=committed_local_only,
                     block=spec.pin_block,
                 )
                 assert back == source, (spec.gate_id, relative)
