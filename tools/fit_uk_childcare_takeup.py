@@ -23,6 +23,7 @@ from microcosm.build.stochastic_assignment import (
     clipped_normal_from_uniforms,
     stable_identity_uniforms,
 )
+from microcosm.build.uk_runtime.frs_take_up import UK_TAKE_UP_DECLARED_SEEDS
 from microcosm.build.uk_runtime.ledger_targets import _candidate_facts_for_reference
 from microcosm.build.uk_runtime.take_up_contract import (
     UKTakeUpContract,
@@ -30,7 +31,7 @@ from microcosm.build.uk_runtime.take_up_contract import (
 )
 from microcosm.calibrate import TargetRegistry
 
-TOOL_VERSION = 3
+TOOL_VERSION = 4
 TARGET_IDS = (
     "hmrc.tfc.government_top_up",
     "hmrc.tfc.children_with_used_accounts",
@@ -271,32 +272,46 @@ OWN_RATE_BY_TARGET = {
 
 
 class ChildcareExpectationBasis:
-    """Per-row weighted contributions with the take-up flags forced on.
+    """Per-row weighted contributions with the take-up flags forced on or off.
 
     ``with_extended`` holds each target's weighted per-row values when every
     flag is True; ``without_extended`` the same with the extended flag False.
-    The engine's only cross-scheme interactions are its mutual exclusions
-    (targeted and universal require a family that is not extended-eligible),
-    so at rates ``r`` a target's expected value is
-    ``r_own * sum(with_ext * r_e + without_ext * (1 - r_e))`` — linear in the
-    own rate, bilinear with the extended rate — and the extended row is
-    ``r_e * sum(with_ext)``. The expectation is the quantity a take-up *rate*
+    Since policyengine-uk 2.131 (pe-uk#2177) universal and targeted hours stay
+    beside the working-parent hours, and a family that does not claim them on
+    their own still receives them, allocated first from a participating
+    child's working-parent hours (DfE guidance A1.11).
+    ``allocated_from_extended`` holds those rows: the targeted and universal
+    flags False and the extended flag True. So at rates ``r`` a targeted or
+    universal target's expected value is
+    ``r_own * sum(with_ext * r_e + without_ext * (1 - r_e))
+    + (1 - r_own) * r_e * sum(allocated)``, linear in the own rate and
+    bilinear with the extended rate, and the extended row is
+    ``r_e * sum(with_ext)``. The universal row counts universal-only children,
+    so every side leaves out a child who receives extended hours. Its
+    allocated term is computed like the others' and is near zero, not zero: a
+    child whose family takes no universal hours on their own and who uses 15
+    hours or fewer gets the base hours from the allocation and no extended
+    hours, so counts as universal-only, which is rare at the DfE usage mean of
+    31.141 hours (Vahid's review of microcosm#1299). The expectation is the
+    quantity a take-up *rate*
     controls: the spine's persisted flags are one draw from it, and later
     stages clone and re-key rows, so no re-drawn realisation can sit on the
-    build's own — the expectation can.
+    build's own; the expectation can.
     """
 
-    __slots__ = ("with_extended", "without_extended", "rows")
+    __slots__ = ("with_extended", "without_extended", "allocated_from_extended", "rows")
 
     def __init__(
         self,
         *,
         with_extended: Mapping[str, np.ndarray],
         without_extended: Mapping[str, np.ndarray],
+        allocated_from_extended: Mapping[str, np.ndarray],
         rows: int,
     ) -> None:
         self.with_extended = dict(with_extended)
         self.without_extended = dict(without_extended)
+        self.allocated_from_extended = dict(allocated_from_extended)
         self.rows = int(rows)
 
 
@@ -319,6 +334,11 @@ def expected_childcare_counts(
         expected[target] = rates[own] * float(
             (with_ext * extended + without_ext * (1.0 - extended)).sum()
         )
+        allocated = basis.allocated_from_extended.get(target)
+        if allocated is not None:
+            expected[target] += (
+                (1.0 - rates[own]) * extended * float(np.asarray(allocated).sum())
+            )
     return expected
 
 
@@ -329,16 +349,53 @@ def _weighted_rows(
     return np.asarray(values, dtype=float) * weights
 
 
+#: The flags the allocation side turns off: their hours then come only from a
+#: participating child's working-parent hours.
+_ALLOCATED_FLAGS = ("would_claim_targeted_childcare", "would_claim_universal_childcare")
+HOURS_OUTPUT = "maximum_extended_childcare_hours_usage"
+
+
+def _anchor_hours(benunit_ids: np.ndarray, contract: UKTakeUpContract) -> np.ndarray:
+    """The extended-hours usage the take-up stage draws under the contract.
+
+    The fit runs on a spine built before its anchor moved, so the stored column
+    holds the old anchor's draws; the stage's identity-keyed draw at the
+    contract's distribution replaces it (microcosm#1095, #1126).
+    """
+
+    hours = contract.continuous_entry(HOURS_OUTPUT)
+    return clipped_normal_from_uniforms(
+        stable_identity_uniforms(
+            np.asarray(benunit_ids),
+            seed=UK_TAKE_UP_DECLARED_SEEDS[HOURS_OUTPUT],
+            salt=HOURS_OUTPUT,
+        ),
+        mean=float(hours["mean"]),
+        sd=float(hours["sd"]),
+        lower=float(hours["lower"]),
+        upper=float(hours["upper"]),
+    )
+
+
 def _basis_side(
-    input_h5: Path, target_period: int, contract: UKTakeUpContract, *, extended: bool
+    input_h5: Path,
+    target_period: int,
+    contract: UKTakeUpContract,
+    *,
+    extended: bool,
+    allocated: bool = False,
 ) -> dict[str, np.ndarray]:
     from policyengine_uk import Microsimulation
 
     sim = Microsimulation(dataset=str(input_h5))
-    benunit_count = np.asarray(sim.calculate("benunit_id", target_period)).shape[0]
+    benunit_ids = np.asarray(sim.calculate("benunit_id", target_period))
+    benunit_count = benunit_ids.shape[0]
     for variable in FLAG_OUTPUTS:
         on = extended if variable == "would_claim_extended_childcare" else True
+        if allocated and variable in _ALLOCATED_FLAGS:
+            on = False
         sim.set_input(variable, target_period, np.full(benunit_count, on, dtype=bool))
+    sim.set_input(HOURS_OUTPUT, target_period, _anchor_hours(benunit_ids, contract))
     person_count = np.asarray(sim.calculate("person_id", target_period)).shape[0]
     sim.set_input(
         "tax_free_childcare_spend_routed_share",
@@ -374,8 +431,15 @@ def _basis_side(
         "dfe.funded_childcare.early_learning_2_year_olds": rows(
             "is_child_receiving_targeted_childcare"
         ),
+        # Universal-only children: a child who also receives working-parent
+        # hours is not one (the target binds DfE's universal count less the
+        # working-parent registrations).
         "dfe.funded_childcare.universal_only_children": rows(
-            "is_child_receiving_universal_childcare"
+            "is_child_receiving_universal_childcare",
+            np.asarray(
+                sim.calculate("is_child_receiving_universal_childcare", target_period)
+            )
+            & ~extended_receiving,
         ),
     }
 
@@ -383,13 +447,22 @@ def _basis_side(
 def compute_childcare_basis(
     input_h5: Path, target_period: int, contract: UKTakeUpContract
 ) -> ChildcareExpectationBasis:
-    """Two engine runs (extended flag on / off, every other flag on)."""
+    """Three engine runs: extended on and off with every other flag on, and
+    extended on with the targeted and universal flags off."""
 
     with_extended = _basis_side(input_h5, target_period, contract, extended=True)
     without_extended = _basis_side(input_h5, target_period, contract, extended=False)
+    allocation = _basis_side(
+        input_h5, target_period, contract, extended=True, allocated=True
+    )
     return ChildcareExpectationBasis(
         with_extended=with_extended,
         without_extended=without_extended,
+        allocated_from_extended={
+            target: allocation[target]
+            for target, own in OWN_RATE_BY_TARGET.items()
+            if own in ("targeted_childcare", "universal_childcare")
+        },
         rows=int(with_extended["hmrc.tfc.children_with_used_accounts"].shape[0]),
     )
 

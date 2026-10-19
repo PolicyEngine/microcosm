@@ -154,17 +154,17 @@ def uk_weakest_areas_by_fit(
     *,
     limit: int = _AREA_FIT_LIMIT,
 ) -> dict[str, object]:
-    """Return bottom-by-fit local areas plus country-level fit rollups."""
+    """Return bottom-by-fit local areas plus country-level fit rollups.
+
+    ``area_support`` must cover every scored area. A row carries the area's
+    ``support_below_floor`` flag when the table has one, never its rows, ESS
+    or distinct sources: these diagnostics ship in a release, and per-area
+    support figures stay in the build's area-support table (microcosm#1301).
+    """
 
     if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0:
         raise ValueError("UK weakest-area limit must be a positive integer.")
-    required = {
-        "geography_level",
-        "area_code",
-        "nonzero_households",
-        "nonzero_source_households",
-        "effective_sample_size",
-    }
+    required = {"geography_level", "area_code"}
     missing = sorted(required - set(area_support.columns))
     if missing:
         raise ValueError(f"UK area support is missing rollup column(s): {missing}.")
@@ -174,6 +174,7 @@ def uk_weakest_areas_by_fit(
     }
     if len(support_rows) != len(area_support):
         raise ValueError("UK area support contains duplicate geography/area rows.")
+    flagged = "support_below_floor" in area_support.columns
 
     grouped: dict[tuple[str, str], list[tuple[str, float, float]]] = {}
     for row in target_rows:
@@ -213,9 +214,7 @@ def uk_weakest_areas_by_fit(
                 "worst_target": worst_name,
                 "worst_abs_relative_error": worst_error,
                 "loss_contribution": math.fsum(item[2] for item in rows),
-                "nonzero_households": int(support.nonzero_households),
-                "nonzero_source_households": int(support.nonzero_source_households),
-                "effective_sample_size": float(support.effective_sample_size),
+                **_support_flag(support.support_below_floor if flagged else None),
             }
         )
     area_rows.sort(
@@ -272,6 +271,14 @@ def uk_weakest_areas_by_fit(
     }
 
 
+def _support_flag(value: object) -> dict[str, bool]:
+    """``{"support_below_floor": flag}`` when the area's flag is known, else empty."""
+
+    if value is None or pd.isna(value):
+        return {}
+    return {"support_below_floor": bool(value)}
+
+
 def _country_for_area(area_code: str) -> str:
     try:
         return _COUNTRY_BY_AREA_PREFIX[area_code[0]]
@@ -296,7 +303,14 @@ def uk_support_limited_misses(
     *,
     max_abs_relative_error: float,
 ) -> dict[str, dict[str, object]]:
-    """Relate failing local cells to each area's measured support."""
+    """Relate failing local cells to each area's measured support.
+
+    The per-grain rollups (failing cells, their share in the bottom ESS
+    decile, the rank correlation of fit with ESS) are over many areas. The
+    worst areas are listed by code and fit, with ``support_below_floor`` when
+    the support table carries it; their rows, ESS and distinct sources stay
+    in the build's area-support table (microcosm#1301).
+    """
 
     if not math.isfinite(max_abs_relative_error) or max_abs_relative_error < 0:
         raise ValueError("max_abs_relative_error must be finite and non-negative.")
@@ -308,12 +322,7 @@ def uk_support_limited_misses(
     result: dict[str, dict[str, object]] = {}
     for raw_grain, support in sorted(area_support.items()):
         grain = str(raw_grain)
-        required_support = {
-            "area_code",
-            "assigned_households",
-            "effective_sample_size",
-            "nonzero_source_households",
-        }
+        required_support = {"area_code", "effective_sample_size"}
         support_missing = sorted(required_support - set(support.columns))
         if support_missing:
             raise ValueError(
@@ -398,9 +407,7 @@ def uk_support_limited_misses(
                 {
                     "area_code": str(row["area_code"]),
                     "worst_abs_relative_error": float(row["worst_abs_relative_error"]),
-                    "rows": int(row["assigned_households"]),
-                    "ess": float(row["effective_sample_size"]),
-                    "sources": int(row["nonzero_source_households"]),
+                    **_support_flag(row.get("support_below_floor")),
                 }
                 for _, row in worst.iterrows()
             ],
@@ -650,8 +657,19 @@ def uk_consumption_drift(
     Report only (microcosm#1113): the stage sets the energy and road-fuel
     levels, the gas connection and the fuel incidence, so calibration should
     barely move them. Returns None for a frame without the consumption columns.
+    Where the frame carries the ETB VAT stage's full-rate expenditure rate,
+    the totals also hold the full-rate VAT base, consumption times that rate
+    (microcosm#1207: no bound row holds the VAT base, so this is where its
+    drift shows). Where it carries the household's region, they also hold
+    the electricity and gas kWh the stage raked, read back from the spend at
+    the stage's declared prices (microcosm#1207).
     """
 
+    from microcosm.build.uk_runtime.domestic_energy_targets import (
+        household_energy_kwh,
+        household_energy_prices,
+    )
+    from microcosm.build.uk_runtime.etb_vat import UK_ETB_VAT_OUTPUT_COLUMNS
     from microcosm.build.uk_runtime.lcfs_consumption import (
         UK_LCFS_COICOP_DIVISION_COLUMNS,
     )
@@ -677,6 +695,19 @@ def uk_consumption_drift(
     }
     consumption = sum(column(name) for name in UK_LCFS_COICOP_DIVISION_COLUMNS)
     totals["consumption"] = _drift_value(design @ consumption, final @ consumption)
+    (vat_rate_column,) = UK_ETB_VAT_OUTPUT_COLUMNS
+    if vat_rate_column in household.columns:
+        vat_base = consumption * column(vat_rate_column)
+        totals["full_rate_vat_base"] = _drift_value(design @ vat_base, final @ vat_base)
+    if "region" in household.columns:
+        kwh = household_energy_kwh(
+            column("electricity_consumption"),
+            column("gas_consumption"),
+            region=household["region"].astype(str).to_numpy(),
+            prices=household_energy_prices(),
+        )
+        for name, values in kwh.items():
+            totals[name] = _drift_value(design @ values, final @ values)
     road_fuel = column("petrol_spending") + column("diesel_spending")
     flagged = household["has_fuel_consumption"].to_numpy(dtype=bool)
 

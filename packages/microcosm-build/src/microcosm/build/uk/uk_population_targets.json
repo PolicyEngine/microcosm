@@ -13,6 +13,7 @@
     "linear_combination",
     "scaled_by_ratio",
     "calendar_year_window",
+    "calendar_year_window_scaled_by_ratio",
     "rolled_forward_by_ratio"
   ],
   "resolution_defaults": {
@@ -25,8 +26,8 @@
     "pinned_ref": "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3",
     "pinned_version": "1.56.16",
     "registry_rows": 652,
-    "mapped_rows": 620,
-    "excluded_rows": 32,
+    "mapped_rows": 619,
+    "excluded_rows": 33,
     "mapped": {
       "dwp/benefit_capped_households": "dwp.benefit_cap.capped_households",
       "dwp/esa_claimants": "dwp.esa_claimants",
@@ -42,7 +43,6 @@
       "dwp/uc/claimants_with_2_children": "dwp.uc.households_children_2",
       "dwp/uc/claimants_with_3_children": "dwp.uc.households_children_3",
       "dwp/uc/claimants_with_4_children": "dwp.uc.households_children_4",
-      "dwp/uc/claimants_with_5+_children": "dwp.uc.households_children_5_or_more",
       "dwp/uc/households": "dwp.uc.households",
       "dwp/uc/two_child_limit/3_children_households": "dwp.uc.two_child_limit.households_3_children",
       "dwp/uc/two_child_limit/3_children_households_total_children": "dwp.uc.two_child_limit.children_in_3_children_households",
@@ -681,7 +681,8 @@
       "dwp/pip_dl_standard_claimants": "Diagnostic only (María's ruling of 2026-10-10, microcosm#1095): DWP's England-and-Wales PIP daily living caseload (FOI2025/24990, end of January 2025) resolves at K04000001 and fits within 0.1%, but fitting the two rows takes the calibration over the uk_weight_ratio fence. The exact figure is retained only as diagnostic provenance on obr.pip; no source value is adjusted.",
       "dwp/pip_dl_enhanced_claimants": "Diagnostic only (María's ruling of 2026-10-10, microcosm#1095): DWP's England-and-Wales PIP daily living caseload (FOI2025/24990, end of January 2025) resolves at K04000001 and fits within 0.1%, but fitting the two rows takes the calibration over the uk_weight_ratio fence. The exact figure is retained only as diagnostic provenance on obr.pip; no source value is adjusted.",
       "ons/female_15_19": "Split, not dropped (María's ruling of 2026-10-13 (microcosm#1095, uk-data#563)): a fit to the five-year band leaves the ages inside it free to drift, so the contract binds ages 15, 16-17 and 18-19 instead (ons.population.female_15, female_16_17 and female_18_19). The three rows partition this row's population and read the same ONS mid-year estimate by single year of age, so they sum to it. No single contract row has this row's definition.",
-      "ons/male_15_19": "Split, not dropped (María's ruling of 2026-10-13 (microcosm#1095, uk-data#563)): a fit to the five-year band leaves the ages inside it free to drift, so the contract binds ages 15, 16-17 and 18-19 instead (ons.population.male_15, male_16_17 and male_18_19). The three rows partition this row's population and read the same ONS mid-year estimate by single year of age, so they sum to it. No single contract row has this row's definition."
+      "ons/male_15_19": "Split, not dropped (María's ruling of 2026-10-13 (microcosm#1095, uk-data#563)): a fit to the five-year band leaves the ages inside it free to drift, so the contract binds ages 15, 16-17 and 18-19 instead (ons.population.male_15, male_16_17 and male_18_19). The three rows partition this row's population and read the same ONS mid-year estimate by single year of age, so they sum to it. No single contract row has this row's definition.",
+      "dwp/uc/claimants_with_5+_children": "Diagnostic only (María's ruling of 2026-10-16, microcosm#1095): DWP's count of Universal Credit households with five or more children includes families outside the two-child limit, whose third and later children were all born before 6 April 2017 or who meet an exception, and the bound two-child-limit rows leave them out. Fewer than 10 FRS source households carry that difference, so the row cannot be fitted beside the limit rows. The April 2025 figure is retained only as diagnostic provenance on dwp.uc.two_child_limit.households_5_children; no source value is adjusted."
     },
     "unmapped_declarations": {
       "hmrc.salary_sacrifice.it_relief_basic_rate": "New declaration backed by chronicle#139 salary-sacrifice facts; the incumbent source CSV is still 410-Gone at 12a1e028 and its rows are silently suppressed by the bare-except drop in build_loss_matrix.py:376-394.",
@@ -844,7 +845,19 @@
       "ons.population.female_18_19": "María's ruling of 2026-10-13 (microcosm#1095, uk-data#563): the incumbent five-year 15_19 female band is split into ages 15, 16-17 and 18-19, the ages at which the child and qualifying-young-person rules change. The three rows partition the band, so no incumbent row has this row's definition and incumbent ons/female_15_19 is excluded.",
       "ons.population.male_15": "María's ruling of 2026-10-13 (microcosm#1095, uk-data#563): the incumbent five-year 15_19 male band is split into ages 15, 16-17 and 18-19, the ages at which the child and qualifying-young-person rules change. The three rows partition the band, so no incumbent row has this row's definition and incumbent ons/male_15_19 is excluded.",
       "ons.population.male_16_17": "María's ruling of 2026-10-13 (microcosm#1095, uk-data#563): the incumbent five-year 15_19 male band is split into ages 15, 16-17 and 18-19, the ages at which the child and qualifying-young-person rules change. The three rows partition the band, so no incumbent row has this row's definition and incumbent ons/male_15_19 is excluded.",
-      "ons.population.male_18_19": "María's ruling of 2026-10-13 (microcosm#1095, uk-data#563): the incumbent five-year 15_19 male band is split into ages 15, 16-17 and 18-19, the ages at which the child and qualifying-young-person rules change. The three rows partition the band, so no incumbent row has this row's definition and incumbent ons/male_15_19 is excluded."
+      "ons.population.male_18_19": "María's ruling of 2026-10-13 (microcosm#1095, uk-data#563): the incumbent five-year 15_19 male band is split into ages 15, 16-17 and 18-19, the ages at which the child and qualifying-young-person rules change. The three rows partition the band, so no incumbent row has this row's definition and incumbent ons/male_15_19 is excluded.",
+      "dft.bus_journeys.london": "Post-freeze fact family (DfT BUS01a passenger journeys by English region, FY2024-25), no uk-data metric (microcosm#1207).",
+      "dft.bus_journeys.north_east": "Post-freeze fact family (DfT BUS01a passenger journeys by English region, FY2024-25), no uk-data metric (microcosm#1207).",
+      "dft.bus_journeys.north_west": "Post-freeze fact family (DfT BUS01a passenger journeys by English region, FY2024-25), no uk-data metric (microcosm#1207).",
+      "dft.bus_journeys.yorkshire_and_the_humber": "Post-freeze fact family (DfT BUS01a passenger journeys by English region, FY2024-25), no uk-data metric (microcosm#1207).",
+      "dft.bus_journeys.east_midlands": "Post-freeze fact family (DfT BUS01a passenger journeys by English region, FY2024-25), no uk-data metric (microcosm#1207).",
+      "dft.bus_journeys.west_midlands": "Post-freeze fact family (DfT BUS01a passenger journeys by English region, FY2024-25), no uk-data metric (microcosm#1207).",
+      "dft.bus_journeys.east_of_england": "Post-freeze fact family (DfT BUS01a passenger journeys by English region, FY2024-25), no uk-data metric (microcosm#1207).",
+      "dft.bus_journeys.south_east": "Post-freeze fact family (DfT BUS01a passenger journeys by English region, FY2024-25), no uk-data metric (microcosm#1207).",
+      "dft.bus_journeys.south_west": "Post-freeze fact family (DfT BUS01a passenger journeys by English region, FY2024-25), no uk-data metric (microcosm#1207).",
+      "microcosm.high_value_homes.over_1m_by_region": "Microcosm-derived fact family (owner-occupied homes over £1m by English region and Wales, from Land Registry Price Paid, the UK HPI and the NSPL; uk/high_value_home_stock_facts.json, microcosm#1240), no uk-data metric. Bound on the local line only (calibration_lines), so the national line drops it after the compile (microcosm#1301).",
+      "microcosm.high_value_homes.over_1_5m_by_region": "Microcosm-derived fact family (owner-occupied homes over £1.5m by English region and Wales, from Land Registry Price Paid, the UK HPI and the NSPL; uk/high_value_home_stock_facts.json, microcosm#1240), no uk-data metric. Bound on the local line only (calibration_lines), so the national line drops it after the compile (microcosm#1301).",
+      "microcosm.high_value_homes.over_2m_by_region": "Microcosm-derived fact family (owner-occupied homes over £2m by English region and Wales, from Land Registry Price Paid, the UK HPI and the NSPL; uk/high_value_home_stock_facts.json, microcosm#1240), no uk-data metric. Bound on the local line only (calibration_lines), so the national line drops it after the compile (microcosm#1301)."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -936,7 +949,6 @@
       "dwp.uc.households_children_2",
       "dwp.uc.households_children_3",
       "dwp.uc.households_children_4",
-      "dwp.uc.households_children_5_or_more",
       "dwp.uc.households_single_no_children",
       "dwp.uc.households_single_with_children",
       "dwp.uc.households_couple_no_children",
@@ -1094,6 +1106,15 @@
       "dft.bus_net_support.england_outside_london",
       "dft.bus_fare_receipts.uk",
       "dft.bus_net_support.uk",
+      "dft.bus_journeys.london",
+      "dft.bus_journeys.north_east",
+      "dft.bus_journeys.north_west",
+      "dft.bus_journeys.yorkshire_and_the_humber",
+      "dft.bus_journeys.east_midlands",
+      "dft.bus_journeys.west_midlands",
+      "dft.bus_journeys.east_of_england",
+      "dft.bus_journeys.south_east",
+      "dft.bus_journeys.south_west",
       "obr.fuel_duties_cars",
       "orr.rail_government_support",
       "ons.household_energy_expenditure",
@@ -1226,7 +1247,10 @@
       "dwp.hb.households_pension_age",
       "dwp.hb.households_pension_age_social_rented",
       "dwp.hb.households_pension_age_private_rented",
-      "dwp.hb.amount_pension_age"
+      "dwp.hb.amount_pension_age",
+      "microcosm.high_value_homes.over_1m_by_region",
+      "microcosm.high_value_homes.over_1_5m_by_region",
+      "microcosm.high_value_homes.over_2m_by_region"
     ]
   },
   "profile_parity": {
@@ -1236,7 +1260,7 @@
     "source_schema_version": "policyengine_ledger.target_profile.v1",
     "source_profile_id": "uk_local_geography",
     "source_target_count": 25,
-    "contract_target_count": 55,
+    "contract_target_count": 58,
     "corrected_rows": 25,
     "corrected": [
       {
@@ -1429,9 +1453,15 @@
             "2025-10",
             "2025-11",
             "2025-12"
-          ]
+          ],
+          "dimensions": [
+            "payment_indicator"
+          ],
+          "dimension_values": {
+            "payment_indicator": "Yes"
+          }
         },
-        "reason": "Narrowed to the UC household local-geography record-set specs so area pins select the intended constituency or local-authority row. microcosm#1123 moved the selector to the calendar-2025 window of DWP's monthly series (mean of the twelve months), the window the national UC rows use.",
+        "reason": "Narrowed to the UC household local-geography record-set specs so area pins select the intended constituency or local-authority row. microcosm#1123 moved the selector to the calendar-2025 window of DWP's monthly series (mean of the twelve months), the window the national UC rows use. microcosm#1300 binds paid claims (Payment Indicator Yes), the scope the national UC rows count.",
         "renamed_from": "dwp.universal_credit.households"
       },
       {
@@ -1445,7 +1475,8 @@
           "source_concept": "dwp.uc_households",
           "source_measure_id": "universal_credit_households_by_children",
           "dimensions": [
-            "number_of_children"
+            "number_of_children",
+            "payment_indicator"
           ],
           "period_type": "month",
           "period_value": [
@@ -1463,10 +1494,11 @@
             "2025-12"
           ],
           "dimension_values": {
-            "number_of_children": 0
+            "number_of_children": 0,
+            "payment_indicator": "Yes"
           }
         },
-        "reason": "UC child-bucket rows use the corrected measure id and bucket-specific record-set spec; unknown/not_available buckets are excluded. microcosm#1123 moved the selector to the calendar-2025 window of DWP's monthly series (mean of the twelve months), the window the national UC rows use.",
+        "reason": "UC child-bucket rows use the corrected measure id and bucket-specific record-set spec; unknown/not_available buckets are excluded. microcosm#1123 moved the selector to the calendar-2025 window of DWP's monthly series (mean of the twelve months), the window the national UC rows use. microcosm#1300 binds paid claims (Payment Indicator Yes), the scope the national UC rows count.",
         "renamed_from": "dwp.universal_credit.households.0_children"
       },
       {
@@ -1480,7 +1512,8 @@
           "source_concept": "dwp.uc_households",
           "source_measure_id": "universal_credit_households_by_children",
           "dimensions": [
-            "number_of_children"
+            "number_of_children",
+            "payment_indicator"
           ],
           "period_type": "month",
           "period_value": [
@@ -1498,10 +1531,11 @@
             "2025-12"
           ],
           "dimension_values": {
-            "number_of_children": 1
+            "number_of_children": 1,
+            "payment_indicator": "Yes"
           }
         },
-        "reason": "UC child-bucket rows use the corrected measure id and bucket-specific record-set spec; unknown/not_available buckets are excluded. microcosm#1123 moved the selector to the calendar-2025 window of DWP's monthly series (mean of the twelve months), the window the national UC rows use.",
+        "reason": "UC child-bucket rows use the corrected measure id and bucket-specific record-set spec; unknown/not_available buckets are excluded. microcosm#1123 moved the selector to the calendar-2025 window of DWP's monthly series (mean of the twelve months), the window the national UC rows use. microcosm#1300 binds paid claims (Payment Indicator Yes), the scope the national UC rows count.",
         "renamed_from": "dwp.universal_credit.households.1_child"
       },
       {
@@ -1515,7 +1549,8 @@
           "source_concept": "dwp.uc_households",
           "source_measure_id": "universal_credit_households_by_children",
           "dimensions": [
-            "number_of_children"
+            "number_of_children",
+            "payment_indicator"
           ],
           "period_type": "month",
           "period_value": [
@@ -1533,10 +1568,11 @@
             "2025-12"
           ],
           "dimension_values": {
-            "number_of_children": 2
+            "number_of_children": 2,
+            "payment_indicator": "Yes"
           }
         },
-        "reason": "UC child-bucket rows use the corrected measure id and bucket-specific record-set spec; unknown/not_available buckets are excluded. microcosm#1123 moved the selector to the calendar-2025 window of DWP's monthly series (mean of the twelve months), the window the national UC rows use.",
+        "reason": "UC child-bucket rows use the corrected measure id and bucket-specific record-set spec; unknown/not_available buckets are excluded. microcosm#1123 moved the selector to the calendar-2025 window of DWP's monthly series (mean of the twelve months), the window the national UC rows use. microcosm#1300 binds paid claims (Payment Indicator Yes), the scope the national UC rows count.",
         "renamed_from": "dwp.universal_credit.households.2_children"
       },
       {
@@ -1550,7 +1586,8 @@
           "source_concept": "dwp.uc_households",
           "source_measure_id": "universal_credit_households_by_children",
           "dimensions": [
-            "number_of_children"
+            "number_of_children",
+            "payment_indicator"
           ],
           "period_type": "month",
           "period_value": [
@@ -1572,10 +1609,11 @@
               3,
               4,
               "5 or more"
-            ]
+            ],
+            "payment_indicator": "Yes"
           }
         },
-        "reason": "UC child-bucket rows use the corrected measure id and bucket-specific record-set spec; unknown/not_available buckets are excluded. microcosm#1123 moved the selector to the calendar-2025 window of DWP's monthly series (mean of the twelve months), the window the national UC rows use.",
+        "reason": "UC child-bucket rows use the corrected measure id and bucket-specific record-set spec; unknown/not_available buckets are excluded. microcosm#1123 moved the selector to the calendar-2025 window of DWP's monthly series (mean of the twelve months), the window the national UC rows use. microcosm#1300 binds paid claims (Payment Indicator Yes), the scope the national UC rows count.",
         "renamed_from": "dwp.universal_credit.households.3plus_children"
       },
       {
@@ -1685,7 +1723,7 @@
         "reason": "Narrowed to the private-rent local-area record-set spec; non-English/masked absences are signed by the area compiler."
       }
     ],
-    "activation_added_rows": 30,
+    "activation_added_rows": 33,
     "activation_additions": [
       {
         "target_id": "ons.census.households",
@@ -1806,6 +1844,18 @@
       {
         "target_id": "microcosm.high_value_homes.over_2m",
         "basis": "microcosm#1240; Microcosm-derived owner-occupied homes valued over £2m by constituency and local authority (England and Wales) from HM Land Registry Price Paid Data, the UK HPI and the NSPL, carried in the committed derived-facts resource"
+      },
+      {
+        "target_id": "desnz.subnational.electricity_kwh",
+        "basis": "microcosm#1207; DESNZ sub-national domestic electricity consumption by local authority (Great Britain), levelled onto the lcfs stage's Energy Trends level by one factor per fuel"
+      },
+      {
+        "target_id": "desnz.subnational.gas_kwh",
+        "basis": "microcosm#1207; DESNZ sub-national domestic gas consumption by local authority (Great Britain), levelled onto the lcfs stage's Energy Trends level by one factor per fuel"
+      },
+      {
+        "target_id": "desnz.subnational.gas_connected_households",
+        "basis": "microcosm#1207; DESNZ sub-national domestic gas and electricity meter counts by local authority (Great Britain), whose ratio puts a share of each authority's census households on the gas network"
       }
     ],
     "scope_target_ids": [
@@ -1863,7 +1913,10 @@
       "hmrc.higher_rate_taxpayers.count",
       "microcosm.high_value_homes.over_1m",
       "microcosm.high_value_homes.over_1_5m",
-      "microcosm.high_value_homes.over_2m"
+      "microcosm.high_value_homes.over_2m",
+      "desnz.subnational.electricity_kwh",
+      "desnz.subnational.gas_kwh",
+      "desnz.subnational.gas_connected_households"
     ]
   },
   "targets": [
@@ -2125,7 +2178,7 @@
         "policyengine": {
           "metric_name": "obr/sdlt",
           "value_variable": "stamp_duty_land_tax",
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
+          "notes": "Households' SDLT: the OBR's SDLT line at the calendar-2025 window of its fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane), times individuals' share of HMRC's 2024-25 SDLT receipts, residential (Table 8a) and non-residential (Table 8b) together. The OBR line covers every buyer, and HMRC's other buyers (companies, partnerships and collective investment schemes) pay about a third of it; policyengine-uk charges households' stamp_duty_land_tax and adds corporate_sdlt beside it, so binding the whole line pushed households' SDLT up by the companies' share (uk-data#564, microcosm#1095). uk-data#569 (a draft, at 0544d692f) subtracts policyengine-uk's corporate SDLT statistic instead, which needs the unreleased pe-uk#2322; the receipts share is HMRC's own outturn split, and the window's 2025-26 months take 2024-25's. Three gaps are declared, not corrected: non-resident individuals' SDLT, surcharge included, stays inside the individuals' share, though no FRS household is non-resident; Table 6b counts the higher rates before refunds on replacement main homes, and policyengine-uk charges them with no refund, while Tables 8a and 8b and the OBR line are net of refunds; and the main-home purchase rate policyengine-uk applies also counts the higher-rates transactions, so those purchases are partly counted twice (review of #1308)."
         },
         "axiom": {
           "metric_name": "obr/sdlt",
@@ -2141,7 +2194,36 @@
       },
       "category_id": "obr.efo_receipts",
       "label": "Stamp Duty Land Tax",
-      "value_operation": "calendar_year_window"
+      "value_operation": "calendar_year_window_scaled_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_name": "hmrc",
+          "source_record_id": [
+            "hmrc.stamp_taxes_2024_25.table_8a.individuals.fy2024.all_price_bands.receipts",
+            "hmrc.stamp_taxes_2024_25.table_8b.individuals.fy2024.all_price_bands.receipts"
+          ],
+          "period_type": "fiscal_year",
+          "period_value": 2024,
+          "expected_member_count": 2,
+          "label": "individuals' SDLT receipts, Tables 8a and 8b, 2024-25"
+        },
+        {
+          "role": "denominator",
+          "source_name": "hmrc",
+          "source_record_id": [
+            "hmrc.stamp_taxes_2024_25.table_8a.all_buyers.fy2024.all_price_bands.receipts",
+            "hmrc.stamp_taxes_2024_25.table_8b.all_buyers.fy2024.all_price_bands.receipts"
+          ],
+          "period_type": "fiscal_year",
+          "period_value": 2024,
+          "expected_member_count": 2,
+          "label": "all buyers' SDLT receipts, Tables 8a and 8b, 2024-25"
+        }
+      ]
     },
     {
       "target_id": "obr.attendance_allowance",
@@ -2183,7 +2265,7 @@
               "map_to": "person"
             }
           ],
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to England and Wales (microcosm#1095, uk-data#490): DWP reports this benefit for England and Wales only since executive competence moved to the Scottish Government (Attendance Allowance from 1 April 2020; DWP benefit expenditure and caseload tables, Spring 2026, Notes), and OBR table 4.9 carries DWP's line. FRS code 12 also holds Scotland's Pension Age Disability Payment, which the Scottish Government funds, so the model column sums English and Welsh households only. The Chronicle fact still carries the UK code K02000001."
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to England and Wales (microcosm#1095, uk-data#490): DWP reports this benefit for England and Wales only since executive competence moved to the Scottish Government (Attendance Allowance from 1 April 2020; DWP benefit expenditure and caseload tables, Spring 2026, Notes), and OBR table 4.9 carries DWP's line. FRS code 12 also holds Scotland's Pension Age Disability Payment, which the Scottish Government funds, so the model column sums English and Welsh households only. Since the abf0921 re-pin the Chronicle fact carries the England and Wales code K04000001 (microcosm#1300)."
         },
         "axiom": {
           "metric_name": "obr/attendance_allowance",
@@ -2241,7 +2323,7 @@
               "map_to": "person"
             }
           ],
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to England and Wales (microcosm#1095, uk-data#490): DWP reports this benefit for England and Wales only since executive competence moved to the Scottish Government (Carer's Allowance from 3 September 2018; DWP benefit expenditure and caseload tables, Spring 2026, Notes), and OBR table 4.9 carries DWP's line. FRS code 13 also holds Scotland's Carer Support Payment, which the Scottish Government funds, so the model column sums English and Welsh households only. The Chronicle fact still carries the UK code K02000001."
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to England and Wales (microcosm#1095, uk-data#490): DWP reports this benefit for England and Wales only since executive competence moved to the Scottish Government (Carer's Allowance from 3 September 2018; DWP benefit expenditure and caseload tables, Spring 2026, Notes), and OBR table 4.9 carries DWP's line. FRS code 13 also holds Scotland's Carer Support Payment, which the Scottish Government funds, so the model column sums English and Welsh households only. Since the abf0921 re-pin the Chronicle fact carries the England and Wales code K04000001 (microcosm#1300)."
         },
         "axiom": {
           "metric_name": "obr/carers_allowance",
@@ -2543,7 +2625,7 @@
       "bindings": {
         "policyengine": {
           "metric_name": "obr/esa",
-          "value_expression": "esa_income + esa_contrib",
+          "value_expression": "esa_income + esa_contrib + incapacity_benefit + sda",
           "map_to": "household",
           "household_conditions": [
             {
@@ -2567,7 +2649,7 @@
               "map_to": "household"
             }
           ],
-          "notes": "EFO incapacity-benefits line; uk-data sums benunit-level esa_income and person-level esa_contrib to household (compute/income.py:98-102). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. The Chronicle fact still carries the UK code K02000001."
+          "notes": "EFO incapacity-benefits line. OBR table 4.9 footnote 2: the line includes incapacity benefit, employment and support allowance, severe disablement allowance and the incapacity part of income support, and excludes the health element of universal credit. The model column sums benunit-level esa_income and person-level esa_contrib, incapacity_benefit and sda to household; uk-data sums the first two (compute/income.py:115-119), and adding the other two follows uk-data#582 (microcosm#1095). Incapacity Benefit has been closed to new claims since ESA began in October 2008, so its term carries only what the FRS still reports. Income Support has no incapacity part in the engine, which pays it as one benefit; that part stays a residual of the row, with no declared difference (María's ruling of 2026-10-16). Severe Disablement Allowance is a small part of the line: DWP reports GBP 53.8m for England and Wales in 2024-25 and GBP 46.8m in 2025-26, against OBR's GBP 12.41bn and GBP 7.21bn. The Scottish Government pays SDA in Scotland (GBP 5.0m in 2024-25, GBP 4.4m in 2025-26 in the Scottish Budget), outside DWP's line; at well under 0.1 percent of the row it stays inside the Great Britain scope below rather than a per-term mask. Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. Since the abf0921 re-pin the Chronicle fact carries the Great Britain code K03000001 (microcosm#1300)."
         },
         "axiom": {
           "metric_name": "obr/esa",
@@ -2635,7 +2717,7 @@
               "map_to": "benunit"
             }
           ],
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. The Chronicle fact still carries the UK code K02000001."
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. Since the abf0921 re-pin the Chronicle fact carries the Great Britain code K03000001 (microcosm#1300)."
         },
         "axiom": {
           "metric_name": "obr/housing_benefit",
@@ -2703,7 +2785,7 @@
               "map_to": "benunit"
             }
           ],
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. The Chronicle fact still carries the UK code K02000001."
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. Since the abf0921 re-pin the Chronicle fact carries the Great Britain code K03000001 (microcosm#1300)."
         },
         "axiom": {
           "metric_name": "obr/jobseekers_allowance",
@@ -2771,7 +2853,7 @@
               "map_to": "benunit"
             }
           ],
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. The Chronicle fact still carries the UK code K02000001."
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. Since the abf0921 re-pin the Chronicle fact carries the Great Britain code K03000001 (microcosm#1300)."
         },
         "axiom": {
           "metric_name": "obr/pension_credit",
@@ -2829,7 +2911,7 @@
               "map_to": "person"
             }
           ],
-          "notes": "The EFO line is \"Disability living allowance and personal independence payments\", so the row binds the engine's pip + dla (María's ruling of 2026-10-02, microcosm#1095); uk-data binds pip alone and microcosm#622 closed without adjudicating it. Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to England and Wales (microcosm#1095, uk-data#490): DWP reports this benefit for England and Wales only since executive competence moved to the Scottish Government (Disability Living Allowance and Personal Independence Payment from 1 April 2020; DWP benefit expenditure and caseload tables, Spring 2026, Notes), and OBR table 4.9 carries DWP's line. Scotland's Adult and Child Disability Payments are Scottish Government spending, so the model column sums English and Welsh households only. The Chronicle fact still carries the UK code K02000001."
+          "notes": "The EFO line is \"Disability living allowance and personal independence payments\", so the row binds the engine's pip + dla (María's ruling of 2026-10-02, microcosm#1095); uk-data binds pip alone and microcosm#622 closed without adjudicating it. Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to England and Wales (microcosm#1095, uk-data#490): DWP reports this benefit for England and Wales only since executive competence moved to the Scottish Government (Disability Living Allowance and Personal Independence Payment from 1 April 2020; DWP benefit expenditure and caseload tables, Spring 2026, Notes), and OBR table 4.9 carries DWP's line. Scotland's Adult and Child Disability Payments are Scottish Government spending, so the model column sums English and Welsh households only. Since the abf0921 re-pin the Chronicle fact carries the England and Wales code K04000001 (microcosm#1300)."
         },
         "axiom": {
           "metric_name": "obr/pip",
@@ -2897,7 +2979,7 @@
               "map_to": "person"
             }
           ],
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. The Chronicle fact still carries the UK code K02000001."
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. Since the abf0921 re-pin the Chronicle fact carries the Great Britain code K03000001 (microcosm#1300)."
         },
         "axiom": {
           "metric_name": "obr/statutory_maternity_pay",
@@ -3009,7 +3091,7 @@
               "map_to": "benunit"
             }
           ],
-          "notes": "Split of UC spend by benefit-cap status (compute/benefits.py:119-127). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. The Chronicle fact still carries the UK code K02000001."
+          "notes": "Split of UC spend by benefit-cap status (compute/benefits.py:119-127). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. Since the abf0921 re-pin the Chronicle fact carries the Great Britain code K03000001 (microcosm#1300)."
         },
         "axiom": {
           "metric_name": "obr/universal_credit_in_cap",
@@ -3089,7 +3171,7 @@
               "map_to": "benunit"
             }
           ],
-          "notes": "Split of UC spend by benefit-cap status (compute/benefits.py:119-127). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. The Chronicle fact still carries the UK code K02000001."
+          "notes": "Split of UC spend by benefit-cap status (compute/benefits.py:119-127). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. Since the abf0921 re-pin the Chronicle fact carries the Great Britain code K03000001 (microcosm#1300)."
         },
         "axiom": {
           "metric_name": "obr/universal_credit_outside_cap",
@@ -3144,7 +3226,7 @@
               "map_to": "household"
             }
           ],
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to England and Wales (microcosm#1095, uk-data#490): DWP reports this benefit for England and Wales only since executive competence moved to the Scottish Government (Winter Fuel Payment from 1 April 2024; DWP benefit expenditure and caseload tables, Spring 2026, Notes), and OBR table 4.9 carries DWP's line. Scotland's Pension Age Winter Heating Payment is Scottish Government spending, so the model column sums English and Welsh households only. The Chronicle fact still carries the UK code K02000001."
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to England and Wales (microcosm#1095, uk-data#490): DWP reports this benefit for England and Wales only since executive competence moved to the Scottish Government (Winter Fuel Payment from 1 April 2024; DWP benefit expenditure and caseload tables, Spring 2026, Notes), and OBR table 4.9 carries DWP's line. Scotland's Pension Age Winter Heating Payment is Scottish Government spending, so the model column sums English and Welsh households only. Since the abf0921 re-pin the Chronicle fact carries the England and Wales code K04000001 (microcosm#1300)."
         },
         "axiom": {
           "metric_name": "obr/winter_fuel_allowance",
@@ -3542,7 +3624,8 @@
           "value_variable": "employment_income",
           "from_entity": "person",
           "map_to": "household",
-          "groupby_variable": "total_income",
+          "groupby_variable": "total_income_after_loss_relief",
+          "band_filter_dimension": "total_income",
           "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20).",
           "filters": [
             {
@@ -3596,7 +3679,8 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/employment_income_count_income_band",
-          "groupby_variable": "total_income",
+          "groupby_variable": "total_income_after_loss_relief",
+          "band_filter_dimension": "total_income",
           "filters": [
             {
               "variable": "employment_income",
@@ -3651,11 +3735,12 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/self_employment_income_income_band",
-          "value_variable": "self_employment_income",
+          "value_variable": "self_employment_income_after_loss_relief",
           "from_entity": "person",
           "map_to": "household",
-          "groupby_variable": "total_income",
-          "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20).",
+          "groupby_variable": "total_income_after_loss_relief",
+          "band_filter_dimension": "total_income",
+          "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20). HMRC counts the profit after losses brought forward, which the spine keeps apart in loss_relief, so the value and the band read it after that relief (microcosm#1095).",
           "filters": [
             {
               "variable": "income_tax",
@@ -3708,10 +3793,11 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/self_employment_income_count_income_band",
-          "groupby_variable": "total_income",
+          "groupby_variable": "total_income_after_loss_relief",
+          "band_filter_dimension": "total_income",
           "filters": [
             {
-              "variable": "self_employment_income",
+              "variable": "self_employment_income_after_loss_relief",
               "operator": "!=",
               "value": 0
             },
@@ -3766,7 +3852,8 @@
           "value_variable": "dividend_income",
           "from_entity": "person",
           "map_to": "household",
-          "groupby_variable": "total_income",
+          "groupby_variable": "total_income_after_loss_relief",
+          "band_filter_dimension": "total_income",
           "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20).",
           "filters": [
             {
@@ -3820,7 +3907,8 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/dividend_income_count_income_band",
-          "groupby_variable": "total_income",
+          "groupby_variable": "total_income_after_loss_relief",
+          "band_filter_dimension": "total_income",
           "filters": [
             {
               "variable": "dividend_income",
@@ -3878,7 +3966,8 @@
           "value_variable": "property_income",
           "from_entity": "person",
           "map_to": "household",
-          "groupby_variable": "total_income",
+          "groupby_variable": "total_income_after_loss_relief",
+          "band_filter_dimension": "total_income",
           "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20). SPI Table 3.7 net income from property is landlords' profit after allowable expenses and before residential finance costs, the concept property_income holds, so the facts bind unscaled. The incumbent's x1.9 adjustment set HMRC Property Rental Income Statistics receipts, which are before expenses, against this net amount and is retired (microcosm#1106, ruled 2026-10-05); the receipts are constructed on property_rental_income by the property_components stage, and PRIS stays a diagnostic (ruled 2026-10-08). Uprated to 2025 by total_income_growth_by_total_income_band, the index the paired count rows' taxpayer_count_growth_by_total_income_band belongs with (microcosm#1063): the flat obr.per_capita.gdp, which policyengine-uk gives property_income itself, would have implied per-band mean profit moves of about -13% (GBP 100,000 to 150,000) to +11% (GBP 15,000 to 20,000) between 2023 and 2025 against those counts, where the band index keeps the pairing within about 2.5%, the GBP 1,000,000 and over band at +2.51% (ruled 2026-10-11 on the microcosm#1145 review). The dividend amount rows keep the flat index.",
           "filters": [
             {
@@ -3932,7 +4021,8 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/property_income_count_income_band",
-          "groupby_variable": "total_income",
+          "groupby_variable": "total_income_after_loss_relief",
+          "band_filter_dimension": "total_income",
           "filters": [
             {
               "variable": "property_income",
@@ -3990,7 +4080,8 @@
           "value_variable": "private_pension_income",
           "from_entity": "person",
           "map_to": "household",
-          "groupby_variable": "total_income",
+          "groupby_variable": "total_income_after_loss_relief",
+          "band_filter_dimension": "total_income",
           "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20).",
           "filters": [
             {
@@ -4044,7 +4135,8 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/private_pension_income_count_income_band",
-          "groupby_variable": "total_income",
+          "groupby_variable": "total_income_after_loss_relief",
+          "band_filter_dimension": "total_income",
           "filters": [
             {
               "variable": "private_pension_income",
@@ -4102,7 +4194,8 @@
           "value_variable": "state_pension",
           "from_entity": "person",
           "map_to": "household",
-          "groupby_variable": "total_income",
+          "groupby_variable": "total_income_after_loss_relief",
+          "band_filter_dimension": "total_income",
           "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20).",
           "filters": [
             {
@@ -4156,7 +4249,8 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/state_pension_count_income_band",
-          "groupby_variable": "total_income",
+          "groupby_variable": "total_income_after_loss_relief",
+          "band_filter_dimension": "total_income",
           "filters": [
             {
               "variable": "state_pension",
@@ -5265,125 +5359,6 @@
       "period_match_policy": "source_window",
       "category_id": "dwp.universal_credit",
       "label": "Households children 4"
-    },
-    {
-      "target_id": "dwp.uc.households_children_5_or_more",
-      "family": "dwp_universal_credit",
-      "geography_levels": [
-        "country"
-      ],
-      "measurement": {
-        "entity": "benunit",
-        "concept": "uk.benefit_unit.count",
-        "filters": [
-          {
-            "concept": "uk.benefits.universal_credit.amount",
-            "operator": ">",
-            "value": 0
-          },
-          {
-            "concept": "uk.benefit_unit.children",
-            "operator": ">=",
-            "value": 5
-          }
-        ],
-        "source_months": [
-          "2025-01",
-          "2025-02",
-          "2025-03",
-          "2025-04",
-          "2025-05",
-          "2025-06",
-          "2025-07",
-          "2025-08",
-          "2025-09",
-          "2025-10",
-          "2025-11",
-          "2025-12"
-        ]
-      },
-      "bindings": {
-        "policyengine": {
-          "metric_name": "dwp/uc/claimants_with_5+_children",
-          "value_variable": "benunit_count",
-          "from_entity": "benunit",
-          "filters": [
-            {
-              "variable": "universal_credit",
-              "operator": ">",
-              "value": 0
-            },
-            {
-              "variable": "uc_calibration_child_count",
-              "operator": ">=",
-              "value": 5
-            }
-          ],
-          "notes": "Mean monthly paid GB benefit units over the exact twelve months of calendar 2025. Use the publisher Child Entitlement Total within each child-count/payment category, not the sum of perturbed Yes/No detail cells; no child-entitlement filter is added to the model. Benefit-unit count among positive UC awards. Child counts use retained FRS child members under 20 and UC child/qualifying-young-person status, excluding claimant/parent roles. DWP reported children can exceed those eligible for a child element. Benefit-unit grain retains the microcosm#809 correction for multibenunit households. Simulated entitlement is unchanged. Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset Source: https://github.com/PolicyEngine/chronicle/pull/252",
-          "household_conditions": [
-            {
-              "variable": "region",
-              "entity": "household",
-              "reduce": "any",
-              "operator": "in",
-              "value": [
-                "NORTH_EAST",
-                "NORTH_WEST",
-                "YORKSHIRE",
-                "EAST_MIDLANDS",
-                "WEST_MIDLANDS",
-                "EAST_OF_ENGLAND",
-                "LONDON",
-                "SOUTH_EAST",
-                "SOUTH_WEST",
-                "WALES",
-                "SCOTLAND"
-              ],
-              "map_to": "benunit"
-            }
-          ]
-        },
-        "axiom": {
-          "metric_name": "dwp/uc/claimants_with_5+_children",
-          "status": "pending",
-          "value_rule": "uk.benefit_unit.count"
-        }
-      },
-      "ledger_selector": {
-        "source_name": "dwp",
-        "source_concept": "dwp.uc_households",
-        "groupby_dimension": "dwp.uc_number_of_children",
-        "dimensions": [
-          "number_of_children",
-          "payment_indicator",
-          "child_entitlement"
-        ],
-        "dimension_values": {
-          "number_of_children": "5 or more",
-          "payment_indicator": "Yes",
-          "child_entitlement": "all"
-        },
-        "source_measure_id": "total_benefit_units",
-        "period_type": "month",
-        "period_value": [
-          "2025-01",
-          "2025-02",
-          "2025-03",
-          "2025-04",
-          "2025-05",
-          "2025-06",
-          "2025-07",
-          "2025-08",
-          "2025-09",
-          "2025-10",
-          "2025-11",
-          "2025-12"
-        ]
-      },
-      "value_operation": "monthly_window_average",
-      "period_match_policy": "source_window",
-      "category_id": "dwp.universal_credit",
-      "label": "Households children 5 or more"
     },
     {
       "target_id": "dwp.uc.households_single_no_children",
@@ -14441,7 +14416,7 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "England borrowers on this plan earning above the repayment threshold (proxied by positive repayments, matching what the FRS captures via PAYE; compute/other.py:77-96)."
+          "notes": "England borrowers on this plan earning above the repayment threshold (proxied by positive repayments, matching what the FRS captures via PAYE; compute/other.py:77-96). Bound at SLC academic year 2024/25, whose reference date falls inside calendar 2025, the stock the student_loans stage tops up to; Chronicle stores the academic year under its opening year, 2024 (María's ruling of 2026-10-16, microcosm#868)."
         },
         "axiom": {
           "metric_name": "slc/plan_2_borrowers_above_threshold",
@@ -14457,7 +14432,9 @@
           "row_group": "Higher education total",
           "repayment_plan": "plan_2",
           "borrower_status": "above_repayment_threshold"
-        }
+        },
+        "period_type": "academic_year",
+        "period_value": 2024
       },
       "category_id": "slc.borrowers",
       "label": "Plan 2 above threshold"
@@ -14489,7 +14466,7 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "England borrowers on this plan liable to repay, including below-threshold holders (compute/other.py:99-113)."
+          "notes": "England borrowers on this plan liable to repay, including below-threshold holders (compute/other.py:99-113). Bound at SLC academic year 2024/25, whose reference date falls inside calendar 2025, the stock the student_loans stage tops up to; Chronicle stores the academic year under its opening year, 2024 (María's ruling of 2026-10-16, microcosm#868)."
         },
         "axiom": {
           "metric_name": "slc/plan_2_borrowers_liable",
@@ -14505,7 +14482,9 @@
           "row_group": "Higher education total",
           "repayment_plan": "plan_2",
           "borrower_status": "liable_to_repay"
-        }
+        },
+        "period_type": "academic_year",
+        "period_value": 2024
       },
       "category_id": "slc.borrowers",
       "label": "Plan 2 liable"
@@ -14542,7 +14521,7 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "England borrowers on this plan earning above the repayment threshold (proxied by positive repayments, matching what the FRS captures via PAYE; compute/other.py:77-96)."
+          "notes": "England borrowers on this plan earning above the repayment threshold (proxied by positive repayments, matching what the FRS captures via PAYE; compute/other.py:77-96). Bound at SLC academic year 2024/25, whose reference date falls inside calendar 2025, the stock the student_loans stage tops up to; Chronicle stores the academic year under its opening year, 2024 (María's ruling of 2026-10-16, microcosm#868)."
         },
         "axiom": {
           "metric_name": "slc/plan_5_borrowers_above_threshold",
@@ -14558,7 +14537,9 @@
           "row_group": "Higher education total",
           "repayment_plan": "plan_5",
           "borrower_status": "above_repayment_threshold"
-        }
+        },
+        "period_type": "academic_year",
+        "period_value": 2024
       },
       "category_id": "slc.borrowers",
       "label": "Plan 5 above threshold"
@@ -14590,7 +14571,7 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "England borrowers on this plan liable to repay, including below-threshold holders (compute/other.py:99-113)."
+          "notes": "England borrowers on this plan liable to repay, including below-threshold holders (compute/other.py:99-113). Bound at SLC academic year 2024/25, whose reference date falls inside calendar 2025, the stock the student_loans stage tops up to; Chronicle stores the academic year under its opening year, 2024 (María's ruling of 2026-10-16, microcosm#868)."
         },
         "axiom": {
           "metric_name": "slc/plan_5_borrowers_liable",
@@ -14606,7 +14587,9 @@
           "row_group": "Higher education total",
           "repayment_plan": "plan_5",
           "borrower_status": "liable_to_repay"
-        }
+        },
+        "period_type": "academic_year",
+        "period_value": 2024
       },
       "category_id": "slc.borrowers",
       "label": "Plan 5 liable"
@@ -15666,6 +15649,434 @@
       },
       "category_id": "dft.local_bus_finances",
       "label": "UK"
+    },
+    {
+      "target_id": "dft.bus_journeys.london",
+      "family": "dft_bus_journeys",
+      "geography_levels": [
+        "region"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.transport.local_bus_boardings.count",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dft/bus_journeys/london",
+          "value_variable": "bus_in_london_boardings",
+          "notes": "DfT BUS01a local bus passenger journeys (boardings), year ending March 2025 (DfT's closing-year label fy2025; the compile reads it as FY2024-25, held at its own period). The frame carries NTS trips, not boardings: the measure is each household's trips on the series times the boardings per trip the lcfs stage priced it at. Those factors divide published boardings by published NTS trip rates times population, so London's row and the England-outside-London total constrain the frame's trip level and only the split between the eight other regions is new information. BUS01 counts boardings where buses run; the model counts trips where people live (microcosm#1207). London's buses carry every resident's bus-in-London trips wherever they live, so the row has no residence filter. Its uprating_index (dft.bus01.stage_pricing_year) holds the row at the fiscal year the stage prices boardings per trip from and refuses a row resolved to another year."
+        },
+        "axiom": {
+          "metric_name": "dft/bus_journeys/london",
+          "status": "pending",
+          "value_rule": "uk.transport.local_bus_boardings.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_journeys",
+        "source_measure_id": "passenger_journeys",
+        "layout_groupby_value_id": "london",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "dimensions": []
+      },
+      "uprating_index": "dft.bus01.stage_pricing_year",
+      "category_id": "dft.local_bus_journeys",
+      "label": "London"
+    },
+    {
+      "target_id": "dft.bus_journeys.north_east",
+      "family": "dft_bus_journeys",
+      "geography_levels": [
+        "region"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.transport.local_bus_boardings.count",
+        "observation_basis": "fiscal_year_flow",
+        "filters": [
+          {
+            "concept": "uk.geography.region",
+            "equals": "NORTH_EAST"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dft/bus_journeys/north_east",
+          "value_variable": "other_local_bus_boardings",
+          "filters": [
+            {
+              "variable": "region",
+              "operator": "==",
+              "value": "NORTH_EAST"
+            }
+          ],
+          "notes": "DfT BUS01a local bus passenger journeys (boardings), year ending March 2025 (DfT's closing-year label fy2025; the compile reads it as FY2024-25, held at its own period). The frame carries NTS trips, not boardings: the measure is each household's trips on the series times the boardings per trip the lcfs stage priced it at. Those factors divide published boardings by published NTS trip rates times population, so London's row and the England-outside-London total constrain the frame's trip level and only the split between the eight other regions is new information. BUS01 counts boardings where buses run; the model counts trips where people live (microcosm#1207). The region's residents' other local bus trips stand for the boardings on its buses; London residents' trips on buses outside London fall in no region row. Its uprating_index (dft.bus01.stage_pricing_year) holds the row at the fiscal year the stage prices boardings per trip from and refuses a row resolved to another year."
+        },
+        "axiom": {
+          "metric_name": "dft/bus_journeys/north_east",
+          "status": "pending",
+          "value_rule": "uk.transport.local_bus_boardings.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_journeys",
+        "source_measure_id": "passenger_journeys",
+        "layout_groupby_value_id": "north_east",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "dimensions": []
+      },
+      "uprating_index": "dft.bus01.stage_pricing_year",
+      "category_id": "dft.local_bus_journeys",
+      "label": "North East"
+    },
+    {
+      "target_id": "dft.bus_journeys.north_west",
+      "family": "dft_bus_journeys",
+      "geography_levels": [
+        "region"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.transport.local_bus_boardings.count",
+        "observation_basis": "fiscal_year_flow",
+        "filters": [
+          {
+            "concept": "uk.geography.region",
+            "equals": "NORTH_WEST"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dft/bus_journeys/north_west",
+          "value_variable": "other_local_bus_boardings",
+          "filters": [
+            {
+              "variable": "region",
+              "operator": "==",
+              "value": "NORTH_WEST"
+            }
+          ],
+          "notes": "DfT BUS01a local bus passenger journeys (boardings), year ending March 2025 (DfT's closing-year label fy2025; the compile reads it as FY2024-25, held at its own period). The frame carries NTS trips, not boardings: the measure is each household's trips on the series times the boardings per trip the lcfs stage priced it at. Those factors divide published boardings by published NTS trip rates times population, so London's row and the England-outside-London total constrain the frame's trip level and only the split between the eight other regions is new information. BUS01 counts boardings where buses run; the model counts trips where people live (microcosm#1207). The region's residents' other local bus trips stand for the boardings on its buses; London residents' trips on buses outside London fall in no region row. Its uprating_index (dft.bus01.stage_pricing_year) holds the row at the fiscal year the stage prices boardings per trip from and refuses a row resolved to another year."
+        },
+        "axiom": {
+          "metric_name": "dft/bus_journeys/north_west",
+          "status": "pending",
+          "value_rule": "uk.transport.local_bus_boardings.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_journeys",
+        "source_measure_id": "passenger_journeys",
+        "layout_groupby_value_id": "north_west",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "dimensions": []
+      },
+      "uprating_index": "dft.bus01.stage_pricing_year",
+      "category_id": "dft.local_bus_journeys",
+      "label": "North West"
+    },
+    {
+      "target_id": "dft.bus_journeys.yorkshire_and_the_humber",
+      "family": "dft_bus_journeys",
+      "geography_levels": [
+        "region"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.transport.local_bus_boardings.count",
+        "observation_basis": "fiscal_year_flow",
+        "filters": [
+          {
+            "concept": "uk.geography.region",
+            "equals": "YORKSHIRE"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dft/bus_journeys/yorkshire_and_the_humber",
+          "value_variable": "other_local_bus_boardings",
+          "filters": [
+            {
+              "variable": "region",
+              "operator": "==",
+              "value": "YORKSHIRE"
+            }
+          ],
+          "notes": "DfT BUS01a local bus passenger journeys (boardings), year ending March 2025 (DfT's closing-year label fy2025; the compile reads it as FY2024-25, held at its own period). The frame carries NTS trips, not boardings: the measure is each household's trips on the series times the boardings per trip the lcfs stage priced it at. Those factors divide published boardings by published NTS trip rates times population, so London's row and the England-outside-London total constrain the frame's trip level and only the split between the eight other regions is new information. BUS01 counts boardings where buses run; the model counts trips where people live (microcosm#1207). The region's residents' other local bus trips stand for the boardings on its buses; London residents' trips on buses outside London fall in no region row. Its uprating_index (dft.bus01.stage_pricing_year) holds the row at the fiscal year the stage prices boardings per trip from and refuses a row resolved to another year."
+        },
+        "axiom": {
+          "metric_name": "dft/bus_journeys/yorkshire_and_the_humber",
+          "status": "pending",
+          "value_rule": "uk.transport.local_bus_boardings.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_journeys",
+        "source_measure_id": "passenger_journeys",
+        "layout_groupby_value_id": "yorkshire_and_the_humber",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "dimensions": []
+      },
+      "uprating_index": "dft.bus01.stage_pricing_year",
+      "category_id": "dft.local_bus_journeys",
+      "label": "Yorkshire and The Humber"
+    },
+    {
+      "target_id": "dft.bus_journeys.east_midlands",
+      "family": "dft_bus_journeys",
+      "geography_levels": [
+        "region"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.transport.local_bus_boardings.count",
+        "observation_basis": "fiscal_year_flow",
+        "filters": [
+          {
+            "concept": "uk.geography.region",
+            "equals": "EAST_MIDLANDS"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dft/bus_journeys/east_midlands",
+          "value_variable": "other_local_bus_boardings",
+          "filters": [
+            {
+              "variable": "region",
+              "operator": "==",
+              "value": "EAST_MIDLANDS"
+            }
+          ],
+          "notes": "DfT BUS01a local bus passenger journeys (boardings), year ending March 2025 (DfT's closing-year label fy2025; the compile reads it as FY2024-25, held at its own period). The frame carries NTS trips, not boardings: the measure is each household's trips on the series times the boardings per trip the lcfs stage priced it at. Those factors divide published boardings by published NTS trip rates times population, so London's row and the England-outside-London total constrain the frame's trip level and only the split between the eight other regions is new information. BUS01 counts boardings where buses run; the model counts trips where people live (microcosm#1207). The region's residents' other local bus trips stand for the boardings on its buses; London residents' trips on buses outside London fall in no region row. Its uprating_index (dft.bus01.stage_pricing_year) holds the row at the fiscal year the stage prices boardings per trip from and refuses a row resolved to another year."
+        },
+        "axiom": {
+          "metric_name": "dft/bus_journeys/east_midlands",
+          "status": "pending",
+          "value_rule": "uk.transport.local_bus_boardings.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_journeys",
+        "source_measure_id": "passenger_journeys",
+        "layout_groupby_value_id": "east_midlands",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "dimensions": []
+      },
+      "uprating_index": "dft.bus01.stage_pricing_year",
+      "category_id": "dft.local_bus_journeys",
+      "label": "East Midlands"
+    },
+    {
+      "target_id": "dft.bus_journeys.west_midlands",
+      "family": "dft_bus_journeys",
+      "geography_levels": [
+        "region"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.transport.local_bus_boardings.count",
+        "observation_basis": "fiscal_year_flow",
+        "filters": [
+          {
+            "concept": "uk.geography.region",
+            "equals": "WEST_MIDLANDS"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dft/bus_journeys/west_midlands",
+          "value_variable": "other_local_bus_boardings",
+          "filters": [
+            {
+              "variable": "region",
+              "operator": "==",
+              "value": "WEST_MIDLANDS"
+            }
+          ],
+          "notes": "DfT BUS01a local bus passenger journeys (boardings), year ending March 2025 (DfT's closing-year label fy2025; the compile reads it as FY2024-25, held at its own period). The frame carries NTS trips, not boardings: the measure is each household's trips on the series times the boardings per trip the lcfs stage priced it at. Those factors divide published boardings by published NTS trip rates times population, so London's row and the England-outside-London total constrain the frame's trip level and only the split between the eight other regions is new information. BUS01 counts boardings where buses run; the model counts trips where people live (microcosm#1207). The region's residents' other local bus trips stand for the boardings on its buses; London residents' trips on buses outside London fall in no region row. Its uprating_index (dft.bus01.stage_pricing_year) holds the row at the fiscal year the stage prices boardings per trip from and refuses a row resolved to another year."
+        },
+        "axiom": {
+          "metric_name": "dft/bus_journeys/west_midlands",
+          "status": "pending",
+          "value_rule": "uk.transport.local_bus_boardings.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_journeys",
+        "source_measure_id": "passenger_journeys",
+        "layout_groupby_value_id": "west_midlands",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "dimensions": []
+      },
+      "uprating_index": "dft.bus01.stage_pricing_year",
+      "category_id": "dft.local_bus_journeys",
+      "label": "West Midlands"
+    },
+    {
+      "target_id": "dft.bus_journeys.east_of_england",
+      "family": "dft_bus_journeys",
+      "geography_levels": [
+        "region"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.transport.local_bus_boardings.count",
+        "observation_basis": "fiscal_year_flow",
+        "filters": [
+          {
+            "concept": "uk.geography.region",
+            "equals": "EAST_OF_ENGLAND"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dft/bus_journeys/east_of_england",
+          "value_variable": "other_local_bus_boardings",
+          "filters": [
+            {
+              "variable": "region",
+              "operator": "==",
+              "value": "EAST_OF_ENGLAND"
+            }
+          ],
+          "notes": "DfT BUS01a local bus passenger journeys (boardings), year ending March 2025 (DfT's closing-year label fy2025; the compile reads it as FY2024-25, held at its own period). The frame carries NTS trips, not boardings: the measure is each household's trips on the series times the boardings per trip the lcfs stage priced it at. Those factors divide published boardings by published NTS trip rates times population, so London's row and the England-outside-London total constrain the frame's trip level and only the split between the eight other regions is new information. BUS01 counts boardings where buses run; the model counts trips where people live (microcosm#1207). The region's residents' other local bus trips stand for the boardings on its buses; London residents' trips on buses outside London fall in no region row. Its uprating_index (dft.bus01.stage_pricing_year) holds the row at the fiscal year the stage prices boardings per trip from and refuses a row resolved to another year."
+        },
+        "axiom": {
+          "metric_name": "dft/bus_journeys/east_of_england",
+          "status": "pending",
+          "value_rule": "uk.transport.local_bus_boardings.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_journeys",
+        "source_measure_id": "passenger_journeys",
+        "layout_groupby_value_id": "east_of_england",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "dimensions": []
+      },
+      "uprating_index": "dft.bus01.stage_pricing_year",
+      "category_id": "dft.local_bus_journeys",
+      "label": "East of England"
+    },
+    {
+      "target_id": "dft.bus_journeys.south_east",
+      "family": "dft_bus_journeys",
+      "geography_levels": [
+        "region"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.transport.local_bus_boardings.count",
+        "observation_basis": "fiscal_year_flow",
+        "filters": [
+          {
+            "concept": "uk.geography.region",
+            "equals": "SOUTH_EAST"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dft/bus_journeys/south_east",
+          "value_variable": "other_local_bus_boardings",
+          "filters": [
+            {
+              "variable": "region",
+              "operator": "==",
+              "value": "SOUTH_EAST"
+            }
+          ],
+          "notes": "DfT BUS01a local bus passenger journeys (boardings), year ending March 2025 (DfT's closing-year label fy2025; the compile reads it as FY2024-25, held at its own period). The frame carries NTS trips, not boardings: the measure is each household's trips on the series times the boardings per trip the lcfs stage priced it at. Those factors divide published boardings by published NTS trip rates times population, so London's row and the England-outside-London total constrain the frame's trip level and only the split between the eight other regions is new information. BUS01 counts boardings where buses run; the model counts trips where people live (microcosm#1207). The region's residents' other local bus trips stand for the boardings on its buses; London residents' trips on buses outside London fall in no region row. Its uprating_index (dft.bus01.stage_pricing_year) holds the row at the fiscal year the stage prices boardings per trip from and refuses a row resolved to another year."
+        },
+        "axiom": {
+          "metric_name": "dft/bus_journeys/south_east",
+          "status": "pending",
+          "value_rule": "uk.transport.local_bus_boardings.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_journeys",
+        "source_measure_id": "passenger_journeys",
+        "layout_groupby_value_id": "south_east",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "dimensions": []
+      },
+      "uprating_index": "dft.bus01.stage_pricing_year",
+      "category_id": "dft.local_bus_journeys",
+      "label": "South East"
+    },
+    {
+      "target_id": "dft.bus_journeys.south_west",
+      "family": "dft_bus_journeys",
+      "geography_levels": [
+        "region"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.transport.local_bus_boardings.count",
+        "observation_basis": "fiscal_year_flow",
+        "filters": [
+          {
+            "concept": "uk.geography.region",
+            "equals": "SOUTH_WEST"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dft/bus_journeys/south_west",
+          "value_variable": "other_local_bus_boardings",
+          "filters": [
+            {
+              "variable": "region",
+              "operator": "==",
+              "value": "SOUTH_WEST"
+            }
+          ],
+          "notes": "DfT BUS01a local bus passenger journeys (boardings), year ending March 2025 (DfT's closing-year label fy2025; the compile reads it as FY2024-25, held at its own period). The frame carries NTS trips, not boardings: the measure is each household's trips on the series times the boardings per trip the lcfs stage priced it at. Those factors divide published boardings by published NTS trip rates times population, so London's row and the England-outside-London total constrain the frame's trip level and only the split between the eight other regions is new information. BUS01 counts boardings where buses run; the model counts trips where people live (microcosm#1207). The region's residents' other local bus trips stand for the boardings on its buses; London residents' trips on buses outside London fall in no region row. Its uprating_index (dft.bus01.stage_pricing_year) holds the row at the fiscal year the stage prices boardings per trip from and refuses a row resolved to another year."
+        },
+        "axiom": {
+          "metric_name": "dft/bus_journeys/south_west",
+          "status": "pending",
+          "value_rule": "uk.transport.local_bus_boardings.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_journeys",
+        "source_measure_id": "passenger_journeys",
+        "layout_groupby_value_id": "south_west",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "dimensions": []
+      },
+      "uprating_index": "dft.bus01.stage_pricing_year",
+      "category_id": "dft.local_bus_journeys",
+      "label": "South West"
     },
     {
       "target_id": "obr.fuel_duties_cars",
@@ -17032,7 +17443,7 @@
               "map_to": "benunit"
             }
           ],
-          "notes": "Total UC expenditure: the sum of the OBR EFO welfare-cap cells (universal_credit_in_cap + universal_credit_outside_cap), bound at the calendar-2025 window of the two cells' fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window over the two-concept selector, one series per concept) so the total and its two components share one basis (Vahid's review of microcosm#1006, item 3) against the model's annual award after the benefit cap and deductions at policy year 2025, UK incl. Northern Ireland. The split rows stay excluded: the model cannot attribute spend to the welfare-cap concept (microcosm#757). Cash advances and third-party payments are not modelled (#882). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. The Chronicle fact still carries the UK code K02000001."
+          "notes": "Total UC expenditure: the sum of the OBR EFO welfare-cap cells (universal_credit_in_cap + universal_credit_outside_cap), bound at the calendar-2025 window of the two cells' fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window over the two-concept selector, one series per concept) so the total and its two components share one basis (Vahid's review of microcosm#1006, item 3) against the model's annual award after the benefit cap and deductions at policy year 2025, UK incl. Northern Ireland. The split rows stay excluded: the model cannot attribute spend to the welfare-cap concept (microcosm#757). Cash advances and third-party payments are not modelled (#882). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. Since the abf0921 re-pin the Chronicle fact carries the Great Britain code K03000001 (microcosm#1300)."
         },
         "axiom": {
           "metric_name": "obr/universal_credit",
@@ -19333,7 +19744,8 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "groupby_variable": "total_income",
+          "groupby_variable": "total_income_after_loss_relief",
+          "band_filter_dimension": "total_income",
           "notes": "Bound at the 2025 calibration period as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections (3/12 and 9/12; value_operation calendar_year_window), from the Income Tax liabilities statistics of 15 July 2026, HMRC's own projection of the 2023-24 SPI base with ONS population projections and OBR March 2026 assumptions. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the calibration binds at calendar 2025 and facts published by tax year use the months to the end of it. Banded by person-level total income on the publisher's eleven bands (30-50k, 50-100k and 200-500k are single bands here; 1m+ splits at 2m); the all-ranges row carries no band and stays out of the fan-out.",
           "filters": [
             {
@@ -19377,10 +19789,11 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/itl_total_income_income_band",
-          "value_variable": "total_income",
+          "value_variable": "total_income_after_loss_relief",
           "from_entity": "person",
           "map_to": "household",
-          "groupby_variable": "total_income",
+          "groupby_variable": "total_income_after_loss_relief",
+          "band_filter_dimension": "total_income",
           "notes": "Bound at the 2025 calibration period as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections (3/12 and 9/12; value_operation calendar_year_window), from the Income Tax liabilities statistics of 15 July 2026, HMRC's own projection of the 2023-24 SPI base with ONS population projections and OBR March 2026 assumptions. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the calibration binds at calendar 2025 and facts published by tax year use the months to the end of it. Banded by person-level total income on the publisher's eleven bands (30-50k, 50-100k and 200-500k are single bands here; 1m+ splits at 2m); the all-ranges row carries no band and stays out of the fan-out."
         },
         "axiom": {
@@ -19420,7 +19833,8 @@
           "value_variable": "income_tax",
           "from_entity": "person",
           "map_to": "household",
-          "groupby_variable": "total_income",
+          "groupby_variable": "total_income_after_loss_relief",
+          "band_filter_dimension": "total_income",
           "notes": "Bound at the 2025 calibration period as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections (3/12 and 9/12; value_operation calendar_year_window), from the Income Tax liabilities statistics of 15 July 2026, HMRC's own projection of the 2023-24 SPI base with ONS population projections and OBR March 2026 assumptions. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the calibration binds at calendar 2025 and facts published by tax year use the months to the end of it. Banded by person-level total income on the publisher's eleven bands (30-50k, 50-100k and 200-500k are single bands here; 1m+ splits at 2m); the all-ranges row carries no band and stays out of the fan-out."
         },
         "axiom": {
@@ -19595,7 +20009,8 @@
           "value_variable": "savings_interest_income",
           "from_entity": "person",
           "map_to": "household",
-          "groupby_variable": "total_income",
+          "groupby_variable": "total_income_after_loss_relief",
+          "band_filter_dimension": "total_income",
           "notes": "Taxable interest from banks and building societies of taxpayers by total-income band (SPI Table 3.7; ISA interest excluded), the taxpayer-concept anchor microcosm#866 asked for in place of the ONS D.41 row. Banded by person-level total income; band edges come from the fact dimension.",
           "filters": [
             {
@@ -19649,7 +20064,8 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/savings_interest_income_count_income_band",
-          "groupby_variable": "total_income",
+          "groupby_variable": "total_income_after_loss_relief",
+          "band_filter_dimension": "total_income",
           "filters": [
             {
               "variable": "savings_interest_income",
@@ -19721,12 +20137,12 @@
               "value": 0
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 12570
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 15000
             }
@@ -19797,12 +20213,12 @@
               "value": 0
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 15000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 20000
             }
@@ -19873,12 +20289,12 @@
               "value": 0
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 20000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 30000
             }
@@ -19949,12 +20365,12 @@
               "value": 0
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 30000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 40000
             }
@@ -20025,12 +20441,12 @@
               "value": 0
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 40000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 50000
             }
@@ -20101,12 +20517,12 @@
               "value": 0
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 50000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 70000
             }
@@ -20177,12 +20593,12 @@
               "value": 0
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 70000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 100000
             }
@@ -20253,12 +20669,12 @@
               "value": 0
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 100000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 150000
             }
@@ -20329,12 +20745,12 @@
               "value": 0
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 150000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 200000
             }
@@ -20400,7 +20816,7 @@
               "value": 0
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 200000
             }
@@ -20461,17 +20877,17 @@
           "metric_name": "hmrc/spi_region/total_income_12570_15000",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 12570
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 15000
             }
           ],
-          "value_variable": "total_income",
+          "value_variable": "total_income_after_loss_relief",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 12,570 to 15,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -20527,17 +20943,17 @@
           "metric_name": "hmrc/spi_region/total_income_15000_20000",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 15000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 20000
             }
           ],
-          "value_variable": "total_income",
+          "value_variable": "total_income_after_loss_relief",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 15,000 to 20,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -20593,17 +21009,17 @@
           "metric_name": "hmrc/spi_region/total_income_20000_30000",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 20000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 30000
             }
           ],
-          "value_variable": "total_income",
+          "value_variable": "total_income_after_loss_relief",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 20,000 to 30,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -20659,17 +21075,17 @@
           "metric_name": "hmrc/spi_region/total_income_30000_40000",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 30000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 40000
             }
           ],
-          "value_variable": "total_income",
+          "value_variable": "total_income_after_loss_relief",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 30,000 to 40,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -20725,17 +21141,17 @@
           "metric_name": "hmrc/spi_region/total_income_40000_50000",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 40000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 50000
             }
           ],
-          "value_variable": "total_income",
+          "value_variable": "total_income_after_loss_relief",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 40,000 to 50,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -20791,17 +21207,17 @@
           "metric_name": "hmrc/spi_region/total_income_50000_70000",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 50000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 70000
             }
           ],
-          "value_variable": "total_income",
+          "value_variable": "total_income_after_loss_relief",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 50,000 to 70,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -20857,17 +21273,17 @@
           "metric_name": "hmrc/spi_region/total_income_70000_100000",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 70000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 100000
             }
           ],
-          "value_variable": "total_income",
+          "value_variable": "total_income_after_loss_relief",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 70,000 to 100,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -20923,17 +21339,17 @@
           "metric_name": "hmrc/spi_region/total_income_100000_150000",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 100000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 150000
             }
           ],
-          "value_variable": "total_income",
+          "value_variable": "total_income_after_loss_relief",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 100,000 to 150,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -20989,17 +21405,17 @@
           "metric_name": "hmrc/spi_region/total_income_150000_200000",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 150000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 200000
             }
           ],
-          "value_variable": "total_income",
+          "value_variable": "total_income_after_loss_relief",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 150,000 to 200,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -21050,12 +21466,12 @@
           "metric_name": "hmrc/spi_region/total_income_200000_plus",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 200000
             }
           ],
-          "value_variable": "total_income",
+          "value_variable": "total_income_after_loss_relief",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 200,000 and over, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -21111,12 +21527,12 @@
           "metric_name": "hmrc/spi_region/income_tax_12570_15000",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 12570
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 15000
             }
@@ -21177,12 +21593,12 @@
           "metric_name": "hmrc/spi_region/income_tax_15000_20000",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 15000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 20000
             }
@@ -21243,12 +21659,12 @@
           "metric_name": "hmrc/spi_region/income_tax_20000_30000",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 20000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 30000
             }
@@ -21309,12 +21725,12 @@
           "metric_name": "hmrc/spi_region/income_tax_30000_40000",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 30000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 40000
             }
@@ -21375,12 +21791,12 @@
           "metric_name": "hmrc/spi_region/income_tax_40000_50000",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 40000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 50000
             }
@@ -21441,12 +21857,12 @@
           "metric_name": "hmrc/spi_region/income_tax_50000_70000",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 50000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 70000
             }
@@ -21507,12 +21923,12 @@
           "metric_name": "hmrc/spi_region/income_tax_70000_100000",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 70000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 100000
             }
@@ -21573,12 +21989,12 @@
           "metric_name": "hmrc/spi_region/income_tax_100000_150000",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 100000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 150000
             }
@@ -21639,12 +22055,12 @@
           "metric_name": "hmrc/spi_region/income_tax_150000_200000",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 150000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 200000
             }
@@ -21700,7 +22116,7 @@
           "metric_name": "hmrc/spi_region/income_tax_200000_plus",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 200000
             }
@@ -27827,6 +28243,198 @@
       "value_operation": "calendar_year_window"
     },
     {
+      "target_id": "microcosm.high_value_homes.over_1m_by_region",
+      "family": "high_value_homes",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "calibration_lines": [
+        "local"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.household.tenure",
+            "in": [
+              "owned_outright",
+              "owned_with_mortgage"
+            ]
+          },
+          {
+            "concept": "uk.household.main_residence_value",
+            "operator": ">",
+            "value": 1000000,
+            "price_basis": "2026-04"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "high_value_homes_by_region/over_1m",
+          "value_variable": "owner_occupied_home_over_gbp_1m",
+          "notes": "One reference per area of the England-and-Wales region tier (microcosm#1301): the nine English regions at the derived resource's region level and Wales at country level (area_scope), each scoped on the frame by the household-region predicate the generator stamps into its reference metadata. owner_occupied_home_over_gbp_1m is a per-household indicator the measure resolver computes from the stored main_residence_value and tenure_type through high_value_home_mask, the predicate the local cells and the release gates share, at the frame-basis threshold; it never reads an engine-uprated value. Bound on the local line only (calibration_lines). Since microcosm#1095 the national spine reads main_residence_value off the regions' Land Registry knots too, but binding these rows there would move the national registry and solve while the knots' tails still place more homes in the top bands than the derived stock; that is left to microcosm#1112's follow-up."
+        },
+        "axiom": {
+          "metric_name": "high_value_homes_by_region/over_1m",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1m.v1"
+      },
+      "area_scope": {
+        "region": {
+          "gss_prefixes": [
+            "E",
+            "W"
+          ]
+        },
+        "country": {
+          "gss_prefixes": [
+            "E",
+            "W"
+          ]
+        }
+      },
+      "category_id": "microcosm.high_value_homes",
+      "label": "Owner-occupied homes valued over £1 million by region",
+      "selector_note": "The English region and Wales rows of the Microcosm-derived stock the constituency and local-authority cells bind (microcosm#1240, fix 2; uk/high_value_home_stock_facts.json), selected by the same record set and measured identically, so each row is the cross-grain control for its area cells and carries the stock of any cell a signed small-cell rule defers. Local line only (microcosm#1301): the national line and the release-cut certifier drop these rows right after the compile, before reconciliation and the measure exclusions, so the national registry is unchanged. Scotland and Northern Ireland have no Price Paid coverage."
+    },
+    {
+      "target_id": "microcosm.high_value_homes.over_1_5m_by_region",
+      "family": "high_value_homes",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "calibration_lines": [
+        "local"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.household.tenure",
+            "in": [
+              "owned_outright",
+              "owned_with_mortgage"
+            ]
+          },
+          {
+            "concept": "uk.household.main_residence_value",
+            "operator": ">",
+            "value": 1500000,
+            "price_basis": "2026-04"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "high_value_homes_by_region/over_1_5m",
+          "value_variable": "owner_occupied_home_over_gbp_1_5m",
+          "notes": "One reference per area of the England-and-Wales region tier (microcosm#1301): the nine English regions at the derived resource's region level and Wales at country level (area_scope), each scoped on the frame by the household-region predicate the generator stamps into its reference metadata. owner_occupied_home_over_gbp_1_5m is a per-household indicator the measure resolver computes from the stored main_residence_value and tenure_type through high_value_home_mask, the predicate the local cells and the release gates share, at the frame-basis threshold; it never reads an engine-uprated value. Bound on the local line only (calibration_lines). Since microcosm#1095 the national spine reads main_residence_value off the regions' Land Registry knots too, but binding these rows there would move the national registry and solve while the knots' tails still place more homes in the top bands than the derived stock; that is left to microcosm#1112's follow-up."
+        },
+        "axiom": {
+          "metric_name": "high_value_homes_by_region/over_1_5m",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1_5m.v1"
+      },
+      "area_scope": {
+        "region": {
+          "gss_prefixes": [
+            "E",
+            "W"
+          ]
+        },
+        "country": {
+          "gss_prefixes": [
+            "E",
+            "W"
+          ]
+        }
+      },
+      "category_id": "microcosm.high_value_homes",
+      "label": "Owner-occupied homes valued over £1.5 million by region",
+      "selector_note": "The English region and Wales rows of the Microcosm-derived stock the constituency and local-authority cells bind (microcosm#1240, fix 2; uk/high_value_home_stock_facts.json), selected by the same record set and measured identically, so each row is the cross-grain control for its area cells and carries the stock of any cell a signed small-cell rule defers. Local line only (microcosm#1301): the national line and the release-cut certifier drop these rows right after the compile, before reconciliation and the measure exclusions, so the national registry is unchanged. Scotland and Northern Ireland have no Price Paid coverage."
+    },
+    {
+      "target_id": "microcosm.high_value_homes.over_2m_by_region",
+      "family": "high_value_homes",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "calibration_lines": [
+        "local"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.household.tenure",
+            "in": [
+              "owned_outright",
+              "owned_with_mortgage"
+            ]
+          },
+          {
+            "concept": "uk.household.main_residence_value",
+            "operator": ">",
+            "value": 2000000,
+            "price_basis": "2026-04"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "high_value_homes_by_region/over_2m",
+          "value_variable": "owner_occupied_home_over_gbp_2m",
+          "notes": "One reference per area of the England-and-Wales region tier (microcosm#1301): the nine English regions at the derived resource's region level and Wales at country level (area_scope), each scoped on the frame by the household-region predicate the generator stamps into its reference metadata. owner_occupied_home_over_gbp_2m is a per-household indicator the measure resolver computes from the stored main_residence_value and tenure_type through high_value_home_mask, the predicate the local cells and the release gates share, at the frame-basis threshold; it never reads an engine-uprated value. Bound on the local line only (calibration_lines). Since microcosm#1095 the national spine reads main_residence_value off the regions' Land Registry knots too, but binding these rows there would move the national registry and solve while the knots' tails still place more homes in the top bands than the derived stock; that is left to microcosm#1112's follow-up."
+        },
+        "axiom": {
+          "metric_name": "high_value_homes_by_region/over_2m",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_2m.v1"
+      },
+      "area_scope": {
+        "region": {
+          "gss_prefixes": [
+            "E",
+            "W"
+          ]
+        },
+        "country": {
+          "gss_prefixes": [
+            "E",
+            "W"
+          ]
+        }
+      },
+      "category_id": "microcosm.high_value_homes",
+      "label": "Owner-occupied homes valued over £2 million by region",
+      "selector_note": "The English region and Wales rows of the Microcosm-derived stock the constituency and local-authority cells bind (microcosm#1240, fix 2; uk/high_value_home_stock_facts.json), selected by the same record set and measured identically, so each row is the cross-grain control for its area cells and carries the stock of any cell a signed small-cell rule defers. Local line only (microcosm#1301): the national line and the release-cut certifier drop these rows right after the compile, before reconciliation and the measure exclusions, so the national registry is unchanged. Scotland and Northern Ireland have no Price Paid coverage."
+    },
+    {
       "target_id": "hmrc.self_employment_income.amount",
       "family": "hmrc",
       "geography_levels": [
@@ -27848,7 +28456,7 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/self_employment_income/amount",
-          "value_variable": "self_employment_income",
+          "value_variable": "self_employment_income_after_loss_relief",
           "from_entity": "person",
           "map_to": "household",
           "filters": [
@@ -27913,7 +28521,7 @@
           "map_to": "household",
           "filters": [
             {
-              "variable": "self_employment_income",
+              "variable": "self_employment_income_after_loss_relief",
               "operator": "!=",
               "value": 0
             },
@@ -28499,13 +29107,19 @@
           "2025-10",
           "2025-11",
           "2025-12"
-        ]
+        ],
+        "dimensions": [
+          "payment_indicator"
+        ],
+        "dimension_values": {
+          "payment_indicator": "Yes"
+        }
       },
       "category_id": "dwp.universal_credit",
       "label": "Households by area",
       "value_operation": "monthly_window_average",
       "period_match_policy": "source_window",
-      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series (extracted 7 October 2026), the window the national UC rows use (microcosm#1123). The two sides are not yet one concept: this area extract carries no Payment Indicator, so it counts every household on UC, nil awards included (6.73m across Great Britain), while the national rows count paid claims (6.20m). The bridge to the GB caseload scales the area cells by one factor (0.921), which assumes the same nil-award share in every area, and the child bands keep their all-claims shares, so they sit between +2.8% (no children) and -5.1% (three or more) of the national paid rows. The fix is a paid-claims area series from Chronicle (microcosm#1198 review, must-fix 1; tracked on microcosm#736)."
+      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series, paid claims only (Payment Indicator Yes; extracted 15 October 2026, PolicyEngine/chronicle#339), the window and the scope the national UC rows use (microcosm#1123, #1300). Nil awards are outside both sides, so the bridge to the GB caseload compares paid claims with paid claims and its factor sits near one (it refuses a factor more than 2% from one), and the child bands keep their own paid-claims shares."
     },
     {
       "target_id": "dwp.uc.households_by_area_children_0",
@@ -28557,7 +29171,8 @@
         "source_concept": "dwp.uc_households",
         "source_measure_id": "universal_credit_households_by_children",
         "dimensions": [
-          "number_of_children"
+          "number_of_children",
+          "payment_indicator"
         ],
         "period_type": "month",
         "period_value": [
@@ -28575,14 +29190,15 @@
           "2025-12"
         ],
         "dimension_values": {
-          "number_of_children": 0
+          "number_of_children": 0,
+          "payment_indicator": "Yes"
         }
       },
       "category_id": "dwp.universal_credit",
       "label": "Households by area children 0",
       "value_operation": "monthly_window_average",
       "period_match_policy": "source_window",
-      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series (extracted 7 October 2026), the window the national UC rows use (microcosm#1123). The two sides are not yet one concept: this area extract carries no Payment Indicator, so it counts every household on UC, nil awards included (6.73m across Great Britain), while the national rows count paid claims (6.20m). The bridge to the GB caseload scales the area cells by one factor (0.921), which assumes the same nil-award share in every area, and the child bands keep their all-claims shares, so they sit between +2.8% (no children) and -5.1% (three or more) of the national paid rows. The fix is a paid-claims area series from Chronicle (microcosm#1198 review, must-fix 1; tracked on microcosm#736)."
+      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series, paid claims only (Payment Indicator Yes; extracted 15 October 2026, PolicyEngine/chronicle#339), the window and the scope the national UC rows use (microcosm#1123, #1300). Nil awards are outside both sides, so the bridge to the GB caseload compares paid claims with paid claims and its factor sits near one (it refuses a factor more than 2% from one), and the child bands keep their own paid-claims shares."
     },
     {
       "target_id": "dwp.uc.households_by_area_children_1",
@@ -28634,7 +29250,8 @@
         "source_concept": "dwp.uc_households",
         "source_measure_id": "universal_credit_households_by_children",
         "dimensions": [
-          "number_of_children"
+          "number_of_children",
+          "payment_indicator"
         ],
         "period_type": "month",
         "period_value": [
@@ -28652,14 +29269,15 @@
           "2025-12"
         ],
         "dimension_values": {
-          "number_of_children": 1
+          "number_of_children": 1,
+          "payment_indicator": "Yes"
         }
       },
       "category_id": "dwp.universal_credit",
       "label": "Households by area children 1",
       "value_operation": "monthly_window_average",
       "period_match_policy": "source_window",
-      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series (extracted 7 October 2026), the window the national UC rows use (microcosm#1123). The two sides are not yet one concept: this area extract carries no Payment Indicator, so it counts every household on UC, nil awards included (6.73m across Great Britain), while the national rows count paid claims (6.20m). The bridge to the GB caseload scales the area cells by one factor (0.921), which assumes the same nil-award share in every area, and the child bands keep their all-claims shares, so they sit between +2.8% (no children) and -5.1% (three or more) of the national paid rows. The fix is a paid-claims area series from Chronicle (microcosm#1198 review, must-fix 1; tracked on microcosm#736)."
+      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series, paid claims only (Payment Indicator Yes; extracted 15 October 2026, PolicyEngine/chronicle#339), the window and the scope the national UC rows use (microcosm#1123, #1300). Nil awards are outside both sides, so the bridge to the GB caseload compares paid claims with paid claims and its factor sits near one (it refuses a factor more than 2% from one), and the child bands keep their own paid-claims shares."
     },
     {
       "target_id": "dwp.uc.households_by_area_children_2",
@@ -28711,7 +29329,8 @@
         "source_concept": "dwp.uc_households",
         "source_measure_id": "universal_credit_households_by_children",
         "dimensions": [
-          "number_of_children"
+          "number_of_children",
+          "payment_indicator"
         ],
         "period_type": "month",
         "period_value": [
@@ -28729,14 +29348,15 @@
           "2025-12"
         ],
         "dimension_values": {
-          "number_of_children": 2
+          "number_of_children": 2,
+          "payment_indicator": "Yes"
         }
       },
       "category_id": "dwp.universal_credit",
       "label": "Households by area children 2",
       "value_operation": "monthly_window_average",
       "period_match_policy": "source_window",
-      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series (extracted 7 October 2026), the window the national UC rows use (microcosm#1123). The two sides are not yet one concept: this area extract carries no Payment Indicator, so it counts every household on UC, nil awards included (6.73m across Great Britain), while the national rows count paid claims (6.20m). The bridge to the GB caseload scales the area cells by one factor (0.921), which assumes the same nil-award share in every area, and the child bands keep their all-claims shares, so they sit between +2.8% (no children) and -5.1% (three or more) of the national paid rows. The fix is a paid-claims area series from Chronicle (microcosm#1198 review, must-fix 1; tracked on microcosm#736)."
+      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series, paid claims only (Payment Indicator Yes; extracted 15 October 2026, PolicyEngine/chronicle#339), the window and the scope the national UC rows use (microcosm#1123, #1300). Nil awards are outside both sides, so the bridge to the GB caseload compares paid claims with paid claims and its factor sits near one (it refuses a factor more than 2% from one), and the child bands keep their own paid-claims shares."
     },
     {
       "target_id": "dwp.uc.households_by_area_children_3plus",
@@ -28788,7 +29408,8 @@
         "source_concept": "dwp.uc_households",
         "source_measure_id": "universal_credit_households_by_children",
         "dimensions": [
-          "number_of_children"
+          "number_of_children",
+          "payment_indicator"
         ],
         "period_type": "month",
         "period_value": [
@@ -28810,7 +29431,8 @@
             3,
             4,
             "5 or more"
-          ]
+          ],
+          "payment_indicator": "Yes"
         }
       },
       "category_id": "dwp.universal_credit",
@@ -28819,22 +29441,25 @@
       "value_operands": [
         {
           "dimension_values": {
-            "number_of_children": 3
+            "number_of_children": 3,
+            "payment_indicator": "Yes"
           }
         },
         {
           "dimension_values": {
-            "number_of_children": 4
+            "number_of_children": 4,
+            "payment_indicator": "Yes"
           }
         },
         {
           "dimension_values": {
-            "number_of_children": "5 or more"
+            "number_of_children": "5 or more",
+            "payment_indicator": "Yes"
           }
         }
       ],
       "period_match_policy": "source_window",
-      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series (extracted 7 October 2026), the window the national UC rows use (microcosm#1123). The two sides are not yet one concept: this area extract carries no Payment Indicator, so it counts every household on UC, nil awards included (6.73m across Great Britain), while the national rows count paid claims (6.20m). The bridge to the GB caseload scales the area cells by one factor (0.921), which assumes the same nil-award share in every area, and the child bands keep their all-claims shares, so they sit between +2.8% (no children) and -5.1% (three or more) of the national paid rows. The fix is a paid-claims area series from Chronicle (microcosm#1198 review, must-fix 1; tracked on microcosm#736)."
+      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series, paid claims only (Payment Indicator Yes; extracted 15 October 2026, PolicyEngine/chronicle#339), the window and the scope the national UC rows use (microcosm#1123, #1300). Nil awards are outside both sides, so the bridge to the GB caseload compares paid claims with paid claims and its factor sits near one (it refuses a factor more than 2% from one), and the child bands keep their own paid-claims shares."
     },
     {
       "target_id": "ons.equiv_net_income_bhc",
@@ -31053,7 +31678,7 @@
       },
       "category_id": "microcosm.high_value_homes",
       "label": "Owner-occupied homes valued over £1 million",
-      "selector_note": "Microcosm-derived counts (microcosm#1240, fix 2): the latest non-bulk category A sale of every dwelling in HM Land Registry Price Paid Data since 1995, uprated by the local-authority and property-type UK HPI to the frame's calendar-2024 price basis, placed through the NSPL and the committed England-and-Wales atomic support, weighted by the census owner-occupied share (rescaled to the OBR costing note's 60 per cent owner-occupied control on the £2m+ stock) and a VOA stock-coverage correction. The threshold is stated at April 2026 prices and deflated to the basis with the England all-dwellings HPI; the frame reads the stored main_residence_value at the dataset period. Chronicle registers the inputs raw-only (chronicle#343); the counts are not Chronicle facts. Scotland and Northern Ireland have no Price Paid coverage, so the family is England and Wales."
+      "selector_note": "Microcosm-derived counts (microcosm#1240, fix 2): the latest non-bulk category A sale of every dwelling in HM Land Registry Price Paid Data since 1995, uprated by the local-authority and property-type UK HPI to the frame's calendar-2024 price basis, placed through the NSPL and the committed England-and-Wales atomic support, weighted by the census owner-occupied share (rescaled to the OBR costing note's 60 per cent owner-occupied control on the £2m+ stock) and a VOA stock-coverage correction. The threshold is stated at April 2026 prices and deflated to the basis with the England all-dwellings HPI; the frame reads the stored main_residence_value at the dataset period. Chronicle registers the inputs raw-only (chronicle#343); the counts are not Chronicle facts. Scotland and Northern Ireland have no Price Paid coverage, so the family is England and Wales. The English region and Wales rows of the same stock (microcosm.high_value_homes.over_1m_by_region) control these cells on the local line through the cross-grain rule (microcosm#1301)."
     },
     {
       "target_id": "microcosm.high_value_homes.over_1_5m",
@@ -31129,7 +31754,7 @@
       },
       "category_id": "microcosm.high_value_homes",
       "label": "Owner-occupied homes valued over £1.5 million",
-      "selector_note": "Microcosm-derived counts (microcosm#1240, fix 2): the latest non-bulk category A sale of every dwelling in HM Land Registry Price Paid Data since 1995, uprated by the local-authority and property-type UK HPI to the frame's calendar-2024 price basis, placed through the NSPL and the committed England-and-Wales atomic support, weighted by the census owner-occupied share (rescaled to the OBR costing note's 60 per cent owner-occupied control on the £2m+ stock) and a VOA stock-coverage correction. The threshold is stated at April 2026 prices and deflated to the basis with the England all-dwellings HPI; the frame reads the stored main_residence_value at the dataset period. Chronicle registers the inputs raw-only (chronicle#343); the counts are not Chronicle facts. Scotland and Northern Ireland have no Price Paid coverage, so the family is England and Wales."
+      "selector_note": "Microcosm-derived counts (microcosm#1240, fix 2): the latest non-bulk category A sale of every dwelling in HM Land Registry Price Paid Data since 1995, uprated by the local-authority and property-type UK HPI to the frame's calendar-2024 price basis, placed through the NSPL and the committed England-and-Wales atomic support, weighted by the census owner-occupied share (rescaled to the OBR costing note's 60 per cent owner-occupied control on the £2m+ stock) and a VOA stock-coverage correction. The threshold is stated at April 2026 prices and deflated to the basis with the England all-dwellings HPI; the frame reads the stored main_residence_value at the dataset period. Chronicle registers the inputs raw-only (chronicle#343); the counts are not Chronicle facts. Scotland and Northern Ireland have no Price Paid coverage, so the family is England and Wales. The English region and Wales rows of the same stock (microcosm.high_value_homes.over_1_5m_by_region) control these cells on the local line through the cross-grain rule (microcosm#1301)."
     },
     {
       "target_id": "microcosm.high_value_homes.over_2m",
@@ -31205,7 +31830,138 @@
       },
       "category_id": "microcosm.high_value_homes",
       "label": "Owner-occupied homes valued over £2 million",
-      "selector_note": "Microcosm-derived counts (microcosm#1240, fix 2): the latest non-bulk category A sale of every dwelling in HM Land Registry Price Paid Data since 1995, uprated by the local-authority and property-type UK HPI to the frame's calendar-2024 price basis, placed through the NSPL and the committed England-and-Wales atomic support, weighted by the census owner-occupied share (rescaled to the OBR costing note's 60 per cent owner-occupied control on the £2m+ stock) and a VOA stock-coverage correction. The threshold is stated at April 2026 prices and deflated to the basis with the England all-dwellings HPI; the frame reads the stored main_residence_value at the dataset period. Chronicle registers the inputs raw-only (chronicle#343); the counts are not Chronicle facts. Scotland and Northern Ireland have no Price Paid coverage, so the family is England and Wales."
+      "selector_note": "Microcosm-derived counts (microcosm#1240, fix 2): the latest non-bulk category A sale of every dwelling in HM Land Registry Price Paid Data since 1995, uprated by the local-authority and property-type UK HPI to the frame's calendar-2024 price basis, placed through the NSPL and the committed England-and-Wales atomic support, weighted by the census owner-occupied share (rescaled to the OBR costing note's 60 per cent owner-occupied control on the £2m+ stock) and a VOA stock-coverage correction. The threshold is stated at April 2026 prices and deflated to the basis with the England all-dwellings HPI; the frame reads the stored main_residence_value at the dataset period. Chronicle registers the inputs raw-only (chronicle#343); the counts are not Chronicle facts. Scotland and Northern Ireland have no Price Paid coverage, so the family is England and Wales. The English region and Wales rows of the same stock (microcosm.high_value_homes.over_2m_by_region) control these cells on the local line through the cross-grain rule (microcosm#1301)."
+    },
+    {
+      "target_id": "desnz.subnational.electricity_kwh",
+      "family": "domestic_energy",
+      "geography_levels": [
+        "local_authority"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.domestic_electricity_consumption.kwh"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "energy/electricity_kwh",
+          "value_variable": "domestic_electricity_kwh"
+        },
+        "axiom": {
+          "metric_name": "energy/electricity_kwh",
+          "status": "pending",
+          "value_rule": "uk.household.domestic_electricity_consumption.kwh"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "desnz",
+        "source_concept": "desnz.subnational.domestic_electricity_consumption"
+      },
+      "area_scope": {
+        "local_authority": {
+          "gss_prefixes": [
+            "E",
+            "W",
+            "S"
+          ]
+        }
+      },
+      "category_id": "desnz.domestic_energy",
+      "label": "Domestic electricity consumption (kWh)",
+      "uprating_index": "desnz.energy_trends.gb_domestic_level",
+      "selector_note": "DESNZ sub-national domestic electricity consumption by local authority, calendar 2024 (non-half-hourly meters read 31 January 2024 to 30 January 2025 and half-hourly meters over calendar 2024, both counted, as reported), levelled onto the lcfs stage's Energy Trends level by one Great Britain factor per fuel (desnz.energy_trends.gb_domestic_level): the cells keep DESNZ's split between authorities and bind as a distribution, with Northern Ireland's part of the UK level taken out at its share of DESNZ's sub-national domestic consumption (the Northern Ireland row, all domestic meters, read as published; microcosm#1278). The frame reads each household's stored electricity_consumption at the dataset period and turns it back into kWh at the stage's declared QEP prices. Local-authority grain only: the region rows are the authorities' sums, and DESNZ publishes no constituency cut (microcosm#1207)."
+    },
+    {
+      "target_id": "desnz.subnational.gas_kwh",
+      "family": "domestic_energy",
+      "geography_levels": [
+        "local_authority"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.domestic_gas_consumption.kwh"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "energy/gas_kwh",
+          "value_variable": "domestic_gas_kwh"
+        },
+        "axiom": {
+          "metric_name": "energy/gas_kwh",
+          "status": "pending",
+          "value_rule": "uk.household.domestic_gas_consumption.kwh"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "desnz",
+        "source_concept": "desnz.subnational.domestic_gas_consumption"
+      },
+      "area_scope": {
+        "local_authority": {
+          "gss_prefixes": [
+            "E",
+            "W",
+            "S"
+          ]
+        }
+      },
+      "category_id": "desnz.domestic_energy",
+      "label": "Domestic gas consumption (kWh)",
+      "uprating_index": "desnz.energy_trends.gb_domestic_level",
+      "selector_note": "DESNZ sub-national domestic gas consumption by local authority, gas year 2024 (mid-May 2024 to mid-May 2025, weather-corrected; Chronicle stamps it gas_year since the abf0921 re-pin and Microcosm pairs gas year 2024 with calendar 2024, energy_pricing.SUBNATIONAL_PERIOD_TYPES, microcosm#1300), levelled onto the lcfs stage's Energy Trends level by one Great Britain factor per fuel (desnz.energy_trends.gb_domestic_level): the cells keep DESNZ's split between authorities and bind as a distribution, with Northern Ireland's part of the UK level taken out at its share of DESNZ's sub-national domestic consumption (the Northern Ireland row, all domestic meters, read as published; microcosm#1278). The frame reads each household's stored gas_consumption at the dataset period and turns it back into kWh at the stage's declared QEP prices. Local-authority grain only: the region rows are the authorities' sums, and DESNZ publishes no constituency cut (microcosm#1207)."
+    },
+    {
+      "target_id": "desnz.subnational.gas_connected_households",
+      "family": "domestic_energy",
+      "geography_levels": [
+        "local_authority"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.household.gas_connection",
+            "equals": "connected"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "energy/gas_connected_households",
+          "value_variable": "household_count",
+          "filters": [
+            {
+              "variable": "gas_consumption",
+              "operator": ">",
+              "value": 0,
+              "input_period": "dataset"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "energy/gas_connected_households",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
+      },
+      "ledger_selector": {
+        "source_measure_id": "households",
+        "record_set_spec_id": "uk.local_geography.households.by_local_authority.v1"
+      },
+      "area_scope": {
+        "local_authority": {
+          "gss_prefixes": [
+            "E",
+            "W",
+            "S"
+          ]
+        }
+      },
+      "category_id": "desnz.domestic_energy",
+      "label": "Gas-connected households",
+      "uprating_index": "desnz.subnational.gas_meter_share",
+      "selector_note": "Each authority's census households (the ons.census.households cell) times its DESNZ domestic gas meters over its domestic electricity meters, 2024 (desnz.subnational.gas_meter_share), the share the lcfs stage imposes by region, here by authority. A member of the census household partition (census_gas_connected_share): the household controls set its level, the meters its share. Orkney and Shetland have no mains gas and are signed deferrals; a gas-connected household is one whose stored gas_consumption is positive (microcosm#1207)."
     }
   ],
   "diagnostic_references": {
@@ -31253,7 +32009,7 @@
           "source_concept": "obr.state_pension",
           "entity_name": "person",
           "geography_level": "country",
-          "geography_id": "K02000001"
+          "geography_id": "K03000001"
         },
         "entity": "person",
         "measure": "obr/state_pension",
@@ -31264,7 +32020,7 @@
         },
         "assertion_policy": "allow_source_projection",
         "period_match_policy": "exact",
-        "ledger_fact_key": "ledger.aggregate_fact.v2:567e55f9f73df2808c1c4be8"
+        "ledger_fact_key": "ledger.aggregate_fact.v2:f686ddf63af027d5b1a76842"
       },
       "notes": "March 2026 OBR FY2025-26 State Pension forecast retained unchanged as diagnostic provenance (microcosm#1069 R4). It matches DWP's Great Britain total including pensioners paid outside the UK and, on that evidence, leaves out Northern Ireland, so it measures a different quantity from the bound resident level; never insert it into the fitting registry."
     },
@@ -31537,6 +32293,46 @@
         "ledger_fact_key": "ledger.aggregate_fact.v2:8d850c8ffb6eae8f4c71e611"
       },
       "notes": "DWP FOI2025/24990: PIP daily living enhanced-rate claimants in England and Wales at the end of January 2025 (1.608m), retained as diagnostic provenance beside the bound OBR line obr.pip (María's ruling of 2026-10-10, microcosm#1095). DWP has reported PIP for England and Wales only since executive competence moved to the Scottish Government on 1 April 2020, so Chronicle stamps the fact K04000001 (uk-data#490); under the Great Britain default pin the row matched no fact. Fitted with its sibling it calibrates to within 0.1%, but the two rows push the heaviest support family's weight from 1,061 to 1,241 times the positive median, over the uk_weight_ratio fence of 1,151 (experiments/1095-uk-data-ports-3-receipts.md). Never insert it into the fitting registry."
+    },
+    "dwp.uc.households_children_5_or_more": {
+      "attach_to_target": "dwp.uc.two_child_limit.households_5_children",
+      "metadata_prefix": "dwp_uc_children_5_or_more_diagnostic",
+      "value_unit": "count",
+      "required_period_type": "month",
+      "required_assertion": "observation",
+      "reference": {
+        "name": "dwp.uc.households_children_5_or_more",
+        "ledger_selector": {
+          "source_name": "dwp",
+          "source_concept": "dwp.uc_households",
+          "entity_name": "benefit_unit",
+          "geography_level": "country",
+          "geography_id": "K03000001",
+          "groupby_dimension": "dwp.uc_number_of_children",
+          "dimensions": [
+            "number_of_children",
+            "payment_indicator",
+            "child_entitlement"
+          ],
+          "dimension_values": {
+            "number_of_children": "5 or more",
+            "payment_indicator": "Yes",
+            "child_entitlement": "all"
+          },
+          "source_measure_id": "total_benefit_units"
+        },
+        "entity": "benunit",
+        "measure": "dwp/uc/claimants_with_5+_children",
+        "family": "dwp_universal_credit",
+        "period": "2025-04",
+        "metadata": {
+          "diagnostic_role": "count_with_families_outside_the_limit"
+        },
+        "assertion_policy": "observed_only",
+        "period_match_policy": "exact",
+        "ledger_fact_key": "ledger.aggregate_fact.v2:a195486577cc8d0200ff837b"
+      },
+      "notes": "DWP Stat-Xplore: Universal Credit households (paid benefit units) with five or more children in Great Britain in April 2025 (76,885), the month of the two-child-limit publication it sits beside. Retained as diagnostic provenance beside dwp.uc.two_child_limit.households_5_children (María's ruling of 2026-10-16, microcosm#1095). The count includes families outside the two-child limit, whose third and later children were all born before 6 April 2017 or who meet an exception; DWP's two-child-limit counts of households with five and with six or more children leave them out, 21,605 households fewer in April 2025. Fewer than 10 FRS source households carry that difference, so the calibration could reach the row only through the two-child-limit rows; it was held out from 2026-10-14 (microcosm#1271) and now leaves the fit. Rebind it as a target when the frame can carry large families outside the limit. Never insert it into the fitting registry."
     }
   },
   "hierarchy": {
@@ -31591,6 +32387,9 @@
       },
       "microcosm": {
         "label": "Microcosm derived statistics"
+      },
+      "desnz": {
+        "label": "Department for Energy Security and Net Zero"
       }
     },
     "categories": {
@@ -31777,6 +32576,14 @@
       "microcosm.high_value_homes": {
         "provider_id": "microcosm",
         "label": "High-value homes (HM Land Registry Price Paid, UK HPI, NSPL)"
+      },
+      "desnz.domestic_energy": {
+        "provider_id": "desnz",
+        "label": "Domestic energy consumption"
+      },
+      "dft.local_bus_journeys": {
+        "provider_id": "dft",
+        "label": "Local bus passenger journeys"
       }
     }
   }

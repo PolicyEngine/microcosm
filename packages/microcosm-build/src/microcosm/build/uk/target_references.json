@@ -54,6 +54,9 @@
       },
       "microcosm": {
         "label": "Microcosm derived statistics"
+      },
+      "desnz": {
+        "label": "Department for Energy Security and Net Zero"
       }
     },
     "categories": {
@@ -240,6 +243,14 @@
       "microcosm.high_value_homes": {
         "provider_id": "microcosm",
         "label": "High-value homes (HM Land Registry Price Paid, UK HPI, NSPL)"
+      },
+      "desnz.domestic_energy": {
+        "provider_id": "desnz",
+        "label": "Domestic energy consumption"
+      },
+      "dft.local_bus_journeys": {
+        "provider_id": "dft",
+        "label": "Local bus passenger journeys"
       }
     },
     "target_categories": {
@@ -252,6 +263,15 @@
       "dfi_ni.bus.passenger_receipts": "dfi_ni.local_bus_finances",
       "dft.bus_fare_receipts.england": "dft.local_bus_finances",
       "dft.bus_fare_receipts.london": "dft.local_bus_finances",
+      "dft.bus_journeys.east_midlands": "dft.local_bus_journeys",
+      "dft.bus_journeys.east_of_england": "dft.local_bus_journeys",
+      "dft.bus_journeys.london": "dft.local_bus_journeys",
+      "dft.bus_journeys.north_east": "dft.local_bus_journeys",
+      "dft.bus_journeys.north_west": "dft.local_bus_journeys",
+      "dft.bus_journeys.south_east": "dft.local_bus_journeys",
+      "dft.bus_journeys.south_west": "dft.local_bus_journeys",
+      "dft.bus_journeys.west_midlands": "dft.local_bus_journeys",
+      "dft.bus_journeys.yorkshire_and_the_humber": "dft.local_bus_journeys",
       "dft.bus_net_support.england": "dft.local_bus_finances",
       "dft.bus_net_support.london": "dft.local_bus_finances",
       "dwp.attendance_allowance.recipients_england": "dwp.attendance_allowance",
@@ -326,7 +346,6 @@
       "dwp.uc.households_children_2": "dwp.universal_credit",
       "dwp.uc.households_children_3": "dwp.universal_credit",
       "dwp.uc.households_children_4": "dwp.universal_credit",
-      "dwp.uc.households_children_5_or_more": "dwp.universal_credit",
       "dwp.uc.households_couple_no_children": "dwp.universal_credit",
       "dwp.uc.households_couple_with_children": "dwp.universal_credit",
       "dwp.uc.households_housing_element": "dwp.universal_credit",
@@ -441,6 +460,9 @@
       "mhclg.council_tax_stock.band_g": "mhclg.council_tax_stock",
       "mhclg.council_tax_stock.band_h": "mhclg.council_tax_stock",
       "mhclg.council_tax_stock.total": "mhclg.council_tax_stock",
+      "microcosm.high_value_homes.over_1_5m_by_region": "microcosm.high_value_homes",
+      "microcosm.high_value_homes.over_1m_by_region": "microcosm.high_value_homes",
+      "microcosm.high_value_homes.over_2m_by_region": "microcosm.high_value_homes",
       "nisra.households.northern_ireland": "ons.household_composition",
       "nithc.public_transport_support": "nithc.public_transport_finances",
       "nrs.households.scotland": "ons.household_composition",
@@ -590,6 +612,15 @@
       "dfi_ni.bus.passenger_receipts": "Translink passenger receipts",
       "dft.bus_fare_receipts.england": "England",
       "dft.bus_fare_receipts.london": "London",
+      "dft.bus_journeys.east_midlands": "East Midlands",
+      "dft.bus_journeys.east_of_england": "East of England",
+      "dft.bus_journeys.london": "London",
+      "dft.bus_journeys.north_east": "North East",
+      "dft.bus_journeys.north_west": "North West",
+      "dft.bus_journeys.south_east": "South East",
+      "dft.bus_journeys.south_west": "South West",
+      "dft.bus_journeys.west_midlands": "West Midlands",
+      "dft.bus_journeys.yorkshire_and_the_humber": "Yorkshire and The Humber",
       "dft.bus_net_support.england": "England",
       "dft.bus_net_support.london": "London",
       "dwp.attendance_allowance.recipients_england": "Attendance Allowance recipients, England",
@@ -664,7 +695,6 @@
       "dwp.uc.households_children_2": "Households children 2",
       "dwp.uc.households_children_3": "Households children 3",
       "dwp.uc.households_children_4": "Households children 4",
-      "dwp.uc.households_children_5_or_more": "Households children 5 or more",
       "dwp.uc.households_couple_no_children": "Households couple no children",
       "dwp.uc.households_couple_with_children": "Households couple with children",
       "dwp.uc.households_housing_element": "Households with housing entitlement",
@@ -779,6 +809,9 @@
       "mhclg.council_tax_stock.band_g": "Band g",
       "mhclg.council_tax_stock.band_h": "Band h",
       "mhclg.council_tax_stock.total": "Total",
+      "microcosm.high_value_homes.over_1_5m_by_region": "Owner-occupied homes valued over \u00a31.5 million by region",
+      "microcosm.high_value_homes.over_1m_by_region": "Owner-occupied homes valued over \u00a31 million by region",
+      "microcosm.high_value_homes.over_2m_by_region": "Owner-occupied homes valued over \u00a32 million by region",
       "nisra.households.northern_ireland": "Households, Northern Ireland (Census 2021, rolled to 2025)",
       "nithc.public_transport_support": "Bus and rail support",
       "nrs.households.scotland": "Households, Scotland (NRS)",
@@ -927,6 +960,7 @@
     "latest_plateau",
     "count_x_mean",
     "calendar_year_window",
+    "calendar_year_window_scaled_by_ratio",
     "linear_combination",
     "monthly_window_average",
     "monthly_window_count_x_mean",
@@ -1080,7 +1114,36 @@
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection",
-      "value_operation": "calendar_year_window"
+      "value_operation": "calendar_year_window_scaled_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_name": "hmrc",
+          "source_record_id": [
+            "hmrc.stamp_taxes_2024_25.table_8a.individuals.fy2024.all_price_bands.receipts",
+            "hmrc.stamp_taxes_2024_25.table_8b.individuals.fy2024.all_price_bands.receipts"
+          ],
+          "period_type": "fiscal_year",
+          "period_value": 2024,
+          "expected_member_count": 2,
+          "label": "individuals' SDLT receipts, Tables 8a and 8b, 2024-25"
+        },
+        {
+          "role": "denominator",
+          "source_name": "hmrc",
+          "source_record_id": [
+            "hmrc.stamp_taxes_2024_25.table_8a.all_buyers.fy2024.all_price_bands.receipts",
+            "hmrc.stamp_taxes_2024_25.table_8b.all_buyers.fy2024.all_price_bands.receipts"
+          ],
+          "period_type": "fiscal_year",
+          "period_value": 2024,
+          "expected_member_count": 2,
+          "label": "all buyers' SDLT receipts, Tables 8a and 8b, 2024-25"
+        }
+      ]
     },
     {
       "name": "obr.attendance_allowance",
@@ -1089,7 +1152,7 @@
         "source_concept": "obr.attendance_allowance",
         "entity_name": "person",
         "geography_level": "country",
-        "geography_id": "K02000001"
+        "geography_id": "K04000001"
       },
       "entity": "person",
       "measure": "obr/attendance_allowance",
@@ -1109,7 +1172,7 @@
         "source_concept": "obr.carers_allowance",
         "entity_name": "person",
         "geography_level": "country",
-        "geography_id": "K02000001"
+        "geography_id": "K04000001"
       },
       "entity": "person",
       "measure": "obr/carers_allowance",
@@ -1168,7 +1231,7 @@
         "source_concept": "obr.incapacity_benefits",
         "entity_name": "person",
         "geography_level": "country",
-        "geography_id": "K02000001"
+        "geography_id": "K03000001"
       },
       "entity": "household",
       "measure": "obr/esa",
@@ -1188,7 +1251,7 @@
         "source_concept": "obr.housing_benefit",
         "entity_name": "person",
         "geography_level": "country",
-        "geography_id": "K02000001"
+        "geography_id": "K03000001"
       },
       "entity": "benunit",
       "measure": "obr/housing_benefit",
@@ -1208,7 +1271,7 @@
         "source_concept": "obr.jobseekers_allowance",
         "entity_name": "person",
         "geography_level": "country",
-        "geography_id": "K02000001"
+        "geography_id": "K03000001"
       },
       "entity": "benunit",
       "measure": "obr/jobseekers_allowance",
@@ -1228,7 +1291,7 @@
         "source_concept": "obr.pension_credit",
         "entity_name": "person",
         "geography_level": "country",
-        "geography_id": "K02000001"
+        "geography_id": "K03000001"
       },
       "entity": "benunit",
       "measure": "obr/pension_credit",
@@ -1248,7 +1311,7 @@
         "source_concept": "obr.dla_and_pip",
         "entity_name": "person",
         "geography_level": "country",
-        "geography_id": "K02000001"
+        "geography_id": "K04000001"
       },
       "entity": "person",
       "measure": "obr/pip",
@@ -1268,7 +1331,7 @@
         "source_concept": "obr.statutory_maternity_pay",
         "entity_name": "person",
         "geography_level": "country",
-        "geography_id": "K02000001"
+        "geography_id": "K03000001"
       },
       "entity": "person",
       "measure": "obr/statutory_maternity_pay",
@@ -1308,7 +1371,7 @@
         "source_concept": "obr.universal_credit_in_cap",
         "entity_name": "person",
         "geography_level": "country",
-        "geography_id": "K02000001"
+        "geography_id": "K03000001"
       },
       "entity": "benunit",
       "measure": "obr/universal_credit_in_cap",
@@ -1328,7 +1391,7 @@
         "source_concept": "obr.universal_credit_outside_cap",
         "entity_name": "person",
         "geography_level": "country",
-        "geography_id": "K02000001"
+        "geography_id": "K03000001"
       },
       "entity": "benunit",
       "measure": "obr/universal_credit_outside_cap",
@@ -1348,7 +1411,7 @@
         "source_concept": "obr.winter_fuel_payment",
         "entity_name": "person",
         "geography_level": "country",
-        "geography_id": "K02000001"
+        "geography_id": "K04000001"
       },
       "entity": "household",
       "measure": "obr/winter_fuel_allowance",
@@ -5784,53 +5847,6 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "dwp.uc.households_children_4",
-        "measure_kind": "prepared_column",
-        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-02\",\"2025-03\",\"2025-04\",\"2025-05\",\"2025-06\",\"2025-07\",\"2025-08\",\"2025-09\",\"2025-10\",\"2025-11\",\"2025-12\"]"
-      },
-      "period_match_policy": "source_window",
-      "value_operation": "monthly_window_average"
-    },
-    {
-      "name": "dwp.uc.households_children_5_or_more",
-      "ledger_selector": {
-        "source_name": "dwp",
-        "source_concept": "dwp.uc_households",
-        "groupby_dimension": "dwp.uc_number_of_children",
-        "dimensions": [
-          "number_of_children",
-          "payment_indicator",
-          "child_entitlement"
-        ],
-        "dimension_values": {
-          "number_of_children": "5 or more",
-          "payment_indicator": "Yes",
-          "child_entitlement": "all"
-        },
-        "source_measure_id": "total_benefit_units",
-        "period_type": "month",
-        "period_value": [
-          "2025-01",
-          "2025-02",
-          "2025-03",
-          "2025-04",
-          "2025-05",
-          "2025-06",
-          "2025-07",
-          "2025-08",
-          "2025-09",
-          "2025-10",
-          "2025-11",
-          "2025-12"
-        ],
-        "geography_level": "country",
-        "geography_id": "K03000001"
-      },
-      "entity": "benunit",
-      "measure": "dwp/uc/claimants_with_5+_children",
-      "family": "dwp_universal_credit",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "dwp.uc.households_children_5_or_more",
         "measure_kind": "prepared_column",
         "uk_uc_expected_source_months": "[\"2025-01\",\"2025-02\",\"2025-03\",\"2025-04\",\"2025-05\",\"2025-06\",\"2025-07\",\"2025-08\",\"2025-09\",\"2025-10\",\"2025-11\",\"2025-12\"]"
       },
@@ -23334,6 +23350,8 @@
           "repayment_plan": "plan_2",
           "borrower_status": "above_repayment_threshold"
         },
+        "period_type": "academic_year",
+        "period_value": 2024,
         "geography_level": "country",
         "geography_id": "E92000001"
       },
@@ -23345,7 +23363,9 @@
         "contract_target_id": "slc.borrowers.plan_2_above_threshold",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection"
+      "assertion_policy": "allow_source_projection",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
     },
     {
       "name": "slc.borrowers.plan_2_liable",
@@ -23357,6 +23377,8 @@
           "repayment_plan": "plan_2",
           "borrower_status": "liable_to_repay"
         },
+        "period_type": "academic_year",
+        "period_value": 2024,
         "geography_level": "country",
         "geography_id": "E92000001"
       },
@@ -23368,7 +23390,9 @@
         "contract_target_id": "slc.borrowers.plan_2_liable",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection"
+      "assertion_policy": "allow_source_projection",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
     },
     {
       "name": "slc.borrowers.plan_5_above_threshold",
@@ -23380,6 +23404,8 @@
           "repayment_plan": "plan_5",
           "borrower_status": "above_repayment_threshold"
         },
+        "period_type": "academic_year",
+        "period_value": 2024,
         "geography_level": "country",
         "geography_id": "E92000001"
       },
@@ -23391,7 +23417,9 @@
         "contract_target_id": "slc.borrowers.plan_5_above_threshold",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection"
+      "assertion_policy": "allow_source_projection",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
     },
     {
       "name": "slc.borrowers.plan_5_liable",
@@ -23403,6 +23431,8 @@
           "repayment_plan": "plan_5",
           "borrower_status": "liable_to_repay"
         },
+        "period_type": "academic_year",
+        "period_value": 2024,
         "geography_level": "country",
         "geography_id": "E92000001"
       },
@@ -23414,7 +23444,9 @@
         "contract_target_id": "slc.borrowers.plan_5_liable",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection"
+      "assertion_policy": "allow_source_projection",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
     },
     {
       "name": "slc.support.maintenance_loan_recipients",
@@ -23908,6 +23940,240 @@
         "measure_kind": "prepared_column",
         "observation_basis": "fiscal_year_flow"
       },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dft.bus_journeys.london",
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_journeys",
+        "source_measure_id": "passenger_journeys",
+        "layout_groupby_value_id": "london",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "dimensions": [],
+        "geography_level": "region",
+        "geography_id": "E12000007"
+      },
+      "entity": "household",
+      "measure": "dft/bus_journeys/london",
+      "family": "dft_bus_journeys",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dft.bus_journeys.london",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "uprating_index": "dft.bus01.stage_pricing_year",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dft.bus_journeys.north_east",
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_journeys",
+        "source_measure_id": "passenger_journeys",
+        "layout_groupby_value_id": "north_east",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "dimensions": [],
+        "geography_level": "region",
+        "geography_id": "E12000001"
+      },
+      "entity": "household",
+      "measure": "dft/bus_journeys/north_east",
+      "family": "dft_bus_journeys",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dft.bus_journeys.north_east",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "uprating_index": "dft.bus01.stage_pricing_year",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dft.bus_journeys.north_west",
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_journeys",
+        "source_measure_id": "passenger_journeys",
+        "layout_groupby_value_id": "north_west",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "dimensions": [],
+        "geography_level": "region",
+        "geography_id": "E12000002"
+      },
+      "entity": "household",
+      "measure": "dft/bus_journeys/north_west",
+      "family": "dft_bus_journeys",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dft.bus_journeys.north_west",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "uprating_index": "dft.bus01.stage_pricing_year",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dft.bus_journeys.yorkshire_and_the_humber",
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_journeys",
+        "source_measure_id": "passenger_journeys",
+        "layout_groupby_value_id": "yorkshire_and_the_humber",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "dimensions": [],
+        "geography_level": "region",
+        "geography_id": "E12000003"
+      },
+      "entity": "household",
+      "measure": "dft/bus_journeys/yorkshire_and_the_humber",
+      "family": "dft_bus_journeys",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dft.bus_journeys.yorkshire_and_the_humber",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "uprating_index": "dft.bus01.stage_pricing_year",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dft.bus_journeys.east_midlands",
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_journeys",
+        "source_measure_id": "passenger_journeys",
+        "layout_groupby_value_id": "east_midlands",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "dimensions": [],
+        "geography_level": "region",
+        "geography_id": "E12000004"
+      },
+      "entity": "household",
+      "measure": "dft/bus_journeys/east_midlands",
+      "family": "dft_bus_journeys",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dft.bus_journeys.east_midlands",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "uprating_index": "dft.bus01.stage_pricing_year",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dft.bus_journeys.west_midlands",
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_journeys",
+        "source_measure_id": "passenger_journeys",
+        "layout_groupby_value_id": "west_midlands",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "dimensions": [],
+        "geography_level": "region",
+        "geography_id": "E12000005"
+      },
+      "entity": "household",
+      "measure": "dft/bus_journeys/west_midlands",
+      "family": "dft_bus_journeys",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dft.bus_journeys.west_midlands",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "uprating_index": "dft.bus01.stage_pricing_year",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dft.bus_journeys.east_of_england",
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_journeys",
+        "source_measure_id": "passenger_journeys",
+        "layout_groupby_value_id": "east_of_england",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "dimensions": [],
+        "geography_level": "region",
+        "geography_id": "E12000006"
+      },
+      "entity": "household",
+      "measure": "dft/bus_journeys/east_of_england",
+      "family": "dft_bus_journeys",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dft.bus_journeys.east_of_england",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "uprating_index": "dft.bus01.stage_pricing_year",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dft.bus_journeys.south_east",
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_journeys",
+        "source_measure_id": "passenger_journeys",
+        "layout_groupby_value_id": "south_east",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "dimensions": [],
+        "geography_level": "region",
+        "geography_id": "E12000008"
+      },
+      "entity": "household",
+      "measure": "dft/bus_journeys/south_east",
+      "family": "dft_bus_journeys",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dft.bus_journeys.south_east",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "uprating_index": "dft.bus01.stage_pricing_year",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dft.bus_journeys.south_west",
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_journeys",
+        "source_measure_id": "passenger_journeys",
+        "layout_groupby_value_id": "south_west",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "dimensions": [],
+        "geography_level": "region",
+        "geography_id": "E12000009"
+      },
+      "entity": "household",
+      "measure": "dft/bus_journeys/south_west",
+      "family": "dft_bus_journeys",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dft.bus_journeys.south_west",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "uprating_index": "dft.bus01.stage_pricing_year",
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -24489,7 +24755,7 @@
         ],
         "entity_name": "person",
         "geography_level": "country",
-        "geography_id": "K02000001"
+        "geography_id": "K03000001"
       },
       "entity": "benunit",
       "measure": "obr/universal_credit",
@@ -46152,6 +46418,622 @@
       },
       "assertion_policy": "allow_source_projection",
       "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1m_by_region@E12000001",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000001"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1m_by_region@E12000001",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000001",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1m_by_region@E12000002",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000002"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1m_by_region@E12000002",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000002",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1m_by_region@E12000003",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000003"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1m_by_region@E12000003",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000003",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"YORKSHIRE\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1m_by_region@E12000004",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000004"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1m_by_region@E12000004",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1m_by_region@E12000005",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000005"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1m_by_region@E12000005",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000005",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WEST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1m_by_region@E12000006",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000006"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1m_by_region@E12000006",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000006",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_OF_ENGLAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1m_by_region@E12000007",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000007"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1m_by_region@E12000007",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000007",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"LONDON\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1m_by_region@E12000008",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000008"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1m_by_region@E12000008",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000008",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1m_by_region@E12000009",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000009"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1m_by_region@E12000009",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000009",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1m_by_region@W92000004",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1m.v1",
+        "geography_level": "country",
+        "geography_id": "W92000004"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1m_by_region@W92000004",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "W92000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WALES\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000001",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1_5m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000001"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1_5m_by_region@E12000001",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1_5m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000001",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000002",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1_5m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000002"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1_5m_by_region@E12000002",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1_5m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000002",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000003",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1_5m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000003"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1_5m_by_region@E12000003",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1_5m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000003",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"YORKSHIRE\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000004",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1_5m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000004"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1_5m_by_region@E12000004",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1_5m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000005",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1_5m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000005"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1_5m_by_region@E12000005",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1_5m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000005",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WEST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000006",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1_5m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000006"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1_5m_by_region@E12000006",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1_5m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000006",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_OF_ENGLAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000007",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1_5m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000007"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1_5m_by_region@E12000007",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1_5m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000007",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"LONDON\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000008",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1_5m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000008"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1_5m_by_region@E12000008",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1_5m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000008",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000009",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1_5m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000009"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1_5m_by_region@E12000009",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1_5m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000009",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_1_5m_by_region@W92000004",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1_5m.v1",
+        "geography_level": "country",
+        "geography_id": "W92000004"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_1_5m_by_region@W92000004",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_1_5m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "W92000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WALES\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_2m_by_region@E12000002",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_2m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000002"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_2m_by_region@E12000002",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_2m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000002",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_2m_by_region@E12000003",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_2m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000003"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_2m_by_region@E12000003",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_2m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000003",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"YORKSHIRE\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_2m_by_region@E12000004",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_2m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000004"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_2m_by_region@E12000004",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_2m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_2m_by_region@E12000005",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_2m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000005"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_2m_by_region@E12000005",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_2m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000005",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WEST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_2m_by_region@E12000006",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_2m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000006"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_2m_by_region@E12000006",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_2m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000006",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_OF_ENGLAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_2m_by_region@E12000007",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_2m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000007"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_2m_by_region@E12000007",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_2m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000007",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"LONDON\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_2m_by_region@E12000008",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_2m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000008"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_2m_by_region@E12000008",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_2m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000008",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "microcosm.high_value_homes.over_2m_by_region@E12000009",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_2m.v1",
+        "geography_level": "region",
+        "geography_id": "E12000009"
+      },
+      "entity": "household",
+      "measure": "microcosm.high_value_homes.over_2m_by_region@E12000009",
+      "family": "high_value_homes",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.high_value_homes.over_2m_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000009",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
     }
   ]
 }

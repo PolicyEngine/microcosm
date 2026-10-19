@@ -41,7 +41,9 @@ or `uv sync --all-packages --all-extras`. To keep both countries set up, point
 
 PR CI (`.github/workflows/test.yml`) has `lint`, `engine-free`, `engine-us`,
 `engine-uk`, `integration-uk`, and `wheels` jobs, plus the
-`select-countries` orchestration job.
+`select-countries` orchestration job. It runs for pull requests into any base
+branch, so a stacked pull request, whose base is another pull request's
+branch, gets the same jobs; pushes run it only for `main`.
 `tools/ci_test_plan.py` is the only authority for test-directory ownership, CI
 job assignment, country ownership, US timing-report categories, and
 changed-path country selection. Its `TEST_GROUPS` registry defines every valid
@@ -317,7 +319,11 @@ name. A new US lane that writes a release H5 must run the check where it records
 publisher runs no engine for a calibration release, so it requires the
 fiscal-refresh tool's `stored_inputs.json` and manifest `stored_inputs` block,
 and the ACS local-area `stored_inputs` gate, each naming the built-with engine
-(microcosm#1034). A source-enrichment publisher claim widens the range
+(microcosm#1034). The ACS local-area package stage also refuses a calibrated H5
+on which an SPM unit the built-with engine measures has no classified adult,
+and binds the `spm_measurement_composition` gate the publisher requires
+(microcosm#1263; `microcosm.build.us_runtime.spm_measurement_gate`).
+A source-enrichment publisher claim widens the range
 consumers accept, not what was checked: the bundle's
 `compatibility.claim_measurement` names the one version the probe measured.
 

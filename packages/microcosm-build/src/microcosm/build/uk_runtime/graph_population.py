@@ -473,7 +473,12 @@ class UKPropertyValueKernel(_PopulationKernel):
             spine_key=keys,
             region=household["region"].to_numpy(),
             tenure_type=household["tenure_type"].to_numpy(),
-            value=household["main_residence_value"].to_numpy(),
+            # The spine's regional values (microcosm#1112) keep the value they
+            # replaced; ranking on it keeps this node's draws unchanged.
+            value=property_localisation.main_residence_rank_basis(
+                household,
+                declared=bool(context.params.get("rank_basis_declared", False)),
+            ),
             weight=weights,
             stream=stream,
             support_copy=support,
@@ -1125,6 +1130,15 @@ def _property_localisation_nodes(
         0,
         int(seed),
     )
+    # The regional home values stage (microcosm#1112) keeps the value it
+    # replaced; the node must receive it to rank owners as it did before.
+    rank_basis_declared = (
+        "household",
+        property_localisation.RANK_BASIS_COLUMN,
+    ) in cells
+    rank_basis_inputs = (
+        (property_localisation.RANK_BASIS_COLUMN,) if rank_basis_declared else ()
+    )
     value = Node(
         id="uk.full.property.value",
         kernel=UKPropertyValueKernel.ref,
@@ -1134,7 +1148,12 @@ def _property_localisation_nodes(
                 "household",
                 tuple(
                     sorted(
-                        {*lineage_inputs, *_PROPERTY_VALUE_COLUMNS, "constituency_code"}
+                        {
+                            *lineage_inputs,
+                            *_PROPERTY_VALUE_COLUMNS,
+                            *rank_basis_inputs,
+                            "constituency_code",
+                        }
                     )
                 ),
             ),
@@ -1161,6 +1180,7 @@ def _property_localisation_nodes(
             "stream": stream,
             "support_stratum_lower": property_localisation.SUPPORT_STRATUM_LOWER,
             "method": property_localisation.METHOD_VERSION,
+            "rank_basis_declared": rank_basis_declared,
         },
         artifact_outputs=(ArtifactOutput("quantiles", PROPERTY_QUANTILE_TYPE),),
         description="Read each owner clone's home value off its constituency's uprated sale distribution at its region rank.",

@@ -31,6 +31,10 @@ from microcosm.build.uk_runtime.frs_spine import (
     FRS_LANDLORD_CARRIER_COLUMN,
     uc_gainful_self_employment,
 )
+from microcosm.build.uk_runtime.hmrc_income import (
+    LOSS_RELIEF_COLUMN,
+    self_employment_income_after_loss_relief,
+)
 from microcosm.build.uk_runtime.spi_rank_transport import (
     SPI_STAGE1_ANALOGUE_COLUMNS,
     SPI_TRANSPORT_FIT_NAME,
@@ -46,6 +50,7 @@ from microcosm.build.uk_runtime.spi_rank_transport import (
 from microcosm.build.uk_runtime.spi_support import (
     BASE_FRS_SUPPORT_CHANNEL,
     FRS_ONLY_SPI_FILL_INCOME_PREDICTOR_COLUMNS,
+    FRS_ONLY_SPI_FILL_OWNER_MANAGER_FLAGS,
     FRS_ONLY_SPI_FILL_PERSON_COLUMNS,
     HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN,
     SPI_HMRC_EMPLOYED_INCOME_COLUMN,
@@ -63,6 +68,9 @@ from microcosm.build.uk_runtime.spi_support import (
     SPI_HMRC_TOTAL_INVESTMENT_INCOME_COLUMN,
     SPI_HMRC_UNEMPLOYMENT_BENEFIT_INCOME_COLUMN,
     SPI_INCOME_QRF_OUTPUT_COLUMNS,
+    SPI_LOSS_DRAW_COLUMNS,
+    SPI_LOSSES_BROUGHT_FORWARD_DRAW_COLUMN,
+    SPI_PROFIT_BEFORE_LOSSES_DRAW_COLUMN,
     SPI_PROPERTY_FINANCE_COSTS_COLUMN,
     SPI_SYNTHETIC_SUPPORT_CHANNEL,
     UKSPISupportResult,
@@ -207,6 +215,9 @@ SPI_INCOME_UPRATING_VARIABLES = {
     "hmrc_spi_other_income": "miscellaneous_income",
     "hmrc_spi_state_pension_income": None,
     SPI_PROPERTY_FINANCE_COSTS_COLUMN: SPI_PROPERTY_FINANCE_COSTS_COLUMN,
+    # The year's profit and its losses brought forward move with profits.
+    SPI_PROFIT_BEFORE_LOSSES_DRAW_COLUMN: "self_employment_income",
+    SPI_LOSSES_BROUGHT_FORWARD_DRAW_COLUMN: "self_employment_income",
 }
 SPI_DONOR_SHA256 = "5ef829461060c91a2a47be59ad541d9b519fc3976d66ca80d4920f711bb96f66"
 SPI_DONOR_SIZE_BYTES = 141_323_762
@@ -339,6 +350,8 @@ SPI_INCOME_SOURCE_COLUMNS = {
     SPI_HMRC_OTHER_INCOME_COLUMN: ("OTHERINC",),
     SPI_HMRC_STATE_PENSION_INCOME_COLUMN: ("SRP",),
     SPI_PROPERTY_FINANCE_COSTS_COLUMN: ("LLIR_RESTRICT_AMT_TOT",),
+    SPI_PROFIT_BEFORE_LOSSES_DRAW_COLUMN: ("PROFITS", "CAPALL"),
+    SPI_LOSSES_BROUGHT_FORWARD_DRAW_COLUMN: ("LOSSBF",),
 }
 SPI_QRF_SOURCE_COLUMNS = {
     output: sources
@@ -351,7 +364,8 @@ SPI_DERIVED_POLICYENGINE_SOURCE_COLUMNS = {
 _DIRECT_SPI_OUTPUT_SOURCE_COLUMNS = {
     output: sources
     for output, sources in SPI_INCOME_SOURCE_COLUMNS.items()
-    if output not in {"employment_income", "self_employment_income"}
+    if output
+    not in {"employment_income", "self_employment_income", *SPI_LOSS_DRAW_COLUMNS}
 }
 #: SPI 2022-23 AGERANGE codes as whole-year bands ``[low, high)``: code 6 is
 #: "65 to 74" and code 7 "75 and over", drawn over 75 to 89 and the ONS
@@ -1115,6 +1129,7 @@ def impute_uk_spi_income_support(
         dtype=np.float64, copy=True
     )
     stage2_outputs, reviewed_absent = _stage2_outputs(person)
+    person = _owner_manager_flags_as_numbers(person)
     if (
         state_pension_age_guard is not None
         and state_pension_age_guard.base_channel_columns
@@ -1200,6 +1215,7 @@ def impute_uk_spi_income_support(
         raise ValueError("FRS-only stage-2 produced negative non-negative outputs.")
     for column in stage2_outputs:
         person.loc[spi_people, column] = stage2_draws[column].to_numpy()
+    person = _owner_manager_flags_from_draws(person, spi_people=spi_people)
     if (
         state_pension_age_guard is not None
         and state_pension_age_guard.spi_channel_columns
@@ -1219,8 +1235,11 @@ def impute_uk_spi_income_support(
     )
     person.loc[spi_people, "savings_interest_income"] = taxable_interest_draw + tax_free
     person = derive_hmrc_income_auxiliaries(person, row_mask=spi_people)
+    person = _move_losses_brought_forward_to_loss_relief(person, spi_people=spi_people)
     person = _refresh_disability_derived_inputs(person, spi_people=spi_people)
     person = _refresh_carer_take_up_input(person, spi_people=spi_people)
+    person = _refresh_esa_support_component(person, spi_people=spi_people)
+    person = _clear_trading_loss_beside_profit(person, spi_people=spi_people)
     person = _refresh_uc_start_up_period(person, spi_people=spi_people)
     person, gainful_self_employment = _refresh_uc_gainful_self_employment(
         person, spi_people=spi_people
@@ -1396,9 +1415,13 @@ def _resample_band_donor_leaves(
     # Restricted finance costs are a deduction the published total never held,
     # so they take no part in a record's band: the pools are cut on the income
     # leaves alone, and a drawn record's finance costs travel with its leaves
-    # (microcosm#1106).
+    # (microcosm#1106). The loss draws travel the same way: the published
+    # total holds the profit net of losses brought forward, which
+    # self_employment_income already carries (microcosm#1095).
     income_columns = [
-        column for column in columns if column != SPI_PROPERTY_FINANCE_COSTS_COLUMN
+        column
+        for column in columns
+        if column not in (SPI_PROPERTY_FINANCE_COSTS_COLUMN, *SPI_LOSS_DRAW_COLUMNS)
     ]
     income_factors = np.asarray(
         [float(uprating_factors[column]) for column in income_columns]
@@ -1724,6 +1747,13 @@ def _prepare_spi_donor(
                 numeric["PROFITS"] - numeric["CAPALL"] - numeric["LOSSBF"],
                 0.0,
             ),
+            # The year's profit before losses brought forward and the losses
+            # themselves, which the stage moves into loss_relief
+            # (microcosm#1095).
+            SPI_PROFIT_BEFORE_LOSSES_DRAW_COLUMN: np.maximum(
+                numeric["PROFITS"] - numeric["CAPALL"], 0.0
+            ),
+            SPI_LOSSES_BROUGHT_FORWARD_DRAW_COLUMN: np.maximum(numeric["LOSSBF"], 0.0),
         }
     )
     for output, sources in _DIRECT_SPI_OUTPUT_SOURCE_COLUMNS.items():
@@ -1974,6 +2004,14 @@ def derive_hmrc_income_auxiliaries(
             "HMRC non-negative accounting identity leaves contain negative values."
         )
 
+    if LOSS_RELIEF_COLUMN in person.columns:
+        # HMRC's earned income holds the profit after losses brought forward,
+        # which policyengine-uk keeps apart in loss_relief (microcosm#1095).
+        relief = pd.to_numeric(person.loc[mask, LOSS_RELIEF_COLUMN], errors="coerce")
+        numeric["self_employment_income"] = self_employment_income_after_loss_relief(
+            numeric["self_employment_income"].to_numpy(dtype=float),
+            relief.fillna(0.0).to_numpy(dtype=float),
+        )
     taxable_interest = (
         numeric["savings_interest_income"] - numeric["tax_free_savings_income"]
     )
@@ -2570,6 +2608,169 @@ def _refresh_carer_take_up_input(
     )
     _assign_spi_values(
         person, spi_people, "would_claim_carers_allowance", refilled, default=False
+    )
+    return person
+
+
+def _owner_manager_flags_as_numbers(person: pd.DataFrame) -> pd.DataFrame:
+    """Hold the owner-manager flags as 0 or 1 for the FRS-only fill to draw."""
+
+    for column in FRS_ONLY_SPI_FILL_OWNER_MANAGER_FLAGS:
+        if column in person.columns:
+            person[column] = person[column].astype(bool).astype(np.float64)
+    return person
+
+
+def _owner_manager_flags_from_draws(
+    person: pd.DataFrame, *, spi_people: pd.Series
+) -> pd.DataFrame:
+    """Store the drawn owner-manager inputs as the root stage does.
+
+    The fill's zero regime gate draws each flag as 0 or 1 on a redrawn row. The
+    root stage's rules then hold on every row: the person who stands as an
+    owner works in the company, its other inputs need an owner, and a company
+    carries on a trade or a property business, never both (microcosm#1095).
+    """
+
+    present = [c for c in FRS_ONLY_SPI_FILL_OWNER_MANAGER_FLAGS if c in person]
+    if not present:
+        return person
+    if len(present) != len(FRS_ONLY_SPI_FILL_OWNER_MANAGER_FLAGS):
+        raise ValueError(
+            "The owner-manager inputs are set together; the frame carries "
+            f"only {present}."
+        )
+    flags = {
+        column: pd.to_numeric(person[column], errors="coerce").to_numpy() > 0.5
+        for column in present
+    }
+    redrawn = spi_people.to_numpy(dtype=bool)
+    owner = flags["stands_as_sole_owner_or_partner_of_company"]
+    main = flags["owned_company_is_main_employment"] & owner
+    property_business = flags["owned_company_carries_on_property_business"] & main
+    trade = flags["owned_company_carries_on_trade"] & main & ~property_business
+    held = {
+        "stands_as_sole_owner_or_partner_of_company": owner,
+        "is_engaged_in_owned_company_trade": owner,
+        "owned_company_is_main_employment": main,
+        "owned_company_carries_on_trade": trade,
+        "owned_company_carries_on_property_business": property_business,
+    }
+    for column, values in held.items():
+        # FRS rows keep their root-stage answers; only redrawn rows move.
+        person[column] = np.where(redrawn, values, flags[column])
+    if "owned_company_income_share" in person:
+        share = pd.to_numeric(
+            person["owned_company_income_share"], errors="coerce"
+        ).to_numpy(dtype=float)
+        person["owned_company_income_share"] = np.where(redrawn & ~owner, 0.0, share)
+    return person
+
+
+def _refresh_esa_support_component(
+    person: pd.DataFrame, *, spi_people: pd.Series
+) -> pd.DataFrame:
+    """Return a redrawn row's ESA group to the engine's default.
+
+    The root stage reads the ESA group from the FRS benefits tab
+    (``esa_includes_support_component``); the SPI fill re-imputes the ESA
+    receipts on the redrawn rows from other FRS donors, so the twin's answer no
+    longer describes them. The flag returns to true, policyengine-uk's own
+    default for an award of one's own (microcosm#1095).
+    """
+
+    if "esa_includes_support_component" not in person.columns:
+        return person
+    _assign_spi_values(
+        person,
+        spi_people,
+        "esa_includes_support_component",
+        np.ones(int(spi_people.sum()), dtype=bool),
+        default=True,
+    )
+    return person
+
+
+#: The inputs the tape's losses brought forward move into: income tax relieves
+#: them against the profit (ITA 2007 s.83), Class 4 against its profits (SSCBA
+#: 1992 Sch 2 para 3).
+SPI_LOSS_RELIEF_COLUMNS = (LOSS_RELIEF_COLUMN, "ni_class_4_losses_brought_forward")
+
+
+def _move_losses_brought_forward_to_loss_relief(
+    person: pd.DataFrame, *, spi_people: pd.Series
+) -> pd.DataFrame:
+    """Move the tape's losses brought forward out of the profit, into loss_relief.
+
+    The chain draws ``self_employment_income`` net of losses brought forward,
+    as the tape's profits are, and then the year's profit before them and the
+    losses (LOSSBF). policyengine-uk relieves earlier losses itself: income
+    tax against ``loss_relief`` and Class 4 against
+    ``ni_class_4_losses_brought_forward``, while Universal Credit and HBAI read
+    the year's profit. So a drawn row's profit becomes the year's profit and
+    both inputs take its losses, held so that the profit after the relief is
+    the profit the chain drew: where that is positive the losses were all
+    relieved, so they are the gap; where it is zero they are at least the
+    profit. Runs after the HMRC aggregates, which read the profit net of the
+    relief either way, and drops the two draws (uk-data#528, microcosm#1095).
+    """
+
+    if SPI_LOSSES_BROUGHT_FORWARD_DRAW_COLUMN not in person.columns:
+        return person
+    rows = spi_people.reindex(person.index).fillna(False).to_numpy(dtype=bool)
+    net = (
+        pd.to_numeric(person.loc[rows, "self_employment_income"], errors="coerce")
+        .fillna(0.0)
+        .to_numpy(dtype=float)
+    )
+    profit = np.maximum(
+        pd.to_numeric(
+            person.loc[rows, SPI_PROFIT_BEFORE_LOSSES_DRAW_COLUMN], errors="coerce"
+        )
+        .fillna(0.0)
+        .to_numpy(dtype=float),
+        net,
+    )
+    losses = (
+        pd.to_numeric(
+            person.loc[rows, SPI_LOSSES_BROUGHT_FORWARD_DRAW_COLUMN], errors="coerce"
+        )
+        .fillna(0.0)
+        .to_numpy(dtype=float)
+    )
+    relief = np.where(net > 0.0, profit - net, np.maximum(losses, profit))
+    person.loc[rows, "self_employment_income"] = profit
+    for column in SPI_LOSS_RELIEF_COLUMNS:
+        if column not in person.columns:
+            person[column] = 0.0
+        person.loc[rows, column] = relief
+    return person.drop(columns=list(SPI_LOSS_DRAW_COLUMNS))
+
+
+def _clear_trading_loss_beside_profit(
+    person: pd.DataFrame, *, spi_people: pd.Series
+) -> pd.DataFrame:
+    """A redrawn row with a positive profit keeps no drawn trading loss.
+
+    policyengine-uk takes a trade's profit in ``self_employment_income`` and
+    the year's loss in ``trading_loss``, and the FRS rows never hold both
+    (uk-data#528). Stage 2 draws the loss from the FRS rows, and its forests
+    can mix a loss into a row the tape gives a profit, so the tape's profit
+    holds and the loss goes (microcosm#1095).
+    """
+
+    if "trading_loss" not in person.columns:
+        return person
+    profit = pd.to_numeric(
+        person.loc[spi_people, "self_employment_income"], errors="coerce"
+    ).fillna(0.0)
+    loss = pd.to_numeric(person.loc[spi_people, "trading_loss"], errors="coerce")
+    _assign_spi_values(
+        person,
+        spi_people,
+        "trading_loss",
+        np.where(profit.to_numpy() > 0.0, 0.0, loss.fillna(0.0).to_numpy()),
+        default=0.0,
     )
     return person
 

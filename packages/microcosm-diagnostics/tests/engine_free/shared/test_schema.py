@@ -153,9 +153,7 @@ def _uk_payload() -> dict:
                     "worst_target": "population@2024",
                     "worst_abs_relative_error": 0.0,
                     "loss_contribution": 0.0,
-                    "nonzero_households": 1,
-                    "nonzero_source_households": 1,
-                    "effective_sample_size": 1.0,
+                    "support_below_floor": True,
                 }
             ],
             "countries": [
@@ -248,6 +246,29 @@ def test_schema_8_round_trips_the_complete_uk_extension() -> None:
 
     assert isinstance(model, CalibrationDiagnosticsV8)
     assert json.loads(model.model_dump_json(exclude_defaults=True)) == payload
+
+
+def test_uk_area_fit_still_parses_legacy_support_figures() -> None:
+    # Released diagnostics carry the floor flag in place of an area's support
+    # figures (microcosm#1301); payloads written before still parse, and a
+    # row may carry neither.
+    payload = _uk_payload()
+    (area,) = payload["uk_diagnostics"]["weakest_areas_by_fit"]["bottom_by_fit"]
+    del area["support_below_floor"]
+    bare = parse_calibration_diagnostics(payload)
+    assert json.loads(bare.model_dump_json(exclude_defaults=True)) == payload
+
+    area.update(
+        nonzero_households=60,
+        nonzero_source_households=55,
+        effective_sample_size=52.5,
+    )
+    legacy = parse_calibration_diagnostics(payload)
+    assert json.loads(legacy.model_dump_json(exclude_defaults=True)) == payload
+
+    area["effective_sample_size"] = -1.0
+    with pytest.raises(ValidationError):
+        parse_calibration_diagnostics(payload)
 
 
 def test_every_declared_uk_record_forbids_undeclared_fields() -> None:

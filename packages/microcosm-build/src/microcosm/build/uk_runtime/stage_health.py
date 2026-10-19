@@ -258,7 +258,8 @@ def _energy_rake_gate(
     recomputed here from the vendored rows the stage declares (never taken
     from the receipt): each cell's ``shape_target`` must be the vendored NEED
     mean of the declared consumption year; each fuel's level block must be
-    the vendored DESNZ Energy Trends fiscal-year total, its ``factor`` that
+    the vendored DESNZ Energy Trends total over the stage's declared level
+    year (calendar 2024; microcosm#1113), its ``factor`` that
     total over the frame's pre-level total, and the levelled frame total the
     published one; each cell's ``target`` must be shape times factor; and,
     where the stage declares the published gas-connected share, every region
@@ -279,7 +280,9 @@ def _energy_rake_gate(
     presupposes the rake runs more sweeps than the window is long; a shorter
     series fails closed. The rake must have run in kWh with gas over gas-connected rows
     and no zero-current cell; a missing margin, block, tolerance or sweep
-    series fails closed.
+    series fails closed. A cell the rake started at its NEED mean because
+    every household in it drew no kWh must be one the stage declares in
+    ``zero_kwh_cells_at_need_mean`` (microcosm#1240).
 
     This is where NEED, DESNZ and the connection share are checked; the
     calibrated frame is held to the bound ONS 04.5.1 and 04.5.2 spend rows
@@ -294,6 +297,7 @@ def _energy_rake_gate(
         GAS_KWH,
         PRICE_DOMESTIC_ENERGY_KIND,
         declared_household_kwh_ceilings,
+        declared_zero_kwh_cells_at_need_mean,
         need_margins_from_facts,
         pricing_operation,
         published_energy_level,
@@ -543,6 +547,28 @@ def _energy_rake_gate(
             f"{stage}: {len(zero_cells)} NEED cell(s) had a zero current mean and "
             "could not be raked."
         )
+    # A cell started at its NEED mean because every household in it drew no
+    # kWh stands only where the stage declares it (microcosm#1240).
+    held_rule = declared_zero_kwh_cells_at_need_mean(declared)
+    held = receipt.get("cells_held_at_need_mean")
+    if held is None and held_rule is not None:
+        failures.append(
+            f"{stage}: the stage declares zero_kwh_cells_at_need_mean but the "
+            "energy_rake receipt carries no cells_held_at_need_mean."
+        )
+    held_entries = list(held or ())
+    for entry in held_entries:
+        entry = _mapping(entry, label=f"{stage}.cells_held_at_need_mean")
+        margin = str(entry.get("margin"))
+        cell = str(entry.get("cell"))
+        if cell.partition(":")[2] not in (held_rule or {}).get(margin, ()):
+            failures.append(
+                f"{stage}: {margin} cell {cell!r} was started at its NEED mean, "
+                "which the stage does not declare."
+            )
+    # The count only: a held cell can be a small one, so the details (which
+    # receipts may quote) never say which cell drew no kWh.
+    details["cells_held_at_need_mean"] = len(held_entries)
     if declared.get("gas_connected") == GAS_CONNECTED_PUBLISHED_METER_SHARE:
         connection = receipt.get("gas_connection")
         if (

@@ -25,6 +25,7 @@ from microcosm.build.uk_runtime.target_weights import (
 )
 from microcosm.diagnostics.schema import UKMeasuredRotatedHoldout
 from microcosm.frame import WeightKind
+from test_support.microcosm_build.uk_local_rowwise import COMMITTED_BINDING_NOW
 
 _IDS = [101, 102, 103, 104, 105]
 _AREAS = ["E001", "W001", "S001", "N001", "E002"]
@@ -65,9 +66,15 @@ _FAMILIES = ["census_households/constituency", "tenure/constituency"]
 def test_prepared_solve_binds_the_rule_computed_from_its_own_rows() -> None:
     problem = _problem()
     legacy = prepare_uk_full_solve(
-        _frame(), problem, bound_families=_FAMILIES, target_weight_rule="grain_equal"
+        _frame(),
+        problem,
+        bound_families=_FAMILIES,
+        target_weight_rule="grain_equal",
+        now=COMMITTED_BINDING_NOW,
     )
     assert legacy.target_rows is None
+    # The grain rules' weights carry no family: the floors are not checked.
+    assert legacy.family_loss_share_floor_receipt is None
     np.testing.assert_array_equal(
         legacy.target_loss_weights,
         uk_local_target_loss_weights(
@@ -76,7 +83,11 @@ def test_prepared_solve_binds_the_rule_computed_from_its_own_rows() -> None:
     )
     for rule in UK_LOCAL_ROW_METADATA_RULES:
         prepared = prepare_uk_full_solve(
-            _frame(), problem, bound_families=_FAMILIES, target_weight_rule=rule
+            _frame(),
+            problem,
+            bound_families=_FAMILIES,
+            target_weight_rule=rule,
+            now=COMMITTED_BINDING_NOW,
         )
         rows = prepared.target_rows
         assert rows is not None
@@ -88,6 +99,9 @@ def test_prepared_solve_binds_the_rule_computed_from_its_own_rows() -> None:
             prepared.target_loss_weights,
             uk_target_loss_weights_for_rows(rows, rule=rule),
         )
+        floors = prepared.family_loss_share_floor_receipt
+        assert floors is not None and floors["check_only"] is True
+        assert floors["families"]["domestic_energy"]["status"] == "absent"
     # One grain, two families: grain_family_equal halves the loss by family,
     # where grain_equal is uniform over the ten rows.
     family = prepare_uk_full_solve(
@@ -95,6 +109,7 @@ def test_prepared_solve_binds_the_rule_computed_from_its_own_rows() -> None:
         problem,
         bound_families=_FAMILIES,
         target_weight_rule="grain_family_equal",
+        now=COMMITTED_BINDING_NOW,
     )
     metrics = problem.target_frame["metric"].to_numpy()
     assert family.target_loss_weights[metrics == "households"].sum() == pytest.approx(
@@ -109,6 +124,7 @@ def test_holdout_weights_held_rows_through_the_carrier_and_is_schema_valid() -> 
         target_weight_rule="grain_family_equal",
         epochs=2,
         solve_seed=17,
+        now=COMMITTED_BINDING_NOW,
     )
     assert payload["target_weight_rule"] == "grain_family_equal"
     assert payload["n_folds"] == 5

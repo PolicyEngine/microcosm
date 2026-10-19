@@ -278,6 +278,30 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("household", "non_residential_property_value"),
         }
     ),
+    # Engine-free: the owners' region, tenure, value and wealth, the support
+    # copies the ranking spreads, and the source household the receipt counts
+    # distinct support by (microcosm#1112, microcosm#1095).
+    "regional_home_values": frozenset(
+        {
+            ("household", "region"),
+            ("household", "tenure_type"),
+            ("household", "main_residence_value"),
+            ("household", "property_wealth"),
+            ("household", "household_is_high_value_support_copy"),
+            ("household", "household_source_id"),
+        }
+    ),
+    # Engine-free: each kind's stock, the region that marks where SDLT
+    # applies and the source household the receipt counts distinct support by
+    # (uk-data#573, microcosm#1095).
+    "property_purchases": frozenset(
+        {
+            ("household", "region"),
+            ("household", "other_residential_property_value"),
+            ("household", "non_residential_property_value"),
+            ("household", "household_source_id"),
+        }
+    ),
     # The NTS band model materializes an engine predictor (household gross
     # income) over the whole frame, an open surface like the LCFS QRF.
     "nts_bus_travel": None,
@@ -384,6 +408,23 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("benunit", "would_claim_uc"),
         }
     ),
+    # The Move to UC claim draw reads each unit's legacy and Universal Credit
+    # receipts and its would_claim_uc, after their last writers, and the source
+    # household its receipt counts distinct support by (uk-data#534,
+    # microcosm#1095).
+    "uc_legacy_closure_take_up": frozenset(
+        {
+            ("person", "child_tax_credit_reported"),
+            ("person", "working_tax_credit_reported"),
+            ("person", "housing_benefit_reported"),
+            ("person", "esa_income_reported"),
+            ("person", "income_support_reported"),
+            ("person", "jsa_income_reported"),
+            ("person", "universal_credit_reported"),
+            ("benunit", "would_claim_uc"),
+            ("household", "household_source_id"),
+        }
+    ),
     "uc_deduction_attributes": frozenset({("household", "region")}),
     # The support splits copy whole households, so their surfaces are open.
     "high_value_home_support": None,
@@ -479,6 +520,9 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
         }
     ),
     "salary_sacrifice": None,
+    # One engine materialization of private-school attendance over the whole
+    # frame at its weights: an open surface (microcosm#1095).
+    "private_school_attendance": None,
     "student_loans": frozenset(
         {
             ("person", "age"),
@@ -486,6 +530,8 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("person", "student_loan_repayments"),
             ("person", "current_education"),
             ("person", "highest_education"),
+            ("person", "reports_outstanding_student_loan"),
+            ("person", "age_left_full_time_education"),
             ("household", "region"),
         }
     ),
@@ -525,6 +571,7 @@ class _Cell:
 _ROOT_PERSON_STRING = {"gender", "marital_status"}
 _ROOT_PERSON_BOOL = {
     "is_household_head",
+    "esa_includes_support_component",
     "is_benunit_head",
     "is_parent",
     "is_blind",
@@ -534,6 +581,11 @@ _ROOT_PERSON_BOOL = {
     "uc_is_in_startup_period",
     "uc_is_in_gainful_self_employment",
     "reports_rent_from_other_property",
+    "stands_as_sole_owner_or_partner_of_company",
+    "is_engaged_in_owned_company_trade",
+    "owned_company_is_main_employment",
+    "owned_company_carries_on_trade",
+    "owned_company_carries_on_property_business",
     "would_claim_carers_allowance",
 }
 _ROOT_PERSON_INT = {"age"}
@@ -669,6 +721,8 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("person", "adult_ema", "float64"),
         _Cell("person", "child_ema", "float64"),
         _Cell("person", "receives_benefits_in_own_right", "bool"),
+        _Cell("person", "reports_outstanding_student_loan", "bool"),
+        _Cell("person", "age_left_full_time_education", "int64"),
     ),
     "frs_legacy_proxies": _cells(
         "person",
@@ -769,6 +823,24 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
     "property_components": _cells(
         "person",
         ("property_income", "property_finance_costs", "property_rental_income"),
+    ),
+    # The region's Land Registry values on the spine, and the value they
+    # replace for the dense node to rank on (microcosm#1112).
+    "regional_home_values": _cells(
+        "household",
+        (
+            "main_residence_value",
+            "property_wealth",
+            "main_residence_value_rank_basis",
+        ),
+    ),
+    # Annual purchases from each kind of property stock (uk-data#573).
+    "property_purchases": _cells(
+        "household",
+        (
+            "additional_residential_property_purchased",
+            "non_residential_property_purchased",
+        ),
     ),
     "lcfs_consumption": (
         *_cells(
@@ -925,6 +997,9 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("benunit", "frs_benunit_capital", "float64"),
         _Cell("benunit", "would_claim_uc", "bool"),
     ),
+    "uc_legacy_closure_take_up": (
+        _Cell("benunit", "would_claim_uc_at_legacy_closure", "bool"),
+    ),
     "pension_credit_take_up": (
         _Cell("benunit", "would_claim_pc", "bool"),
         _Cell("benunit", "has_mixed_age_couple_pension_credit_saving", "bool"),
@@ -983,6 +1058,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         ),
     ),
     "student_loans": (_Cell("person", "student_loan_plan", "string"),),
+    "private_school_attendance": (_Cell("person", "attends_private_school", "bool"),),
     "age_tail": (_Cell("person", "age", "int64"),),
 }
 
@@ -1038,6 +1114,10 @@ _HMRC_SPI_FLOAT_COLUMNS = (
     "jsa_income_reported",
     "esa_contrib_reported",
     "esa_income_reported",
+    "trading_loss",
+    "loss_relief",
+    "ni_class_4_losses_brought_forward",
+    "owned_company_income_share",
     "hmrc_spi_pay",
     "hmrc_spi_unemployment_benefit_income",
     "hmrc_spi_incapacity_benefit_income",
@@ -1062,9 +1142,19 @@ _HMRC_SPI_HIDDEN_BOOL = (
     # uk-data#525: a redrawn row's gainful self-employment follows its drawn
     # incomes.
     "uc_is_in_gainful_self_employment",
+    # A redrawn row's ESA comes from another FRS donor, so its group returns
+    # to the engine's default for an award of one's own (microcosm#1095).
+    "esa_includes_support_component",
     # A redrawn row drops its FRS twin's landlord carrier: its property income
     # is an SPI donor's (microcosm#1095).
     "reports_rent_from_other_property",
+    # The stage-2 fill draws a redrawn row's owner-manager flags beside its
+    # incomes (microcosm#1095).
+    "stands_as_sole_owner_or_partner_of_company",
+    "is_engaged_in_owned_company_trade",
+    "owned_company_is_main_employment",
+    "owned_company_carries_on_trade",
+    "owned_company_carries_on_property_business",
     # The rows stage 1 drew, read by property_components (microcosm#840).
     "person_is_spi_income_recipient",
 )

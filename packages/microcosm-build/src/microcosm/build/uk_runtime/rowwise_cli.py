@@ -22,9 +22,9 @@ import json
 import subprocess
 import uuid
 from collections.abc import Mapping
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -38,7 +38,11 @@ from microcosm.build.logbook_adoption import (
     record_terminal_attempt,
     write_error_receipt,
 )
-from microcosm.build.uk_runtime.dataset_size import UKSizeL2, uk_size_l2
+from microcosm.build.uk_runtime.dataset_size import (
+    UKSizeL2,
+    _check_initial_lambda,
+    uk_size_l2,
+)
 from microcosm.build.uk_runtime.ledger_targets import _spec_geography
 from microcosm.build.uk_runtime.local_doctrine import (
     UK_LOCAL_SIZE_BASELINE_PI_FLOOR,
@@ -58,6 +62,9 @@ from microcosm.build.uk_runtime.rowwise_posture import (
     uk_rowwise_posture,
 )
 from microcosm.calibrate import TargetRegistry
+
+if TYPE_CHECKING:
+    from microcosm.build.uk_runtime.weighted_integrity import UKReviewedExclusion
 
 __all__ = [
     "AREA_SUPPORT_FILENAME",
@@ -82,10 +89,14 @@ __all__ = [
     "UK_CANDIDATE_PIPELINE",
     "candidate_clone_counts_argument",
     "candidate_identity_digest",
+    "check_solve_reuse_arguments",
     "doctrine_bounds",
+    "earliest_expiry",
     "git_commit",
     "git_dirty",
     "gate_failures_by_criticality",
+    "gate_clock_conflicts",
+    "gate_only_signoffs",
     "is_release_blocking",
     "local_vintage_census",
     "json_text",
@@ -99,6 +110,7 @@ __all__ = [
     "release_verdict",
     "resolve_role_arguments",
     "size_doctrine_drift",
+    "solve_reuse_windows",
     "rowwise_parameters",
     "validate_cli_args",
 ]
@@ -289,7 +301,7 @@ def rowwise_parameters(args: argparse.Namespace, *, source_year: int) -> dict[st
         "engine_blocks": int(args.engine_blocks),
         "target_weight_rule": args.target_weight_rule,
         "release_candidate": bool(args.release_candidate),
-        "skip_holdout": bool(args.skip_holdout),
+        "skip_holdout": bool(getattr(args, "skip_holdout", False)),
         "epochs": int(args.epochs),
         "learning_rate": float(args.learning_rate),
         "expected_constituency_vintage": (
@@ -476,6 +488,12 @@ def resolve_role_arguments(args: argparse.Namespace) -> UKRowwisePosture:
     if args.expected_constituency_vintage is None:
         args.expected_constituency_vintage = posture.expected_constituency_vintage
     _resolve_size_defaults(args, posture)
+    # The rotated holdout is an opt-in, report-only diagnostic (microcosm#1301):
+    # a dense build skips it unless --rotated-holdout asks for it, and the
+    # national line has no holdout node, so it records false as before.
+    args.skip_holdout = bool(posture.holdout) and not bool(
+        getattr(args, "rotated_holdout", False)
+    )
     args._posture = posture
     return posture
 
@@ -515,8 +533,9 @@ def size_doctrine_drift(args: argparse.Namespace) -> list[str]:
     Empty when the build requests :data:`UK_LOCAL_DATASET_HOUSEHOLDS` with
     the doctrine's draw ceiling, refit floor and refit L2 penalty, no
     selection L2 penalty, draws with the solve seed and selects afresh rather
-    than resuming a size checkpoint (microcosm#1124, ruling of 2026-10-13).
-    Only such a sized build can be a release candidate, or be releasable.
+    than resuming a size checkpoint (microcosm#1124, ruling of 2026-10-13, as
+    amended for microcosm#1301: 150,000 households). Only such a sized build
+    can be a release candidate, or be releasable.
     """
 
     if args.dataset_households is None:
@@ -542,6 +561,362 @@ def size_doctrine_drift(args: argparse.Namespace) -> list[str]:
     return drift
 
 
+#: The release line a dense build's gates declare (``full_gates``): the local
+#: line's K-clone pool, which a second build replays (microcosm#1301).
+_DENSE_GATE_LINE = "local"
+
+
+def gate_only_signoffs(
+    line: str = _DENSE_GATE_LINE,
+) -> dict[str, dict[str, UKReviewedExclusion]]:
+    """The gate-only registers' entries the calibrated gates evaluate on ``line``.
+
+    Keyed by register (``solve_scope.UK_GATE_ONLY_RESOURCES``), then by
+    entry: input-mass entries as ``<reference>/<column>`` over every
+    reference, area-support entries as ``<block>/<key>``. Each register is
+    read through the gates' own loader and line rule
+    (``battery_bindings._in_line``). The area-support gate window-checks its
+    ``bound_despite_support_floor`` approvals whatever the line, so all of
+    them are here (microcosm#1301).
+    """
+
+    from microcosm.build.gate_battery import EvidenceContext
+    from microcosm.build.uk_runtime.battery_bindings import _in_line
+    from microcosm.build.uk_runtime.terminal_gates import (
+        uk_default_local_target_fit_reviewed_exclusions,
+        uk_default_target_fit_reviewed_exclusions,
+    )
+    from microcosm.build.uk_runtime.weighted_integrity import (
+        UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
+        UK_LOCAL_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE,
+        UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE,
+        load_uk_local_area_support_exclusion_register,
+        uk_default_input_mass_reviewed_exclusions,
+    )
+
+    context = EvidenceContext(artifacts={"release_line": line})
+
+    def in_line(
+        records: Mapping[str, UKReviewedExclusion], prefix: str = ""
+    ) -> dict[str, UKReviewedExclusion]:
+        applied, _out_of_line = _in_line(records, context)
+        return {f"{prefix}{name}": record for name, record in applied.items()}
+
+    input_mass = uk_default_input_mass_reviewed_exclusions()
+    area_support = load_uk_local_area_support_exclusion_register(None)
+    return {
+        UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE: in_line(
+            uk_default_target_fit_reviewed_exclusions()
+        ),
+        UK_LOCAL_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE: in_line(
+            uk_default_local_target_fit_reviewed_exclusions()
+        ),
+        UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE: {
+            key: record
+            for reference, records in input_mass.items()
+            for key, record in in_line(records, f"{reference}/").items()
+        },
+        "local_area_support_exclusions.json": {
+            **in_line(area_support["exclusions"], "exclusions/"),
+            **{
+                f"bound_despite_support_floor/{key}": record
+                for key, record in area_support["bound_despite_support_floor"].items()
+            },
+        },
+    }
+
+
+#: The solve-scoped registers a solve-reusing build's gate clock is also held
+#: to (:func:`solve_reuse_windows`): a sign-off between the builds cannot
+#: renew them without changing the solve.
+_DEGENERATE_RESOURCE = "degenerate_reviewed_exclusions.json"
+_MEASURE_EXCLUSIONS_RESOURCE = "calibration_measure_exclusions.json"
+_SOLVE_SCOPED_RESOURCES = frozenset(
+    {_DEGENERATE_RESOURCE, _MEASURE_EXCLUSIONS_RESOURCE}
+)
+
+
+def earliest_expiry(
+    sources: Mapping[str, Mapping[str, date]],
+) -> dict[str, Any] | None:
+    """The earliest expiry among dated entries, and every entry expiring on it.
+
+    ``sources`` maps a source (a register, or a block of one) to its entries'
+    expiries. An entry is honoured through its ``expires_on``, so the date is
+    the last gate clock, and the last day of assembly, that keeps every entry
+    in force. Returns ``{"date": <ISO date>, "set_by": [<source:name>, ...]}``,
+    or ``None`` without entries. The dense sign-off drafter
+    (``tools/draft_uk_dense_signoff.py``) prints it as the assembly deadline,
+    which ends build 2's gate-clock range, and the solve-reuse guard
+    (:func:`check_solve_reuse_arguments`) refuses a gate clock past it
+    (microcosm#1301).
+    """
+
+    dated = [
+        (day, f"{source}:{name}")
+        for source, entries in sources.items()
+        for name, day in entries.items()
+    ]
+    if not dated:
+        return None
+    earliest = min(day for day, _ in dated)
+    return {
+        "date": earliest.isoformat(),
+        "set_by": sorted(label for day, label in dated if day == earliest),
+    }
+
+
+def solve_reuse_windows(
+    line: str = _DENSE_GATE_LINE, *, measure_exclusions: str | Path | None = None
+) -> dict[str, dict[str, tuple[date, date]]]:
+    """Every approval window a solve-reusing build's gate clock must lie in.
+
+    Keyed by source, then by entry, to ``(approved_on, expires_on)``:
+
+    * the gate-only registers' entries the calibrated gates evaluate on
+      ``line`` (:func:`gate_only_signoffs`);
+    * the degenerate register's entries on ``line``: the register is
+      solve-scoped, as the release contract pins its digest, yet the
+      calibrated gates evaluate it on the gate clock;
+    * the calibration measure exclusions the solve applied
+      (``measure_exclusions``, else the packaged register), which assembly and
+      upload check on the day they run.
+
+    The dense sign-off drafter bounds build 2's gate clock by the same
+    entries, read from build 1's run directory and the drafted registers
+    (``tools/draft_uk_dense_signoff.py``, ``gate_clock_entries``), so the
+    range it prints is the range this guard admits (microcosm#1301).
+    """
+
+    from microcosm.build.gate_battery import EvidenceContext
+    from microcosm.build.uk_runtime.battery_bindings import _in_line
+    from microcosm.build.uk_runtime.measure_simulation import (
+        load_uk_calibration_measure_exclusions,
+    )
+    from microcosm.build.uk_runtime.terminal_gates import (
+        uk_default_degenerate_reviewed_exclusions,
+    )
+
+    def window(approved_on: str, expires_on: str) -> tuple[date, date]:
+        return date.fromisoformat(approved_on), date.fromisoformat(expires_on)
+
+    windows = {
+        resource: {
+            name: window(record.approved_on, record.expires_on)
+            for name, record in records.items()
+        }
+        for resource, records in gate_only_signoffs(line).items()
+    }
+    degenerate, _out_of_line = _in_line(
+        uk_default_degenerate_reviewed_exclusions(),
+        EvidenceContext(artifacts={"release_line": line}),
+    )
+    windows[_DEGENERATE_RESOURCE] = {
+        name: window(record.approved_on, record.expires_on)
+        for name, record in degenerate.items()
+    }
+    windows[_MEASURE_EXCLUSIONS_RESOURCE] = {
+        entry["name"]: window(entry["approved_on"], entry["expires_on"])
+        for entry in load_uk_calibration_measure_exclusions(
+            None if measure_exclusions is None else Path(measure_exclusions)
+        )
+    }
+    return windows
+
+
+def gate_clock_conflicts(
+    gate_clock: date, windows: Mapping[str, Mapping[str, tuple[date, date]]]
+) -> dict[str, dict[str, dict[str, str]]]:
+    """The entries of ``windows`` out of their window at ``gate_clock``.
+
+    ``premature`` maps each source to its entries approved after the clock,
+    each to its ``approved_on``; ``expired`` maps each source to its entries
+    that expired before it, each to its ``expires_on``.
+    """
+
+    conflicts: dict[str, dict[str, dict[str, str]]] = {"premature": {}, "expired": {}}
+    for source, entries in sorted(windows.items()):
+        for name, (approved_on, expires_on) in sorted(entries.items()):
+            if gate_clock < approved_on:
+                conflicts["premature"].setdefault(source, {})[name] = (
+                    approved_on.isoformat()
+                )
+            elif gate_clock > expires_on:
+                conflicts["expired"].setdefault(source, {})[name] = (
+                    expires_on.isoformat()
+                )
+    return conflicts
+
+
+def _named_entries(found: Mapping[str, Mapping[str, str]], *, shown: int = 5) -> str:
+    labels = [
+        f"{source}:{name} ({day})"
+        for source, entries in found.items()
+        for name, day in entries.items()
+    ]
+    named = ", ".join(labels[:shown])
+    if len(labels) > shown:
+        named += f" and {len(labels) - shown} more"
+    return named
+
+
+def _gate_clock_refusal(
+    clock: date,
+    *,
+    clock_source: str,
+    solve_clock: date,
+    windows: Mapping[str, Mapping[str, tuple[date, date]]],
+    conflicts: Mapping[str, Mapping[str, Mapping[str, str]]],
+) -> str:
+    """The refusal of a solve-reuse gate clock outside an entry's window."""
+
+    premature, expired = conflicts["premature"], conflicts["expired"]
+    problems = []
+    if premature:
+        count = sum(len(entries) for entries in premature.values())
+        problems.append(
+            f"before {count} in-line sign-off(s) take force "
+            f"({_named_entries(premature)})"
+        )
+    if expired:
+        count = sum(len(entries) for entries in expired.values())
+        problems.append(
+            f"after {count} sign-off(s) the release depends on expired "
+            f"({_named_entries(expired)})"
+        )
+    earliest = max(
+        [solve_clock]
+        + [approved for entries in windows.values() for approved, _ in entries.values()]
+    )
+    deadline = earliest_expiry(
+        {
+            source: {name: expires for name, (_, expires) in entries.items()}
+            for source, entries in windows.items()
+        }
+    )
+    assert deadline is not None  # a conflict names an entry
+    set_by = deadline["set_by"]
+    named = ", ".join(set_by[:5]) + (
+        f" and {len(set_by) - 5} more" if len(set_by) > 5 else ""
+    )
+    when = f"when {named} {'expires' if len(set_by) == 1 else 'expire'}"
+    usable = earliest <= date.fromisoformat(deadline["date"])
+    if usable:
+        advice = (
+            f"Pass --gate-review-date on or after {earliest.isoformat()} and on "
+            f"or before {deadline['date']}, the latest usable gate clock, {when}."
+        )
+    else:
+        advice = (
+            f"No gate clock is usable: the latest approval, {earliest.isoformat()}, "
+            f"is after the earliest expiry, {deadline['date']}, {when}."
+        )
+    # The entries to renew: those expired, and when no clock is usable, those
+    # that expire first.
+    renew = set(expired) | (
+        set() if usable else {label.split(":", 1)[0] for label in set_by}
+    )
+    if renew:
+        advice += " A gate-only entry is renewed by a new sign-off" + (
+            "; renewing a degenerate-register entry or a measure exclusion "
+            "changes the solve and needs a third build."
+            if renew & _SOLVE_SCOPED_RESOURCES
+            else "."
+        )
+    return (
+        "--require-solve-reuse: the calibrated gates would evaluate their "
+        f"reviewed entries on {clock.isoformat()} ({clock_source}), "
+        + " and ".join(problems)
+        + ". They would fail an entry out of its window, and assembly and "
+        "upload would refuse an expired measure exclusion, but only after the "
+        "solve replay. " + advice
+    )
+
+
+def check_solve_reuse_arguments(
+    args: argparse.Namespace, *, today: date | None = None
+) -> None:
+    """Refuse a gate clock or a reuse guard the build cannot honour (microcosm#1301).
+
+    ``--gate-review-date`` may not precede ``--review-date``: the calibrated
+    gates never evaluate reviewed exclusions before the solve's own clock.
+    Given explicitly, it may not be later than ``today`` either, since it
+    names the day a sign-off is in force; a future ``--review-date`` alone
+    stays admitted.
+
+    ``--require-solve-reuse`` needs the solve from the graph store, which
+    ``--resume forbid`` refuses to read. It needs build 1's store named by
+    ``--graph-store`` too: the default lies under ``--out``, and a second
+    build writes a new ``--out`` (``full_build_cli`` refuses one that holds an
+    earlier attempt), so the default holds no solve. And its gate clock, the
+    solve's unless ``--gate-review-date`` moves it, must lie in the window of
+    every entry the build depends on (:func:`solve_reuse_windows`): on or
+    after every in-line approval, and on or before the earliest expiry
+    (:func:`earliest_expiry`), the end of the gate-clock range the sign-off
+    drafter prints. Otherwise the calibrated gates fail the entry, premature
+    or expired, or assembly refuses an expired measure exclusion, but only
+    after the solve replay. The refusal names the entries out of their window
+    and the usable gate clocks.
+    """
+
+    gate_clock = getattr(args, "gate_review_date", None)
+    if gate_clock is not None:
+        today = date.today() if today is None else today
+        if gate_clock < args.review_date:
+            raise ValueError(
+                f"--gate-review-date {gate_clock.isoformat()} precedes "
+                f"--review-date {args.review_date.isoformat()}: the calibrated "
+                "gates may not evaluate reviewed exclusions before the solve's "
+                "own clock."
+            )
+        if gate_clock > today:
+            raise ValueError(
+                f"--gate-review-date {gate_clock.isoformat()} is later than "
+                f"today ({today.isoformat()}): the gate clock is a date the "
+                "sign-off is already in force on."
+            )
+    if not getattr(args, "require_solve_reuse", False):
+        return
+    if args.resume == "forbid":
+        raise ValueError(
+            "--require-solve-reuse reads the solve from the graph store, which "
+            "--resume forbid refuses to do."
+        )
+    graph_store = getattr(args, "graph_store", None)
+    if graph_store is None:
+        raise ValueError(
+            "--require-solve-reuse needs --graph-store naming build 1's graph "
+            "store: the default, <out>/.graph-store, lies under --out, which a "
+            "second build gives a new directory, so it holds no solve. Pass "
+            "build 1's --graph-store, or its <out>/.graph-store if build 1 took "
+            "the default."
+        )
+    if not Path(graph_store).is_dir():
+        raise ValueError(
+            f"--graph-store {graph_store} is not a directory: "
+            "--require-solve-reuse reads build 1's solve from build 1's store."
+        )
+    clock = args.review_date if gate_clock is None else gate_clock
+    windows = solve_reuse_windows(
+        measure_exclusions=getattr(args, "measure_exclusions", None)
+    )
+    conflicts = gate_clock_conflicts(clock, windows)
+    if conflicts["premature"] or conflicts["expired"]:
+        raise ValueError(
+            _gate_clock_refusal(
+                clock,
+                clock_source=(
+                    "--review-date; no --gate-review-date was given"
+                    if gate_clock is None
+                    else "--gate-review-date"
+                ),
+                solve_clock=args.review_date,
+                windows=windows,
+                conflicts=conflicts,
+            )
+        )
+
+
 def validate_cli_args(args: argparse.Namespace) -> None:
     posture = posture_of(args)
     # The declared role is checked against the parameters first: the other
@@ -550,8 +925,21 @@ def validate_cli_args(args: argparse.Namespace) -> None:
         refuse_dense_role_arguments(args, posture)
     else:
         refuse_national_role_arguments(args, posture)
+    check_solve_reuse_arguments(args)
     if args.selection_seed is not None and args.dataset_households is None:
         raise ValueError("--selection-seed requires --dataset-households.")
+    initial_lambda = getattr(args, "selection_initial_lambda", None)
+    if initial_lambda is not None:
+        # microcosm#1301: refused here by name, before any input is read,
+        # rather than inside the size search hours into the build.
+        if args.dataset_households is None:
+            raise ValueError(
+                "--selection-initial-lambda requires --dataset-households."
+            )
+        try:
+            _check_initial_lambda(initial_lambda)
+        except ValueError as error:
+            raise ValueError(f"--selection-initial-lambda: {error}") from None
     if not (0.0 < args.selection_pi_hi <= 1.0):
         raise ValueError("--selection-pi-hi must be in (0, 1].")
     if args.selection_pi_hi != 1.0 and args.dataset_households is None:
@@ -591,7 +979,9 @@ def validate_cli_args(args: argparse.Namespace) -> None:
         if args.release_candidate and drift:
             raise ValueError(
                 "A sized --release-candidate must carry the local size "
-                "doctrine (microcosm#1124): " + "; ".join(drift) + "."
+                "doctrine (microcosm#1124, as amended for microcosm#1301): "
+                + "; ".join(drift)
+                + "."
             )
     # Size-selection arguments are validated first so their refusals name
     # the size flag at fault; the pinned Ledger inputs are then mandatory.
@@ -682,8 +1072,6 @@ def validate_cli_args(args: argparse.Namespace) -> None:
             refused.append(f"--n-clones != doctrine {posture.clone_count}")
         if args.measure_exclusions is not None:
             refused.append("--measure-exclusions")
-        if args.skip_holdout:
-            refused.append("--skip-holdout")
         if args.sample_fraction != 1.0:
             refused.append("--sample-fraction != 1.0")
         if _geography_assignment(args) == "legacy":
@@ -793,12 +1181,20 @@ def refuse_dense_role_arguments(
         refused.append("--engine-blocks")
     if args.households_only:
         refused.append("--households-only")
-    if args.skip_holdout:
-        refused.append("--skip-holdout")
+    if getattr(args, "rotated_holdout", False):
+        refused.append("--rotated-holdout")
+    # The gate clock and the solve-reuse guard are the dense line's two-build
+    # release (microcosm#1301); the national graph keeps one clock.
+    if getattr(args, "gate_review_date", None) is not None:
+        refused.append("--gate-review-date")
+    if getattr(args, "require_solve_reuse", False):
+        refused.append("--require-solve-reuse")
     if args.dataset_households is not None:
         refused.append("--dataset-households")
     if args.selection_seed is not None:
         refused.append("--selection-seed")
+    if getattr(args, "selection_initial_lambda", None) is not None:
+        refused.append("--selection-initial-lambda")
     if args.selection_pi_hi != 1.0:
         refused.append("--selection-pi-hi")
     if args.baseline_pi_floor != 0.0:

@@ -390,9 +390,13 @@ class UKAreaFit(DiagnosticsModel):
     worst_target: NonBlankText
     worst_abs_relative_error: NonNegativeFiniteFloat
     loss_contribution: NonNegativeFiniteFloat
-    nonzero_households: NonNegativeInt
-    nonzero_source_households: NonNegativeInt
-    effective_sample_size: NonNegativeFiniteFloat
+    # Per-area support figures are withheld from released diagnostics
+    # (microcosm#1301); a row carries the floor flag instead. The figure
+    # fields stay optional so earlier payloads still parse.
+    support_below_floor: bool | None = None
+    nonzero_households: NonNegativeInt | None = None
+    nonzero_source_households: NonNegativeInt | None = None
+    effective_sample_size: NonNegativeFiniteFloat | None = None
 
     @model_validator(mode="after")
     def reconcile_pass_rate(self) -> UKAreaFit:

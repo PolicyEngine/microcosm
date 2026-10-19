@@ -43,6 +43,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "local_target_fit_reviewed_exclusions.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "efrs_parity_known_gaps.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
@@ -89,6 +94,16 @@
     },
     {
       "path": "hmrc_property_rental_income_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "hmrc_stamp_tax_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "dwp_move_to_uc_facts.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },
@@ -474,6 +489,11 @@
     },
     {
       "path": "ons_spree_tenure_dwellings.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "desnz_local_energy_facts.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },

@@ -455,7 +455,8 @@ def test_shipped_uc_monthly_references_preserve_each_declared_window():
         for reference in references
         if reference.family == "dwp_universal_credit"
     ]
-    assert len(monthly) == 118
+    # microcosm#1095: less the five-or-more-children count, a diagnostic.
+    assert len(monthly) == 117
     calendar_2025 = [f"2025-{month:02}" for month in range(1, 13)]
     new_paid = {
         "dwp.uc.households",
@@ -470,10 +471,10 @@ def test_shipped_uc_monthly_references_preserve_each_declared_window():
         },
         *{
             f"dwp.uc.households_children_{children}"
-            for children in ("1", "2", "3", "4", "5_or_more")
+            for children in ("1", "2", "3", "4")
         },
     }
-    assert len(new_paid) == 10
+    assert len(new_paid) == 9
     # The #882 element rows bind the chronicle#260 Payment Indicator crosses on
     # the same calendar-2025 paid basis; the deductions statistics start in
     # March 2025, so that row declares the ten published months.
