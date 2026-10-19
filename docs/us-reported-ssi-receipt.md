@@ -74,10 +74,12 @@ same gate checks two invariants on the export's person table:
 - every marked person reports a positive amount of their own: `SSI_VAL` on a
   CPS-measured row, or the native ACS `ssi_reported` on a stacked ACS row; and
 - every marked CPS-measured person carries `takes_up_ssi_if_eligible`. The
-  take-up stage anchors every `SSI_VAL` reporter as a claimant, and the
-  receipt is a subset of those reporters. The stage does not anchor ACS
+  take-up stage anchors the source identity of every physical ASEC row with
+  `SSI_VAL > 0` (a PUF row's own `SSI_VAL` is never promoted to an anchor),
+  and the receipt is carried by that identity onto its clones. The stage does not anchor ACS
   `SSIP` reporters, so stacked ACS rows are counted
-  (`receipt_rows_outside_take_up_anchor`), not judged.
+  (`receipt_rows_outside_take_up_anchor`, and those without take-up in
+  `receipt_rows_outside_take_up_anchor_without_take_up`), not judged.
 
 Both are row-dependent, so release preflight treats a failure as at risk on
 the L0 path, where the household selection can drop the inconsistent records,

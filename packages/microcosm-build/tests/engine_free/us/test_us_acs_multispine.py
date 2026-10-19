@@ -283,6 +283,9 @@ def test__given_tiny_frames__then_mapping_transfer_and_pool_interoperate(
         [55_000.0, 0.0]
     )
     assert acs_people["qualified_dividend_income"].notna().all()
+    # Reported SSI receipt is native on the ACS spine (SSIP 0 for both
+    # fixture people), never drawn from a donor.
+    assert acs_people["receives_ssi"].tolist() == [False, False]
     assert (
         result.frame.weights_for("household").total
         == base.weights_for("household").total

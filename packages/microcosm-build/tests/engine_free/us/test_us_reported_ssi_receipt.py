@@ -233,11 +233,27 @@ def test_consistency_check_judges_acs_rows_by_their_native_amount() -> None:
     assert details["receipt_rows_without_positive_reported_amount"] == 1
     assert details["receipt_rows_without_take_up"] == 0
     assert details["receipt_rows_outside_take_up_anchor"] == 2
+    assert details["receipt_rows_outside_take_up_anchor_without_take_up"] == 1
     assert len(failures) == 1
     assert "without a positive reported SSI amount" in failures[0]
 
     consistent = person.assign(ssi_reported=[np.nan, 8_400.0, 1.0])
     assert us_reported_ssi_receipt_consistency_failures(consistent)[0] == ()
+
+
+def test_consistency_check_fails_receipt_without_any_amount_column() -> None:
+    failures, details = us_reported_ssi_receipt_consistency_failures(
+        pd.DataFrame(
+            {"receives_ssi": [True, False], "takes_up_ssi_if_eligible": [True, True]}
+        )
+    )
+    assert details["receipt_rows_without_positive_reported_amount"] == 1
+    assert len(failures) == 1 and "neither SSI_VAL nor ACS ssi_reported" in failures[0]
+
+    nobody = us_reported_ssi_receipt_consistency_failures(
+        pd.DataFrame({"receives_ssi": [False, False]})
+    )
+    assert nobody[0] == ()
 
 
 def test_consistency_check_fails_a_marked_row_with_no_observed_amount() -> None:
@@ -286,6 +302,9 @@ def test_consistency_check_fails_exactly_on_violations(rows) -> None:
     assert details["receipt_rows_without_take_up"] == without_take_up
     assert details["receipt_rows_outside_take_up_anchor"] == int(
         np.sum(receipt & ~observed)
+    )
+    assert details["receipt_rows_outside_take_up_anchor_without_take_up"] == int(
+        np.sum(receipt & ~observed & ~take_up)
     )
     assert (failures == ()) == (without_amount == 0 and without_take_up == 0)
 

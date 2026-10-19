@@ -124,7 +124,13 @@ def test_acs_eligible_or_unknown_hours_blank_stays_unresolved(wkl):
 @pytest.mark.parametrize("age", [0, 12, 15])
 def test_acs_under_sixteen_niu_is_unavailable_not_observed_nonwork(age):
     result = map_acs_native_inputs(
-        _hours_frame(AGEP=[40, age], WKHP=[40, np.nan], WKL=[1, np.nan])
+        _hours_frame(
+            AGEP=[40, age],
+            WKHP=[40, np.nan],
+            WKL=[1, np.nan],
+            # SSIP is in universe from age 15.
+            SSIP=[200.0, np.nan if age < 15 else 0.0],
+        )
     )
     assert pd.isna(result.frame.person["weekly_hours_worked_before_lsr"].iloc[1])
     receipt = result.native_inputs["weekly_hours_worked_before_lsr"]
@@ -205,14 +211,23 @@ def test_acs_reported_ssi_receipt_is_positive_native_ssip() -> None:
     assert pd.api.types.is_bool_dtype(person["receives_ssi"])
     assert result.native_inputs["receives_ssi"]["source_columns"] == ["SSIP"]
     assert result.native_inputs["receives_ssi"]["missing_rows"] == 0
+    assert result.native_inputs["receives_ssi"]["source_universe_unavailable_rows"] == 1
 
     zero = map_acs_native_inputs(_hours_frame(SSIP=[0.0, np.nan]))
     assert zero.frame.table("person")["receives_ssi"].tolist() == [False, False]
 
 
-def test_acs_reported_ssi_receipt_refuses_non_numeric_ssip() -> None:
-    with pytest.raises(ValueError, match="non-numeric"):
-        map_acs_native_inputs(_hours_frame(SSIP=["many", np.nan]))
+@pytest.mark.parametrize(
+    ("columns", "message"),
+    [
+        ({"SSIP": ["many", np.nan]}, "non-numeric"),
+        ({"SSIP": [np.nan, np.nan]}, "blank only below the age-15"),
+        ({"SSIP": [200.0, np.nan], "AGEP": [40, 15]}, "blank only below the age-15"),
+    ],
+)
+def test_acs_reported_ssi_receipt_refuses_invalid_ssip(columns, message) -> None:
+    with pytest.raises(ValueError, match=message):
+        map_acs_native_inputs(_hours_frame(**columns))
 
 
 def test_acs_housing_mapping_preserves_rent_without_synthesizing_model_rent() -> None:

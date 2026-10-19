@@ -3065,7 +3065,8 @@ def do_finalize(args) -> None:
             "note": (
                 "Input coverage is enforced on the certified donor release "
                 "before transfer; the ACS spine inherits required inputs via "
-                "QRF transfer. ACS native GQ-housing / source-universe nulls "
+                "QRF transfer, except native ACS leaves such as receives_ssi "
+                "(from SSIP). ACS native GQ-housing / source-universe nulls "
                 "are reviewed_limitations (calibration_blocker: false) and "
                 "are NOT re-imposed on the ACS spine."
             ),

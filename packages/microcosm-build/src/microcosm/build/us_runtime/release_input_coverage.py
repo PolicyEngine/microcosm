@@ -760,10 +760,15 @@ def us_reported_ssi_receipt_consistency_failures(
       a stacked ACS row. Stacked rows carry exactly one of the two. A marked
       row with neither observed fails.
     - **Take-up anchor.** On a CPS-measured row (``SSI_VAL`` observed),
-      ``takes_up_ssi_if_eligible`` is true, because the SSI take-up stage
-      anchors every ``SSI_VAL`` reporter as a claimant. A stacked ACS row is
-      outside that anchor (the stage anchors CPS reporters only) and is
-      counted, not judged.
+      ``takes_up_ssi_if_eligible`` is true. The SSI take-up stage anchors the
+      source identity of every physical ASEC row with ``SSI_VAL > 0``, and the
+      receipt is carried by the same identity onto its clones. A stacked ACS
+      row is outside that anchor (the stage anchors CPS reporters only), so it
+      is counted, and the ones without take-up are counted separately, not
+      judged.
+
+    A table that marks receipt but carries neither ``SSI_VAL`` nor
+    ``ssi_reported`` fails: there is no reported amount to check.
 
     A table without ``receives_ssi`` returns no failures; the coverage gate
     already fails a required column that is absent.
@@ -805,6 +810,14 @@ def us_reported_ssi_receipt_consistency_failures(
             )
     else:
         cps_observed = np.zeros(len(receipt), dtype=bool)
+        details["receipt_rows_without_positive_reported_amount"] = int(receipt.sum())
+        if receipt.any():
+            failures.append(
+                f"{REPORTED_SSI_RECEIPT_CONSISTENCY_FAILURE_PREFIX}receives_ssi: "
+                f"{int(receipt.sum())} person row(s) are marked as reported SSI "
+                "recipients but the table carries neither SSI_VAL nor ACS "
+                "ssi_reported."
+            )
     take_up_column = US_SSI_TAKE_UP_OUTPUT_COLUMNS[0]
     if take_up_column in person.columns:
         take_up = _boolean_values(person[take_up_column], take_up_column)
@@ -812,6 +825,11 @@ def us_reported_ssi_receipt_consistency_failures(
         details["receipt_rows_without_take_up"] = without_take_up
         details["receipt_rows_outside_take_up_anchor"] = int(
             (receipt & ~cps_observed).sum()
+        )
+        # Counted, not judged: ACS reporters are not take-up-anchored yet, so
+        # these are the rows whose reported receipt meets modeled non-claiming.
+        details["receipt_rows_outside_take_up_anchor_without_take_up"] = int(
+            (receipt & ~cps_observed & ~take_up).sum()
         )
         if without_take_up:
             failures.append(

@@ -202,8 +202,11 @@ POST_REFERENCE_COLUMN_NOTES = {
         "receipt-keyed rules (state supplements, Medicaid SSI categories, SNAP "
         "categorical eligibility) read as (ssi > 0) | receives_ssi. Required "
         "with NO reviewed exclusion so those rules never fall back to modeled "
-        "SSI alone; the coverage gate also requires every marked person to "
-        "report a positive SSI_VAL and carry takes_up_ssi_if_eligible. The "
+        "SSI alone. The coverage gate also requires every marked person to "
+        "report a positive amount of their own (SSI_VAL on CPS rows, native "
+        "ssi_reported on stacked ACS rows) and every marked CPS-measured "
+        "person to carry takes_up_ssi_if_eligible. ACS rows map it natively "
+        "from SSIP. The "
         "published populace-us-2024-spm-20260915 default does not persist it, "
         "so the gate is red on it by design until a national build persists it."
     ),

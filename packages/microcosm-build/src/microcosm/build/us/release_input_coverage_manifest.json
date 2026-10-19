@@ -338,7 +338,7 @@
    "status": "required"
   },
   "receives_ssi": {
-   "note": "ASEC reported SSI receipt (SSI_VAL > 0, excluding a respondent whose only RESNSSI reasons are on behalf of a disabled or blind child), carried by cps_carried.derive_us_cps_carried_inputs; a formula-less monthly boolean person input in PolicyEngine-US 2.2.1 that its receipt-keyed rules (state supplements, Medicaid SSI categories, SNAP categorical eligibility) read as (ssi > 0) | receives_ssi. Required with NO reviewed exclusion so those rules never fall back to modeled SSI alone; the coverage gate also requires every marked person to report a positive SSI_VAL and carry takes_up_ssi_if_eligible. The published populace-us-2024-spm-20260915 default does not persist it, so the gate is red on it by design until a national build persists it.",
+   "note": "ASEC reported SSI receipt (SSI_VAL > 0, excluding a respondent whose only RESNSSI reasons are on behalf of a disabled or blind child), carried by cps_carried.derive_us_cps_carried_inputs; a formula-less monthly boolean person input in PolicyEngine-US 2.2.1 that its receipt-keyed rules (state supplements, Medicaid SSI categories, SNAP categorical eligibility) read as (ssi > 0) | receives_ssi. Required with NO reviewed exclusion so those rules never fall back to modeled SSI alone. The coverage gate also requires every marked person to report a positive amount of their own (SSI_VAL on CPS rows, native ssi_reported on stacked ACS rows) and every marked CPS-measured person to carry takes_up_ssi_if_eligible. ACS rows map it natively from SSIP. The published populace-us-2024-spm-20260915 default does not persist it, so the gate is red on it by design until a national build persists it.",
    "status": "required"
   },
   "receives_tanf": {

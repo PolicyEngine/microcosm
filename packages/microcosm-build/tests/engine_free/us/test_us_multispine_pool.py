@@ -2594,3 +2594,18 @@ def test_deferred_asset_defaults_exist_only_on_disposable_simulation_view() -> N
         }
         for column in POOL_DEFERRED_TRANSFER_INPUTS
     }
+
+
+def test_reported_ssi_receipt_is_native_on_both_spines_and_never_transferred() -> None:
+    from microcosm.build.us_runtime.multispine_pool import (
+        _POOL_NATIVE_COMPLETE_OUTPUTS,
+    )
+
+    transferred = {
+        column
+        for families in pool_transfer_target_families().values()
+        for columns in families.values()
+        for column in columns
+    }
+    assert "receives_ssi" not in transferred
+    assert "receives_ssi" in _POOL_NATIVE_COMPLETE_OUTPUTS["person"]

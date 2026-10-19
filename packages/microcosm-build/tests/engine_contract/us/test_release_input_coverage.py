@@ -520,6 +520,7 @@ class TestAsecReportedSsiReceiptInputGuarantee:
             "receipt_rows_without_positive_reported_amount": 0,
             "receipt_rows_without_take_up": 0,
             "receipt_rows_outside_take_up_anchor": 0,
+            "receipt_rows_outside_take_up_anchor_without_take_up": 0,
         }
 
     def test_candidate_without_receipt_fails_as_absent(self) -> None:
