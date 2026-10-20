@@ -373,7 +373,11 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "PTENTYP2": 5 + household_id % 2,
                 "TYPEACC": 1 + household_id % 4,
                 "BEDROOM6": 1 + household_id % 4,
-                "CTANNUAL": 900.0 + household_id * 10.0,
+                # Household 12 pays council tax (CTPAID 1) and reports no
+                # reduction, but its derived bill is zero, so it takes its
+                # cell's mean (microcosm#1278).
+                "CTANNUAL": 0.0 if household_id == 12 else 900.0 + household_id * 10.0,
+                "CTPAID": 1,
                 "CTBAND": 1 + household_id % 7,
                 "CTDISC": 1 if household_id % 3 == 0 else 2,
                 "CT25D50D": (

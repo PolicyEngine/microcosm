@@ -193,6 +193,8 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "TYPEACC": 1,
         "BEDROOM6": 3,
         "CTANNUAL": 1000.0,
+        # Someone in the household pays council tax (CTPAID 1).
+        "CTPAID": 1,
         "CTBAND": 4,
         "CTDISC": 2,
         "CT25D50D": "",

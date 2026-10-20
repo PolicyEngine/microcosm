@@ -766,7 +766,7 @@
       "adulth == 1"
      ],
      "donor_filter": "raw ctreb != 1 and ctannual > 0",
-     "missing": "raw ctannual < 0 or NaN",
+     "missing": "raw ctannual < 0 or NaN, or ctannual == 0 with ctpaid == 1 and ctreb != 1",
      "value": "council tax before council tax reduction: CTANNUAL net of the Scottish water and sewerage charges ((CWATAMT1 + CSEWAMT1) x 365.25/7, at 0.65 where CTREB is 1; CWATAMTD where CWATAMT1 is not positive), plus CTREBAMT x 365.25/7 where CTREB is 1 and CTREBAMT > 0; a CTREB 1 household without a positive CTREBAMT takes the larger of its netted CTANNUAL and its cell mean"
     }
    ],
@@ -776,7 +776,7 @@
    "nonnegative_outputs": [
     "council_tax"
    ],
-   "notes": "Re-reads raw househol.tab because spine council_tax_reported clips missing values. FRS 2024-25 CTANNUAL is the bill after discounts and council tax reduction, and the engine reads council_tax before the reduction, so a household reporting a reduction gets its CTREBAMT added back and the cells pool non-recipients only (uk-data#496/#499, microcosm#1095). Scottish water and sewerage charges are netted before cell means at the shares DWP's CTANNUAL carries (the gross charges in full for non-recipients, 65% for reduction recipients); no-donor cells impute zero. The dead ct_mean.replace(-1, ...) branch is intentionally dropped."
+   "notes": "Re-reads raw househol.tab because spine council_tax_reported clips missing values. FRS 2024-25 CTANNUAL is the bill after discounts and council tax reduction, and the engine reads council_tax before the reduction, so a household reporting a reduction gets its CTREBAMT added back and the cells pool non-recipients only (uk-data#496/#499, microcosm#1095). Scottish water and sewerage charges are netted before cell means at the shares DWP's CTANNUAL carries (the gross charges in full for non-recipients, 65% for reduction recipients); no-donor cells impute zero. A household where someone pays council tax (CTPAID 1) with no reported reduction and a zero CTANNUAL owes a bill, so it takes its cell mean as a missing bill does (microcosm#1278). The dead ct_mean.replace(-1, ...) branch is intentionally dropped."
   },
   {
    "stage": "frs_disability",
