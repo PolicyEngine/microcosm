@@ -531,6 +531,15 @@
       "adjudication": "María's ruling of 2026-10-16 on the microcosm#1301 local release plan: unbind the row as a measured diagnostic, rather than bind the FY2025-26 value or sign it gate-only, because modelling the allowance alone would close only part of the gap. The exclusion applies on both lines, since this register has no line scoping: the national objective drops the row too, and a national run given a frozen scoring register derived before this entry fails closed (the re-derived register differs from the frozen one), so the national build's frozen register is derived from a head that carries this entry. policyengine-uk#2459, split from policyengine-uk#1918 (which keeps the under-21 and apprentice zero rates), asks the engine to net the allowance out of ni_employer. The expiry gives the three-month window of the 2026-10-08 engine-factor diagnostic (obr.vat).",
       "approved_on": "2026-10-16",
       "expires_on": "2027-01-16"
+    },
+    {
+      "name": "orr.rail_government_support",
+      "reason": "Basis, not a weight question: the row binds ORR table 7270's broad total of government support to the Great Britain railway, and the frame's household rail subsidy (rail_subsidy_spending, the engine's rail_usage times gov.dft.rail.fare_index) sits far below it at design weights. Bound, the solve closes the gap by moving weight onto rail-using households, which also moves untargeted columns that correlate with rail use. Whether the household subsidy is measured against table 7270's broad total or table 7271's narrower by-source series is an open ruling (microcosm#890 G, microcosm#736). Held out of the objective as a measured diagnostic and never fitted; rebind on that ruling, against the narrower series in the feed or a column scaled as uk-data scales it.",
+      "tracking": "microcosm#1278",
+      "approved_by": "juaristi22",
+      "adjudication": "María's ruling of 2026-10-20 on the pre-Budget PR (microcosm#1278): hold the row out only if a national arm with it held out, run beside the calibration-period fix's arm (microcosm#1324), passes the gates and keeps the share of rows within 10 percent; otherwise keep it bound and label the distributional tables. The 7270-versus-7271 basis ruling stays open (microcosm#890 G). The expiry, 2026-12-11, matches the uprating holds' renewal, after the Budget.",
+      "approved_on": "2026-10-20",
+      "expires_on": "2026-12-11"
     }
   ]
 }

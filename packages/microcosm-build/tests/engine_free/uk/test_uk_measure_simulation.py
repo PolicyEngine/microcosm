@@ -649,6 +649,11 @@ _PACKAGED_EXCLUSION_CENSUS = {
     # Allowance in the engine and priced on FY2025-26 rules over a window that
     # takes a quarter of FY2024-25, held out as a measured diagnostic.
     "obr.ni_employer": 1,
+    # microcosm#1278 (2026-10-20): ORR's broad rail-support total, far above
+    # the frame's household rail subsidy at design weights while the 7270
+    # versus 7271 basis ruling is open (microcosm#890 G), held out after the
+    # national hold-out arm.
+    "orr.": 1,
 }
 
 # The carer and childcare rows were retired on 2026-09-16 with the repairs
@@ -675,8 +680,9 @@ def test_packaged_exclusions_load():
     exclusions = load_uk_calibration_measure_exclusions()
     names = [entry["name"] for entry in exclusions]
     # 65 less the nine payment bands the support floor covers (microcosm#1095 U3),
-    # plus the employer NICs diagnostic (microcosm#1301).
-    assert len(names) == len(set(names)) == 57
+    # plus the employer NICs diagnostic (microcosm#1301) and the rail-support
+    # hold-out (microcosm#1278).
+    assert len(names) == len(set(names)) == 58
     band_h_region_cells = [
         entry
         for entry in exclusions
@@ -747,8 +753,27 @@ def test_packaged_exclusions_load():
     # #1063 stack arm retired 2026-10-16 (the support floor drops them), and
     # the plan-2 rows left the 2026-10-02 clock on their 2026-10-20 renewal.
     assert [e for e in exclusions if e["approved_on"] == "2026-10-02"] == []
-    renewed = [e for e in exclusions if e["approved_on"] == "2026-10-20"]
+    # The other 2026-10-20 entry is the rail-support hold-out (below).
+    assert sorted(
+        e["name"] for e in exclusions if e["approved_on"] == "2026-10-20"
+    ) == sorted([*_A16_UNREACHABLE_ROWS[:2], "orr.rail_government_support"])
+    renewed = [
+        e
+        for e in exclusions
+        if e["approved_on"] == "2026-10-20" and e["name"] in _A16_UNREACHABLE_ROWS
+    ]
     assert sorted(e["name"] for e in renewed) == sorted(_A16_UNREACHABLE_ROWS[:2])
+    # María's ruling of 2026-10-20 (microcosm#1278): the ORR row is held out
+    # only on a national arm whose gates pass and whose share of rows within
+    # 10 percent holds; the 7270 versus 7271 basis ruling stays open.
+    (rail,) = [e for e in exclusions if e["name"] == "orr.rail_government_support"]
+    assert rail["approved_by"] == "juaristi22"
+    assert (rail["approved_on"], rail["expires_on"]) == ("2026-10-20", "2026-12-11")
+    assert rail["tracking"] == "microcosm#1278"
+    assert "7270" in rail["reason"] and "7271" in rail["reason"]
+    assert "microcosm#890 G" in rail["reason"]
+    assert "never fitted" in rail["reason"]
+    assert "within 10 percent" in rail["adjudication"]
     # So did the two bands the engine bump of microcosm#1095 (policyengine-uk
     # 2.122.2) emptied, the 2026-10-07 entries.
     assert [e for e in exclusions if e["approved_on"] == "2026-10-07"] == []
