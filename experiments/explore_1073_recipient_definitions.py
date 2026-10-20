@@ -24,8 +24,8 @@ import pandas as pd
 
 from microcosm.build.us_runtime.scf_education_debt import (
     SCF_EDUCATION_DEBT_BORROWER_AGE_BANDS,
+    SCF_EDUCATION_DEBT_CANDIDATE_PREDICTORS,
     SCF_EDUCATION_DEBT_FIRST_RECEIPT_DEFINITION,
-    SCF_EDUCATION_DEBT_PREDICTORS,
     SCF_EDUCATION_DEBT_TOTAL_TARGET,
     RecipientDefinition,
     _recipients,
@@ -81,7 +81,7 @@ VARIANTS: tuple[tuple[str, RecipientDefinition, str], ...] = (
         "The PEU narrowed to the couple and their children.",
     ),
 )
-_ALL = tuple(SCF_EDUCATION_DEBT_PREDICTORS)
+_ALL = tuple(SCF_EDUCATION_DEBT_CANDIDATE_PREDICTORS)
 _NO_INTDIV = tuple(p for p in _ALL if p != "interest_dividend_income")
 _NO_INTDIV_SSRET = tuple(p for p in _NO_INTDIV if p != "social_security_pension_income")
 #: Predictor-set remedies on top of the couple income unit. Each row also gets

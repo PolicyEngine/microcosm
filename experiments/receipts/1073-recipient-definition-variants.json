@@ -1,7 +1,7 @@
 {
   "scf_2025": {
     "share": 0.18154956812200357,
-    "parent_plus_share": 0.13750075307389342,
+    "parent_plus_share": 0.13750075307389345,
     "parent_plus_by_reference_age": {
       "24_and_younger": 0.0,
       "25_to_34": 0.0036635524662026776,
@@ -56,7 +56,7 @@
           "household_income"
         ],
         "share": 0.17281627661600854,
-        "parent_plus_share": 0.11558498718060217,
+        "parent_plus_share": 0.11558498718060221,
         "metrics_vs_scf": {
           "share_with_debt_error_pp": -0.8733291505995028,
           "mean_among_borrowers_error_pct": -4.349507836301458,
@@ -71,13 +71,13 @@
       },
       "reason": "The first receipt's construction.",
       "share": 0.14412999386354491,
-      "parent_plus_share": 0.21495679635292878,
+      "parent_plus_share": 0.21495679635292875,
       "parent_plus_by_reference_age": {
         "24_and_younger": 0.05361481308447381,
         "25_to_34": 0.00022032123488229902,
         "35_to_49": 0.03526511572758998,
-        "50_to_61": 0.4335550013453078,
-        "62_and_older": 0.7000193215077479
+        "50_to_61": 0.43355500134530767,
+        "62_and_older": 0.7000193215077478
       },
       "by_head_age_band": {
         "24_and_younger": 0.2267174320421409,
@@ -111,8 +111,8 @@
           "mean_among_borrowers": 44483.09961323457,
           "median_among_borrowers": 25000.0,
           "total_household_weight": 122537091.8856833,
-          "federal_education_debt_total": 785628046119.6729,
-          "parent_plus_share_of_total": 0.21495679635292878
+          "federal_education_debt_total": 785628046119.6727,
+          "parent_plus_share_of_total": 0.21495679635292875
         },
         "household_balance_bands": {
           "under_5k": 0.09597901426395242,
@@ -273,7 +273,7 @@
           "household_income"
         ],
         "share": 0.17281627661600854,
-        "parent_plus_share": 0.11558498718060217,
+        "parent_plus_share": 0.11558498718060221,
         "metrics_vs_scf": {
           "share_with_debt_error_pp": -0.8733291505995028,
           "mean_among_borrowers_error_pct": -4.349507836301458,
@@ -288,13 +288,13 @@
       },
       "reason": "SCF MARRIED is married or living with a partner (X8023 in 1-2); A_MARITL 1-2 drops cohabiting partners.",
       "share": 0.14421786795177846,
-      "parent_plus_share": 0.23835459647602736,
+      "parent_plus_share": 0.2383545964760273,
       "parent_plus_by_reference_age": {
         "24_and_younger": 2.253143474595712e-05,
         "25_to_34": 0.0031437172991370397,
-        "35_to_49": 0.033462461180418936,
-        "50_to_61": 0.5087392931361828,
-        "62_and_older": 0.7514633083579594
+        "35_to_49": 0.03346246118041894,
+        "50_to_61": 0.5087392931361827,
+        "62_and_older": 0.7514633083579593
       },
       "by_head_age_band": {
         "24_and_younger": 0.22671795358234773,
@@ -329,7 +329,7 @@
           "median_among_borrowers": 25300.0,
           "total_household_weight": 122537091.8856833,
           "federal_education_debt_total": 790502796606.3756,
-          "parent_plus_share_of_total": 0.23835459647602736
+          "parent_plus_share_of_total": 0.2383545964760273
         },
         "household_balance_bands": {
           "under_5k": 0.09724840853122779,
@@ -490,7 +490,7 @@
           "household_income"
         ],
         "share": 0.17281627661600854,
-        "parent_plus_share": 0.11558498718060217,
+        "parent_plus_share": 0.11558498718060221,
         "metrics_vs_scf": {
           "share_with_debt_error_pp": -0.8733291505995028,
           "mean_among_borrowers_error_pct": -4.349507836301458,
@@ -505,12 +505,12 @@
       },
       "reason": "SCF KIDS counts children of the reference person or spouse/partner, any age, anywhere in the household listing.",
       "share": 0.1394955127190334,
-      "parent_plus_share": 0.17976252753958277,
+      "parent_plus_share": 0.1797625275395828,
       "parent_plus_by_reference_age": {
         "24_and_younger": 1.8950713199477208e-09,
         "25_to_34": 0.003974829123535003,
         "35_to_49": 0.023750250056890892,
-        "50_to_61": 0.4267091997855419,
+        "50_to_61": 0.4267091997855418,
         "62_and_older": 0.6189997224359128
       },
       "by_head_age_band": {
@@ -545,8 +545,8 @@
           "mean_among_borrowers": 43206.84231163398,
           "median_among_borrowers": 25300.0,
           "total_household_weight": 122537091.8856833,
-          "federal_education_debt_total": 738550734853.6542,
-          "parent_plus_share_of_total": 0.17976252753958277
+          "federal_education_debt_total": 738550734853.654,
+          "parent_plus_share_of_total": 0.1797625275395828
         },
         "household_balance_bands": {
           "under_5k": 0.09939228853825689,
@@ -707,7 +707,7 @@
           "household_income"
         ],
         "share": 0.17281627661600854,
-        "parent_plus_share": 0.11558498718060217,
+        "parent_plus_share": 0.11558498718060221,
         "metrics_vs_scf": {
           "share_with_debt_error_pp": -0.8733291505995028,
           "mean_among_borrowers_error_pct": -4.349507836301458,
@@ -722,12 +722,12 @@
       },
       "reason": "The SCF reference person comes from the economically dominant individual or couple (the man, or the older partner); the CPS householder anchors that unit, where the oldest adult can be a co-resident parent or roommate.",
       "share": 0.14160885581858304,
-      "parent_plus_share": 0.16635099149589067,
+      "parent_plus_share": 0.16635099149589064,
       "parent_plus_by_reference_age": {
         "24_and_younger": 0.00017157399333482214,
         "25_to_34": 0.005150069210217926,
         "35_to_49": 0.02057959141870075,
-        "50_to_61": 0.42901843742863854,
+        "50_to_61": 0.4290184374286386,
         "62_and_older": 0.6324187709904693
       },
       "by_head_age_band": {
@@ -763,7 +763,7 @@
           "median_among_borrowers": 25000.0,
           "total_household_weight": 122537091.8856833,
           "federal_education_debt_total": 737509698707.2527,
-          "parent_plus_share_of_total": 0.16635099149589067
+          "parent_plus_share_of_total": 0.16635099149589064
         },
         "household_balance_bands": {
           "under_5k": 0.09993330421288438,
@@ -924,7 +924,7 @@
           "household_income"
         ],
         "share": 0.17281627661600854,
-        "parent_plus_share": 0.11558498718060217,
+        "parent_plus_share": 0.11558498718060221,
         "metrics_vs_scf": {
           "share_with_debt_error_pp": -0.8733291505995028,
           "mean_among_borrowers_error_pct": -4.349507836301458,
@@ -939,13 +939,13 @@
       },
       "reason": "SCF income covers the primary economic unit; the SPM unit is the CPS resource-sharing unit.",
       "share": 0.1422480075434781,
-      "parent_plus_share": 0.17924572328488167,
+      "parent_plus_share": 0.1792457232848817,
       "parent_plus_by_reference_age": {
         "24_and_younger": 2.0364004798094018e-08,
         "25_to_34": 0.0035008167958351234,
-        "35_to_49": 0.02945856222174237,
-        "50_to_61": 0.47869069913423223,
-        "62_and_older": 0.6254994464664675
+        "35_to_49": 0.029458562221742368,
+        "50_to_61": 0.47869069913423207,
+        "62_and_older": 0.6254994464664674
       },
       "by_head_age_band": {
         "24_and_younger": 0.19738286662117155,
@@ -980,7 +980,7 @@
           "median_among_borrowers": 25000.0,
           "total_household_weight": 122537091.8856833,
           "federal_education_debt_total": 741056653493.6942,
-          "parent_plus_share_of_total": 0.17924572328488167
+          "parent_plus_share_of_total": 0.1792457232848817
         },
         "household_balance_bands": {
           "under_5k": 0.09952116824675251,
@@ -1105,7 +1105,7 @@
             "50_to_61": 0.19230144811764502,
             "62_and_older": 0.07158736116182915
           },
-          "graduate_share_of_own_original_principal": 0.536561414303497,
+          "graduate_share_of_own_original_principal": 0.5365614143034969,
           "ibr_new_borrower_share": 0.6249721194428659
         }
       }
@@ -1141,7 +1141,7 @@
           "household_income"
         ],
         "share": 0.17281627661600854,
-        "parent_plus_share": 0.11558498718060217,
+        "parent_plus_share": 0.11558498718060221,
         "metrics_vs_scf": {
           "share_with_debt_error_pp": -0.8733291505995028,
           "mean_among_borrowers_error_pct": -4.349507836301458,
@@ -1160,8 +1160,8 @@
       "parent_plus_by_reference_age": {
         "24_and_younger": 1.352905945393419e-08,
         "25_to_34": 0.00013998491463271278,
-        "35_to_49": 0.019468440588935952,
-        "50_to_61": 0.39136120955142256,
+        "35_to_49": 0.019468440588935945,
+        "50_to_61": 0.3913612095514226,
         "62_and_older": 0.5990857762189746
       },
       "by_head_age_band": {
@@ -1322,7 +1322,7 @@
             "50_to_61": 0.19389979448680775,
             "62_and_older": 0.06907706577370382
           },
-          "graduate_share_of_own_original_principal": 0.497501055409478,
+          "graduate_share_of_own_original_principal": 0.4975010554094781,
           "ibr_new_borrower_share": 0.6165370510095016
         }
       }
@@ -1375,9 +1375,9 @@
       "parent_plus_by_reference_age": {
         "24_and_younger": 4.3569134442118664e-10,
         "25_to_34": 0.0006982323042478812,
-        "35_to_49": 0.01612499187177073,
-        "50_to_61": 0.3707882978015445,
-        "62_and_older": 0.7327689853082329
+        "35_to_49": 0.016124991871770737,
+        "50_to_61": 0.37078829780154465,
+        "62_and_older": 0.7327689853082328
       },
       "by_head_age_band": {
         "24_and_younger": 0.22636975285526706,
@@ -1537,7 +1537,7 @@
             "50_to_61": 0.2105771421991523,
             "62_and_older": 0.06126083438253632
           },
-          "graduate_share_of_own_original_principal": 0.4992132097267167,
+          "graduate_share_of_own_original_principal": 0.49921320972671657,
           "ibr_new_borrower_share": 0.5832347045593139
         }
       }
@@ -1584,12 +1584,12 @@
       },
       "reason": "As r1, and Social Security or pension income: 18% of host households at 25-34 have some against 6% of SCF families.",
       "share": 0.16413671000206656,
-      "parent_plus_share": 0.16758194869072,
+      "parent_plus_share": 0.16758194869071996,
       "parent_plus_by_reference_age": {
         "24_and_younger": 0.0009290910285421434,
         "25_to_34": 0.003457206986791982,
-        "35_to_49": 0.020444291263711122,
-        "50_to_61": 0.3174101032569371,
+        "35_to_49": 0.02044429126371113,
+        "50_to_61": 0.317410103256937,
         "62_and_older": 0.7753235949011145
       },
       "by_head_age_band": {
@@ -1624,8 +1624,8 @@
           "mean_among_borrowers": 42680.26879514089,
           "median_among_borrowers": 23000.0,
           "total_household_weight": 122537091.8856833,
-          "federal_education_debt_total": 858421208954.9308,
-          "parent_plus_share_of_total": 0.16758194869072
+          "federal_education_debt_total": 858421208954.9309,
+          "parent_plus_share_of_total": 0.16758194869071996
         },
         "household_balance_bands": {
           "under_5k": 0.1179407532730876,
@@ -1750,7 +1750,7 @@
             "50_to_61": 0.20778027670943267,
             "62_and_older": 0.07240287305689257
           },
-          "graduate_share_of_own_original_principal": 0.4826934460430417,
+          "graduate_share_of_own_original_principal": 0.48269344604304165,
           "ibr_new_borrower_share": 0.6147006160485154
         }
       }
@@ -1797,13 +1797,13 @@
       },
       "reason": "As r2 with the household income unit, to separate the two changes.",
       "share": 0.16471154337166136,
-      "parent_plus_share": 0.21133541826981272,
+      "parent_plus_share": 0.21133541826981264,
       "parent_plus_by_reference_age": {
         "24_and_younger": 1.1813563767402388e-06,
         "25_to_34": 0.002878811061981838,
-        "35_to_49": 0.03437594638384092,
-        "50_to_61": 0.4760763618611841,
-        "62_and_older": 0.7759316514071254
+        "35_to_49": 0.03437594638384093,
+        "50_to_61": 0.47607636186118407,
+        "62_and_older": 0.7759316514071253
       },
       "by_head_age_band": {
         "24_and_younger": 0.1992126713308297,
@@ -1837,8 +1837,8 @@
           "mean_among_borrowers": 42874.79958838091,
           "median_among_borrowers": 23000.0,
           "total_household_weight": 122537091.8856833,
-          "federal_education_debt_total": 865353807411.8154,
-          "parent_plus_share_of_total": 0.21133541826981272
+          "federal_education_debt_total": 865353807411.8156,
+          "parent_plus_share_of_total": 0.21133541826981264
         },
         "household_balance_bands": {
           "under_5k": 0.11607469728946729,

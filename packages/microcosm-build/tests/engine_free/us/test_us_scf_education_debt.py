@@ -303,6 +303,42 @@ def test_stage_declares_the_person_outputs_and_pinned_2025_files() -> None:
     assert spec.artifacts[0]["vintage"] == "2022"
     assert spec.artifacts[1]["vintage"] == "2022"
     assert spec.artifacts[2]["member"] == "pu2023.csv"
+    # Both QRFs condition on the production predictors; the borrower fit adds
+    # the drawn total.
+    fits = {
+        operation.parameters["donor"]: operation.parameters
+        for operation in spec.operations
+        if operation.kind == "fit_weighted_qrf"
+        and str(operation.parameters.get("donor", "")).startswith("scf_2025")
+    }
+    assert tuple(fits["scf_2025_education_debt"]["predictors"]) == (
+        SCF_EDUCATION_DEBT_PREDICTORS
+    )
+    assert tuple(fits["scf_2025_education_debt_borrowers"]["predictors"]) == (
+        *SCF_EDUCATION_DEBT_PREDICTORS,
+        SCF_EDUCATION_DEBT_TOTAL_TARGET,
+    )
+
+
+def test_production_predictors_drop_only_the_reviewed_exclusions() -> None:
+    candidates = education_debt.SCF_EDUCATION_DEBT_CANDIDATE_PREDICTORS
+    excluded = education_debt.SCF_EDUCATION_DEBT_EXCLUDED_PREDICTORS
+    assert set(excluded) == {
+        "interest_dividend_income",
+        "social_security_pension_income",
+    }
+    assert all(reason.strip() for reason in excluded.values())
+    assert SCF_EDUCATION_DEBT_PREDICTORS == tuple(
+        predictor for predictor in candidates if predictor not in excluded
+    )
+    assert education_debt.SCF_EDUCATION_DEBT_RECIPIENT_DEFINITION == (
+        education_debt.RecipientDefinition(
+            reference_person="householder_couple",
+            partnered="spouse_or_partner",
+            children="of_reference_or_partner",
+            income_unit="reference_couple_and_children",
+        )
+    )
 
 
 def _zip_with(member: str, payload: bytes) -> bytes:
@@ -746,7 +782,12 @@ def test_default_definition_follows_the_scf_definitions() -> None:
     assert features["is_married"].tolist() == [1.0, 1.0]
     # Household 1 counts the partner's child; the mother is no one's child.
     assert features["own_children_in_household"].tolist() == [1.0, 0.0]
-    assert features["employment_income"].tolist() == [120_000.0, 0.0]
+    # Income sums over the couple and their children; the mother's wages are
+    # outside the SCF primary economic unit.
+    assert features["employment_income"].tolist() == [90_000.0, 0.0]
+    assert list(features.columns) == list(
+        education_debt.SCF_EDUCATION_DEBT_CANDIDATE_PREDICTORS
+    )
 
 
 def test_first_receipt_definition_reproduces_the_oldest_adult_rule() -> None:

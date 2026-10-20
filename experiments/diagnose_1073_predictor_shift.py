@@ -23,9 +23,9 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.us_runtime.scf_education_debt import (
-    SCF_EDUCATION_DEBT_PREDICTORS,
-    SCF_EDUCATION_DEBT_RECIPIENT_DEFINITION,
+    SCF_EDUCATION_DEBT_CANDIDATE_PREDICTORS,
     SCF_EDUCATION_DEBT_TOTAL_TARGET,
+    RecipientDefinition,
     _recipients,
     _stage_seed,
     load_scf_2025_education_debt_donor,
@@ -38,6 +38,11 @@ _spec = importlib.util.spec_from_file_location(
 receipt = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(receipt)
 
+#: The construction this diagnosis measured: the SCF-matching codings with
+#: whole-household income, before the predictor and income-unit remedies it led
+#: to (receipt run 20261020T150445Z-47949111f). Pinned so a rerun keeps its
+#: meaning now that the stage default has moved on.
+DIAGNOSED_DEFINITION = RecipientDefinition(income_unit="household")
 BANDS = (("18_24", 18, 24), ("25_34", 25, 34), ("35_49", 35, 49),
          ("50_61", 50, 61), ("62_plus", 62, 200))  # fmt: skip
 CONTINUOUS = (
@@ -124,7 +129,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         args.scf_cache_dir / "rscfp2025.dta", args.scf_cache_dir / "p25i6.dta"
     )
     frame = receipt.load_host_frame(args.h5)
-    host = _recipients(frame, SCF_EDUCATION_DEBT_RECIPIENT_DEFINITION).features
+    host = _recipients(frame, DIAGNOSED_DEFINITION).features
     host_w = np.asarray(frame.weights_for("household").values, dtype=float)
     host_age = host["age"].to_numpy(float)
     scf_w = donor["scf_weight"].to_numpy(float)
@@ -135,7 +140,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         h = (host_age >= lo) & (host_age <= hi)
         s = (scf_age >= lo) & (scf_age <= hi)
         entry = {}
-        for column in SCF_EDUCATION_DEBT_PREDICTORS:
+        for column in SCF_EDUCATION_DEBT_CANDIDATE_PREDICTORS:
             if column == "age":
                 continue
             binary = column in ("is_female", "is_married")
@@ -157,7 +162,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             }  # fmt: skip
         report["distributions"][band] = entry
 
-    predictors = list(SCF_EDUCATION_DEBT_PREDICTORS)
+    predictors = list(SCF_EDUCATION_DEBT_CANDIDATE_PREDICTORS)
     fit = donor.loc[:, [*predictors, SCF_EDUCATION_DEBT_TOTAL_TARGET, "scf_weight"]]
     model = QRF(n_estimators=100, seed=_stage_seed(0, 1)).fit(
         fit,

@@ -58,23 +58,47 @@ X7951). Loans beyond the sixth are one total, X7179, with none of these items.
   weights the SAVE rates.
 
 **Imputation.** Two regime-gated weighted QRFs (:class:`microcosm.fit.QRF`)
-condition on the eight shared SCF predictors plus household income excluding
-capital gains (:data:`SCF_EDUCATION_DEBT_PREDICTORS`). The first draws each
-recipient household's federal education debt from every SCF family. The
-second, fit on borrower families only and conditioning also on that total,
+condition on the same predictors (:data:`SCF_EDUCATION_DEBT_PREDICTORS`): the
+reference person's age, sex and race, whether a spouse or partner is present,
+the number of children, wages, and income excluding capital gains. The first
+draws each recipient household's federal education debt from every SCF family.
+The second, fit on borrower families only and conditioning also on that total,
 draws the chained composition: the head's and spouse's shares of the total,
 their graduate shares, and their new-borrower flags. Shares are clipped to
 [0, 1] and rescaled when the two own shares exceed one; the remainder is the
 head's Parent PLUS balance.
 
-**Recipients.** The household's SCF-style reference person
-(:func:`scf_auto_loans._scf_reference_person_mask`) carries the reference
-person's demographics and the household-summed incomes, as for auto loans. The
-spouse is the member whose line number is the reference person's ``A_SPOUSE``,
-or else its ``PECOHAB`` partner when that column is present. A household drawn
-with a spouse's balance but no spouse or partner present gives that balance to
-the reference person, whose graduate share becomes the balance-weighted mean
-of the two and whose new-borrower flag requires both. Everyone else gets zero.
+Two of the shared SCF predictors are left out
+(:data:`SCF_EDUCATION_DEBT_CANDIDATE_PREDICTORS` keeps the full list for the
+diagnostics). Interest and dividends, and Social Security and pensions, are
+measured differently on the two sides: the CPS host carries tax-record
+imputations, the SCF survey reports. At reference ages 25-34, 42% of host
+households have interest or dividends against 16% of SCF families, and 18%
+have Social Security or pension income against 6%. A QRF reads equal values
+as equal positions, so the host's older-looking households drew less debt:
+mapping these two predictors to their SCF distribution at equal rank moves the
+host's borrower share most of any predictor
+(``experiments/receipts/1073-predictor-shift-diagnosis.json``). Wages and
+total income stay in, because the issue asks for income and they carry the
+income gradient.
+
+**Recipients** (:data:`SCF_EDUCATION_DEBT_RECIPIENT_DEFINITION`). The CPS side
+builds each predictor the way the SCF defines it. The reference person is the
+CPS householder or, when a spouse or cohabiting partner is present, the man of
+a mixed-sex couple or else the older partner: the SCF's ordering of its
+economically dominant couple. ``is_married`` counts a cohabiting partner, as
+SCF ``MARRIED`` does, and children count those of the reference person or
+partner, as SCF ``KIDS`` does. Incomes sum over the reference person, spouse or
+partner and their children: the SCF primary economic unit, which leaves out a
+financially independent co-resident relative or roommate. The spouse is the
+member whose line number is the reference person's ``A_SPOUSE``, or else its
+``PECOHAB`` partner when that column is present. A household drawn with a
+spouse's balance but no spouse or partner present gives that balance to the
+reference person, whose graduate share becomes the balance-weighted mean of
+the two and whose new-borrower flag requires both. Everyone else gets zero.
+:data:`SCF_EDUCATION_DEBT_FIRST_RECEIPT_DEFINITION` keeps the first receipt's
+construction (oldest adult, ``A_MARITL`` marriage, own children, whole
+household) for its before/after table.
 
 **Known limits.** The SCF records the debts of the primary economic unit, so a
 financially independent adult living in someone else's household is missed,
@@ -113,6 +137,8 @@ __all__ = [
     "SCF_2025_SUMMARY_EXTRACT",
     "SCF_EDUCATION_DEBT_BALANCE_BANDS",
     "SCF_EDUCATION_DEBT_BORROWER_AGE_BANDS",
+    "SCF_EDUCATION_DEBT_CANDIDATE_PREDICTORS",
+    "SCF_EDUCATION_DEBT_EXCLUDED_PREDICTORS",
     "SCF_EDUCATION_DEBT_COMPOSITION_TARGETS",
     "SCF_EDUCATION_DEBT_PREDICTORS",
     "SCF_EDUCATION_DEBT_TOTAL_TARGET",
@@ -284,11 +310,36 @@ SCF_EDUCATION_DEBT_COMPOSITION_TARGETS: tuple[str, ...] = (
     "head_is_ibr_new_borrower",
     "spouse_is_ibr_new_borrower",
 )
-#: The shared SCF predictors plus household income excluding capital gains.
+#: Every predictor both sides build: the shared SCF predictors plus income
+#: excluding capital gains. The diagnostics and ablations compare all of them.
 #: Educational attainment joins once microcosm#297 carries it on the CPS side.
-SCF_EDUCATION_DEBT_PREDICTORS: tuple[str, ...] = (
+SCF_EDUCATION_DEBT_CANDIDATE_PREDICTORS: tuple[str, ...] = (
     *SCF_WEALTH_PREDICTORS,
     "household_income",
+)
+#: Candidate predictors the QRFs leave out, each with its reason. Mapping each
+#: to its SCF distribution at equal rank within five-year reference-person age
+#: bins moves the host's borrower share from 14.2% to 15.8% (interest and
+#: dividends) and 14.7% (Social Security and pensions); all candidates together
+#: reach 17.3%, the SCF hold-out's level
+#: (experiments/receipts/1073-predictor-shift-diagnosis.json).
+SCF_EDUCATION_DEBT_EXCLUDED_PREDICTORS: Mapping[str, str] = {
+    "interest_dividend_income": (
+        "CPS interest and dividends are tax-record imputations: 42% of host "
+        "households at reference ages 25-34 have some, against 16% of SCF "
+        "families."
+    ),
+    "social_security_pension_income": (
+        "CPS Social Security and pension income is likewise imputed: 18% of "
+        "host households at reference ages 25-34 have some, against 6% of SCF "
+        "families."
+    ),
+}
+#: The predictors both QRFs condition on.
+SCF_EDUCATION_DEBT_PREDICTORS: tuple[str, ...] = tuple(
+    predictor
+    for predictor in SCF_EDUCATION_DEBT_CANDIDATE_PREDICTORS
+    if predictor not in SCF_EDUCATION_DEBT_EXCLUDED_PREDICTORS
 )
 
 US_SCF_EDUCATION_DEBT_BALANCE_COLUMNS: tuple[str, ...] = (
@@ -788,7 +839,7 @@ class RecipientDefinition:
     reference_person: str = "householder_couple"
     partnered: str = "spouse_or_partner"
     children: str = "of_reference_or_partner"
-    income_unit: str = "household"
+    income_unit: str = "reference_couple_and_children"
 
     def __post_init__(self) -> None:
         for value, allowed, name in (
@@ -1068,7 +1119,7 @@ def _recipients(
         features[column] = sums
     features.index = household.index
     return _Recipients(
-        features=features.loc[:, list(SCF_EDUCATION_DEBT_PREDICTORS)],
+        features=features.loc[:, list(SCF_EDUCATION_DEBT_CANDIDATE_PREDICTORS)],
         head_position=head_position,
         spouse_position=spouse_position,
     )
@@ -1376,18 +1427,32 @@ def us_scf_education_debt_stage_spec() -> SourceStageSpec:
                 f"{_SCF_STAGE_NAME!r} SCF {SCF_EDUCATION_DEBT_VINTAGE} artifact pin "
                 f"drift for {public_file.member}: {drift}."
             )
-    fits = [
-        operation
-        for operation in spec.operations
-        if operation.kind == "fit_weighted_qrf"
-        and operation.parameters.get("donor") == "scf_2025_education_debt"
-    ]
-    if len(fits) != 1 or tuple(fits[0].parameters.get("predictors", ())) != (
-        SCF_EDUCATION_DEBT_PREDICTORS
-    ):
-        raise ValueError(
-            f"{_SCF_STAGE_NAME!r} education-debt QRF predictors have drifted."
-        )
+    expected_fits = {
+        "scf_2025_education_debt": (
+            SCF_EDUCATION_DEBT_PREDICTORS,
+            (SCF_EDUCATION_DEBT_TOTAL_TARGET,),
+        ),
+        "scf_2025_education_debt_borrowers": (
+            (*SCF_EDUCATION_DEBT_PREDICTORS, SCF_EDUCATION_DEBT_TOTAL_TARGET),
+            SCF_EDUCATION_DEBT_COMPOSITION_TARGETS,
+        ),
+    }
+    for donor, (predictors, targets) in expected_fits.items():
+        fits = [
+            operation
+            for operation in spec.operations
+            if operation.kind == "fit_weighted_qrf"
+            and operation.parameters.get("donor") == donor
+        ]
+        if (
+            len(fits) != 1
+            or tuple(fits[0].parameters.get("predictors", ())) != predictors
+            or tuple(fits[0].parameters.get("targets", ())) != targets
+        ):
+            raise ValueError(
+                f"{_SCF_STAGE_NAME!r} education-debt QRF {donor!r} predictors or "
+                "targets have drifted."
+            )
     return spec
 
 

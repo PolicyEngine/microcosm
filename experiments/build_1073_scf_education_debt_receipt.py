@@ -11,11 +11,17 @@ Three measurements, all weighted, all against the 2025 SCF:
    by ``yy1`` (all implicates of a family stay together). Each fold is drawn
    from the stage's two QRFs fit on the other four, and the drawn table is
    compared with the observed one, for each predictor set.
-3. **Host fit.** The stage imputed onto a US Microcosm H5 (the published
-   default unless ``--h5`` names another), tabulated at that file's weights.
+3. **Host fit, before and after.** The stage imputed onto a US Microcosm H5
+   (the published default unless ``--h5`` names another), tabulated at that
+   file's weights, under three settings (``HOST_SETTINGS``): the first receipt's
+   construction, the SCF-matching recipient definition with every candidate
+   predictor, and the build (that definition without the two shifted income
+   predictors).
 
-Nothing here is a gate or a calibration target. Run with the repository's
-engine-free environment:
+Nothing here is a gate or a calibration target. The committed receipts are
+produced on Modal by ``experiments/modal_1073.py`` (step ``receipt``), which
+clones a pushed commit and verifies every input's SHA-256; the receipt records
+that commit and the run id. A local run needs about 4 GB:
 
     .venv/Scripts/python.exe experiments/build_1073_scf_education_debt_receipt.py \
         --scf-zip-dir ~/.cache/scf --h5 populace_us_2024.h5
@@ -28,6 +34,7 @@ import hashlib
 import json
 import zipfile
 from collections.abc import Mapping, Sequence
+from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -39,16 +46,21 @@ from microcosm.build.us_runtime.scf_education_debt import (
     SCF_2025_SUMMARY_EXTRACT,
     SCF_EDUCATION_DEBT_BALANCE_BANDS,
     SCF_EDUCATION_DEBT_BORROWER_AGE_BANDS,
+    SCF_EDUCATION_DEBT_CANDIDATE_PREDICTORS,
+    SCF_EDUCATION_DEBT_FIRST_RECEIPT_DEFINITION,
     SCF_EDUCATION_DEBT_PREDICTORS,
+    SCF_EDUCATION_DEBT_RECIPIENT_DEFINITION,
     SCF_EDUCATION_DEBT_TOTAL_TARGET,
     SCF_EDUCATION_LOAN_BALANCE_COLUMNS,
     SCF_EDUCATION_LOAN_FEDERAL_COLUMNS,
     SCF_EDUCATION_LOAN_REMAINING_BALANCE_COLUMN,
     SCF_EDUCATION_LOAN_WHOSE_COLUMNS,
+    RecipientDefinition,
     ScfPublicFile,
     _read_stata_columns,
     draw_scf_education_debt_households,
     fetch_scf_public_file,
+    impute_us_scf_education_debt,
     load_scf_2025_education_debt_donor,
     scf_education_debt_donor_fit_table,
     us_scf_education_debt_fit_table,
@@ -71,12 +83,38 @@ FED_ALT_TABLE_13 = {
 #: SHA-256 (releases/populace-us-2024-spm-20260915/release_manifest.json).
 DEFAULT_HOST_RELEASE = "populace-us-2024-spm-20260915"
 DEFAULT_HOST_SHA256 = "6496cc4393d4d3c6574f76eca231de5898c803b9067645591fd5c4d3e65aee84"
-PRODUCTION_VARIANT = "shared_8_plus_household_income"
+#: The build's predictor set, and the first receipt's (every candidate).
+PRODUCTION_VARIANT = "build_without_interest_and_ss_pension"
+FIRST_RECEIPT_VARIANT = "shared_8_plus_household_income"
 VARIANTS: Mapping[str, tuple[str, ...]] = {
     "shared_8_without_age": tuple(p for p in SCF_WEALTH_PREDICTORS if p != "age"),
     "shared_8": SCF_WEALTH_PREDICTORS,
+    FIRST_RECEIPT_VARIANT: SCF_EDUCATION_DEBT_CANDIDATE_PREDICTORS,
+    "plus_household_income_and_education": (
+        *SCF_EDUCATION_DEBT_CANDIDATE_PREDICTORS,
+        "educ",
+    ),
     PRODUCTION_VARIANT: SCF_EDUCATION_DEBT_PREDICTORS,
-    "plus_household_income_and_education": (*SCF_EDUCATION_DEBT_PREDICTORS, "educ"),
+    "build_plus_education": (*SCF_EDUCATION_DEBT_PREDICTORS, "educ"),
+}
+#: Host settings for the before/after table: (label, definition, predictors).
+BUILD_SETTING = "build"
+HOST_SETTINGS: Mapping[str, tuple[str, RecipientDefinition, tuple[str, ...]]] = {
+    "first_receipt": (
+        "First receipt",
+        SCF_EDUCATION_DEBT_FIRST_RECEIPT_DEFINITION,
+        SCF_EDUCATION_DEBT_CANDIDATE_PREDICTORS,
+    ),
+    "scf_codings_all_candidates": (
+        "SCF codings, all predictors",
+        SCF_EDUCATION_DEBT_RECIPIENT_DEFINITION,
+        SCF_EDUCATION_DEBT_CANDIDATE_PREDICTORS,
+    ),
+    BUILD_SETTING: (
+        "Build",
+        SCF_EDUCATION_DEBT_RECIPIENT_DEFINITION,
+        SCF_EDUCATION_DEBT_PREDICTORS,
+    ),
 }
 WHOSE_LABELS = {
     1: "1 respondent (reference person)",
@@ -105,6 +143,19 @@ _HOST_PERSON_COLUMNS = (
     "PEPAR1",
     "PEPAR2",
 )
+
+
+def _git_commit() -> str:
+    import subprocess
+
+    result = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=Path(__file__).resolve().parent,
+    )
+    return result.stdout.strip() if result.returncode == 0 else "unknown"
 
 
 def _sha256(path: Path) -> str:
@@ -369,9 +420,10 @@ def markdown(receipt: Mapping[str, object]) -> str:
     observed = receipt["scf_2025_observed"]
     holdout = receipt["holdout"]["variants"][PRODUCTION_VARIANT]["fit"]
     host = receipt.get("host", {}).get("fit")
-    columns = [("SCF 2025", observed), ("SCF hold-out draw", holdout)]
-    if host is not None:
-        columns.append((f"Imputed onto {receipt['host']['release']}", host))
+    settings = receipt.get("host_settings", {})
+    columns = [("SCF 2025", observed), ("SCF hold-out (build)", holdout)]
+    for setting in settings.values():
+        columns.append((f"Host: {setting['label']}", setting["fit"]))
     header = "| | " + " | ".join(label for label, _ in columns) + " |"
     rule = "|---|" + "---:|" * len(columns)
 
@@ -387,13 +439,30 @@ def markdown(receipt: Mapping[str, object]) -> str:
         "",
         f"Generated {receipt['generated_at']} by "
         "`experiments/build_1073_scf_education_debt_receipt.py` on branch "
-        "`scf-2025-education-debt`. Machine-readable copy: "
+        f"`scf-2025-education-debt`, commit `{receipt['provenance']['commit']}`"
+        + (
+            f", Modal run `{receipt['provenance']['run']}` "
+            "(`experiments/modal_1073.py`)"
+            if receipt["provenance"].get("run")
+            else ""
+        )
+        + ". Machine-readable copy: "
         "`experiments/receipts/1073-scf-education-debt-fit.json`.",
+        "",
+        "Host columns impute the published default "
+        f"`{receipt.get('host', {}).get('release', DEFAULT_HOST_RELEASE)}` at its "
+        "calibrated weights under three settings: the first receipt's construction "
+        "(oldest adult, `A_MARITL` marriage, own children, whole-household income, "
+        "every candidate predictor); the SCF-matching codings with every candidate "
+        "predictor; and the build, which also leaves out interest and dividends and "
+        "Social Security and pensions. The cause and the evidence are in the "
+        "stage notes and `experiments/receipts/1073-predictor-shift-diagnosis.json`.",
         "",
         "Every figure is weighted. SCF rows pool the five implicates with `wgt` "
         "(X42001/5). Household figures group by the reference person's age and "
-        "race and by weighted quintiles of household income less capital gains, "
-        "the income concept the imputation conditions on. Borrower figures count "
+        "race and by weighted quintiles of income less capital gains of the "
+        "setting's income unit, the income concept that setting conditions on. "
+        "Borrower figures count "
         "people with a federal balance (own plus Parent PLUS), in Federal Student "
         "Aid's balance and age bands; SCF borrowers are the reference person and "
         "spouse. Nothing here is a gate or a calibration target.",
@@ -560,22 +629,42 @@ def markdown(receipt: Mapping[str, object]) -> str:
             + " |"
         )
     if host is not None:
+        host_metrics = [m for m in metrics if m != "household_rank_correlation"]
         lines += [
             "",
-            "## Host fit",
+            "## Host fit, before and after",
             "",
             f"Imputed with build seed {receipt['host']['seed']} onto "
             f"`{receipt['host']['release']}` ({receipt['host']['households']:,} "
             f"households, sha256 `{receipt['host']['sha256'][:12]}...`) at its "
             "calibrated household weights; the published weights were calibrated "
-            "without these columns. Signal gate: "
-            f"{'passed' if receipt['host']['gate_passed'] else 'FAILED'}.",
+            "without these columns. Build signal gate: "
+            f"{'passed' if receipt['host']['gate_passed'] else 'FAILED'}. Errors "
+            "are imputed minus SCF 2025.",
             "",
-            "| Metric (imputed minus SCF 2025) | Value |",
-            "|---|---:|",
+            "| Setting | Households with debt | Parent PLUS share | "
+            + " | ".join(host_metrics)
+            + " |",
+            "|---|---:|---:|" + "---:|" * len(host_metrics),
         ]
-        for key, value in receipt["host"]["metrics_vs_scf"].items():
-            lines.append(f"| {key} | {value:.3f} |")
+        for setting in settings.values():
+            fit = setting["fit"]
+            lines.append(
+                f"| {setting['label']} | "
+                f"{_pct(fit['households']['share_with_federal_education_debt'])} | "
+                f"{_pct(fit['households']['parent_plus_share_of_total'])} | "
+                + " | ".join(
+                    f"{setting['metrics_vs_scf'][m]:.3f}" for m in host_metrics
+                )
+                + " |"
+            )
+        lines.append(
+            "| SCF 2025 | "
+            f"{_pct(observed['households']['share_with_federal_education_debt'])} | "
+            f"{_pct(observed['households']['parent_plus_share_of_total'])} | "
+            + " | ".join("" for _ in host_metrics)
+            + " |"
+        )
     lines.append("")
     return "\n".join(lines)
 
@@ -594,6 +683,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--h5", type=Path, help="US Microcosm H5 to impute onto.")
     parser.add_argument("--host-release", default=DEFAULT_HOST_RELEASE)
+    parser.add_argument(
+        "--run",
+        default="",
+        help="Label of the run that produced the receipt (the Modal run id).",
+    )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--folds", type=int, default=5)
     parser.add_argument("--n-estimators", type=int, default=100)
@@ -648,6 +742,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "schema_version": 1,
         "issue": ISSUE,
         "generated_at": datetime.now(UTC).strftime("%Y-%m-%d"),
+        "provenance": {"commit": _git_commit(), "run": args.run},
         "scf_files": {
             public_file.member: {
                 "url": public_file.url,
@@ -691,9 +786,38 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.h5 is not None:
         host_sha256 = _sha256(args.h5)
-        frame = load_host_frame(args.h5)
+        base = load_host_frame(args.h5)
+        receipt["host_settings"] = {}
+        for name, (label, definition, predictors) in HOST_SETTINGS.items():
+            if name == BUILD_SETTING:
+                continue
+            imputed = impute_us_scf_education_debt(
+                base,
+                donor,
+                seed=args.seed,
+                n_estimators=args.n_estimators,
+                definition=definition,
+                predictors=predictors,
+            )
+            tables = {entity: base.table(entity).copy() for entity in base.entities}
+            for column in imputed.columns:
+                tables["person"][column] = imputed[column].to_numpy()
+            setting_frame = Frame(
+                tables,
+                base.schema,
+                {entity: base.weights_for(entity) for entity in base.weighted_entities},
+            )
+            setting_fit = us_scf_education_debt_fit_table(setting_frame, definition)
+            receipt["host_settings"][name] = {
+                "label": label,
+                "definition": asdict(definition),
+                "predictors": list(predictors),
+                "fit": setting_fit,
+                "metrics_vs_scf": fit_metrics(observed, setting_fit),
+            }
+        # The build runs through the stage entry point and its signal gate.
         frame = with_us_scf_education_debt_inputs(
-            frame,
+            base,
             seed=args.seed,
             time_period=2024,
             scf_education_debt_donor=donor,
@@ -701,6 +825,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         gate = us_scf_education_debt_signal_gate(frame)
         host_fit = us_scf_education_debt_fit_table(frame)
+        label, definition, predictors = HOST_SETTINGS[BUILD_SETTING]
+        receipt["host_settings"][BUILD_SETTING] = {
+            "label": label,
+            "definition": asdict(definition),
+            "predictors": list(predictors),
+            "fit": host_fit,
+            "metrics_vs_scf": fit_metrics(observed, host_fit),
+        }
         receipt["host"] = {
             "release": args.host_release,
             "path": args.h5.name,
