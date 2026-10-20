@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from importlib.resources import files
 from pathlib import Path
@@ -12,6 +13,7 @@ import pandas as pd
 
 from microcosm.build.gates import FitWeightRecord
 from microcosm.build.source_manifest import SourceStageSpec
+from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.uk_runtime.bus_support_pricing import (
     PRICE_BUS_SUPPORT_KIND,
     bus_support_pricing_operation,
@@ -186,7 +188,10 @@ class UKETBServicesStageTransform:
         )
         predictors = recipient_predictors(frame, self.engine)
         draws, records = impute_etb_services(
-            donor, predictors, seed=_qrf_seed(self.stage)
+            donor,
+            predictors,
+            seed=_qrf_seed(self.stage),
+            record_ids=frame.table("household")["household_id"].to_numpy(),
         )
         clip_result = support_clip_to_donor(
             draws, donor, exempt=support_clip_exempt(self.stage)
@@ -436,11 +441,28 @@ def recipient_predictors(frame: Frame, engine: object) -> pd.DataFrame:
 
 
 def impute_etb_services(
-    donor: pd.DataFrame, recipient: pd.DataFrame, *, seed: int, n_estimators: int = 100
+    donor: pd.DataFrame,
+    recipient: pd.DataFrame,
+    *,
+    seed: int,
+    record_ids: Sequence[object] | np.ndarray,
+    n_estimators: int = 100,
 ) -> tuple[pd.DataFrame, tuple[FitWeightRecord, ...]]:
+    """Chain-draw the ETB services targets from household-keyed uniforms.
+
+    Each draw reads uniforms keyed on the household's own id (``record_ids``,
+    in recipient row order) and the target, so a household's draws move only
+    when its own predictors do, whatever happens to the other recipients.
+    """
+
     from microcosm.fit import RegimeGatedQRF
 
     targets = UK_ETB_SERVICES_HOUSEHOLD_OUTPUT_COLUMNS[:3]
+    ids = np.asarray(record_ids)
+    if ids.shape != (len(recipient),) or pd.Series(ids).duplicated().any():
+        raise ValueError(
+            "ETB record_ids must name every recipient once, in recipient row order."
+        )
     model = RegimeGatedQRF(n_estimators=n_estimators, seed=seed)
     state = model.start_chain(
         donor,
@@ -451,12 +473,15 @@ def impute_etb_services(
     raw = pd.DataFrame(index=recipient.index)
     records: list[FitWeightRecord] = []
     for target in targets:
+        salt = f"{UK_ETB_SERVICES_FIT_NAME}:{target}"
         result = model.fit_draw_next(
             donor,
             recipient.loc[:, list(UK_ETB_SERVICES_PREDICTORS)],
             raw,
             state=state,
             weights="weight",
+            quantiles=stable_identity_uniforms(ids, seed=seed, salt=salt),
+            sign_uniforms=stable_identity_uniforms(ids, seed=seed, salt=f"{salt}:sign"),
         )
         raw[target] = result.raw_draw
         records.append(

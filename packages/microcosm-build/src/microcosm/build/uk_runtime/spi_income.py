@@ -1151,8 +1151,8 @@ def impute_uk_spi_income_support(
         income_predictors=income_predictors,
     )
     # Queried over the age domain like stage 1; a dependant's row conditions
-    # on its twin's values and is discarded below, and the draws consume the
-    # RNG stream row by row, so no recipient's draw depends on it.
+    # on its twin's values and is discarded below, and each row draws from
+    # uniforms keyed on its own identity, so no recipient's draw depends on it.
     target_predictors = _person_predictors(
         person.loc[spi_age_domain],
         household,
@@ -1204,7 +1204,22 @@ def impute_uk_spi_income_support(
         list(stage2_outputs),
         weights="importance",
     )
-    stage2_draws = stage2.predict(encoded_target)
+    stage2_keys = person.loc[spi_age_domain, SPI_TRANSPORT_KEY_COLUMN].to_numpy()
+    stage2_draws = stage2.predict_from_uniforms(
+        encoded_target,
+        quantiles={
+            target: stable_identity_uniforms(
+                stage2_keys, seed=seed + 1, salt=f"{FRS_ONLY_FIT_NAME}:{target}"
+            )
+            for target in stage2_outputs
+        },
+        sign_uniforms={
+            target: stable_identity_uniforms(
+                stage2_keys, seed=seed + 1, salt=f"{FRS_ONLY_FIT_NAME}:{target}:sign"
+            )
+            for target in stage2_outputs
+        },
+    )
     _validate_predictions(
         stage2_draws,
         expected=stage2_outputs,

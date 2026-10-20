@@ -208,6 +208,12 @@ def _frame() -> object:
     )
 
 
+def _ids(recipient: pd.DataFrame) -> np.ndarray:
+    """Stable household ids for a synthetic recipient table, in row order."""
+
+    return np.arange(1, len(recipient) + 1)
+
+
 def test_was_donor_cleaning_arithmetic_and_exact_case_insensitive_columns() -> None:
     donor = clean_was_household_table(_raw_was())
 
@@ -611,8 +617,14 @@ def test_was_imputer_uses_checkpointed_chain_segments(
             *,
             state,
             weights,
+            quantiles,
+            sign_uniforms,
         ):
             assert weights == "weight"
+            # Every step draws from uniforms keyed on the recipients' own ids.
+            for uniforms in (quantiles, sign_uniforms):
+                assert uniforms.shape == (len(recipient_predictors),)
+                assert ((uniforms >= 0) & (uniforms < 1)).all()
             target = state.targets[state.position]
             if state.position:
                 previous = state.targets[state.position - 1]
@@ -633,7 +645,9 @@ def test_was_imputer_uses_checkpointed_chain_segments(
     donor = clean_was_household_table(_raw_was())
     recipient = recipient_predictors(_frame(), _FakeEngine())
 
-    result = module.impute_was_wealth(donor, recipient, seed=0, n_estimators=7)
+    result = module.impute_was_wealth(
+        donor, recipient, seed=0, n_estimators=7, record_ids=_ids(recipient)
+    )
 
     assert result.draws.columns.tolist() == _DRAW_COLUMNS
     assert [targets for _, targets in calls] == [
@@ -709,7 +723,9 @@ def test_stratified_target_refuses_a_donor_without_the_stratum() -> None:
     recipient = recipient_predictors(_frame(), _FakeEngine())
 
     with pytest.raises(ValueError, match="no household in the tenure stratum"):
-        impute_was_wealth(donor, recipient, seed=0, n_estimators=2)
+        impute_was_wealth(
+            donor, recipient, seed=0, n_estimators=2, record_ids=_ids(recipient)
+        )
 
 
 def test_chain_declaration_drift_is_refused() -> None:
@@ -865,11 +881,18 @@ def test_later_segments_leave_the_earlier_draws_byte_equal() -> None:
     donor = _fixture_donor()
     recipient = _synthetic_recipients(48, seed=685)
 
-    full = impute_was_wealth(donor, recipient, seed=0, n_estimators=2)
+    full = impute_was_wealth(
+        donor, recipient, seed=0, n_estimators=2, record_ids=_ids(recipient)
+    )
     assert list(full.draws.columns) == _DRAW_COLUMNS
     for segments in range(1, 8):
         partial = impute_was_wealth(
-            donor, recipient, seed=0, n_estimators=2, segments=segments
+            donor,
+            recipient,
+            seed=0,
+            n_estimators=2,
+            record_ids=_ids(recipient),
+            segments=segments,
         )
         pd.testing.assert_frame_equal(
             partial.draws, full.draws.loc[:, list(partial.draws.columns)]
@@ -885,7 +908,9 @@ def test_real_chain_holds_the_tenure_rules_and_the_identities() -> None:
     recipient = _synthetic_recipients()
     category = recipient[UK_WAS_TENURE_CATEGORY_COLUMN].to_numpy()
 
-    draws = impute_was_wealth(donor, recipient, seed=0, n_estimators=3).draws
+    draws = impute_was_wealth(
+        donor, recipient, seed=0, n_estimators=3, record_ids=_ids(recipient)
+    ).draws
 
     owner = np.isin(category, ["owned_outright", "owned_with_mortgage"])
     mortgaged = category == "owned_with_mortgage"
@@ -968,3 +993,27 @@ def test_total_cap_takes_the_excess_from_the_remainder_first() -> None:
     assert capped.loc[0, "non_residential_property_value"] == 3_090.0
     assert capped.loc[0, "main_residence_value"] == 100_000.0
     assert set(wealth_identity_violations(capped).values()) == {0}
+
+
+def test_was_draws_move_only_for_the_households_whose_inputs_move() -> None:
+    """Keyed on household ids: reordering, one changed and one added move no other."""
+
+    from test_support.microcosm_build.uk_keyed_draws import (
+        assert_draws_are_keyed_on_ids,
+    )
+
+    donor = clean_was_household_table(_raw_was())
+    recipient = recipient_predictors(_frame(), _FakeEngine())
+
+    def draw(rows: pd.DataFrame, ids: np.ndarray) -> pd.DataFrame:
+        return impute_was_wealth(
+            donor, rows, seed=0, n_estimators=3, record_ids=ids
+        ).draws.reset_index(drop=True)
+
+    assert_draws_are_keyed_on_ids(
+        draw,
+        recipient,
+        _ids(recipient),
+        perturbed_column="household_net_income",
+        perturbed_value=12_345.0,
+    )

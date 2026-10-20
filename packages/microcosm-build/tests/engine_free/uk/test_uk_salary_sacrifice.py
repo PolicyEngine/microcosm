@@ -31,7 +31,12 @@ from microcosm.build.uk_runtime.salary_sacrifice import (
 class _Fitted:
     value = 0.0
 
-    def predict(self, predictors: pd.DataFrame) -> pd.DataFrame:
+    def predict_from_uniforms(
+        self, predictors: pd.DataFrame, *, quantiles, sign_uniforms
+    ) -> pd.DataFrame:
+        # The stage keys each person's uniforms on their own id.
+        for uniforms in (quantiles[SALSAC_OUTPUT], sign_uniforms[SALSAC_OUTPUT]):
+            assert uniforms.shape == (len(predictors),)
         return pd.DataFrame({SALSAC_OUTPUT: self.value}, index=predictors.index)
 
 

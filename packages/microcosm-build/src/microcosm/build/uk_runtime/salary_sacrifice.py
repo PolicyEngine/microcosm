@@ -278,7 +278,23 @@ def impute_salary_sacrifice(frame: Frame) -> UKSalarySacrificeResult:
         weights="_fit_weight",
     )
     if predict_mask.any():
-        predictions = fitted.predict(numeric.loc[predict_mask, list(SALSAC_PREDICTORS)])
+        # Uniforms keyed on each person's own id, never a positional stream:
+        # a person's predicted sacrifice moves only when their own predictors do.
+        keys = person.loc[predict_mask, "person_id"].to_numpy()
+        salt = f"salary_sacrifice:{SALSAC_OUTPUT}"
+        predictions = fitted.predict_from_uniforms(
+            numeric.loc[predict_mask, list(SALSAC_PREDICTORS)],
+            quantiles={
+                SALSAC_OUTPUT: stable_identity_uniforms(
+                    keys, seed=SALSAC_QRF_SEED, salt=salt
+                )
+            },
+            sign_uniforms={
+                SALSAC_OUTPUT: stable_identity_uniforms(
+                    keys, seed=SALSAC_QRF_SEED, salt=f"{salt}:sign"
+                )
+            },
+        )
         predicted = pd.to_numeric(predictions[SALSAC_OUTPUT], errors="coerce").to_numpy(
             dtype=float
         )

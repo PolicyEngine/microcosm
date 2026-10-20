@@ -575,6 +575,7 @@ class UKLCFSConsumptionStageTransform:
             recipient,
             seed=_operation_seed(self.stage, "fit_weighted_qrf_chain"),
             n_estimators=_qrf_n_estimators(self.stage),
+            record_ids=frame.table("household")["household_id"].to_numpy(),
         )
         clip_result = support_clip_to_donor(
             imputation.draws, donor, exempt=support_clip_exempt(self.stage)
@@ -3108,12 +3109,17 @@ def impute_lcfs_consumption(
     *,
     seed: int,
     n_estimators: int,
+    record_ids: Sequence[object] | np.ndarray,
 ) -> UKLCFSConsumptionImputationResult:
     """Chain-draw the targets in the declared order.
 
     ``bus_fare_spending`` stays a chain target so later targets condition on
     the same raw draw; the emitted fares are then replaced by the priced
     value where an area prices (microcosm#930).
+
+    Each draw reads uniforms keyed on the household's own id (``record_ids``,
+    in recipient row order) and the target, never a positional stream, so a
+    household's consumption moves only when its own predictors do.
     """
 
     from microcosm.fit import RegimeGatedQRF
@@ -3121,6 +3127,11 @@ def impute_lcfs_consumption(
     donor_encoded, recipient_encoded, predictors = _encode_consumption_predictors(
         donor, recipient_predictor_frame
     )
+    ids = np.asarray(record_ids)
+    if ids.shape != (len(recipient_encoded),) or pd.Series(ids).duplicated().any():
+        raise ValueError(
+            "LCFS record_ids must name every recipient once, in recipient row order."
+        )
     model = RegimeGatedQRF(n_estimators=n_estimators, seed=seed)
     state = model.start_chain(
         donor_encoded,
@@ -3133,12 +3144,15 @@ def impute_lcfs_consumption(
     fit_records: list[FitWeightRecord] = []
     for target in UK_LCFS_CONSUMPTION_TARGET_COLUMNS:
         features = recipient_encoded.loc[:, list(predictors)]
+        salt = f"{UK_LCFS_CONSUMPTION_FIT_NAME}:{target}"
         result = model.fit_draw_next(
             donor_encoded,
             features,
             raw,
             state=state,
             weights="household_weight",
+            quantiles=stable_identity_uniforms(ids, seed=seed, salt=salt),
+            sign_uniforms=stable_identity_uniforms(ids, seed=seed, salt=f"{salt}:sign"),
         )
         raw[target] = result.raw_draw
         draws[target] = result.raw_draw

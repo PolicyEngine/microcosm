@@ -13,6 +13,7 @@ import pandas as pd
 
 from microcosm.build.gates import FitWeightRecord
 from microcosm.build.source_manifest import SourceStageSpec
+from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.uk_runtime.frs_brma import _benunit_household_map
 from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
 from microcosm.build.uk_runtime.national_frame import (
@@ -369,6 +370,7 @@ class UKWASWealthStageTransform:
             household_predictors,
             seed=UK_WAS_WEALTH_DECLARED_SEEDS["was_wealth"],
             n_estimators=_qrf_n_estimators(self.stage),
+            record_ids=frame.table("household")["household_id"].to_numpy(),
         )
         self.last_fit_weight_records = imputation.fit_weight_records
         capped, capped_rows = cap_derived_totals_to_donor_range(imputation.draws, donor)
@@ -735,6 +737,7 @@ def impute_was_wealth(
     *,
     seed: int,
     n_estimators: int,
+    record_ids: Sequence[object] | np.ndarray,
     segments: int = UK_WAS_CHAIN_SEGMENTS,
 ) -> UKWASWealthImputationResult:
     """Fit segmented checkpointed QRF chains and draw WAS wealth outputs.
@@ -745,6 +748,14 @@ def impute_was_wealth(
     ``UK_WAS_DERIVED_TOTALS`` and ``net_financial_wealth`` are never drawn:
     each is computed from its drawn components, so the accounting identities
     the donor satisfies hold on every recipient.
+
+    Every draw reads uniforms keyed on the recipient's own identity
+    (``record_ids``, the household ids in recipient row order) and the target,
+    never a positional stream: a household's draws move only when its own
+    predictors do, whatever happens to the other recipients. A positional
+    stream shifted every later household's draws whenever an engine change
+    moved one household's net income and, through the high-value copies, the
+    frame's length.
 
     ``segments`` runs only the first *k* chain segments (a test seam: each
     segment draws from its own child seed, so the earlier segments' draws are
@@ -762,6 +773,11 @@ def impute_was_wealth(
             raise KeyError(
                 f"WAS {side} table is missing {UK_WAS_TENURE_CATEGORY_COLUMN!r}."
             )
+    ids = pd.Series(np.asarray(record_ids), index=recipient_predictor_frame.index)
+    if len(ids) != len(recipient_predictor_frame) or ids.duplicated().any():
+        raise ValueError(
+            "WAS record_ids must name every recipient once, in recipient row order."
+        )
     donor_category = donor[UK_WAS_TENURE_CATEGORY_COLUMN].astype(str).to_numpy()
     recipient_category = (
         recipient_predictor_frame[UK_WAS_TENURE_CATEGORY_COLUMN].astype(str).to_numpy()
@@ -820,12 +836,18 @@ def impute_was_wealth(
                     )
                 )
                 continue
+            keys = ids.loc[recipient_rows.index].to_numpy()
+            salt = f"{UK_WAS_WEALTH_FIT_NAME}:{target}"
             result = model.fit_draw_next(
                 donor_rows,
                 recipient_base,
                 segment_raw,
                 state=state,
                 weights="weight",
+                quantiles=stable_identity_uniforms(keys, seed=seed, salt=salt),
+                sign_uniforms=stable_identity_uniforms(
+                    keys, seed=seed, salt=f"{salt}:sign"
+                ),
             )
             fit_records.append(
                 FitWeightRecord(

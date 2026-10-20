@@ -1,0 +1,1 @@
+UK QRF stages draw from uniforms keyed on each record's own id, so a household's imputed wealth, consumption, services, UC report, SPI fill and salary sacrifice move only when its own inputs do: an engine change that moved a few households' net income no longer redraws the whole spine through a shifted positional stream.
