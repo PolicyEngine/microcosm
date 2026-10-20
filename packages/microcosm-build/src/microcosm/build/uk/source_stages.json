@@ -237,7 +237,13 @@
     },
     {
      "kind": "annualize_periodic_amounts",
-     "weeks_in_year": 52.17857142857143
+     "weeks_in_year": 52.17857142857143,
+     "weeks_in_year_exceptions": {
+      "state_pension_reported": {
+       "weeks_in_year": 52,
+       "reason": "The State Pension is paid at weekly rates, and policyengine-uk reads state_pension_reported back to a weekly amount at 52 weeks a year before comparing it with the full rate, so at 365.25 / 7 a full-rate pensioner would read 0.34% above the full rate and the excess would become a protected payment. An exception for the State Pension alone to microcosm#1095's weekly amounts (María's ruling of 2026-10-20, microcosm#1278)."
+      }
+     }
     },
     {
      "kind": "assign_binary_from_rate",

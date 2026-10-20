@@ -31,6 +31,7 @@ __all__ = [
     "FRS_SPINE_TABLES",
     "OUTPUT_COLUMNS",
     "REGION_MAP",
+    "STATE_PENSION_WEEKS_IN_YEAR",
     "TIME_PERIOD",
     "UC_CAPITAL_UNAVAILABLE",
     "WEEKS_IN_YEAR",
@@ -66,6 +67,13 @@ FRS_SPINE_TABLES = (
 )
 
 WEEKS_IN_YEAR = 365.25 / 7
+#: The State Pension alone annualises at 52 weeks (María's ruling of 2026-10-20,
+#: an exception to microcosm#1095's weekly amounts). It is paid at weekly rates,
+#: and policyengine-uk reads ``state_pension_reported`` back to a weekly amount
+#: at 52 weeks a year before comparing it with the full rate, so at 365.25 / 7 a
+#: full-rate pensioner would read 0.34% above the full rate and the excess
+#: would become a protected payment.
+STATE_PENSION_WEEKS_IN_YEAR = 52
 TIME_PERIOD = "2024"
 
 # Raw TOTCAPB4 blanks, nonnumeric values, and negative codes mean that the
@@ -980,6 +988,15 @@ def _add_benefits(
     )
     pe_person["winter_fuel_allowance_reported"] = (
         pe_person["winter_fuel_allowance_reported"] / WEEKS_IN_YEAR
+    )
+    # The State Pension's weekly amounts, re-summed at its own 52 weeks.
+    pe_person["state_pension_reported"] = (
+        _sum_to_entity(
+            amount * benefit.isin(BENEFIT_CODES["state_pension"]),
+            person_id,
+            person["person_id"],
+        )
+        * STATE_PENSION_WEEKS_IN_YEAR
     )
 
 

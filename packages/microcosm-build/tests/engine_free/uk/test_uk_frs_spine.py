@@ -45,6 +45,7 @@ from microcosm.build.uk_runtime.frs_spine import (
     OWNER_MANAGER_COLUMNS,
     REGION_MAP,
     SCOTTISH_WATER_CHARGES_REDUCTION_RECIPIENT_SHARE,
+    STATE_PENSION_WEEKS_IN_YEAR,
     UC_CAPITAL_UNAVAILABLE,
     WEEKS_IN_YEAR,
     UKFRSSpineStageTransform,
@@ -1738,6 +1739,71 @@ def test_scottish_disability_payments_land_in_the_pip_and_dla_columns() -> None:
     )
     assert reported.to_numpy().sum() == pytest.approx(
         (110.40 + 28.70 + 72.65 + 28.70 + 73.90 + 29.20) * WEEKS_IN_YEAR
+    )
+
+
+def test_state_pension_alone_annualises_at_52_weeks() -> None:
+    """policyengine-uk reads the State Pension back at 52 weeks a year.
+
+    At 365.25 / 7 a full-rate pensioner would read above the full rate and the
+    excess would become a protected payment (María's ruling of 2026-10-20, an
+    exception to microcosm#1095's weekly amounts). Every other weekly benefit
+    keeps 365.25 / 7, and the Winter Fuel Payment, already annual, keeps its
+    amount.
+    """
+
+    person = pd.DataFrame({"person_id": [1001, 1002, 1003]})
+    pe_person = pd.DataFrame(index=person.index)
+    benefits = pd.DataFrame(
+        {
+            "person_id": [1001, 1002, 1002, 1002, 1003, 1003],
+            # The 2024-25 full new and basic State Pensions, a second State
+            # Pension row, Carer's Allowance and the Winter Fuel Payment.
+            "benefit": [5, 5, 5, 13, 13, 62],
+            "var2": [0] * 6,
+            "var3": [0] * 6,
+            "benamt": [221.20, 169.50, 10.0, 81.90, 81.90, 300.0],
+        }
+    )
+
+    _add_benefits(pe_person, person, benefits)
+
+    assert STATE_PENSION_WEEKS_IN_YEAR == 52
+    state_pension = pe_person["state_pension_reported"]
+    assert state_pension.tolist() == pytest.approx([221.20 * 52, 179.50 * 52, 0.0])
+    # Read back at the engine's 52 weeks, the full rate is the full rate.
+    assert (state_pension / 52).tolist() == pytest.approx([221.20, 179.50, 0.0])
+    assert pe_person["carers_allowance_reported"].tolist() == pytest.approx(
+        [0.0, 81.90 * WEEKS_IN_YEAR, 81.90 * WEEKS_IN_YEAR]
+    )
+    assert pe_person["winter_fuel_allowance_reported"].tolist() == pytest.approx(
+        [0.0, 0.0, 300.0]
+    )
+    # The 52-week State Pension stays out of the 365.25 / 7 sum.
+    reported = pe_person.drop(
+        columns=[
+            "state_pension_reported",
+            "winter_fuel_allowance_reported",
+            "esa_includes_support_component",
+        ]
+    )
+    assert reported.to_numpy().sum() == pytest.approx(2 * 81.90 * WEEKS_IN_YEAR)
+
+
+def test_manifest_declares_the_state_pension_weeks_in_year() -> None:
+    operation = next(
+        operation
+        for operation in _manifest_stage().operations
+        if operation.kind == "annualize_periodic_amounts"
+    )
+    parameters = dict(operation.parameters)
+
+    assert parameters["weeks_in_year"] == WEEKS_IN_YEAR
+    exceptions = parameters["weeks_in_year_exceptions"]
+    assert set(exceptions) == {"state_pension_reported"}
+    assert (
+        exceptions["state_pension_reported"]["weeks_in_year"]
+        == STATE_PENSION_WEEKS_IN_YEAR
     )
 
 
