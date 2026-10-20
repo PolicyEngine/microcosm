@@ -892,13 +892,19 @@ def test_stage1_queries_only_drawn_recipients_with_the_bridge(
     support = replace(support, person=person)
     donor_path = tmp_path / SPI_DONOR_FILENAME
     _write_donor(donor_path)
-    captured: dict[str, object] = {}
+    captured: dict[str, dict[str, object]] = {}
     original_draw = _FakeFittedQRF.predict_from_uniforms
 
     def predict_from_uniforms(self, predictors, *, quantiles, sign_uniforms):
-        captured["columns"] = list(predictors.columns)
-        captured["rows"] = len(predictors)
-        captured["sign"] = sign_uniforms["gift_aid"].copy()
+        # Both stages draw from keyed uniforms; stage 1 draws the tape's
+        # targets, gift aid among them.
+        stage = "stage1" if "gift_aid" in sign_uniforms else "stage2"
+        captured[stage] = {
+            "columns": list(predictors.columns),
+            "rows": len(predictors),
+            "quantiles": {k: np.array(v, dtype=float) for k, v in quantiles.items()},
+            "sign": {k: np.array(v, dtype=float) for k, v in sign_uniforms.items()},
+        }
         return original_draw(
             self, predictors, quantiles=quantiles, sign_uniforms=sign_uniforms
         )
@@ -915,24 +921,40 @@ def test_stage1_queries_only_drawn_recipients_with_the_bridge(
         state_pension_age=66,
         allow_in_sample_reference=True,
     )
-    assert captured["rows"] == result.spi_prediction_rows == 3
+    stage1 = captured["stage1"]
+    assert stage1["rows"] == result.spi_prediction_rows == 3
     assert {"has_pay", "has_trade", "at_or_over_spa", "main_source_pay", "age"} <= set(
-        captured["columns"]
+        stage1["columns"]
     )
     # The no-analogue leaf's sign uniform is the identity-keyed one for the
     # drawn recipients, in their order.
+    age_domain = (result.person[channel] == "spi") & result.person["age"].ge(16)
     drawn_ids = result.person.loc[
-        (result.person[channel] == "spi")
-        & result.person["age"].ge(16)
-        & ~result.person.index.isin(copy),
-        "person_source_id",
+        age_domain & ~result.person.index.isin(copy), "person_source_id"
     ].to_numpy()
+    from microcosm.build.stochastic_assignment import stable_identity_uniforms
+    from microcosm.build.uk_runtime.spi_income import FRS_ONLY_FIT_NAME
     from microcosm.build.uk_runtime.spi_rank_transport import identity_uniforms
 
     np.testing.assert_array_equal(
-        captured["sign"],
+        stage1["sign"]["gift_aid"],
         identity_uniforms(drawn_ids, target="gift_aid", part="sign", seed=9),
     )
+    # Stage 2 is queried over the whole age domain, and each row draws from
+    # uniforms keyed on its own identity under the stage's own seed, never
+    # from a stream its row position decides (microcosm#1095).
+    domain_ids = result.person.loc[age_domain, "person_source_id"].to_numpy()
+    stage2 = captured["stage2"]
+    assert stage2["rows"] == len(domain_ids)
+    for target in stage2["quantiles"]:
+        for part, salt in (
+            ("quantiles", f"{FRS_ONLY_FIT_NAME}:{target}"),
+            ("sign", f"{FRS_ONLY_FIT_NAME}:{target}:sign"),
+        ):
+            np.testing.assert_array_equal(
+                stage2[part][target],
+                stable_identity_uniforms(domain_ids, seed=10, salt=salt),
+            )
     assert result.stage1_transport["identity_key"] == "person_source_id"
     assert result.stage1_transport["recipients"] == 3
     assert result.fit_weight_records[1].fit_name == "uk_frs_reference_conditional"
