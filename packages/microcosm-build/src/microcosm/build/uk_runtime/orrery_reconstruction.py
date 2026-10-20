@@ -627,12 +627,19 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     try:
+        # The publication is written at the resolved path, which the given
+        # spelling need not reach: ``<build>/missing/../../publication``
+        # resolves beside the build, but ``missing`` cannot be entered.
+        # Resolve before the write, as ``reconstruct_uk_publication`` does,
+        # and print that path. The given spelling is still what is passed, so
+        # that the checks on it run.
+        written_output = args.output.resolve()
         report = reconstruct_uk_publication(
             args.build, args.output, revision=args.revision
         )
     except (OSError, ValueError, RecursionError) as error:
         parser.error(str(error))
-    print(summary_text(report, args.output))
+    print(summary_text(report, written_output))
     return 0
 
 

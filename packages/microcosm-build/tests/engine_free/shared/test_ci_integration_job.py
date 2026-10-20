@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-import pytest
+from typing import Any
+
 import yaml
 
 from test_support.paths import paths_for
@@ -72,25 +73,24 @@ def test_integration_job_is_uk_selected_and_read_only() -> None:
     assert "run: bash tools/run_integration_tests.sh" in integration
 
 
-def _workflow_triggers() -> dict:
+def _workflow_triggers() -> dict[str, Any]:
     workflow = yaml.safe_load(_TEST_WORKFLOW.read_text(encoding="utf-8"))
     # PyYAML follows YAML 1.1, which reads the bare key ``on`` as boolean true.
     return workflow[True]
 
 
-@pytest.mark.parametrize(
-    "base_branch",
-    ["main", "orrery-projection-without-store", "stacked/parent-branch"],
-)
-def test_pull_requests_into_any_base_branch_run_the_tests_workflow(
-    base_branch: str,
-) -> None:
+def test_pull_requests_into_any_base_branch_run_the_tests_workflow() -> None:
     """A stacked pull request targets another pull request's branch, not main,
-    and must get the same jobs."""
-    branch_filters = _workflow_triggers()["pull_request"] or {}
+    and must get the same jobs.
 
-    assert base_branch in branch_filters.get("branches", [base_branch])
-    assert base_branch not in branch_filters.get("branches-ignore", [])
+    GitHub matches ``branches`` and ``branches-ignore`` entries as glob
+    patterns, so checking particular branch names against them proves nothing
+    about other bases. The trigger must have no base-branch filter at all.
+    """
+    pull_request_trigger = _workflow_triggers()["pull_request"] or {}
+
+    base_branch_filters = {"branches", "branches-ignore"} & pull_request_trigger.keys()
+    assert sorted(base_branch_filters) == []
 
 
 def test_only_pushes_to_main_run_the_tests_workflow() -> None:
