@@ -35,6 +35,11 @@ from microcosm.build.uk_runtime.hmrc_income import (
     LOSS_RELIEF_COLUMN,
     self_employment_income_after_loss_relief,
 )
+from microcosm.build.uk_runtime.pension_coherence import (
+    cap_net_pay_contributions,
+    coherence_receipt,
+    twin_rate_employer_contributions,
+)
 from microcosm.build.uk_runtime.spi_rank_transport import (
     SPI_STAGE1_ANALOGUE_COLUMNS,
     SPI_TRANSPORT_FIT_NAME,
@@ -674,6 +679,7 @@ class UKSPIIncomeImputationResult:
     reference_training_rows: int = 0
     state_pension_age: int | None = None
     gainful_self_employment_refresh: Mapping[str, object] | None = None
+    pension_coherence: Mapping[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -912,6 +918,14 @@ def impute_uk_spi_income_support(
     undrawn = role_domain & ~spi_people
     if not spi_people.any():
         raise ValueError("SPI support has no recipients with taxable income.")
+    # The FRS twin's pay and employer contribution, before the tape redraws
+    # the pay: the twin's employer rate is carried onto the drawn pay below.
+    twin_pay = person.loc[spi_people, "employment_income"].to_numpy(
+        dtype=np.float64, copy=True
+    )
+    twin_employer = person.loc[spi_people, "employer_pension_contributions"].to_numpy(
+        dtype=np.float64, copy=True
+    )
     recipient_domain = {
         "minimum_age": SPI_MINIMUM_RECIPIENT_AGE,
         "role_column": SPI_RECIPIENT_ROLE_COLUMN,
@@ -1230,6 +1244,13 @@ def impute_uk_spi_income_support(
         raise ValueError("FRS-only stage-2 produced negative non-negative outputs.")
     for column in stage2_outputs:
         person.loc[spi_people, column] = stage2_draws[column].to_numpy()
+    person, pension_coherence = _spi_pension_coherence(
+        person,
+        household,
+        spi_people=spi_people,
+        twin_pay=twin_pay,
+        twin_employer=twin_employer,
+    )
     person = _owner_manager_flags_from_draws(person, spi_people=spi_people)
     if (
         state_pension_age_guard is not None
@@ -1299,6 +1320,7 @@ def impute_uk_spi_income_support(
         reference_training_rows=int(reference_people.sum()),
         state_pension_age=int(state_pension_age),
         gainful_self_employment_refresh=gainful_self_employment,
+        pension_coherence=pension_coherence,
     )
 
 
@@ -2472,6 +2494,80 @@ def _stage2_outputs(person: pd.DataFrame) -> tuple[tuple[str, ...], dict[str, st
     if not outputs:
         raise ValueError("FRS-only stage has no materializable outputs.")
     return tuple(outputs), reviewed
+
+
+def _spi_pension_coherence(
+    person: pd.DataFrame,
+    household: pd.DataFrame,
+    *,
+    spi_people: pd.Series,
+    twin_pay: np.ndarray,
+    twin_employer: np.ndarray,
+) -> tuple[pd.DataFrame, Mapping[str, object]]:
+    """Tie an SPI row's contributions to the pay the tape drew for it.
+
+    Stage 2 draws the contributions from a forest trained on FRS rows. It reads
+    the drawn pay, but it draws whether the row has an employer contribution
+    apart from the twin's scheme record, and it cannot scale amounts beyond the
+    FRS's pay. So the employee (net-pay) contribution is capped at the row's
+    pay, and the employer contribution is the FRS twin's rate, zero outside an
+    employer scheme, times the row's pay (``uk_runtime.pension_coherence``).
+    """
+
+    rows = spi_people.to_numpy(dtype=bool)
+    pay = person.loc[spi_people, "employment_income"].to_numpy(dtype=np.float64)
+    weights = _person_household_weights(person, household).to_numpy(dtype=float)[rows]
+    sources = (
+        person["person_household_id"]
+        .map(household.set_index("household_id")["household_source_id"])
+        .to_numpy()[rows]
+    )
+    employee_before = person.loc[spi_people, "employee_pension_contributions"].to_numpy(
+        dtype=np.float64
+    )
+    employee, capped = cap_net_pay_contributions(employee_before, pay)
+    employer_before = person.loc[spi_people, "employer_pension_contributions"].to_numpy(
+        dtype=np.float64
+    )
+    employer, from_twin, bounded = twin_rate_employer_contributions(
+        drawn=employer_before,
+        pay=pay,
+        twin_pay=twin_pay,
+        twin_employer=twin_employer,
+    )
+    person.loc[spi_people, "employee_pension_contributions"] = employee
+    person.loc[spi_people, "employer_pension_contributions"] = employer
+    receipt = {
+        "employee_capped_at_pay": coherence_receipt(
+            changed=capped,
+            before=employee_before,
+            after=employee,
+            weights=weights,
+            source_ids=sources,
+        ),
+        "employer_at_twin_rate": coherence_receipt(
+            changed=from_twin & (twin_employer > 0.0),
+            before=employer_before,
+            after=employer,
+            weights=weights,
+            source_ids=sources,
+        ),
+        "employer_none_outside_twin_scheme": coherence_receipt(
+            changed=from_twin & (twin_employer <= 0.0) & (employer_before > 0.0),
+            before=employer_before,
+            after=employer,
+            weights=weights,
+            source_ids=sources,
+        ),
+        "employer_bounded_by_ashe_ceiling": coherence_receipt(
+            changed=bounded,
+            before=employer_before,
+            after=employer,
+            weights=weights,
+            source_ids=sources,
+        ),
+    }
+    return person, receipt
 
 
 def _person_household_weights(

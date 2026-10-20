@@ -1298,6 +1298,25 @@ def test_no_frs_field_feeds_two_income_columns(tmp_path: Path) -> None:
     assert moved[("pension", "PENPAY")] == {"private_pension_income"}
 
 
+def test_a_net_pay_deduction_above_pay_is_capped_at_it(tmp_path: Path) -> None:
+    """The FRS records each job's pension deduction apart from the adult's
+    usual earnings, so a deduction can exceed them; the spine caps it at them
+    (uk_runtime.pension_coherence)."""
+
+    tables = _fixture_tables()
+    tables["job"][0]["DEDUC1"] = 15.0
+    stage = _write_fixture(tmp_path, tables)
+    adult = (
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
+        .table("person")
+        .set_index("person_id")
+        .loc[1001]
+    )
+
+    assert adult["employment_income"] == pytest.approx(10 * WEEKS_IN_YEAR)
+    assert adult["employee_pension_contributions"] == pytest.approx(10 * WEEKS_IN_YEAR)
+
+
 @pytest.mark.parametrize("seed", range(8))
 def test_property_income_matches_a_merge_of_the_raw_tabs(
     tmp_path: Path, seed: int

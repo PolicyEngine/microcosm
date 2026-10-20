@@ -362,6 +362,13 @@ def impute_salary_sacrifice(frame: Frame) -> UKSalarySacrificeResult:
         raise ValueError(
             "Salary-sacrifice amounts must not exceed the pay that remains."
         )
+    # Net-pay contributions come out of pay: the spine caps them at pay
+    # (uk_runtime.pension_coherence), and the conversion takes the same amount
+    # off both, so a contribution above the pay that remains is a defect.
+    if (employee > np.maximum(employment_income, 0.0) + 1e-6).any():
+        raise ValueError(
+            "Employee pension contributions must not exceed the pay that remains."
+        )
     person[SALSAC_OUTPUT] = final_ss
     person["employee_pension_contributions"] = employee
     person["employment_income"] = employment_income

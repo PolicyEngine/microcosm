@@ -327,9 +327,10 @@ def test_conversion_moves_at_most_half_the_pay_and_keeps_the_rest(
     monkeypatch.setattr(salary_sacrifice, "QRF", _FakeQRF)
     n_donors = 100
     pay = np.asarray([30_000.0, *([1_000.0] * n_donors)])
-    # Contributions from 100 to 1,500: above half the pay from 500 up, and
-    # above the whole pay from 1,000 up.
-    contributions = np.asarray([0.0, *np.linspace(100.0, 1_500.0, n_donors)])
+    # Contributions from 100 to 1,000: above half the pay from 500 up, and at
+    # most the whole pay, where the spine caps a net-pay contribution
+    # (uk_runtime.pension_coherence).
+    contributions = np.asarray([0.0, *np.linspace(100.0, 1_000.0, n_donors)])
     frame = _frame(
         asked=[1, *([0] * n_donors)],
         salary_sacrifice_values=[0.0] * (n_donors + 1),
@@ -403,8 +404,10 @@ def test_no_amount_exceeds_pay_and_nothing_is_lost(rows, predicted) -> None:
     rows = [(True, 0.0, 0.0, 30_000.0, "frs"), *rows]
     asked = [1 if row[0] else 0 for row in rows]
     reported = np.asarray([row[1] if row[0] else 0.0 for row in rows])
-    contributions = np.asarray([row[2] for row in rows])
     pay = np.asarray([row[3] for row in rows])
+    # The spine caps net-pay contributions at pay before this stage
+    # (uk_runtime.pension_coherence), so the stage only ever sees them there.
+    contributions = np.minimum(np.asarray([row[2] for row in rows]), pay)
     frame = _frame(
         asked=asked,
         salary_sacrifice_values=reported,
@@ -438,6 +441,23 @@ def test_no_amount_exceeds_pay_and_nothing_is_lost(rows, predicted) -> None:
         kept[converted] + sacrifice[converted], contributions[converted]
     )
     assert (sacrifice[converted] <= SALSAC_MOVE_PAY_SHARE_CAP * pay[converted]).all()
+
+
+def test_a_contribution_above_the_pay_that_remains_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The spine caps net-pay contributions at pay; the stage refuses one above it."""
+
+    monkeypatch.setattr(salary_sacrifice, "QRF", _FakeQRF)
+    frame = _frame(
+        asked=[1, 1],
+        salary_sacrifice_values=[0.0, 0.0],
+        employee_pension=[0.0, 3_000.0],
+        employment_income=[30_000.0, 1_000.0],
+    )
+
+    with pytest.raises(ValueError, match="must not exceed the pay that remains"):
+        impute_salary_sacrifice(frame)
 
 
 def test_anchor_is_self_consistent() -> None:

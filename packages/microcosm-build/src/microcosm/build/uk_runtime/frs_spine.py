@@ -24,6 +24,10 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_national_frame,
     validate_uk_national_frame,
 )
+from microcosm.build.uk_runtime.pension_coherence import (
+    cap_net_pay_contributions,
+    coherence_receipt,
+)
 from microcosm.build.uk_runtime.uc_relationships import frs_uc_claimant_mask
 from microcosm.frame import Frame, WeightKind
 
@@ -319,6 +323,7 @@ class UKFRSSpineStageTransform:
         self.stage = stage
         self._sentinel_mapped_rows: int | None = None
         self._access_fund: dict[str, object] | None = None
+        self._net_pay: dict[str, object] | None = None
 
     def __call__(self, frame: Frame) -> Frame:
         evidence: dict[str, object] = {}
@@ -328,6 +333,7 @@ class UKFRSSpineStageTransform:
         capital = result.table("benunit")["frs_benunit_capital"]
         self._sentinel_mapped_rows = int((capital == UC_CAPITAL_UNAVAILABLE).sum())
         self._access_fund = dict(evidence["access_fund"])
+        self._net_pay = dict(evidence["net_pay_contributions"])
         return result
 
     @staticmethod
@@ -338,7 +344,11 @@ class UKFRSSpineStageTransform:
         """Report how loudly the capital availability rule and the
         access-fund repair fired."""
 
-        if self._sentinel_mapped_rows is None or self._access_fund is None:
+        if (
+            self._sentinel_mapped_rows is None
+            or self._access_fund is None
+            or self._net_pay is None
+        ):
             raise RuntimeError("checkpoint metadata requires a completed stage run.")
         return {
             "evidence": {
@@ -348,6 +358,7 @@ class UKFRSSpineStageTransform:
                     "mapped_rows": self._sentinel_mapped_rows,
                 },
                 "access_fund": dict(self._access_fund),
+                "net_pay_contributions": dict(self._net_pay),
             }
         }
 
@@ -585,7 +596,7 @@ def _assemble_frame(
     pe_person["would_claim_carers_allowance"] = (
         pe_person["carers_allowance_reported"] > 0
     )
-    _add_person_expenses(pe_person, person, frs)
+    _add_person_expenses(pe_person, person, frs, evidence=evidence)
 
     pe_benunit["is_married"] = _number(benunit_raw, "famtypb2").isin([5, 7])
     pe_benunit["dependent_children"] = dependent_children
@@ -1004,7 +1015,11 @@ def _add_benefits(
 
 
 def _add_person_expenses(
-    pe_person: pd.DataFrame, person: pd.DataFrame, frs: Mapping[str, pd.DataFrame]
+    pe_person: pd.DataFrame,
+    person: pd.DataFrame,
+    frs: Mapping[str, pd.DataFrame],
+    *,
+    evidence: dict[str, object] | None = None,
 ) -> None:
     household = frs["househol"].set_index("household_id").sort_index()
     ctrebamt = pd.Series(_number(household, "ctrebamt").values, index=household.index)
@@ -1055,7 +1070,7 @@ def _add_person_expenses(
         * WEEKS_IN_YEAR,
     )
     job = frs["job"]
-    pe_person["employee_pension_contributions"] = np.maximum(
+    deducted = np.maximum(
         0,
         _sum_to_entity(
             _number(job, "deduc1").fillna(0),
@@ -1064,6 +1079,25 @@ def _add_person_expenses(
         )
         * WEEKS_IN_YEAR,
     )
+    # A net-pay deduction cannot exceed the pay it comes out of; the FRS
+    # records each job's deduction apart from the adult's usual earnings, so
+    # the deduction is capped at them (uk_runtime.pension_coherence).
+    capped, changed = cap_net_pay_contributions(
+        np.asarray(deducted, dtype=np.float64),
+        pe_person["employment_income"].to_numpy(dtype=np.float64),
+    )
+    pe_person["employee_pension_contributions"] = capped
+    if evidence is not None:
+        evidence["net_pay_contributions"] = coherence_receipt(
+            changed=changed,
+            before=np.asarray(deducted, dtype=np.float64),
+            after=capped,
+            weights=person["household_id"]
+            .map(_raw_number(household, "gross4"))
+            .fillna(0.0)
+            .to_numpy(dtype=np.float64),
+            source_ids=person["household_id"].to_numpy(),
+        )
     pe_person["pension_contributions_via_salary_sacrifice"] = np.maximum(
         0,
         _sum_to_entity(
