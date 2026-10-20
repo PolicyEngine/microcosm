@@ -669,3 +669,116 @@ def test_donor_fit_table_tabulates_observed_and_imputed_rows_alike() -> None:
     assert observed["households"]["share_with_federal_education_debt"] == (
         pytest.approx(expected_share)
     )
+
+
+# --------------------------------------------------------------------------- #
+# Recipient definitions                                                         #
+# --------------------------------------------------------------------------- #
+def _household(members: list[dict[str, object]], household_id: int = 1) -> list[dict]:
+    rows = []
+    for index, member in enumerate(members, start=1):
+        rows.append(
+            {
+                "person_id": household_id * 100 + index,
+                "person_household_id": household_id,
+                "PH_SEQ": household_id,
+                "A_LINENO": index,
+                "A_SPOUSE": 0,
+                "PECOHAB": 0,
+                "age": 40.0,
+                "is_female": False,
+                "PRDTRACE": 1,
+                "PRDTHSP": 0,
+                "A_MARITL": 7,
+                "PEPAR1": -1,
+                "PEPAR2": -1,
+                "employment_income_before_lsr": 0.0,
+                **member,
+            }
+        )
+    return rows
+
+
+def _definition_frame() -> Frame:
+    rows = [
+        # 1: a 30-year-old woman householder with her cohabiting partner (31),
+        # his child, and her 62-year-old mother.
+        *_household(
+            [
+                {"age": 30.0, "is_female": True, "PECOHAB": 2,
+                 "employment_income_before_lsr": 40_000.0},
+                {"age": 31.0, "PECOHAB": 1, "employment_income_before_lsr": 50_000.0},
+                {"age": 8.0, "PEPAR1": 2},
+                {"age": 62.0, "is_female": True,
+                 "employment_income_before_lsr": 30_000.0},
+            ],
+            household_id=1,
+        ),
+        # 2: a married same-sex couple, the householder younger.
+        *_household(
+            [
+                {"age": 35.0, "A_SPOUSE": 2, "A_MARITL": 1},
+                {"age": 45.0, "A_SPOUSE": 1, "A_MARITL": 1},
+            ],
+            household_id=2,
+        ),
+    ]  # fmt: skip
+    person = pd.DataFrame.from_records(rows)
+    return _us_frame(person)
+
+
+def test_recipient_definition_refuses_unknown_rules() -> None:
+    with pytest.raises(ValueError, match="reference_person"):
+        education_debt.RecipientDefinition(reference_person="eldest")
+    with pytest.raises(ValueError, match="income_unit"):
+        education_debt.RecipientDefinition(income_unit="tax_unit")
+
+
+def test_default_definition_follows_the_scf_definitions() -> None:
+    frame = _definition_frame()
+    recipients = education_debt._recipients(frame)
+    person = frame.table("person")
+    features = recipients.features
+
+    # The householder's cohabiting partner is the man of the couple; the
+    # same-sex couple's older spouse leads.
+    assert person["age"].to_numpy()[recipients.head_position].tolist() == [31.0, 45.0]
+    assert features["is_married"].tolist() == [1.0, 1.0]
+    # Household 1 counts the partner's child; the mother is no one's child.
+    assert features["own_children_in_household"].tolist() == [1.0, 0.0]
+    assert features["employment_income"].tolist() == [120_000.0, 0.0]
+
+
+def test_first_receipt_definition_reproduces_the_oldest_adult_rule() -> None:
+    frame = _definition_frame()
+    recipients = education_debt._recipients(
+        frame, education_debt.SCF_EDUCATION_DEBT_FIRST_RECEIPT_DEFINITION
+    )
+    person = frame.table("person")
+
+    assert person["age"].to_numpy()[recipients.head_position].tolist() == [62.0, 45.0]
+    assert recipients.features["is_married"].tolist() == [0.0, 1.0]
+    assert recipients.features["own_children_in_household"].tolist() == [0.0, 0.0]
+
+
+def test_income_units_sum_the_declared_members() -> None:
+    frame = _definition_frame()
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    # The mother forms her own SPM unit.
+    spm = tables["person"]["person_spm_unit_id"].to_numpy().copy()
+    spm[3] = 9_999
+    tables["person"]["person_spm_unit_id"] = spm
+    tables["spm_unit"] = pd.DataFrame({"spm_unit_id": np.unique(spm)})
+    frame = Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+    )
+    for unit, expected in (
+        ("household", 120_000.0),
+        ("spm_unit", 90_000.0),
+        ("reference_couple_and_children", 90_000.0),
+    ):
+        definition = education_debt.RecipientDefinition(income_unit=unit)
+        features = education_debt._recipients(frame, definition).features
+        assert features["employment_income"].iloc[0] == expected, unit

@@ -125,6 +125,9 @@ __all__ = [
     "SCF_EDUCATION_LOAN_WHOSE_COLUMNS",
     "SCF_EDUCATION_LOAN_YEAR_COLUMNS",
     "SCF_WHOSE_EDUCATION_HOLDER",
+    "RecipientDefinition",
+    "SCF_EDUCATION_DEBT_FIRST_RECEIPT_DEFINITION",
+    "SCF_EDUCATION_DEBT_RECIPIENT_DEFINITION",
     "ScfPublicFile",
     "US_SCF_EDUCATION_DEBT_BALANCE_COLUMNS",
     "US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS",
@@ -751,6 +754,66 @@ def load_scf_2025_education_debt_donor(
 # --------------------------------------------------------------------------- #
 # Recipients                                                                    #
 # --------------------------------------------------------------------------- #
+_REFERENCE_PERSON_RULES = frozenset({"householder_couple", "oldest_adult"})
+_PARTNERED_RULES = frozenset({"spouse_or_partner", "married_spouse"})
+_CHILDREN_RULES = frozenset({"of_reference_or_partner", "of_reference"})
+_INCOME_UNITS = frozenset({"household", "spm_unit", "reference_couple_and_children"})
+
+
+@dataclass(frozen=True)
+class RecipientDefinition:
+    """How the CPS side builds the SCF predictors for one household.
+
+    Each field names the CPS construction of one SCF concept:
+
+    - ``reference_person``: ``householder_couple`` takes the CPS householder
+      (lowest line number) and, when a spouse or cohabiting partner is present,
+      the man of a mixed-sex couple or else the older partner, which is how
+      the SCF orders its economically dominant couple. ``oldest_adult`` is the
+      auto-loan rule (the only adult, the man of a two-adult married couple,
+      else the oldest adult).
+    - ``partnered``: ``spouse_or_partner`` is SCF ``married`` (married or living
+      with a partner, X8023 in 1-2): a spouse (``A_SPOUSE``) or cohabiting
+      partner (``PECOHAB``) is present. ``married_spouse`` is ``A_MARITL`` 1-2.
+    - ``children``: ``of_reference_or_partner`` is SCF ``kids`` (children,
+      step-children and children-in-law of the reference person or partner,
+      any age, anywhere in the household); ``of_reference`` counts only the
+      reference person's own children through ``PEPAR1``/``PEPAR2``.
+    - ``income_unit``: the people whose incomes are summed. ``household`` sums
+      every member; ``spm_unit`` the reference person's SPM unit;
+      ``reference_couple_and_children`` the reference person, spouse or
+      partner and their children.
+    """
+
+    reference_person: str = "householder_couple"
+    partnered: str = "spouse_or_partner"
+    children: str = "of_reference_or_partner"
+    income_unit: str = "household"
+
+    def __post_init__(self) -> None:
+        for value, allowed, name in (
+            (self.reference_person, _REFERENCE_PERSON_RULES, "reference_person"),
+            (self.partnered, _PARTNERED_RULES, "partnered"),
+            (self.children, _CHILDREN_RULES, "children"),
+            (self.income_unit, _INCOME_UNITS, "income_unit"),
+        ):
+            if value not in allowed:
+                raise ValueError(
+                    f"RecipientDefinition.{name} must be one of {sorted(allowed)}."
+                )
+
+
+#: The definition the stage uses (see the module docstring for the evidence).
+SCF_EDUCATION_DEBT_RECIPIENT_DEFINITION = RecipientDefinition()
+#: The definition of the first #1073 receipt, kept for its before/after table.
+SCF_EDUCATION_DEBT_FIRST_RECEIPT_DEFINITION = RecipientDefinition(
+    reference_person="oldest_adult",
+    partnered="married_spouse",
+    children="of_reference",
+    income_unit="household",
+)
+
+
 @dataclass(frozen=True)
 class _Recipients:
     """Household-ordered predictors and each household's head and spouse rows."""
@@ -760,19 +823,24 @@ class _Recipients:
     spouse_position: np.ndarray  # -1 where no spouse or partner is present
 
 
+def _line_lookup(person: pd.DataFrame) -> dict[tuple[object, int], int]:
+    household = person[_HOUSEHOLD_ID_COLUMN].to_numpy()
+    line = pd.to_numeric(person["A_LINENO"], errors="coerce").fillna(-1).to_numpy()
+    return {
+        (household_id, int(line_number)): position
+        for position, (household_id, line_number) in enumerate(
+            zip(household, line, strict=True)
+        )
+    }
+
+
 def _resolve_partner_positions(
     person: pd.DataFrame, head_positions: np.ndarray
 ) -> np.ndarray:
     """Positional row of each head's spouse (A_SPOUSE) or partner (PECOHAB)."""
 
     household = person[_HOUSEHOLD_ID_COLUMN].to_numpy()
-    line = pd.to_numeric(person["A_LINENO"], errors="coerce").fillna(-1).to_numpy()
-    lookup = {
-        (household_id, int(line_number)): position
-        for position, (household_id, line_number) in enumerate(
-            zip(household, line, strict=True)
-        )
-    }
+    lookup = _line_lookup(person)
     pointers = [pd.to_numeric(person["A_SPOUSE"], errors="coerce").fillna(0).to_numpy()]
     if _OPTIONAL_PARTNER_COLUMN in person.columns:
         pointers.append(
@@ -793,7 +861,122 @@ def _resolve_partner_positions(
     return result
 
 
-def _recipients(frame: Frame) -> _Recipients:
+def _householder_couple_positions(
+    person: pd.DataFrame, order: np.ndarray
+) -> np.ndarray:
+    """The SCF-ordered reference person of each household, aligned to ``order``."""
+
+    household = person[_HOUSEHOLD_ID_COLUMN].to_numpy()
+    line = pd.to_numeric(person["A_LINENO"], errors="coerce").fillna(9_999).to_numpy()
+    position = np.arange(len(person))
+    ranked = np.lexsort((position, line, household))
+    first = np.ones(len(person), dtype=bool)
+    first[1:] = household[ranked][1:] != household[ranked][:-1]
+    householders = ranked[first]
+    by_household = pd.Series(householders, index=household[householders]).reindex(order)
+    if by_household.isna().any():
+        missing_ids = order[by_household.isna().to_numpy()][:5].tolist()
+        raise ValueError(
+            "SCF education-debt receiver household alignment failed: "
+            f"no householder for household id(s) {missing_ids}."
+        )
+    householder = by_household.to_numpy(dtype=np.int64)
+    partner = _resolve_partner_positions(person, householder)
+    female = person["is_female"].astype(bool).to_numpy()
+    age = pd.to_numeric(person["age"], errors="coerce").fillna(0.0).to_numpy()
+    has_partner = partner >= 0
+    safe_partner = np.where(has_partner, partner, householder)
+    mixed = female[householder] != female[safe_partner]
+    partner_first = np.where(
+        mixed,
+        female[householder],  # the man of a mixed-sex couple
+        age[safe_partner] > age[householder],  # else the older partner
+    )
+    return np.where(has_partner & partner_first, safe_partner, householder)
+
+
+def _children_counts(
+    person: pd.DataFrame,
+    head_position: np.ndarray,
+    spouse_position: np.ndarray,
+    *,
+    include_partner: bool,
+) -> np.ndarray:
+    """Household members whose CPS parent pointer names the head (or partner)."""
+
+    household = person[_HOUSEHOLD_ID_COLUMN].to_numpy()
+    line = pd.to_numeric(person["A_LINENO"], errors="coerce").fillna(-1).to_numpy()
+    parent_of: dict[tuple[object, int], int] = {
+        (household[head], int(line[head])): index
+        for index, head in enumerate(head_position)
+    }
+    if include_partner:
+        for index, spouse in enumerate(spouse_position):
+            if spouse >= 0:
+                parent_of.setdefault((household[spouse], int(line[spouse])), index)
+    counts = np.zeros(len(head_position), dtype=np.float64)
+    pointers = [
+        pd.to_numeric(person[column], errors="coerce").fillna(-1).to_numpy()
+        for column in ("PEPAR1", "PEPAR2")
+    ]
+    for row in range(len(person)):
+        owners = {
+            parent_of.get((household[row], int(pointer[row])))
+            for pointer in pointers
+            if pointer[row] > 0
+        }
+        owners.discard(None)
+        # A child of both partners counts once.
+        if owners:
+            counts[next(iter(owners))] += 1.0
+    return counts
+
+
+def _income_unit_owner(
+    person: pd.DataFrame,
+    head_position: np.ndarray,
+    spouse_position: np.ndarray,
+    unit: str,
+) -> np.ndarray:
+    """For each person, the household row whose income unit includes them, or -1."""
+
+    household = person[_HOUSEHOLD_ID_COLUMN].to_numpy()
+    if unit == "household":
+        index = pd.Series(np.arange(len(head_position)), index=household[head_position])
+        return index.reindex(household).to_numpy(dtype=np.int64)
+    owner = np.full(len(person), -1, dtype=np.int64)
+    if unit == "spm_unit":
+        if "person_spm_unit_id" not in person.columns:
+            raise ValueError("The spm_unit income unit requires person_spm_unit_id.")
+        spm = person["person_spm_unit_id"].to_numpy()
+        index = pd.Series(np.arange(len(head_position)), index=spm[head_position])
+        index = index[~index.index.duplicated()]
+        mapped = index.reindex(spm).to_numpy(dtype=np.float64)
+        owner = np.where(np.isnan(mapped), -1, mapped).astype(np.int64)
+    owner[head_position] = np.arange(len(head_position))
+    has_spouse = spouse_position >= 0
+    owner[spouse_position[has_spouse]] = np.flatnonzero(has_spouse)
+    if unit == "reference_couple_and_children":
+        line = pd.to_numeric(person["A_LINENO"], errors="coerce").fillna(-1).to_numpy()
+        parent_of = {
+            (household[row], int(line[row])): owner[row]
+            for row in np.flatnonzero(owner >= 0)
+        }
+        for column in ("PEPAR1", "PEPAR2"):
+            pointer = (
+                pd.to_numeric(person[column], errors="coerce").fillna(-1).to_numpy()
+            )
+            for row in np.flatnonzero((owner < 0) & (pointer > 0)):
+                found = parent_of.get((household[row], int(pointer[row])))
+                if found is not None:
+                    owner[row] = found
+    return owner
+
+
+def _recipients(
+    frame: Frame,
+    definition: RecipientDefinition = SCF_EDUCATION_DEBT_RECIPIENT_DEFINITION,
+) -> _Recipients:
     person = frame.table("person")
     household = frame.table("household")
     missing = sorted(set(_REQUIRED_RECIPIENT_PERSON_COLUMNS) - set(person.columns))
@@ -805,66 +988,89 @@ def _recipients(frame: Frame) -> _Recipients:
     if "household_id" not in household.columns:
         raise ValueError("US SCF education-debt imputation requires household_id.")
 
-    mask = _scf_reference_person_mask(person)
-    head_rows = np.flatnonzero(mask)
-    household_ids = person[_HOUSEHOLD_ID_COLUMN].to_numpy()
-    head_by_household = pd.Series(head_rows, index=household_ids[head_rows])
-    if head_by_household.index.duplicated().any():
-        raise ValueError("SCF education-debt receiver selected two reference persons.")
     order = household["household_id"].to_numpy()
-    aligned = head_by_household.reindex(order)
-    if aligned.isna().any():
-        missing_ids = order[aligned.isna().to_numpy()][:5].tolist()
-        raise ValueError(
-            "SCF education-debt receiver household alignment failed: "
-            f"no reference person for household id(s) {missing_ids}."
-        )
-    head_position = aligned.to_numpy(dtype=np.int64)
+    household_ids = person[_HOUSEHOLD_ID_COLUMN].to_numpy()
+    if definition.reference_person == "householder_couple":
+        head_position = _householder_couple_positions(person, order)
+    else:
+        mask = _scf_reference_person_mask(person)
+        head_rows = np.flatnonzero(mask)
+        head_by_household = pd.Series(head_rows, index=household_ids[head_rows])
+        if head_by_household.index.duplicated().any():
+            raise ValueError(
+                "SCF education-debt receiver selected two reference persons."
+            )
+        aligned = head_by_household.reindex(order)
+        if aligned.isna().any():
+            missing_ids = order[aligned.isna().to_numpy()][:5].tolist()
+            raise ValueError(
+                "SCF education-debt receiver household alignment failed: "
+                f"no reference person for household id(s) {missing_ids}."
+            )
+        head_position = aligned.to_numpy(dtype=np.int64)
+    spouse_position = _resolve_partner_positions(person, head_position)
 
-    per_person = pd.DataFrame(index=np.arange(len(person)))
-    per_person["age"] = (
+    features = pd.DataFrame(index=np.arange(len(head_position)))
+    features["age"] = (
         pd.to_numeric(person["age"], errors="coerce").fillna(0.0).to_numpy()
+    )[head_position]
+    features["is_female"] = (
+        person["is_female"].astype(bool).astype(float).to_numpy()[head_position]
     )
-    per_person["is_female"] = person["is_female"].astype(bool).astype(float).to_numpy()
-    per_person["cps_race"] = _recipient_cps_race(person)
-    per_person["is_married"] = (
-        pd.to_numeric(person["A_MARITL"], errors="coerce")
-        .isin([1, 2])
-        .astype(float)
-        .to_numpy()
-    )
-    per_person["own_children_in_household"] = _own_children_in_household(person)
+    features["cps_race"] = _recipient_cps_race(person)[head_position]
+    if definition.partnered == "spouse_or_partner":
+        features["is_married"] = (spouse_position >= 0).astype(np.float64)
+    else:
+        features["is_married"] = (
+            pd.to_numeric(person["A_MARITL"], errors="coerce")
+            .isin([1, 2])
+            .astype(float)
+            .to_numpy()[head_position]
+        )
+    if definition.children == "of_reference_or_partner":
+        features["own_children_in_household"] = _children_counts(
+            person, head_position, spouse_position, include_partner=True
+        )
+    else:
+        features["own_children_in_household"] = _own_children_in_household(person)[
+            head_position
+        ]
 
-    income = pd.DataFrame(
-        {
-            "household_id": household_ids,
-            "employment_income": np.maximum(
+    owner = _income_unit_owner(
+        person, head_position, spouse_position, definition.income_unit
+    )
+    member = owner >= 0
+    for column, values in (
+        (
+            "employment_income",
+            np.maximum(
                 pd.to_numeric(person["employment_income_before_lsr"], errors="coerce")
                 .fillna(0.0)
                 .to_numpy(dtype=np.float64),
                 0.0,
             ),
-            "interest_dividend_income": _sum_present(
-                person, _RECIPIENT_INTEREST_DIVIDEND_COLUMNS
-            ),
-            "social_security_pension_income": _sum_present(
-                person, _RECIPIENT_SS_PENSION_COLUMNS
-            ),
-            "household_income": _sum_present(
-                person, _RECIPIENT_HOUSEHOLD_INCOME_COLUMNS
-            ),
-        }
-    )
-    household_income = income.groupby("household_id", sort=False).sum()
-    features = per_person.iloc[head_position].reset_index(drop=True)
-    sums = household_income.reindex(order)
-    for column in household_income.columns:
-        features[column] = sums[column].to_numpy(dtype=np.float64)
+        ),
+        (
+            "interest_dividend_income",
+            _sum_present(person, _RECIPIENT_INTEREST_DIVIDEND_COLUMNS),
+        ),
+        (
+            "social_security_pension_income",
+            _sum_present(person, _RECIPIENT_SS_PENSION_COLUMNS),
+        ),
+        (
+            "household_income",
+            _sum_present(person, _RECIPIENT_HOUSEHOLD_INCOME_COLUMNS),
+        ),
+    ):
+        sums = np.zeros(len(head_position), dtype=np.float64)
+        np.add.at(sums, owner[member], values[member])
+        features[column] = sums
     features.index = household.index
     return _Recipients(
         features=features.loc[:, list(SCF_EDUCATION_DEBT_PREDICTORS)],
         head_position=head_position,
-        spouse_position=_resolve_partner_positions(person, head_position),
+        spouse_position=spouse_position,
     )
 
 
@@ -1000,19 +1206,25 @@ def impute_us_scf_education_debt(
     *,
     seed: int,
     n_estimators: int = _DEFAULT_N_ESTIMATORS,
+    definition: RecipientDefinition = SCF_EDUCATION_DEBT_RECIPIENT_DEFINITION,
+    predictors: Sequence[str] = SCF_EDUCATION_DEBT_PREDICTORS,
 ) -> pd.DataFrame:
     """Impute the four person columns onto a US frame.
 
     Returns a DataFrame indexed like the person table with
     :data:`US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS`; only reference persons and
-    their spouses or partners can be nonzero.
+    their spouses or partners can be nonzero. ``definition`` selects the CPS
+    construction of the SCF predictors and ``predictors`` the subset the QRFs
+    condition on; the receipts pass the first receipt's choices for their
+    before/after table.
     """
 
-    recipients = _recipients(frame)
+    recipients = _recipients(frame, definition)
     drawn = draw_scf_education_debt_households(
         recipients.features,
         donor,
         seed=seed,
+        predictors=predictors,
         n_estimators=n_estimators,
     )
     person = frame.table("person")
@@ -1090,6 +1302,7 @@ def with_us_scf_education_debt_inputs(
     time_period: int,
     scf_education_debt_donor: pd.DataFrame,
     n_estimators: int = _DEFAULT_N_ESTIMATORS,
+    definition: RecipientDefinition = SCF_EDUCATION_DEBT_RECIPIENT_DEFINITION,
 ) -> Frame:
     """Write the four education-debt person inputs; idempotent on a signal."""
 
@@ -1105,6 +1318,7 @@ def with_us_scf_education_debt_inputs(
         scf_education_debt_donor,
         seed=int(seed),
         n_estimators=int(n_estimators),
+        definition=definition,
     )
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
     for column in US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS:
@@ -1407,17 +1621,20 @@ def _racecl4_from_cps(person: pd.DataFrame) -> np.ndarray:
     return group
 
 
-def us_scf_education_debt_fit_table(frame: Frame) -> dict[str, object]:
+def us_scf_education_debt_fit_table(
+    frame: Frame,
+    definition: RecipientDefinition = SCF_EDUCATION_DEBT_RECIPIENT_DEFINITION,
+) -> dict[str, object]:
     """The microcosm#1073 fit table of an imputed US frame, at its weights.
 
-    Households are grouped by the SCF-style reference person's age and
+    Households are grouped by the reference person's age and
     ``racecl4``-equivalent race, and by weighted quintiles of the household
     income the imputation conditions on (income quintiles of the frame's own
-    households, like the SCF's).
+    households, like the SCF's), all under ``definition``.
     """
 
     person = frame.table("person")
-    recipients = _recipients(frame)
+    recipients = _recipients(frame, definition)
     household_weight = np.asarray(
         frame.weights_for("household").values, dtype=np.float64
     )
