@@ -15398,6 +15398,7 @@
         "policyengine": {
           "metric_name": "dft/bus_net_support/england",
           "value_variable": "bus_subsidy_spending",
+          "measurement_period": 2024,
           "filters": [
             {
               "variable": "country",
@@ -15477,6 +15478,7 @@
         "policyengine": {
           "metric_name": "dft/bus_net_support/london",
           "value_variable": "bus_subsidy_spending",
+          "measurement_period": 2024,
           "filters": [
             {
               "variable": "region",
@@ -16143,6 +16145,7 @@
         "policyengine": {
           "metric_name": "orr/rail_government_support",
           "value_variable": "rail_subsidy_spending",
+          "measurement_period": 2024,
           "filters": [
             {
               "variable": "region",
@@ -16295,7 +16298,9 @@
         "policyengine": {
           "metric_name": "ons/household_road_fuel_expenditure",
           "value_expression": "petrol_spending + diesel_spending",
-          "notes": "ONS Consumer Trends COICOP 07.2.2 fuels and lubricants for personal transport equipment, current prices, calendar year, bound on the frame's petrol plus diesel spend (microcosm#1113). The publisher class also carries other motor fuels and lubricants, about 0.46 percent of it on the LCFS 2024-25 diary (c72213), which the measure does not. The lcfs_consumption stage levels petrol plus diesel to the calendar-2024 row less that share, so this row reads about 0.5 percent low from scope alone: a known offset, left in place and not scaled into the target (María's ruling of 2026-10-10). ONS publishes the class on the domestic concept (spending on UK territory; PolicyEngine/chronicle#322): it includes non-residents' fuel bought in the UK, which the residents-only frame does not hold, and leaves out residents' fuel bought abroad. Consumer Trends publishes those two flows for total spending only (for 2024, GBP 64.7bn by non-residents in the UK, 3.8 percent of the domestic total, and GBP 78.9bn by residents abroad) and splits them by no class, so no national bridge is applied and their size for road fuel is not known. Beyond the scope offset, the design-weight gap to this calendar-2025 row is the engine's 2024-to-2025 uprating of the two columns against ONS's own move (37.025bn to 35.099bn, -5.2 percent). policyengine-uk 2.122.2 carries both columns -2.7 percent, so on that version the row reads about +2.3 percent at design weights, scope offset included, and the calibration closes that by moving weight away from fuel buyers. That is a desk figure from the engine's indices; the national remeasure records the measured one. Household-scope road fuel replaces the OBR cars receipts as the bound fuel row: those are a fiscal-year duty total that includes business use of cars, which the frame reaches only through the engine's conversion of spend to litres, so they stay measured as a diagnostic (calibration_measure_exclusions.json)."
+          "notes": "ONS Consumer Trends COICOP 07.2.2 fuels and lubricants for personal transport equipment, current prices, calendar year, bound on the frame's petrol plus diesel spend (microcosm#1113). The publisher class also carries other motor fuels and lubricants, about 0.46 percent of it on the LCFS 2024-25 diary (c72213), which the measure does not. The lcfs_consumption stage levels petrol plus diesel to the calendar-2024 row less that share, so this row reads about 0.5 percent low from scope alone: a known offset, left in place and not scaled into the target (María's ruling of 2026-10-10). ONS publishes the class on the domestic concept (spending on UK territory; PolicyEngine/chronicle#322): it includes non-residents' fuel bought in the UK, which the residents-only frame does not hold, and leaves out residents' fuel bought abroad. Consumer Trends publishes those two flows for total spending only (for 2024, GBP 64.7bn by non-residents in the UK, 3.8 percent of the domestic total, and GBP 78.9bn by residents abroad) and splits them by no class, so no national bridge is applied and their size for road fuel is not known. The row binds ONS's calendar-2024 figure (GBP 37.025bn) on the frame's own 2024 petrol and diesel columns, declared as the frame's period (measurement_period 2024, require_matching_fact_period; microcosm#1324). The fact and the stored columns are then the same year, so the binding does not depend on the engine's 2024-to-2025 fuel projection. Before #1324 the row was compared, as a stored read at 2024, with the calendar-2025 figure (GBP 35.099bn), so its reported fit measured neither year; measuring the 2025 figure through the engine instead would put the engine's fuel projection, which falls faster than ONS's own move, into the weights. Household-scope road fuel replaces the OBR cars receipts as the bound fuel row: those are a fiscal-year duty total that includes business use of cars, which the frame reaches only through the engine's conversion of spend to litres, so they stay measured as a diagnostic (calibration_measure_exclusions.json).",
+          "measurement_period": 2024,
+          "require_matching_fact_period": true
         },
         "axiom": {
           "metric_name": "ons/household_road_fuel_expenditure",
@@ -16308,6 +16313,7 @@
         "source_concept": "ons.household_expenditure.personal_transport_fuels_lubricants",
         "entity_name": "household",
         "period_type": "calendar_year",
+        "period_value": 2024,
         "dimension_values": {
           "coicop": "07.2.2",
           "frequency": "annual",
@@ -16340,6 +16346,7 @@
         "policyengine": {
           "metric_name": "scotgov/bus_passenger_revenue",
           "value_variable": "bus_fare_spending",
+          "measurement_period": 2024,
           "filters": [
             {
               "variable": "region",
@@ -16386,6 +16393,7 @@
         "policyengine": {
           "metric_name": "scotgov/bus_government_support",
           "value_variable": "bus_subsidy_spending",
+          "measurement_period": 2024,
           "filters": [
             {
               "variable": "region",
@@ -16434,6 +16442,7 @@
         "policyengine": {
           "metric_name": "welshgov/bus_public_support",
           "value_variable": "bus_subsidy_spending",
+          "measurement_period": 2024,
           "filters": [
             {
               "variable": "region",
@@ -16537,6 +16546,7 @@
         "policyengine": {
           "metric_name": "nithc/public_transport_support",
           "value_expression": "bus_subsidy_spending + rail_subsidy_spending",
+          "measurement_period": 2024,
           "filters": [
             {
               "variable": "region",

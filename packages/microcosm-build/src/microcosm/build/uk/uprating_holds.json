@@ -144,6 +144,19 @@
     },
     {
       "scope": "national",
+      "kind": "matched_period",
+      "target_ids": [
+        "ons.household_road_fuel_expenditure"
+      ],
+      "reason": "ONS Consumer Trends road fuel (COICOP 07.2.2) for calendar 2024, measured on the frame's own 2024 petrol and diesel columns (measurement_period 2024, require_matching_fact_period). The fact and the stored columns are the same year, so the row does not depend on the engine's 2024-to-2025 fuel projection; measuring the calendar-2025 figure through the engine would put that projection into the weights (microcosm#1324).",
+      "tracking": "microcosm#1324",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-20",
+      "status": "approved",
+      "expires_on": "2026-12-11"
+    },
+    {
+      "scope": "national",
       "kind": "reviewed_no_index",
       "target_ids": [
         "dft.bus_net_support.england",
@@ -154,7 +167,7 @@
         "scotgov.bus.passenger_revenue",
         "welshgov.bus.public_support"
       ],
-      "reason": "Public transport support and revenue lines for financial year 2024-25, the latest outturn of each publisher (DfT BUS05 and ORR next in November 2026). Spending is set by policy, so no price or volume index carries it forward; held to outturn until the next edition. The England fare-receipts rows are the exception, carried by the BUS0415 fares index.",
+      "reason": "Public transport support and revenue lines for financial year 2024-25, the latest outturn of each publisher (DfT BUS05 and ORR next in November 2026). Spending is set by policy, so no price or volume index carries it forward; held to outturn until the next edition. The England fare-receipts rows are the exception, carried by the BUS0415 fares index. Each binding declares the frame's period (measurement_period 2024), so the outturn is measured on the frame's own columns rather than on the engine's 2025 values (microcosm#1324).",
       "tracking": "microcosm#1278",
       "approved_by": "juaristi22",
       "approved_on": "2026-10-11",
