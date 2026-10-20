@@ -54,6 +54,7 @@ from . import (
     hmrc_property_rental,
     ledger_fact_vendoring,
     property_localisation,
+    receipt_counts,
     rowwise_geography,
     spi_income,
     spi_support,
@@ -111,6 +112,7 @@ _STAGE_MODULES = {
     "uc_legacy_closure_take_up": "legacy_closure_take_up",
     "pension_credit_take_up": "pension_credit_take_up",
     "child_benefit_take_up": "child_benefit_take_up",
+    "carers_allowance_take_up": "carers_allowance_take_up",
     "uc_deduction_attributes": "uc_deduction_attributes",
     "high_value_home_support": "high_value_home_support",
     "regional_home_values": "regional_home_values",
@@ -173,6 +175,10 @@ _STAGE_HELPER_MODULES = {
     "pension_credit_take_up": (uc_capital_coherence, uk_engine_adapter),
     # The Child Benefit redraw shares the weight mapping and the adapter.
     "child_benefit_take_up": (uc_capital_coherence, uk_engine_adapter),
+    # The Carer's Allowance draw reads the earnings test through the adapter's
+    # engine materialization and counts its receipt's support on the source
+    # lineage (microcosm#1319).
+    "carers_allowance_take_up": (uk_engine_adapter, receipt_counts),
     # The stored attendance is one engine materialization (microcosm#1095).
     "private_school_attendance": (uk_engine_adapter,),
 }
@@ -474,6 +480,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
 
     from .age_tail import UKAgeTailStageTransform
+    from .carers_allowance_take_up import UKCarersAllowanceTakeUpStageTransform
     from .cgt_asset_type import UKCGTAssetTypeStageTransform, UKCGTBADRParameters
     from .cgt_imputation import UKCGTPolicyParameters, uk_cgt_spine_stage_transform
     from .cgt_residential_split import UKCGTResidentialSplitStageTransform
@@ -723,6 +730,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             ),
             "child_benefit_take_up": UKChildBenefitTakeUpStageTransform(
                 stage=stages["child_benefit_take_up"], engine=engine
+            ),
+            "carers_allowance_take_up": UKCarersAllowanceTakeUpStageTransform(
+                stage=stages["carers_allowance_take_up"], engine=engine
             ),
             "uc_deduction_attributes": UKUCDeductionAttributesStageTransform(
                 stage=stages["uc_deduction_attributes"]

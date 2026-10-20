@@ -125,6 +125,10 @@ _READER_ISOLATION_BOUNDARIES = frozenset(
         # The Child Benefit redraw rewrites ``frs_take_up``'s two Child Benefit
         # flags, which the open-surface readers before it bind (microcosm#1063).
         "child_benefit_take_up",
+        # The Carer's Allowance draw rewrites ``would_claim_carers_allowance``,
+        # the root cell the SPI income stage refreshes, which the open-surface
+        # readers before it bind (microcosm#1319).
+        "carers_allowance_take_up",
         # ``frs_education_grant_split`` rewrites the root cell
         # ``education_grants`` that the open-surface ``frs_legacy_proxies``
         # reader already bound to.  In the root version that rewrite opened a
@@ -342,6 +346,10 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     # One temporary engine materialization of Child Benefit eligibility and
     # adjusted net income over the whole frame: an open surface.
     "child_benefit_take_up": None,
+    # One temporary engine materialization of the Carer's Allowance earnings
+    # test over the whole frame: an open surface, which also hands the stage
+    # the source lineage its receipt counts by (microcosm#1319).
+    "carers_allowance_take_up": None,
     "spi_benefit_coherence": frozenset(
         {
             ("person", "person_support_channel"),
@@ -1008,6 +1016,9 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("benunit", "would_claim_child_benefit", "bool"),
         _Cell("benunit", "child_benefit_opts_out", "bool"),
     ),
+    "carers_allowance_take_up": (
+        _Cell("person", "would_claim_carers_allowance", "bool"),
+    ),
     "uc_deduction_attributes": (
         _Cell("benunit", "uc_deduction_random_draw", "float64"),
         _Cell("benunit", "uc_deduction_type_random_draw", "float64"),
@@ -1134,7 +1145,8 @@ _HMRC_SPI_HIDDEN_BOOL = (
     "is_enhanced_disabled_for_benefits",
     "is_severely_disabled_for_benefits",
     # #882: the carer take-up flag follows the refilled Carer's Allowance
-    # receipt on the SPI-redrawn rows.
+    # receipt on the SPI-redrawn rows; carers_allowance_take_up later opens it
+    # to carers over the earnings limit (microcosm#1319).
     "would_claim_carers_allowance",
     # uk-data#527: the UC start-up period holds on a redrawn row only while it
     # stays self-employed.

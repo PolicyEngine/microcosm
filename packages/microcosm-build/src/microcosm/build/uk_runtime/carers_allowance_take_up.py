@@ -1,0 +1,470 @@
+"""Carer's Allowance claims by the carers the earnings limit keeps out
+(microcosm#1319).
+
+``frs_spine`` sets ``would_claim_carers_allowance`` from reported receipt, and
+the SPI income chain re-derives it from the refilled receipt on the rows it
+redraws, so that ``care_hours`` qualifies a carer for the Universal Credit
+carer element without paying the allowance to every carer (#882). A carer
+whose earnings are above the limit cannot report the allowance, so no reform
+that widens it, such as the April 2025 rise of the limit from £151 to £196 a
+week, reached a carer who would claim once entitled.
+
+This stage runs after the SPI income chain and the other take-up redraws. It
+opens the flag to the carers the earnings limit alone keeps from the
+allowance at the survey year: a person outside Scotland whose ``care_hours``
+reach the engine's ``gov.dwp.carers_allowance.min_hours``, who reports no
+Carer's Allowance, and whom ``is_gainfully_employed_for_carers_allowance``
+holds gainfully employed at the survey year (the 2024-25 limit of £151 a
+week; the engine reads a year's parameters at 30 April). Such a person claims
+at the take-up contract's ``carers_allowance_newly_entitled`` rate, on an
+identity-keyed uniform:
+
+    would_claim = reported OR (eligible AND u < rate)
+
+A reporter stays true. A carer under the limit who reports no allowance
+stays false, as the survey records them entitled and not claiming. Scotland
+is left closed: Carer Support Payment reads the same flag and the engine
+applies it no earnings test, so a draw there would pay it. The incoming flag
+must still follow reported receipt, since the stage rebuilds it from that
+anchor.
+
+The earnings test is read where the stage runs, before ``salary_sacrifice``
+moves some contributors' pension amounts out of their pay, which lowers the
+earnings the engine tests by about half the amount moved. A drawn carer whom
+that conversion takes under the survey year's limit keeps the flag, although
+the released file then shows them entitled and not reporting. Reading the
+converted pay would need the stage after ``salary_sacrifice``, with a draw
+keyed on lineage so that the CGT clones keep their source's draw.
+
+The receipt is aggregate-only (UKDS disclosure control): support as bands of
+distinct source households, a weighted total only where ten or more carry
+it, and the realised share only where neither the drawn nor the undrawn side
+rests on one to nine.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from importlib import metadata
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+from microcosm.build.source_manifest import SourceStageSpec
+from microcosm.build.stochastic_assignment import stable_identity_uniforms
+from microcosm.build.uk_runtime.frs_release import resolve_uk_year_rule
+from microcosm.build.uk_runtime.national_frame import (
+    uk_household_weight_kind,
+    uk_national_frame,
+    uk_time_period,
+    validate_uk_national_frame,
+)
+from microcosm.build.uk_runtime.receipt_counts import (
+    distinct_count,
+    small_cell_share,
+    source_household_ids,
+    support_band,
+)
+from microcosm.build.uk_runtime.take_up_contract import (
+    UKTakeUpContract,
+    load_uk_take_up_contract,
+)
+from microcosm.frame import Frame
+from microcosm.frame.rules import assert_rules_engine_country
+
+__all__ = [
+    "CARERS_ALLOWANCE_ENGINE_VARIABLES",
+    "CARERS_ALLOWANCE_NEWLY_ENTITLED_RATE_KEY",
+    "CARERS_ALLOWANCE_TAKE_UP_OUTPUT",
+    "CARERS_ALLOWANCE_TAKE_UP_STAGE_NAME",
+    "UKCarersAllowancePolicy",
+    "UKCarersAllowanceTakeUpResult",
+    "UKCarersAllowanceTakeUpStageTransform",
+    "carers_allowance_eligible",
+    "carers_allowance_take_up_operation_parameters",
+    "redraw_carers_allowance_take_up",
+    "uk_carers_allowance_policy",
+]
+
+CARERS_ALLOWANCE_TAKE_UP_STAGE_NAME = "carers_allowance_take_up"
+CARERS_ALLOWANCE_TAKE_UP_OUTPUT = "would_claim_carers_allowance"
+CARERS_ALLOWANCE_TAKE_UP_SEED = 0
+CARERS_ALLOWANCE_REPORTED = "carers_allowance_reported"
+CARERS_ALLOWANCE_CARE_HOURS = "care_hours"
+CARERS_ALLOWANCE_EARNINGS_TEST = "is_gainfully_employed_for_carers_allowance"
+CARERS_ALLOWANCE_ENGINE_VARIABLES = (CARERS_ALLOWANCE_EARNINGS_TEST,)
+#: The earnings test is read on the frame's own values at the survey year, the
+#: limit the survey's carers were held to; the stage refuses any other period.
+CARERS_ALLOWANCE_YEAR_RULE = "survey_year"
+CARERS_ALLOWANCE_NEWLY_ENTITLED_RATE_KEY = "carers_allowance_newly_entitled"
+#: Carer Support Payment replaces the allowance in Scotland and reads the same
+#: flag with no earnings test in the engine, so Scotland is never drawn.
+CARERS_ALLOWANCE_CLOSED_REGION = "SCOTLAND"
+CARERS_ALLOWANCE_PARAMETERS = "gov.dwp.carers_allowance"
+CARERS_ALLOWANCE_REPORTED_ANCHOR = "carers_allowance_reported > 0"
+CARERS_ALLOWANCE_ELIGIBILITY = (
+    "persons outside Scotland whose care_hours reach policyengine-uk's "
+    "gov.dwp.carers_allowance.min_hours, who report no Carer's Allowance, and "
+    "whom is_gainfully_employed_for_carers_allowance holds gainfully employed at "
+    "the survey year: the carers the earnings limit alone keeps from the "
+    "allowance. Scotland stays closed, since Carer Support Payment reads the same "
+    "flag and the engine applies it no earnings test"
+)
+CARERS_ALLOWANCE_RATE_DERIVATION = (
+    "the take-up contract's carers_allowance_newly_entitled rate, drawn flat over "
+    "the eligible persons; would_claim = reported OR (eligible AND u < rate), so "
+    "a reporter stays true and every other person false"
+)
+
+
+@dataclass(frozen=True)
+class UKCarersAllowancePolicy:
+    """The engine's hours condition and weekly earnings limit at one instant.
+
+    ``min_hours`` forms the eligible set; the earnings test itself is the
+    engine's own ``is_gainfully_employed_for_carers_allowance``, so
+    ``earnings_limit`` is recorded for the receipt only.
+    """
+
+    min_hours: float
+    earnings_limit: float
+    instant: str
+    source: str
+
+
+def uk_carers_allowance_policy(year: int | str) -> UKCarersAllowancePolicy:
+    """Read the hours condition and the earnings limit as the engine reads ``year``.
+
+    policyengine-uk reads a yearly parameter at 30 April of the year
+    (``convert_to_fiscal_year_parameters``), so the survey year 2024 reads the
+    2024-25 limit.
+    """
+
+    try:
+        import policyengine_uk
+        from policyengine_core.parameters import ParameterNode
+    except ImportError as exc:
+        raise ImportError(
+            "The Carer's Allowance take-up policy requires "
+            "`uv sync --all-packages --extra uk`."
+        ) from exc
+
+    parameters = ParameterNode(
+        directory_path=str(Path(policyengine_uk.__file__).parent / "parameters")
+    )
+    instant = f"{int(year)}-04-30"
+    carers_allowance = parameters.gov.dwp.carers_allowance
+    return UKCarersAllowancePolicy(
+        min_hours=float(carers_allowance.min_hours(instant)),
+        earnings_limit=float(carers_allowance.earnings_limit(instant)),
+        instant=instant,
+        source=(
+            f"policyengine-uk {metadata.version('policyengine-uk')} "
+            f"{CARERS_ALLOWANCE_PARAMETERS} at {instant}"
+        ),
+    )
+
+
+def carers_allowance_eligible(
+    *,
+    care_hours: np.ndarray,
+    reported: np.ndarray,
+    gainfully_employed: np.ndarray,
+    scotland: np.ndarray,
+    min_hours: float,
+) -> np.ndarray:
+    """The carers the earnings limit alone keeps from the allowance."""
+
+    return (
+        ~np.asarray(scotland, dtype=bool)
+        & (np.asarray(care_hours, dtype=np.float64) >= float(min_hours))
+        & ~np.asarray(reported, dtype=bool)
+        & np.asarray(gainfully_employed, dtype=bool)
+    )
+
+
+@dataclass(frozen=True)
+class UKCarersAllowanceTakeUpResult:
+    """Output frame and aggregate receipt for the Carer's Allowance draw."""
+
+    frame: Frame
+    receipt: dict[str, object]
+
+    def evidence(self) -> dict[str, object]:
+        return {"stage": CARERS_ALLOWANCE_TAKE_UP_STAGE_NAME, **self.receipt}
+
+
+@dataclass(frozen=True)
+class UKCarersAllowanceTakeUpStageTransform:
+    """Whole-stage callable for the post-SPI Carer's Allowance draw."""
+
+    stage: SourceStageSpec
+    engine: object
+    contract: UKTakeUpContract | None = None
+    policy: UKCarersAllowancePolicy | None = None
+    last_result: UKCarersAllowanceTakeUpResult | None = field(default=None, init=False)
+
+    def __call__(self, frame: Frame) -> Frame:
+        _assert_stage_parameters(self.stage)
+        result = redraw_carers_allowance_take_up(
+            frame,
+            engine=self.engine,
+            contract=self.contract or load_uk_take_up_contract(),
+            policy=self.policy,
+        )
+        object.__setattr__(self, "last_result", result)
+        return result.frame
+
+    @staticmethod
+    def output_columns() -> tuple[str, ...]:
+        return ()
+
+    def checkpoint_metadata(self) -> dict[str, object]:
+        if self.last_result is None:
+            raise RuntimeError("checkpoint metadata requires a completed stage run.")
+        return {"evidence": self.last_result.evidence()}
+
+
+def redraw_carers_allowance_take_up(
+    frame: Frame,
+    *,
+    engine: object,
+    contract: UKTakeUpContract,
+    policy: UKCarersAllowancePolicy | None = None,
+) -> UKCarersAllowanceTakeUpResult:
+    """Open ``would_claim_carers_allowance`` to carers over the earnings limit."""
+
+    validate_uk_national_frame(frame)
+    assert_rules_engine_country(engine, "uk")
+    person = frame.table("person").copy()
+    household = frame.table("household").copy()
+    for table, columns, label in (
+        (
+            person,
+            (
+                "person_id",
+                "person_household_id",
+                CARERS_ALLOWANCE_REPORTED,
+                CARERS_ALLOWANCE_CARE_HOURS,
+                CARERS_ALLOWANCE_TAKE_UP_OUTPUT,
+            ),
+            "person",
+        ),
+        (household, ("household_id", "region"), "household"),
+    ):
+        missing = sorted(set(columns) - set(table.columns))
+        if missing:
+            raise ValueError(
+                f"Carer's Allowance take-up {label} columns missing: {missing}."
+            )
+    # Compared as the label the frame carries, so that a "2024-25" or another
+    # year is refused by this message, not by a failed int().
+    period = uk_time_period(frame)
+    survey_year = resolve_uk_year_rule(CARERS_ALLOWANCE_YEAR_RULE)
+    if period != str(survey_year):
+        raise ValueError(
+            "Carer's Allowance take-up reads the earnings test on the frame's "
+            f"{CARERS_ALLOWANCE_YEAR_RULE} {survey_year} values, but the frame's "
+            f"period is {period!r}."
+        )
+    # The graph node is an open surface, so the lineage arrives with every
+    # other live cell; the receipt counts support by it.
+    household_sources = pd.Series(
+        source_household_ids(household, stage="The Carer's Allowance take-up stage"),
+        index=household["household_id"].to_numpy(),
+    )
+    reported = (
+        pd.to_numeric(person[CARERS_ALLOWANCE_REPORTED], errors="coerce")
+        .fillna(0.0)
+        .to_numpy()
+        > 0.0
+    )
+    previous = person[CARERS_ALLOWANCE_TAKE_UP_OUTPUT].fillna(False).to_numpy(bool)
+    if (previous != reported).any():
+        raise ValueError(
+            f"{CARERS_ALLOWANCE_TAKE_UP_OUTPUT} must arrive as reported receipt "
+            f"({CARERS_ALLOWANCE_REPORTED_ANCHOR}), as frs_spine and the SPI "
+            "refresh set it: the stage rebuilds the flag from that anchor and "
+            "would overwrite another writer."
+        )
+    resolved = policy or uk_carers_allowance_policy(survey_year)
+    rate = _rate(contract.rate(CARERS_ALLOWANCE_NEWLY_ENTITLED_RATE_KEY))
+    materialized = engine.materialize(
+        frame, list(CARERS_ALLOWANCE_ENGINE_VARIABLES), period
+    )
+    missing = sorted(set(CARERS_ALLOWANCE_ENGINE_VARIABLES) - set(materialized))
+    if missing:
+        raise ValueError(
+            f"Carer's Allowance take-up engine outputs missing: {missing}."
+        )
+    gainfully_employed = _aligned(
+        materialized[CARERS_ALLOWANCE_EARNINGS_TEST],
+        len(person),
+        CARERS_ALLOWANCE_EARNINGS_TEST,
+    ).astype(bool)
+    person_households = person["person_household_id"]
+    regions = person_households.map(
+        household.set_index("household_id")["region"].astype(str)
+    )
+    if regions.isna().any():
+        raise ValueError("Every person's household must carry a region.")
+    scotland = regions.eq(CARERS_ALLOWANCE_CLOSED_REGION).to_numpy(dtype=bool)
+    care_hours = (
+        pd.to_numeric(person[CARERS_ALLOWANCE_CARE_HOURS], errors="coerce")
+        .fillna(0.0)
+        .to_numpy(dtype=np.float64)
+    )
+    eligible = carers_allowance_eligible(
+        care_hours=care_hours,
+        reported=reported,
+        gainfully_employed=gainfully_employed,
+        scotland=scotland,
+        min_hours=resolved.min_hours,
+    )
+    draws = stable_identity_uniforms(
+        person["person_id"].to_numpy(),
+        seed=CARERS_ALLOWANCE_TAKE_UP_SEED,
+        salt=CARERS_ALLOWANCE_TAKE_UP_OUTPUT,
+    )
+    drawn = eligible & (draws < rate)
+    would_claim = reported | drawn
+    person[CARERS_ALLOWANCE_TAKE_UP_OUTPUT] = would_claim
+    result = uk_national_frame(
+        person=person,
+        benunit=frame.table("benunit").copy(),
+        household=household,
+        time_period=period,
+        weight_kind=uk_household_weight_kind(frame),
+        household_weights=frame.weights_for("household").values,
+        mass_log=frame.mass_log,
+    )
+    validate_uk_national_frame(result)
+
+    source_ids = person_households.map(household_sources).to_numpy()
+    weights = np.asarray(frame.resolve_weights("person").values, dtype=np.float64)
+
+    # Weighted aggregates only; a figure one to nine source households carry
+    # is "<10" (UKDS disclosure control).
+    def sources(mask: np.ndarray) -> int:
+        return distinct_count(source_ids, mask, weights)
+
+    eligible_sources = sources(eligible)
+    eligible_weight = float(weights[eligible].sum())
+    # The share times the eligible weight gives back either side, so the share
+    # is given only where neither side rests on one to nine sources; the drawn
+    # weight is never given beside the eligible weight for the same reason.
+    if not eligible_weight:
+        share: float | str | None = None
+    elif 0 < min(sources(drawn), sources(eligible & ~drawn)) < 10:
+        share = "<10"
+    else:
+        share = small_cell_share(
+            float(weights[drawn].sum()) / eligible_weight, eligible_sources
+        )
+    receipt = {
+        "seed": CARERS_ALLOWANCE_TAKE_UP_SEED,
+        "salt": CARERS_ALLOWANCE_TAKE_UP_OUTPUT,
+        "eligibility": CARERS_ALLOWANCE_ELIGIBILITY,
+        "rule": CARERS_ALLOWANCE_RATE_DERIVATION,
+        "rate_key": CARERS_ALLOWANCE_NEWLY_ENTITLED_RATE_KEY,
+        "rate": rate,
+        "survey_year": survey_year,
+        "min_hours": resolved.min_hours,
+        "weekly_earnings_limit": resolved.earnings_limit,
+        "policy_source": resolved.source,
+        "weights": "household weights at the stage, before calibration, per person",
+        "eligible_support": support_band(eligible_sources),
+        "eligible_weighted_persons": small_cell_share(
+            eligible_weight, eligible_sources
+        ),
+        "drawn_support": support_band(sources(drawn)),
+        "realized_share": share,
+        # Over-limit carers in Scotland stay closed: no Scottish person who
+        # reports no allowance carries the flag.
+        "scotland_left_closed_support": support_band(
+            sources(
+                scotland
+                & (care_hours >= resolved.min_hours)
+                & ~reported
+                & gainfully_employed
+            )
+        ),
+        "scotland_closed": not bool((scotland & ~reported & would_claim).any()),
+    }
+    return UKCarersAllowanceTakeUpResult(frame=result, receipt=receipt)
+
+
+def _rate(value: float) -> float:
+    rate = float(value)
+    if not 0.0 <= rate <= 1.0:
+        raise ValueError(
+            f"{CARERS_ALLOWANCE_NEWLY_ENTITLED_RATE_KEY} must be a rate in [0, 1], "
+            f"got {rate}."
+        )
+    return rate
+
+
+def _aligned(values: object, expected: int, label: str) -> np.ndarray:
+    array = np.asarray(values)
+    if array.shape != (expected,):
+        raise ValueError(f"{label} must align to the person table.")
+    if array.dtype != bool and not np.isfinite(array.astype(np.float64)).all():
+        raise ValueError(f"{label} must be finite.")
+    return array
+
+
+def carers_allowance_take_up_operation_parameters() -> dict[str, dict[str, object]]:
+    """The reviewed operation payload the manifests must carry verbatim."""
+
+    return {
+        "materialize_rules_engine_predictors": {
+            "predictors": list(CARERS_ALLOWANCE_ENGINE_VARIABLES),
+            "consumed_only": True,
+            "year_rule": CARERS_ALLOWANCE_YEAR_RULE,
+        },
+        "assign_binary_from_rate": {
+            "output": CARERS_ALLOWANCE_TAKE_UP_OUTPUT,
+            "draw": CARERS_ALLOWANCE_TAKE_UP_OUTPUT,
+            "assignment_unit": "person",
+            "eligibility": CARERS_ALLOWANCE_ELIGIBILITY,
+            "reported_true_anchor": CARERS_ALLOWANCE_REPORTED_ANCHOR,
+            "rate_key": CARERS_ALLOWANCE_NEWLY_ENTITLED_RATE_KEY,
+            "rate_derivation": CARERS_ALLOWANCE_RATE_DERIVATION,
+            "seed": CARERS_ALLOWANCE_TAKE_UP_SEED,
+        },
+    }
+
+
+def _assert_stage_parameters(stage: SourceStageSpec) -> None:
+    if stage.stage != CARERS_ALLOWANCE_TAKE_UP_STAGE_NAME:
+        raise ValueError(
+            f"Carer's Allowance take-up received stage {stage.stage!r}, expected "
+            f"{CARERS_ALLOWANCE_TAKE_UP_STAGE_NAME!r}."
+        )
+    expected = carers_allowance_take_up_operation_parameters()
+    kinds = [operation.kind for operation in stage.operations]
+    if kinds != list(expected):
+        raise ValueError(
+            f"{CARERS_ALLOWANCE_TAKE_UP_STAGE_NAME} operation order drifted: "
+            f"expected {list(expected)}, got {kinds}."
+        )
+    actual = {
+        operation.kind: dict(operation.parameters) for operation in stage.operations
+    }
+    if actual != expected:
+        drifted = sorted(kind for kind in expected if actual[kind] != expected[kind])
+        raise ValueError(
+            f"{CARERS_ALLOWANCE_TAKE_UP_STAGE_NAME} parameters drifted from the "
+            f"reviewed mapping on operation(s) {drifted}."
+        )
+    if stage.outputs != () or stage.rewrites != (CARERS_ALLOWANCE_TAKE_UP_OUTPUT,):
+        raise ValueError(
+            f"{CARERS_ALLOWANCE_TAKE_UP_STAGE_NAME} must declare no new outputs and "
+            f"exactly the rewrite {CARERS_ALLOWANCE_TAKE_UP_OUTPUT!r}."
+        )
+    if stage.grain != "person":
+        raise ValueError(
+            f"{CARERS_ALLOWANCE_TAKE_UP_STAGE_NAME} is person grain, got "
+            f"{stage.grain!r}."
+        )

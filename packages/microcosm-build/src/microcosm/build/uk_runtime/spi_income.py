@@ -2593,7 +2593,11 @@ def _refresh_carer_take_up_input(
     fill re-imputes that receipt on the redrawn rows, so the flag is
     re-derived here from the refilled amount. A stale flag would pay the
     allowance to a redrawn 35-hour carer whose refilled receipt is zero, or
-    withhold it from one whose refilled receipt is positive (#882).
+    withhold it from one whose refilled receipt is positive (#882). This is
+    the anchor ``carers_allowance_take_up`` reads after the SPI income chain:
+    it refuses a flag that no longer follows reported receipt, and opens it
+    to the carers the earnings limit alone keeps from the allowance
+    (microcosm#1319).
     """
 
     if "would_claim_carers_allowance" not in person.columns:

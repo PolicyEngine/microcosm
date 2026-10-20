@@ -80,8 +80,10 @@ _UK_TAKE_UP_EVIDENCE: dict[str, tuple[str, str]] = {
         "Whether this person would claim Carer's Allowance (or the Scottish "
         "Carer Support Payment) if entitled. Generated in a dataset from "
         "reported receipt ...",
-        "The UK build sets it from reported receipt (frs_spine.py). No concept "
-        "carries that receipt, so a seed threshold stands in for it.",
+        "The UK build sets it from reported receipt (frs_spine.py) and opens it "
+        "at one rate to carers the earnings limit alone keeps from the allowance "
+        "(carers_allowance_take_up.py). No concept carries that receipt, so a "
+        "seed threshold stands in for it.",
     ),
     "childcare_grant": (
         "Whether this person would claim Childcare Grant if eligible.",

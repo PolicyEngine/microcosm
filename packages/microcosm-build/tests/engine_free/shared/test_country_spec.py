@@ -1037,8 +1037,9 @@ class TestUKCountryPackage:
         # microcosm#1240 high_value_home_support between them, microcosm#1112
         # regional_home_values after it, and microcosm#1095 property_purchases
         # after property_components and uc_legacy_closure_take_up after
-        # uc_capital_coherence.
-        assert len(spec.sources.stages) == 45
+        # uc_capital_coherence; microcosm#1319 carers_allowance_take_up after
+        # child_benefit_take_up.
+        assert len(spec.sources.stages) == 46
         assert not {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.intersection(
             stage.stage for stage in spec.sources.stages
         )
