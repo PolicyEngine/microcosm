@@ -203,6 +203,22 @@ def _verified(path: Path, sha256: str) -> bool:
     return path.exists() and _sha256(path) == sha256
 
 
+def _clean_env(**overrides: str) -> dict[str, str]:
+    """The container environment without the Modal runtime's Python path.
+
+    Modal puts its own client and dependencies (under /pkg) on PYTHONPATH. A
+    subprocess that inherits it sees those packages beside the venv's, and the
+    build's worker-identity check refuses the duplicates (e.g. idna).
+    """
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if key not in {"PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP"}
+    }
+    env.update(overrides)
+    return env
+
+
 def _checkout(commit: str) -> None:
     WORK.mkdir(parents=True, exist_ok=True)
     run = lambda *args: subprocess.run(args, cwd=WORK, check=True)  # noqa: E731
@@ -219,13 +235,15 @@ def _checkout(commit: str) -> None:
     ).stdout.strip()
     if head != commit:
         raise RuntimeError(f"checked out {head}, expected {commit}")
-    env = os.environ | {
-        "UV_PROJECT_ENVIRONMENT": str(VENV),
-        # A Modal volume cannot host uv's cache: uv persists temporary files
-        # by atomic rename, which the volume refuses.
-        "UV_CACHE_DIR": "/root/.cache/uv",
-        "UV_LINK_MODE": "copy",
-    }
+    env = _clean_env(
+        **{
+            "UV_PROJECT_ENVIRONMENT": str(VENV),
+            # A Modal volume cannot host uv's cache: uv persists temporary files
+            # by atomic rename, which the volume refuses.
+            "UV_CACHE_DIR": "/root/.cache/uv",
+            "UV_LINK_MODE": "copy",
+        }
+    )
     subprocess.run(
         ["uv", "sync", "--all-packages", "--extra", "us", "--frozen"],
         cwd=WORK,
@@ -351,12 +369,12 @@ def run_steps(commit: str, steps: list[str], run_id: str) -> dict:
         "run_id": run_id,
     }
     threads = str(int(CPU))
-    env = os.environ | {
-        "PYTHONUNBUFFERED": "1",
-        "OMP_NUM_THREADS": threads,
-        "MKL_NUM_THREADS": threads,
-        "OPENBLAS_NUM_THREADS": threads,
-    }
+    env = _clean_env(
+        PYTHONUNBUFFERED="1",
+        OMP_NUM_THREADS=threads,
+        MKL_NUM_THREADS=threads,
+        OPENBLAS_NUM_THREADS=threads,
+    )
     out = CACHE / "results" / run_id
     out.mkdir(parents=True, exist_ok=True)
     log = {
