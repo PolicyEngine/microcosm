@@ -85,6 +85,14 @@ _UC_CAPITAL_RECEIPT_LIMITS = (6_000.0, 16_000.0)
 #: it as already countable, but TOTCAPB4 counts accounts and assets and no
 #: property. So the recorded figures add the household's property for the unit
 #: that holds it (uk-data#495, microcosm#1095).
+#:
+#: Both recorded figures project to later years as financial capital does, by
+#: GDP per head (the engine's ``data/uprating_indices.yaml``), while from
+#: 2.139.1 the engine projects other residential property by house prices;
+#: non-residential property and owned land stay on GDP per head. So the other
+#: residential property in a recorded figure grows faster than the engine's
+#: own projection of it: by the OBR indices the engine carries, 1.5% faster by
+#: 2025 and 2.0% by 2026 from a 2024 base.
 UC_PROPERTY_CAPITAL_SOURCES = (
     "other_residential_property_value",
     "non_residential_property_value",
