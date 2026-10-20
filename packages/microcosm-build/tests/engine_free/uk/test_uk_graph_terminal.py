@@ -1115,13 +1115,20 @@ def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(
     assert support_csv["support_below_floor"].dtype == bool
 
 
+@pytest.mark.parametrize(
+    "brma_row", [False, True], ids=["published_rows", "withheld_brma_row"]
+)
 def test_final_gate_kernel_diagnostics_match_the_published_json_schema(
-    monkeypatch,
+    monkeypatch, brma_row
 ):
-    stored = _run_final_gate_kernel(monkeypatch)
+    # The withheld BRMA row exercises the parts #1305 added: the ``brma``
+    # geography level and ``uk_diagnostics.model_figures_withheld``.
+    stored = _run_final_gate_kernel(monkeypatch, brma_row=brma_row)
     document = load_strict_json(stored.artifacts["calibration_diagnostics"])
 
     assert published_json_schema_errors(document) == []
+    if brma_row:
+        assert document["uk_diagnostics"]["model_figures_withheld"]["targets"] == 1
 
 
 def test_the_gate_kernel_keeps_a_withheld_brma_row_out_of_its_gates(monkeypatch):

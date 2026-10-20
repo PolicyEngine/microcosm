@@ -1006,6 +1006,17 @@
             }
           ],
           "default": null
+        },
+        "model_figures_withheld": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UKWithheldModelFigures"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
@@ -1064,7 +1075,8 @@
             "region",
             "country",
             "local_authority",
-            "constituency"
+            "constituency",
+            "brma"
           ],
           "title": "Geography Level",
           "type": "string"
@@ -1465,6 +1477,39 @@
         "top_1pct_weight_share"
       ],
       "title": "UKWeightSummary",
+      "type": "object"
+    },
+    "UKWithheldModelFigures": {
+      "additionalProperties": false,
+      "description": "Target rows whose model figures stay in the build (microcosm#1262).\n\nA row resting on fewer than ``min_source_households`` distinct source\nhouseholds keeps its place without its model figures. While any does, the\npayload's totals are restated over the published rows (``totals_basis``)\nso that none can be differenced against them, and its loss trajectory is\nempty.",
+      "properties": {
+        "targets": {
+          "exclusiveMinimum": 0,
+          "title": "Targets",
+          "type": "integer"
+        },
+        "min_source_households": {
+          "exclusiveMinimum": 0,
+          "title": "Min Source Households",
+          "type": "integer"
+        },
+        "totals_basis": {
+          "const": "published_rows",
+          "title": "Totals Basis",
+          "type": "string"
+        },
+        "note": {
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "targets",
+        "min_source_households",
+        "totals_basis",
+        "note"
+      ],
+      "title": "UKWithheldModelFigures",
       "type": "object"
     },
     "UKZeroWeightStratum": {
