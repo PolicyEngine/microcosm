@@ -334,7 +334,8 @@ def _support_frame(support) -> pd.DataFrame:
     return frame
 
 
-def _target_rows(national, local) -> list[dict]:
+def _target_rows(national, local, withheld=frozenset()) -> list[dict]:
+    """The embedded rows; a ``withheld`` local key reads blank (microcosm#1262)."""
     rows = [
         {
             "name": name,
@@ -353,15 +354,22 @@ def _target_rows(national, local) -> list[dict]:
     ]
     for family, area, metric, error in local:
         name = f"synthetic.local.{family}.{area}@2025"
-        level = "constituency" if area.startswith("E14") else "local_authority"
+        level = (
+            "constituency"
+            if area.startswith("E14")
+            else "brma"
+            if area.startswith("S33")
+            else "local_authority"
+        )
+        hidden = f"{family}/{area}/{metric}" in withheld
         rows.append(
             {
                 "name": name,
                 "target_name": name,
                 "target": 50.0,
-                "estimate": 50.0 * (1.0 + error),
-                "relative_error": error,
-                "abs_relative_error": abs(error),
+                "estimate": None if hidden else 50.0 * (1.0 + error),
+                "relative_error": None if hidden else error,
+                "abs_relative_error": None if hidden else abs(error),
                 "family": family,
                 "geography_level": level,
                 "area_type": level,
@@ -369,13 +377,31 @@ def _target_rows(national, local) -> list[dict]:
                 "metric": metric,
             }
         )
+    if withheld:
+        for row in rows:
+            key = f"{row['family']}/{row['area_code']}/{row['metric']}"
+            row["model_figures_withheld"] = key in withheld
     return rows
 
 
-def _fit(errors: dict, block: dict, clock: date) -> GateResult:
-    records = coerce_reviewed_exclusions(block, label="fixture")
+def _fit(errors: dict, block: dict, clock: date, withheld=frozenset()) -> GateResult:
+    """The fit gate as its binding runs it: a ``withheld`` cell is neither
+    checked nor excused, only counted (María's ruling of 2026-10-19)."""
+    records = {
+        key: record
+        for key, record in coerce_reviewed_exclusions(block, label="fixture").items()
+        if key not in withheld
+    }
     in_line = {key: r for key, r in records.items() if r.applies_on("local")}
-    result = uk_target_fit_gate(errors, reviewed_exclusions=in_line, now=clock)
+    result = uk_target_fit_gate(
+        {key: error for key, error in errors.items() if key not in withheld},
+        reviewed_exclusions=in_line,
+        now=clock,
+    )
+    if withheld:
+        result = replace(
+            result, details={**result.details, "withheld_targets": len(withheld)}
+        )
     out = sorted(set(records) - set(in_line))
     if out:
         result = replace(
@@ -443,6 +469,7 @@ def write_run(
     sample_fraction: float = 1.0,
     artifacts: dict | None = None,
     measure_exclusions: dict | None = None,
+    withheld: frozenset[str] = frozenset(),
 ) -> Path:
     """A dense run directory as a blocked or passing build leaves it.
 
@@ -452,7 +479,7 @@ def write_run(
     """
 
     national = dict(NATIONAL if national is None else national)
-    targets = _target_rows(national, local)
+    targets = _target_rows(national, local, withheld)
     support_frame = _support_frame(support)
     results = {
         "uk_target_fit": _fit(
@@ -462,6 +489,7 @@ def write_run(
             {f"{f}/{a}/{m}": e for f, a, m, e in local},
             registers["uk_local_target_fit"]["exclusions"],
             clock,
+            withheld,
         ),
         "uk_local_area_support": _area(
             support_frame, registers["uk_local_area_support"], clock
@@ -698,6 +726,139 @@ def test_draft_signs_every_signable_failure_and_retires_stale_entries(
         in area_pins
     )
     assert list((repo / "changelog.d").glob("1301-uk-dense-signoff-*.changed.md"))
+
+
+BRMA_CELL = "private_rent/S33999999/rent/private_rent_brma"
+
+
+def test_a_withheld_cell_beyond_the_bound_is_never_signed(repo, tmp_path, capsys):
+    """microcosm#1262: the gate decides on the published rows (2026-10-19).
+
+    targets.csv leaves the withheld BRMA cell's figures blank and the gate
+    only counts it, so the draft signs the published failure alone, predicts
+    build 2 passing, and no output carries the cell's error.
+    """
+
+    local = (*LOCAL, ("private_rent", "S33999999", "rent/private_rent_brma", -0.4567))
+    build = write_run(
+        tmp_path / "build-1",
+        registers=build_1_registers(),
+        local=local,
+        withheld=frozenset({BRMA_CELL}),
+    )
+    targets = pd.read_csv(build / f"{STEM}.targets.csv")
+    assert targets["relative_error"].isna().sum() == 1
+    out = tmp_path / "draft"
+    assert draft(build, repo, out) == 0
+    receipt = json.loads((out / "signoff_draft.json").read_text())
+    assert receipt["signable"] is True
+    assert receipt["registers"]["uk_local_target_fit"]["add"] == [
+        "census_households/E14999998/households"
+    ]
+    assert receipt["predicted_build_2"]["uk_local_target_fit"] == {
+        "passes": True,
+        "failure_count": 0,
+    }
+    for text in (
+        (out / "signoff.patch").read_text(),
+        (out / "signoff_draft.json").read_text(),
+        (out / "PR_BODY.md").read_text(),
+        (out / "PRIVATE_review.csv").read_text(),
+        capsys.readouterr().out,
+    ):
+        assert "4567" not in text and "S33999999" not in text
+
+
+def test_a_withheld_cells_entry_is_retired(repo, tmp_path):
+    """The gate sets an entry for a withheld cell aside; no row earns it."""
+
+    registers = build_1_registers()
+    registers["uk_local_target_fit"]["exclusions"][BRMA_CELL] = _entry(
+        "2026-10-01", "2026-12-01"
+    )
+    repo = make_repo(tmp_path / "repo-with-entry", registers)
+    local = (*LOCAL, ("private_rent", "S33999999", "rent/private_rent_brma", -0.4567))
+    build = write_run(
+        tmp_path / "build-1",
+        registers=registers,
+        local=local,
+        withheld=frozenset({BRMA_CELL}),
+    )
+    out = tmp_path / "draft"
+    assert draft(build, repo, out) == 0
+    receipt = json.loads((out / "signoff_draft.json").read_text())
+    assert BRMA_CELL in receipt["registers"]["uk_local_target_fit"]["remove"]
+
+
+def test_a_withheld_cell_inside_the_bound_needs_no_sign_off(repo, tmp_path):
+    local = (*LOCAL, ("private_rent", "S33999999", "rent/private_rent_brma", 0.0312))
+    build = write_run(
+        tmp_path / "build-1",
+        registers=build_1_registers(),
+        local=local,
+        withheld=frozenset({BRMA_CELL}),
+    )
+    out = tmp_path / "draft"
+    assert draft(build, repo, out) == 0
+    receipt = json.loads((out / "signoff_draft.json").read_text())
+    assert BRMA_CELL not in receipt["registers"]["uk_local_target_fit"]["add"]
+    assert receipt["predicted_build_2"]["uk_local_target_fit"]["passes"] is True
+
+
+def test_a_withheld_row_that_gives_its_error_is_refused(repo, tmp_path, capsys):
+    local = (*LOCAL, ("private_rent", "S33999999", "rent/private_rent_brma", -0.4567))
+    build = write_run(
+        tmp_path / "build-1",
+        registers=build_1_registers(),
+        local=local,
+        withheld=frozenset({BRMA_CELL}),
+    )
+    path = build / f"{STEM}.targets.csv"
+    targets = pd.read_csv(path)
+    targets.loc[targets["model_figures_withheld"], "relative_error"] = -0.4567
+    targets.to_csv(path, index=False)
+    assert draft(build, repo, tmp_path / "draft") == 2
+    assert "withheld row's relative error" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "details,message",
+    [
+        (
+            {"targets_checked": 1, "withheld_targets": 0},
+            "counts different withheld rows",
+        ),
+        (
+            {
+                "targets_checked": 1,
+                "withheld_targets": 1,
+                "failing_targets": {BRMA_CELL: -0.4},
+            },
+            "names a row targets.csv withholds",
+        ),
+    ],
+    ids=["count", "named"],
+)
+def test_the_fit_details_agree_with_the_withheld_rows(details, message):
+    """The fourth review of #1305: removing either check failed no test."""
+
+    published = {"private_rent/E06000001/rent/private_rent": 0.02}
+    withheld = frozenset({BRMA_CELL})
+    TOOL._check_fit_details(
+        "uk_local_target_fit",
+        {"status": "passed", "details": {"targets_checked": 1, "withheld_targets": 1}},
+        published,
+        0.25,
+        withheld,
+    )
+    with pytest.raises(TOOL.InputError, match=message):
+        TOOL._check_fit_details(
+            "uk_local_target_fit",
+            {"status": "failed", "details": details},
+            published,
+            0.25,
+            withheld,
+        )
 
 
 def test_public_outputs_carry_no_figures(build_1, repo, tmp_path, capsys):
@@ -1937,6 +2098,30 @@ def test_verify_reports_row_drift_and_no_solve_reuse(build_1, repo, tmp_path):
     assert result["comparison"]["solve_reused"] is False
     assert result["comparison"]["rows_differing"] == 1
     assert "build 2 did not reuse build 1's solve" in result["warnings"]
+
+
+def test_a_row_withheld_in_one_build_only_differs_once(repo, tmp_path):
+    """The fourth review of #1305: it was counted as an error change and as a
+    withholding change."""
+
+    local = (*LOCAL, ("private_rent", "S33999999", "rent/private_rent_brma", 0.0312))
+    build_1 = write_run(
+        tmp_path / "build-1",
+        registers=build_1_registers(),
+        local=local,
+        withheld=frozenset({BRMA_CELL}),
+    )
+    registers = _signed_off(build_1, repo, tmp_path)
+    build_2 = write_run(
+        tmp_path / "build-2",
+        registers=registers,
+        attempt_id=ATTEMPT_2,
+        clock=GATE_CLOCK,
+        local=local,
+    )
+    status, result = verify(build_2, repo, tmp_path, "--build-1", str(build_1))
+    assert status == 0, result["failures"]
+    assert result["comparison"]["rows_differing"] == 1
 
 
 @pytest.mark.parametrize(

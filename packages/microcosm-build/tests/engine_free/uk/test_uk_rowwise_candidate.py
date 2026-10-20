@@ -95,6 +95,10 @@ def test_graph_driver_dry_run_prints_the_operation_inventory(
         # band nodes.
         "--property-localisation",
         "none",
+        # microcosm#1262: nor a BRMA column, so the dry run keeps the spine's
+        # regional draw rather than planning the area-BRMA node.
+        "--brma-localisation",
+        "none",
         "--dry-run",
         "--no-staging",
     ]

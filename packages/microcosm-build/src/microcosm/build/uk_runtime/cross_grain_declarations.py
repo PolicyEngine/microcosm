@@ -38,7 +38,10 @@ from microcosm.build.cross_grain import (
 )
 
 UK_CROSS_GRAIN_DECLARATIONS_RESOURCE = "cross_grain_declarations.json"
-UK_LOCAL_GEOGRAPHY_LEVELS = frozenset({"constituency", "local_authority"})
+#: ``statistical_scope`` is Scotland's BRMA grain (microcosm#1090, #1262).
+UK_LOCAL_GEOGRAPHY_LEVELS = frozenset(
+    {"constituency", "local_authority", "statistical_scope"}
+)
 _RELATION_KINDS = ("subset", "independent")
 _LOCAL_ROUTE_KINDS = ("no_higher_control",)
 

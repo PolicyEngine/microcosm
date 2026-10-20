@@ -1260,7 +1260,7 @@
     "source_schema_version": "policyengine_ledger.target_profile.v1",
     "source_profile_id": "uk_local_geography",
     "source_target_count": 25,
-    "contract_target_count": 58,
+    "contract_target_count": 59,
     "corrected_rows": 25,
     "corrected": [
       {
@@ -1723,7 +1723,7 @@
         "reason": "Narrowed to the private-rent local-area record-set spec; non-English/masked absences are signed by the area compiler."
       }
     ],
-    "activation_added_rows": 33,
+    "activation_added_rows": 34,
     "activation_additions": [
       {
         "target_id": "ons.census.households",
@@ -1856,6 +1856,10 @@
       {
         "target_id": "desnz.subnational.gas_connected_households",
         "basis": "microcosm#1207; DESNZ sub-national domestic gas and electricity meter counts by local authority (Great Britain), whose ratio puts a share of each authority's census households on the gas network"
+      },
+      {
+        "target_id": "ons.rent.private_rent_brma",
+        "basis": "microcosm#1090, #1262; ONS PIPR's Scottish rents, published for the 18 Broad Rental Market Areas only, bound at their own grain"
       }
     ],
     "scope_target_ids": [
@@ -1884,6 +1888,7 @@
       "ons.tenure.private_rent",
       "ons.tenure.social_rent",
       "ons.rent.private_rent",
+      "ons.rent.private_rent_brma",
       "ons.census.households",
       "mhclg.council_tax_stock.by_area.band_a",
       "mhclg.council_tax_stock.by_area.band_b",
@@ -29766,9 +29771,48 @@
         "source_measure_id": "private_rent",
         "record_set_spec_id": "uk.local_geography.private_rent.average_by_area.v1"
       },
-      "selector_note": "Private rent is a price-level target; non-English and masked rows are signed deferrals in the local reference compiler.",
+      "selector_note": "Private rent is a price-level target: each cell is 12 x the authority's calendar-2025 PIPR mean x its reconciled private renters. English and Welsh authorities bind; Scotland binds at BRMA grain (ons.rent.private_rent_brma) and Northern Ireland has a country mean only, so their cells are signed deferrals in the local reference compiler. Placed renters' rents come from their BRMA's rent-officer list of rents, scaled to their region's FRS level on the census renter mix: at design weights a region moves by the gap between that mix and where its renters land, until the tenure rows restore it (microcosm#1262). PIPR shares that evidence base, so the rows stay bound, but their pattern between areas is not independent validation.",
       "category_id": "ons.housing",
       "label": "Private rent"
+    },
+    {
+      "target_id": "ons.rent.private_rent_brma",
+      "family": "ons_housing",
+      "geography_levels": [
+        "statistical_scope"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "map_to": "household",
+        "concept": "uk.housing.private_rent.amount"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "rent/private_rent_brma",
+          "value_variable": "benunit_rent",
+          "from_entity": "benunit",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "tenure_type",
+              "equals": "RENT_PRIVATELY"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "rent/private_rent_brma",
+          "status": "pending",
+          "value_rule": "uk.housing.private_rent.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_measure_id": "private_rent",
+        "record_set_spec_id": "uk.local_geography.private_rent.average_by_area.v1"
+      },
+      "selector_note": "Scotland's PIPR rents, which ONS publishes for the 18 Broad Rental Market Areas only (microcosm#1090). Each row is 12 x the BRMA's calendar-2025 mean x its private renters, which the councils' reconciled private renters give through Census 2022's council shares of each BRMA's private renters (uk/scotland_brma_la_overlap.json). The model side sums each Scottish household's rent by the BRMA of its assigned output area (microcosm#1262). Placed renters' rents come from their BRMA's rent-officer list of rents, scaled to their region's FRS level on the census renter mix: at design weights a region moves by the gap between that mix and where its renters land, until the tenure rows restore it (microcosm#1262). PIPR shares that evidence base, so the rows stay bound, but their pattern between areas is not independent validation.",
+      "category_id": "ons.housing",
+      "label": "Private rent (Scottish BRMA)"
     },
     {
       "target_id": "ons.census.households",

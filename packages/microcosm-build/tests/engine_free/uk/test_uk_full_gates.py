@@ -336,6 +336,7 @@ def test_existing_local_statistical_failure_can_export_but_blocks_full_release()
     "gate_id",
     [
         "uk_local_geography_ladder_post_calibration",
+        "uk_local_brma_enum_domain",
         "uk_nonnegative_columns",
         "uk_input_mass_parity",
         "uk_target_fit",
