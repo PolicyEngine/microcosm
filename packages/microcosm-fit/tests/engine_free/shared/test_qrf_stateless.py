@@ -303,6 +303,64 @@ def test_chain_step_exposes_a_fitted_one_target_view():
     np.testing.assert_array_equal(step_two.raw_draw, step_two_again.raw_draw)
 
 
+def test_chain_step_with_caller_uniforms_draws_each_row_on_its_own():
+    """Keyed uniforms make a chain row's draw independent of the other rows.
+
+    Adding a recipient, changing another recipient's predictor and reordering
+    the rest leave every untouched row's draws where they were, and a step
+    with caller uniforms leaves the chain's positional draw stream unconsumed.
+    """
+    from microcosm.fit.qrf import RegimeGatedQRF
+
+    x = np.tile(np.arange(30, dtype=float), 6)
+    donor = pd.DataFrame(
+        {
+            "x": x,
+            "first": x + 1 + np.tile([0.0, 0.5, 1.0], len(x) // 3),
+            "inflated": np.tile([0.0, 4.0, 5.0], len(x) // 3),
+        }
+    )
+    qrf = RegimeGatedQRF(n_estimators=4, seed=7)
+
+    def draw(recipient: pd.DataFrame, ids: np.ndarray) -> pd.DataFrame:
+        state = qrf.start_chain(donor, ["x"], ["first", "inflated"], weights="none")
+        raw = pd.DataFrame(index=recipient.index)
+        for salt in (0.137, 0.611):
+            step = qrf.fit_draw_next(
+                donor,
+                recipient,
+                raw,
+                state=state,
+                weights="none",
+                quantiles=(ids * salt) % 1.0,
+                sign_uniforms=(ids * (salt + 0.29)) % 1.0,
+            )
+            assert step.state.draw_rng_state_json == state.draw_rng_state_json
+            raw[step.target] = step.raw_draw
+            state = step.state
+        return raw.set_axis(ids)
+
+    ids = np.arange(1.0, 13.0)
+    base = draw(pd.DataFrame({"x": np.arange(12, dtype=float)}), ids)
+
+    changed_ids = np.concatenate([[99.0], ids[::-1]])
+    changed_x = np.concatenate([[3.0], np.arange(12, dtype=float)[::-1]])
+    changed_x[1] = 29.0  # the row with id 12 gets a new predictor
+    changed = draw(pd.DataFrame({"x": changed_x}), changed_ids)
+
+    untouched = ids[:-1]
+    pd.testing.assert_frame_equal(changed.loc[untouched], base.loc[untouched])
+    with pytest.raises(ValueError, match="both quantiles and sign_uniforms"):
+        qrf.fit_draw_next(
+            donor,
+            pd.DataFrame({"x": [1.0]}),
+            pd.DataFrame(index=[0]),
+            state=qrf.start_chain(donor, ["x"], ["first"], weights="none"),
+            weights="none",
+            quantiles=np.array([0.5]),
+        )
+
+
 def _placements(model, n, seed):
     rng = np.random.default_rng(seed)
     return {

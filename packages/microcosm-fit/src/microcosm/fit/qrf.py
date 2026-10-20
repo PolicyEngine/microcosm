@@ -1424,6 +1424,8 @@ class RegimeGatedQRF:
         *,
         state: QRFChainState,
         weights: WeightSpec = DESIGN_WEIGHTS,
+        quantiles: np.ndarray | None = None,
+        sign_uniforms: np.ndarray | None = None,
     ) -> QRFChainStepResult:
         """Fit and draw exactly the next target in a checkpointed chain.
 
@@ -1435,6 +1437,14 @@ class RegimeGatedQRF:
         Every call re-runs the ordinary input/weight resolution and refuses
         model-config drift, target-prefix drift, donor/recipient row reordering,
         weight drift, an entity/front-door change, or non-float64 raw priors.
+
+        ``quantiles`` and ``sign_uniforms`` (both or neither) are caller-owned
+        uniforms, one in ``[0, 1)`` per recipient row. With them the step draws
+        as :meth:`FittedRegimeGatedQRF.predict_from_uniforms` does and leaves
+        the chain's draw stream where it was, so a row's draw depends on its
+        own uniforms and features only: keyed on stable record identities,
+        adding, dropping or reordering other recipients moves no row's draw.
+        Without them the step consumes the chain's positional draw stream.
 
         Returns:
             A result whose ``state`` is the state *after* this target and must
@@ -1478,10 +1488,27 @@ class RegimeGatedQRF:
             augmented[prior] = raw_prior_draws[prior].to_numpy(
                 dtype=np.float64, copy=False
             )
-        raw_draw = np.asarray(
-            _draw_target_with_rng(augmented, target_model, draw_rng),
-            dtype=np.float64,
-        )
+        if (quantiles is None) != (sign_uniforms is None):
+            raise ValueError("Supply both quantiles and sign_uniforms, or neither.")
+        if quantiles is None:
+            drawn = _draw_target_with_rng(augmented, target_model, draw_rng)
+        else:
+            supplied = {
+                name: _validate_uniform_mapping(
+                    name, {target: values}, [target], len(augmented)
+                )[target]
+                for name, values in (
+                    ("quantiles", quantiles),
+                    ("sign_uniforms", sign_uniforms),
+                )
+            }
+            drawn = _draw_target_from_uniforms(
+                augmented,
+                target_model,
+                supplied["quantiles"],
+                supplied["sign_uniforms"],
+            )
+        raw_draw = np.asarray(drawn, dtype=np.float64)
         raw_draw.setflags(write=False)
         advanced = replace(
             state,
