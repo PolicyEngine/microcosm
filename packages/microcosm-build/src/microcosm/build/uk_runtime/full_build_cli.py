@@ -102,6 +102,8 @@ from .atomic_area_support import (
 from .atomic_area_support import (
     SYSTEMS as ATOMIC_SUPPORT_SYSTEMS,
 )
+from .brma_area_layer import BRMA_AREA_LAYER_SOURCE
+from .brma_area_layer import METHOD_VERSION as BRMA_AREA_LAYER_METHOD
 from .calibration_run import (
     _write_json,
     load_bound_spine_checkpoint,
@@ -147,7 +149,12 @@ from .graph_national import (
     solved_national_registry,
     uk_national_graph,
 )
-from .graph_population import GEOGRAPHY_ASSIGNMENTS, PROPERTY_LOCALISATION_MODES
+from .graph_population import (
+    BRMA_LOCALISATION_MODES,
+    GEOGRAPHY_ASSIGNMENTS,
+    PRIVATE_RENT_LOCALISATION_MODES,
+    PROPERTY_LOCALISATION_MODES,
+)
 from .graph_targets import TARGET_SELECTION_TYPE, registry_from_payload
 from .graph_terminal import (
     FULL_DIAGNOSTICS_CSV_TYPE,
@@ -178,6 +185,9 @@ from .national_frame import (
 )
 from .national_sampling import UK_SAMPLE_RUNG_TOKENS
 from .orrery_contract import persist_uk_run_evidence, save_uk_graph_schema
+from .private_rent_localisation import COUNTS_SOURCE as PRIVATE_RENTER_COUNTS_SOURCE
+from .private_rent_localisation import METHOD_VERSION as PRIVATE_RENT_METHOD
+from .private_rent_localisation import QUANTILES_SOURCE as RENT_QUANTILES_SOURCE
 from .property_localisation import (
     BAND_MIX_SOURCE,
     QUANTILES_SOURCE,
@@ -400,10 +410,11 @@ def _target_geographies(value: str) -> tuple[str, ...] | None:
     if (
         not levels
         or len(levels) != len(set(levels))
-        or set(levels) - {"country", "region", "constituency", "la"}
+        or set(levels) - {"country", "region", "constituency", "la", "brma"}
     ):
         raise argparse.ArgumentTypeError(
-            "Use all or a comma-separated subset of country,region,constituency,la."
+            "Use all or a comma-separated subset of "
+            "country,region,constituency,la,brma."
         )
     return levels
 
@@ -505,6 +516,47 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             dest=f"{label.replace('-', '_')}_sha256",
         )
     parser.add_argument(
+        "--brma-localisation",
+        choices=BRMA_LOCALISATION_MODES,
+        default="area",
+        help=(
+            "Dense role: area (default) reads each placed Great Britain clone's BRMA "
+            "off its assigned LSOA or output area (microcosm#1262); none keeps the "
+            "spine's regional draw on every clone, for measurement builds only."
+        ),
+    )
+    parser.add_argument(
+        "--brma-area-layer",
+        type=Path,
+        default=None,
+        help=(
+            "Resource bytes for the graph source 'uk_brma_area_layer' (default: the "
+            "committed UK package resource)."
+        ),
+    )
+    parser.add_argument("--brma-area-layer-sha256", type=sha256_argument)
+    parser.add_argument(
+        "--private-rent-localisation",
+        choices=PRIVATE_RENT_LOCALISATION_MODES,
+        default=None,
+        help=(
+            "Dense role: brma_list (the default with area BRMAs) re-draws each Great "
+            "Britain private renter's rent from its assigned BRMA's list of rents at "
+            "its FRS rank and region level (microcosm#1262); none (the default "
+            "without them) keeps the spine's rents, for measurement builds only."
+        ),
+    )
+    parser.add_argument(
+        "--brma-rent-quantiles",
+        type=Path,
+        default=None,
+        help=(
+            "Resource bytes for the graph source 'uk_brma_rent_quantiles' (default: "
+            "the committed UK package resource)."
+        ),
+    )
+    parser.add_argument("--brma-rent-quantiles-sha256", type=sha256_argument)
+    parser.add_argument(
         "--ledger-facts",
         type=Path,
         help="Complete Chronicle artifact directory matching the committed feed pins.",
@@ -535,7 +587,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=_target_geographies,
         default=None,
         metavar="all|country,...",
-        help="Default all: calibrate all applicable geographies together. country is an explicit filter in this same build.",
+        help="Default all: calibrate all applicable geographies together. country is an explicit filter in this same build; brma (Scotland's BRMA rent rows) needs area BRMAs.",
     )
     parser.add_argument(
         "--households-only",
@@ -905,6 +957,114 @@ def _prepare_property_localisation(
     }
 
 
+def _prepare_brma_localisation(
+    args: argparse.Namespace, pins: dict, sources: dict[str, Path]
+) -> dict:
+    """Pin the area-to-BRMA layer and record the BRMA binding (microcosm#1262).
+
+    The layer enters ``pins`` under its graph source name, as the property
+    resources do, and a release candidate must build on the committed bytes.
+    ``none`` binds nothing here.
+    """
+    mode = getattr(args, "brma_localisation", "none")
+    if mode == "none":
+        if getattr(args, "brma_area_layer", None) or getattr(
+            args, "brma_area_layer_sha256", None
+        ):
+            raise ValueError(
+                "--brma-area-layer and --brma-area-layer-sha256 need "
+                "--brma-localisation area: without it nothing reads the layer."
+            )
+        return {"mode": "none"}
+    committed_path = Path(
+        str(files("microcosm.build.uk").joinpath("brma_area_layer.json"))
+    )
+    path = getattr(args, "brma_area_layer", None) or committed_path
+    pin = _pin(path, getattr(args, "brma_area_layer_sha256", None))
+    if getattr(args, "release_candidate", False):
+        committed = _pin(committed_path)
+        if pin != committed:
+            raise ValueError(
+                "--release-candidate requires the committed BRMA area layer: "
+                f"sha256 {pin['sha256']} is not the package's {committed['sha256']}."
+            )
+    pins[BRMA_AREA_LAYER_SOURCE] = pin
+    sources[BRMA_AREA_LAYER_SOURCE] = path
+    return {
+        "mode": mode,
+        "method": BRMA_AREA_LAYER_METHOD,
+        "resource_pins": {BRMA_AREA_LAYER_SOURCE: pin},
+    }
+
+
+#: Graph source name to committed package file of the private-rent node's
+#: resources (microcosm#1262). Only the quantiles take an override.
+_PRIVATE_RENT_RESOURCE_FILES = {
+    RENT_QUANTILES_SOURCE: "brma_rent_quantiles.json",
+    PRIVATE_RENTER_COUNTS_SOURCE: "brma_private_rented_households.json",
+}
+
+
+def _prepare_private_rent_localisation(
+    args: argparse.Namespace, pins: dict, sources: dict[str, Path]
+) -> dict:
+    """Pin the rent quantiles and census counts and record the rent binding.
+
+    As with the property resources, each enters ``pins`` under its graph source
+    name and a release candidate must build on the committed bytes. ``none``
+    binds nothing here.
+    """
+    mode = getattr(args, "private_rent_localisation", None)
+    if mode is None:
+        # Unset, the mode follows the BRMA mode, as the build config resolves it.
+        mode = (
+            "brma_list"
+            if getattr(args, "brma_localisation", "none") == "area"
+            else "none"
+        )
+        args.private_rent_localisation = mode
+    if mode == "none":
+        if getattr(args, "brma_rent_quantiles", None) or getattr(
+            args, "brma_rent_quantiles_sha256", None
+        ):
+            raise ValueError(
+                "--brma-rent-quantiles and --brma-rent-quantiles-sha256 need "
+                "--private-rent-localisation brma_list: without it nothing "
+                "reads the quantiles."
+            )
+        return {"mode": "none"}
+    resource_pins = {}
+    for name, filename in _PRIVATE_RENT_RESOURCE_FILES.items():
+        committed_path = Path(str(files("microcosm.build.uk").joinpath(filename)))
+        override = (
+            getattr(args, "brma_rent_quantiles", None)
+            if name == RENT_QUANTILES_SOURCE
+            else None
+        )
+        expected = (
+            getattr(args, "brma_rent_quantiles_sha256", None)
+            if name == RENT_QUANTILES_SOURCE
+            else None
+        )
+        path = override or committed_path
+        pin = _pin(path, expected)
+        if getattr(args, "release_candidate", False):
+            committed = _pin(committed_path)
+            if pin != committed:
+                raise ValueError(
+                    f"--release-candidate requires the committed {name!r} resource: "
+                    f"sha256 {pin['sha256']} is not the package's {committed['sha256']}."
+                )
+        pins[name] = pin
+        resource_pins[name] = pin
+        sources[name] = path
+    return {
+        "mode": mode,
+        "method": PRIVATE_RENT_METHOD,
+        "resource_pins": resource_pins,
+    }
+
+
 def _prepare_geography(
     args: argparse.Namespace, pins: dict, sources: dict[str, Path]
 ) -> tuple[dict | None, dict]:
@@ -975,23 +1135,50 @@ def _stderr_progress(line: str) -> None:
     print(line, file=sys.stderr, flush=True)
 
 
+def _binds_brma_rows(args: argparse.Namespace) -> bool:
+    """Whether the request can bind Scotland's BRMA rent rows.
+
+    Only the dense role binds local rows, on area BRMAs when the selected
+    geographies include them (microcosm#1262), and a thin one's model figures
+    stay in the build. The national role binds none, so its staged epochs
+    keep their loss (the fourth review of #1305).
+    """
+
+    levels = getattr(args, "target_geographies", None)
+    return (
+        getattr(args, "release_role", "dense") == "dense"
+        and getattr(args, "brma_localisation", "area") == "area"
+        and (levels is None or "brma" in levels)
+    )
+
+
 def _solve_observer(args: argparse.Namespace, telemetry):
     """Readable stderr lines plus the thinned staging rows of every solve.
 
     The dense solve, the informed size search and the refit share this one
     observer; the size events carry the ``phase`` the stderr line names and
-    the staging row records.
+    the staging row records. An epoch's loss covers every row, so a request
+    that can bind BRMA rows forwards its epochs without it: the staging rows
+    and the emitter carry null, and only the local stderr line keeps it
+    (the third review of #1305).
     """
     from .solve_progress import uk_solve_progress_callback
 
+    withhold_loss = _binds_brma_rows(args)
     sinks = [uk_solve_progress_callback(_stderr_progress)]
     sinks.append(
-        thinned_epochs(emit_calibration_progress, every=staging_epoch_every(args))
+        thinned_epochs(
+            emit_calibration_progress,
+            every=staging_epoch_every(args),
+            withhold_loss=withhold_loss,
+        )
     )
     if telemetry is not None:
         sinks.append(
             thinned_epochs(
-                telemetry.calibration_progress, every=staging_epoch_every(args)
+                telemetry.calibration_progress,
+                every=staging_epoch_every(args),
+                withhold_loss=withhold_loss,
             )
         )
 
@@ -1119,6 +1306,8 @@ def prepare_full_build(
     # refusal (sidecar, digest) is reported before a support one.
     definition, geography_binding = _prepare_geography(args, pins, sources)
     property_binding = _prepare_property_localisation(args, pins, sources)
+    brma_binding = _prepare_brma_localisation(args, pins, sources)
+    private_rent_binding = _prepare_private_rent_localisation(args, pins, sources)
     stage(
         telemetry,
         "input_pinning",
@@ -1147,6 +1336,8 @@ def prepare_full_build(
         geography_assignment=args.geography_assignment,
         source_vintage=release.vintage,
         property_localisation=args.property_localisation,
+        brma_localisation=args.brma_localisation,
+        private_rent_localisation=args.private_rent_localisation,
         calibration=UKGraphCalibrationConfig(
             epochs=args.epochs,
             learning_rate=args.learning_rate,
@@ -1275,6 +1466,8 @@ def prepare_full_build(
         },
         "geography": geography_binding,
         "property_localisation": property_binding,
+        "brma_localisation": brma_binding,
+        "private_rent_localisation": private_rent_binding,
     }
     graph = add_uk_export_preparation(
         graph,

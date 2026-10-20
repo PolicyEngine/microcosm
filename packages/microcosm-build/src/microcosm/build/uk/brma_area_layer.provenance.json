@@ -1,0 +1,522 @@
+{
+ "agreement": {
+  "scotland_brma_council_pairs": [
+   {
+    "brma": "ABERDEEN_AND_SHIRE",
+    "centroid_households": 269,
+    "local_authority": "S12000020",
+    "output_areas": 5
+   },
+   {
+    "brma": "ABERDEEN_AND_SHIRE",
+    "centroid_households": 109471,
+    "local_authority": "S12000033",
+    "output_areas": 1963
+   },
+   {
+    "brma": "ABERDEEN_AND_SHIRE",
+    "centroid_households": 112658,
+    "local_authority": "S12000034",
+    "output_areas": 2057
+   },
+   {
+    "brma": "ARGYLL_AND_BUTE",
+    "centroid_households": 129,
+    "local_authority": "S12000017",
+    "output_areas": 2
+   },
+   {
+    "brma": "ARGYLL_AND_BUTE",
+    "centroid_households": 41824,
+    "local_authority": "S12000035",
+    "output_areas": 774
+   },
+   {
+    "brma": "ARGYLL_AND_BUTE",
+    "centroid_households": 1354,
+    "local_authority": "S12000039",
+    "output_areas": 26
+   },
+   {
+    "brma": "AYRSHIRES",
+    "centroid_households": 55395,
+    "local_authority": "S12000008",
+    "output_areas": 1030
+   },
+   {
+    "brma": "AYRSHIRES",
+    "centroid_households": 64214,
+    "local_authority": "S12000021",
+    "output_areas": 1155
+   },
+   {
+    "brma": "AYRSHIRES",
+    "centroid_households": 52473,
+    "local_authority": "S12000028",
+    "output_areas": 978
+   },
+   {
+    "brma": "DUMFRIES_AND_GALLOWAY",
+    "centroid_households": 70583,
+    "local_authority": "S12000006",
+    "output_areas": 1298
+   },
+   {
+    "brma": "DUNDEE_AND_ANGUS",
+    "centroid_households": 2903,
+    "local_authority": "S12000034",
+    "output_areas": 54
+   },
+   {
+    "brma": "DUNDEE_AND_ANGUS",
+    "centroid_households": 54223,
+    "local_authority": "S12000041",
+    "output_areas": 1009
+   },
+   {
+    "brma": "DUNDEE_AND_ANGUS",
+    "centroid_households": 69850,
+    "local_authority": "S12000042",
+    "output_areas": 1310
+   },
+   {
+    "brma": "DUNDEE_AND_ANGUS",
+    "centroid_households": 6196,
+    "local_authority": "S12000048",
+    "output_areas": 120
+   },
+   {
+    "brma": "EAST_DUNBARTONSHIRE",
+    "centroid_households": 78,
+    "local_authority": "S12000030",
+    "output_areas": 1
+   },
+   {
+    "brma": "EAST_DUNBARTONSHIRE",
+    "centroid_households": 45869,
+    "local_authority": "S12000045",
+    "output_areas": 864
+   },
+   {
+    "brma": "EAST_DUNBARTONSHIRE",
+    "centroid_households": 408,
+    "local_authority": "S12000049",
+    "output_areas": 7
+   },
+   {
+    "brma": "EAST_DUNBARTONSHIRE",
+    "centroid_households": 430,
+    "local_authority": "S12000050",
+    "output_areas": 8
+   },
+   {
+    "brma": "FIFE",
+    "centroid_households": 169439,
+    "local_authority": "S12000047",
+    "output_areas": 3182
+   },
+   {
+    "brma": "FIFE",
+    "centroid_households": 294,
+    "local_authority": "S12000048",
+    "output_areas": 6
+   },
+   {
+    "brma": "FORTH_VALLEY",
+    "centroid_households": 23989,
+    "local_authority": "S12000005",
+    "output_areas": 441
+   },
+   {
+    "brma": "FORTH_VALLEY",
+    "centroid_households": 71804,
+    "local_authority": "S12000014",
+    "output_areas": 1330
+   },
+   {
+    "brma": "FORTH_VALLEY",
+    "centroid_households": 40232,
+    "local_authority": "S12000030",
+    "output_areas": 749
+   },
+   {
+    "brma": "FORTH_VALLEY",
+    "centroid_households": 47,
+    "local_authority": "S12000040",
+    "output_areas": 1
+   },
+   {
+    "brma": "FORTH_VALLEY",
+    "centroid_households": 46,
+    "local_authority": "S12000047",
+    "output_areas": 1
+   },
+   {
+    "brma": "FORTH_VALLEY",
+    "centroid_households": 841,
+    "local_authority": "S12000048",
+    "output_areas": 15
+   },
+   {
+    "brma": "FORTH_VALLEY",
+    "centroid_households": 25,
+    "local_authority": "S12000050",
+    "output_areas": 1
+   },
+   {
+    "brma": "GREATER_GLASGOW",
+    "centroid_households": 28640,
+    "local_authority": "S12000011",
+    "output_areas": 529
+   },
+   {
+    "brma": "GREATER_GLASGOW",
+    "centroid_households": 268,
+    "local_authority": "S12000029",
+    "output_areas": 6
+   },
+   {
+    "brma": "GREATER_GLASGOW",
+    "centroid_households": 63,
+    "local_authority": "S12000038",
+    "output_areas": 1
+   },
+   {
+    "brma": "GREATER_GLASGOW",
+    "centroid_households": 28,
+    "local_authority": "S12000039",
+    "output_areas": 1
+   },
+   {
+    "brma": "GREATER_GLASGOW",
+    "centroid_households": 292431,
+    "local_authority": "S12000049",
+    "output_areas": 5291
+   },
+   {
+    "brma": "GREATER_GLASGOW",
+    "centroid_households": 3826,
+    "local_authority": "S12000050",
+    "output_areas": 73
+   },
+   {
+    "brma": "HIGHLAND_AND_ISLANDS",
+    "centroid_households": 12735,
+    "local_authority": "S12000013",
+    "output_areas": 235
+   },
+   {
+    "brma": "HIGHLAND_AND_ISLANDS",
+    "centroid_households": 111594,
+    "local_authority": "S12000017",
+    "output_areas": 2052
+   },
+   {
+    "brma": "HIGHLAND_AND_ISLANDS",
+    "centroid_households": 42848,
+    "local_authority": "S12000020",
+    "output_areas": 801
+   },
+   {
+    "brma": "HIGHLAND_AND_ISLANDS",
+    "centroid_households": 10622,
+    "local_authority": "S12000023",
+    "output_areas": 188
+   },
+   {
+    "brma": "HIGHLAND_AND_ISLANDS",
+    "centroid_households": 10594,
+    "local_authority": "S12000027",
+    "output_areas": 189
+   },
+   {
+    "brma": "HIGHLAND_AND_ISLANDS",
+    "centroid_households": 64,
+    "local_authority": "S12000034",
+    "output_areas": 1
+   },
+   {
+    "brma": "LOTHIAN",
+    "centroid_households": 48770,
+    "local_authority": "S12000010",
+    "output_areas": 914
+   },
+   {
+    "brma": "LOTHIAN",
+    "centroid_households": 41060,
+    "local_authority": "S12000019",
+    "output_areas": 776
+   },
+   {
+    "brma": "LOTHIAN",
+    "centroid_households": 67,
+    "local_authority": "S12000026",
+    "output_areas": 1
+   },
+   {
+    "brma": "LOTHIAN",
+    "centroid_households": 238899,
+    "local_authority": "S12000036",
+    "output_areas": 4420
+   },
+   {
+    "brma": "NORTH_LANARKSHIRE",
+    "centroid_households": 416,
+    "local_authority": "S12000040",
+    "output_areas": 9
+   },
+   {
+    "brma": "NORTH_LANARKSHIRE",
+    "centroid_households": 576,
+    "local_authority": "S12000045",
+    "output_areas": 11
+   },
+   {
+    "brma": "NORTH_LANARKSHIRE",
+    "centroid_households": 329,
+    "local_authority": "S12000049",
+    "output_areas": 5
+   },
+   {
+    "brma": "NORTH_LANARKSHIRE",
+    "centroid_households": 140650,
+    "local_authority": "S12000050",
+    "output_areas": 2637
+   },
+   {
+    "brma": "PERTH_AND_KINROSS",
+    "centroid_households": 56,
+    "local_authority": "S12000005",
+    "output_areas": 1
+   },
+   {
+    "brma": "PERTH_AND_KINROSS",
+    "centroid_households": 62570,
+    "local_authority": "S12000048",
+    "output_areas": 1150
+   },
+   {
+    "brma": "RENFREWSHIRE_AND_INVERCLYDE",
+    "centroid_households": 11061,
+    "local_authority": "S12000011",
+    "output_areas": 211
+   },
+   {
+    "brma": "RENFREWSHIRE_AND_INVERCLYDE",
+    "centroid_households": 37367,
+    "local_authority": "S12000018",
+    "output_areas": 694
+   },
+   {
+    "brma": "RENFREWSHIRE_AND_INVERCLYDE",
+    "centroid_households": 86650,
+    "local_authority": "S12000038",
+    "output_areas": 1589
+   },
+   {
+    "brma": "RENFREWSHIRE_AND_INVERCLYDE",
+    "centroid_households": 77,
+    "local_authority": "S12000049",
+    "output_areas": 1
+   },
+   {
+    "brma": "SCOTTISH_BORDERS",
+    "centroid_households": 55031,
+    "local_authority": "S12000026",
+    "output_areas": 1013
+   },
+   {
+    "brma": "SCOTTISH_BORDERS",
+    "centroid_households": 106,
+    "local_authority": "S12000029",
+    "output_areas": 2
+   },
+   {
+    "brma": "SOUTH_LANARKSHIRE",
+    "centroid_households": 89,
+    "local_authority": "S12000006",
+    "output_areas": 2
+   },
+   {
+    "brma": "SOUTH_LANARKSHIRE",
+    "centroid_households": 498,
+    "local_authority": "S12000026",
+    "output_areas": 11
+   },
+   {
+    "brma": "SOUTH_LANARKSHIRE",
+    "centroid_households": 147452,
+    "local_authority": "S12000029",
+    "output_areas": 2762
+   },
+   {
+    "brma": "SOUTH_LANARKSHIRE",
+    "centroid_households": 456,
+    "local_authority": "S12000049",
+    "output_areas": 10
+   },
+   {
+    "brma": "SOUTH_LANARKSHIRE",
+    "centroid_households": 6357,
+    "local_authority": "S12000050",
+    "output_areas": 126
+   },
+   {
+    "brma": "WEST_DUNBARTONSHIRE",
+    "centroid_households": 41192,
+    "local_authority": "S12000039",
+    "output_areas": 789
+   },
+   {
+    "brma": "WEST_LOTHIAN",
+    "centroid_households": 695,
+    "local_authority": "S12000014",
+    "output_areas": 12
+   },
+   {
+    "brma": "WEST_LOTHIAN",
+    "centroid_households": 79361,
+    "local_authority": "S12000040",
+    "output_areas": 1463
+   }
+  ],
+  "uk_data_516_regions": {
+   "EAST_MIDLANDS": {
+    "layer_only": []
+   },
+   "EAST_OF_ENGLAND": {
+    "layer_only": []
+   },
+   "LONDON": {
+    "layer_only": []
+   },
+   "NORTH_EAST": {
+    "layer_only": []
+   },
+   "NORTH_WEST": {
+    "layer_only": []
+   },
+   "SCOTLAND": {
+    "layer_only": []
+   },
+   "SOUTH_EAST": {
+    "layer_only": []
+   },
+   "SOUTH_WEST": {
+    "layer_only": []
+   },
+   "WALES": {
+    "layer_only": []
+   },
+   "WEST_MIDLANDS": {
+    "layer_only": []
+   },
+   "YORKSHIRE": {
+    "layer_only": []
+   }
+  }
+ },
+ "built_on": "2026-10-16",
+ "issues": [
+  "microcosm#1262",
+  "microcosm#1092",
+  "microcosm#1090",
+  "uk-data#516"
+ ],
+ "kind": "uk_brma_area_layer_provenance",
+ "method": {
+  "england_wales": "Each 2021 LSOA's population-weighted centroid joined (intersects) to the VOA May 2020 polygons in England and the Rent Officers Wales May 2012 polygons in Wales; centroids outside every polygon take the documented overrides. Each output area takes its LSOA's BRMA. Ported from uk-data tools/brma_households/build.py (#516).",
+  "regions": "Each area's FRS region and council come from the atomic supports, so the layer and the geography assignment share one roster.",
+  "scotland": "Each 2022 output area's population-weighted centroid within the Scottish Government polygons (then intersects for centroids on a boundary); a centroid outside every polygon takes its master postcode's single BRMA in Rent Service Scotland's lookup, and where the lookup names one BRMA that contradicts the polygon the lookup wins. The two output areas it leaves ambiguous are overridden. Ported from microcosm#1092."
+ },
+ "receipts": {
+  "england_lsoa": 33755,
+  "england_lsoa_outside_polygons": 5,
+  "england_polygon_brmas": 152,
+  "gb_brmas": 192,
+  "scotland_corrected_by_postcode_lookup": 59,
+  "scotland_filled_from_postcode_lookup": 9,
+  "scotland_output_areas": 46363,
+  "scotland_outside_polygons": 9,
+  "scotland_overridden": 2,
+  "wales_lsoa": 1917,
+  "wales_lsoa_outside_polygons": 1,
+  "wales_polygon_brmas": 23
+ },
+ "registrations": {
+  "england_polygons": {
+   "chronicle_package_id": "voa-brma-boundaries-2020",
+   "chronicle_source_id": "voa",
+   "filename": "GML.zip",
+   "registration_kind": "raw_only",
+   "sha256": "66515b0a1403e4557e6501d2d5ada5e7e17b29deef2da9165ba515a66907f6c6",
+   "size_bytes": 3833549,
+   "source_url": "https://assets.publishing.service.gov.uk/media/5ee0ef64d3bf7f1ec05388df/GML.zip",
+   "year": "2020"
+  },
+  "ew_lsoa_centroids": {
+   "chronicle_package_id": "ons-lsoa2021-population-weighted-centroids-v4",
+   "chronicle_source_id": "ons",
+   "filename": "LSOA_PopCentroids_EW_2021_V4.geojson",
+   "registration_kind": "raw_only",
+   "sha256": "e0872028485e92a8c3bd73d2f995c84663a455ddfddde278d83e24b00fc90a5d",
+   "size_bytes": 8976092,
+   "source_url": "https://open-geography-portalx-ons.hub.arcgis.com/api/download/v1/items/32729e42d05e4e23bc7e43a36aa4ae8b/geojson?layers=0",
+   "year": "2021"
+  },
+  "scotland_oa_centroids": {
+   "chronicle_package_id": "nrs-oa2022-population-weighted-centroids",
+   "chronicle_source_id": "nrs",
+   "filename": "output-area-2022-pwc.zip",
+   "registration_kind": "raw_only",
+   "sha256": "509d7d937c8cc1477259dcd8e4e0e61240f5cc782721a79e9c279bd589e0ec0c",
+   "size_bytes": 1512616,
+   "source_url": "https://www.nrscotland.gov.uk/media/gm4dvdsv/output-area-2022-pwc.zip",
+   "year": "2022"
+  },
+  "scotland_polygons": {
+   "chronicle_package_id": "scotgov-brma-boundaries-2009",
+   "chronicle_source_id": "scotgov",
+   "filename": "SG_BroadRentalMarketAreas_2009.zip",
+   "registration_kind": "raw_only",
+   "sha256": "4d121236a35ce896edeb663a7c2c390053c0deebe0cc149c84696bbfd4bddec0",
+   "size_bytes": 1870854,
+   "source_url": "https://maps.gov.scot/ATOM/shapefiles/SG_BroadRentalMarketAreas_2009.zip",
+   "year": "2009"
+  },
+  "scotland_postcode_lookup": {
+   "chronicle_package_id": "scotgov-brma-postcode-lookup-2023",
+   "chronicle_source_id": "scotgov",
+   "filename": "scot_foi_postcodes_brma_2023.xlsx",
+   "registration_kind": "raw_only",
+   "sha256": "50366fea2b87bd6b697e7aa8736fbc870838b5e327458213294f31c3de7ede5e",
+   "size_bytes": 3544439,
+   "source_url": "https://www.gov.scot/binaries/content/documents/govscot/publications/foi-eir-release/2023/11/foi-202300368850/documents/foi-202300368850---information-released---postcodes/foi-202300368850---information-released---postcodes/govscot%3Adocument/FOI%2B202300368850%2B-%2BInformation%2BReleased%2B-%2BPostcodes.xlsx",
+   "year": "2023"
+  },
+  "wales_polygons": {
+   "chronicle_package_id": "welshgov-brma-boundaries-2012",
+   "chronicle_source_id": "welshgov",
+   "filename": "wales_brma_boundaries_2012.zip",
+   "registration_kind": "raw_only",
+   "sha256": "49de861258ba945eb659648d2a040aef1e9089ac80374f0bf4e85fcb062edd6c",
+   "size_bytes": 4408233,
+   "source_url": "https://datashare.ed.ac.uk/bitstreams/c2fe4c38-fd3e-4498-a4f9-62ac32163311/download",
+   "year": "2012"
+  }
+ },
+ "resource": "brma_area_layer.json",
+ "resource_sha256": "79a4b799c5c767af7a03979a325e0e830fe543e74692136529ede0eb4b448ecf",
+ "schema_version": 1,
+ "supports": {
+  "uk_ew_output_area_2021": {
+   "filename": "uk_ew_output_area_2021_support.npz",
+   "sha256": "1b0dec268be0141f03ec05dc3b55c13733cc2bb20be5e403d76d73c8e27dc797"
+  },
+  "uk_scotland_output_area_2022": {
+   "filename": "uk_scotland_output_area_2022_support.npz",
+   "sha256": "1649fa831315e6fac80caa4af7f68e837fd985b7f59c2831bb0db8cbfeeee443"
+  }
+ },
+ "tool": "tools/build_uk_brma_area_layer.py"
+}

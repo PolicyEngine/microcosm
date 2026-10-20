@@ -849,6 +849,9 @@ class UKFullGateKernel(KernelBase):
         diagnostics = []
         support = []
         output_artifacts = {}
+        # BRMA rows whose model figures leave the build only with ten source
+        # households behind them (María's ruling of 2026-10-17).
+        withheld: frozenset[str] = frozenset()
         upstream_reports = {
             name: json.loads(context.artifacts[name].payload)
             for name in ("spine_assembled", "spine_transferred")
@@ -943,7 +946,14 @@ class UKFullGateKernel(KernelBase):
             )
             diagnostics = evidence.artifacts["target_diagnostics"]
             support = support_frame.to_dict(orient="records")
-            from .diagnostics import uk_calibration_diagnostics_payload
+            from .diagnostics import (
+                uk_calibration_diagnostics_payload,
+                uk_withhold_brma_figures,
+            )
+
+            # The evidence flags the BRMA rows whose model figures stay in the
+            # build (María's ruling of 2026-10-17, microcosm#1262).
+            withheld = frozenset(evidence.artifacts["model_figures_withheld"])
             from .graph_targets import registry_from_payload
 
             selected_registry = registry_from_payload(
@@ -983,13 +993,16 @@ class UKFullGateKernel(KernelBase):
                     "build_kind": "uk_full_build",
                     "target_scope": selection["selector"],
                 },
+                withheld=withheld,
             )
             output_artifacts.update(
                 {
                     "calibration_diagnostics": encode_stage_evidence(
                         _json_safe(complete_diagnostics)
                     ),
-                    "target_diagnostics_csv": pd.DataFrame(diagnostics)
+                    "target_diagnostics_csv": pd.DataFrame(
+                        uk_withhold_brma_figures(diagnostics, withheld)
+                    )
                     .to_csv(index=False)
                     .encode(),
                     "area_support_csv": support_frame.to_csv(index=False).encode(),
@@ -1003,6 +1016,19 @@ class UKFullGateKernel(KernelBase):
         report = evaluate_phase(
             gates, phase=phase, context=evidence, registry=UK_GATE_REGISTRY
         )
+        from .diagnostics import (
+            uk_refuse_named_withheld_rows,
+            uk_withheld_gate_keys,
+            uk_withhold_brma_figures,
+        )
+
+        report_payload = gate_phase_report_payload(report, gates=gates)
+        # The gates decide on the published rows and count the withheld ones
+        # (María's ruling of 2026-10-19); a report that names one fails the
+        # build rather than leaving it.
+        uk_refuse_named_withheld_rows(
+            report_payload, names=withheld, keys=uk_withheld_gate_keys(diagnostics)
+        )
         payload = {
             "schema_version": 1,
             "kind": "uk_full_gate_report",
@@ -1010,9 +1036,11 @@ class UKFullGateKernel(KernelBase):
             "sample_fraction": float(context.params["sample_fraction"]),
             "release_candidate": bool(context.params["release_candidate"]),
             "scope": uk_full_gate_scope_receipt(selection),
-            "report": gate_phase_report_payload(report, gates=gates),
+            "report": report_payload,
             "upstream_phase_reports": upstream_reports,
-            "target_diagnostics": _json_safe(diagnostics),
+            "target_diagnostics": _json_safe(
+                uk_withhold_brma_figures(diagnostics, withheld)
+            ),
             "area_support": _json_safe(support),
             "artifacts": {name: value.key for name, value in context.artifacts.items()},
         }
@@ -1569,6 +1597,74 @@ def _reviewed_exclusions_stood_on(gate_rows: Mapping[str, Mapping]) -> dict:
     return record
 
 
+#: The size receipt's fields a manifest publishes while any row is withheld:
+#: counts, settings, the draw and its search bracket. Every other field reads
+#: null, the losses over every row, the search's probes and the refit's
+#: distances among them (microcosm#1262, the third review of #1305).
+_SIZE_RECEIPT_PUBLISHED_WHILE_WITHHELD = frozenset(
+    {
+        "baseline_floored_rows",
+        "baseline_mass_share_certainties",
+        "baseline_pi_floor",
+        "boundary_draws",
+        "certainty_share",
+        "certification",
+        "household_ids",
+        "households",
+        "inclusion_probabilities",
+        "method",
+        "pi_hi",
+        "pool_households",
+        "pool_row_indices",
+        "problem_sha256",
+        "protected",
+        "protected_carriers",
+        "realized_households",
+        "refit_baseline",
+        "refit_epochs",
+        "refit_iterate_selection",
+        "requested_households",
+        "seed",
+        "selection_budget_basis",
+        "selection_epochs",
+        "selection_l0_lambda",
+        "selection_pi_hi",
+        "selection_receipt",
+        "selection_reused",
+        "selection_search_bracket",
+        "selection_search_pi_hi",
+        "stretch_reference",
+        "support",
+        "zero_target_rows",
+    }
+)
+
+
+def _published_size_receipt(
+    size_receipt: Mapping[str, object] | None, *, withheld: int
+) -> dict[str, object] | None:
+    """The size receipt as a manifest publishes it.
+
+    While any row's model figures are withheld, only the fields on the
+    allow-list keep their values and a note says why; the stored receipt
+    keeps them all.
+    """
+
+    if size_receipt is None:
+        return None
+    if not withheld:
+        return dict(size_receipt)
+    published = {
+        key: (value if key in _SIZE_RECEIPT_PUBLISHED_WHILE_WITHHELD else None)
+        for key, value in size_receipt.items()
+    }
+    published["withheld_totals_note"] = (
+        "Only counts, settings and the draw are published: "
+        f"{withheld} row(s) have their model figures withheld (microcosm#1262)."
+    )
+    return published
+
+
 def _fit_rows(target_rows: pd.DataFrame, materialization: Mapping[str, str]):
     """Split the terminal target diagnostics into local and national rows."""
     kinds = target_rows["name"].map(materialization)
@@ -1734,8 +1830,19 @@ def rowwise_candidate_manifest_from_graph(
         1 for kind in materialization.values() if kind == _NATIONAL_MATERIALIZATION
     )
     local_rows = len(materialization) - ladder_rows - national_rows
-    local_fit, national_fit = _fit_rows(target_rows, materialization)
-    abs_errors = target_rows["abs_relative_error"].to_numpy(dtype=np.float64)
+    # A row whose model figures stay in the build reads blank (microcosm#1262):
+    # every fit figure below is over the published rows, and the solve block
+    # counts the rest.
+    withheld_rows = (
+        target_rows["model_figures_withheld"].fillna(False).astype(bool)
+        if "model_figures_withheld" in target_rows
+        else pd.Series(False, index=target_rows.index)
+    )
+    published_rows = target_rows.loc[~withheld_rows].reset_index(drop=True)
+    local_fit, national_fit = _fit_rows(published_rows, materialization)
+    abs_errors = published_rows["abs_relative_error"].to_numpy(dtype=np.float64)
+    if not np.isfinite(abs_errors).all():
+        raise ValueError("A published target row has a non-finite relative error.")
     support_by_grain = {
         ("la" if grain == "local_authority" else str(grain)): rows.reset_index(
             drop=True
@@ -1909,7 +2016,19 @@ def rowwise_candidate_manifest_from_graph(
             },
             "n_households": int(frame.n("household")),
             "pool_households": int(len(problem.entity_ids)),
-            "dataset_size": None if size_receipt is None else dict(size_receipt),
+            "dataset_size": _published_size_receipt(
+                size_receipt, withheld=int(withheld_rows.sum())
+            ),
+            **(
+                {
+                    "model_figures_withheld": {
+                        "targets": int(withheld_rows.sum()),
+                        "totals_basis": "published_rows",
+                    }
+                }
+                if withheld_rows.any()
+                else {}
+            ),
             "initial_loss": diagnostics["initial_loss"],
             "final_loss": diagnostics["final_loss"],
             "max_abs_relative_error": float(abs_errors.max())

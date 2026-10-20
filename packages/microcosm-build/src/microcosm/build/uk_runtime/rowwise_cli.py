@@ -1080,6 +1080,12 @@ def validate_cli_args(args: argparse.Namespace) -> None:
         if getattr(args, "property_localisation", "price_paid") == "none":
             # The release line localises home values and bands (microcosm#1240).
             refused.append("--property-localisation none")
+        if getattr(args, "brma_localisation", "area") == "none":
+            # The release line reads BRMAs off the assigned area (microcosm#1262).
+            refused.append("--brma-localisation none")
+        if getattr(args, "private_rent_localisation", "brma_list") == "none":
+            # The release line re-draws private rents from the area's list.
+            refused.append("--private-rent-localisation none")
         target_levels = getattr(args, "target_geographies", None)
         if target_levels is not None and not set(target_levels) & {
             "constituency",
