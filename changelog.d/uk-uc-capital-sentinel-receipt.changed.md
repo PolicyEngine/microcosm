@@ -1,0 +1,1 @@
+The UC capital stage follows policyengine-uk 2.136.1, which values property apart and shares it across a household's claimants and partners: its texts and engine tests say so, and its receipt counts any benefit unit left on the unavailable sentinel beside a unit that records the household's property, the one case the engine counts twice.

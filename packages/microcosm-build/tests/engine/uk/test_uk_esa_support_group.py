@@ -3,7 +3,10 @@
 The root stage writes ``esa_includes_support_component`` from the FRS ESA
 group (ESAGROUP, VAR3). A stored value replaces the engine's default, which
 assumes the support group for anyone with an ESA award of their own, so the
-benefit cap's ESA exemption follows the survey's answer.
+benefit cap's ESA exemption follows the survey's answer. Since
+policyengine-uk 2.135.0 each scheme applies its own cap: this tenant on
+income-related ESA meets Housing Benefit's, whose specified-benefit exemption
+reads the stored group.
 """
 
 from __future__ import annotations
@@ -15,7 +18,10 @@ from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.frame import WeightKind
 from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
 
-_READ = ["esa_includes_support_component", "is_benefit_cap_exempt_health_disability"]
+_READ = [
+    "esa_includes_support_component",
+    "is_housing_benefit_benefit_cap_exempt_specified_benefit",
+]
 
 
 def _frame(in_support_group: bool):
@@ -58,5 +64,6 @@ def test_the_benefit_cap_exemption_follows_the_stored_esa_group() -> None:
 
     assert bool(support["esa_includes_support_component"][0])
     assert not bool(work_related["esa_includes_support_component"][0])
-    assert bool(support["is_benefit_cap_exempt_health_disability"][0])
-    assert not bool(work_related["is_benefit_cap_exempt_health_disability"][0])
+    exemption = "is_housing_benefit_benefit_cap_exempt_specified_benefit"
+    assert bool(support[exemption][0])
+    assert not bool(work_related[exemption][0])
