@@ -510,6 +510,7 @@ def test_terminal_byte_materialization_recreates_exact_files(tmp_path):
 
 def test_holdout_kernel_preserves_existing_rotations_and_seed_settings(monkeypatch):
     import json
+    from datetime import date
     from types import SimpleNamespace
 
     from microcosm.build.uk_runtime import graph_targets, local_rowwise
@@ -534,6 +535,7 @@ def test_holdout_kernel_preserves_existing_rotations_and_seed_settings(monkeypat
         ),
     )
     calls = []
+    reviewed_on = []
 
     def solve(frame, training, **kwargs):
         calls.append(
@@ -544,6 +546,7 @@ def test_holdout_kernel_preserves_existing_rotations_and_seed_settings(monkeypat
                 kwargs["selection_initial_lambda"],
             )
         )
+        reviewed_on.append(kwargs["now"])
         return SimpleNamespace(weights=np.ones(2), selected_support=np.array([0, 2]))
 
     monkeypatch.setattr(local_rowwise, "solve_uk_rowwise_weights_under_doctrine", solve)
@@ -580,6 +583,8 @@ def test_holdout_kernel_preserves_existing_rotations_and_seed_settings(monkeypat
             "baseline_pi_floor": 0.0,
             # Every fold's budget search starts where the main search started.
             "selection_initial_lambda": 1.7e-7,
+            # Inherited from uk.full.problem: the binding's review date.
+            "review_date": "2026-10-20",
         },
         artifacts={
             "preflight": SimpleNamespace(payload=preflight_payload(), key="a" * 64),
@@ -602,6 +607,160 @@ def test_holdout_kernel_preserves_existing_rotations_and_seed_settings(monkeypat
         key: value for key, value in result.items() if key != "graph_binding"
     } == expected
     assert calls == [(42, 2, 17, 1.7e-7)] * 10
+    # Every fold the kernel ran reviewed the binding on the build's review
+    # date (microcosm#1278); the direct call above reviewed on today's.
+    assert reviewed_on == [date(2026, 10, 20)] * 5 + [None] * 5
+
+
+def _bound_problem_inputs():
+    """A clone frame and a local problem that binds two fenced families."""
+
+    from types import SimpleNamespace
+
+    from microcosm.build.uk_runtime import local_rowwise
+    from test_support.microcosm_build.uk_local_rowwise import (
+        _assigned,
+        _clone_frame,
+    )
+
+    problem = local_rowwise.build_uk_rowwise_local_matrix(
+        pd.DataFrame(
+            {"households": [2.0, 1.0, 3.0], "tenure/social_rent": [1.0, 0.0, 1.0]},
+            index=[101, 102, 103],
+        ),
+        _assigned(),
+        pd.DataFrame(
+            {
+                "code": ["E001", "S001"],
+                "households": [4.0, 2.0],
+                "tenure/social_rent": [1.0, 1.0],
+            }
+        ),
+    )
+    return SimpleNamespace(
+        frame=_clone_frame(),
+        local_problem=problem,
+        national_rows=None,
+        bound_families=["census_households/constituency", "tenure/constituency"],
+        selection=None,
+        selected=(),
+        metadata={},
+        full=None,
+        cross=None,
+        rung=None,
+        country_only=False,
+    )
+
+
+def test_problem_kernel_reviews_the_binding_on_the_build_review_date(monkeypatch):
+    """microcosm#1278: uk.full.problem reviews the local binding
+    adjudications on its review_date parameter, not the wall clock, so a date
+    past the committed register's windows is refused."""
+    from datetime import date
+    from types import SimpleNamespace
+
+    from microcosm.build.uk_runtime import graph_targets
+    from microcosm.build.uk_runtime.graph_targets import UKFullProblemKernel
+
+    inputs = _bound_problem_inputs()
+    monkeypatch.setattr(
+        graph_targets, "reconstruct_uk_full_problem_inputs", lambda context: inputs
+    )
+
+    def context(review_date):
+        return SimpleNamespace(
+            params={"target_weight_rule": "uniform", "review_date": review_date},
+            artifacts={},
+        )
+
+    class ReviewedError(Exception):
+        pass
+
+    reviewed_on = []
+
+    def prepare(*args, **kwargs):
+        reviewed_on.append(kwargs["now"])
+        raise ReviewedError
+
+    with monkeypatch.context() as patch:
+        patch.setattr(graph_targets, "prepare_uk_full_solve", prepare)
+        with pytest.raises(ReviewedError):
+            UKFullProblemKernel().run(context("2026-10-20"))
+    assert reviewed_on == [date(2026, 10, 20)]
+    with pytest.raises(ValueError, match="outside its reviewed window"):
+        UKFullProblemKernel().run(context("2099-01-01"))
+
+
+def test_holdout_kernel_refuses_a_review_date_past_the_binding_windows(monkeypatch):
+    """microcosm#1278: every fold of the rotated holdout reviews the binding
+    on the review date the holdout inherits from uk.full.problem."""
+    from types import SimpleNamespace
+
+    from microcosm.build.uk_runtime import graph_targets, local_rowwise
+    from microcosm.build.uk_runtime.graph_terminal import UKFullHoldoutKernel
+    from microcosm.build.uk_runtime.national_frame import uk_national_frame
+    from microcosm.calibrate import Target, TargetSet, build_constraint_matrix
+    from microcosm.calibrate.artifacts import encode_problem
+    from test_support.microcosm_build.uk_full_calibration_graph import (
+        preflight_payload,
+    )
+
+    # Five areas, so each of the five folds holds one out; the household
+    # counts bind a fenced family.
+    household_ids = [101, 102, 103, 104, 105]
+    area_codes = ["E001", "W001", "S001", "N001", "E002"]
+    frame = uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": [1, 2, 3, 4, 5],
+                "person_household_id": household_ids,
+                "person_benunit_id": [11, 12, 13, 14, 15],
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": [11, 12, 13, 14, 15]}),
+        household=pd.DataFrame(
+            {"household_id": household_ids, "household_weight": [1.0] * 5}
+        ),
+        time_period="2023",
+        weight_kind=WeightKind.IMPORTANCE,
+    )
+    problem = local_rowwise.build_uk_rowwise_local_matrix(
+        pd.DataFrame({"households": np.ones(5)}, index=household_ids),
+        pd.Series(area_codes, index=household_ids),
+        pd.DataFrame({"code": area_codes, "households": [2.0] * 5}),
+    )
+    inputs = SimpleNamespace(
+        frame=frame, local_problem=problem, national_rows=None, bound_families=None
+    )
+    monkeypatch.setattr(
+        graph_targets, "reconstruct_uk_full_problem_inputs", lambda context: inputs
+    )
+    original = encode_problem(
+        build_constraint_matrix(
+            frame,
+            TargetSet([Target("count", "household", lambda f: np.ones(5), 5.0)]),
+            "household",
+        ),
+        entity_ids=household_ids,
+    )
+    context = SimpleNamespace(
+        params={
+            "skip_holdout": False,
+            "target_weight_rule": "uniform",
+            "epochs": 1,
+            "learning_rate": 0.1,
+            "seed": 42,
+            "selection_pi_hi": 1.0,
+            "baseline_pi_floor": 0.0,
+            "review_date": "2099-01-01",
+        },
+        artifacts={
+            "preflight": SimpleNamespace(payload=preflight_payload(), key="a" * 64),
+            "problem": SimpleNamespace(payload=original, key="b" * 64),
+        },
+    )
+    with pytest.raises(ValueError, match="outside its reviewed window"):
+        UKFullHoldoutKernel().run(context)
 
 
 def test_holdout_kernel_refuses_a_floor_its_folds_cannot_honour():

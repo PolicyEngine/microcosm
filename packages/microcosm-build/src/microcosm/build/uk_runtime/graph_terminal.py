@@ -1324,6 +1324,8 @@ class UKFullHoldoutKernel(KernelBase):
         ).hexdigest()
 
     def run(self, context: KernelContext) -> KernelResult:
+        from datetime import date
+
         from microcosm.calibrate.artifacts import decode_problem
 
         from ..gate_battery import _json_safe
@@ -1379,6 +1381,9 @@ class UKFullHoldoutKernel(KernelBase):
                 selection_pi_hi=float(context.params["selection_pi_hi"]),
                 baseline_pi_floor=float(context.params["baseline_pi_floor"]),
                 selection_initial_lambda=context.params.get("selection_initial_lambda"),
+                # Every fold reviews the binding on the build's review date,
+                # inherited from uk.full.problem (microcosm#1278).
+                now=date.fromisoformat(str(context.params["review_date"])),
                 **{
                     key: context.params[key]
                     for key in UK_SIZE_L2_PARAM_KEYS

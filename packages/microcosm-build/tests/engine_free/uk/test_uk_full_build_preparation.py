@@ -356,5 +356,13 @@ def test_a_later_gate_clock_rekeys_only_the_calibrated_gates_and_the_export(
     }
     calibrated = second.full.graph.node("uk.full.gates.calibrated")
     assert calibrated.params["review_date"] == gate
-    for node in ("uk.full.gates.preflight", "uk.full.target_compilation"):
+    # The problem and the rotated holdout review the local binding
+    # adjudications on the solve's date, as the target compilation reviews
+    # the measure exclusions (microcosm#1278).
+    for node in (
+        "uk.full.gates.preflight",
+        "uk.full.target_compilation",
+        "uk.full.problem",
+        "uk.full.holdout",
+    ):
         assert second.full.graph.node(node).params["review_date"] == solve
