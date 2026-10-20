@@ -42,7 +42,7 @@ import signal
 import subprocess
 import sys
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from itertools import zip_longest
 from pathlib import Path, PurePosixPath
 
@@ -888,6 +888,19 @@ US_PUF_SUPPORT_BASE = ToolSpec(
     stage_hash_seed_default=HASH_SEED,
 )
 
+# Keep the historical registration and its local comparison reference pinned to
+# 4b57d15a2. The 2026-10-18 rerun uses main's reviewed NC crosswalk correction
+# (d8d96d926), with the same base command, inputs and resource budget.
+CD_VINTAGE_CROSSWALK_RERUN = TreeFile(
+    path=CD_VINTAGE_CROSSWALK.path,
+    sha256="a347303fff3fea145f758488c43cb94355df5a8cb5e512552b2ee3791d2aa233",
+)
+US_PUF_SUPPORT_BASE_RERUN = replace(
+    US_PUF_SUPPORT_BASE,
+    name="us-puf-support-base-rerun",
+    tree_files={"cd_vintage_crosswalk": CD_VINTAGE_CROSSWALK_RERUN},
+)
+
 # --- The retained ACS local-release staging builder -----------------------
 # The shim delegates to tools/_legacy/build_us_acs_multispine_base.py. It
 # accepts no --stage: "all" is the runner's single stage, not a builder flag.
@@ -1005,6 +1018,7 @@ TOOLS: dict[str, ToolSpec] = {
         US_ACS_LOCAL_RELEASE,
         RUNNER_SMOKE,
         US_PUF_SUPPORT_BASE,
+        US_PUF_SUPPORT_BASE_RERUN,
         US_ACS_MULTISPINE_STAGING,
     )
 }

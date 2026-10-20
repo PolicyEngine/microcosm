@@ -788,10 +788,15 @@ def test_both_gate_kernels_are_registered():
     assert type(registry.get(UKFullHoldoutKernel.ref)) is UKFullHoldoutKernel
 
 
-def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(
-    monkeypatch,
-):
-    import json
+def _run_final_gate_kernel(monkeypatch, *, brma_row: bool = False, solved=None):
+    """Run the terminal gate kernel on a two-household fixture.
+
+    ``solved``, a list, receives the calibration result the kernel decodes.
+
+    ``brma_row`` adds a Scottish BRMA rent row far from its target: its two
+    carriers sit under the ten-household floor, so its figures are withheld
+    (microcosm#1262).
+    """
     from dataclasses import replace
     from types import SimpleNamespace
 
@@ -800,7 +805,6 @@ def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(
     from microcosm.build.uk_runtime.graph_targets import registry_payload
     from microcosm.build.uk_runtime.graph_terminal import (
         UKFullGateKernel,
-        decode_full_gate_report,
         uk_terminal_only_code_hash,
     )
     from microcosm.calibrate import (
@@ -885,6 +889,29 @@ def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(
             },
         ),
     ]
+    if brma_row:
+        specs.append(
+            TargetSpec(
+                name="brma_rent",
+                entity="household",
+                value=1000.0,
+                measure="household_id",
+                period=2024,
+                source="fixture",
+                family="private_rent",
+                hierarchy=uk_fixture_hierarchy(
+                    "brma_rent", level="brma", geography_id="S33999999"
+                ),
+                metadata={
+                    "geography_level": "brma",
+                    "geography_id": "S33999999",
+                    "materialization": "uk_local_surface",
+                    "area_type": "brma",
+                    "area_code": "S33999999",
+                    "metric": "rent/private_rent_brma",
+                },
+            )
+        )
     unsolved_spec = replace(
         specs[1],
         name="dropped_local",
@@ -903,6 +930,11 @@ def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(
         [
             replace(specs[0].to_target(), measure=lambda f: np.ones(2)),
             replace(specs[1].to_target(), measure=lambda f: np.array([1.0, 0.0])),
+            *(
+                [replace(specs[2].to_target(), measure=lambda f: np.ones(2))]
+                if brma_row
+                else []
+            ),
         ]
     )
     selection = {
@@ -927,6 +959,8 @@ def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(
     )
     ordered = decode_problem(problem_bytes)
     result = calibrate(initial, targets, weight_entity="household", epochs=1, seed=42)
+    if solved is not None:
+        solved.append(result)
     frame = result.frame
 
     def artifact(payload, raw=False):
@@ -1047,9 +1081,19 @@ def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(
         artifacts=artifacts,
         sources={"uk_ladder": "fixture"},
     )
-    stored = UKFullGateKernel(coverage_engine=object(), engine_identity="fixture").run(
+    return UKFullGateKernel(coverage_engine=object(), engine_identity="fixture").run(
         context
     )
+
+
+def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(
+    monkeypatch,
+):
+    import json
+
+    from microcosm.build.uk_runtime.graph_terminal import decode_full_gate_report
+
+    stored = _run_final_gate_kernel(monkeypatch)
     phase, _ = decode_full_gate_report(stored.artifacts["gate_report"])
     assert phase.phase == "terminal"
     document = json.loads(stored.artifacts["calibration_diagnostics"])
@@ -1062,6 +1106,102 @@ def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(
     assert len(support_csv) == 4
     # Consumers read which areas sit below the floor (microcosm#1278).
     assert support_csv["support_below_floor"].dtype == bool
+
+
+def test_the_gate_kernel_keeps_a_withheld_brma_row_out_of_its_gates(monkeypatch):
+    """The third review of #1305: the real bindings, through the kernel.
+
+    The BRMA row misses its target by about 90% on two source households.
+    Both fit gates decide on the published rows and count it (María's ruling
+    of 2026-10-19); the targets table, the embedded rows and the calibration
+    diagnostics leave its figures out, and nothing the kernel writes gives
+    them back.
+    """
+    import io
+    import json
+
+    from microcosm.build.uk_runtime.diagnostics import uk_refuse_named_withheld_rows
+
+    solved: list = []
+    stored = _run_final_gate_kernel(monkeypatch, brma_row=True, solved=solved)
+    key = "private_rent/S33999999/rent/private_rent_brma"
+    document = json.loads(stored.artifacts["gate_report"])
+    outcomes = {row["id"]: row for row in document["report"]["outcomes"]}
+    fit = outcomes["uk_local_target_fit"]
+    assert fit["details"]["withheld_targets"] == 1
+    assert key not in fit["details"]["failing_targets"]
+    assert not any(key in line for line in fit["failures"])
+    family = outcomes["uk_local_per_family_fit"]["details"]
+    assert family["withheld_targets"] == {"private_rent": 1}
+    assert "private_rent" not in family["family_sizes"]
+    (embedded,) = [
+        row for row in document["target_diagnostics"] if row["family"] == "private_rent"
+    ]
+    assert embedded["model_figures_withheld"] is True
+    assert embedded["estimate"] is None and embedded["relative_error"] is None
+    uk_refuse_named_withheld_rows(
+        document["report"], names=frozenset({embedded["name"]}), keys=frozenset({key})
+    )
+    table = pd.read_csv(io.BytesIO(stored.artifacts["target_diagnostics_csv"]))
+    flags = dict(zip(table["family"], table["model_figures_withheld"], strict=True))
+    assert flags == {
+        "households": False,
+        "census_households": False,
+        "private_rent": True,
+    }
+    withheld = table.loc[table["family"] == "private_rent"].iloc[0]
+    assert pd.isna(withheld["estimate"]) and pd.isna(withheld["relative_error"])
+    diagnostics = json.loads(stored.artifacts["calibration_diagnostics"])
+    (row,) = [r for r in diagnostics["targets"] if r["target_name"] == "brma_rent"]
+    assert row["final_estimate"] is None and row["initial_estimate"] is None
+    assert row.get("final_loss_contribution") is None
+    # The totals cover the published rows (María's ruling of 2026-10-18), and
+    # no loss over every row survives, in the options or anywhere else (the
+    # third review of #1305).
+    assert diagnostics["loss_trajectory"] == []
+    assert diagnostics["uk_diagnostics"]["model_figures_withheld"]["targets"] == 1
+    (result,) = solved
+    receipt = dict(result.options.get("iterate_selection_receipt") or {})
+    every_row = [
+        float(result.final_loss),
+        float(result.initial_loss),
+        *(
+            float(receipt[field])
+            for field in ("selected_loss_float32", "closing_iterate_loss_float32")
+            if isinstance(receipt.get(field), float)
+        ),
+    ]
+
+    def numbers(value):
+        if isinstance(value, bool):
+            return
+        if isinstance(value, (int, float)):
+            yield float(value)
+        elif isinstance(value, dict):
+            for item in value.values():
+                yield from numbers(item)
+        elif isinstance(value, list):
+            for item in value:
+                yield from numbers(item)
+
+    import math
+
+    for document in (diagnostics, json.loads(stored.artifacts["gate_report"])):
+        for number in numbers(document):
+            assert not any(
+                math.isclose(number, loss, rel_tol=1e-9) for loss in every_row
+            )
+
+
+def test_the_gate_kernel_fails_closed_on_a_binding_that_leaks(monkeypatch):
+    """A binding that wrote a withheld row's error stops the build."""
+    from microcosm.build.uk_runtime import battery_bindings
+
+    monkeypatch.setattr(
+        battery_bindings, "uk_withheld_gate_keys", lambda rows: frozenset()
+    )
+    with pytest.raises(ValueError, match="names a withheld row"):
+        _run_final_gate_kernel(monkeypatch, brma_row=True)
 
 
 def test_package_validates_materialized_evidence_against_graph_bytes(tmp_path):

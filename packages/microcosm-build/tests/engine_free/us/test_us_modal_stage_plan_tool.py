@@ -1457,6 +1457,38 @@ def test_app_main_exits_nonzero_unless_the_stage_completed(
     assert json.loads(capsys.readouterr().out)["stopped_at_budget"] is stopped
 
 
+def test_app_main_spawn_returns_the_call_id_without_waiting(
+    app, monkeypatch, capsys
+) -> None:
+    data = _plan_data(max_wall_seconds=600)
+    plan = plan_lib.parse_plan(data)
+    monkeypatch.setattr(app, "_LOADED", (data, plan))
+    runner = MagicMock()
+    runner.spawn.return_value = MagicMock(object_id="fc-123")
+    monkeypatch.setitem(app.RUNNERS, ("heavy", False), runner)
+    app.main(run=True, spawn=True)
+    runner.spawn.assert_called_once_with(data)
+    runner.remote.assert_not_called()
+    assert json.loads(capsys.readouterr().out) == {
+        "run_id": plan.run_id,
+        "stage": plan.stage,
+        "function_call_id": "fc-123",
+    }
+
+
+def test_app_main_refuses_spawn_without_run(app, monkeypatch) -> None:
+    data = _plan_data(max_wall_seconds=600)
+    monkeypatch.setattr(app, "_LOADED", (data, plan_lib.parse_plan(data)))
+    runner = MagicMock()
+    monkeypatch.setitem(app.RUNNERS, ("heavy", False), runner)
+    check = MagicMock()
+    monkeypatch.setattr(app, "check_stage", check)
+    with pytest.raises(SystemExit, match="--spawn needs --run"):
+        app.main(spawn=True)
+    runner.spawn.assert_not_called()
+    check.remote.assert_not_called()
+
+
 @pytest.mark.parametrize("key", plan_lib.THREAD_ENV_KEYS)
 def test_every_documented_thread_count_is_allowlisted(key) -> None:
     assert plan_lib._ENV_KEY.fullmatch(key)

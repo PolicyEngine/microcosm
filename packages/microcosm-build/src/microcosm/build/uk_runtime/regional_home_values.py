@@ -221,7 +221,7 @@ def assign_regional_home_values(
         mass_log=(*frame.mass_log, mass),
     )
     validate_uk_national_frame(result)
-    at_cap = distinct_count(source_ids, target & (new_value >= parsed.cap))
+    at_cap = distinct_count(source_ids, target & (new_value >= parsed.cap), weights)
     receipt = {
         "knots_basis_year": parsed.basis_year,
         "knots_inputs_sha256": parsed.inputs_sha256,

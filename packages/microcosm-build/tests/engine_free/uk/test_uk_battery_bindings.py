@@ -976,7 +976,10 @@ class TestBatteryRegressions:
         # Plus the #970 projection fence, armed here with the pinned growth
         # path over distinct sub-exempt gains that never cross the exempt
         # amount, and the release-frame council-tax band check (#1278).
-        assert len(passed) == 21
+        # Plus uk_local_brma_enum_domain, the terminal recheck of the area-BRMA
+        # rewrite (microcosm#1262; its enum_domain binding is stubbed here).
+        assert len(passed) == 22
+        assert "uk_local_brma_enum_domain" in passed
 
     def test_input_mass_parity_compares_the_release_surface(self) -> None:
         # The frame carries the spine's WAS property_wealth and the reference
@@ -1677,8 +1680,9 @@ class TestPreflightBindings:
         # kWh row. microcosm#1301 defers 2,323 of the high-value homes cells:
         # all 1,725 constituency cells, which the region rows now control,
         # and the 598 authority cells under the 400-home floor.
-        assert result.details["candidate_targets"] == 22_986
-        assert result.details["reference_targets"] == 27_115
+        # microcosm#1262 adds Scotland's 18 PIPR BRMA cells, all compiled.
+        assert result.details["candidate_targets"] == 23_004
+        assert result.details["reference_targets"] == 27_133
         # Only the 4,129 signed area deferrals and absences remain (2,100
         # before microcosm#929 bound the Welsh and Scottish council-tax cells;
         # Shetland band H is the one Scottish support deferral; microcosm#1123
@@ -2067,6 +2071,64 @@ class TestEnumDomainResolution:
         )
         assert result.passed
 
+    def test_an_off_domain_brma_fails_the_local_recheck_as_a_structural_stop(
+        self,
+    ) -> None:
+        """microcosm#1305 review: the unstubbed binding, then the classification.
+
+        The area-BRMA rewrite is rechecked by ``uk_local_brma_enum_domain``;
+        a value outside the engine's enum fails it, and the failure stops even
+        a development build (no candidate is exported).
+        """
+
+        import enum
+
+        from microcosm.build.gate_battery import GateOutcome, GatePhaseReport
+        from microcosm.build.uk_runtime import full_gates
+        from microcosm.build.uk_runtime.battery_bindings import _evaluate_enum_domain
+
+        person, benunit, household = _tables()
+        household["brma"] = ["LOTHIAN", "NOT_A_BRMA", "CARDIFF", "LOTHIAN"][
+            : len(household)
+        ]
+        frame = uk_national_frame(
+            person=person, benunit=benunit, household=household, time_period="2023"
+        )
+
+        class BRMAName(enum.Enum):
+            CARDIFF = "CARDIFF"
+            LOTHIAN = "LOTHIAN"
+
+        class Accessor:
+            def enum_domain(self, column):
+                assert column == "brma"
+                return BRMAName
+
+        entry = next(
+            gate
+            for gate in load_country_spec("uk").gates.gates
+            if gate.id == "uk_local_brma_enum_domain"
+        )
+        result = _evaluate_enum_domain(
+            EvidenceContext(frame=frame, artifacts={"rules_engine": Accessor()}),
+            entry.parameters,
+        )
+        assert not result.passed
+        report = GatePhaseReport(
+            entry.phase,
+            (
+                GateOutcome(
+                    entry=entry, status=GateStatus.FAILED, result=result, reason=None
+                ),
+            ),
+        )
+        for fraction in (0.1, 1.0):
+            outcome = full_gates.classify_full_gate_outcomes(
+                report, sample_fraction=fraction, release_candidate=False
+            )
+            assert outcome["artifact_permitted"] is False
+            assert outcome["structural_failures"] == ["uk_local_brma_enum_domain"]
+
     def test_an_engine_with_neither_names_itself(self) -> None:
         from microcosm.build.uk_runtime.battery_bindings import _evaluate_enum_domain
 
@@ -2411,6 +2473,169 @@ class TestLocalTargetFitRegister:
         }
         with pytest.raises(ValueError, match="local exclusion register"):
             self._evaluate(monkeypatch, uk_gates, {}, -0.30, parameters=parameters)
+
+
+class TestWithheldBrmaRows:
+    """The production local fit bindings on a withheld BRMA row (microcosm#1262).
+
+    María's rulings of 2026-10-17 and 2026-10-19: a BRMA row resting on fewer
+    than ten source households keeps its place without its figures, and both
+    fit gates decide on the published rows and count the withheld ones.
+    """
+
+    WITHHELD = "private_rent/S33999999/rent/private_rent_brma"
+
+    @staticmethod
+    def _rows(flag: bool = True) -> list[dict]:
+        rows = [
+            {
+                "family": "private_rent",
+                "area_code": f"E0600000{index}",
+                "metric": "rent/private_rent",
+                "relative_error": error,
+            }
+            for index, error in enumerate((0.01, 0.02, 0.05, 0.30, 0.04, 0.03), 1)
+        ]
+        rows += [
+            {
+                "family": "private_rent",
+                "area_code": "S33999999",
+                "metric": "rent/private_rent_brma",
+                "relative_error": -0.4,
+                "model_figures_withheld": flag,
+            },
+            {
+                "family": "private_rent",
+                "area_code": "S33999998",
+                "metric": "rent/private_rent_brma",
+                "relative_error": 0.02,
+            },
+        ]
+        return rows
+
+    def _evaluate(self, monkeypatch, uk_gates, gate_id, rows, register=None):
+        import microcosm.build.uk_runtime.battery_bindings as battery_bindings
+
+        monkeypatch.setattr(
+            battery_bindings,
+            "uk_default_local_target_fit_reviewed_exclusions",
+            lambda: MappingProxyType(register or {}),
+        )
+        entry = {entry.id: entry for entry in uk_gates.gates}[gate_id]
+        return UK_GATE_REGISTRY[entry.gate].evaluate(
+            EvidenceContext(
+                artifacts={
+                    "local_target_diagnostics": rows,
+                    "exclusions_evaluated_on": CLOCK,
+                    "release_line": "local",
+                }
+            ),
+            entry.parameters,
+        )
+
+    def _guard(self, result: GateResult) -> None:
+        from microcosm.build.uk_runtime.diagnostics import (
+            uk_refuse_named_withheld_rows,
+        )
+
+        uk_refuse_named_withheld_rows(
+            {"failures": list(result.failures), "details": result.details},
+            names=frozenset(),
+            keys=frozenset({self.WITHHELD}),
+        )
+
+    def test_the_target_fit_decides_on_the_published_rows(
+        self, monkeypatch, uk_gates
+    ) -> None:
+        """María's ruling of 2026-10-19: a withheld row is neither checked nor named.
+
+        The withheld row misses its target by 40%, so a check over every row
+        would fail on it; the gate fails on the published row beyond the
+        bound alone, and counts the withheld one.
+        """
+
+        result = self._evaluate(
+            monkeypatch, uk_gates, "uk_local_target_fit", self._rows()
+        )
+        assert result.passed is False
+        published = "private_rent/E06000004/rent/private_rent"
+        assert result.details["failing_targets"] == {published: 0.30}
+        assert result.details["targets_checked"] == 7
+        assert result.details["withheld_targets"] == 1
+        assert "withheld_failing_targets" not in result.details
+        self._guard(result)
+
+    def test_a_withheld_row_inside_the_bound_reads_the_same(
+        self, monkeypatch, uk_gates
+    ) -> None:
+        """Inside or beyond the bound, the gate's output does not move."""
+
+        rows = self._rows()
+        rows[6]["relative_error"] = 0.01
+        inside = self._evaluate(monkeypatch, uk_gates, "uk_local_target_fit", rows)
+        beyond = self._evaluate(
+            monkeypatch, uk_gates, "uk_local_target_fit", self._rows()
+        )
+        assert inside == beyond
+
+    def test_a_withheld_rows_register_entry_is_set_aside(
+        self, monkeypatch, uk_gates
+    ) -> None:
+        """An entry for a withheld row neither excuses, rots nor names it."""
+
+        result = self._evaluate(
+            monkeypatch,
+            uk_gates,
+            "uk_local_target_fit",
+            self._rows(),
+            register={self.WITHHELD: _receipt()},
+        )
+        assert self.WITHHELD not in result.details["reviewed_exclusions"]
+        assert self.WITHHELD not in result.details["dormant_exclusions"]
+        assert self.WITHHELD not in result.details["stale_exclusions"]
+        self._guard(result)
+
+    def test_a_withheld_rows_entry_for_another_line_is_set_aside(
+        self, monkeypatch, uk_gates
+    ) -> None:
+        """The fourth review of #1305: an out-of-line entry named the row.
+
+        An entry scoped to the national line is listed as set aside on the
+        local one; for a withheld row it is left out of that list too.
+        """
+
+        result = self._evaluate(
+            monkeypatch,
+            uk_gates,
+            "uk_local_target_fit",
+            self._rows(),
+            register={self.WITHHELD: _receipt(release_lines=("national",))},
+        )
+        assert "out_of_line_exclusions" not in result.details
+        self._guard(result)
+
+    def test_family_fit_rests_on_the_published_rows(
+        self, monkeypatch, uk_gates
+    ) -> None:
+        result = self._evaluate(
+            monkeypatch, uk_gates, "uk_local_per_family_fit", self._rows()
+        )
+        assert result.details["family_sizes"] == {"private_rent": 7}
+        assert result.details["family_within_shares"]["private_rent"] == pytest.approx(
+            6 / 7
+        )
+        assert result.details["withheld_targets"] == {"private_rent": 1}
+        self._guard(result)
+
+    def test_an_unflagged_row_is_checked_and_named(self, monkeypatch, uk_gates) -> None:
+        """The guard bites: without the flag the row is named, and refused."""
+
+        result = self._evaluate(
+            monkeypatch, uk_gates, "uk_local_target_fit", self._rows(flag=False)
+        )
+        assert result.details["failing_targets"][self.WITHHELD] == -0.4
+        with pytest.raises(ValueError, match="names a withheld row"):
+            self._guard(result)
 
 
 class TestGateOnlyAreaSupport:

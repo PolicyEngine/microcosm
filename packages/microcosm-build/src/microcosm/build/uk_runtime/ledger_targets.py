@@ -60,6 +60,10 @@ from microcosm.build.uk_runtime.off_surface_cells import (
     uk_off_surface_frame_rows,
     uk_signed_cells_off_the_surface,
 )
+from microcosm.build.uk_runtime.scotland_brma_la_overlap import (
+    load_uk_scotland_brma_la_overlap,
+    scotland_brma_council_overlaps,
+)
 from microcosm.build.uk_runtime.tenure_drift import tenure_drift_appliers
 from microcosm.build.uk_runtime.uc_source_periods import (
     validate_uc_source_month_coverage,
@@ -2365,10 +2369,157 @@ def uk_private_rent_mean_to_total(
         "reason": (
             "PIPR supplies monthly private-rent price levels while the bound "
             "metric is an annual weighted total; compose each mean with the "
-            "same authority's A17-uprated private-renter household count."
+            "same authority's private-renter household count, SPREE-drifted in "
+            "England and reconciled to the nation household controls."
         ),
         "price_level_source": ("ons_pipr_private_rents calendar_year_average 2025"),
-        "renter_count_source": "ons.tenure.private_rent (A17-uprated)",
+        "renter_count_source": (
+            "ons.tenure.private_rent (SPREE-drifted in England, reconciled to "
+            "the nation household controls)"
+        ),
+        "cells_detail": cells_detail,
+    }
+
+
+#: Scotland's PIPR rents: means over its 18 BRMAs (microcosm#1090, #1262).
+UK_PRIVATE_RENT_BRMA_METRIC = "rent/private_rent_brma"
+
+
+def uk_private_rent_brma_mean_to_total(
+    target_frame: pd.DataFrame,
+    *,
+    months: int | float = 12,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Compose Scotland's PIPR BRMA rent means into annual totals.
+
+    A BRMA's private renters are no bound cell: the BRMAs overlap the
+    councils. Each BRMA's count is the sum over councils of the council's
+    share of the BRMA's private renters in Census 2022 (UV404 by output area,
+    ``scotland_brma_la_overlap.json``) times the council's reconciled
+    ``tenure/private_rent`` cell, so the counts add up to Scotland's
+    reconciled private renters, and the row is ``months`` x the BRMA's mean
+    x its count (microcosm#1090, #1262). A council without its tenure cell
+    refuses: its renters would drop out of every BRMA it touches.
+    """
+
+    if target_frame.empty or "metric" not in target_frame.columns:
+        return target_frame.copy(deep=True), {
+            "applied": False,
+            "reason": "no Scottish BRMA private-rent rows on the surface",
+        }
+    metrics = target_frame["metric"].astype(str).to_numpy()
+    rent_positions = np.flatnonzero(metrics == UK_PRIVATE_RENT_BRMA_METRIC)
+    if not len(rent_positions):
+        return target_frame.copy(deep=True), {
+            "applied": False,
+            "reason": "no Scottish BRMA private-rent rows on the surface",
+        }
+
+    overlap = load_uk_scotland_brma_la_overlap()
+    brma_by_code = {
+        str(entry["pipr_area_code"]): str(brma)
+        for brma, entry in overlap["brmas"].items()
+    }
+    tenure_by_council: dict[str, float] = {}
+    for position in np.flatnonzero(metrics == "tenure/private_rent"):
+        row = target_frame.iloc[position]
+        if "area_type" in target_frame.columns and str(row["area_type"]) != "la":
+            continue
+        tenure_by_council[str(row["area_code"])] = float(row["value"])
+    shares: dict[str, list[tuple[str, float]]] = {}
+    for item in scotland_brma_council_overlaps("private_rented_households"):
+        shares.setdefault(item.brma, []).append(
+            (item.local_authority, item.share_of_council)
+        )
+    councils = sorted({council for pairs in shares.values() for council, _ in pairs})
+    missing = [council for council in councils if council not in tenure_by_council]
+    if missing:
+        raise ValueError(
+            "Scottish BRMA private-rent rows need every Scottish council's "
+            f"tenure/private_rent row; missing {missing}."
+        )
+    invalid = [
+        council
+        for council in councils
+        if not np.isfinite(tenure_by_council[council])
+        or tenure_by_council[council] <= 0
+    ]
+    if invalid:
+        raise ValueError(
+            "tenure/private_rent value must be positive and finite for "
+            f"council(s) {invalid}."
+        )
+
+    composed = target_frame.copy(deep=True)
+    if "metadata" not in composed.columns:
+        composed["metadata"] = None
+    cells_detail: list[dict[str, Any]] = []
+    for position in rent_positions:
+        row = target_frame.iloc[position]
+        area_code = str(row["area_code"])
+        brma = brma_by_code.get(area_code)
+        if brma is None:
+            raise ValueError(
+                f"Scottish BRMA private-rent row {area_code!r} is not one of the "
+                "overlap's 18 BRMAs."
+            )
+        mean = float(row["value"])
+        if not np.isfinite(mean) or mean <= 0:
+            raise ValueError(
+                "private-rent monthly mean must be positive and finite for "
+                f"BRMA {area_code!r}."
+            )
+        renter_households = math.fsum(
+            share * tenure_by_council[council] for council, share in shares[brma]
+        )
+        total = float(months) * mean * renter_households
+        existing_metadata = row.get("metadata")
+        metadata = (
+            dict(existing_metadata) if isinstance(existing_metadata, Mapping) else {}
+        )
+        metadata.update(
+            {
+                "price_level_mean_monthly": mean,
+                "renter_households": renter_households,
+                "renter_households_councils": len(shares[brma]),
+                "renter_households_basis": (
+                    "Census 2022 council shares of the BRMA's private renters "
+                    "(scotland_brma_la_overlap.json) x the councils' reconciled "
+                    "tenure/private_rent cells"
+                ),
+            }
+        )
+        composed.iat[int(position), composed.columns.get_loc("value")] = total
+        composed.iat[int(position), composed.columns.get_loc("metadata")] = metadata
+        cells_detail.append(
+            {
+                "area_code": area_code,
+                "brma": brma,
+                "mean_monthly_rent": mean,
+                "renter_households": renter_households,
+                "councils": len(shares[brma]),
+                "total": total,
+            }
+        )
+    return composed, {
+        "applied": True,
+        "months": months,
+        "cells": len(cells_detail),
+        "adjudication": "microcosm#1262 plan (María, 2026-10-16)",
+        "reason": (
+            "PIPR publishes Scotland's rents as monthly means over its 18 BRMAs, "
+            "which overlap the councils; each BRMA's private renters are the "
+            "councils' reconciled renters in the shares Census 2022 places them "
+            "in the BRMA, and the bound metric is the annual total."
+        ),
+        "price_level_source": "ons_pipr_private_rents calendar_year_average 2025",
+        "renter_count_source": (
+            "ons.tenure.private_rent (councils) x scotland_brma_la_overlap.json"
+        ),
+        "councils": len(councils),
+        "renter_households_total": math.fsum(
+            tenure_by_council[council] for council in councils
+        ),
         "cells_detail": cells_detail,
     }
 
@@ -2920,6 +3071,8 @@ def uk_local_target_surface(
         pd.DataFrame(output_rows)
     )
     receipt["private_rent_mean_to_total"] = private_rent_receipt
+    surface, brma_receipt = uk_private_rent_brma_mean_to_total(surface)
+    receipt["private_rent_brma_mean_to_total"] = brma_receipt
     return surface, receipt
 
 

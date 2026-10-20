@@ -653,7 +653,7 @@ def impute_property_purchase_prices(
     ids = np.asarray(source_ids)
 
     def sources(mask: np.ndarray) -> int:
-        return distinct_count(ids, mask)
+        return distinct_count(ids, mask, weights)
 
     # UKDS disclosure control (receipt_counts): a weighted figure one to nine
     # source households carry is "<10", and so is anything derived from it.

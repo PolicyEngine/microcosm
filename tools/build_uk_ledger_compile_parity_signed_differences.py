@@ -507,10 +507,22 @@ _EQUIV_INCOME_FIXTURE_ONLY_RATIONALE = (
 )
 
 _PRIVATE_RENT_FIXTURE_ONLY_RATIONALE = (
-    "Signed deferral: every PIPR fact in the pinned feed is dated 2026-06, "
-    "after the 2025 target period; Scotland is published at BRMA grain and "
-    "Northern Ireland is absent. chronicle#200 asks for the 2025 months, which "
-    "the package's preserved source rows already carry."
+    "Signed deferral: PIPR publishes no rent for these authorities. Scotland's "
+    "rents are published for its 18 Broad Rental Market Areas only and bind at "
+    "that grain (ons.rent.private_rent_brma, microcosm#1090, #1262); Northern "
+    "Ireland has a country mean only; and two English authorities are not "
+    "published. The incumbent's rows here are not published cells."
+)
+
+#: microcosm#1262: Scotland's PIPR rents bind at the 18 BRMAs, a grain the
+#: incumbent never fitted.
+_PRIVATE_RENT_BRMA_LEDGER_ONLY_RATIONALE = (
+    "ledger_only by construction: PIPR publishes Scotland's private rents for "
+    "its 18 Broad Rental Market Areas only, and Microcosm binds them at that "
+    "grain (ons.rent.private_rent_brma, microcosm#1090, #1262); the incumbent "
+    "fits no BRMA rows, so it carries no row to compare. The value is the "
+    "compiled calendar-2025 mean, which the bound total composes with the "
+    "BRMA's private renters."
 )
 
 _LEDGER_ONLY_RATIONALE = (
@@ -825,10 +837,13 @@ def _small_cell_deferral_rationales() -> dict[tuple[str, str], str]:
             .read_text(encoding="utf-8")
         )
 
+    # The support floor's reviewed exclusions defer their areas' cells as
+    # signed deferrals too; their rationale, not a per-metric one, is the cause
+    # (#1305 review: two English UC cells read as Northern Ireland's).
     rule_ids = {
         str(rule["rule_id"])
         for rule in committed("local_small_cell_rule.json")["rules"]
-    }
+    } | {"local_authority_support_floor_excluded"}
     return {
         (str(deferral["target_id"]), str(area)): str(deferral["rationale"])
         for deferral in committed("local_target_reference_membership.json")[
@@ -933,6 +948,8 @@ def _add_local_signed_rationale_notes(report: dict[str, object]) -> None:
             row["reason"] = _CENSUS_HOUSEHOLDS_LEDGER_ONLY_RATIONALE
         elif kind == "ledger_only" and metric.startswith("high_value_homes/"):
             row["reason"] = _DERIVED_STOCK_LEDGER_ONLY_RATIONALE
+        elif kind == "ledger_only" and metric == "rent/private_rent_brma":
+            row["reason"] = _PRIVATE_RENT_BRMA_LEDGER_ONLY_RATIONALE
         elif kind == "ledger_only":
             row["reason"] = _LEDGER_ONLY_RATIONALE
 

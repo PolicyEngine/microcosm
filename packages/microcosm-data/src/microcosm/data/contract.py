@@ -63,7 +63,11 @@ from microcosm.diagnostics import (
     CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
     SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS,
     UK_DIAGNOSTICS_SCHEMA_VERSION,
+    UK_MODEL_FIGURE_FIELDS,
+    UK_OPTIONAL_TARGET_GEOGRAPHY_LEVELS,
     UK_TARGET_GEOGRAPHY_LEVELS,
+    UK_WITHHELD_PUBLISHED_ITERATE_FIELDS,
+    UK_WITHHELD_PUBLISHED_OPTIONS,
     parse_calibration_diagnostics,
 )
 
@@ -447,13 +451,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "921806343e97f2ce2cc246cd417fd8a3ca2b69110e42d2c2877814e3e6477eb2"
+    "a326d26c249b8b359284f739fe4327180a7c86b9c21b8994cf270b9c0e27787f"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "c354c874a2d3b6801b04b4cf4e186384c3da5e3382f6b61d2a56638e3b0efdab"
+    "5bed933d2e261e3c4f0bfaa3ae949e9623a5a70c968eaaf4194e70b72df0b728"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "aac722c4e22ad8ea2c5b055669e8e7647d712cf1eda0377752dd9ba6598b0b64"
+    "2009911edabae63ab2b31d9d50588754fc40129aac952d4a2be6f17e1a8a736b"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -472,6 +476,7 @@ _UK_GATE_BATTERY_ENTRY_LEGACY_NAMES = {
     "uk_export_surface": "export_surface",
     "uk_take_up_signal": "take_up_signal",
     "uk_brma_enum_domain": "enum_domain",
+    "uk_local_brma_enum_domain": "enum_domain",
     "uk_ons_household_type_enum_domain": "enum_domain",
     "uk_capital_gains_asset_type_enum_domain": "enum_domain",
     "uk_council_tax_band_domain": "enum_domain",
@@ -586,6 +591,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
         "spine_agreement",
         "terminal",
     ),
+    "uk_local_brma_enum_domain": ("enum_domain", "terminal"),
     "uk_local_area_support": ("area_support", "terminal"),
     "uk_local_target_fit": ("target_fit", "terminal"),
     "uk_local_per_family_fit": ("per_family_fit", "terminal"),
@@ -757,6 +763,7 @@ _UK_DENSE_INCUMBENT_FILES = (
 _UK_DENSE_GATE_ENTRY_IDS = frozenset(
     {
         "uk_local_area_support",
+        "uk_local_brma_enum_domain",
         "uk_local_geography_ladder_post_calibration",
         "uk_local_per_family_fit",
         "uk_local_target_fit",
@@ -767,9 +774,9 @@ _UK_DENSE_GATE_ENTRY_IDS = frozenset(
 _UK_DENSE_RELEASE_BLOCKING_IDS = _UK_DENSE_GATE_ENTRY_IDS
 _UK_DENSE_GATE_PHASES = ("terminal",)
 _UK_DENSE_GATE_DIGESTS = {
-    "gates_manifest_sha256": "fb7379f99142943f55a05247821454320585fa6fd7d375a516d6a2a786d375d1",
-    "policy_sha256": "6d5f12892a04d1b99b86d0c9a4c4d108243aab1a024444bb679e99b2a8acb0f4",
-    "spec_fingerprint": "8f180bca1ad1f757821b0df47e2f37d4c6a1c48b7a4b344854f91b58f9aa72b5",
+    "gates_manifest_sha256": "c15b8de06a90598732c03091ee942dfa8a4eb9e41dc1e9ea3f2bd7986e3e7e99",
+    "policy_sha256": "7b97d72a15756b983ecf32a7b4155e0558533044408eb02e6a2d8be52ebe55d4",
+    "spec_fingerprint": "cc56158ad88d9c92d4b98392a9e6eb7199b69458fbf0abbe7c9e5648c4bb6ed5",
 }
 _UK_DENSE_SOURCE_COVERAGE_KEYS = (
     "spine",
@@ -827,6 +834,7 @@ _UK_CERTIFICATION_SHARED_GATE_IDS = frozenset({"uk_aggregate_admin"})
 _UK_CERTIFICATION_EXCLUDED_GATE_IDS = frozenset(
     {
         "uk_local_geography_ladder_post_calibration",
+        "uk_local_brma_enum_domain",
         "uk_local_area_support",
         "uk_local_target_fit",
         "uk_local_per_family_fit",
@@ -4017,7 +4025,11 @@ def _check_legacy_uk_calibration_diagnostics(
         total_targets += n_targets
         total_scored += n_scored
         total_skipped += n_skipped
-    missing_levels = sorted(set(UK_TARGET_GEOGRAPHY_LEVELS) - seen_levels)
+    missing_levels = sorted(
+        set(UK_TARGET_GEOGRAPHY_LEVELS)
+        - seen_levels
+        - UK_OPTIONAL_TARGET_GEOGRAPHY_LEVELS
+    )
     if missing_levels:
         failures.append(
             "calibration_diagnostics.json UK geography pass rates are missing "
@@ -4579,6 +4591,7 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> list[s
         if gate_summary is not None:
             _check_local_area_gates(gate_summary, failures)
     diagnostics_path = release_dir / "calibration_diagnostics.json"
+    floor_warnings: list[str] = []
     if diagnostics_path.is_file():
         diagnostics = _load_json(diagnostics_path, failures)
         if diagnostics is not None:
@@ -4587,6 +4600,7 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> list[s
             ):
                 _check_calibration_diagnostics(diagnostics, failures)
             _check_local_area_calibration_diagnostics(diagnostics, failures)
+            floor_warnings = _uk_brma_floor_verdict_warnings(diagnostics)
     report: Mapping | None = None
     report_path = release_dir / _UK_DENSE_GATE_REPORT_FILE
     if report_path.is_file():
@@ -4614,7 +4628,7 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> list[s
             _check_uk_measure_exclusions(coverage.get("measure_exclusions"), failures)
     # Warned, not refused: the walk runs only after both builds, so a finding
     # is weighed rather than paid for with a rebuild (microcosm#1301).
-    disclosure_warnings = _uk_dense_disclosure_warnings(release_dir)
+    disclosure_warnings = _uk_dense_disclosure_warnings(release_dir) + floor_warnings
     # The core joins run whether or not the incumbent comparison is attached.
     candidate_identity = _check_uk_dense_surface_files(
         release_dir, release_manifest or {}, failures
@@ -4656,7 +4670,7 @@ def _check_uk_dense_gate_report(
     """Verify the signed local gate-battery report the dense line ships.
 
     Same producer and signing dance as the exact-k terminal report, scoped to
-    the local battery: the six local entries, one terminal phase, the local
+    the local battery: the seven local entries, one terminal phase, the local
     scoped digests, release posture attested, every release-blocking entry
     passed, ``gate_outcomes_sha256`` recomputed, and the HMAC over the
     canonical report re-nulled at the signature slot.
@@ -6199,6 +6213,306 @@ def _check_us_stored_input_evidence(
             )
 
 
+def _check_uk_withheld_totals(
+    diagnostics: Mapping, withheld: set[str], failures: list[str]
+) -> None:
+    """While a row is withheld, no total over every row and no rollup names it.
+
+    microcosm#1262 (the third review of #1305): the loss trajectory is empty,
+    the options keep their published settings only, with the iterate
+    receipt's losses null, and neither the past-cap census nor the weakest
+    families or areas name a withheld row. The fourth review: the restated
+    totals are recomputed from the published rows
+    (:func:`_check_uk_restated_totals`).
+    """
+
+    file = "calibration_diagnostics.json"
+    if diagnostics.get("loss_trajectory"):
+        failures.append(f"{file} withholds rows but keeps a loss trajectory.")
+    options = diagnostics.get("options")
+    for key, value in options.items() if isinstance(options, Mapping) else ():
+        if key == "iterate_selection_receipt" and isinstance(value, Mapping):
+            kept = sorted(
+                field
+                for field, item in value.items()
+                if field not in UK_WITHHELD_PUBLISHED_ITERATE_FIELDS
+                and item is not None
+            )
+            if kept:
+                failures.append(
+                    f"{file} withholds rows but options.iterate_selection_receipt "
+                    f"keeps {kept}."
+                )
+        elif key not in UK_WITHHELD_PUBLISHED_OPTIONS and value is not None:
+            failures.append(f"{file} withholds rows but options.{key} is not null.")
+    named: set[str] = set()
+    census = diagnostics.get("past_cap_census")
+    if isinstance(census, Mapping):
+        named |= {
+            str(row.get("name"))
+            for row in census.get("pushed_out_rows") or ()
+            if isinstance(row, Mapping)
+        }
+    uk = diagnostics.get("uk_diagnostics")
+    if isinstance(uk, Mapping):
+        named |= {
+            str(row.get("worst_target"))
+            for row in uk.get("weakest_families") or ()
+            if isinstance(row, Mapping)
+        }
+        areas = uk.get("weakest_areas_by_fit")
+        if isinstance(areas, Mapping):
+            for block in ("bottom_by_fit", "countries"):
+                named |= {
+                    str(row.get("worst_target"))
+                    for row in areas.get(block) or ()
+                    if isinstance(row, Mapping)
+                }
+    if named & withheld:
+        failures.append(
+            f"{file} names {len(named & withheld)} withheld row(s) in its past-cap "
+            "census or its rollups."
+        )
+    _check_uk_restated_totals(diagnostics, withheld, failures)
+
+
+#: A row inside 10% of its target, as the UK pass rates count it.
+_UK_WITHIN_RELATIVE_ERROR = 0.10
+_UK_RESTATED_REL_TOLERANCE = 1e-9
+_UK_RESTATED_ABS_TOLERANCE = 1e-12
+
+
+def _check_uk_restated_totals(
+    diagnostics: Mapping, withheld: set[str], failures: list[str]
+) -> None:
+    """Recompute a withholding payload's totals from its published rows.
+
+    microcosm#1262, the fourth review of #1305: a total over every row put
+    back passes every shape check, and less the published rows' share gives
+    a withheld row back. The final loss is the published rows' summed
+    contributions; the initial loss is their loss-weight shares times their
+    capped scaled errors at the input estimates, on the basis's cap; the
+    fraction within 10%, the past-cap census and the pass counts by
+    geography level count the published rows only. A published row without
+    the fields to recompute them is refused, since the totals could not be
+    checked. The family and area rollups are held to naming no withheld row
+    only.
+    """
+
+    file = "calibration_diagnostics.json"
+    rows = [row for row in diagnostics.get("targets") or () if isinstance(row, Mapping)]
+    published = [row for row in rows if str(row.get("name")) not in withheld]
+    if not published:
+        failures.append(f"{file} withholds every row, so no total can be restated.")
+        return
+    basis = diagnostics.get("target_loss_basis")
+    cap = basis.get("cap") if isinstance(basis, Mapping) else None
+    fields = (
+        "final_loss_contribution",
+        "target_loss_weight_share",
+        "target_loss_scale",
+        "target",
+        "initial_estimate",
+        "relative_error",
+    )
+    if not _finite_number(cap) or any(
+        not _finite_number(row.get(field)) for row in published for field in fields
+    ):
+        failures.append(
+            f"{file} withholds rows, but its loss basis or a published row lacks "
+            "the fields its restated totals are recomputed from."
+        )
+        return
+    if any(float(row["target_loss_scale"]) <= 0 for row in published):
+        failures.append(
+            f"{file} withholds rows, but a published loss scale is not positive."
+        )
+        return
+    within = sum(
+        abs(float(row["relative_error"])) <= _UK_WITHIN_RELATIVE_ERROR
+        for row in published
+    )
+    restated = {
+        "final_loss": math.fsum(
+            float(row["final_loss_contribution"]) for row in published
+        ),
+        "initial_loss": math.fsum(
+            float(row["target_loss_weight_share"])
+            * min(
+                abs(float(row["initial_estimate"]) - float(row["target"]))
+                / float(row["target_loss_scale"]),
+                float(cap),
+            )
+            for row in published
+        ),
+        "fraction_within_10pct": within / len(published),
+    }
+    for field, expected in restated.items():
+        value = diagnostics.get(field)
+        if not _finite_number(value) or not math.isclose(
+            float(value),
+            expected,
+            rel_tol=_UK_RESTATED_REL_TOLERANCE,
+            abs_tol=_UK_RESTATED_ABS_TOLERANCE,
+        ):
+            failures.append(
+                f"{file} withholds rows, but its {field} is not restated over the "
+                "published rows."
+            )
+    census = diagnostics.get("past_cap_census")
+    if census is not None and _uk_census_over(published, census) != {
+        key: census.get(key) if isinstance(census, Mapping) else None
+        for key in _UK_CENSUS_COUNTS
+    }:
+        failures.append(
+            f"{file} withholds rows, but its past_cap_census does not count the "
+            "published rows only."
+        )
+    uk = diagnostics.get("uk_diagnostics")
+    levels = (
+        uk.get("target_pass_rates_by_geography_level")
+        if isinstance(uk, Mapping)
+        else None
+    )
+    if isinstance(levels, list):
+        counted = [level for level in levels if isinstance(level, Mapping)]
+        if sum(
+            int(level.get("n_within_10pct") or 0) for level in counted
+        ) != within or sum(int(level.get("n_scored") or 0) for level in counted) != len(
+            rows
+        ):
+            failures.append(
+                f"{file} withholds rows, but its pass rates by geography level do "
+                "not count the published rows' passes over every scored row."
+            )
+
+
+_UK_CENSUS_COUNTS = (
+    "n_targets",
+    "initial_past_cap",
+    "final_past_cap",
+    "escaped",
+    "frozen",
+    "pushed_out",
+)
+
+
+def _uk_census_over(rows: list[Mapping], census: object) -> dict[str, object] | None:
+    """The past-cap census's counts over ``rows``, on the census's own cap."""
+
+    cap = census.get("cap") if isinstance(census, Mapping) else None
+    if not _finite_number(cap):
+        return None
+    counts = dict.fromkeys(_UK_CENSUS_COUNTS, 0)
+    counts["n_targets"] = len(rows)
+    for row in rows:
+        values = [
+            row.get(field) for field in ("target", "initial_estimate", "final_estimate")
+        ]
+        if not all(_finite_number(value) for value in values):
+            continue
+        target, initial, final = (float(value) for value in values)
+        scale = max(abs(target), 1.0)
+        initial_past = abs(initial - target) / scale > float(cap)
+        final_past = abs(final - target) / scale > float(cap)
+        counts["initial_past_cap"] += initial_past
+        counts["final_past_cap"] += final_past
+        counts["escaped"] += initial_past and not final_past
+        counts["frozen"] += initial_past and final_past
+        counts["pushed_out"] += final_past and not initial_past
+    return counts
+
+
+def _uk_brma_floor_verdict_warnings(diagnostics: Mapping) -> list[str]:
+    """BRMA rows whose ten-household verdict is missing or disagrees.
+
+    microcosm#1262: every BRMA row carries ``metadata.carrier_floor_met``, and
+    a row withholds its model figures exactly when the verdict is false, so
+    the contract can see a thin row the build never flagged. María's ruling of
+    2026-10-19 on the fourth review of #1305: this is warned, not refused. The
+    warnings give counts only, never a row.
+    """
+
+    missing = disagreeing = 0
+    for row in diagnostics.get("targets") or ():
+        metadata = row.get("metadata") if isinstance(row, Mapping) else None
+        if not isinstance(metadata, Mapping) or not _uk_brma_row(metadata):
+            continue
+        verdict = metadata.get("carrier_floor_met")
+        if not isinstance(verdict, bool):
+            missing += 1
+        elif verdict == bool(metadata.get("model_figures_withheld")):
+            disagreeing += 1
+    warnings = []
+    if missing:
+        warnings.append(
+            f"calibration_diagnostics.json has {missing} BRMA row(s) without a "
+            "ten-household carrier verdict (metadata.carrier_floor_met), so the "
+            "contract cannot see whether their model figures may be published "
+            "(microcosm#1262)."
+        )
+    if disagreeing:
+        warnings.append(
+            f"calibration_diagnostics.json has {disagreeing} BRMA row(s) whose "
+            "carrier verdict disagrees with their withheld flag (microcosm#1262)."
+        )
+    return warnings
+
+
+def _uk_brma_row(metadata: Mapping) -> bool:
+    level = str(metadata.get("geography_level") or "").strip().lower()
+    area_type = str(metadata.get("area_type") or "").strip().lower()
+    return area_type == "brma" or level in {"brma", "statistical_scope"}
+
+
+def _check_uk_candidate_restated_losses(
+    candidate: Mapping, diagnostics: Mapping, failures: list[str]
+) -> None:
+    """The candidate manifest restates the diagnostics' totals (microcosm#1262).
+
+    While the diagnostics withhold rows, the manifest's solve block counts them
+    and copies the published rows' losses and past-cap counts, so it cannot
+    carry a total over every row beside them (the fourth review of #1305).
+    """
+
+    uk = diagnostics.get("uk_diagnostics")
+    block = uk.get("model_figures_withheld") if isinstance(uk, Mapping) else None
+    if not isinstance(block, Mapping):
+        return
+    file = "rowwise_candidate_manifest.json"
+    solve = candidate.get("solve")
+    if not isinstance(solve, Mapping):
+        failures.append(f"{file} has no solve block beside withheld diagnostics.")
+        return
+    counted = solve.get("model_figures_withheld")
+    if not isinstance(counted, Mapping) or counted.get("targets") != block.get(
+        "targets"
+    ):
+        failures.append(
+            f"{file} solve does not count the rows its diagnostics withhold."
+        )
+    for field in ("initial_loss", "final_loss"):
+        if solve.get(field) != diagnostics.get(field):
+            failures.append(
+                f"{file} solve.{field} is not the diagnostics' restated {field}."
+            )
+    census = diagnostics.get("past_cap_census")
+    past_cap = solve.get("past_cap")
+    if isinstance(census, Mapping) and isinstance(past_cap, Mapping):
+        pairs = {
+            "n_targets": "n_targets",
+            "past_at_init": "initial_past_cap",
+            "past_at_final": "final_past_cap",
+            "escaped": "escaped",
+            "frozen": "frozen",
+            "pushed_out": "pushed_out",
+        }
+        if any(past_cap.get(own) != census.get(key) for own, key in pairs.items()):
+            failures.append(
+                f"{file} solve.past_cap is not the diagnostics' restated census."
+            )
+
+
 def _check_local_area_calibration_diagnostics(
     diagnostics: Mapping, failures: list[str]
 ) -> None:
@@ -6240,6 +6554,8 @@ def _check_local_area_calibration_diagnostics(
         "final_estimate",
     )
     seen_names: set[str] = set()
+    withheld_rows = 0
+    withheld_names: set[str] = set()
     for index, row in enumerate(targets):
         if not isinstance(row, Mapping):
             failures.append(
@@ -6259,6 +6575,27 @@ def _check_local_area_calibration_diagnostics(
             )
         else:
             seen_names.add(name)
+        # A UK row resting on fewer than ten source households keeps its place
+        # without its model figures (microcosm#1262): its estimates are null,
+        # and the payload's withheld block counts it.
+        metadata = row.get("metadata")
+        withheld = isinstance(metadata, Mapping) and bool(
+            metadata.get("model_figures_withheld")
+        )
+        if withheld:
+            withheld_rows += 1
+            withheld_names.add(str(name))
+            figures = {field: row.get(field) for field in UK_MODEL_FIGURE_FIELDS}
+            if any(value is not None for value in figures.values()):
+                failures.append(
+                    f"calibration_diagnostics.json target row {index} withholds "
+                    "its model figures but carries one."
+                )
+            if set(metadata) & {*UK_MODEL_FIGURE_FIELDS, "estimate"}:
+                failures.append(
+                    f"calibration_diagnostics.json target row {index} withholds "
+                    "its model figures but its metadata carries one."
+                )
         for field in required_fields:
             value = row.get(field)
             if field not in row:
@@ -6266,11 +6603,24 @@ def _check_local_area_calibration_diagnostics(
                     f"calibration_diagnostics.json target row {index} is "
                     f"missing {field!r}."
                 )
+            elif withheld and field in ("initial_estimate", "final_estimate"):
+                continue
             elif not isinstance(value, (int, float)) or not math.isfinite(value):
                 failures.append(
                     f"calibration_diagnostics.json target row {index} field "
                     f"{field!r} must be a finite number."
                 )
+    uk = diagnostics.get("uk_diagnostics")
+    block = uk.get("model_figures_withheld") if isinstance(uk, Mapping) else None
+    declared = block.get("targets") if isinstance(block, Mapping) else 0
+    if declared != withheld_rows:
+        failures.append(
+            "calibration_diagnostics.json uk_diagnostics.model_figures_withheld "
+            f"counts {declared!r} withheld rows, but {withheld_rows} rows withhold "
+            "their model figures."
+        )
+    if withheld_rows:
+        _check_uk_withheld_totals(diagnostics, withheld_names, failures)
     if not isinstance(households, int) or households <= 0:
         failures.append(
             "calibration_diagnostics.json must carry a positive integer "
@@ -6356,7 +6706,9 @@ def validate_release_dir(
     Returns:
         The contract's warnings, each a sentence naming the file, for the
         caller to print. Only the dense UK line has any: its disclosure walk
-        reports per-area support figures without refusing (microcosm#1301).
+        reports per-area support figures (microcosm#1301), and a BRMA row
+        without its ten-household carrier verdict, or with one its withheld
+        flag contradicts, is reported (microcosm#1262), without refusing.
 
     Raises:
         ReleaseContractError: Naming every violation found — missing files,
@@ -7590,6 +7942,9 @@ def _check_uk_dense_surface_files(
                 "build_manifest.json code does not match the evaluated candidate manifest."
             )
         _check_uk_measure_exclusions(candidate.get("measure_exclusions"), failures)
+        _check_uk_candidate_restated_losses(
+            candidate, loaded["source_calibration_diagnostics.json"], failures
+        )
         coverage = _load_json(release_dir / _UK_DENSE_SOURCE_COVERAGE_FILE, failures)
         if coverage:
             if coverage.get("measure_exclusions") != candidate.get(
