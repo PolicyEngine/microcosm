@@ -15,7 +15,7 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # microcosm#1124's opt-in retain_best_objective and microcosm#1301's
     # budget_search_bracket move it.
     assert first.spec_sha256 == (
-        "58a60d16e514df91eb7b5eacb812906594e95f9ca2f76fd5ce4db7ffc008e160"
+        "307748aeb264ee8814e868ea6d544b93aba85e486ebb687f86d9d77831179cef"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")
