@@ -205,6 +205,7 @@ def map_acs_native_inputs(frame: Frame) -> AcsNativeInputResult:
         output="ssi_reported",
         register=native,
     )
+    _map_reported_ssi_receipt(person, register=native)
     _map_adjusted_person_amount(
         person,
         source="SSP",
@@ -693,6 +694,56 @@ def _nullable_source_codes(
             f"within [{minimum}, {maximum}]."
         )
     return values
+
+
+#: ACS asks income questions, SSI included, of people aged 15 and older.
+_ACS_INCOME_UNIVERSE_MIN_AGE = 15
+
+
+def _map_reported_ssi_receipt(
+    person: pd.DataFrame,
+    *,
+    register: dict[str, Mapping[str, Any]],
+) -> None:
+    """Map ``receives_ssi`` from the respondent's own past-12-month ACS SSIP.
+
+    A positive ``SSIP`` is reported SSI receipt, the ACS counterpart of the CPS
+    rule in ``cps_carried.reported_ssi_receipt``. ``SSIP`` is blank only below
+    the ACS income universe (age 15), where it means no reported receipt; the
+    register counts those rows as ``source_universe_unavailable_rows``. A
+    blank at 15 or older, or a non-numeric value, is refused rather than read
+    as no receipt. ACS records no reason for receipt, so a payee receiving SSI
+    on behalf of a child cannot be told apart here.
+    """
+
+    if "SSIP" not in person:
+        return
+    raw = person["SSIP"]
+    amount = pd.to_numeric(raw, errors="coerce")
+    if (raw.notna() & amount.isna()).any():
+        raise ValueError("ACS SSIP contains non-numeric values.")
+    blank = amount.isna()
+    if blank.any():
+        if "AGEP" not in person:
+            raise ValueError("ACS SSIP blanks require AGEP to check their universe.")
+        age = pd.to_numeric(person["AGEP"], errors="coerce")
+        if (blank & ~(age < _ACS_INCOME_UNIVERSE_MIN_AGE)).any():
+            raise ValueError(
+                "ACS SSIP may be blank only below the age-15 income universe."
+            )
+    _add_native(
+        person,
+        "receives_ssi",
+        (amount.fillna(0.0) > 0.0).to_numpy(dtype=bool),
+        entity="person",
+        source_columns=("SSIP",),
+        transformation="SSIP > 0; blank below age 15 is no reported receipt",
+        register=register,
+    )
+    register["receives_ssi"] = {
+        **register["receives_ssi"],
+        "source_universe_unavailable_rows": int(blank.sum()),
+    }
 
 
 def _map_adjusted_person_amount(

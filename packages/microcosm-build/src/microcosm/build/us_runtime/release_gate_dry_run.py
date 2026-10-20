@@ -98,6 +98,9 @@ from dataclasses import dataclass
 from typing import Any, Literal, get_args
 
 from microcosm.build.us_runtime.release_gate_preflight import PreflightReport
+from microcosm.build.us_runtime.release_input_coverage import (
+    REPORTED_SSI_RECEIPT_CONSISTENCY_FAILURE_PREFIX,
+)
 from microcosm.build.us_runtime.spm_composition import CheckResult, PreflightStatus
 
 __all__ = [
@@ -1309,12 +1312,21 @@ def input_coverage_register_check(
       (``us_release_input_coverage_signal_counts``) gives those records per
       column; a column whose count does not keep a record under the
       carrier-retention margin is AT-RISK.
+    * A reported-SSI-receipt consistency failure is row-dependent: a selection
+      that drops the inconsistent records would cure it, so it is AT-RISK.
     """
 
     stale = list(gate_details.get("stale_exclusions", ()))
     stale_lines = [line for line in gate_failures if line.startswith("Stale reviewed")]
+    receipt_lines = [
+        line
+        for line in gate_failures
+        if line.startswith(REPORTED_SSI_RECEIPT_CONSISTENCY_FAILURE_PREFIX)
+    ]
     other_lines = [
-        line for line in gate_failures if not line.startswith("Stale reviewed")
+        line
+        for line in gate_failures
+        if not line.startswith("Stale reviewed") and line not in receipt_lines
     ]
     failing_columns = set(gate_details.get("missing", ())) | set(
         gate_details.get("degenerate_required", ())
@@ -1339,9 +1351,16 @@ def input_coverage_register_check(
         at_risks = ()
     else:
         failures = tuple(other_lines)
-        at_risks = tuple(
-            f"{line} (L0 path: a selection that drops every carrier would cure it)"
-            for line in stale_lines
+        at_risks = (
+            tuple(
+                f"{line} (L0 path: a selection that drops every carrier would cure it)"
+                for line in stale_lines
+            )
+            + tuple(
+                f"{line} (L0 path: a selection that drops the inconsistent "
+                "records would cure it)"
+                for line in receipt_lines
+            )
         ) + tuple(
             f"{column}: required input column with {count} record(s) off the "
             "engine default; on the L0 path the release re-grades input coverage "
@@ -1360,6 +1379,11 @@ def input_coverage_register_check(
             f"{len(gate_details.get('degenerate_required', ()))} degenerate required "
             f"column(s); {len(stale)} stale and "
             f"{len(gate_details.get('dormant_exclusions', ()))} dormant exclusion(s)"
+            + (
+                f"; {len(receipt_lines)} reported SSI receipt consistency failure(s)"
+                if receipt_lines
+                else ""
+            )
             + (
                 " (unenforced: --allow-input-coverage-gaps)"
                 if waived and not gate_passed
@@ -1383,6 +1407,15 @@ def input_coverage_register_check(
             "dormant_exclusions": list(gate_details.get("dormant_exclusions", ())),
             "calibration_path": "full_pool" if support_fixed else "l0_selection",
             **({"l0_fragile_required_columns": fragile} if fragile else {}),
+            **(
+                {
+                    "reported_ssi_receipt_consistency": dict(
+                        gate_details["reported_ssi_receipt_consistency"]
+                    )
+                }
+                if "reported_ssi_receipt_consistency" in gate_details
+                else {}
+            ),
         },
     )
 

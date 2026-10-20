@@ -1311,7 +1311,8 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help=(
             "Diagnostic escape hatch (microcosm#368): record the release "
             "input-column coverage gate result — required eCPS input columns "
-            "the export drops or leaves degenerate — without failing the "
+            "the export drops or leaves degenerate, and the reported SSI "
+            "receipt consistency checks — without failing the "
             "build. Release builds must leave this unset; the gate is a hard "
             "certification blocker."
         ),

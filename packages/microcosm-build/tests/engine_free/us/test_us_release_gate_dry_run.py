@@ -1068,6 +1068,55 @@ def test_input_coverage_is_certain_on_full_pool_and_stale_is_at_risk_on_l0() -> 
     assert len(l0.at_risks) == 1 and "L0 path" in l0.at_risks[0]
 
 
+def test_reported_ssi_receipt_inconsistency_is_at_risk_on_l0_and_certain_on_full() -> (
+    None
+):
+    from microcosm.build.us_runtime.release_input_coverage import (
+        REPORTED_SSI_RECEIPT_CONSISTENCY_FAILURE_PREFIX,
+        us_reported_ssi_receipt_consistency_failures,
+    )
+
+    receipt_failures, receipt_details = us_reported_ssi_receipt_consistency_failures(
+        pd.DataFrame(
+            {
+                "receives_ssi": [True, True],
+                "SSI_VAL": [9_600.0, 9_600.0],
+                "takes_up_ssi_if_eligible": [True, False],
+            }
+        )
+    )
+    assert receipt_failures[0].startswith(
+        REPORTED_SSI_RECEIPT_CONSISTENCY_FAILURE_PREFIX
+    )
+    kwargs = {
+        "gate_passed": False,
+        "gate_failures": receipt_failures,
+        "gate_details": {
+            "missing": [],
+            "degenerate_required": [],
+            "stale_exclusions": [],
+            "reported_ssi_receipt_consistency": receipt_details,
+        },
+        "waived": False,
+    }
+
+    full = dry.input_coverage_register_check(support_fixed=True, **kwargs)
+    assert full.status == "FAIL"
+    assert full.failures == receipt_failures
+    assert "1 reported SSI receipt consistency failure(s)" in full.summary
+    assert full.details["reported_ssi_receipt_consistency"] == receipt_details
+
+    l0 = dry.input_coverage_register_check(
+        support_fixed=False,
+        signal_counts={},
+        margins=dry.DryRunMargins(),
+        **kwargs,
+    )
+    assert l0.status == "AT_RISK"
+    assert l0.failures == ()
+    assert len(l0.at_risks) == 1 and "inconsistent records" in l0.at_risks[0]
+
+
 def test_l0_input_coverage_pass_is_at_risk_when_a_selection_can_empty_it() -> None:
     """Review finding 3: a staged PASS the L0 export re-grade can flip."""
 

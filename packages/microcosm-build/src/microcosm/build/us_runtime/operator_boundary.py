@@ -130,6 +130,12 @@ _NATIVE_INPUT_RECEIPT_KEYS = frozenset(
         "transformation",
     }
 )
+#: Extra receipt fields a native output declares beyond the common keys. Only
+#: ``receives_ssi`` has one: the rows whose blank SSIP lies below the ACS
+#: income universe (age 15), mapped to no reported receipt.
+_NATIVE_INPUT_EXTRA_RECEIPT_KEYS: Mapping[str, frozenset[str]] = {
+    "receives_ssi": frozenset({"source_universe_unavailable_rows"}),
+}
 _ACS_NATIVE_PROVENANCE = "acs_2024_1yr_native"
 _ACS_NATIVE_INPUT_CONTRACTS: Mapping[
     str,
@@ -152,6 +158,11 @@ _ACS_NATIVE_INPUT_CONTRACTS: Mapping[
         "person",
         ("SSIP", "ADJINC"),
         "SSIP * ADJINC / 1_000_000",
+    ),
+    "receives_ssi": (
+        "person",
+        ("SSIP",),
+        "SSIP > 0; blank below age 15 is no reported receipt",
     ),
     "acs_social_security_income": (
         "person",
@@ -450,8 +461,9 @@ def _validated_native_inputs(
                 f"{label} native_inputs[{output!r}] is not a declared ACS native "
                 "mapping output."
             )
+        extra_keys = _NATIVE_INPUT_EXTRA_RECEIPT_KEYS.get(output, frozenset())
         if not isinstance(raw_receipt, Mapping) or frozenset(raw_receipt) != (
-            _NATIVE_INPUT_RECEIPT_KEYS
+            _NATIVE_INPUT_RECEIPT_KEYS | extra_keys
         ):
             raise ValueError(
                 f"{label} native_inputs[{output!r}] is not an exact ACS native "
@@ -491,6 +503,13 @@ def _validated_native_inputs(
             )
         _require_row_count(observed_rows, label=label, output=output, field="observed")
         _require_row_count(missing_rows, label=label, output=output, field="missing")
+        for key in sorted(extra_keys):
+            _require_row_count(
+                raw_receipt[key],
+                label=label,
+                output=output,
+                field=key.removesuffix("_rows"),
+            )
         table = frame.table(entity)
         if output not in table:
             raise ValueError(

@@ -1030,11 +1030,11 @@ def test_remaining_stage_manifest_enumerates_every_simulation_projection_input()
             "materialized_pool_input_surface": 122,
             "seed_stage_program_contract": 17,
             "declared_deferred_null_input": 3,
-            "assembled_native_engine_input": 5,
+            "assembled_native_engine_input": 6,
             "frame_structural_engine_input": 10,
             "preserved_stacked_engine_input": 4,
             "derived_schedule_d_input": 1,
-            "declared_absent_engine_input": 763,
+            "declared_absent_engine_input": 762,
             "unprovisioned_source_input": 1,
         }
     )
@@ -2594,3 +2594,18 @@ def test_deferred_asset_defaults_exist_only_on_disposable_simulation_view() -> N
         }
         for column in POOL_DEFERRED_TRANSFER_INPUTS
     }
+
+
+def test_reported_ssi_receipt_is_native_on_both_spines_and_never_transferred() -> None:
+    from microcosm.build.us_runtime.multispine_pool import (
+        _POOL_NATIVE_COMPLETE_OUTPUTS,
+    )
+
+    transferred = {
+        column
+        for families in pool_transfer_target_families().values()
+        for columns in families.values()
+        for column in columns
+    }
+    assert "receives_ssi" not in transferred
+    assert "receives_ssi" in _POOL_NATIVE_COMPLETE_OUTPUTS["person"]
