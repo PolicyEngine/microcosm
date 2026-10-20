@@ -722,8 +722,6 @@ def test_support_clip_gate_holds_the_declared_donor_floor() -> None:
                 "columns": {
                     "housing_water_and_electricity_consumption": {
                         "rows_raised": 250,
-                        "negative_mass": -1.0e6,
-                        "minimum_before": -14_165.0,
                     }
                 },
                 **floor_changes,
@@ -766,7 +764,7 @@ def test_support_clip_gate_holds_the_declared_donor_floor() -> None:
     below = evidence()
     below["support_clip"]["columns"]["housing_water_and_electricity_consumption"][
         "donor_min"
-    ] = -14_165.0
+    ] = -50.0
     assert any("below the donor floor" in f for f in gate(below).failures)
     # Without a declared floor (the WAS clip gate) the receipt is not required.
     undeclared = {**parameters}
@@ -1824,7 +1822,14 @@ def test_recomposed_totals_gate_holds_totals_above_their_components() -> None:
         }
     )
     _, receipt = recompose_parent_totals(
-        draws, drawn=drawn, parameters=declared, weights=np.array([2.0, 1.0])
+        draws,
+        drawn=drawn,
+        parameters=declared,
+        weights=np.array([2.0, 1.0]),
+        donor_support={
+            "housing_water_and_electricity_consumption": (0.0, 6000.0),
+            "transport_consumption": (0.0, 1e9),
+        },
     )
 
     def run(ev):
@@ -1848,6 +1853,21 @@ def test_recomposed_totals_gate_holds_totals_above_their_components() -> None:
     assert passed.passed, passed.failures
     assert passed.details["uncarried_total"] == receipt["uncarried"]["total"]
     housing = "housing_water_and_electricity_consumption"
+    # 7000 - 2000 + 1600 is held at 6000 (microcosm#1164).
+    assert receipt["parents"][housing]["rows_held_at_maximum"] == 1
+    assert receipt["parents"][housing]["weighted_held_mass"] == 2.0 * 600.0
+    failing(
+        lambda r: r["parents"][housing].update(weighted_held_mass=0.0),
+        "is not its remainder plus components",
+    )
+    failing(
+        lambda r: r["parents"][housing].update(maximum_total="none"),
+        "declared maximum_total",
+    )
+    failing(
+        lambda r: r["parents"][housing].update(rows_held_at_maximum=-1),
+        "rows held at the maximum",
+    )
     failing(
         lambda r: r["parents"][housing].update(minimum_remainder=-1.0),
         "negative remainder",
@@ -2196,13 +2216,14 @@ def test_spi_support_channel_checks_the_declared_pension_age_share() -> None:
 
 
 def test_pension_credit_take_up_checks_each_band_against_its_rate() -> None:
-    def band(name, rate, realized, *, exceed=False, units=10):
+    def band(name, rate, realized, *, exceed=False, units=10, scope="great_britain"):
         return {
             "band": name,
             "rate": rate,
             "realized_take_up": realized,
             "reporters_exceed_rate": exceed,
             "entitled_units": units,
+            "scope": scope,
         }
 
     parameters = {
@@ -2231,6 +2252,9 @@ def test_pension_credit_take_up_checks_each_band_against_its_rate() -> None:
     assert not gate(band("guarantee_credit", 0.69, 0.50, exceed=True)).passed
     assert not gate(band("guarantee_credit", 0.69, None, units=0)).passed
     assert not gate().passed
+    # DWP's rates cover Great Britain: a band measured UK-wide fails even at
+    # its rate (uk-data#510).
+    assert not gate(band("guarantee_credit", 0.69, 0.69, scope="united_kingdom")).passed
     # The realised rates are population facts: a synthetic smoke fixture records
     # the failure without blocking, every other posture blocks on it.
     committed = _gate_parameters("uk_stage_pension_credit_take_up")
@@ -2365,3 +2389,189 @@ def test_child_benefit_take_up_holds_claims_by_age_and_the_opt_out_share() -> No
     assert not gate(share=0.12, exhausted=True).passed
     assert not gate(units=0).passed
     assert not gate(ages=[]).passed
+
+
+_PROPERTY_COMPONENTS_PARAMETERS = {
+    "stage": "property_components",
+    "check": "property_components",
+    "maximum_rows_receipts_below_profit": 0,
+    "maximum_rows_with_profit_above_band": 0,
+    "maximum_band_error_in_boundary_weights": 1.0,
+}
+
+
+def _property_components_evidence() -> dict:
+    # Three bounded bands and the remainder; the £90k band's allowance is the
+    # two straddlers' weights, 9,000 + 8,000, and its error 600 sits inside.
+    return {
+        "stage": "property_components",
+        "receipts": {
+            "rows_receipts_below_profit": 0,
+            "rows_with_profit_above_their_band": 0,
+            "largest_landlord_weight": 9_500.0,
+            "top_band_multiplier_bounds": [1.0, 5.0],
+            "bands_top_down": [
+                {
+                    "lower_bound": 100_000,
+                    "target_landlords": 30_000.0,
+                    "walk_landlords_weight": 30_400.0,
+                    "boundary_allowance_weight": 9_000.0,
+                    "profit_multiplier": 1.0,
+                    "multiplier_at_floor": True,
+                },
+                {
+                    "lower_bound": 90_000,
+                    "target_landlords": 7_600.0,
+                    "walk_landlords_weight": 7_000.0,
+                    "boundary_allowance_weight": 17_000.0,
+                },
+                {
+                    "lower_bound": 10_000,
+                    "target_landlords": 650_000.0,
+                    "walk_landlords_weight": 652_000.0,
+                    "boundary_allowance_weight": 8_000.0 + 7_500.0,
+                },
+                {
+                    "lower_bound": 0,
+                    "target_landlords": 900_000.0,
+                    "walk_landlords_weight": 950_000.0,
+                    "boundary_allowance_weight": 7_500.0,
+                },
+            ],
+        },
+    }
+
+
+def _property_components(evidence: dict):
+    return uk_stage_health_gate(
+        evidence=evidence,
+        stage="property_components",
+        check="property_components",
+        parameters=_PROPERTY_COMPONENTS_PARAMETERS,
+    )
+
+
+def test_property_components_gate_passes_and_reports_the_floor() -> None:
+    result = _property_components(_property_components_evidence())
+
+    assert _passed(result)
+    # The remainder band is never checked, and a multiplier at its floor of 1
+    # is reported, not failed.
+    assert [row["lower_bound"] for row in result.details["band_errors"]] == [
+        100_000,
+        90_000,
+        10_000,
+    ]
+    assert result.details["top_band_multiplier_at_floor"] is True
+    assert result.details["rows_with_profit_above_their_band"] == 0
+
+
+def test_property_components_gate_holds_a_band_to_its_own_rounding_allowance() -> None:
+    # An empty £90k band passed the old test of twice the largest landlord
+    # weight (19,000 against a 7,600 target); against its own straddlers'
+    # weights it fails.
+    evidence = _property_components_evidence()
+    band = evidence["receipts"]["bands_top_down"][1]
+    band["walk_landlords_weight"] = 0.0
+    band["boundary_allowance_weight"] = 7_000.0
+    failed = _property_components(evidence)
+    assert not _passed(failed)
+    assert "band from 90000" in failed.failures[0]
+    assert "rounding allowance 7000.0" in failed.failures[0]
+
+    # The allowance is the receipt's, so a missing one fails closed.
+    del band["boundary_allowance_weight"]
+    with pytest.raises(ValueError, match="rounding allowance"):
+        _property_components(evidence)
+
+
+@pytest.mark.parametrize(
+    ("key", "fragment"),
+    [
+        ("rows_receipts_below_profit", "receipts below profit"),
+        ("rows_with_profit_above_their_band", "band below their profit"),
+    ],
+)
+def test_property_components_gate_requires_the_zero_counts(key, fragment) -> None:
+    evidence = _property_components_evidence()
+    evidence["receipts"][key] = 3
+    failed = _property_components(evidence)
+    assert not _passed(failed)
+    assert fragment in failed.failures[0]
+
+
+def test_property_components_gate_fails_a_top_band_at_its_cap() -> None:
+    evidence = _property_components_evidence()
+    top = evidence["receipts"]["bands_top_down"][0]
+    top["profit_multiplier"] = 5.0
+    top["multiplier_at_floor"] = False
+    failed = _property_components(evidence)
+    assert not _passed(failed)
+    assert "reached its cap 5.0" in failed.failures[0]
+    assert failed.details["top_band_multiplier_at_floor"] is False
+
+
+def test_property_components_gate_caps_a_reported_allowance_at_two_weights() -> None:
+    # The stage's allowance is two straddlers at most. A receipt that reported
+    # more would widen the gate, so the cap of twice the largest landlord
+    # weight (19,000 here) applies before the band's error is judged.
+    evidence = _property_components_evidence()
+    band = evidence["receipts"]["bands_top_down"][2]
+    band["walk_landlords_weight"] = band["target_landlords"] + 25_000.0
+    band["boundary_allowance_weight"] = 30_000.0
+    failed = _property_components(evidence)
+    assert not _passed(failed)
+    assert "rounding allowance 19000.0" in failed.failures[0]
+    assert failed.details["band_errors"][2]["allowance_weight"] == 19_000.0
+
+
+def test_consumption_basis_gate_checks_the_recorded_bridge_factor() -> None:
+    # The receipt records before, after, base and factor for each bridged
+    # column; the gate holds factor to after / base (the #1167 re-review's nit).
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_DIARY_PRICE_COLUMNS,
+    )
+
+    parameters = _gate_parameters("uk_stage_lcfs_consumption_basis")
+    columns = {
+        column: {
+            "basis": "engine_parameter",
+            "from_window": "fiscal_year",
+            "before": 1.5,
+            "after": 1.6,
+            "base": 1.525,
+            "factor": 1.6 / 1.525,
+        }
+        for column in UK_LCFS_DIARY_PRICE_COLUMNS
+    }
+    evidence = {
+        "stage": "lcfs_consumption",
+        "donor_uprating": {
+            "from_period": 2023,
+            "to_period": 2024,
+            "fiscal_year_bridge": {"start_year_weight": 0.75, "next_year_weight": 0.25},
+            "columns": columns,
+        },
+        "energy_pricing": {
+            "period_type": "calendar_year",
+            "period_value": 2024,
+            "level": {"period_type": "calendar_year", "period_value": 2024},
+        },
+        "bus_pricing": {"price_year": 2024},
+        "road_fuel_level": {"period_type": "calendar_year", "period_value": 2024},
+    }
+
+    def run(ev):
+        return uk_stage_health_gate(
+            evidence=ev,
+            stage="lcfs_consumption",
+            check="consumption_basis",
+            parameters=parameters,
+        )
+
+    assert run(evidence).passed
+    first = UK_LCFS_DIARY_PRICE_COLUMNS[0]
+    evidence["donor_uprating"]["columns"][first]["factor"] = 1.6 / 1.5
+    result = run(evidence)
+    assert not result.passed
+    assert any("not after / base" in f and first in f for f in result.failures)

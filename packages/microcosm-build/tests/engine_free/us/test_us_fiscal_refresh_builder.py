@@ -25,6 +25,7 @@ from microcosm.calibrate import (
     TargetSpec,
     calibrate,
 )
+from microcosm.data.stored_inputs import register_sha256
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 from test_support.paths import paths_for
 
@@ -6003,6 +6004,18 @@ STORED_INPUT_REFUSAL_FIXTURE = (
     "'would_claim_wic' (person table) looks like a model input but is not a "
     "variable in policyengine-us 2.2.1, so the engine ignores it."
 )
+#: What the stubbed stored-input gate reports it checked: the verdict shape
+#: ``_stored_input_gate_failures`` returns, against the harness runtime's
+#: policyengine-us (2.2.1), so the green run's manifests meet the publisher's
+#: stored-input requirement (microcosm#1034).
+STORED_INPUT_GATE_DETAILS = {
+    "evaluated": True,
+    "engine": "policyengine-us 2.2.1",
+    "stored_columns": 12,
+    "registered_non_variables": ["person_source_id"],
+    "refused": [],
+    "register_sha256": register_sha256(),
+}
 #: What the stubbed post-write check reports in ``stored_input_premise``.
 STORED_INPUT_PREMISE_FIXTURE = (
     "Stored-input gate premise failed: the written H5 stores model-named "
@@ -6028,18 +6041,31 @@ def _assert_stored_input_abort(builder, *, captured, release_dir, mode) -> None:
     assert not (release_dir / "release_manifest.json").exists()
     assert not (release_dir / "build_manifest.json").exists()
     assert "scorer_opened_on" not in captured
+    # microcosm#1034: either way the run leaves the gate's own verdict, as
+    # the tool writes every gate's evidence before the batched raise.
+    evidence = json.loads((release_dir / "stored_inputs.json").read_text())
     if mode == "stored_input_refused":
         assert str(abort.value) == (
             f"Release gates failed: {STORED_INPUT_REFUSAL_FIXTURE}"
         )
         assert "written_dataset" not in captured
         assert "stored_input_post_write_check" not in captured
+        assert evidence["stored_inputs"] == {
+            "passed": False,
+            "failures": [STORED_INPUT_REFUSAL_FIXTURE],
+            "details": {**STORED_INPUT_GATE_DETAILS, "refused": ["would_claim_wic"]},
+        }
     else:
         assert str(abort.value) == STORED_INPUT_PREMISE_FIXTURE
         assert captured["stored_input_post_write_check"] == (
             captured["written_dataset"],
             captured["written_dataset"],
         )
+        assert evidence["stored_inputs"] == {
+            "passed": True,
+            "failures": [],
+            "details": STORED_INPUT_GATE_DETAILS,
+        }
 
 
 def _run_dry_run_release(
@@ -6193,6 +6219,8 @@ def _run_green_register_release(
         _check_build_manifest,
         _check_local_artifact_hashes,
         _check_release_manifest,
+        _check_us_stored_input_evidence,
+        stored_input_evidence_manifest_block,
     )
     from microcosm.data.release import _release_manifest_release_artifacts
 
@@ -6355,10 +6383,14 @@ def _run_green_register_release(
         "input_mass_parity",
         "qrf_tail_concentration",
     ]
-    # All four stale verdicts were cleared before any gate ran, including the
-    # three this run goes on to rewrite: a gate that crashed or was skipped
-    # must leave no verdict rather than the superseded one.
-    assert captured["gate_evidence_on_disk_at_first_gate"] == []
+    # Every stale verdict was cleared before any gate ran, including the ones
+    # this run goes on to rewrite: a gate that crashed or was skipped must
+    # leave no verdict rather than the superseded one. The stored-input
+    # verdict is the one already on disk, and it is this run's own: its gate
+    # ran before the clear and its file is written right after
+    # (microcosm#1034).
+    assert captured["gate_evidence_on_disk_at_first_gate"] == ["stored_inputs.json"]
+    assert captured["stale_gate_evidence_at_first_gate"] == []
     assert captured["qrf_tail_register_seen"] == {
         "estate_income": "donor tail concentrated before calibration"
     }
@@ -6505,6 +6537,20 @@ def _run_green_register_release(
         "input_mass_parity": "bound",
         "qrf_tail_concentration": "bound",
         "reform_coverage_smoke": "skipped" if skipped_smoke else "bound",
+        "stored_inputs": "bound",
+    }
+    stored_inputs_evidence = json.loads(
+        (release_dir / "stored_inputs.json").read_text()
+    )
+    assert stored_inputs_evidence == {
+        "schema_version": 1,
+        "enforced": True,
+        "checked_at_stage": "export frame",
+        "stored_inputs": {
+            "passed": True,
+            "failures": [],
+            "details": STORED_INPUT_GATE_DETAILS,
+        },
     }
     # microcosm#454: the ESI premium signal gate graded the base before the
     # solve and the export after it; the anchor gate graded the export at the
@@ -6535,6 +6581,10 @@ def _run_green_register_release(
         # One reading, recorded in the diagnostics and both manifests.
         assert runtime == captured["diagnostics"]["calibration_runtime"]
         assert block["fiscal_target_exclusion_receipt"] == expected_receipt
+        # microcosm#1034: the stored-input verdict, bound to the pinned H5.
+        assert block["stored_inputs"] == stored_input_evidence_manifest_block(
+            stored_inputs_evidence, dataset_sha256=build_manifest["dataset"]["sha256"]
+        )
     # The manifests pin the reference the export-mass gate compared against.
     assert captured["export_reference_loaded"] == export_mass_reference
     parity_kwargs = captured["export_input_mass_kwargs"]
@@ -6547,6 +6597,15 @@ def _run_green_register_release(
     _check_build_manifest(build_manifest, release_id, failures)
     _check_release_manifest(release_manifest, release_id, failures)
     _check_local_artifact_hashes(release_dir, release_manifest, failures)
+    # Producer and publisher agree: what the tool wrote meets the stored-input
+    # evidence requirement (microcosm#1034).
+    _check_us_stored_input_evidence(
+        release_dir,
+        build_manifest=build_manifest,
+        release_manifest=release_manifest,
+        failures=failures,
+        evidence_tier=False,
+    )
     assert failures == []
     assert set(bound.values()) <= set(_release_manifest_release_artifacts(release_dir))
     assert not list(release_dir.glob("final_household_weight*"))
@@ -7022,6 +7081,12 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
                 for filename in builder.US_RELEASE_GATE_EVIDENCE_FILES.values()
                 if (out / "releases" / release_id / filename).exists()
             )
+            captured["stale_gate_evidence_at_first_gate"] = sorted(
+                filename
+                for filename in captured["gate_evidence_on_disk_at_first_gate"]
+                if (out / "releases" / release_id / filename).read_text()
+                == '{"stale": true}'
+            )
             return builder.GateResult(
                 name="input_coverage",
                 passed=True,
@@ -7122,9 +7187,9 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         if terminal_mode == "stored_input_refused":
             return (
                 [STORED_INPUT_REFUSAL_FIXTURE],
-                {"evaluated": True, "refused": ["would_claim_wic"], "fixture": stage},
+                {**STORED_INPUT_GATE_DETAILS, "refused": ["would_claim_wic"]},
             )
-        return ([], {"evaluated": True, "refused": [], "fixture": stage})
+        return ([], dict(STORED_INPUT_GATE_DETAILS))
 
     monkeypatch.setattr(builder, "_stored_input_gate_failures", fake_stored_input_gate)
 
@@ -12630,13 +12695,16 @@ def test_build_manifests_binds_gate_evidence_and_the_qrf_tail_register(
     monkeypatch, tmp_path
 ) -> None:
     """Route A remediation PR-3: a certified waiver must ship with the
-    release. The five gate verdicts become release artifacts, and both
-    manifests record the register the tail gate evaluated, the export-mass
-    reference, the solve's thread geometry and the exclusion receipt."""
+    release. The gate verdicts become release artifacts, and both manifests
+    record the register the tail gate evaluated, the export-mass reference,
+    the solve's thread geometry, the exclusion receipt and the stored-input
+    verdict (microcosm#1034) for the H5 they pin."""
     from microcosm.data.contract import (
         _check_build_manifest,
         _check_local_artifact_hashes,
         _check_release_manifest,
+        _check_us_stored_input_evidence,
+        stored_input_evidence_manifest_block,
     )
     from microcosm.data.release import _release_manifest_release_artifacts
 
@@ -12675,6 +12743,12 @@ def test_build_manifests_binds_gate_evidence_and_the_qrf_tail_register(
         (release_dir / filename).write_text('{"schema_version": 1, "enforced": true}')
     (release_dir / "reform_coverage_smoke.json").write_text(
         '{"schema_version": 1, "enforced": true}'
+    )
+    stored_inputs_payload = builder._record_stored_inputs_gate_evidence(
+        release_dir,
+        failures=[],
+        details=STORED_INPUT_GATE_DETAILS,
+        telemetry=builder._TerminalBatchProgress(None, []),
     )
     reference = {
         "path": "/runtime/forensics/populace_us_2024.h5",
@@ -12733,6 +12807,10 @@ def test_build_manifests_binds_gate_evidence_and_the_qrf_tail_register(
                 json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode()
             ).hexdigest(),
         },
+        "stored_inputs": stored_input_evidence_manifest_block(
+            stored_inputs_payload,
+            dataset_sha256=hashlib.sha256(b"h5").hexdigest(),
+        ),
     }
     for key, block in expected.items():
         assert build_manifest[key] == block
@@ -12743,6 +12821,13 @@ def test_build_manifests_binds_gate_evidence_and_the_qrf_tail_register(
     _check_build_manifest(build_manifest, release_id, contract_failures)
     _check_release_manifest(release_manifest, release_id, contract_failures)
     _check_local_artifact_hashes(release_dir, release_manifest, contract_failures)
+    _check_us_stored_input_evidence(
+        release_dir,
+        build_manifest=build_manifest,
+        release_manifest=release_manifest,
+        failures=contract_failures,
+        evidence_tier=False,
+    )
     assert contract_failures == []
     assert set(builder.US_RELEASE_GATE_EVIDENCE_FILES.values()) <= set(
         _release_manifest_release_artifacts(release_dir)
@@ -12802,7 +12887,11 @@ def test_build_manifests_records_a_blanket_waiver_without_register_and_absent_re
         "input_mass_parity": "not_evaluated",
         "qrf_tail_concentration": "bound",
         "reform_coverage_smoke": "not_evaluated",
+        "stored_inputs": "not_evaluated",
     }
+    # No stored-input verdict was written, so the manifests carry no block,
+    # and the publisher would refuse the release for it (microcosm#1034).
+    assert "stored_inputs" not in build
     # Only the verdict this run wrote is an artifact; direct callers that
     # pass no reference or runtime get no such block.
     evidence_keys = set(builder.US_RELEASE_GATE_EVIDENCE_FILES)
@@ -12816,13 +12905,19 @@ def test_build_manifests_records_a_blanket_waiver_without_register_and_absent_re
 def test_build_manifests_without_gate_evidence_binds_none() -> None:
     builder = _load_builder_module()
     assert builder._qrf_tail_register_manifest_block(Path("/nonexistent")) is None
+    assert (
+        builder._stored_inputs_manifest_block(
+            Path("/nonexistent"), dataset_sha256="d" * 64
+        )
+        is None
+    )
     assert builder._gate_evidence_artifacts(Path("/nonexistent"), revision="r") == {}
 
 
 def test_gate_evidence_status_names_skipped_and_unevaluated_gates() -> None:
     """A skipped smoke and a gate that crashed under earlier failures both
     leave no verdict; the status block tells them apart. A gate cannot be
-    both skipped and bound, and only the five bound gates can be skipped."""
+    both skipped and bound, and only the registered gates can be skipped."""
     builder = _load_builder_module()
     bound = {"input_coverage": {}, "input_mass_parity": {}}
 
@@ -12834,6 +12929,7 @@ def test_gate_evidence_status_names_skipped_and_unevaluated_gates() -> None:
         "input_mass_parity": "bound",
         "qrf_tail_concentration": "not_evaluated",
         "reform_coverage_smoke": "skipped",
+        "stored_inputs": "not_evaluated",
     }
     with pytest.raises(ValueError, match=r"skipped have a verdict.*input_coverage"):
         builder._gate_evidence_status(bound, skipped_gates=("input_coverage",))
@@ -12924,6 +13020,7 @@ def test_gate_evidence_files_are_the_files_their_gates_write() -> None:
             "_export_input_mass_gate",
             "_record_qrf_tail_concentration_gate",
             "us_reform_coverage_smoke_gate",
+            "_record_stored_inputs_gate_evidence",
         }
     )
     assert clear_loop.lineno < first_gate

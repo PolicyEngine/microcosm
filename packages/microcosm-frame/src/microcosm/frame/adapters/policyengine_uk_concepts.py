@@ -19,20 +19,20 @@ from microcosm.frame.concept_mapping import (
     Recode,
     RelationshipRole,
     Role,
-    Sum,
+    SignedPart,
     TakeUpThreshold,
     bind,
 )
 from microcosm.frame.concepts import AlignmentRelation
 
-__all__ = ["POLICYENGINE_UK_CONCEPT_MAPPING"]
+__all__ = ["POLICYENGINE_UK_CONCEPT_MAPPING", "UK_ENGINE_DEFAULT_TAKE_UP_INPUTS"]
 
 # ---------------------------------------------------------------------------
 # Concept mapping
 # ---------------------------------------------------------------------------
 #
 # Which PolicyEngine-UK inputs each engine-neutral concept feeds
-# (microcosm.frame.concepts), reviewed against policyengine-uk 2.122.2. Every
+# (microcosm.frame.concepts), reviewed against policyengine-uk 2.134.4. Every
 # target is a pure input (in ``PolicyEngineUKEngine.variables``). The UK
 # loader also accepts some formula-owned variables as overrides
 # (``employment_income``, ``state_pension_reported``, ``is_household_head``);
@@ -59,6 +59,7 @@ _UK_BENUNIT_TAKE_UP = (
     "targeted_childcare",
     "tfc",
     "uc",
+    "uc_at_legacy_closure",
     "uc_childcare",
     "universal_childcare",
 )
@@ -150,6 +151,17 @@ _UK_TAKE_UP_EVIDENCE: dict[str, tuple[str, str]] = {
         "stochastic_assignment.py); a threshold alone has neither the anchor "
         "nor the population.",
     ),
+    "uc_at_legacy_closure": (
+        "Whether this family would claim Universal Credit once a legacy "
+        "means-tested benefit it receives closes (legacy_benefits_closed). "
+        "Datasets draw it at DWP's Move to Universal Credit claim rates by "
+        "legacy benefit combination. ...",
+        "The UK build draws it at DWP's Move to Universal Credit claim rates "
+        "for each combination of legacy benefits, net of the units that "
+        "would claim anyway, among units reporting a legacy benefit and not "
+        "Universal Credit (legacy_closure_take_up.py, microcosm#1095); a "
+        "threshold alone has neither the combinations nor the population.",
+    ),
     "uc_childcare": (
         "Whether this family would claim the Universal Credit childcare element "
         "if entitled. Generated stochastically in a dataset from take-up rates "
@@ -162,6 +174,13 @@ _UK_TAKE_UP_EVIDENCE: dict[str, tuple[str, str]] = {
         "The UK build draws it from one rate (frs_take_up.py).",
     ),
 }
+
+
+#: Take-up inputs of the engine the build leaves at the engine's default,
+#: with why. None today: ``would_claim_uc_at_legacy_closure``
+#: (policyengine-uk 2.128.0, pe-uk#2119), the last of them, is drawn at DWP's
+#: Move to UC claim rates since they became a Chronicle fact (microcosm#1095).
+UK_ENGINE_DEFAULT_TAKE_UP_INPUTS: dict[str, str] = {}
 
 
 def _uk_take_up(program: str, entity: str) -> InputBinding:
@@ -185,7 +204,7 @@ def _uk_take_up(program: str, entity: str) -> InputBinding:
 
 POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
     engine="policyengine-uk",
-    engine_version="2.122.2",
+    engine_version="2.134.4",
     entity_correspondence={"person": "person", "household": "household"},
     input_declaration=InputDeclaration.ENGINE_TYPED,
     bindings=(
@@ -243,12 +262,34 @@ POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
                 "fact:person.nonfarm_self_employment_income",
                 "fact:person.farm_self_employment_income",
             ),
-            Sum(),
-            AlignmentRelation.EXACT,
+            SignedPart("positive"),
+            AlignmentRelation.APPROXIMATE,
             (
                 "Engine documentation: 'Income from self-employment profits, "
-                "including gig work ... net of self-employment expenses'; it "
-                "has no farm split, so the two concepts sum into it."
+                "including gig work ... net of self-employment expenses', "
+                "never negative from 2.131.0, the year's losses going to "
+                "trading_loss (pe-uk#2085). It has no farm split, so the two "
+                "concepts sum and the profit is the positive part of the sum. "
+                "The concepts net each person's trades, so a profit beside "
+                "another trade's loss arrives net of that loss."
+            ),
+        ),
+        bind(
+            "trading_loss",
+            "person",
+            (
+                "fact:person.nonfarm_self_employment_income",
+                "fact:person.farm_self_employment_income",
+            ),
+            SignedPart("negative"),
+            AlignmentRelation.APPROXIMATE,
+            (
+                "Engine documentation: 'Losses made in the tax year by the "
+                "person's trades, professions or vocations, as a positive "
+                "amount' (pe-uk#2085, from 2.131.0): the negative part of the "
+                "two concepts' sum, so it and self_employment_income never "
+                "both hold an amount. The concepts net each person's trades, "
+                "so a loss beside another trade's profit arrives net of it."
             ),
         ),
         # --- Capital income -----------------------------------------------
@@ -294,9 +335,13 @@ POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
             Identity(),
             AlignmentRelation.APPROXIMATE,
             (
-                "Engine label 'rental income', documentation 'Income from rental "
-                "of property'; whether expenses are netted is not stated, and "
-                "the concept is net."
+                "Engine label 'property income', documentation: profits of UK and "
+                "overseas property businesses, receipts less allowable expenses, "
+                "'before the property allowance and before any costs of "
+                "dwelling-related loans', which are relieved as a tax reduction "
+                "instead. The concept nets every expense, mortgage interest "
+                "included, and excludes sub-letting part of the own dwelling, so "
+                "the engine's profit sits above it for mortgaged landlords."
             ),
         ),
         bind(
@@ -524,15 +569,20 @@ POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
             "('Current value of the person's Lifetime ISAs, cash and stocks "
             "and shares together'), one savings wrapper, which the engine "
             "documents as already inside gross_financial_wealth and "
-            "net_financial_wealth. savings and corporate_wealth are two of "
+            "net_financial_wealth. Since policyengine-uk 2.130.0 three more "
+            "describe a company the person owns, for Universal Credit's "
+            "regulation 77 (owned_company_capital, owned_company_holding_value "
+            "and owned_company_trade_assets); every one defaults to no such "
+            "company, and the build sets none. savings and corporate_wealth are two of "
             "Universal Credit's capital sources "
             "(gov.dwp.universal_credit.means_test.capital.sources), and "
             "lifetime_isa_countable_capital, the Lifetime ISA at its surrender "
             "value, is its one person-level source (capital.person_sources). "
-            "uc_reported_capital (benefit unit; 'Claimant-level capital for "
-            "Universal Credit when household-level asset data cannot be "
-            "attributed across multiple benefit units', default -1) is "
-            "Universal Credit capital: when it is zero or more, "
+            "uc_reported_capital (benefit unit, default -1) is Universal "
+            "Credit capital. It is formula-owned since policyengine-uk 2.124.0: "
+            "unless set directly it is benunit_reported_capital, a benefit-unit "
+            "input ('Savings and investments of the benefit unit's adults (the "
+            "claimant and any partner) as recorded'). When it is zero or more, "
             "uc_assessable_capital takes it in place of both the "
             "household-capital proxy it otherwise sums from the household "
             "sources, net of capital other benefit units report, and "

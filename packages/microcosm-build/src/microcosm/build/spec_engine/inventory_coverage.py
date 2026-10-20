@@ -359,11 +359,18 @@ EXPECTED_HASHES = {
     "late_schedule": "e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f",
     "ownership": "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356",
     "primary_tuples": "fdf23da429f8c501e198a2f5b719763d523a41565c2153fdf17b0344f21bcd7c",
-    # #1178: puf_support's source bytes attest CPS Social Security preservation;
-    # #454: the meps_esi_premiums stage joins the attested sources. RNG rules
-    # and the ordered QRF targets are unchanged.
-    "seed_map": "08698f4440eb31d1e2886036e7fd0ab86d4c6a007deaa650127dc4346a2151e0",
-    "seed_protocol": "303da98866edb2a87b1dc36d9ff5a0146deb3a68a4f5361416b5794c13ae4cfb",
+    # #1178: puf_support's source bytes attest CPS Social Security preservation.
+    # RNG rules and the ordered QRF targets are unchanged. microcosm#104 moves
+    # both again: the protocol attests microcosm.calibrate.solve. microcosm#1124
+    # moves both once more: solve gains the opt-in retain_best_objective, off
+    # by default, so no US solve, RNG rule or QRF target changes. microcosm#1301
+    # moves both again: calibrate gains budget_search_bracket, whose default
+    # keeps the US bracket, and the budget search, which the US solve does
+    # not run, changes its probes, so again no US solve changes. #454: the
+    # meps_esi_premiums stage joins the attested sources and the source
+    # manifest.
+    "seed_map": "506cfe057f1cf1cb2ad27bfea626e463f0fd455af02ae12b225158973dc0c08a",
+    "seed_protocol": "c12e130572c2b9bbb75958442c586e7368d56add377c4459c99e765d58c17004",
     "source_manifest": "629a0712659a26b2d6aa6c0e5672421f415d625e0599d6baa0a834d118953c6a",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "ac92829c88a1a4fb6460d61190918d5d99c6c377fc8dd8f62f02b332d09bf59c",

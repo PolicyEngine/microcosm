@@ -259,7 +259,7 @@ def test_recipient_predictors_derive_education_counts_and_aggregate() -> None:
         "is_SP_age": "person",
         "dla": "person",
         "pip": "person",
-        "hbai_household_net_income": "household",
+        "hbai_household_net_income_before_reset_to_zero": "household",
         "current_education": "person",
     }
     values = {
@@ -268,7 +268,7 @@ def test_recipient_predictors_derive_education_counts_and_aggregate() -> None:
         "is_SP_age": np.array([0.0, 1.0, 0.0, 0.0]),
         "dla": np.array([0.0, 100.0, 0.0, 0.0]),
         "pip": np.array([50.0, 0.0, 0.0, 0.0]),
-        "hbai_household_net_income": np.array([1e4, 2e4]),
+        "hbai_household_net_income_before_reset_to_zero": np.array([1e4, 2e4]),
         "current_education": np.array(
             ["NOT_IN_EDUCATION", "TERTIARY", "PRIMARY", "LOWER_SECONDARY"]
         ),

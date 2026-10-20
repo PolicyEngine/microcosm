@@ -52,6 +52,7 @@ from microcosm.build.us_runtime.release_target_parity import (
     REVIEWED_EXCLUSION_STATUS,
     SOURCE_ABSENT_CLASSIFICATION,
     us_target_family_id,
+    us_target_family_vintage_free_id,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -601,8 +602,10 @@ _FAMILY_EXCLUSIONS: dict[str, tuple[str, str, str, dict[str, str]]] = {
     "usda_snap.state_average_monthly_persons": _SNAP_PERSONS_EXCLUSION,
 }
 
+#: Keyed by vintage-free family id, so a repin to the next IRS
+#: congressional-district release keeps its note.
 _COMPILED_FAMILY_NOTES = {
-    "irs_soi.congressional_district_2022": (
+    "irs_soi.congressional_district": (
         "One US target surface: national, state, and congressional-district "
         "facts compile for every calibrated artifact. Geography is a constraint; "
         "artifact record count changes only L0, never target membership. "
@@ -732,8 +735,9 @@ def build_manifest(
     for family in sorted(feed_counts):
         if family in compiled:
             families[family] = {"status": COMPILED_STATUS}
-            if family in _COMPILED_FAMILY_NOTES:
-                families[family]["note"] = _COMPILED_FAMILY_NOTES[family]
+            note = _COMPILED_FAMILY_NOTES.get(us_target_family_vintage_free_id(family))
+            if note is not None:
+                families[family]["note"] = note
         else:
             classification, reason, evidence, fence = _exclusion_for(family)
             families[family] = {

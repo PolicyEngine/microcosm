@@ -52,9 +52,13 @@ def test_uk_spine_graph_contains_every_manifest_stage() -> None:
     # pension_credit_take_up and the microcosm#1063 child_benefit_take_up; the
     # frs_hmrc_retained_leaves / hmrc_spi_income certified-pair alternatives
     # are retired (#901), so the manifest roster is the graph roster.
-    # microcosm#1063 also adds cgt_residential_split after the anchor, and
-    # microcosm#1095 the spi_benefit_coherence pass after uc_reporter_redraw.
-    assert len(expected) == 39
+    # microcosm#1063 also adds cgt_residential_split after the anchor,
+    # microcosm#1095 the spi_benefit_coherence pass after uc_reporter_redraw,
+    # microcosm#1106 property_components after the regional uprating, and
+    # microcosm#1240 high_value_home_support between those two; microcosm#1095
+    # adds property_purchases and uc_legacy_closure_take_up, and microcosm#1112
+    # regional_home_values.
+    assert len(expected) == 45
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(expected)
     assert set(expected) <= ids
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(ids)
@@ -93,7 +97,11 @@ def test_uk_spine_compile_order_is_derived_from_declared_inputs() -> None:
     assert compile_graph(reversed_declaration).order == compiled.order
     assert "frs_employment" in compiled.predecessors["frs_legacy_proxies"]
     assert "was_wealth" in compiled.predecessors["regional_property_uprating.boundary"]
-    assert "regional_property_uprating" in compiled.predecessors["lcfs_consumption"]
+    assert (
+        "regional_property_uprating" in compiled.predecessors["high_value_home_support"]
+    )
+    assert "high_value_home_support" in compiled.predecessors["property_components"]
+    assert "property_components" in compiled.predecessors["lcfs_consumption"]
     assert "spi_support_channel" in compiled.predecessors["spi_income_band_donors"]
     assert "spi_income_band_donors" in compiled.predecessors["hmrc_spi_income_spine"]
 
@@ -374,3 +382,19 @@ def test_zero_row_expand_still_refuses_a_shift_across_household_sizes() -> None:
             _zero_row_expand_node(),
             _zero_row_expand_result([0.5, 2.5], total=3.0),
         )
+
+
+def test_property_components_reads_cover_the_stage_inputs() -> None:
+    """A node receives its declared cells alone, so the declaration must name
+    every person column the landlord stage requires (the recipient flag joined
+    them with microcosm#840; the 13 October twin build failed at the node
+    before the declaration followed)."""
+    from microcosm.build.uk_runtime.graph import _STAGE_CONSUMES
+    from microcosm.build.uk_runtime.property_components import (
+        PROPERTY_COMPONENTS_PERSON_INPUTS,
+    )
+
+    declared = _STAGE_CONSUMES["property_components"]
+    assert declared is not None
+    required = {("person", column) for column in PROPERTY_COMPONENTS_PERSON_INPUTS}
+    assert required <= declared, sorted(required - declared)

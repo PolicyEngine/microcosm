@@ -49,7 +49,10 @@ package; each is separately resumable):
                 sub-PUMA coverage), and flip the summary simulation-ready.
   package     : refuse a calibrated H5 that stores a model input the
                 installed policyengine-us does not define (microcosm#1026;
-                ``microcosm.data.stored_inputs``), then
+                ``microcosm.data.stored_inputs``), or on which that engine's
+                SPM measurement would refuse a unit with no classified adult
+                (microcosm#1263;
+                ``microcosm.build.us_runtime.spm_measurement_gate``), then
                 assemble releases/<id>/ with the non-default local-area
                 manifest shape (dataset_role ``non_default_local_area``,
                 namespace ``buildo_acs_local``, donor identity chain, the
@@ -81,6 +84,13 @@ import pandas as pd
 from microcosm.build.us_runtime import target_loss_weights as loss_weighting
 from microcosm.build.us_runtime.acs_local_hours import acs_local_hours_signal_gate
 from microcosm.build.us_runtime.esi_premiums import refuse_unassigned_us_esi_premiums
+from microcosm.data.contract import (
+    US_LOCAL_AREA_SPM_MEASUREMENT_STAGE,
+    US_LOCAL_AREA_STORED_INPUTS_STAGE,
+    US_SPM_MEASUREMENT_EVIDENCE_KEY,
+    US_STORED_INPUTS_EVIDENCE_KEY,
+    us_engine_scopes_spm_universe,
+)
 
 _TOOLS_DIR = Path(__file__).resolve().parent
 _REPO_ROOT = _TOOLS_DIR.parent
@@ -430,6 +440,26 @@ class UnregisteredNullError(ValueError):
     """NaN in an engine-input column NOT in reviewed_engine_input_nulls."""
 
 
+class DeclaredSourceInputNullError(UnregisteredNullError):
+    """A declared dataset source input is null or registered for a default fill.
+
+    ``policyengine_us.spm.DATASET_SOURCE_INPUTS`` "does not permit
+    synthesizing a default value when data are absent", so no register entry
+    can authorize a fill for one.
+    """
+
+
+#: The remedy a staging artifact without the ACS SPM role is told to take.
+_DECLARED_SOURCE_INPUT_REMEDY = (
+    "Rebuild the ACS multispine staging (tools/build_us_acs_multispine_base.py): "
+    "it derives is_spm_independent_minor_role for ACS persons from RELSHIPP on "
+    "the household SPM partition "
+    "(microcosm.build.us_runtime.acs_inputs.with_acs_spm_independence_role) "
+    "and refuses to register it as a reviewed null. Staging built before that "
+    "carries the role only on donor rows."
+)
+
+
 def project_input_only(base_frame, period: int = PERIOD):
     """Hold back every non-input variable so FED SET == ENGINE INPUT SET.
 
@@ -497,14 +527,20 @@ def fill_reviewed_nulls(
     summary_path: Path,
     manifest_path: Path | None = None,
     period: int = PERIOD,
+    *,
+    engine=None,
+    system=None,
 ):
     """Apply the nullable-artifact contract for the engine pass (H5 untouched).
 
     Every registered (entity, column) has its NaN filled with the pe-us
     variable's own default; NaN in any engine-input column NOT in the
     register is a hard error with a per-spine diagnostic — an artifact
-    defect, surfaced not filled. The ESI employer premium input is never
-    filled, registered or not: a null there refuses the build.
+    defect, surfaced not filled. A declared dataset source input is never
+    filled: a register that names one, or a null one, raises
+    :class:`DeclaredSourceInputNullError`. Nor is the ESI employer premium
+    input, registered or not: a null there refuses the build. ``engine`` and
+    ``system`` default to the PolicyEngine-US adapter and tax-benefit system.
     """
 
     # microcosm#454: the ESI employer premium exists only where the
@@ -514,10 +550,10 @@ def fill_reviewed_nulls(
         frame, consumer="ACS local release (fill_reviewed_nulls)"
     )
 
-    from policyengine_us import CountryTaxBenefitSystem
-
     from microcosm.build.us_runtime.base_pool import spine_column
-    from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
+    from microcosm.build.us_runtime.spm_independence_role import (
+        us_declared_dataset_source_inputs,
+    )
 
     summary = json.loads(Path(summary_path).read_text())
     register = {
@@ -529,9 +565,25 @@ def fill_reviewed_nulls(
             f"{summary_path} carries no reviewed_engine_input_nulls register; "
             "cannot apply the nullable-artifact engine-pass contract."
         )
-    adapter = PolicyEngineUSEngine()
-    input_names = set(adapter.variables())
-    system = CountryTaxBenefitSystem()
+    if engine is None:
+        from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
+
+        engine = PolicyEngineUSEngine()
+    if system is None:
+        from policyengine_us import CountryTaxBenefitSystem
+
+        system = CountryTaxBenefitSystem()
+    declared = us_declared_dataset_source_inputs(engine)
+    registered_declared = sorted(
+        f"{entity}.{column}" for entity, column in register if column in declared
+    )
+    if registered_declared:
+        raise DeclaredSourceInputNullError(
+            f"{summary_path} registers declared dataset source input(s) "
+            f"{registered_declared} for a default fill; policyengine_us.spm "
+            "forbids synthesizing them. " + _DECLARED_SOURCE_INPUT_REMEDY
+        )
+    input_names = set(engine.variables())
 
     fills, drift_warnings, violations = [], [], []
     for entity in frame.entities:
@@ -549,7 +601,7 @@ def fill_reviewed_nulls(
                     for spine in sorted(map(str, table[tag].dropna().unique()))
                     if int((missing & table[tag].eq(spine)).sum())
                 }
-            if (entity, column) not in register:
+            if column in declared or (entity, column) not in register:
                 violations.append(
                     {
                         "entity": entity,
@@ -557,6 +609,7 @@ def fill_reviewed_nulls(
                         "missing_rows": n_missing,
                         "rows": len(table),
                         "missing_rows_by_spine": by_spine,
+                        "declared_dataset_source_input": column in declared,
                     }
                 )
                 continue
@@ -618,11 +671,17 @@ def fill_reviewed_nulls(
             f"by spine {v['missing_rows_by_spine']})"
             for v in violations
         )
-        raise UnregisteredNullError(
+        message = (
             f"{len(violations)} engine-input column(s) carry NaN but are NOT "
             "in the reviewed_engine_input_nulls register — artifact defect, "
             f"refusing to fill: {detail}"
         )
+        if any(v["declared_dataset_source_input"] for v in violations):
+            raise DeclaredSourceInputNullError(
+                f"{message}. A declared dataset source input may not be "
+                "defaulted. " + _DECLARED_SOURCE_INPUT_REMEDY
+            )
+        raise UnregisteredNullError(message)
     return fills, drift_warnings
 
 
@@ -2168,6 +2227,49 @@ def _resample_like_materialize(frame, identity: dict):
     return sampled
 
 
+def _with_live_stored_inputs(frame):
+    """Move the donor's retired stored inputs to the installed engine's live ones.
+
+    :func:`microcosm.build.us_runtime.retired_stored_inputs.with_live_stored_inputs`
+    owns the rule; the engine is the installed policyengine-us, the one the
+    package stage checks the artifact against and records as built-with. Only
+    ACS-spine people may lack a WIC take-up decision: the staging builder
+    generates none for them (microcosm#1154), and every donor row carries its
+    own.
+    """
+
+    from microcosm.build.us_runtime.acs_pums import ACS_2024_1YR_SPINE
+    from microcosm.build.us_runtime.base_pool import spine_column
+    from microcosm.build.us_runtime.retired_stored_inputs import (
+        with_live_stored_inputs,
+    )
+    from microcosm.data import stored_inputs
+
+    person = frame.table("person")
+    tag = spine_column("person")
+    if tag not in person.columns:
+        raise SystemExit(
+            f"Refusing to write the consumer artifact: the person table has no "
+            f"{tag!r}, so it cannot show which people may lack a WIC decision."
+        )
+    acs_spine = person[tag].eq(ACS_2024_1YR_SPINE).fillna(False).to_numpy(dtype=bool)
+
+    try:
+        engine = stored_inputs.installed_us_engine()
+    except ImportError as error:
+        raise SystemExit(
+            "Refusing to write the consumer artifact: the installed "
+            "policyengine-us cannot be imported, so its retired stored inputs "
+            f"cannot be moved to the live ones: {error}"
+        ) from error
+    try:
+        return with_live_stored_inputs(
+            frame, engine_variables=engine.variables, may_lack_decision=acs_spine
+        )
+    except ValueError as error:
+        raise SystemExit(f"Refusing to write the consumer artifact: {error}") from error
+
+
 def _write_calibrated_artifact(
     args, weights: np.ndarray, identity: dict, settings: dict
 ) -> None:
@@ -2216,6 +2318,11 @@ def _write_calibrated_artifact(
         manifest_path=args.checkpoint_dir / "consumer_reviewed_null_fills.json",
         period=PERIOD,
     )
+    # microcosm#1263: the donor stores two retired engine inputs that the
+    # stored-inputs contract refuses at package time; store them as its
+    # register prescribes.
+    live_inputs = _with_live_stored_inputs(projected)
+    projected = live_inputs.frame
     calibrated = Frame(
         {entity: projected.table(entity) for entity in projected.entities},
         projected.schema,
@@ -2242,6 +2349,7 @@ def _write_calibrated_artifact(
                 "held_back_total": sum(len(v) for v in dropped.values()),
                 "filled_columns": len(fills),
                 "total_values_filled": sum(f["filled_rows"] for f in fills),
+                "live_stored_inputs": live_inputs.provenance,
                 "note": (
                     "The engine-pass contract (input-schema projection + "
                     "reviewed-null default fill) is applied to the published "
@@ -2466,10 +2574,93 @@ def _ess_concentration_limitation(diagnostics: dict) -> dict:
     }
 
 
+#: Donor releases verified free of the microcosm#1178 Social Security erasure.
+#: Before microcosm#1186 (merged 980282520), the PUF-support finalizer replaced
+#: CPS-reported Social Security with the PUF prediction, so a zero prediction
+#: erased a CPS reporter's benefit; on the national default
+#: populace-us-2024-spm-20260915 that erased 4,495 PUF-support records. The
+#: fix runs where a national base is built. The ACS staging takes its donor
+#: as a finished H5 and never re-runs it, so a release inherits whatever its
+#: donor carries. The register is empty: every published US national release
+#: predates #1186. Add a donor's release id only after checking its
+#: PUF-support CPS reporters keep their reported benefit; until then the
+#: release discloses the inherited erasure.
+DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE: frozenset[str] = frozenset()
+
+
+def _social_security_erasure_limitation(donor_release: dict) -> dict | None:
+    """The inherited microcosm#1178 erasure, unless the donor is verified free."""
+
+    release_id = donor_release.get("release_id")
+    if release_id in DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE:
+        return None
+    return {
+        "id": "social_security_cps_reporters_erased_inherited",
+        "status": "reviewed_inherited_defect",
+        "issue": "microcosm#1178",
+        "fixed_by": "microcosm#1186 (980282520), in the national base build",
+        "donor_release": release_id,
+        "affected_spines": ["asec_puf", "acs_2024_1yr"],
+        "reason": (
+            "The donor was built before microcosm#1186, so its PUF-support "
+            "records carry the microcosm#1178 erasure of CPS-reported Social "
+            "Security: on the national default populace-us-2024-spm-20260915 "
+            "(the parent of the reported-receipt donor, which keeps every "
+            "existing field's bytes and adds three receipt columns), 4,495 "
+            "PUF-support records lost "
+            "their reported benefit, while no ASEC-arm record did. Donor rows "
+            "enter this artifact as they are, and the ACS transfer learns the "
+            "Social Security components from those donor rows, so ACS rows "
+            "can inherit the distortion; its size on this artifact is not "
+            "measured."
+        ),
+        "treatment": (
+            "Refresh this artifact against the first national release built "
+            "after microcosm#1186 (its refresh_recipe re-runs the chain with "
+            "that release as the donor), then add the donor's release id to "
+            "DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE once its PUF-support CPS "
+            "reporters are checked."
+        ),
+        "calibration_blocker": False,
+    }
+
+
+def _acs_wic_takeup_limitation(consumer_export: dict | None) -> dict | None:
+    """The interim WIC take-up assumption for ACS people, when it was applied."""
+
+    wic = ((consumer_export or {}).get("live_stored_inputs") or {}).get("wic") or {}
+    assumed = wic.get("people_assumed_true")
+    if not assumed:
+        return None
+    return {
+        "id": "acs_wic_takeup_assumed_interim",
+        "status": "reviewed_interim_assumption",
+        "issue": "microcosm#1154",
+        "affected_spines": ["acs_2024_1yr"],
+        "column": wic.get("to"),
+        "people_assumed_true": assumed,
+        "reason": (
+            "The staging builder generates no WIC take-up decision for ACS "
+            "people, and the donor stores its decisions under the retired "
+            f"input name {wic.get('from')!r}, which the installed "
+            "policyengine-us ignores. The consumer artifact stores them as "
+            f"{wic.get('to')!r}: every donor decision is kept, and every ACS "
+            "person is set to take WIC up when eligible. That is the engine's "
+            "default and the assumption policyengine.py applies to the same "
+            "cells today; it is a modelling assumption, not observed "
+            "participation."
+        ),
+        "treatment": wic.get("flip_condition"),
+        "calibration_blocker": False,
+    }
+
+
 def finalize_reviewed_limitations(
     staging_summary: dict,
     diagnostics: dict,
     spine_qa: dict,
+    *,
+    consumer_export: dict | None = None,
 ) -> list[dict]:
     """The reviewed-limitations register for the buildo-acs-local lineage.
 
@@ -2578,6 +2769,12 @@ def finalize_reviewed_limitations(
             "calibration_blocker": False,
         },
     ]
+    social_security = _social_security_erasure_limitation(donor_release)
+    if social_security is not None:
+        limitations.append(social_security)
+    acs_wic = _acs_wic_takeup_limitation(consumer_export)
+    if acs_wic is not None:
+        limitations.append(acs_wic)
     deduped: dict[str, dict] = {}
     for limitation in limitations:
         deduped[limitation["id"]] = limitation
@@ -2920,7 +3117,9 @@ def do_finalize(args) -> None:
         "artifact_sha256": spine_qa.get("artifact_sha256"),
     }
 
-    limitations = finalize_reviewed_limitations(staging_summary, diagnostics, spine_qa)
+    limitations = finalize_reviewed_limitations(
+        staging_summary, diagnostics, spine_qa, consumer_export=consumer_export
+    )
     limitations += state_cd_reviewed_limitations(materialize_rss)
     hard_failures = [
         name
@@ -3080,6 +3279,65 @@ def _require_stored_inputs(calibrated_h5: Path) -> dict[str, object]:
     return {"passed": True, "failures": [], "engine": engine.label, **summary}
 
 
+def _require_spm_measurement(frame) -> dict[str, object]:
+    """Refuse an artifact on which an SPM measurement would crash.
+
+    microcosm#1263: spm-calculator refuses a whole simulation's SPM measurement
+    when one unit it measures has no classified adult, and every US state
+    region on the 2026-09-23 release did. The gate
+    (:func:`microcosm.build.us_runtime.spm_measurement_gate.check_release_spm_measurement`)
+    grades the calibrated frame against the installed policyengine-us, the
+    engine the release records as built-with: it measures every unit unless it
+    scopes SPM by measurement universe. The gate also requires the stored SPM
+    independence role to be complete. Whether the engine scopes is read from
+    its variables and must agree with the publisher's reviewed register
+    (``microcosm.data.contract.US_SPM_UNIVERSE_SCOPING_MODEL_VERSIONS``).
+
+    Returns the gate entry the release's gate summary records.
+    """
+
+    from microcosm.build.us_runtime import spm_measurement_gate
+    from microcosm.data import stored_inputs
+
+    try:
+        engine = stored_inputs.installed_us_engine()
+    except ImportError as error:
+        raise SystemExit(
+            "Refusing to package: the installed policyengine-us cannot be "
+            "imported, so the SPM measurement cannot be graded against the "
+            f"engine the release records as built-with: {error}"
+        ) from error
+    scopes = spm_measurement_gate.engine_scopes_spm_universe(engine.variables)
+    reviewed = us_engine_scopes_spm_universe(engine.label)
+    if scopes != reviewed:
+        # The publisher reads JSON only and trusts the reviewed register, so
+        # the engine's behaviour and the register must agree before a verdict
+        # graded on either is recorded.
+        raise SystemExit(
+            f"Refusing to package: {engine.label} "
+            f"{'defines' if scopes else 'does not define'} "
+            "spm_unit_spm_universe_status, but the reviewed register "
+            "microcosm.data.contract.US_SPM_UNIVERSE_SCOPING_MODEL_VERSIONS "
+            f"says it {'scopes' if reviewed else 'does not scope'} SPM "
+            "measurement by universe. Read that engine's scoped threshold "
+            "formulas and update the register before packaging against it."
+        )
+    result = spm_measurement_gate.check_release_spm_measurement(
+        frame, engine_scopes_universe=scopes
+    )
+    if not result.passed:
+        raise SystemExit(
+            "Refusing to package: the SPM measurement gate failed: "
+            + "; ".join(result.failures)
+        )
+    return {
+        "passed": True,
+        "failures": [],
+        "engine": engine.label,
+        "details": dict(result.details),
+    }
+
+
 def do_package(args) -> dict:
     diagnostics = _load_json(args.checkpoint_dir / "calibration_summary.json")
     diagnostics_status = diagnostics.get("calibration_diagnostics")
@@ -3165,7 +3423,6 @@ def do_package(args) -> dict:
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     release_id = f"{RELEASE_ID_PREFIX}-{code['sha']}-{timestamp}"
     release_dir = args.out / "releases" / release_id
-    release_dir.mkdir(parents=True, exist_ok=True)
 
     gates = gate_report.get("gates")
     hours_gate = gates.get("hours_worked_signal") if isinstance(gates, dict) else None
@@ -3192,9 +3449,12 @@ def do_package(args) -> dict:
             "an old simulation_ready summary is insufficient. Re-run --stage "
             "finalize."
         )
-    hours_frame = _load_staging_frame(calibrated_h5)
-    package_hours_gate = _local_hours_gate(hours_frame, staging_summary)
-    del hours_frame
+    artifact_frame = _load_staging_frame(calibrated_h5)
+    # microcosm#1263: the bytes must also be measurable by the engine the
+    # release records as built-with.
+    spm_measurement_gate = _require_spm_measurement(artifact_frame)
+    package_hours_gate = _local_hours_gate(artifact_frame, staging_summary)
+    del artifact_frame
     gc.collect()
     if not package_hours_gate.passed:
         raise SystemExit(
@@ -3211,10 +3471,20 @@ def do_package(args) -> dict:
                 "artifact_sha256": h5_sha,
                 "checked_at_stage": "package",
             },
-            "stored_inputs": {
+            # microcosm#1034: the publisher requires this gate of every US
+            # local-area release, bound to the built-with engine and to the
+            # microdata sha the manifest below pins.
+            US_STORED_INPUTS_EVIDENCE_KEY: {
                 **stored_inputs_gate,
                 "artifact_sha256": h5_sha,
-                "checked_at_stage": "package",
+                "checked_at_stage": US_LOCAL_AREA_STORED_INPUTS_STAGE,
+            },
+            # microcosm#1263: the publisher requires this gate of every US
+            # local-area release too, bound to the same bytes.
+            US_SPM_MEASUREMENT_EVIDENCE_KEY: {
+                **spm_measurement_gate,
+                "artifact_sha256": h5_sha,
+                "checked_at_stage": US_LOCAL_AREA_SPM_MEASUREMENT_STAGE,
             },
         },
     }
@@ -3357,6 +3627,9 @@ def do_package(args) -> dict:
             "fills must ship with their evidence."
         )
     contract_files["consumer_reviewed_null_fills.json"] = consumer_fills
+    # Created only after every gate above has passed, so a refused artifact
+    # leaves no release directory behind.
+    release_dir.mkdir(parents=True, exist_ok=True)
     for name, payload in contract_files.items():
         (release_dir / name).write_text(json.dumps(payload, indent=1))
     if diagnostics_status["status"] == "available":

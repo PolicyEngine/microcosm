@@ -370,6 +370,10 @@ from microcosm.calibrate.diagnostics import (
 from microcosm.data.contract import (
     EVIDENCE_RELEASE_ID_SEGMENT,
     EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION,
+    US_FISCAL_STORED_INPUTS_STAGE,
+    US_STORED_INPUTS_EVIDENCE_KEY,
+    US_STORED_INPUTS_EVIDENCE_SCHEMA_VERSION,
+    stored_input_evidence_manifest_block,
 )
 from microcosm.data.stored_inputs import (
     US_STORED_NON_VARIABLE_COLUMNS,
@@ -7201,7 +7205,7 @@ def _stored_input_gate_failures(
                 "stored tables cannot be listed, so its columns cannot be "
                 f"checked against the engine: {error}"
             ],
-            {"evaluated": False, "error": str(error)},
+            {"evaluated": False, "error": f"{type(error).__name__}: {error}"},
         )
     try:
         engine = installed_us_engine()
@@ -7213,7 +7217,7 @@ def _stored_input_gate_failures(
                 "checked against the engine it is certified against: "
                 f"{error}"
             ],
-            {"evaluated": False, "error": str(error)},
+            {"evaluated": False, "error": f"{type(error).__name__}: {error}"},
         )
     columns = {column for names in stored.values() for column in names}
     details: dict[str, object] = {
@@ -7302,6 +7306,50 @@ def _written_stored_input_verdict_mismatch(
         "release_engine.write_dataset stores; fix the model before this H5 "
         "is certified."
     )
+
+
+def _record_stored_inputs_gate_evidence(
+    release_dir: Path,
+    *,
+    failures: Sequence[str],
+    details: Mapping[str, object],
+    telemetry: _TerminalBatchProgress,
+) -> dict[str, object]:
+    """Write the stored-input gate's verdict as release evidence (microcosm#1034).
+
+    :func:`_stored_input_gate_failures` once recorded its verdict only in run
+    telemetry, so a published release could not show from its own files that
+    the check ran, against which engine, or with which register. This writes
+    ``stored_inputs.json`` in the shape of the other gate-evidence files: the
+    failure lines exactly as they joined the batched raise, ``passed`` exactly
+    when there are none, and the gate's details (the engine label, the register
+    digest, the registered non-variables and refused columns, or why the gate
+    could not evaluate). :func:`_build_manifests` binds the file as a
+    ``release_manifest.json`` artifact, records it as ``bound`` in both
+    manifests' ``gate_evidence`` block, and projects it into both manifests'
+    ``stored_inputs`` block (:func:`microcosm.data.contract.
+    stored_input_evidence_manifest_block`) for the H5 they pin. The publisher
+    requires all three of every US national calibration release.
+
+    The stored-input gate has no waiver, so ``enforced`` is always true; an
+    evidence release carries its refusal lines verbatim in ``known_failures``
+    as well, which the publisher checks.
+    """
+
+    payload: dict[str, object] = {
+        "schema_version": US_STORED_INPUTS_EVIDENCE_SCHEMA_VERSION,
+        "enforced": True,
+        "checked_at_stage": US_FISCAL_STORED_INPUTS_STAGE,
+        US_STORED_INPUTS_EVIDENCE_KEY: {
+            "passed": not failures,
+            "failures": list(failures),
+            "details": dict(details),
+        },
+    }
+    path = release_dir / "stored_inputs.json"
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    telemetry.attach_artifact(US_STORED_INPUTS_EVIDENCE_KEY, path)
+    return payload
 
 
 def _with_l0_refit_weights(base_frame: Frame, result) -> Frame:
@@ -10034,6 +10082,10 @@ US_RELEASE_GATE_EVIDENCE_FILES: dict[str, str] = {
     "input_mass_parity": "input_mass_parity.json",
     "qrf_tail_concentration": "qrf_tail_concentration.json",
     "reform_coverage_smoke": "reform_coverage_smoke.json",
+    # microcosm#1034: the key and file are the contract's
+    # US_STORED_INPUTS_EVIDENCE_KEY / US_STORED_INPUTS_EVIDENCE_FILE, which
+    # the publisher requires bound; a test pins the two together.
+    "stored_inputs": "stored_inputs.json",
 }
 
 #: Key under which ``us_source_coverage.json`` carries the fiscal-target
@@ -10120,6 +10172,26 @@ def _qrf_tail_register_manifest_block(release_dir: Path) -> dict[str, object] | 
         },
         "enforced": payload["enforced"],
     }
+
+
+def _stored_inputs_manifest_block(
+    release_dir: Path, *, dataset_sha256: str
+) -> dict[str, object] | None:
+    """The stored-input verdict, as the gate recorded it, for the pinned H5.
+
+    Read back from ``stored_inputs.json`` rather than rebuilt, so the manifests
+    carry the verdict the gate actually reached. ``_main`` writes the
+    manifests only after the post-write check found the written H5 earns that
+    verdict, so binding it to ``dataset_sha256`` (the bytes the manifests pin)
+    states what was checked. ``None`` when the gate never wrote its evidence.
+    """
+
+    path = release_dir / US_RELEASE_GATE_EVIDENCE_FILES["stored_inputs"]
+    if not path.is_file():
+        return None
+    return stored_input_evidence_manifest_block(
+        json.loads(path.read_text()), dataset_sha256=dataset_sha256
+    )
 
 
 def _fiscal_target_exclusion_receipt_reference(
@@ -10472,6 +10544,9 @@ def _build_manifests(
     # ride build_manifest.json and release_manifest.json's build section.
     gate_evidence_artifacts = _gate_evidence_artifacts(release_dir, revision=release_id)
     qrf_tail_register = _qrf_tail_register_manifest_block(release_dir)
+    stored_inputs = _stored_inputs_manifest_block(
+        release_dir, dataset_sha256=dataset_sha
+    )
     evidence_bindings: dict[str, object] = {
         "gate_evidence": _gate_evidence_status(
             gate_evidence_artifacts, skipped_gates=skipped_gates
@@ -10481,6 +10556,7 @@ def _build_manifests(
             if qrf_tail_register is not None
             else {}
         ),
+        **({"stored_inputs": stored_inputs} if stored_inputs is not None else {}),
         **(
             {"export_input_mass_reference": dict(export_input_mass_reference)}
             if export_input_mass_reference is not None
@@ -15454,7 +15530,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # the verdict joins the one batched pre-export raise below, so a refusal
     # names every other failing gate too and mints no H5.
     stored_input_failures_, export_frame_stored_inputs = _stored_input_gate_failures(
-        export_frame, stage="export frame"
+        export_frame, stage=US_FISCAL_STORED_INPUTS_STAGE
     )
     terminal_gate_failures.extend(stored_input_failures_)
     terminal_batch_telemetry.stage(
@@ -15485,6 +15561,17 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # this run skips) would otherwise be certified as this run's own.
     for stale_gate_evidence in US_RELEASE_GATE_EVIDENCE_FILES.values():
         (release_dir / stale_gate_evidence).unlink(missing_ok=True)
+    # microcosm#1034: the stored-input verdict above is release evidence, not
+    # only telemetry. Written once the clear loop has run (so it is this run's
+    # own) and before the batched raise (so a refused run keeps it locally,
+    # like its siblings); _build_manifests binds it and the publisher requires
+    # it of every US national calibration release.
+    _record_stored_inputs_gate_evidence(
+        release_dir,
+        failures=stored_input_failures_,
+        details=export_frame_stored_inputs,
+        telemetry=terminal_batch_telemetry,
+    )
     # microcosm#368: full eCPS input-column coverage as a HARD release gate.
     # Every input column the reference eCPS exports must be persisted by the
     # export as a key with non-default signal, or carry a reviewed exclusion.

@@ -608,6 +608,7 @@ class TakeupGapKernel(KernelBase):
     _optional = frozenset(
         {
             "facts_sha256",
+            "chronicle_feed_pin",
             "annualisation_sha256",
             "source_household_column",
             "cell_support",
@@ -683,6 +684,11 @@ class TakeupGapKernel(KernelBase):
             expected_facts_sha256=(
                 sha256_param(context, self.ref, "facts_sha256")
                 if "facts_sha256" in context.params
+                else None
+            ),
+            feed_pin=(
+                canonical_document_param(context, self.ref, "chronicle_feed_pin")
+                if "chronicle_feed_pin" in context.params
                 else None
             ),
         )

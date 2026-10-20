@@ -1,7 +1,9 @@
 """Declared uprating of UK imputation donors to the base year (microcosm#890 U).
 
-The LCFS 2023-24 and ETB FYE-2024 donors are one year behind the FRS 2024-25
-spine. Each stage declares an ``uprate_donor_columns`` operation naming, per
+The LCFS 2024-25 and ETB FYE-2024 donors sit off the FRS 2024-25 spine's
+calendar-2024 price basis: the LCFS diary year is placed on the calendar-year
+index at three quarters and one quarter (microcosm#1113), a quarter past
+calendar 2024 (microcosm#1164), and the ETB year moves a full step. Each stage declares an ``uprate_donor_columns`` operation naming, per
 column, the basis that moves it from ``from_period`` to ``to_period``:
 
 * ``engine_parameter`` — the ratio of a PolicyEngine UK parameter at the two
@@ -12,7 +14,9 @@ column, the basis that moves it from ``from_period`` to ``to_period``:
   year beginning in ``from_period``, placed on the calendar-year index by the
   operation's ``fiscal_year_bridge`` weights (three quarters in the starting
   year, one in the next), and ends at calendar ``to_period`` (microcosm#1113:
-  a full step would carry a 2023-24 diary a quarter past calendar 2024);
+  a full step would carry a 2023-24 diary a quarter past calendar 2024). A
+  diary year that starts in ``to_period`` takes a factor below one, a quarter
+  back to the calendar year;
 * ``vendored_litre_proxy`` — publisher outturn for road fuel: the DESNZ annual
   pump-price ratio times the HMRC fiscal-year litres ratio over the ONS
   population ratio, all read from the vendored Chronicle facts (María's ruling
@@ -137,7 +141,12 @@ def donor_uprating_factors(
                 _require_positive(column, before, following)
                 base = bridge[0] * before + bridge[1] * following
                 factor = after / base
-                detail.update({"from_window": window, "base": base})
+                # The following year's index is recorded so base can be
+                # recomputed when it is not ``after`` (a diary year that starts
+                # in the target year, as LCFS 2024-25 does for 2024).
+                detail.update(
+                    {"from_window": window, "base": base, "following": following}
+                )
         elif basis == BASIS_VENDORED_LITRE_PROXY:
             factor, detail = _litre_proxy_factor(spec, from_period, to_period)
             audit_path = spec.get("audit_parameter_path")
@@ -347,9 +356,12 @@ def _engine_index_audit(
 ) -> dict[str, Any]:
     """Record the engine's own index ratio beside the applied outturn factor.
 
-    The engine's ``*_spending_litre_proxy`` indices are not applied (they
-    reproduce its 2023 pump-price parameters, which disagree with DESNZ);
-    the ratio is recorded so the divergence stays visible in the evidence.
+    The engine's ``*_spending_litre_proxy`` indices are not applied. Up to
+    policyengine-uk 2.126.10 they reproduced its 2023 pump-price parameters,
+    which disagreed with DESNZ; 2.126.11 re-based them on DESNZ pump prices
+    (PolicyEngine/policyengine-uk#2186), and they still differ from the
+    outturn applied here. The ratio is recorded so the divergence stays
+    visible in the evidence.
     """
 
     before = reader(path, from_period)

@@ -34,7 +34,8 @@ Declared options, each a real feature (and each its own test):
   ``l0_lambda`` (a bisection on its log) so the achieved non-zero count tracks
   ``target_records``, and reports the penalty it settled on — the
   generate-big-then-prune path. A supplied ``l0_lambda`` is the search's warm
-  start.
+  start. ``budget_search_bracket`` bounds the penalties it may probe (default
+  ``[1e-7, 10]``); a warm start outside it is refused, never clamped.
 - ``l0_lambda`` alone (no ``target_records``) prunes at a fixed penalty: ``> 0``
   gates the pool, ``0.0`` keeps every record. It is the sole control when no
   budget is given.
@@ -196,9 +197,35 @@ _PRUNE_REL_ATOL = 1e-6
 #: Bracket for the ``l0_lambda`` budget search (Finding 3). The achieved non-zero
 #: count is monotone decreasing in ``l0_lambda``; this bracket spans
 #: "essentially no pruning" to "prune almost everything" across sparse-weight
-#: regimes. The search bisects on ``log10(l0_lambda)`` inside it.
+#: regimes. The search bisects on ``log10(l0_lambda)`` inside it. It is the
+#: default of ``calibrate(budget_search_bracket=...)``; a caller whose pool
+#: needs a smaller penalty passes its own bracket (microcosm#1301: the UK
+#: local size search at K=15 and 150,000 households, whose open mass at
+#: 1e-7 falls short of the budget).
 _L0_SEARCH_LO = 1e-7
 _L0_SEARCH_HI = 1e1
+DEFAULT_L0_SEARCH_BRACKET: tuple[float, float] = (_L0_SEARCH_LO, _L0_SEARCH_HI)
+
+#: Two penalties within this many decades of each other are one probe: the
+#: search never spends an optimization on a penalty it has already measured
+#: (microcosm#1301: the 100,000-household search re-ran 1e-7 on a bracket that
+#: had collapsed onto the floor).
+_L0_SAME_PROBE_DECADES = 1e-6
+
+#: Why a ``target_records`` budget search stopped, as both its receipt and its
+#: closing ``budget_search_done`` event record it. A run within tolerance (and
+#: drawable, when the search asks) stops on ``acceptable_within_tolerance``.
+#: Otherwise the search names what ended it: a probe on the lower (upper)
+#: bound of the bracket that still asks for a smaller (larger) penalty is
+#: ``search_floor_reached`` (``search_ceiling_reached``), since no penalty
+#: inside the bracket moves the measure further that way; a bracket narrowed
+#: onto an already-probed penalty is ``bracket_exhausted``; and a search that
+#: spent every probe is ``budget_exhausted``.
+BUDGET_STOP_ACCEPTABLE = "acceptable_within_tolerance"
+BUDGET_STOP_EXHAUSTED = "budget_exhausted"
+BUDGET_STOP_FLOOR = "search_floor_reached"
+BUDGET_STOP_CEILING = "search_ceiling_reached"
+BUDGET_STOP_BRACKET = "bracket_exhausted"
 
 #: Number of outer iterations (full optimizations) the budget search may spend
 #: bisecting ``l0_lambda``. Each iteration is one ``_optimize`` run, so this caps
@@ -209,9 +236,9 @@ _DEFAULT_BUDGET_ITERS = 10
 #: Warm start (microcosm#1115): with a user-supplied ``initial_lambda`` the
 #: budget search probes it first and, when that probe misses, brackets the
 #: budget within this many decades of it before interpolating, instead of
-#: re-bisecting the whole ``[_L0_SEARCH_LO, _L0_SEARCH_HI]`` range. Half a
-#: decade (a factor 3.16 either way) covers the drift of a re-solved pool; a
-#: miss beyond it hands the search the global bracket on that side.
+#: re-bisecting the whole search bracket. Half a decade (a factor 3.16 either
+#: way) covers the drift of a re-solved pool; a miss beyond it hands the
+#: search the rest of the bracket on that side.
 _L0_WARM_SPAN_DECADES = 0.5
 #: What the ``target_records`` budget search measures against the budget.
 BUDGET_BASIS_NONZERO_COUNT = "nonzero_count"
@@ -829,9 +856,11 @@ def _target_loss_scale_options(
     *,
     kind: str,
     target_loss_cap: float,
+    targets: np.ndarray | None = None,
+    target_loss_weights: np.ndarray | None = None,
 ) -> Mapping[str, object]:
     scales = np.asarray(target_loss_scales, dtype=np.float64)
-    return {
+    options: dict[str, object] = {
         "kind": kind,
         "formula": "weighted_mean(min(abs((estimate - target) / scale), cap))",
         "cap": float(target_loss_cap),
@@ -839,6 +868,48 @@ def _target_loss_scale_options(
         "min": float(scales.min()),
         "median": float(np.median(scales)),
         "max": float(scales.max()),
+    }
+    if targets is not None:
+        options["zero_targets"] = zero_target_loss_census(
+            targets, scales, target_loss_weights
+        )
+    return options
+
+
+def zero_target_loss_census(
+    targets: np.ndarray,
+    target_loss_scales: np.ndarray,
+    target_loss_weights: np.ndarray | None = None,
+) -> Mapping[str, object]:
+    """How the loss treats the zero-valued targets (microcosm#104).
+
+    A zero target is a real fact (no recipients of a benefit in an area, no
+    dwellings in a band) and must stay in the loss: the default scale
+    ``max(abs(target), 1)`` gives it one unit of its measure basis, so a
+    positive estimate is charged its full miss rather than ignored. The census
+    reports how many rows are zero, the scales they carry and the loss weight
+    each receives (uniform weights are one), so a weighting scheme that
+    silently zeroes them is visible in the diagnostics.
+    """
+
+    values = np.asarray(targets, dtype=np.float64)
+    scales = np.asarray(target_loss_scales, dtype=np.float64)
+    zero = values == 0.0
+    count = int(zero.sum())
+    if not count:
+        return {"n": 0}
+    weights = (
+        np.ones_like(values)
+        if target_loss_weights is None
+        else np.asarray(target_loss_weights, dtype=np.float64)
+    )
+    return {
+        "n": count,
+        "scale_min": float(scales[zero].min()),
+        "scale_max": float(scales[zero].max()),
+        "loss_weight_min": float(weights[zero].min()),
+        "loss_weight_max": float(weights[zero].max()),
+        "zero_weighted": int((weights[zero] == 0.0).sum()),
     }
 
 
@@ -988,6 +1059,7 @@ def _optimize(
     progress_context: Mapping[str, object] | None = None,
     return_gate_open_probabilities: bool = False,
     selection_receipt: dict[str, object] | None = None,
+    retain_best_objective: bool = False,
 ) -> tuple[np.ndarray, np.ndarray] | tuple[np.ndarray, np.ndarray, np.ndarray | None]:
     """Run the torch optimization and return weights plus its trajectory.
 
@@ -1085,7 +1157,14 @@ def _optimize(
         w0_t = None
         anchor_share_t = None
 
-    retain_best = gates is None and not conserve_mass and l2_lambda == 0.0
+    # Without an L2 penalty the solve keeps its best target-loss epoch. With
+    # one, ``retain_best_objective`` keeps the epoch with the lowest objective
+    # the optimizer minimizes (target loss plus the weighted penalty); without
+    # it the closing state is returned, as before.
+    track_objective = l2_lambda != 0.0 and retain_best_objective
+    retain_best = (
+        gates is None and not conserve_mass and (l2_lambda == 0.0 or track_objective)
+    )
     best_loss = float("inf")
     best_epoch = 0
     best_log_w: torch.Tensor | None = None
@@ -1122,8 +1201,13 @@ def _optimize(
             l2_penalty = _l2_penalty(torch.exp(log_w), w0_t, anchor_share_t, l2_basis)
         total_loss = loss + penalty + l2_lambda * l2_penalty
         trajectory[epoch] = float(loss.item())
-        if retain_best and trajectory[epoch] < best_loss:
-            best_loss = trajectory[epoch]
+        tracked = (
+            float((loss + l2_lambda * l2_penalty).item())
+            if track_objective
+            else trajectory[epoch]
+        )
+        if retain_best and tracked < best_loss:
+            best_loss = tracked
             best_epoch = epoch
             best_log_w = log_w.detach().clone()
         if progress_callback is not None:
@@ -1189,6 +1273,10 @@ def _optimize(
                 target_loss_scales,
                 target_loss_cap,
             )
+            if track_objective:
+                closing_loss = closing_loss + l2_lambda * _l2_penalty(
+                    weights, w0_t, anchor_share_t, l2_basis
+                )
             if float(closing_loss.item()) > best_loss:
                 # retain_best requires free mass, so never under softmax.
                 assert not softmax_mass, "best-iterate retention under softmax"
@@ -1201,7 +1289,11 @@ def _optimize(
             if selection_receipt is not None:
                 selection_receipt.update(
                     {
-                        "rule": "best_feasible_loss",
+                        "rule": (
+                            "best_feasible_objective"
+                            if track_objective
+                            else "best_feasible_loss"
+                        ),
                         "selected_epoch": selected_epoch,
                         "epochs_executed": epochs,
                         "epoch_convention": "completed_optimizer_updates; zero is start",
@@ -1360,6 +1452,41 @@ def _optimize_proximal(
     return final, trajectory
 
 
+def _check_l0_search_bracket(bracket: object) -> tuple[float, float]:
+    """A ``(lower, upper)`` penalty bracket: two finite numbers, ``0 < lower < upper``."""
+
+    if (
+        not isinstance(bracket, tuple | list)
+        or len(bracket) != 2
+        or any(
+            isinstance(bound, bool)
+            or not isinstance(bound, int | float)
+            or not math.isfinite(bound)
+            for bound in bracket
+        )
+        or not (0.0 < float(bracket[0]) < float(bracket[1]))
+    ):
+        raise ValueError(
+            "budget_search_bracket must be (lower, upper) with finite "
+            f"0 < lower < upper, got {bracket!r}."
+        )
+    return float(bracket[0]), float(bracket[1])
+
+
+def _check_warm_start_in_bracket(
+    initial_lambda: float, bracket: tuple[float, float]
+) -> None:
+    """Refuse a warm-start penalty outside the search bracket, never clamp it."""
+
+    lower, upper = bracket
+    if not (lower <= float(initial_lambda) <= upper):
+        raise ValueError(
+            f"initial_lambda {initial_lambda!r} lies outside the L0 search "
+            f"bracket [{lower!r}, {upper!r}]; a warm start is refused there, "
+            "never clamped. Pass a budget_search_bracket that contains it."
+        )
+
+
 def _search_l0_lambda_for_budget(
     matrix: torch.Tensor,
     targets: torch.Tensor,
@@ -1389,6 +1516,7 @@ def _search_l0_lambda_for_budget(
     budget_basis: str = BUDGET_BASIS_NONZERO_COUNT,
     feasible_draw_pi_hi: float | None = None,
     search_receipt: dict[str, object] | None = None,
+    search_bracket: tuple[float, float] = DEFAULT_L0_SEARCH_BRACKET,
 ) -> (
     tuple[np.ndarray, np.ndarray, float, int]
     | tuple[np.ndarray, np.ndarray, float, int, np.ndarray]
@@ -1412,12 +1540,16 @@ def _search_l0_lambda_for_budget(
     Finding 3 requires: the *number* of records now enters the optimization, not
     just the penalty.
 
-    The search keeps the bracket ``[_L0_SEARCH_LO, _L0_SEARCH_HI]`` and tracks the
-    best run seen (the one whose non-zero count is closest to the budget),
-    returning it even if the bracket never pins the budget exactly — the count is
-    a noisy discrete function, so "closest within ``budget_iters`` steps" is the
-    honest contract. Stops early once the achieved count is within ``tol`` of the
-    budget, where ``tol = max(1, round(0.05 * target_records))``.
+    The search keeps inside ``search_bracket`` (``(lower, upper)`` penalties,
+    :data:`DEFAULT_L0_SEARCH_BRACKET` unless the caller passes another) and
+    tracks the best run seen (the one whose non-zero count is closest to the
+    budget), returning it even if the bracket never pins the budget exactly —
+    the count is a noisy discrete function, so "closest within ``budget_iters``
+    steps" is the honest contract. Stops early once the achieved count is
+    within ``tol`` of the budget, where ``tol = max(1, round(0.05 *
+    target_records))``. It never probes a penalty twice, and it stops with a
+    named reason when a probe on a bound of the bracket asks to go past it, or
+    the bracket narrows onto a probed penalty (see ``BUDGET_STOP_*``).
 
     ``feasible_draw_pi_hi`` (mass basis only) adds the exact-count draw's own
     inequality to the stopping rule: a probe counts as acceptable only when
@@ -1453,14 +1585,22 @@ def _search_l0_lambda_for_budget(
         seed: Reseeded before every evaluation for a deterministic response.
         prune_atol: Threshold counting a weight as non-zero (a survivor).
         initial_lambda: A user-supplied ``l0_lambda`` to evaluate first as a warm
-            start (clamped into the bracket); ``None`` starts at the bracket
-            mid-point. A warm probe that misses is followed by one probe
-            ``_L0_WARM_SPAN_DECADES`` away on the side it steered to: if that
-            edge steers back the search interpolates between the two measured
-            ends (the measure is close to log-linear in the penalty), otherwise
-            it continues on the global bracket beyond the edge. The cold path is
-            unchanged: mid-point first, then bisection.
+            start; one outside ``search_bracket`` is refused, never clamped
+            (a clamped start would probe a penalty nobody asked for while the
+            receipt recorded the one requested). ``None`` starts at the
+            bracket's log mid-point. A warm probe that misses is followed by
+            one probe ``_L0_WARM_SPAN_DECADES`` away on the side it steered to
+            (no further than the bracket's bound): if that edge steers back
+            the search interpolates between the two measured ends (the
+            measure is close to log-linear in the penalty), otherwise it
+            probes the bracket's bound beyond the edge next, which either
+            stops the search there by name or measures the far end the
+            interpolation needs. The cold path is unchanged: mid-point
+            first, then bisection.
         budget_iters: Maximum number of optimizations the search may spend.
+        search_bracket: The ``(lower, upper)`` penalties the search may probe,
+            two finite numbers with ``0 < lower < upper``. Recorded in the
+            receipt as ``search_bracket``.
 
     Returns:
         ``(weights, trajectory, l0_lambda, n_nonzero)`` of the best run found.
@@ -1468,7 +1608,11 @@ def _search_l0_lambda_for_budget(
         vector is appended. The default four-item tuple is retained for
         existing workspace callers.
     """
-    lo_u, hi_u = math.log10(_L0_SEARCH_LO), math.log10(_L0_SEARCH_HI)
+    bracket_lo, bracket_hi = _check_l0_search_bracket(search_bracket)
+    lo_u, hi_u = math.log10(bracket_lo), math.log10(bracket_hi)
+    warm = initial_lambda is not None and initial_lambda > 0
+    if warm:
+        _check_warm_start_in_bracket(initial_lambda, (bracket_lo, bracket_hi))
     if budget_basis not in BUDGET_BASES:
         raise ValueError(
             f"budget_basis must be one of {sorted(BUDGET_BASES)}, got {budget_basis!r}."
@@ -1667,44 +1811,72 @@ def _search_l0_lambda_for_budget(
             and abs(best[3] - target_records) <= tol
         )
 
+    def seen(u: float) -> bool:
+        # A penalty within _L0_SAME_PROBE_DECADES of one already measured is
+        # the same probe: the response is deterministic, so a repeat buys
+        # nothing (microcosm#1301: the 100,000-household search's third probe
+        # re-ran the floor its second had measured).
+        return any(
+            abs(u - math.log10(float(probe["l0_lambda"]))) <= _L0_SAME_PROBE_DECADES
+            for probe in probes
+        )
+
+    def bound_stop(u: float, direction: str) -> str | None:
+        # A probe on a bound of the bracket that asks to go past it: by the
+        # measure's monotonicity no penalty inside the bracket moves it
+        # further that way, so the search stops and says which bound.
+        if direction == _steer_smaller and u <= global_lo_u + _L0_SAME_PROBE_DECADES:
+            return BUDGET_STOP_FLOOR
+        if direction == _steer_larger and u >= global_hi_u - _L0_SAME_PROBE_DECADES:
+            return BUDGET_STOP_CEILING
+        return None
+
     # Warm start: evaluate the user's lambda (or the bracket mid-point) first.
-    warm = initial_lambda is not None and initial_lambda > 0
     global_lo_u, global_hi_u = lo_u, hi_u
     if warm:
-        first_u = min(max(math.log10(initial_lambda), lo_u), hi_u)
+        # Inside the bracket by the check above: refused, never clamped.
+        first_u = math.log10(initial_lambda)
     else:
         first_u = (lo_u + hi_u) / 2.0
     iters_left = budget_iters
-    n_nonzero, verdict = consider(10.0**first_u)
+    # A warm start is probed at exactly the penalty requested, so the receipt's
+    # first probe is the value the caller passed, not its log round trip.
+    n_nonzero, verdict = consider(float(initial_lambda) if warm else 10.0**first_u)
     iters_left -= 1
     # The measure at each bracket end (None while unprobed or over-pruned):
     # the warm path interpolates on them, the cold path never reads them.
     lo_m: int | None = None
     hi_m: int | None = None
     first_m = None if n_nonzero == _over_pruned else int(n_nonzero)
+    first_direction = steer(n_nonzero, verdict)
     # Seed the bracket so the side the warm start landed on is tightened. An
     # over-pruned (infeasible) probe groups with "too few survivors".
-    if steer(n_nonzero, verdict) == _steer_larger:
+    if first_direction == _steer_larger:
         lo_u, lo_m = first_u, first_m  # too many survivors -> larger penalty
     else:
         hi_u, hi_m = first_u, first_m  # too few / over-pruned -> smaller penalty
+    # A run within tolerance outranks a bound: ``stopped_on`` says so below.
+    stop_reason = bound_stop(first_u, first_direction)
     edge_probe: dict[str, object] | None = None
-    if warm and iters_left > 0 and not settled():
+    if warm and stop_reason is None and iters_left > 0 and not settled():
         # The warm probe missed. Probe _L0_WARM_SPAN_DECADES away on the side
         # it steered to: an edge that steers back closes a narrow bracket
-        # around the budget; one that steers on hands the search the global
-        # bracket beyond the edge, as a cold start would have had.
-        steered_larger = lo_u == first_u
+        # around the budget; one that steers on hands the search the rest of
+        # the bracket beyond the edge, as a cold start would have had. The
+        # side is the probe's own steer: a warm start on the floor that asks
+        # for a smaller penalty has stopped above, and is never sent upward.
+        steered_larger = first_direction == _steer_larger
         if steered_larger:
             edge_u = min(first_u + _L0_WARM_SPAN_DECADES, global_hi_u)
         else:
             edge_u = max(first_u - _L0_WARM_SPAN_DECADES, global_lo_u)
-        if edge_u != first_u:
+        if not seen(edge_u):
             n_nonzero, verdict = consider(10.0**edge_u)
             iters_left -= 1
             edge_m = None if n_nonzero == _over_pruned else int(n_nonzero)
             direction = steer(n_nonzero, verdict)
             edge_probe = {"l0_lambda": 10.0**edge_u, "steer": direction}
+            stop_reason = bound_stop(edge_u, direction)
             if steered_larger:
                 if direction == _steer_smaller:
                     hi_u, hi_m = edge_u, edge_m
@@ -1719,9 +1891,30 @@ def _search_l0_lambda_for_budget(
                     lo_u, lo_m = global_lo_u, None
 
     # Keep searching while no acceptable run is known yet, or the best is
-    # outside tolerance, until the iteration budget is spent.
-    while iters_left > 0 and not settled():
-        if warm and lo_m is not None and hi_m is not None and lo_m != hi_m:
+    # outside tolerance, until the iteration budget is spent or a bound of
+    # the bracket stops the search.
+    while stop_reason is None and iters_left > 0 and not settled():
+        if (
+            warm
+            and lo_m is None
+            and lo_u <= global_lo_u + _L0_SAME_PROBE_DECADES
+            and not seen(global_lo_u)
+        ):
+            # The warm edge still asked for a smaller penalty and handed the
+            # search the rest of the bracket down to an unmeasured floor.
+            # Probe the floor itself: it either stops the search there by
+            # name or measures the far end the interpolation needs, where a
+            # bisection toward it would spend every probe without ever
+            # reaching it (microcosm#1301).
+            mid_u = global_lo_u
+        elif (
+            warm
+            and hi_m is None
+            and hi_u >= global_hi_u - _L0_SAME_PROBE_DECADES
+            and not seen(global_hi_u)
+        ):
+            mid_u = global_hi_u  # the mirror case, on the ceiling
+        elif warm and lo_m is not None and hi_m is not None and lo_m != hi_m:
             # Interpolate on the measured ends (regula falsi with a progress
             # safeguard): bisection would spend about six probes halving a
             # decade down to the draw's window; the secant lands in one or two.
@@ -1730,6 +1923,10 @@ def _search_l0_lambda_for_budget(
             mid_u = lo_u + (hi_u - lo_u) * min(max(frac, 0.1), 0.9)
         else:
             mid_u = (lo_u + hi_u) / 2.0
+        if hi_u - lo_u <= _L0_SAME_PROBE_DECADES or seen(mid_u):
+            # The bracket has narrowed onto a penalty already measured.
+            stop_reason = BUDGET_STOP_BRACKET
+            break
         n_nonzero, verdict = consider(10.0**mid_u)
         iters_left -= 1
         mid_m = None if n_nonzero == _over_pruned else int(n_nonzero)
@@ -1740,7 +1937,16 @@ def _search_l0_lambda_for_budget(
             lo_u, lo_m = mid_u, mid_m  # too many survivors or certainties
         else:
             break
+        stop_reason = bound_stop(mid_u, direction)
 
+    stopped_on = (
+        BUDGET_STOP_ACCEPTABLE
+        if settled()
+        else stop_reason
+        if stop_reason is not None
+        else BUDGET_STOP_EXHAUSTED
+    )
+    searched_bracket = {"lower": float(bracket_lo), "upper": float(bracket_hi)}
     if progress_callback is not None:
         progress_callback(
             {
@@ -1748,9 +1954,8 @@ def _search_l0_lambda_for_budget(
                 "evaluations": int(evaluation),
                 "budget_iters": int(budget_iters),
                 "target_records": int(target_records),
-                "stopped_on": (
-                    "acceptable_within_tolerance" if settled() else "budget_exhausted"
-                ),
+                "search_bracket": dict(searched_bracket),
+                "stopped_on": stopped_on,
                 "selected_l0_lambda": None if best is None else float(best[2]),
                 "selected_measure": None if best is None else int(best[3]),
                 "selected_feasible": (
@@ -1768,6 +1973,7 @@ def _search_l0_lambda_for_budget(
                 "tolerance": int(tol),
                 "budget_iters": int(budget_iters),
                 "feasible_draw_pi_hi": feasible_draw_pi_hi,
+                "search_bracket": dict(searched_bracket),
                 "evaluations": int(evaluation),
                 "probes": probes,
                 "initial_lambda": float(initial_lambda) if warm else None,
@@ -1780,9 +1986,7 @@ def _search_l0_lambda_for_budget(
                     if best_key is None or feasible_draw_pi_hi is None
                     else best_key[0] == 0
                 ),
-                "stopped_on": (
-                    "acceptable_within_tolerance" if settled() else "budget_exhausted"
-                ),
+                "stopped_on": stopped_on,
             }
         )
 
@@ -1934,6 +2138,7 @@ def calibrate(
     init_mean: float = 0.999,
     temperature: float = 0.25,
     budget_iters: int = _DEFAULT_BUDGET_ITERS,
+    budget_search_bracket: tuple[float, float] | None = None,
     budget_basis: str = BUDGET_BASIS_NONZERO_COUNT,
     feasible_draw_pi_hi: float | None = None,
     seed: int = 0,
@@ -1942,6 +2147,7 @@ def calibrate(
     target_loss_cap: float = _DEFAULT_TARGET_LOSS_CAP,
     warm_start_weights: np.ndarray | None = None,
     progress_callback: Callable[[dict[str, object]], None] | None = None,
+    retain_best_objective: bool = False,
 ) -> CalibrationResult:
     """Calibrate ``weight_entity``'s weights to ``targets`` over ``frame``.
 
@@ -2016,7 +2222,8 @@ def calibrate(
         l0_lambda: L0 penalty strength. Used directly when ``target_records`` is
             ``None``: ``> 0`` enables hard-concrete gates that prune the pool,
             ``0.0`` (default) keeps every record. When ``target_records`` is set,
-            this is only the budget search's warm start (the search overrides it).
+            this is only the budget search's warm start (the search overrides it),
+            and it must lie inside ``budget_search_bracket``.
         l1_lambda: L1 penalty strength for ``method="prox"``. Positive values
             add ``l1_lambda * mean(weight / initial_weight)`` to the objective and
             use a proximal soft-threshold step that can drive records to exact
@@ -2068,6 +2275,14 @@ def calibrate(
         budget_iters: Maximum optimizations the ``target_records`` budget search
             may spend bisecting ``l0_lambda`` (only used when ``target_records``
             is set). Higher resolves the budget finer at a proportional cost.
+        budget_search_bracket: The ``(lower, upper)`` penalties the
+            ``target_records`` budget search may probe; ``None`` (default) is
+            :data:`DEFAULT_L0_SEARCH_BRACKET`, ``[1e-7, 10]``. A warm start
+            (``l0_lambda``) outside it is refused, never clamped. The search
+            records it in ``options["budget_search"]["search_bracket"]`` and
+            stops with ``search_floor_reached`` (``search_ceiling_reached``)
+            when a probe on its lower (upper) bound still asks for a smaller
+            (larger) penalty. Requires ``target_records``.
         seed: Seed for torch's RNG (the gate sampling), for reproducibility.
         target_loss_weights: Optional non-negative row weights aligned to the
             supplied :class:`TargetSet`. When omitted, every compiled target row
@@ -2092,6 +2307,13 @@ def calibrate(
             "calibration_epoch", "epoch": 1, "epochs": 256, "loss": ...}``.
             Build drivers use this to publish staging telemetry; calibration
             results are unchanged.
+        retain_best_objective: With ``l2_lambda > 0`` on the plain Adam path
+            (free mass, no L0), return the epoch with the lowest objective the
+            optimizer minimizes, target loss plus ``l2_lambda`` times the
+            penalty, instead of the closing state. Recorded as
+            ``options["iterate_selection"] == "best_feasible_objective"``.
+            Without an L2 penalty the solve already keeps its best target-loss
+            epoch, and the flag changes nothing.
 
     Returns:
         A :class:`CalibrationResult` with the calibrated frame, per-target
@@ -2106,7 +2328,10 @@ def calibrate(
             ``method="prox"`` is combined with L0/budget pruning or
             ``l2_lambda``, if ``l2_basis`` is unknown, if
             ``mass_parametrization`` is unknown or is ``"softmax"`` outside
-            an Adam ``mass="conserve"`` solve without L0 gates, or if no
+            an Adam ``mass="conserve"`` solve without L0 gates, if
+            ``budget_search_bracket`` is malformed or given without
+            ``target_records``, if a ``target_records`` warm start
+            (``l0_lambda``) lies outside the search bracket, or if no
             targets compile (from the matrix build).
     """
     if method == "apg":
@@ -2228,6 +2453,17 @@ def calibrate(
         )
     if budget_iters <= 0:
         raise ValueError(f"budget_iters must be positive, got {budget_iters!r}.")
+    if budget_search_bracket is not None and target_records is None:
+        raise ValueError(
+            "budget_search_bracket applies to a target_records budget search."
+        )
+    search_bracket = (
+        DEFAULT_L0_SEARCH_BRACKET
+        if budget_search_bracket is None
+        else _check_l0_search_bracket(budget_search_bracket)
+    )
+    if target_records is not None and l0_lambda > 0.0:
+        _check_warm_start_in_bracket(l0_lambda, search_bracket)
     if budget_basis not in BUDGET_BASES:
         raise ValueError(
             f"budget_basis must be one of {sorted(BUDGET_BASES)}, got {budget_basis!r}."
@@ -2393,6 +2629,7 @@ def calibrate(
             budget_basis=budget_basis,
             feasible_draw_pi_hi=feasible_draw_pi_hi,
             search_receipt=budget_search,
+            search_bracket=search_bracket,
             return_gate_open_probabilities=True,
             **(
                 {}
@@ -2426,6 +2663,7 @@ def calibrate(
             progress_callback=progress_callback,
             return_gate_open_probabilities=True,
             selection_receipt=iterate_selection_receipt,
+            retain_best_objective=retain_best_objective,
             **(
                 {}
                 if gate_initialization is None
@@ -2499,13 +2737,15 @@ def calibrate(
             "epochs": epochs,
             "learning_rate": learning_rate,
             "iterate_selection": (
-                "best_feasible_loss"
-                if method == "adam"
-                and mass == FREE_MASS
-                and l0_lambda == 0.0
-                and l2_lambda == 0.0
-                and target_records is None
-                else "closing_state"
+                "closing_state"
+                if method != "adam"
+                or mass != FREE_MASS
+                or l0_lambda != 0.0
+                or target_records is not None
+                or (l2_lambda != 0.0 and not retain_best_objective)
+                else "best_feasible_objective"
+                if l2_lambda != 0.0
+                else "best_feasible_loss"
             ),
             "iterate_selection_receipt": iterate_selection_receipt,
             "mass": mass,
@@ -2529,6 +2769,8 @@ def calibrate(
                 target_loss_scales_np,
                 kind=target_loss_scale_kind,
                 target_loss_cap=target_loss_cap,
+                targets=problem.target_vector,
+                target_loss_weights=target_loss_weights_np,
             ),
             "warm_start_weights": {
                 "enabled": warm_start_weights is not None,
@@ -2791,6 +3033,7 @@ def refit_l0_selection(
     target_loss_scales: np.ndarray | None = None,
     target_loss_cap: float = _DEFAULT_TARGET_LOSS_CAP,
     progress_callback: Callable[[dict[str, object]], None] | None = None,
+    retain_best_objective: bool = False,
 ) -> L0RefitResult:
     """Refit ordinary calibration on a frozen support from an L0 solve.
 
@@ -2976,6 +3219,7 @@ def refit_l0_selection(
         target_loss_scales=target_loss_scales,
         target_loss_cap=target_loss_cap,
         progress_callback=progress_callback,
+        retain_best_objective=retain_best_objective,
     )
     return L0RefitResult(
         selection=selection,

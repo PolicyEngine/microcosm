@@ -343,9 +343,13 @@ def test_cell_support_target_malformed_lists_are_refused_by_name(tmp_path, malfo
     if malformed == "string":
         spec = _with_cell_target(fixture, **overrides)
         _cell_support_contract(spec)["required_cells"] = cells[0]
+        # A string contract list is itself malformed, so the contract's shape
+        # check refuses it before the two copies are compared.
+        expected = "non-empty list of non-empty strings"
     else:
         spec = _with_cell_target(fixture, **overrides)
-    with pytest.raises(ValueError, match="the two must agree"):
+        expected = "the two must agree"
+    with pytest.raises(ValueError, match=expected):
         fixture.reprepare(spec).graph()
 
 
@@ -364,6 +368,62 @@ def _cell_support_contract(spec):
     return next(
         g for g in spec["resources"]["gates"]["gates"] if g["gate"] == "cell_support"
     )["parameters"]
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "minimum_cell_ess",
+        "maximum_contribution_cv",
+        "maximum_single_donor_dollar_share",
+        "target_minimum_cell_ess",
+        "target_maximum_single_donor_dollar_share",
+        "required_cells",
+        "required_scenarios",
+        "aggregation_column",
+        "required_weight_kind",
+        "required_weight_entity",
+    ],
+)
+def test_cell_support_contract_omitting_a_key_is_refused_by_name(tmp_path, key):
+    fixture = _cell_support_fixture(tmp_path)
+    spec = copy.deepcopy(fixture.spec)
+    del _cell_support_contract(spec)[key]
+    with pytest.raises(ValueError, match=f"omits .*'{key}'"):
+        fixture.reprepare(spec).graph()
+
+
+@pytest.mark.parametrize("malformed", ["mappings", "mixed", "empty", "string", "blank"])
+@pytest.mark.parametrize("key", ["required_cells", "required_scenarios"])
+def test_cell_support_contract_malformed_lists_are_refused_by_name(
+    tmp_path, key, malformed
+):
+    fixture = _cell_support_fixture(tmp_path)
+    spec = copy.deepcopy(fixture.spec)
+    contract = _cell_support_contract(spec)
+    values = list(contract[key])
+    contract[key] = {
+        "mappings": [{"name": value} for value in values],
+        "mixed": [*values, 1],
+        "empty": [],
+        "string": values[0],
+        "blank": [*values, ""],
+    }[malformed]
+    with pytest.raises(ValueError, match="non-empty list of non-empty strings"):
+        fixture.reprepare(spec).graph()
+
+
+def test_matching_mapping_lists_on_both_gates_are_refused_by_name(tmp_path):
+    # Round 3 review of #1202: matching mapping lists passed the drift guard
+    # and then raised a bare TypeError at the set comparison.
+    fixture = _cell_support_fixture(tmp_path)
+    cells = [
+        {"name": c} for c in _cell_support_contract(fixture.spec)["required_cells"]
+    ]
+    spec = _with_cell_target(fixture, required_cells=cells)
+    _cell_support_contract(spec)["required_cells"] = copy.deepcopy(cells)
+    with pytest.raises(ValueError, match="non-empty list of non-empty strings"):
+        fixture.reprepare(spec).graph()
 
 
 @pytest.mark.parametrize("absence", ["diagnostics", "scenario", "lineage"])

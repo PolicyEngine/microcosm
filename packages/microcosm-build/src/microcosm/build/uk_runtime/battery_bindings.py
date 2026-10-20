@@ -12,18 +12,17 @@ binding adapts evidence, it never re-implements a verdict, so the
 migration onto the battery executor is behaviour-preserving by
 construction (the differential test pins it).
 
-Two legacy evaluators mint UK-flavored result names
-(``uk_release_input_coverage``, ``qrf_tail_concentration``); their
-bindings re-mint the verdict under the declared neutral name, because the
-battery executor fails a gate closed when the returned name disagrees
-with the declared one. Any *other* unexpected name passes through
+Legacy evaluators that mint UK-flavored result names (such as
+``uk_release_input_coverage``) have their verdicts re-minted under the
+declared neutral name, because the battery executor fails a gate closed
+when the returned name disagrees with the declared one. Any *other* unexpected name passes through
 untouched so that check keeps biting.
 
 The evidence surface handed to the legacy gate modules (the three entity
 tables plus period, weight-kind, and mass-log metadata) lives in
 :mod:`microcosm.build.uk_runtime.national_frame` as the single copy shared
-with the legacy report evaluator; the Frame-typed gates (input-mass parity,
-QRF tail concentration) read the frame directly and skip it.
+with the legacy report evaluator; the Frame-typed input-mass parity gate
+reads the frame directly and skips it.
 """
 
 from __future__ import annotations
@@ -48,6 +47,7 @@ from microcosm.build.gate_battery import (
 from microcosm.build.gates import (
     GateResult,
     aggregate_admin_gate,
+    area_support_below_floor,
     area_support_gate,
     column_implication_gate,
     enum_domain_gate,
@@ -62,9 +62,16 @@ from microcosm.build.uk_runtime.cgt_projection import (
     UK_CGT_PROJECTION_ARTIFACT_KEY,
     UKCGTProjection,
 )
-from microcosm.build.uk_runtime.diagnostics import uk_support_family_weights
+from microcosm.build.uk_runtime.diagnostics import (
+    uk_support_family_weights,
+    uk_withheld_gate_keys,
+)
 from microcosm.build.uk_runtime.frs_take_up import uk_take_up_signal_gate
 from microcosm.build.uk_runtime.geography_ladder import uk_geography_ladder_gate
+from microcosm.build.uk_runtime.high_value_home_gates import (
+    high_value_home_benchmarks_gate,
+    high_value_home_support_gate,
+)
 from microcosm.build.uk_runtime.hmrc_capital_gains import (
     HMRC_CGT_CONDITIONING_RESOURCE,
     load_hmrc_cgt_conditioning_facts,
@@ -81,6 +88,7 @@ from microcosm.build.uk_runtime.local_targets import (
 from microcosm.build.uk_runtime.national_frame import (
     UK_RELEASE_EXPORT_DROPPED_COLUMNS,
     _uk_gate_surface,
+    uk_release_export_frame,
 )
 from microcosm.build.uk_runtime.release_input_coverage import (
     assert_uk_release_input_coverage_build_stages,
@@ -95,6 +103,7 @@ from microcosm.build.uk_runtime.terminal_gates import (
     _missing_fit_weight_evidence_gate,
     uk_cgt_projection_entrants_gate,
     uk_default_degenerate_reviewed_exclusions,
+    uk_default_local_target_fit_reviewed_exclusions,
     uk_default_target_fit_reviewed_exclusions,
     uk_degenerate_release_surface_gate,
     uk_export_surface_gate,
@@ -108,21 +117,18 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE,
     UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
     UK_INPUT_MASS_REFERENCE_REGISTRY,
-    UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE,
+    UK_LOCAL_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE,
+    UK_RELEASE_LINES,
     UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE,
     UKInputMassParityPolicy,
-    UKQRFTailConcentrationPolicy,
     UKReviewedExclusion,
     _input_mass_reference_evidence_sha256,
     coerce_input_mass_reference_registry,
     coerce_reviewed_exclusions,
     load_uk_local_area_support_exclusion_register,
     uk_default_input_mass_reviewed_exclusions,
-    uk_default_qrf_tail_reviewed_exclusions,
     uk_input_mass_parity_gate,
     uk_input_mass_totals,
-    uk_qrf_tail_concentration_columns,
-    uk_qrf_tail_concentration_gate,
 )
 from microcosm.calibrate.registry import TargetSpec
 from microcosm.frame import Frame
@@ -229,7 +235,11 @@ def _evaluate_release_input_coverage(
         )
     # The release cut supplies the spine frame the stages produced, so the
     # family build-state half reads importance weights and stage receipts
-    # where they live; the coverage halves read the release frame.
+    # where they live; the coverage halves read the frame the release writes.
+    # On the full build the terminal gates hold the raw calibrated frame, so
+    # the export drops leave first: a column the release drops (the
+    # formula-owned property_wealth, microcosm#1106) is a reviewed exclusion,
+    # and the raw frame would otherwise report it as a stale exclusion.
     # The spine frame itself (the certifier's ``--spine-h5``), or the spine
     # checkpoint's published build state (weight kind, period, mass log: all
     # the build-state half reads) when a graph build hands it over.
@@ -251,7 +261,7 @@ def _evaluate_release_input_coverage(
     else:
         build_state = spine_frame
     return uk_release_input_coverage_gate(
-        _uk_gate_surface(context.frame),
+        _uk_gate_surface(uk_release_export_frame(context.frame)),
         engine,
         manifest=manifest,
         build_state_frame=build_state,
@@ -475,64 +485,96 @@ def _evaluate_column_implication(
     capital_column = str(parameters["capital_column"])
     carrier_column = str(parameters["carrier_column"])
     sentinel = float(parameters.get("sentinel", -1.0))
-    missing_capital = sorted({capital_column, carrier_column} - set(target.columns))
+    property_shares = _declared_property_shares(parameters)
+    capital_columns = tuple(dict.fromkeys((capital_column, *property_shares)))
+    missing_capital = sorted({*capital_columns, carrier_column} - set(target.columns))
     if missing_capital:
         raise ValueError(
             f"column_implication {target_entity} capital evidence is missing "
             f"columns {missing_capital}."
         )
-    capital = pd.to_numeric(target[capital_column], errors="coerce").to_numpy(
-        dtype=float
-    )
     carrier = pd.to_numeric(target[carrier_column], errors="coerce").to_numpy(
         dtype=float
     )
-    nonfinite = ~np.isfinite(capital) | ~np.isfinite(carrier)
-    # The -1 contract reserves exactly one negative: a value is either the
-    # sentinel or nonnegative. A bare floor (`< sentinel`) would admit the
-    # open interval between them — the one region the contract does not
-    # define (adversarial-review verification residual 1). Sentinel equality
-    # is exact (#833): every producer writes the -1.0 literal or a
-    # nonnegative amount, and a tolerance band would silently reclassify a
-    # corrupted near-sentinel value as a declared absence.
-    out_of_domain = np.isfinite(capital) & ~((capital == sentinel) | (capital >= 0.0))
+    shares = _capital_property_shares(frame, target, property_shares)
+    # A declared tolerance admits GBP sum_tolerance plus one float32 step of
+    # the expected value, so the carrier-plus-share sum survives a float32
+    # round-trip of the export; without one the capital must equal it exactly.
+    sum_tolerance = parameters.get("sum_tolerance")
     carrier_out_of_domain = np.isfinite(carrier) & ~(
         (carrier == sentinel) | (carrier >= 0.0)
     )
-    sentinel_mismatch = (capital == sentinel) != (carrier == sentinel)
-    same_source_mismatch = (
-        np.isfinite(capital) & np.isfinite(carrier) & (capital != carrier)
-    )
 
     failures = list(result.failures)
-    if nonfinite.any():
-        failures.append(
-            f"{target_entity}.{capital_column}/{carrier_column}: "
-            f"{int(nonfinite.sum())} row(s) have non-finite carrier evidence."
-        )
-    if out_of_domain.any():
-        failures.append(
-            f"{target_entity}.{capital_column}: {int(out_of_domain.sum())} "
-            f"value(s) outside the declared domain (exactly the {sentinel:g} "
-            "sentinel or >= 0)."
-        )
     if carrier_out_of_domain.any():
         failures.append(
             f"{target_entity}.{carrier_column}: "
             f"{int(carrier_out_of_domain.sum())} value(s) outside the declared "
             f"domain (exactly the {sentinel:g} sentinel or >= 0)."
         )
-    if sentinel_mismatch.any():
-        failures.append(
-            f"{target_entity}.{capital_column}: sentinel {sentinel:g} is allowed "
-            f"only where {carrier_column} has the same sentinel; "
-            f"{int(sentinel_mismatch.sum())} mismatch(es)."
+    counts: dict[str, dict[str, int]] = {}
+    for column in capital_columns:
+        capital = pd.to_numeric(target[column], errors="coerce").to_numpy(dtype=float)
+        expected = np.where(carrier >= 0.0, carrier + shares.get(column, 0.0), carrier)
+        if sum_tolerance is None:
+            tolerance = np.zeros_like(expected)
+        else:
+            tolerance = float(sum_tolerance) + np.spacing(
+                np.abs(np.nan_to_num(expected)).astype(np.float32)
+            ).astype(float)
+        nonfinite = ~np.isfinite(capital) | ~np.isfinite(carrier)
+        # The -1 contract reserves exactly one negative: a value is either the
+        # sentinel or nonnegative. A bare floor (`< sentinel`) would admit the
+        # open interval between them — the one region the contract does not
+        # define (adversarial-review verification residual 1). Sentinel
+        # equality is exact (#833): every producer writes the -1.0 literal or
+        # a nonnegative amount, and a tolerance band would silently reclassify
+        # a corrupted near-sentinel value as a declared absence.
+        out_of_domain = np.isfinite(capital) & ~(
+            (capital == sentinel) | (capital >= 0.0)
         )
-    if same_source_mismatch.any():
-        failures.append(
-            f"{target_entity}.{capital_column} must equal {carrier_column}; "
-            f"{int(same_source_mismatch.sum())} mismatch(es)."
+        sentinel_mismatch = (capital == sentinel) != (carrier == sentinel)
+        # Where the carrier is available, the capital is it plus the unit's
+        # declared property share (microcosm#1095).
+        sum_mismatch = (
+            np.isfinite(capital)
+            & np.isfinite(carrier)
+            & (carrier >= 0.0)
+            & ~(np.abs(capital - expected) <= tolerance)
         )
+        if nonfinite.any():
+            failures.append(
+                f"{target_entity}.{column}/{carrier_column}: "
+                f"{int(nonfinite.sum())} row(s) have non-finite carrier evidence."
+            )
+        if out_of_domain.any():
+            failures.append(
+                f"{target_entity}.{column}: {int(out_of_domain.sum())} "
+                f"value(s) outside the declared domain (exactly the {sentinel:g} "
+                "sentinel or >= 0)."
+            )
+        if sentinel_mismatch.any():
+            failures.append(
+                f"{target_entity}.{column}: sentinel {sentinel:g} is allowed "
+                f"only where {carrier_column} has the same sentinel; "
+                f"{int(sentinel_mismatch.sum())} mismatch(es)."
+            )
+        if sum_mismatch.any():
+            share_text = (
+                " plus the unit's declared property share"
+                if column in property_shares
+                else ""
+            )
+            failures.append(
+                f"{target_entity}.{column} must equal {carrier_column}{share_text} "
+                f"where {carrier_column} >= 0; {int(sum_mismatch.sum())} mismatch(es)."
+            )
+        counts[column] = {
+            "capital_domain_violation_count": int(out_of_domain.sum()),
+            "sentinel_mismatch_count": int(sentinel_mismatch.sum()),
+            "same_source_mismatch_count": int(sum_mismatch.sum()),
+            "nonfinite_capital_count": int(nonfinite.sum()),
+        }
     return GateResult(
         name="column_implication",
         passed=not failures,
@@ -543,13 +585,88 @@ def _evaluate_column_implication(
             "capital_column": f"{target_entity}.{capital_column}",
             "carrier_column": f"{target_entity}.{carrier_column}",
             "sentinel": sentinel,
-            "capital_domain_violation_count": int(out_of_domain.sum()),
+            **counts[capital_column],
             "carrier_domain_violation_count": int(carrier_out_of_domain.sum()),
-            "sentinel_mismatch_count": int(sentinel_mismatch.sum()),
-            "same_source_mismatch_count": int(same_source_mismatch.sum()),
-            "nonfinite_capital_count": int(nonfinite.sum()),
+            "sum_tolerance": sum_tolerance,
+            "property_shares": {
+                column: dict(rule) for column, rule in property_shares.items()
+            },
+            "capital_columns": {
+                f"{target_entity}.{column}": counts[column]
+                for column in capital_columns
+            },
         },
     )
+
+
+def _declared_property_shares(
+    parameters: Mapping[str, Any],
+) -> dict[str, dict[str, Any]]:
+    """The declared property-share rules, refused unless they are the code's."""
+
+    from microcosm.build.uk_runtime.uc_capital_coherence import (
+        PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES,
+        PROPERTY_CAPITAL_OWNERS,
+        PROPERTY_CAPITAL_VALUATION,
+        UC_PROPERTY_CAPITAL_REPORTER_RULE,
+        UC_PROPERTY_CAPITAL_SOURCES,
+    )
+
+    rules = {
+        "uc_reported_capital": {
+            "sources": list(UC_PROPERTY_CAPITAL_SOURCES),
+            "owners": PROPERTY_CAPITAL_OWNERS,
+            "valuation": PROPERTY_CAPITAL_VALUATION,
+            # A unit that reports Universal Credit keeps its receipt.
+            "units_reporting_universal_credit": UC_PROPERTY_CAPITAL_REPORTER_RULE,
+        },
+        "pension_credit_reported_capital": {
+            "sources": list(PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES),
+            "owners": PROPERTY_CAPITAL_OWNERS,
+            "valuation": PROPERTY_CAPITAL_VALUATION,
+        },
+    }
+    declared = {
+        str(column): {**dict(rule), "sources": list(rule.get("sources") or ())}
+        for column, rule in dict(parameters.get("property_shares") or {}).items()
+    }
+    drifted = sorted(
+        column for column, rule in declared.items() if rules.get(column) != rule
+    )
+    if drifted:
+        raise ValueError(
+            f"column_implication property shares for {drifted} are not the "
+            f"recorded-capital rules uc_capital_coherence applies: {rules}."
+        )
+    return declared
+
+
+def _capital_property_shares(
+    frame: Frame,
+    target: pd.DataFrame,
+    property_shares: Mapping[str, Mapping[str, Any]],
+) -> dict[str, np.ndarray]:
+    """Each declared capital column's property share, in target row order."""
+
+    from microcosm.build.uk_runtime.uc_capital_coherence import (
+        pension_credit_property_capital_share,
+        uc_recorded_property_share,
+    )
+
+    shares: dict[str, np.ndarray] = {}
+    if not property_shares:
+        return shares
+    person = frame.table("person")
+    household = frame.table("household")
+    if "uc_reported_capital" in property_shares:
+        shares["uc_reported_capital"] = uc_recorded_property_share(
+            person, target, household
+        )
+    if "pension_credit_reported_capital" in property_shares:
+        shares["pension_credit_reported_capital"] = (
+            pension_credit_property_capital_share(person, target, household)
+        )
+    return shares
 
 
 def _evaluate_take_up_signal(
@@ -580,6 +697,46 @@ def _engine_enum_domain(engine: Any, column: str) -> Any:
     )
 
 
+def _nation_partitioned_domains(
+    column: str, parameters: Mapping[str, Any]
+) -> dict[str, tuple[str, ...]] | None:
+    """The declared domains by nation, refused unless they are the code's.
+
+    A nation-partitioned gate names its row partition (the household's
+    ``region``, whose nation the region tier fixes) and repeats the domains in
+    ``gates.json`` so the declaration is reviewable; the declaration must equal
+    the shared constant the stages draw from.
+    """
+
+    from microcosm.build.uk_runtime.council_tax_constants import (
+        UK_COUNCIL_TAX_BANDS_BY_NATION,
+    )
+
+    declared_keys = {"partition_column", "domains_by_nation"} & set(parameters)
+    if not declared_keys:
+        return None
+    if declared_keys != {"partition_column", "domains_by_nation"}:
+        raise ValueError(
+            "A nation-partitioned enum_domain gate declares both "
+            "partition_column and domains_by_nation."
+        )
+    if parameters["partition_column"] != "region":
+        raise ValueError(
+            "enum_domain gates partition by nation through the household region."
+        )
+    code = {"council_tax_band": UK_COUNCIL_TAX_BANDS_BY_NATION}.get(column)
+    declared = {
+        str(nation): tuple(str(member) for member in members)
+        for nation, members in dict(parameters["domains_by_nation"]).items()
+    }
+    if code is None or declared != dict(code):
+        raise ValueError(
+            f"{column} domains by nation must equal the shared constant "
+            f"{dict(code) if code is not None else None}, got {declared}."
+        )
+    return declared
+
+
 def _evaluate_enum_domain(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
@@ -592,16 +749,34 @@ def _evaluate_enum_domain(
         domain = _engine_enum_domain(context.artifacts["rules_engine"], column)
     if domain is None:
         raise ValueError(f"{column} enum domain could not be resolved from evidence.")
-    matches = [
-        context.frame.table(entity)[column]
+    tables = [
+        context.frame.table(entity)
         for entity in context.frame.entities
         if column in context.frame.table(entity).columns
     ]
-    if len(matches) != 1:
+    if len(tables) != 1:
         raise ValueError(
-            f"{column} must occur on exactly one frame entity; found {len(matches)}."
+            f"{column} must occur on exactly one frame entity; found {len(tables)}."
         )
-    return enum_domain_gate({column: matches[0]}, {column: domain})
+    (table,) = tables
+    by_nation = _nation_partitioned_domains(column, parameters)
+    if by_nation is None:
+        return enum_domain_gate({column: table[column]}, {column: domain})
+
+    from microcosm.build.uk_runtime.council_tax_constants import UK_NATION_BY_REGION
+
+    if "region" not in table.columns:
+        raise ValueError(f"{column} is partitioned by region, which its table lacks.")
+    nations = table["region"].astype(str).map(UK_NATION_BY_REGION)
+    if nations.isna().any():
+        unknown = sorted(set(table.loc[nations.isna(), "region"].astype(str)))
+        raise ValueError(f"{column} rows carry regions with no nation: {unknown}.")
+    return enum_domain_gate(
+        {column: table[column]},
+        {column: domain},
+        partitions={column: nations},
+        partition_domains={column: by_nation},
+    )
 
 
 def _evaluate_support(
@@ -626,6 +801,10 @@ def _evaluate_support(
         "uc_deduction_support_bounds.json",
         "nts_bus_travel_support_bounds.json",
         "was_lisa_support_bounds.json",
+        # microcosm#1240: the post-geography value map's declared cap replaces the
+        # WAS donor bound for the two columns it rewrites; it is listed after the
+        # WAS resource so its bounds win.
+        "price_paid_property_support_bounds.json",
     }
     if set(resource_names) - allowed:
         raise ValueError(
@@ -847,6 +1026,46 @@ def _exclusion_clock(context: EvidenceContext) -> date:
     return clock
 
 
+def _release_line(context: EvidenceContext) -> str | None:
+    """The release line the gate context declares (``release_line``), if any."""
+
+    line = context.artifacts.get("release_line")
+    if line is not None and line not in UK_RELEASE_LINES:
+        raise ValueError(
+            f"release_line must be one of {sorted(UK_RELEASE_LINES)}, got {line!r}."
+        )
+    return line
+
+
+def _in_line(
+    records: Mapping[str, UKReviewedExclusion], context: EvidenceContext
+) -> tuple[Mapping[str, UKReviewedExclusion], list[str]]:
+    """The records in scope on the context's line, and the names out of line."""
+
+    line = _release_line(context)
+    applied = {
+        name: record for name, record in records.items() if record.applies_on(line)
+    }
+    return MappingProxyType(applied), sorted(set(records) - set(applied))
+
+
+def _with_out_of_line(
+    result: GateResult, context: EvidenceContext, out_of_line: list[str]
+) -> GateResult:
+    """Record the register entries a line-scoped evaluation set aside."""
+
+    if not out_of_line:
+        return result
+    return replace(
+        result,
+        details={
+            **dict(result.details),
+            "release_line": _release_line(context),
+            "out_of_line_exclusions": out_of_line,
+        },
+    )
+
+
 def _resolve_degenerate_exclusions(
     context: EvidenceContext,
 ) -> tuple[Mapping[str, UKReviewedExclusion], str]:
@@ -935,21 +1154,6 @@ def _resolve_input_mass_exclusions(
     return MappingProxyType(active), "override"
 
 
-def _resolve_qrf_tail_exclusions(
-    context: EvidenceContext,
-) -> tuple[Mapping[str, UKReviewedExclusion], str]:
-    """QRF tail exclusions and their content source."""
-
-    committed = uk_default_qrf_tail_reviewed_exclusions()
-    override = context.artifacts.get("reviewed_qrf_tail_exclusions")
-    if override is None:
-        return committed, "committed"
-    resolved = coerce_reviewed_exclusions(override, label="UK QRF tail policy")
-    if _exclusion_payload(resolved) == _exclusion_payload(committed):
-        return committed, "committed"
-    return MappingProxyType(resolved), "override"
-
-
 def _evaluate_degenerate_release_surface(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
@@ -961,7 +1165,8 @@ def _evaluate_degenerate_release_surface(
             f"runtime loads {UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE!r}."
         )
     resolved, _source = _resolve_degenerate_exclusions(context)
-    return uk_degenerate_release_surface_gate(
+    resolved, out_of_line = _in_line(resolved, context)
+    result = uk_degenerate_release_surface_gate(
         _uk_gate_surface(context.frame),
         reviewed_exclusions=resolved,
         now=_exclusion_clock(context),
@@ -971,6 +1176,7 @@ def _evaluate_degenerate_release_surface(
         dropped_at_export=UK_RELEASE_EXPORT_DROPPED_COLUMNS,
         **kwargs,
     )
+    return _with_out_of_line(result, context, out_of_line)
 
 
 def _degenerate_exclusions_evidence(
@@ -1079,6 +1285,22 @@ def _local_area_roster(
     return roster
 
 
+def _evaluate_high_value_home_benchmarks(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> GateResult:
+    return high_value_home_benchmarks_gate(
+        context.artifacts["uk_high_value_home_evidence"], **dict(parameters)
+    )
+
+
+def _evaluate_high_value_home_support(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> GateResult:
+    return high_value_home_support_gate(
+        context.artifacts["uk_high_value_home_evidence"], **dict(parameters)
+    )
+
+
 def _evaluate_area_support(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
@@ -1089,31 +1311,76 @@ def _evaluate_area_support(
         None,
         resource=exclusions_resource,
     )
-    records = register["exclusions"]
+    # The exclusions are gate-only (microcosm#1301): an entry, keyed
+    # ``local_authority/<code>`` or ``constituency/<code>``, excuses its
+    # area's floor miss here and defers none of its cells. The Isles of
+    # Scilly and City of London cell deferrals are the local reference
+    # generator's own constants, lockstep-tested against this block. An
+    # entry scoped to another release line stands aside; the
+    # ``bound_despite_support_floor`` approvals stay window-checked whatever
+    # the line.
+    records, out_of_line = _in_line(register["exclusions"], context)
     clock = _exclusion_clock(context)
     invalid = {}
-    for block, entries in register.items():
+    for block, entries in (
+        ("exclusions", records),
+        ("bound_despite_support_floor", register["bound_despite_support_floor"]),
+    ):
         for key, record in entries.items():
             if record.expired(clock) or record.premature(clock):
                 invalid[f"{block}/{key}"] = record
     if invalid:
-        return GateResult(
-            name="area_support",
-            passed=False,
-            failures=tuple(
-                f"{key}: reviewed exclusion is outside its approval window "
-                f"{record.approved_on}..{record.expires_on} at {clock.isoformat()}."
-                for key, record in sorted(invalid.items())
+        return _with_out_of_line(
+            GateResult(
+                name="area_support",
+                passed=False,
+                failures=tuple(
+                    f"{key}: reviewed exclusion is outside its approval window "
+                    f"{record.approved_on}..{record.expires_on} at "
+                    f"{clock.isoformat()}."
+                    for key, record in sorted(invalid.items())
+                ),
+                details={"invalid_reviewed_exclusions": sorted(invalid)},
             ),
-            details={"invalid_reviewed_exclusions": sorted(invalid)},
+            context,
+            out_of_line,
         )
     levels = tuple(str(level) for level in kwargs["geography_levels"])
-    return area_support_gate(
+    result = area_support_gate(
         context.artifacts["uk_area_support_summary"],
         area_roster=_local_area_roster(resource, levels),
         reviewed_exclusions=_exclusion_payload(records),
         **kwargs,
     )
+    return _with_out_of_line(result, context, out_of_line)
+
+
+def uk_area_support_floors() -> dict[str, float | int]:
+    """The local support floors the ``uk_local_area_support`` gate declares."""
+
+    from microcosm.build import load_country_spec
+
+    (entry,) = (
+        entry
+        for entry in load_country_spec("uk").gates.gates
+        if entry.id == "uk_local_area_support"
+    )
+    floors = entry.parameters
+    return {
+        "minimum_rows": int(floors["minimum_rows"]),
+        "minimum_effective_sample_size": float(floors["minimum_effective_sample_size"]),
+        "minimum_distinct_sources": int(floors["minimum_distinct_sources"]),
+    }
+
+
+def uk_area_support_below_floor(area_support: pd.DataFrame) -> pd.Series:
+    """``support_below_floor`` for each area, under the declared local floors.
+
+    The flag a consumer reads and the gate that blocks a release apply one rule
+    (microcosm#1278). A reviewed exclusion does not clear the flag.
+    """
+
+    return area_support_below_floor(area_support, **uk_area_support_floors())
 
 
 def _local_target_error_items(evidence: object) -> tuple[tuple[str, float], ...]:
@@ -1152,11 +1419,34 @@ def _local_target_error_items(evidence: object) -> tuple[tuple[str, float], ...]
 def _evaluate_per_family_fit(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
-    items = _local_target_error_items(context.artifacts["local_target_diagnostics"])
-    return per_family_fit_gate(
-        (name for name, _ in items),
-        (error for _, error in items),
+    """Each family's fit over its published rows (microcosm#1262).
+
+    A row whose model figures are withheld stays out of every rollup, so the
+    family shares, sizes and the decision rest on the published rows and the
+    details count the withheld ones by family: a share over every row, set
+    beside the published rows' errors, would give a withheld row's fit back.
+    """
+
+    evidence = context.artifacts["local_target_diagnostics"]
+    items = _local_target_error_items(evidence)
+    withheld = uk_withheld_gate_keys(evidence)
+    published = [(name, error) for name, error in items if name not in withheld]
+    result = per_family_fit_gate(
+        (name for name, _ in published),
+        (error for _, error in published),
         **dict(parameters),
+    )
+    if not withheld:
+        return result
+    counts: dict[str, int] = {}
+    for name in withheld:
+        family = name.split("/", 1)[0]
+        counts[family] = counts.get(family, 0) + 1
+    return GateResult(
+        name=result.name,
+        passed=result.passed,
+        failures=result.failures,
+        details={**result.details, "withheld_targets": dict(sorted(counts.items()))},
     )
 
 
@@ -1304,6 +1594,8 @@ def _local_default_expected_surface(crosswalk_resource: str) -> frozenset[str]:
     for area_type, geography_level in (
         ("constituency", "constituency"),
         ("la", "local_authority"),
+        # Scotland's PIPR BRMAs (microcosm#1262).
+        ("brma", "statistical_scope"),
     ):
         level = levels.get(geography_level)
         if not isinstance(level, Mapping):
@@ -1407,32 +1699,71 @@ def _evaluate_target_fit(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
     kwargs = dict(parameters)
-    if kwargs.pop("surface", None) == "local_candidate":
-        errors = dict(
-            _local_target_error_items(context.artifacts["local_target_diagnostics"])
-        )
-        return uk_target_fit_gate(errors, **kwargs)
     register = kwargs.pop("reviewed_exclusions_resource", None)
+    if kwargs.pop("surface", None) == "local_candidate":
+        # The local cells have their own register, keyed by this gate's
+        # family/area_code/metric names (microcosm#1301). An entry lifts the
+        # fence for its cell only; the cell stays bound in the solve.
+        if register != UK_LOCAL_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE:
+            raise ValueError(
+                f"uk/gates.json names local exclusion register {register!r} but "
+                f"the runtime loads {UK_LOCAL_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE!r}."
+            )
+        evidence = context.artifacts["local_target_diagnostics"]
+        # María's ruling of 2026-10-19 on the third review of #1305: the gate
+        # decides on the published rows. A withheld BRMA row's status against
+        # the bound would be a two-sided bound on an estimate resting on fewer
+        # than ten households, so the gate neither checks it nor reads its
+        # register entry, and counts it only.
+        withheld = uk_withheld_gate_keys(evidence)
+        errors = {
+            key: error
+            for key, error in _local_target_error_items(evidence)
+            if key not in withheld
+        }
+        exclusions, out_of_line = _in_line(
+            uk_default_local_target_fit_reviewed_exclusions(), context
+        )
+        exclusions = {
+            key: record for key, record in exclusions.items() if key not in withheld
+        }
+        out_of_line = [key for key in out_of_line if key not in withheld]
+        result = uk_target_fit_gate(
+            errors,
+            reviewed_exclusions=exclusions,
+            now=_exclusion_clock(context),
+            **kwargs,
+        )
+        if withheld:
+            result = GateResult(
+                name=result.name,
+                passed=result.passed,
+                failures=result.failures,
+                details={**result.details, "withheld_targets": len(withheld)},
+            )
+        return _with_out_of_line(result, context, out_of_line)
     if register != UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE:
         raise ValueError(
             f"uk/gates.json names exclusion register {register!r} but the "
             f"runtime loads {UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE!r}."
         )
     exclusions, _source = _resolve_target_fit_exclusions(context)
+    exclusions, out_of_line = _in_line(exclusions, context)
     parity = context.artifacts["parity_evidence"]
-    return uk_target_fit_gate(
+    result = uk_target_fit_gate(
         parity.target_relative_errors,
         reviewed_exclusions=exclusions,
         now=_exclusion_clock(context),
         **kwargs,
     )
+    return _with_out_of_line(result, context, out_of_line)
 
 
 def _target_fit_required_artifacts(
     parameters: Mapping[str, Any],
 ) -> frozenset[str]:
     if parameters.get("surface") == "local_candidate":
-        return frozenset({"local_target_diagnostics"})
+        return frozenset({"local_target_diagnostics", "exclusions_evaluated_on"})
     return frozenset({"parity_evidence", "exclusions_evaluated_on"})
 
 
@@ -1467,19 +1798,27 @@ def _evaluate_input_mass_parity(
     exclusions, _source = _resolve_input_mass_exclusions(
         context, reference=reference_name
     )
+    exclusions, out_of_line = _in_line(exclusions, context)
     policy = UKInputMassParityPolicy(
         relative_tolerance=relative_tolerance,
         minimum_reference_total=minimum_reference_total,
         reviewed_exclusions=exclusions,
     )
-    return uk_input_mass_parity_gate(
-        uk_input_mass_totals(context.frame),
+    # The reference is compared against the surface the release ships: the
+    # export frame, with the reviewed export exclusions dropped. The release
+    # cut already loads that frame; at the national seam the raw frame still
+    # carries the spine's WAS property_wealth, which the reference also
+    # stores, so comparing it there would call the signed exclusion stale
+    # (microcosm#1106).
+    result = uk_input_mass_parity_gate(
+        uk_input_mass_totals(uk_release_export_frame(context.frame)),
         context.artifacts["input_mass_reference"],
         descriptor=coerced_registry[reference_name],
         policy=policy,
         now=_exclusion_clock(context),
         **kwargs,
     )
+    return _with_out_of_line(result, context, out_of_line)
 
 
 def _input_mass_reference_evidence(
@@ -1498,57 +1837,6 @@ def _input_mass_reference_evidence(
     }
 
 
-def _evaluate_tail_concentration(
-    context: EvidenceContext, parameters: Mapping[str, Any]
-) -> GateResult:
-    kwargs = dict(parameters)
-    register = kwargs.pop("reviewed_exclusions_resource", None)
-    top_k = kwargs.pop("top_k", None)
-    max_top_share = kwargs.pop("max_top_share", None)
-    min_nonzero_records = kwargs.pop("min_nonzero_records", None)
-    if register != UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE:
-        raise ValueError(
-            f"uk/gates.json names exclusion register {register!r} but the "
-            f"runtime loads {UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE!r}."
-        )
-    exclusions, _source = _resolve_qrf_tail_exclusions(context)
-    policy = UKQRFTailConcentrationPolicy(
-        top_k=top_k,
-        max_top_share=max_top_share,
-        min_nonzero_records=min_nonzero_records,
-        reviewed_exclusions=exclusions,
-    )
-    values, weights, surface = uk_qrf_tail_concentration_columns(context.frame)
-    # Declared QRF outputs the release export drops are checked on the spine
-    # frame the certifier supplies, at the spine's person weights.
-    absent = [str(column) for column in surface.get("absent_columns", ())]
-    on_spine = _export_dropped_columns_from_spine(context, absent)
-    if on_spine:
-        spine_values, spine_weights, spine_surface = uk_qrf_tail_concentration_columns(
-            context.artifacts["spine_frame"], output_columns=tuple(on_spine)
-        )
-        checked_on_spine = list(spine_surface["checked_columns"])
-        for column in checked_on_spine:
-            values[column] = spine_values[column]
-            weights[column] = spine_weights[column]
-        surface = {
-            **surface,
-            "checked_columns": sorted([*surface["checked_columns"], *checked_on_spine]),
-            "absent_columns": [
-                column for column in absent if column not in checked_on_spine
-            ],
-            "export_dropped_checked_on_spine": sorted(checked_on_spine),
-        }
-    return uk_qrf_tail_concentration_gate(
-        values,
-        weights,
-        policy=policy,
-        surface=surface,
-        now=_exclusion_clock(context),
-        **kwargs,
-    )
-
-
 def _evaluate_ledger_compile_parity(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
@@ -1561,14 +1849,21 @@ def _evaluate_ledger_compile_parity(
             files("microcosm.build.uk").joinpath(str(signed_resource)).read_text()
         )["differences"]
     target_period = parameters["target_period"]
+    registry_artifact = _ledger_compile_parity_registry_artifact(parameters)
     return ledger_compile_parity_gate(
         _ledger_compile_parity_registry(
             context,
             target_period,
-            registry_artifact=_ledger_compile_parity_registry_artifact(parameters),
+            registry_artifact=registry_artifact,
         ),
         fixture,
         signed_differences=signed_differences,
+        # The compile's own report of the references that did not resolve at
+        # this period: the signed resource classifies their fixture rows as
+        # ledger_absent, and the gate can only reproduce that kind with it.
+        unsupported=_ledger_compile_parity_unsupported(
+            context, target_period, registry_artifact=registry_artifact
+        ),
     )
 
 
@@ -1604,6 +1899,16 @@ def _ledger_compile_parity_evidence(
         "target_period": target_period,
         "signed_differences": parameters.get("signed_differences", ()),
         "signed_differences_resource": parameters.get("signed_differences_resource"),
+        # The report decides the verdict (a fixture row is ledger_absent only
+        # where the compile reported its reference), so it is attested with
+        # the registry: the same registry with and without the report must not
+        # share one evidence digest.
+        "unsupported_references": sorted(
+            str(row["name"])
+            for row in _ledger_compile_parity_unsupported(
+                context, target_period, registry_artifact=registry_artifact
+            )
+        ),
     }
 
 
@@ -1634,6 +1939,16 @@ _LEDGER_COMPILE_PARITY_REGISTRY_ARTIFACTS = frozenset(
         "uk_ledger_compiled_local_registries",
     }
 )
+#: Beside each compiled-registries artifact, the compile's unsupported
+#: references by target period: one entry for every compiled period, empty
+#: where every reference resolved. A producer that leaves it out gives the
+#: parity gates no evidence, and a release candidate blocks on that.
+_LEDGER_COMPILE_PARITY_UNSUPPORTED_ARTIFACTS: Mapping[str, str] = MappingProxyType(
+    {
+        "uk_ledger_compiled_registries": "uk_ledger_compile_unsupported",
+        "uk_ledger_compiled_local_registries": "uk_ledger_compile_local_unsupported",
+    }
+)
 
 
 def _ledger_compile_parity_registry_artifact(
@@ -1649,10 +1964,51 @@ def _ledger_compile_parity_registry_artifact(
     return artifact
 
 
+def _ledger_compile_parity_unsupported(
+    context: EvidenceContext,
+    target_period: object,
+    *,
+    registry_artifact: str,
+) -> tuple[Mapping[str, object], ...]:
+    """The compile's unsupported references at ``target_period``.
+
+    The producer writes an entry for every period it compiled, so a period
+    with no entry is a producer that dropped the report, not a clean compile.
+    """
+
+    artifact = _LEDGER_COMPILE_PARITY_UNSUPPORTED_ARTIFACTS[registry_artifact]
+    by_period = context.artifacts[artifact]
+    if not isinstance(by_period, Mapping):
+        raise TypeError(
+            f"{artifact} must map target periods to the compile's unsupported "
+            "references."
+        )
+    for key in (target_period, str(target_period)):
+        if key in by_period:
+            rows = tuple(by_period[key])
+            if not all(isinstance(row, Mapping) and "name" in row for row in rows):
+                raise TypeError(
+                    f"{artifact} rows for target period {target_period!r} must be "
+                    "mappings that name their reference."
+                )
+            return rows
+    raise KeyError(
+        f"UK Ledger compile parity artifact {artifact!r} has no entry for target "
+        f"period {target_period!r}; available periods: "
+        f"{sorted(map(str, by_period))}."
+    )
+
+
 def _ledger_compile_parity_required_artifacts(
     parameters: Mapping[str, Any],
 ) -> frozenset[str]:
-    return frozenset({_ledger_compile_parity_registry_artifact(parameters)})
+    registry_artifact = _ledger_compile_parity_registry_artifact(parameters)
+    return frozenset(
+        {
+            registry_artifact,
+            _LEDGER_COMPILE_PARITY_UNSUPPORTED_ARTIFACTS[registry_artifact],
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1663,13 +2019,31 @@ def _ledger_compile_parity_required_artifacts(
 #: gate ``uk/gates.json`` declares. ``weights_audit`` overrides the shared
 #: binding to keep the legacy guard the shared one lacks — a fit stage
 #: that emitted an empty record set is a failed audit, not a vacuous pass.
-#: ``input_mass_parity`` and ``tail_concentration`` override the generic
-#: data-in-artifacts bindings with UK ones that derive candidate evidence
-#: from the frame and hold the supplied reference to the spec-declared pin
-#: (the microcosm#327 rule: a parity gate's reference is a declared input,
-#: never implicit module state).
+#: ``input_mass_parity`` overrides the generic data-in-artifacts binding
+#: with a UK one that derives candidate evidence from the frame and holds the
+#: supplied reference to the spec-declared pin (the microcosm#327 rule: a
+#: parity gate's reference is a declared input, never implicit module
+#: state).
 UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
     **DEFAULT_REGISTRY,
+    "high_value_home_benchmarks": UKGateBinding(
+        name="high_value_home_benchmarks",
+        evaluator=_evaluate_high_value_home_benchmarks,
+        parameter_keys=frozenset(
+            {"minimum_rank_correlation", "maximum_regional_share_gap"}
+        ),
+        artifact_keys=frozenset({"uk_high_value_home_evidence"}),
+        needs_frame=False,
+    ),
+    "high_value_home_support": UKGateBinding(
+        name="high_value_home_support",
+        evaluator=_evaluate_high_value_home_support,
+        parameter_keys=frozenset(
+            {"minimum_distinct_sources", "minimum_target_homes", "dominance_share"}
+        ),
+        artifact_keys=frozenset({"uk_high_value_home_evidence"}),
+        needs_frame=False,
+    ),
     "weights_audit": UKGateBinding(
         name="weights_audit",
         evaluator=_evaluate_weights_audit,
@@ -1735,6 +2109,9 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "absolute_tolerance",
                 "household_weight_kind",
                 "minimum_spi_households",
+                # microcosm#1240 high_value_home_support stage-health check.
+                "stratum_lower",
+                "copies",
                 "minimum_identity_rows",
                 "minimum_target_count",
                 "minimum_signal_rows",
@@ -1797,6 +2174,12 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # LCFS spend column.
                 "period_type",
                 "period_value",
+                # #1106 property_components check: no receipts below profit,
+                # no landlord banded below their profit, the walk's rounding
+                # within its recorded boundary allowance.
+                "maximum_rows_receipts_below_profit",
+                "maximum_rows_with_profit_above_band",
+                "maximum_band_error_in_boundary_weights",
             }
         ),
         artifact_keys=frozenset({"stage_evidence"}),
@@ -1823,6 +2206,9 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "capital_column",
                 "carrier_column",
                 "sentinel",
+                # The recorded capitals' property shares (microcosm#1095).
+                "property_shares",
+                "sum_tolerance",
             }
         ),
     ),
@@ -1834,7 +2220,7 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
     "enum_domain": UKGateBinding(
         name="enum_domain",
         evaluator=_evaluate_enum_domain,
-        parameter_keys=frozenset({"columns"}),
+        parameter_keys=frozenset({"columns", "partition_column", "domains_by_nation"}),
     ),
     "support": UKGateBinding(
         name="support",
@@ -1963,20 +2349,6 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
         ),
         artifact_keys=frozenset({"input_mass_reference", "exclusions_evaluated_on"}),
         evidence=_input_mass_reference_evidence,
-    ),
-    "tail_concentration": UKGateBinding(
-        name="tail_concentration",
-        evaluator=_evaluate_tail_concentration,
-        parameter_keys=frozenset(
-            {
-                "reviewed_exclusions_resource",
-                "top_k",
-                "max_top_share",
-                "min_nonzero_records",
-            }
-        ),
-        artifact_keys=frozenset({"exclusions_evaluated_on"}),
-        legacy_name="qrf_tail_concentration",
     ),
     "ledger_compile_parity": UKGateBinding(
         name="ledger_compile_parity",

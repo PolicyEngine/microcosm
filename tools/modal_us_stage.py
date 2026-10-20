@@ -21,7 +21,10 @@ without running the stage)::
 
 Run the stage (paid; sized per stage in the plan module)::
 
-    MICROCOSM_MODAL_PLAN=plan.json modal run --detach tools/modal_us_stage.py --run
+    MICROCOSM_MODAL_PLAN=plan.json modal run --detach tools/modal_us_stage.py --run --spawn
+
+``--spawn`` returns once the stage is spawned; ``--run`` alone waits on it
+(see ``main``).
 
 Set ``MICROCOSM_MODAL_HF_SECRET=<modal secret name>`` only when an input
 lives in a gated or private Hugging Face repo; public releases need no
@@ -336,7 +339,10 @@ import importlib.util, json, sys
 spec = importlib.util.spec_from_file_location("stage_tool", sys.argv[1])
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
-args = getattr(module, sys.argv[2])(sys.argv[3:])
+parser = module
+for name in sys.argv[2].split("."):
+    parser = getattr(parser, name)
+args = parser(sys.argv[3:])
 print(json.dumps({"stages": list(getattr(args, "stages", [])) or None}))
 """
 
@@ -679,6 +685,9 @@ def check_stage(plan_data: dict) -> dict:
     problems += [
         f"input {row['name']}: {row['problem']}" for row in inputs if "problem" in row
     ]
+    # The ACS fetcher treats either a size or digest mismatch as a cache
+    # miss and downloads. Refuse it here as well as before creating links.
+    problems += plan_lib.input_link_problems(plan, inputs)
 
     runs_volume.reload()
     identity = _load_json(
@@ -870,14 +879,19 @@ def _attempt_stage(
     known = plan_lib.known_hashes(state, pulled_outputs)
     prior = [{"file": name, "sha256": sha} for name, _, sha in receipts]
     inputs_verified = [_stage_input(ref, work) for ref in plan.inputs.values()]
+    link_problems = plan_lib.input_link_problems(plan, inputs_verified)
+    if link_problems:
+        raise plan_lib.PlanError("; ".join(link_problems))
+    input_paths = {
+        name: plan_lib.input_local_path(str(work), ref)
+        for name, ref in plan.inputs.items()
+    }
+    input_links = plan_lib.link_staged_inputs(plan, input_paths, work)
     # Files the tool would otherwise fetch into its home cache, copied from
     # the staged inputs and verified (the base's 2023 ASEC archive).
     home_seeds = plan_lib.seed_home_cache(
         plan,
-        {
-            name: plan_lib.input_local_path(str(work), ref)
-            for name, ref in plan.inputs.items()
-        },
+        input_paths,
         env.get("HOME") or Path.home(),
     )
 
@@ -970,6 +984,7 @@ def _attempt_stage(
             "modal": attempt.modal,
             "work_disk": work_disk,
             "home_seeds": home_seeds,
+            "input_links": input_links,
             "tool_budget": tool_budget,
         },
         prior_receipts=prior,
@@ -1095,6 +1110,35 @@ def run_stage_base_nonpreemptible(plan_data: dict) -> dict:
     return _run_stage(plan_data)
 
 
+# ACS staging fits QRFs across cores (16 requested and limited), with the
+# memory and timeout allowances from full-staging-a3; see plan_lib.ACS_STAGING.
+@app.function(
+    image=image,
+    volumes=VOLUMES,
+    secrets=_secrets(),
+    cpu=plan_lib.ACS_STAGING.modal_cpu,
+    memory=plan_lib.ACS_STAGING.memory_mib,
+    timeout=plan_lib.ACS_STAGING.timeout_s,
+    retries=0,
+)
+def run_stage_acs_staging(plan_data: dict) -> dict:
+    return _run_stage(plan_data)
+
+
+@app.function(
+    image=image,
+    volumes=VOLUMES,
+    secrets=_secrets(),
+    cpu=plan_lib.ACS_STAGING.modal_cpu,
+    memory=plan_lib.ACS_STAGING.memory_mib,
+    timeout=plan_lib.ACS_STAGING.timeout_s,
+    retries=0,
+    nonpreemptible=True,
+)
+def run_stage_acs_staging_nonpreemptible(plan_data: dict) -> dict:
+    return _run_stage(plan_data)
+
+
 RUNNERS = {
     ("heavy", False): run_stage_heavy,
     ("heavy", True): run_stage_heavy_nonpreemptible,
@@ -1103,15 +1147,45 @@ RUNNERS = {
     ("check", False): run_stage_small,
     ("base", False): run_stage_base,
     ("base", True): run_stage_base_nonpreemptible,
+    ("acs-staging", False): run_stage_acs_staging,
+    ("acs-staging", True): run_stage_acs_staging_nonpreemptible,
 }
 
 
 @app.local_entrypoint()
-def main(run: bool = False) -> None:
-    """Check the plan (default) or, with --run, execute the stage."""
+def main(run: bool = False, spawn: bool = False) -> None:
+    """Check the plan (default) or, with --run, execute the stage.
+
+    ``--run`` waits for the stage, prints a summary of its receipt and exits
+    nonzero unless the stage COMPLETED. A waited-on call can be lost with its
+    client: on 2026-10-19 the Route A rerun base's first attempt was
+    cancelled 99 s after the launching Mac went to sleep (attributed to the
+    sleep from its timing).
+
+    ``--run --spawn`` spawns the stage, prints its function call id and
+    returns at once. Run it under ``modal run --detach``. A probe that day
+    showed a call spawned under ``--detach`` finishing after its client had
+    exited; client sleep, and a spawn without ``--detach``, were not tested.
+
+    A spawned stage's outcome is read from the runs volume, not this
+    client's exit code. A COMPLETED or FAILED stage writes a receipt under
+    ``runs/<run_id>/receipts/``. A refusal or an exception writes only an
+    attempt record under ``runs/<run_id>/attempts/``, with ``outcome``
+    ``refused`` or ``error``. A plan rejected before its attempt record
+    (``_run_stage``) writes nothing. A killed container leaves an attempt
+    record whose ``last_seen_epoch`` stops advancing.
+    ``modal.FunctionCall.from_id(<id>).get()``, run with the modal tool's
+    interpreter, blocks until the call ends. It returns the receipt
+    (COMPLETED or FAILED), or re-raises the error of an attempt that raised:
+    a rejected plan, a refusal or an exception, which ``_run_stage``
+    re-raises. Every attempt of a run shares its run_id, so match the attempt
+    record by ``modal.function_call_id`` and the receipt by ``attempt_id``.
+    """
 
     assert _LOADED is not None
     plan_data, plan = _LOADED
+    if spawn and not run:
+        raise SystemExit("--spawn needs --run (and modal run --detach)")
     if not run:
         report = check_stage.remote(plan_data)
         print(json.dumps(report, indent=2))
@@ -1120,6 +1194,19 @@ def main(run: bool = False) -> None:
         print("CHECK OK")
         return
     runner = RUNNERS[(plan.resources.name, plan.nonpreemptible)]
+    if spawn:
+        call = runner.spawn(plan_data)
+        print(
+            json.dumps(
+                {
+                    "run_id": plan.run_id,
+                    "stage": plan.stage,
+                    "function_call_id": call.object_id,
+                },
+                indent=2,
+            )
+        )
+        return
     receipt = runner.remote(plan_data)
     brief = {
         key: receipt[key]

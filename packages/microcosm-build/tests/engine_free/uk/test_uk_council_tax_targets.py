@@ -19,6 +19,7 @@ from microcosm.build.uk_runtime.ledger_targets import (
     UKFrameTargetAdapter,
     compile_uk_target_registry,
     materialize_uk_ledger_targets,
+    uk_small_cell_rule_is_signed,
 )
 from microcosm.build.uk_runtime.local_targets import load_uk_population_contract
 from microcosm.calibrate import TargetRegistry, TargetSpec
@@ -29,6 +30,13 @@ from test_support.paths import paths_for
 from tools.generate_uk_local_target_references import _area_signed_deferrals
 
 _TEST_PATHS = paths_for("microcosm-build")
+
+
+def _sha256(path: Path) -> str:
+    """The file's digest, read in chunks: the pinned feed is several GB."""
+
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
 def _crosswalk() -> dict:
@@ -225,13 +233,55 @@ def test_national_ons_region_cells_count_only_their_region_at_person_grain() -> 
     assert by_name[f"{prefix}E12000001"].tolist() == [0.0, 0.0, 0.0]
 
 
+#: Cells the council-tax floor of 50 dwellings defers, by family and band.
+_SMALL_CELLS = {
+    "mhclg_g": 1,
+    "welshgov_h": 2,
+    "welshgov_i": 6,
+    "scotgov_g": 2,
+    "scotgov_h": 5,
+}
+
+
+def _floor_rule_is_signed() -> bool:
+    register = json.loads(
+        importlib_resources.files("microcosm.build.uk")
+        .joinpath("local_small_cell_rule.json")
+        .read_text(encoding="utf-8")
+    )
+    (rule,) = [
+        rule
+        for rule in register["rules"]
+        if rule["rule_id"] == "council_tax_band_household_floor"
+    ]
+    return uk_small_cell_rule_is_signed(rule)
+
+
 def test_council_tax_band_cells_activate_and_defer_as_measured() -> None:
     membership = _membership()
+    # Cells below the small-cell floor (uk/local_small_cell_rule.json,
+    # microcosm#1123 item 7) defer by rule once the rule is signed: Barking
+    # and Dagenham band G, two Welsh band H and six band I cells, two
+    # Scottish band G and five band H. Unsigned, the rule defers nothing.
+    floor = _SMALL_CELLS if _floor_rule_is_signed() else {}
     expected = {
-        "mhclg": ("abcdefgh", 296, {"h": 0}, 294),
-        "welshgov": ("abcdefghi", 22, {}, 22),
+        "mhclg": ("abcdefgh", 296, {"g": 294 - floor.get("mhclg_g", 0), "h": 0}, 294),
+        "welshgov": (
+            "abcdefghi",
+            22,
+            {
+                "h": 22 - floor.get("welshgov_h", 0),
+                "i": 22 - floor.get("welshgov_i", 0),
+            },
+            22,
+        ),
         # Shetland band H has no band-H clone at K=15 (support deferral).
-        "scotgov": ("abcdefgh", 32, {"h": 31}, 32),
+        "scotgov": (
+            "abcdefgh",
+            32,
+            {"g": 32 - floor.get("scotgov_g", 0), "h": 31 - floor.get("scotgov_h", 0)},
+            32,
+        ),
     }
     for source, (bands, roster, overrides, active_default) in expected.items():
         for band in bands:
@@ -267,7 +317,35 @@ def test_council_tax_signed_deferrals_pin_exact_gaps() -> None:
     # the taxbase basis (microcosm#929): Scotland and Wales bind their own
     # returns, Northern Ireland is outside every family's roster, and MHCLG
     # publishes the City's band A.
-    assert set(by_reason) == {"council_tax_band_h_spine_support_absent"}
+    assert set(by_reason) == {
+        "council_tax_band_h_spine_support_absent",
+        *(["council_tax_band_household_floor"] if _floor_rule_is_signed() else []),
+    }
+    floor = by_reason.get("council_tax_band_household_floor", [])
+    expected_floor = [
+        ("mhclg.council_tax_stock.by_area.band_g", ["E09000002"]),
+        ("scotgov.council_tax_stock.by_area.band_g", ["S12000013", "S12000023"]),
+        (
+            "scotgov.council_tax_stock.by_area.band_h",
+            ["S12000005", "S12000008", "S12000013", "S12000023", "S12000042"],
+        ),
+        ("welshgov.council_tax_stock.by_area.band_h", ["W06000019", "W06000024"]),
+        (
+            "welshgov.council_tax_stock.by_area.band_i",
+            [
+                "W06000001",
+                "W06000008",
+                "W06000012",
+                "W06000019",
+                "W06000020",
+                "W06000024",
+            ],
+        ),
+    ]
+    assert [(row["target_id"], row["area_ids"]) for row in floor] == (
+        expected_floor if _floor_rule_is_signed() else []
+    )
+    assert {row["expires_on"] for row in floor} <= {"2027-04-01"}
     band_h = by_reason["council_tax_band_h_spine_support_absent"]
     expected_english = tuple(
         area_id
@@ -293,7 +371,7 @@ def test_council_tax_signed_deferrals_pin_exact_gaps() -> None:
     assert "84 of 296 at K=10" in band_h[0]["rationale"]
 
 
-def test_council_tax_activation_binds_2511_references() -> None:
+def test_council_tax_activation_binds_2511_references_less_the_small_cells() -> None:
     membership = _membership()
     active = 0
     for target_id, payload in membership["targets"].items():
@@ -303,8 +381,11 @@ def test_council_tax_activation_binds_2511_references() -> None:
         active += sum(row["status"] == "active" for row in candidates)
     # 2,058 English A-G cells (microcosm#762) + 198 Welsh A-I + 255 Scottish
     # A-H (microcosm#929; Shetland band H is a support deferral); the 296
-    # English band-H cells stay deferred.
-    assert active == 2_511
+    # English band-H cells stay deferred, and the 16 cells below the
+    # small-cell floor defer by rule once it is signed (microcosm#1123 item 7).
+    deferred = sum(_SMALL_CELLS.values()) if _floor_rule_is_signed() else 0
+    assert sum(_SMALL_CELLS.values()) == 16
+    assert active == 2_511 - deferred
 
 
 def test_barnsley_and_sheffield_bind_their_2025_rows_through_the_code_aliases() -> None:
@@ -336,13 +417,16 @@ def test_support_floor_deferrals_cover_the_two_authorities_remaining_cells() -> 
     ]
     # 24 local targets before microcosm#929; the three council-tax families
     # add 25 by_area targets and retire eight, and the City's band A is no
-    # longer a separate suppression.
-    assert len(rows) == 41
-    assert sum(len(row["area_ids"]) for row in rows) == 78
+    # longer a separate suppression. microcosm#1123 adds the higher rate
+    # taxpayer cells (Scilly's is signed under the SPI coverage gap).
+    # microcosm#1240 adds the three high_value_homes local-authority legs, and
+    # microcosm#1207 the three DESNZ energy rows.
+    assert len(rows) == 48
+    assert sum(len(row["area_ids"]) for row in rows) == 91
     assert {
         area_id: sum(area_id in row["area_ids"] for row in rows)
         for area_id in ("E06000053", "E09000001")
-    } == {"E06000053": 37, "E09000001": 41}
+    } == {"E06000053": 43, "E09000001": 48}
     assert all(row["defer_if_compiles"] is True for row in rows)
     # The English band-H family is wholly deferred on spine support, so it
     # carries no support-floor row; the Welsh and Scottish band-H targets do
@@ -381,13 +465,16 @@ def test_a14_deferral_declarations_cover_only_currently_active_cells() -> None:
         for row in declarations
         if row.reason_id == "local_authority_support_floor_excluded"
     ]
-    assert len(support) == 41
-    assert sum(len(row.area_ids) for row in support) == 78
+    # microcosm#1240: the three high_value_homes local-authority legs take the
+    # same support-floor deferral on the Isles of Scilly and the City of London;
+    # microcosm#1207's three DESNZ energy rows take it too.
+    assert len(support) == 48
+    assert sum(len(row.area_ids) for row in support) == 91
     by_area = {
         area_id: sum(area_id in row.area_ids for row in support)
         for area_id in ("E06000053", "E09000001")
     }
-    assert by_area == {"E06000053": 37, "E09000001": 41}
+    assert by_area == {"E06000053": 43, "E09000001": 48}
     assert all(row.defer_if_compiles for row in support)
     assert "mhclg.council_tax_stock.by_area.band_h" not in {
         row.target_id for row in support
@@ -443,9 +530,11 @@ def _pinned_feed_facts() -> list[dict]:
     if not feed.is_file():
         pytest.skip("pinned UK Chronicle consumer feed is not present")
     pin = load_uk_chronicle_feed()
-    assert hashlib.sha256(feed.read_bytes()).hexdigest() == pin.facts_sha256
+    assert _sha256(feed) == pin.facts_sha256
+    # Only the MHCLG rows are parsed: the compile reports every other
+    # reference unsupported, and the whole feed parses to tens of GB.
     with feed.open(encoding="utf-8") as handle:
-        return [json.loads(line) for line in handle if line.strip()]
+        return [json.loads(line) for line in handle if '"mhclg' in line]
 
 
 def test_composed_english_region_cells_sum_to_the_publisher_england_row() -> None:

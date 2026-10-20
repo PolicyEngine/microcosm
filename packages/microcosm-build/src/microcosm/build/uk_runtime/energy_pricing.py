@@ -15,13 +15,20 @@ operation, ``price_domestic_energy``:
   electricity meters from the DESNZ subnational statistics; gas-positive
   households are disconnected in an identity-keyed uniform order until the
   region's prior-weighted share is the published one, so every group of
-  households loses the same expected share of its connected mass;
+  households loses the same expected share of its connected mass; in a
+  region whose draw falls short, zero-gas households are connected in the
+  declared ``connect_rule`` order (microcosm#1164);
 * shape: the NEED mean kWh by household income band, tenure, property type
   and region (England and Wales; Scotland by income, tenure and property),
   raked in kWh with gas over connected households;
 * level: DESNZ Energy Trends domestic consumption at actual temperature,
-  summed over the four quarters of the fiscal year, one factor per fuel on
-  the raked kWh so the frame's prior-weighted total is the published one.
+  summed over the four quarters of the declared calendar year (2024, the
+  base year of every LCFS spend column; microcosm#1113), one factor per fuel
+  on the raked kWh so the frame's prior-weighted total is the published one;
+* ceiling: each household's kWh is capped at the declared
+  ``household_kwh_ceiling`` (the NEED domestic-meter limits), the capped
+  households' own NEED cells are re-raked below it and the level is
+  restored (microcosm#1164).
 
 Every price, share, margin, factor and fit is returned in receipts the stage
 records; the ``energy_rake`` stage-health gate recomputes the published
@@ -70,6 +77,11 @@ DISCONNECT_RULES = (
     DISCONNECT_IDENTITY_UNIFORM_ORDER,
 )
 GAS_DISCONNECTION_SALT = "lcfs_consumption:gas_disconnection"
+#: The declared rule for connecting households in a region the draw leaves
+#: below its published share (microcosm#1164): zero-gas households walked in an
+#: identity-keyed order weighted by each one's probability of paying for gas.
+CONNECT_GAS_PAYER_PROBABILITY_ORDER = "gas_payer_probability_order"
+CONNECT_RULES = (CONNECT_GAS_PAYER_PROBABILITY_ORDER,)
 QEP_UNIT_COST_CONCEPTS: Mapping[str, str] = {
     ELECTRICITY_FUEL: "desnz.qep.domestic_electricity_variable_unit_cost",
     GAS_FUEL: "desnz.qep.domestic_gas_variable_unit_cost",
@@ -85,6 +97,18 @@ ENERGY_TRENDS_CONCEPTS: Mapping[str, str] = {
 SUBNATIONAL_METER_CONCEPTS: Mapping[str, str] = {
     ELECTRICITY_FUEL: "desnz.subnational.domestic_electricity_meter_count",
     GAS_FUEL: "desnz.subnational.domestic_gas_meter_count",
+}
+#: The period type of each fuel's sub-national statistics. DESNZ's gas runs on
+#: gas years (gas year Y, mid-May Y to mid-May Y+1, weather-corrected) and its
+#: electricity on calendar years. Microcosm pairs gas year Y with calendar year
+#: Y, the year each opens in (microcosm#1300; PolicyEngine/chronicle#356 left
+#: the alignment to Microcosm), so the meter ratio and the Great Britain level
+#: divide like-labelled years, as they did before Chronicle stamped the gas
+#: rows' own period type; every read names its type, so a re-stamped period
+#: fails by name.
+SUBNATIONAL_PERIOD_TYPES: Mapping[str, str] = {
+    ELECTRICITY_FUEL: "calendar_year",
+    GAS_FUEL: "gas_year",
 }
 _RELATIVE_FACT_TOLERANCE = 1e-9
 
@@ -483,6 +507,7 @@ def published_gas_connected_shares(
                     resource,
                     concept=SUBNATIONAL_METER_CONCEPTS[fuel],
                     geography_id=str(area),
+                    period_type=SUBNATIONAL_PERIOD_TYPES[fuel],
                     period_value=period_value,
                     dimensions={"metric": "meter_count", "fuel": fuel},
                 ),
@@ -512,6 +537,7 @@ def published_gas_connected_shares(
         "connection_rule": rule,
         "resource": resource,
         "period_value": period_value,
+        "period_types": dict(SUBNATIONAL_PERIOD_TYPES),
         "fallback": fallback,
         "fallback_regions": sorted(fallback_regions),
         "by_region": by_region,
@@ -528,6 +554,8 @@ def impose_gas_connection(
     disconnect_rule: str = DISCONNECT_LOWEST_DRAWN_GAS_FIRST,
     identity: Sequence[object] | None = None,
     seed: int = 0,
+    connect_probability: Sequence[float] | None = None,
+    connect_salt: str | None = None,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     """The gas-connected mask after imposing each region's published share.
 
@@ -548,11 +576,20 @@ def impose_gas_connection(
     is disconnected if that brings the share nearer the published one. The
     achieved share therefore sits within a fraction of one household weight
     of the published share; ``rows_skipped_for_weight`` counts the households
-    the walk passed over. A region below its published share keeps every
-    gas-positive household (the draw cannot create connections) and the
-    shortfall is receipted. Regions with no published share (``None``, the
+    the walk passed over. Regions with no published share (``None``, the
     stage's declared ``connection_fallback_regions``) keep the positive-gas
     rule.
+
+    A region below its published share keeps every gas-positive household.
+    Without ``connect_probability`` the draw cannot create connections and the
+    shortfall is receipted. With it (each row's probability of paying for gas,
+    the declared ``connect_rule``; microcosm#1164), the region's zero-gas
+    households are walked in a weighted identity-keyed order, ascending
+    ``-log(u) / p`` for ``u`` from ``stable_identity_uniforms(identity, seed,
+    connect_salt)``, which draws them without replacement in proportion to
+    ``p``, and connected by the same weight-fitting walk until the share is
+    met; the caller gives each connected household its gas. A shortfall then
+    remains only if the region runs out of candidates (``candidates_exhausted``).
     """
 
     if disconnect_rule not in DISCONNECT_RULES:
@@ -572,6 +609,27 @@ def impose_gas_connection(
         )
     else:
         walk_key = gas
+    connect = connect_probability is not None
+    if connect:
+        probability = np.asarray(connect_probability, dtype=float)
+        if (
+            len(probability) != len(gas)
+            or identity is None
+            or len(identity) != len(gas)
+        ):
+            raise ValueError(
+                "connect_probability needs one probability and one identity per row."
+            )
+        if not connect_salt:
+            raise ValueError("connecting households needs a declared connect_salt.")
+        connect_key = np.full(len(gas), np.inf)
+        weighted = probability > 0
+        uniforms = stable_identity_uniforms(
+            np.asarray(identity), seed=seed, salt=connect_salt
+        )
+        connect_key[weighted] = (
+            -np.log(np.maximum(uniforms[weighted], 1e-300)) / (probability[weighted])
+        )
     connected = gas > 0
     by_region: dict[str, dict[str, Any]] = {}
     for region in sorted(set(regions)):
@@ -587,6 +645,20 @@ def impose_gas_connection(
         }
         if target is None:
             entry.update({"rule": GAS_CONNECTED_POSITIVE_SPEND, "share_after": before})
+            by_region[region] = entry
+            continue
+        if before <= target and connect:
+            entry.update(
+                _connect_walk(
+                    connected,
+                    rows=rows,
+                    weight=weight,
+                    key=connect_key,
+                    total=total,
+                    before=before,
+                    target=target,
+                )
+            )
             by_region[region] = entry
             continue
         if before <= target or len(positive) == 0:
@@ -651,9 +723,72 @@ def impose_gas_connection(
         if total_weight > 0
         else 0.0,
         "rows_disconnected": int(((gas > 0) & ~connected).sum()),
+        **(
+            {
+                "connect_rule": CONNECT_GAS_PAYER_PROBABILITY_ORDER,
+                "connect_salt": connect_salt,
+                "rows_connected": int((connected & ~(gas > 0)).sum()),
+            }
+            if connect
+            else {}
+        ),
         "by_region": by_region,
     }
     return connected, receipt
+
+
+def _connect_walk(
+    connected: np.ndarray,
+    *,
+    rows: np.ndarray,
+    weight: np.ndarray,
+    key: np.ndarray,
+    total: float,
+    before: float,
+    target: float,
+) -> dict[str, Any]:
+    """Connect a region's zero-gas rows in ``key`` order until its share is met.
+
+    The disconnection walk's weight-fitting rule, mirrored: a household is
+    connected when its weight fits inside the remaining shortfall, skipped
+    when it would overshoot, and afterwards the skipped household nearest the
+    remainder is connected if that brings the share nearer the published one.
+    Rows of probability zero (an infinite key) are never candidates.
+    """
+
+    candidates = rows[~connected[rows] & np.isfinite(key[rows])]
+    order = candidates[np.argsort(key[candidates], kind="stable")]
+    remaining = (target - before) * total
+    add: list[int] = []
+    skipped: list[int] = []
+    for index in order:
+        if remaining <= 0.0:
+            break
+        if weight[index] <= remaining:
+            add.append(int(index))
+            remaining -= weight[index]
+        else:
+            skipped.append(int(index))
+    if remaining > 0.0 and skipped:
+        nearest = min(skipped, key=lambda i: abs(weight[i] - remaining))
+        if abs(weight[nearest] - remaining) < remaining:
+            add.append(nearest)
+            remaining -= weight[nearest]
+    added = np.asarray(add, dtype=int)
+    connected[added] = True
+    after = float(weight[rows[connected[rows]]].sum()) / total
+    exhausted = remaining > 0.0 and not skipped
+    return {
+        "rule": GAS_CONNECTED_PUBLISHED_METER_SHARE,
+        "share_after": after,
+        "rows_disconnected": 0,
+        "weight_disconnected": 0.0,
+        "rows_connected": int(len(added)),
+        "weight_connected": float(weight[added].sum()),
+        "rows_skipped_for_weight": int(sum(1 for i in skipped if i not in set(add))),
+        "candidates_exhausted": bool(exhausted),
+        "shortfall": max(target - after, 0.0) if exhausted else 0.0,
+    }
 
 
 def published_energy_level(
@@ -877,6 +1012,256 @@ def income_band_ids(income: Sequence[float], margins: NeedMargins) -> np.ndarray
     return result
 
 
+#: The declared household ceilings (microcosm#1164, #1207): kWh a year above
+#: which DESNZ and NEED do not count a meter as domestic (NEED Annex B, Quality
+#: Assurance: gas meters under 73,200 kWh a year, electricity meters under
+#: 50,000 kWh on profile classes 1 and 2). The DESNZ total the stage levels to
+#: counts domestic meters, so no household of the frame is drawn above them.
+HOUSEHOLD_KWH_CEILING_KEY = "household_kwh_ceiling"
+
+
+def declared_household_kwh_ceilings(
+    parameters: Mapping[str, Any],
+) -> dict[str, float] | None:
+    """The declared ``household_kwh_ceiling`` per fuel column, if any."""
+
+    declared = parameters.get(HOUSEHOLD_KWH_CEILING_KEY)
+    if declared is None:
+        return None
+    if not isinstance(declared, Mapping) or set(declared) != {"electricity", "gas"}:
+        raise ValueError(
+            f"{HOUSEHOLD_KWH_CEILING_KEY} must give electricity and gas kWh."
+        )
+    ceilings = {
+        ELECTRICITY_KWH: float(declared["electricity"]),
+        GAS_KWH: float(declared["gas"]),
+    }
+    if not all(np.isfinite(v) and v > 0 for v in ceilings.values()):
+        raise ValueError(f"{HOUSEHOLD_KWH_CEILING_KEY} values must be positive.")
+    return ceilings
+
+
+#: The declared NEED cells whose households start from the cell's NEED mean
+#: when every one of them drew no kWh (microcosm#1240). Mobile homes have no
+#: NEED property-type row and the incumbent held them at the all-dwellings
+#: mean; where every mobile home of a NEED geography drew a spend at or below
+#: the standing charge, the multiplying rake has nothing to scale and leaves
+#: the cell at zero. Any other cell with a zero current mean still fails the
+#: ``energy_rake`` gate.
+ZERO_KWH_CELLS_AT_NEED_MEAN_KEY = "zero_kwh_cells_at_need_mean"
+
+
+def declared_zero_kwh_cells_at_need_mean(
+    parameters: Mapping[str, Any],
+) -> dict[str, tuple[str, ...]] | None:
+    """The declared ``zero_kwh_cells_at_need_mean`` categories per margin, if any."""
+
+    declared = parameters.get(ZERO_KWH_CELLS_AT_NEED_MEAN_KEY)
+    if declared is None:
+        return None
+    if not isinstance(declared, Mapping) or not declared:
+        raise ValueError(
+            f"{ZERO_KWH_CELLS_AT_NEED_MEAN_KEY} must map NEED margins to categories."
+        )
+    cells: dict[str, tuple[str, ...]] = {}
+    for margin, categories in declared.items():
+        if margin not in NEED_MARGIN_DIMENSIONS:
+            raise ValueError(
+                f"{ZERO_KWH_CELLS_AT_NEED_MEAN_KEY} names {margin!r}, not a NEED "
+                f"margin ({sorted(NEED_MARGIN_DIMENSIONS)})."
+            )
+        if (
+            isinstance(categories, str)
+            or not isinstance(categories, Sequence)
+            or not categories
+            or not all(isinstance(c, str) and c for c in categories)
+        ):
+            raise ValueError(
+                f"{ZERO_KWH_CELLS_AT_NEED_MEAN_KEY}.{margin} must list NEED categories."
+            )
+        cells[str(margin)] = tuple(str(c) for c in categories)
+    return cells
+
+
+def _hold_zero_kwh_cells_at_need_mean(
+    frame: pd.DataFrame,
+    cells: Mapping[str, Sequence[str]],
+    *,
+    margins: NeedMargins,
+    connected: np.ndarray,
+    weights: np.ndarray,
+) -> list[dict[str, str]]:
+    """Start each declared cell whose every household drew no kWh at its NEED mean.
+
+    Works on the rake's own copy before the first sweep. A cell is its
+    ``_need_<margin>`` key in each NEED geography, over every row for
+    electricity and over the gas-connected rows for gas, as the rake sweeps
+    them. A cell with a positive row is left to the rake, and so is one with
+    no row or no weight. Records the cells it set, never a household.
+    """
+
+    held: list[dict[str, str]] = []
+    for margin, categories in cells.items():
+        column = f"_need_{margin}"
+        if column not in frame:
+            raise ValueError(
+                f"{ZERO_KWH_CELLS_AT_NEED_MEAN_KEY} names the {margin!r} margin, "
+                "which this rake does not sweep."
+            )
+        keys = frame[column].to_numpy().astype(str)
+        for category in categories:
+            published = {
+                geography: cell
+                for (geography, name), cell in margins.targets[margin].items()
+                if name == category
+            }
+            if not published:
+                raise ValueError(
+                    f"{ZERO_KWH_CELLS_AT_NEED_MEAN_KEY}: NEED publishes no {margin} "
+                    f"cell {category!r} for {margins.period_value}."
+                )
+            for geography, cell in sorted(published.items()):
+                key = f"{geography}:{category}"
+                for fuel, population in (
+                    (ELECTRICITY_KWH, np.ones(len(frame), dtype=bool)),
+                    (GAS_KWH, connected),
+                ):
+                    rows = (keys == key) & population
+                    if not rows.any() or float(weights[rows].sum()) <= 0.0:
+                        continue
+                    values = (
+                        pd.to_numeric(frame.loc[rows, fuel], errors="coerce")
+                        .fillna(0.0)
+                        .to_numpy(dtype=float)
+                    )
+                    if not (values == 0.0).all():
+                        continue
+                    frame.loc[rows, fuel] = float(cell[fuel])
+                    held.append({"margin": margin, "cell": key, "column": fuel})
+    return held
+
+
+def cap_household_kwh(
+    values: np.ndarray,
+    *,
+    weights: np.ndarray,
+    population: np.ndarray,
+    ceiling: float,
+    max_rounds: int = 100,
+    cells: Sequence[tuple[np.ndarray, Mapping[str, float]]] = (),
+    sweeps: int = 0,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    """Cap one fuel's household kWh at ``ceiling`` and keep its weighted total.
+
+    Households above the ceiling are set to it, and the kWh they lose goes to
+    the other households of the population in proportion to their own use, so
+    the levelled total holds; a household lifted over the ceiling by that is
+    capped in the next round. The receipt counts the households drawn above
+    the ceiling and the share of the total they gave up, and records no
+    household's value.
+
+    With ``cells`` (each margin's row labels and levelled cell-mean targets,
+    as the rake fitted them) and ``sweeps``, the households below the ceiling
+    are first re-raked to those targets with the capped ones held at it, so
+    what a capped household gives up goes to its own NEED cells; the
+    proportional step then only restores the total (microcosm#1164: handed to
+    every household at once, the kWh moved the cells that hold most capped
+    households, detached and high-income ones, off their NEED means).
+    """
+
+    capped_values = np.asarray(values, dtype=float).copy()
+    weight = np.asarray(weights, dtype=float)
+    members = np.asarray(population, dtype=bool)
+    total = float(np.dot(weight[members], capped_values[members]))
+    at_ceiling = np.zeros(len(capped_values), dtype=bool)
+    rounds = 0
+    feasible = True
+    while True:
+        over = members & (capped_values > ceiling)
+        if not over.any():
+            break
+        if rounds == max_rounds:
+            raise ValueError(f"capping at {ceiling} kWh did not settle.")
+        rounds += 1
+        at_ceiling |= over
+        capped_values[over] = ceiling
+        if cells and sweeps:
+            _rake_below_ceiling(
+                capped_values,
+                weights=weight,
+                population=members,
+                held=at_ceiling,
+                cells=cells,
+                sweeps=sweeps,
+            )
+        free = members & ~at_ceiling & (capped_values > 0)
+        free_total = float(np.dot(weight[free], capped_values[free]))
+        shortfall = total - float(np.dot(weight[members], capped_values[members]))
+        if free_total <= 0:
+            # No household is left below the ceiling to take the rest: a frame
+            # whose weights fall far short of the households it is levelled to
+            # (a synthetic fixture). The total then falls short, the receipt
+            # says so, and the energy_rake gate refuses it.
+            feasible = False
+            break
+        capped_values[free] *= 1.0 + shortfall / free_total
+    before = np.asarray(values, dtype=float)
+    # The outliers are the households drawn above the ceiling; one the
+    # rescaling lifted to it gave nothing up.
+    outliers = members & (before > ceiling)
+    removed = float(np.dot(weight[outliers], before[outliers] - ceiling))
+    after = float(np.dot(weight[members], capped_values[members]))
+    return capped_values, {
+        "ceiling_kwh": float(ceiling),
+        "households_capped": int(outliers.sum()),
+        "households_at_ceiling": int(at_ceiling.sum()),
+        "capped_share_of_total": removed / total if total > 0 else 0.0,
+        "rounds": rounds,
+        "households_above_after": int(
+            (members & (capped_values > ceiling * (1 + 1e-12))).sum()
+        ),
+        "feasible": feasible,
+        "frame_kwh_after": after,
+    }
+
+
+def _rake_below_ceiling(
+    values: np.ndarray,
+    *,
+    weights: np.ndarray,
+    population: np.ndarray,
+    held: np.ndarray,
+    cells: Sequence[tuple[np.ndarray, Mapping[str, float]]],
+    sweeps: int,
+) -> None:
+    """Re-rake, in place, the rows not ``held`` to the cell-mean targets.
+
+    Each sweep visits the margins in order; within a cell the held rows keep
+    their value and the others are scaled so the cell's weighted mean over its
+    population rows is the target, where the held mass leaves room for it.
+    """
+
+    margins = [
+        [
+            (np.flatnonzero(population & (labels == key)), float(target))
+            for key, target in targets.items()
+        ]
+        for labels, targets in cells
+    ]
+    for _ in range(sweeps):
+        for margin in margins:
+            for rows, target in margin:
+                if rows.size == 0:
+                    continue
+                fixed = held[rows]
+                wanted = target * float(weights[rows].sum())
+                fixed_mass = float(np.dot(weights[rows][fixed], values[rows][fixed]))
+                free = rows[~fixed]
+                current = float(np.dot(weights[free], values[free]))
+                if current > 0 and wanted > fixed_mass:
+                    values[free] *= (wanted - fixed_mass) / current
+
+
 def rake_energy_kwh(
     table: pd.DataFrame,
     *,
@@ -890,6 +1275,8 @@ def rake_energy_kwh(
     use_region_margin: bool = False,
     gas_connected: Sequence[bool] | None = None,
     level: Mapping[str, float] | None = None,
+    ceilings: Mapping[str, float] | None = None,
+    zero_kwh_cells_at_need_mean: Mapping[str, Sequence[str]] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Rake ``electricity_kwh`` and ``gas_kwh`` to the NEED shape, then to the level.
 
@@ -910,6 +1297,17 @@ def rake_energy_kwh(
     NEED means become the shape (every cell mean moves by the same factor,
     which the fit block records as ``level_factor`` beside the ``shape_target``
     and the levelled ``target``).
+
+    ``ceilings`` (kWh per fuel column, after the level) caps each household
+    and hands what it loses to the households below the ceiling in its own
+    NEED cells, re-raking them to the levelled targets with the capped ones
+    held, then restores the published total (``cap_household_kwh``;
+    microcosm#1164). The fit is read after the cap.
+
+    ``zero_kwh_cells_at_need_mean`` (NEED categories per margin) starts each
+    named cell whose every household drew no kWh at the cell's NEED mean
+    before the first sweep, since a cell mean of zero cannot be scaled; the
+    receipt lists the cells it set (microcosm#1240).
     """
 
     frame = table.copy()
@@ -977,6 +1375,22 @@ def rake_energy_kwh(
     )
     if len(connected) != len(frame):
         raise ValueError("gas_connected must align with the table.")
+    weight_values = (
+        np.ones(len(frame), dtype=float)
+        if weights is None
+        else np.asarray(weights, dtype=float)
+    )
+    held_at_need_mean = (
+        []
+        if zero_kwh_cells_at_need_mean is None
+        else _hold_zero_kwh_cells_at_need_mean(
+            frame,
+            zero_kwh_cells_at_need_mean,
+            margins=margins,
+            connected=connected,
+            weights=weight_values,
+        )
+    )
     electricity_specs = tuple(
         MarginSpec(
             spec.column,
@@ -1016,11 +1430,6 @@ def rake_energy_kwh(
     ]
     raked.loc[connected, GAS_KWH] = gas_raked[GAS_KWH].to_numpy(dtype=float)
     raked.loc[~connected, GAS_KWH] = 0.0
-    weight_values = (
-        np.ones(len(frame), dtype=float)
-        if weights is None
-        else np.asarray(weights, dtype=float)
-    )
     level_factor = {ELECTRICITY_KWH: 1.0, GAS_KWH: 1.0}
     level_receipt: dict[str, Any] | None = None
     if level is not None:
@@ -1048,6 +1457,34 @@ def rake_energy_kwh(
                 "factor": factor,
                 "frame_kwh_after": after,
             }
+    ceiling_receipt: dict[str, Any] | None = None
+    if ceilings is not None:
+        ceiling_receipt = {}
+        for column in (ELECTRICITY_KWH, GAS_KWH):
+            population = (
+                np.ones(len(frame), dtype=bool)
+                if column == ELECTRICITY_KWH
+                else connected
+            )
+            capped, ceiling_receipt[column] = cap_household_kwh(
+                raked[column].to_numpy(dtype=float),
+                weights=weight_values,
+                population=population,
+                ceiling=float(ceilings[column]),
+                cells=[
+                    (
+                        frame[spec.column].to_numpy().astype(str),
+                        {
+                            key: float(cell[column]) * level_factor[column]
+                            for key, cell in spec.targets.items()
+                            if key in fitted[margin]
+                        },
+                    )
+                    for margin, spec in zip(fitted, specs, strict=True)
+                ],
+                sweeps=int(iterations),
+            )
+            raked[column] = capped
     fit = _rake_fit(raked, margins, fitted, connected, weight_values, level_factor)
     receipt = {
         "unit": "kwh",
@@ -1060,9 +1497,11 @@ def rake_energy_kwh(
         "gas_connected_rows": int(connected.sum()),
         "rows": int(len(frame)),
         "zero_current_cells": zero_cells,
+        "cells_held_at_need_mean": held_at_need_mean,
         "sweep_residuals": sweep_residuals,
         "level_factor": dict(level_factor),
         "level": level_receipt,
+        "ceiling": ceiling_receipt,
         "fit": fit,
     }
     return raked.drop(columns=[c for c in scratch if c in raked]), receipt

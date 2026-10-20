@@ -24,6 +24,10 @@ from microcosm.build.uk_runtime.donor_uprating import (
 )
 from microcosm.build.uk_runtime.etb_vat import UK_ETB_FAMILY_ROLE_COUNTS
 from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
+from microcosm.build.uk_runtime.household_income import (
+    UK_HBAI_NET_INCOME_PREDICTOR,
+    UK_HBAI_NET_INCOME_VARIABLE,
+)
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_mass_conservation_receipt,
     uk_household_weight_kind,
@@ -60,9 +64,15 @@ UK_ETB_SERVICES_ENGINE_VARIABLES = (
     "is_SP_age",
     "dla",
     "pip",
-    "hbai_household_net_income",
+    UK_HBAI_NET_INCOME_VARIABLE,
     "current_education",
 )
+#: Predictors read from an engine variable of another name: the HBAI net income
+#: is read before the reset to zero (policyengine-uk 2.132.4), since the
+#: donor's ``disinc`` is not reset.
+_ETB_SERVICES_PREDICTOR_VARIABLES = {
+    UK_HBAI_NET_INCOME_PREDICTOR: UK_HBAI_NET_INCOME_VARIABLE,
+}
 UK_ETB_SERVICES_EDUCATION_COUNTS = {
     "count_primary_education": ("PRIMARY",),
     "count_secondary_education": ("LOWER_SECONDARY",),
@@ -413,8 +423,9 @@ def recipient_predictors(frame: Frame, engine: object) -> pd.DataFrame:
             labels = UK_ETB_SERVICES_EDUCATION_COUNTS[predictor]
             result[predictor] = person_sum(np.isin(education, labels))
             continue
-        values = np.asarray(materialized[predictor])
-        entity = str(engine.variable_metadata(predictor).entity)
+        variable = _ETB_SERVICES_PREDICTOR_VARIABLES.get(predictor, predictor)
+        values = np.asarray(materialized[variable])
+        entity = str(engine.variable_metadata(variable).entity)
         if entity == "household":
             result[predictor] = values
         elif entity == "person":

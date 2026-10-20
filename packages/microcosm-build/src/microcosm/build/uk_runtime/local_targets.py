@@ -17,6 +17,21 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from microcosm.build.uk_runtime.council_tax_constants import UK_COUNCIL_TAX_BANDS
+from microcosm.build.uk_runtime.domestic_energy_targets import (
+    household_energy_kwh,
+    household_energy_prices,
+)
+from microcosm.build.uk_runtime.energy_pricing import ELECTRICITY_KWH, GAS_KWH
+from microcosm.build.uk_runtime.high_value_homes import (
+    high_value_home_mask,
+    uk_high_value_home_metric_names,
+    uk_high_value_home_thresholds,
+)
+from microcosm.build.uk_runtime.hmrc_income import (
+    LOSS_RELIEF_COLUMN,
+    self_employment_income_after_loss_relief,
+)
 from microcosm.build.uk_runtime.tenure_constants import (
     UK_TENURE_OWNED_OUTRIGHT,
     UK_TENURE_OWNED_WITH_MORTGAGE,
@@ -26,12 +41,27 @@ from microcosm.build.uk_runtime.tenure_constants import (
 )
 from microcosm.build.uk_runtime.uc_relationships import uc_family_child_member
 
-AREA_TYPES = ("constituency", "la")
+#: ``brma`` is Scotland's 18 Broad Rental Market Areas, the grain ONS's Price
+#: Index of Private Rents publishes Scottish rents at (microcosm#1090, #1262).
+#: It is a partial grain: households outside Scotland carry no BRMA area.
+AREA_TYPES = ("constituency", "la", "brma")
 AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL = {
     "constituency": "constituency",
     "la": "local_authority",
+    "brma": "statistical_scope",
 }
+#: Area types every household belongs to; a partial grain covers some only.
+FULL_AREA_TYPES = ("constituency", "la")
+PARTIAL_AREA_TYPES = ("brma",)
+#: The BRMA grain's metrics: Scotland's PIPR rents, 12 x the BRMA mean x its
+#: private renters, against the same household rent the local-authority rows
+#: read.
+BRMA_METRICS = ("rent/private_rent_brma",)
 INCOME_VARIABLES = ("self_employment_income", "employment_income")
+#: SPI higher rate taxpayers by area (microcosm#1123): the engine's tax_band
+#: on adjusted net income less allowances, as HMRC classes a taxpayer by the
+#: highest rate paid on any income.
+HIGHER_RATE_TAXPAYERS_METRIC = "hmrc/higher_rate_taxpayers/count"
 AGE_BANDS = tuple((lower, lower + 10) for lower in range(0, 80, 10))
 CONSTITUENCY_UC_CHILDREN_METRICS = (
     "uc_hh_0_children",
@@ -49,11 +79,14 @@ LA_EXTRA_METRICS = (
     "tenure/social_rent",
     "rent/private_rent",
 )
-#: Bands A-H are the England and Scotland systems; band I exists in Wales only
-#: (the 2005 revaluation) and is carried by the spine (FRS ``ctband`` 9) and
-#: the engine enum, so it binds the Welsh cells that publish it. Appended
-#: last, so the positional metric indices of A-H are unchanged.
-COUNCIL_TAX_BANDS = tuple("ABCDEFGHI")
+#: DESNZ sub-national domestic energy by local authority (microcosm#1207):
+#: electricity and gas kWh, and the gas-connected households. DESNZ publishes
+#: no constituency cut, so the family is local-authority only.
+LA_ENERGY_METRICS = (
+    "energy/electricity_kwh",
+    "energy/gas_kwh",
+    "energy/gas_connected_households",
+)
 #: Local tenure metric -> the shared tenure category it counts, in matrix order.
 _TENURE_METRIC_CATEGORIES = {
     "tenure/owned_outright": UK_TENURE_OWNED_OUTRIGHT,
@@ -68,6 +101,7 @@ COUNTRY_TO_REGION = {
     "Northern Ireland": "NORTHERN_IRELAND",
 }
 UK_POPULATION_TARGETS_RESOURCE = "uk_population_targets.json"
+UK_LOCAL_AREA_CROSSWALK_RESOURCE = "local_area_crosswalk.json"
 
 
 def load_uk_population_contract() -> dict[str, Any]:
@@ -79,6 +113,38 @@ def load_uk_population_contract() -> dict[str, Any]:
         .read_text()
     )
     return json.loads(payload)
+
+
+def _brma_name_by_area() -> dict[str, str]:
+    crosswalk = json.loads(
+        importlib_resources.files("microcosm.build.uk")
+        .joinpath(UK_LOCAL_AREA_CROSSWALK_RESOURCE)
+        .read_text()
+    )
+    level = crosswalk["levels"][AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL["brma"]]
+    return {str(code): str(name) for code, name in level["brma_name_by_area"].items()}
+
+
+def uk_brma_area_roster() -> tuple[str, ...]:
+    """The BRMA grain's area codes, Scotland's 18 PIPR BRMAs (``S33...``)."""
+
+    return tuple(sorted(_brma_name_by_area()))
+
+
+def uk_brma_area_codes(brma: Sequence[object]) -> np.ndarray:
+    """Each household's BRMA area code on the BRMA grain, blank outside it.
+
+    The crosswalk names the BRMA of each of the grain's codes
+    (``brma_name_by_area``, from the area-to-BRMA layer), and a placed
+    household reads its BRMA off its assigned area (microcosm#1262), so a
+    Scottish household's code is its BRMA's; any other household belongs to
+    no area of the grain.
+    """
+
+    code_by_name = {name: code for code, name in _brma_name_by_area().items()}
+    return np.asarray(
+        [code_by_name.get(str(value), "") for value in brma], dtype=object
+    )
 
 
 def load_uk_local_geography_contract() -> dict[str, Any]:
@@ -97,6 +163,8 @@ def metric_names(
     _validate_area_type(area_type)
     if target_profile is not None:
         return metric_names_from_target_profile(target_profile, area_type)
+    if area_type == "brma":
+        return BRMA_METRICS
     names: list[str] = []
     for income_variable in INCOME_VARIABLES:
         names.append(f"hmrc/{income_variable}/amount")
@@ -114,7 +182,17 @@ def metric_names(
     # displacing it.
     names.append("households")
     if area_type == "la":
-        names.extend(f"council_tax/band_{band.lower()}" for band in COUNCIL_TAX_BANDS)
+        names.extend(
+            f"council_tax/band_{band.lower()}" for band in UK_COUNCIL_TAX_BANDS
+        )
+    names.append(HIGHER_RATE_TAXPAYERS_METRIC)
+    # microcosm#1240: owner-occupied homes above value thresholds, both grains,
+    # appended after every earlier family under the same append-only rule.
+    names.extend(uk_high_value_home_metric_names())
+    # microcosm#1207: DESNZ sub-national domestic energy, local authorities
+    # only, appended after every earlier family under the same rule.
+    if area_type == "la":
+        names.extend(LA_ENERGY_METRICS)
     return tuple(names)
 
 
@@ -250,6 +328,7 @@ def compute_household_metrics(
     period: int | str | None = None,
     household_ids: Sequence[Any] | None = None,
     target_profile: Mapping[str, Any] | Any | None = None,
+    input_period: int | str | None = None,
 ) -> pd.DataFrame:
     """Compute local calibration metrics on household rows.
 
@@ -258,13 +337,36 @@ def compute_household_metrics(
     PolicyEngine-UK's microsimulation API. UC child-band membership is
     evaluated for each benefit unit and summed onto its household row, so a
     multi-benefit-unit household can contribute to more than one band.
+
+    ``input_period`` is the dataset period of the stored inputs. The
+    high-value homes family compares the stored ``main_residence_value``
+    with thresholds deflated to that period's price basis, so it reads the
+    input there rather than at ``period``, where the engine would uprate
+    it (microcosm#1240). When omitted it falls back to ``period``.
     """
 
     _validate_area_type(area_type)
     matrix = pd.DataFrame()
+    stored_period = period if input_period is None else input_period
+
+    if area_type == "brma":
+        tenure_type = _values(_calculate(sim, "tenure_type", period))
+        is_private_renter = (tenure_type == "RENT_PRIVATELY").astype(float)
+        benunit_rent = _values(_calculate(sim, "benunit_rent", period))
+        household_rent = _map_result(sim, benunit_rent, "benunit", "household")
+        matrix[BRMA_METRICS[0]] = household_rent * is_private_renter
+        return _indexed_metrics(
+            matrix, sim, area_type, period, household_ids, target_profile
+        )
 
     for income_variable in INCOME_VARIABLES:
         income_values = _values(_calculate(sim, income_variable, period))
+        if income_variable == "self_employment_income":
+            # HMRC's area rows count the profit after losses brought forward,
+            # which policyengine-uk keeps apart in loss_relief (microcosm#1095).
+            income_values = self_employment_income_after_loss_relief(
+                income_values, _values(_calculate(sim, LOSS_RELIEF_COLUMN, period))
+            )
         in_spi_frame = _values(_calculate(sim, "income_tax", period)) > 0
         matrix[f"hmrc/{income_variable}/amount"] = _map_result(
             sim,
@@ -278,6 +380,15 @@ def compute_household_metrics(
             "person",
             "household",
         )
+
+    in_spi_frame = _values(_calculate(sim, "income_tax", period)) > 0
+    higher_rate = _values(_calculate(sim, "tax_band", period)) == "HIGHER"
+    matrix[HIGHER_RATE_TAXPAYERS_METRIC] = _map_result(
+        sim,
+        higher_rate & in_spi_frame,
+        "person",
+        "household",
+    )
 
     age = _values(_calculate(sim, "age", period))
     for lower, upper in AGE_BANDS:
@@ -349,10 +460,53 @@ def compute_household_metrics(
         matrix["rent/private_rent"] = household_rent * is_private_renter
 
         council_tax_band = _values(_calculate(sim, "council_tax_band", period))
-        for band in COUNCIL_TAX_BANDS:
+        for band in UK_COUNCIL_TAX_BANDS:
             matrix[f"council_tax/band_{band.lower()}"] = (
                 council_tax_band == band
             ).astype(float)
+
+    stored_value = _values(_calculate(sim, "main_residence_value", stored_period))
+    stored_tenure = _values(_calculate(sim, "tenure_type", stored_period))
+    for threshold in uk_high_value_home_thresholds():
+        matrix[threshold.metric_name] = high_value_home_mask(
+            stored_value, stored_tenure, threshold_basis_gbp=threshold.basis_gbp
+        ).astype(float)
+
+    if area_type == "la":
+        # microcosm#1207: the stored spend is the lcfs stage's calendar-2024
+        # spend; read at the dataset period the engine does not uprate it,
+        # and the stage's own prices turn it back into the kWh it raked.
+        electricity_spend = _values(
+            _calculate(sim, "electricity_consumption", stored_period)
+        ).astype(float)
+        gas_spend = _values(_calculate(sim, "gas_consumption", stored_period)).astype(
+            float
+        )
+        energy = household_energy_kwh(
+            electricity_spend,
+            gas_spend,
+            region=_decoded(_calculate(sim, "region", stored_period)),
+            prices=household_energy_prices(),
+        )
+        electricity_metric, gas_metric, connected_metric = LA_ENERGY_METRICS
+        matrix[electricity_metric] = energy[ELECTRICITY_KWH]
+        matrix[gas_metric] = energy[GAS_KWH]
+        matrix[connected_metric] = (gas_spend > 0).astype(float)
+
+    return _indexed_metrics(
+        matrix, sim, area_type, period, household_ids, target_profile
+    )
+
+
+def _indexed_metrics(
+    matrix: pd.DataFrame,
+    sim: Any,
+    area_type: str,
+    period: int | str | None,
+    household_ids: Sequence[Any] | None,
+    target_profile: Mapping[str, Any] | Any | None,
+) -> pd.DataFrame:
+    """Select the area type's metrics in order and index them by household."""
 
     expected = metric_names(area_type, target_profile=target_profile)
     matrix = matrix.loc[:, expected]
@@ -467,6 +621,14 @@ def _values(result: Any) -> np.ndarray:
     if hasattr(result, "values"):
         return np.asarray(result.values)
     return np.asarray(result)
+
+
+def _decoded(result: Any) -> np.ndarray:
+    """An enum result as its names (a plain engine Simulation returns codes)."""
+
+    if hasattr(result, "decode_to_str"):
+        return np.asarray(result.decode_to_str())
+    return _values(result)
 
 
 def _map_result(

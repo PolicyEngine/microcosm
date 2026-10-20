@@ -103,6 +103,18 @@
       "sha256": "3e9c445d2358795e0b946a00726e1fb34f7bbf95789ce9125c3c84c9038025ea"
     },
     {
+      "inventory_id": "policyengine_uk_data.targets.sources.dwp_housing_benefit",
+      "kind": "target_source",
+      "path": "policyengine_uk_data/targets/sources/dwp_housing_benefit.py",
+      "sha256": "95afd7db7290cff86d83c933f7a63be5254e6db22ccf4bfd9acb5f4e00a6a911"
+    },
+    {
+      "inventory_id": "policyengine_uk_data.targets.sources.dwp_pension_credit",
+      "kind": "target_source",
+      "path": "policyengine_uk_data/targets/sources/dwp_pension_credit.py",
+      "sha256": "233880b69abb625bc4a9d96a18ec940e3ca29d6b2a5149642af374e33ff8f420"
+    },
+    {
       "inventory_id": "policyengine_uk_data.targets.sources.hmrc_cgt",
       "kind": "target_source",
       "path": "policyengine_uk_data/targets/sources/hmrc_cgt.py",
@@ -112,7 +124,7 @@
       "inventory_id": "policyengine_uk_data.targets.sources.hmrc_salary_sacrifice",
       "kind": "target_source",
       "path": "policyengine_uk_data/targets/sources/hmrc_salary_sacrifice.py",
-      "sha256": "08c0f9e7e9a44c183b5c15424e56a0070461506585e6c294e9fbc937dc2a70d4"
+      "sha256": "686adb8b659e21ae39c95bb579fe88c110d04fdda573a413674967c3082d0236"
     },
     {
       "inventory_id": "policyengine_uk_data.targets.sources.hmrc_spi",
@@ -172,7 +184,7 @@
       "inventory_id": "policyengine_uk_data.targets.sources.obr",
       "kind": "target_source",
       "path": "policyengine_uk_data/targets/sources/obr.py",
-      "sha256": "1f606a4a2748a72100d21b97cbc57006ce9b5eb87c3fe3534b182370c198255e"
+      "sha256": "022213ab3c0cdad832b3a30469d595dae3841531bedb7063b021eb4ad62188b9"
     },
     {
       "inventory_id": "policyengine_uk_data.targets.sources.ons_demographics",
@@ -185,6 +197,12 @@
       "kind": "target_source",
       "path": "policyengine_uk_data/targets/sources/ons_households.py",
       "sha256": "cec986deea14bf9c099c16f48190b1bbf81287bf69abafe7f8d1492f42560890"
+    },
+    {
+      "inventory_id": "policyengine_uk_data.targets.sources.ons_labour_market",
+      "kind": "target_source",
+      "path": "policyengine_uk_data/targets/sources/ons_labour_market.py",
+      "sha256": "f01952aceacf2083e7a565d98af9259e6acc20fe047d84fdf4e91b9a04184408"
     },
     {
       "inventory_id": "policyengine_uk_data.targets.sources.ons_land_values",
@@ -316,7 +334,7 @@
       "inventory_id": "policyengine_uk_data.tests.test_target_registry",
       "kind": "credibility_gate",
       "path": "policyengine_uk_data/tests/test_target_registry.py",
-      "sha256": "a241bd044492102f219d8ba5e50d613ca5c1bd885a3b95391664cbac7744df7f"
+      "sha256": "e9fe30c448736d35919c071f930715f707db96d97abcc8b8f2eef4fd710909ea"
     },
     {
       "inventory_id": "policyengine_uk_data.tests.test_vehicle_ownership",
@@ -325,7 +343,7 @@
       "sha256": "5bb6d3142b6c25288383e3260a962a94aeac96433f6c4be49d9f6a85bf276182"
     }
   ],
-  "extracted_on": "2026-09-01",
-  "incumbent_commit": "8629dbb",
+  "extracted_on": "2026-10-16",
+  "incumbent_commit": "a43e8c5",
   "schema_version": 1
 }

@@ -3,8 +3,8 @@
   "country": "nz",
   "method_card_row": "MC9",
   "description": "Territorial authority to Accommodation Supplement area crosswalk. Each row gives one territorial authority's population shares across Areas 1-4; the atomic geography support multiplies Chronicle territorial-authority population by these shares, households draw one territorial authority by area unit, and the area columns derive from it. Area membership is defined by Work and Income on 2017 Statistical Area Unit names, not territorial authorities, so a share is the population of the authority's area units in each area divided by the authority's population. Where an authority spans areas the population-weighted split is a declared assumption (MC9).",
-  "status": "requires_harvest",
-  "status_reason": "No rows yet. Computing shares needs two sources this package does not hold: (1) a 2017 Statistical Area Unit to territorial authority concordance (the Stats NZ Geographic Areas File 2017 sits behind a DataFinder login; the public Stats NZ ArcGIS Area_Unit_2017 layer carries area-unit codes and names but no territorial-authority attribute, checked 2026-10-07); (2) area-unit usually resident population. Until rows exist the geography support kernel must refuse this resource.",
+  "status": "harvested_concordance_bridge",
+  "status_reason": "Rows use hash-pinned Stats NZ SA1 2023 Census URP, interior points for staged SA1 polygons and centroids otherwise for AU2017 membership, and the Meshblock Higher Geographies 2026 SA1-to-TA concordance. TA2026 code/name support is verified equal to TA2025. Whole-SA1 AU allocation remains an approximation. Whakarewarewa maps to Whaka by declared code alias; Queenstown urban area resolves to no additional unit from the hub's Urban Area 2014 sampled overlay. Frankton East remains sensitivity only. Detailed diagnostics are generated separately with --report.",
   "method": {
     "central": {
       "id": "as_area",
@@ -1655,11 +1655,2482 @@
       }
     }
   },
-  "rows": [],
+  "rows": [
+    {
+      "ta_code": "001",
+      "ta_name": "Far North District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.11744924124595402
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.24364201942074068
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.6389087393333053
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 71367,
+      "modal_area": 4
+    },
+    {
+      "ta_code": "002",
+      "ta_name": "Whangarei District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.6245147666221545
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.3754852333778454
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 96603,
+      "modal_area": 2
+    },
+    {
+      "ta_code": "003",
+      "ta_name": "Kaipara District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.20433221359898066
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.19390710066025715
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.6017606857407622
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 25899,
+      "modal_area": 4
+    },
+    {
+      "ta_code": "011",
+      "ta_name": "Thames-Coromandel District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.31483737932327305
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.32533508295060454
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.3598275377261224
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 32007,
+      "modal_area": 4
+    },
+    {
+      "ta_code": "012",
+      "ta_name": "Hauraki District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.054350887074063645
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.5385806814981695
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.40706843142776683
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 21306,
+      "modal_area": 3
+    },
+    {
+      "ta_code": "013",
+      "ta_name": "Waikato District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.16983173916079033
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.5660825246107659
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.09578998813097815
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.16829574809746561
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 85938,
+      "modal_area": 2
+    },
+    {
+      "ta_code": "015",
+      "ta_name": "Matamata-Piako District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.2387878787878788
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.34715151515151516
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.4140606060606061
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 37125,
+      "modal_area": 4
+    },
+    {
+      "ta_code": "016",
+      "ta_name": "Hamilton City",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 1.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.0
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 174768,
+      "modal_area": 2
+    },
+    {
+      "ta_code": "017",
+      "ta_name": "Waipa District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.8063081484510787
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.19369185154892138
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 58686,
+      "modal_area": 2
+    },
+    {
+      "ta_code": "018",
+      "ta_name": "Ōtorohanga District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.2672811059907834
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.7327188940092166
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 10416,
+      "modal_area": 4
+    },
+    {
+      "ta_code": "019",
+      "ta_name": "South Waikato District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 4,
+          "population_share": 1.0
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 25032,
+      "modal_area": 4
+    },
+    {
+      "ta_code": "020",
+      "ta_name": "Waitomo District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 4,
+          "population_share": 1.0
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 9579,
+      "modal_area": 4
+    },
+    {
+      "ta_code": "021",
+      "ta_name": "Taupo District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.6471157424637142
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.35288425753628583
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 40305,
+      "modal_area": 2
+    },
+    {
+      "ta_code": "022",
+      "ta_name": "Western Bay of Plenty District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.16740487752814984
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.29894871658039385
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.5336464058914563
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 56217,
+      "modal_area": 4
+    },
+    {
+      "ta_code": "023",
+      "ta_name": "Tauranga City",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.997977775160011
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.0020222248399890054
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 152802,
+      "modal_area": 1
+    },
+    {
+      "ta_code": "024",
+      "ta_name": "Rotorua District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.8148313150540683
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.18516868494593172
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 74073,
+      "modal_area": 3
+    },
+    {
+      "ta_code": "025",
+      "ta_name": "Whakatane District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.5886816824089771
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.41131831759102283
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 37161,
+      "modal_area": 3
+    },
+    {
+      "ta_code": "026",
+      "ta_name": "Kawerau District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 4,
+          "population_share": 1.0
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 7542,
+      "modal_area": 4
+    },
+    {
+      "ta_code": "027",
+      "ta_name": "Ōpōtiki District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 4,
+          "population_share": 1.0
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 10098,
+      "modal_area": 4
+    },
+    {
+      "ta_code": "028",
+      "ta_name": "Gisborne District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.7519216100451799
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.24807838995482015
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 51129,
+      "modal_area": 3
+    },
+    {
+      "ta_code": "029",
+      "ta_name": "Wairoa District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 4,
+          "population_share": 1.0
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 8811,
+      "modal_area": 4
+    },
+    {
+      "ta_code": "030",
+      "ta_name": "Hastings District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.8852247347850363
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.1147752652149637
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 85968,
+      "modal_area": 2
+    },
+    {
+      "ta_code": "031",
+      "ta_name": "Napier City",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 1.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.0
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 64668,
+      "modal_area": 2
+    },
+    {
+      "ta_code": "032",
+      "ta_name": "Central Hawke's Bay District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.1506875847375557
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.8493124152624443
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 15489,
+      "modal_area": 4
+    },
+    {
+      "ta_code": "033",
+      "ta_name": "New Plymouth District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.7049123775355319
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.12391334345246309
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.17117427901200497
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 86964,
+      "modal_area": 2
+    },
+    {
+      "ta_code": "034",
+      "ta_name": "Stratford District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 4,
+          "population_share": 1.0
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 10140,
+      "modal_area": 4
+    },
+    {
+      "ta_code": "035",
+      "ta_name": "South Taranaki District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.44359504132231403
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.5564049586776859
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 29040,
+      "modal_area": 4
+    },
+    {
+      "ta_code": "036",
+      "ta_name": "Ruapehu District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 4,
+          "population_share": 1.0
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 13089,
+      "modal_area": 4
+    },
+    {
+      "ta_code": "037",
+      "ta_name": "Whanganui District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 4,
+          "population_share": 1.0
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 47622,
+      "modal_area": 4
+    },
+    {
+      "ta_code": "038",
+      "ta_name": "Rangitikei District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 4,
+          "population_share": 1.0
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 15684,
+      "modal_area": 4
+    },
+    {
+      "ta_code": "039",
+      "ta_name": "Manawatu District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.6989824236817761
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.30101757631822385
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 32430,
+      "modal_area": 3
+    },
+    {
+      "ta_code": "040",
+      "ta_name": "Palmerston North City",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.9638516886425449
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.03614831135745516
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 87141,
+      "modal_area": 3
+    },
+    {
+      "ta_code": "041",
+      "ta_name": "Tararua District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 4,
+          "population_share": 1.0
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 18666,
+      "modal_area": 4
+    },
+    {
+      "ta_code": "042",
+      "ta_name": "Horowhenua District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.7093583980384144
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.2906416019615856
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 36705,
+      "modal_area": 3
+    },
+    {
+      "ta_code": "043",
+      "ta_name": "Kapiti Coast District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.787906427728297
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.14781628930142718
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.06427728297027578
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 55914,
+      "modal_area": 2
+    },
+    {
+      "ta_code": "044",
+      "ta_name": "Porirua City",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.9965660034339966
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.003433996566003434
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.0
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 59406,
+      "modal_area": 2
+    },
+    {
+      "ta_code": "045",
+      "ta_name": "Upper Hutt City",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.9447977447059595
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.05520225529404052
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.0
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 45759,
+      "modal_area": 2
+    },
+    {
+      "ta_code": "046",
+      "ta_name": "Lower Hutt City",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.9936126296998773
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.006387370300122727
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.0
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 107556,
+      "modal_area": 2
+    },
+    {
+      "ta_code": "047",
+      "ta_name": "Wellington City",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 1.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.0
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 202662,
+      "modal_area": 2
+    },
+    {
+      "ta_code": "048",
+      "ta_name": "Masterton District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.8647945354006289
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.13520546459937113
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 27669,
+      "modal_area": 3
+    },
+    {
+      "ta_code": "049",
+      "ta_name": "Carterton District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.5669828097213989
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.4330171902786011
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 10122,
+      "modal_area": 3
+    },
+    {
+      "ta_code": "050",
+      "ta_name": "South Wairarapa District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.37986270022883295
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.620137299771167
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 11799,
+      "modal_area": 4
+    },
+    {
+      "ta_code": "051",
+      "ta_name": "Tasman District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.6058280618064917
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.02400705174738152
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.3701648864461267
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 57858,
+      "modal_area": 2
+    },
+    {
+      "ta_code": "052",
+      "ta_name": "Nelson City",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.9757700440025144
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.02422995599748557
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 52497,
+      "modal_area": 2
+    },
+    {
+      "ta_code": "053",
+      "ta_name": "Marlborough District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.6970525676086295
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.0956548161652993
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.2072926162260711
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 49365,
+      "modal_area": 2
+    },
+    {
+      "ta_code": "054",
+      "ta_name": "Kaikoura District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.5217081850533808
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.4782918149466192
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 4215,
+      "modal_area": 3
+    },
+    {
+      "ta_code": "055",
+      "ta_name": "Buller District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 4,
+          "population_share": 1.0
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 10440,
+      "modal_area": 4
+    },
+    {
+      "ta_code": "056",
+      "ta_name": "Grey District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.6768671089236037
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.3231328910763963
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 14019,
+      "modal_area": 3
+    },
+    {
+      "ta_code": "057",
+      "ta_name": "Westland District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.39979757085020245
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.6002024291497976
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 8892,
+      "modal_area": 4
+    },
+    {
+      "ta_code": "058",
+      "ta_name": "Hurunui District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.1786660777385159
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.0706713780918728
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.7506625441696113
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 13584,
+      "modal_area": 4
+    },
+    {
+      "ta_code": "059",
+      "ta_name": "Waimakariri District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.5989854612980661
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.401014538701934
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 66237,
+      "modal_area": 2
+    },
+    {
+      "ta_code": "060",
+      "ta_name": "Christchurch City",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.9915452364344354
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.00845476356556466
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 391377,
+      "modal_area": 2
+    },
+    {
+      "ta_code": "062",
+      "ta_name": "Selwyn District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.6331554087784648
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.3668445912215353
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 78123,
+      "modal_area": 2
+    },
+    {
+      "ta_code": "063",
+      "ta_name": "Ashburton District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.6249352443446727
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.045933344845449836
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.3291314108098774
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 34746,
+      "modal_area": 2
+    },
+    {
+      "ta_code": "064",
+      "ta_name": "Timaru District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.7654554630330558
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.23454453696694424
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 47556,
+      "modal_area": 3
+    },
+    {
+      "ta_code": "065",
+      "ta_name": "Mackenzie District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.29115407147041594
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.7088459285295841
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 5121,
+      "modal_area": 4
+    },
+    {
+      "ta_code": "066",
+      "ta_name": "Waimate District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 4,
+          "population_share": 1.0
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 8106,
+      "modal_area": 4
+    },
+    {
+      "ta_code": "067",
+      "ta_name": "Chatham Islands Territory",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 4,
+          "population_share": 1.0
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 612,
+      "modal_area": 4
+    },
+    {
+      "ta_code": "068",
+      "ta_name": "Waitaki District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.6140171377413992
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.38598286225860085
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 23457,
+      "modal_area": 3
+    },
+    {
+      "ta_code": "069",
+      "ta_name": "Central Otago District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.2607032695866749
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.23022825416409623
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.5090684762492289
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 24315,
+      "modal_area": 4
+    },
+    {
+      "ta_code": "070",
+      "ta_name": "Queenstown-Lakes District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.5776035131744041
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.422396486825596
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 47820,
+      "modal_area": 1
+    },
+    {
+      "ta_code": "071",
+      "ta_name": "Dunedin City",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.9364698761523419
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.06353012384765806
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 128868,
+      "modal_area": 3
+    },
+    {
+      "ta_code": "072",
+      "ta_name": "Clutha District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 4,
+          "population_share": 1.0
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 18321,
+      "modal_area": 4
+    },
+    {
+      "ta_code": "073",
+      "ta_name": "Southland District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.07764062941675304
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.9223593705832469
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 31839,
+      "modal_area": 4
+    },
+    {
+      "ta_code": "074",
+      "ta_name": "Gore District",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 4,
+          "population_share": 1.0
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 12708,
+      "modal_area": 4
+    },
+    {
+      "ta_code": "075",
+      "ta_name": "Invercargill City",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 4,
+          "population_share": 1.0
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 55596,
+      "modal_area": 4
+    },
+    {
+      "ta_code": "076",
+      "ta_name": "Auckland",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.9837162460784953
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.015863528013852966
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 4,
+          "population_share": 0.00042022590765173414
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 1656252,
+      "modal_area": 1
+    },
+    {
+      "ta_code": "999",
+      "ta_name": "Area Outside Territorial Authority",
+      "shares": [
+        {
+          "as_area": 1,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 2,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 3,
+          "population_share": 0.0
+        },
+        {
+          "as_area": 4,
+          "population_share": 1.0
+        }
+      ],
+      "population_source": "Stats NZ 2023_Census_totals_by_topic_for_individuals_by_SA1; VAR_1_3; Census 2023-03-07; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
+      "population_total": 33,
+      "modal_area": 4
+    }
+  ],
   "row_shape": {
     "ta_code": "Stats NZ territorial-authority code at ta_vintage",
     "ta_name": "territorial-authority name",
     "shares": "list of {as_area: 1-4, population_share: number in [0, 1]}; shares sum to 1 within share_tolerance",
-    "population_source": "the pinned population source and its period"
-  }
+    "population_source": "the pinned population source and its period",
+    "population_total": "sum of usable 2023 Census URP assigned to this TA; zero only for explicitly declared TA 999 placeholder",
+    "modal_area": "unique largest-population AS area, for scenario S3; ties refuse"
+  },
+  "provenance": {
+    "generator": "tools/build_nz_as_area_crosswalk.py",
+    "layers": [
+      {
+        "name": "2023_Census_totals_by_topic_for_individuals_by_SA1",
+        "item_id": "407355b6bd46494498cd760787178ab3",
+        "metadata_file": "layer-2023_Census_totals_by_topic_for_individuals_by_SA1.json",
+        "metadata_sha256": "c2714a604e87424900d9bf0bf4d329e50f061bada2525de3fbb98bb80af1c876",
+        "query_url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/2023_Census_totals_by_topic_for_individuals_by_SA1/FeatureServer/0/query",
+        "licence": "CC BY 4.0",
+        "licence_evidence": "Hub-staged source assertion; layer metadata carries no licence text."
+      },
+      {
+        "name": "Area_Unit_2017",
+        "item_id": "d0a337f3143346b896eb873316262d14",
+        "metadata_file": "layer-Area_Unit_2017.json",
+        "metadata_sha256": "b18e9d4b5a1a00cbaf08c0c4a62cdcdf06899d6dd81f5e1065d7ba2f66bacb81",
+        "query_url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/Area_Unit_2017/FeatureServer/0/query",
+        "licence": "CC BY 4.0",
+        "licence_evidence": "Hub-staged source assertion; layer metadata carries no licence text."
+      },
+      {
+        "name": "Territorial_Authority_2025",
+        "item_id": "d3d3d1c8fb2142f6b222a4233360be16",
+        "metadata_file": "layer-Territorial_Authority_2025.json",
+        "metadata_sha256": "15c025792d526cde35ad1b7795700a8e95eb4a297cafa5a7cc6c6286db860e26",
+        "query_url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/Territorial_Authority_2025/FeatureServer/0/query",
+        "licence": "CC BY 4.0",
+        "licence_evidence": "Hub-staged source assertion; layer metadata carries no licence text."
+      },
+      {
+        "name": "Meshblock_Higher_Geographies_2026",
+        "item_id": "d1232bf6959a4b1ab916618cd4180e35",
+        "metadata_file": "layer-Meshblock_Higher_Geographies_2026.json",
+        "metadata_sha256": "5aef65aa14e1cc5ca747e924d0c3c10c06c22c7bf761375d45631a3808dd6563",
+        "query_url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/Meshblock_Higher_Geographies_2026/FeatureServer/0/query",
+        "licence": "CC BY 4.0",
+        "licence_evidence": "Hub-staged public Stats NZ source assertion."
+      },
+      {
+        "name": "Statistical_Area_1_2023",
+        "item_id": "faa40c51c1c64b88ae041242eeb6586c",
+        "metadata_file": "layer-Statistical_Area_1_2023.json",
+        "metadata_sha256": "9dab5a72db9642973e609f6a7b32712553ca0ee16ebc3291e0079276980205fa",
+        "query_url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/Statistical_Area_1_2023/FeatureServer/0/query",
+        "licence": "CC BY 4.0",
+        "licence_evidence": "Hub-staged public Stats NZ source assertion."
+      }
+    ],
+    "pages": [
+      {
+        "file": "au-2017-p000.geojson",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/Area_Unit_2017/FeatureServer/0/query?where=1%3D1&outFields=*&maxAllowableOffset=0.0001&geometryPrecision=6&outSR=4326&f=geojson&orderByFields=OBJECTID&resultOffset=0&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-11T23:14:41Z",
+        "bytes": 15634714,
+        "sha256": "3a74df45cb869ba6721fb4a8fa2ecc7c75effbac6d8f973eb1621b4affb70f24",
+        "features": 2000
+      },
+      {
+        "file": "au-2017-p001.geojson",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/Area_Unit_2017/FeatureServer/0/query?where=1%3D1&outFields=*&maxAllowableOffset=0.0001&geometryPrecision=6&outSR=4326&f=geojson&orderByFields=OBJECTID&resultOffset=2000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-11T23:14:43Z",
+        "bytes": 574330,
+        "sha256": "c3cb15e43b640c5c57982981d06e747cbffee7416194f03e6d84735b437a499e",
+        "features": 4
+      },
+      {
+        "file": "sa1-2023-census-urp-p000.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/2023_Census_totals_by_topic_for_individuals_by_SA1/FeatureServer/0/query?where=1%3D1&outFields=SA12023_V1_00,LANDWATER,LANDWATER_NAME,VAR_1_1,VAR_1_2,VAR_1_3&returnGeometry=false&returnCentroid=true&outSR=4326&f=json&orderByFields=OBJECTID&resultOffset=0&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-11T23:13:49Z",
+        "bytes": 379944,
+        "sha256": "29ca85fe855d13b5620d04f1e0ce8a6072d98bb5aa35be203b4049b15b178e47",
+        "features": 2000
+      },
+      {
+        "file": "sa1-2023-census-urp-p001.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/2023_Census_totals_by_topic_for_individuals_by_SA1/FeatureServer/0/query?where=1%3D1&outFields=SA12023_V1_00,LANDWATER,LANDWATER_NAME,VAR_1_1,VAR_1_2,VAR_1_3&returnGeometry=false&returnCentroid=true&outSR=4326&f=json&orderByFields=OBJECTID&resultOffset=2000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-11T23:13:50Z",
+        "bytes": 380243,
+        "sha256": "b729826a877257e427cb97024eeef54dfecb11c3b3985c4adbee0ac12568b9bb",
+        "features": 2000
+      },
+      {
+        "file": "sa1-2023-census-urp-p002.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/2023_Census_totals_by_topic_for_individuals_by_SA1/FeatureServer/0/query?where=1%3D1&outFields=SA12023_V1_00,LANDWATER,LANDWATER_NAME,VAR_1_1,VAR_1_2,VAR_1_3&returnGeometry=false&returnCentroid=true&outSR=4326&f=json&orderByFields=OBJECTID&resultOffset=4000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-11T23:13:51Z",
+        "bytes": 380065,
+        "sha256": "47d2b7272ef94c112b13d88f9c1eea7fd47dbe0110374d98d5f31655694c9c27",
+        "features": 2000
+      },
+      {
+        "file": "sa1-2023-census-urp-p003.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/2023_Census_totals_by_topic_for_individuals_by_SA1/FeatureServer/0/query?where=1%3D1&outFields=SA12023_V1_00,LANDWATER,LANDWATER_NAME,VAR_1_1,VAR_1_2,VAR_1_3&returnGeometry=false&returnCentroid=true&outSR=4326&f=json&orderByFields=OBJECTID&resultOffset=6000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-11T23:13:52Z",
+        "bytes": 380353,
+        "sha256": "dbd9284b155778cb22d7aa8094e8bff69070c3bf793496608134ce25c41a9a5b",
+        "features": 2000
+      },
+      {
+        "file": "sa1-2023-census-urp-p004.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/2023_Census_totals_by_topic_for_individuals_by_SA1/FeatureServer/0/query?where=1%3D1&outFields=SA12023_V1_00,LANDWATER,LANDWATER_NAME,VAR_1_1,VAR_1_2,VAR_1_3&returnGeometry=false&returnCentroid=true&outSR=4326&f=json&orderByFields=OBJECTID&resultOffset=8000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-11T23:13:52Z",
+        "bytes": 380166,
+        "sha256": "6a33d474c0db7bbe2dfa661aa2d2fd3a4eee464b8a2099cd9835d08bde6d9aae",
+        "features": 2000
+      },
+      {
+        "file": "sa1-2023-census-urp-p005.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/2023_Census_totals_by_topic_for_individuals_by_SA1/FeatureServer/0/query?where=1%3D1&outFields=SA12023_V1_00,LANDWATER,LANDWATER_NAME,VAR_1_1,VAR_1_2,VAR_1_3&returnGeometry=false&returnCentroid=true&outSR=4326&f=json&orderByFields=OBJECTID&resultOffset=10000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-11T23:13:53Z",
+        "bytes": 380115,
+        "sha256": "5a74f88269340f64a51376df0a677cd294d5b716f13f5947f48c465ac0d151bc",
+        "features": 2000
+      },
+      {
+        "file": "sa1-2023-census-urp-p006.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/2023_Census_totals_by_topic_for_individuals_by_SA1/FeatureServer/0/query?where=1%3D1&outFields=SA12023_V1_00,LANDWATER,LANDWATER_NAME,VAR_1_1,VAR_1_2,VAR_1_3&returnGeometry=false&returnCentroid=true&outSR=4326&f=json&orderByFields=OBJECTID&resultOffset=12000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-11T23:13:54Z",
+        "bytes": 380188,
+        "sha256": "57bc28d6ecfd752e808fd1e28036fc9659f75d80d8b21457d7b646b7f1d55586",
+        "features": 2000
+      },
+      {
+        "file": "sa1-2023-census-urp-p007.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/2023_Census_totals_by_topic_for_individuals_by_SA1/FeatureServer/0/query?where=1%3D1&outFields=SA12023_V1_00,LANDWATER,LANDWATER_NAME,VAR_1_1,VAR_1_2,VAR_1_3&returnGeometry=false&returnCentroid=true&outSR=4326&f=json&orderByFields=OBJECTID&resultOffset=14000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-11T23:13:55Z",
+        "bytes": 380057,
+        "sha256": "21910a132bb10ac28d58354ede54205ecb46cdfd55a87aad60b335cc7c7c0bda",
+        "features": 2000
+      },
+      {
+        "file": "sa1-2023-census-urp-p008.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/2023_Census_totals_by_topic_for_individuals_by_SA1/FeatureServer/0/query?where=1%3D1&outFields=SA12023_V1_00,LANDWATER,LANDWATER_NAME,VAR_1_1,VAR_1_2,VAR_1_3&returnGeometry=false&returnCentroid=true&outSR=4326&f=json&orderByFields=OBJECTID&resultOffset=16000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-11T23:13:56Z",
+        "bytes": 380000,
+        "sha256": "3512f83d668f019c1e90f47dfdf4698e74ad564956e7099640e9aae1a9c0980d",
+        "features": 2000
+      },
+      {
+        "file": "sa1-2023-census-urp-p009.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/2023_Census_totals_by_topic_for_individuals_by_SA1/FeatureServer/0/query?where=1%3D1&outFields=SA12023_V1_00,LANDWATER,LANDWATER_NAME,VAR_1_1,VAR_1_2,VAR_1_3&returnGeometry=false&returnCentroid=true&outSR=4326&f=json&orderByFields=OBJECTID&resultOffset=18000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-11T23:13:57Z",
+        "bytes": 379922,
+        "sha256": "a929b2677bdde9d2baed1c94bc1b1fab8a95e37ca57a9c4e40bdba8c5e6420fc",
+        "features": 2000
+      },
+      {
+        "file": "sa1-2023-census-urp-p010.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/2023_Census_totals_by_topic_for_individuals_by_SA1/FeatureServer/0/query?where=1%3D1&outFields=SA12023_V1_00,LANDWATER,LANDWATER_NAME,VAR_1_1,VAR_1_2,VAR_1_3&returnGeometry=false&returnCentroid=true&outSR=4326&f=json&orderByFields=OBJECTID&resultOffset=20000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-11T23:13:59Z",
+        "bytes": 380047,
+        "sha256": "1455109e3116d8aa465e027b071d368fd784ba183021def741f568e21b59dcab",
+        "features": 2000
+      },
+      {
+        "file": "sa1-2023-census-urp-p011.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/2023_Census_totals_by_topic_for_individuals_by_SA1/FeatureServer/0/query?where=1%3D1&outFields=SA12023_V1_00,LANDWATER,LANDWATER_NAME,VAR_1_1,VAR_1_2,VAR_1_3&returnGeometry=false&returnCentroid=true&outSR=4326&f=json&orderByFields=OBJECTID&resultOffset=22000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-11T23:14:00Z",
+        "bytes": 380100,
+        "sha256": "b80e811b0d82c8b11a13e2a9c2e096f007c5bc931c9265ed866c0438fca67b76",
+        "features": 2000
+      },
+      {
+        "file": "sa1-2023-census-urp-p012.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/2023_Census_totals_by_topic_for_individuals_by_SA1/FeatureServer/0/query?where=1%3D1&outFields=SA12023_V1_00,LANDWATER,LANDWATER_NAME,VAR_1_1,VAR_1_2,VAR_1_3&returnGeometry=false&returnCentroid=true&outSR=4326&f=json&orderByFields=OBJECTID&resultOffset=24000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-11T23:14:01Z",
+        "bytes": 379629,
+        "sha256": "69fd18788ef8214c8f8e45aee7b05385ec678134161c0dabef66383c2b9322e5",
+        "features": 2000
+      },
+      {
+        "file": "sa1-2023-census-urp-p013.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/2023_Census_totals_by_topic_for_individuals_by_SA1/FeatureServer/0/query?where=1%3D1&outFields=SA12023_V1_00,LANDWATER,LANDWATER_NAME,VAR_1_1,VAR_1_2,VAR_1_3&returnGeometry=false&returnCentroid=true&outSR=4326&f=json&orderByFields=OBJECTID&resultOffset=26000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-11T23:14:03Z",
+        "bytes": 377363,
+        "sha256": "e77b2f4061605891fd15ded1f4d11eecbef0047ec77642a2acda430430d7fe08",
+        "features": 2000
+      },
+      {
+        "file": "sa1-2023-census-urp-p014.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/2023_Census_totals_by_topic_for_individuals_by_SA1/FeatureServer/0/query?where=1%3D1&outFields=SA12023_V1_00,LANDWATER,LANDWATER_NAME,VAR_1_1,VAR_1_2,VAR_1_3&returnGeometry=false&returnCentroid=true&outSR=4326&f=json&orderByFields=OBJECTID&resultOffset=28000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-11T23:14:04Z",
+        "bytes": 377729,
+        "sha256": "3eadb9fee766a117fcb342c52e3b85bd8a5ffe06b25ceae3f075603a9eeab09f",
+        "features": 2000
+      },
+      {
+        "file": "sa1-2023-census-urp-p015.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/2023_Census_totals_by_topic_for_individuals_by_SA1/FeatureServer/0/query?where=1%3D1&outFields=SA12023_V1_00,LANDWATER,LANDWATER_NAME,VAR_1_1,VAR_1_2,VAR_1_3&returnGeometry=false&returnCentroid=true&outSR=4326&f=json&orderByFields=OBJECTID&resultOffset=30000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-11T23:14:05Z",
+        "bytes": 377244,
+        "sha256": "4d8ff2e2c50d869bb19a939ad655fe69f55b84f0086633d17a9f4cda0da81cb1",
+        "features": 2000
+      },
+      {
+        "file": "sa1-2023-census-urp-p016.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/2023_Census_totals_by_topic_for_individuals_by_SA1/FeatureServer/0/query?where=1%3D1&outFields=SA12023_V1_00,LANDWATER,LANDWATER_NAME,VAR_1_1,VAR_1_2,VAR_1_3&returnGeometry=false&returnCentroid=true&outSR=4326&f=json&orderByFields=OBJECTID&resultOffset=32000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-11T23:14:06Z",
+        "bytes": 154575,
+        "sha256": "234e81d17f064139a59b4394dd7a55105de91de728534f250148ed1c1982a94c",
+        "features": 817
+      },
+      {
+        "file": "ta-2025-p000.geojson",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/Territorial_Authority_2025/FeatureServer/0/query?where=1%3D1&outFields=*&maxAllowableOffset=0.0001&geometryPrecision=6&outSR=4326&f=geojson&orderByFields=OBJECTID&resultOffset=0&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-11T23:14:18Z",
+        "bytes": 5920563,
+        "sha256": "1e9b93c3ad712e844ff39efb8dd378485b84a5481e08d13bc3e3ca692933796e",
+        "features": 68
+      },
+      {
+        "file": "sa1poly-2023-flagged-p000.geojson",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/Statistical_Area_1_2023/FeatureServer/0/query?where=SA12023_V1_00%20IN%20%28%277000415%27%2C%277000865%27%2C%277000950%27%2C%277001071%27%2C%277001080%27%2C%277001128%27%2C%277001129%27%2C%277005816%27%2C%277010595%27%2C%277010596%27%2C%277010623%27%2C%277013299%27%2C%277013323%27%2C%277013335%27%2C%277013534%27%2C%277013557%27%2C%277013588%27%2C%277013591%27%2C%277013605%27%2C%277013606%27%2C%277013957%27%2C%277014377%27%2C%277014842%27%2C%277014887%27%2C%277015307%27%2C%277015763%27%2C%277016110%27%2C%277016665%27%2C%277019191%27%2C%277022169%27%2C%277022456%27%2C%277022479%27%2C%277022489%27%2C%277022490%27%2C%277022491%27%2C%277022492%27%2C%277022493%27%2C%277022500%27%2C%277023634%27%2C%277026618%27%2C%277026638%27%2C%277026644%27%2C%277026656%27%2C%277027012%27%2C%277027552%27%2C%277027555%27%2C%277027635%27%2C%277027649%27%2C%277027781%27%2C%277027924%27%2C%277027925%27%2C%277027929%27%2C%277028031%27%2C%277028240%27%2C%277029134%27%2C%277029179%27%2C%277029849%27%2C%277029869%27%2C%277030307%27%2C%277034859%27%2C%277036147%27%2C%277036834%27%2C%277036849%27%2C%277037034%27%2C%277037232%27%29&outFields=SA12023_V1_00,LANDWATER,LANDWATER_NAME&outSR=4326&geometryPrecision=6&maxAllowableOffset=0.00002&f=geojson&orderByFields=OBJECTID&resultOffset=0&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-12T08:50:31Z",
+        "bytes": 1570367,
+        "sha256": "faf841148e3814a81f6461f7898d1bc8770aef6f5f687d0efc78b541a1568b33",
+        "features": 65
+      },
+      {
+        "file": "mbhg-2026-sa1-ta-p000.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/Meshblock_Higher_Geographies_2026/FeatureServer/0/query?where=1%3D1&outFields=MB2026_V1_00,SA12026_V1_00,TA2026_V1_00,TA2026_V1_00_NAME&returnGeometry=false&f=json&orderByFields=OBJECTID&resultOffset=0&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-12T03:14:13Z",
+        "bytes": 258876,
+        "sha256": "a97b49757281ab3568eea0287db92d84b7b28de59fdd3b8a2500726e5d34be8c",
+        "features": 2000
+      },
+      {
+        "file": "mbhg-2026-sa1-ta-p001.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/Meshblock_Higher_Geographies_2026/FeatureServer/0/query?where=1%3D1&outFields=MB2026_V1_00,SA12026_V1_00,TA2026_V1_00,TA2026_V1_00_NAME&returnGeometry=false&f=json&orderByFields=OBJECTID&resultOffset=2000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-12T03:14:13Z",
+        "bytes": 241566,
+        "sha256": "5e6c8fddeb8c7eca42c640b89077273b40c427a09e499fedb62adba1e9323348",
+        "features": 2000
+      },
+      {
+        "file": "mbhg-2026-sa1-ta-p002.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/Meshblock_Higher_Geographies_2026/FeatureServer/0/query?where=1%3D1&outFields=MB2026_V1_00,SA12026_V1_00,TA2026_V1_00,TA2026_V1_00_NAME&returnGeometry=false&f=json&orderByFields=OBJECTID&resultOffset=4000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-12T03:14:14Z",
+        "bytes": 241324,
+        "sha256": "68abb0e6950e1fc4102c7c53fb516a79b43cade7ef7a1fa3ae70ec9acadb6375",
+        "features": 2000
+      },
+      {
+        "file": "mbhg-2026-sa1-ta-p003.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/Meshblock_Higher_Geographies_2026/FeatureServer/0/query?where=1%3D1&outFields=MB2026_V1_00,SA12026_V1_00,TA2026_V1_00,TA2026_V1_00_NAME&returnGeometry=false&f=json&orderByFields=OBJECTID&resultOffset=6000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-12T03:14:14Z",
+        "bytes": 241324,
+        "sha256": "9d285fc1607167b1e0f8d3afbb249c8ea8cfe5f59f4aa8aff19b4391876fc9c4",
+        "features": 2000
+      },
+      {
+        "file": "mbhg-2026-sa1-ta-p004.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/Meshblock_Higher_Geographies_2026/FeatureServer/0/query?where=1%3D1&outFields=MB2026_V1_00,SA12026_V1_00,TA2026_V1_00,TA2026_V1_00_NAME&returnGeometry=false&f=json&orderByFields=OBJECTID&resultOffset=8000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-12T03:14:15Z",
+        "bytes": 241376,
+        "sha256": "7c680e12bc90bb4d6c8a9faa02c423c2b9dffe41ee0cfe995406bbdd912ff491",
+        "features": 2000
+      },
+      {
+        "file": "mbhg-2026-sa1-ta-p005.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/Meshblock_Higher_Geographies_2026/FeatureServer/0/query?where=1%3D1&outFields=MB2026_V1_00,SA12026_V1_00,TA2026_V1_00,TA2026_V1_00_NAME&returnGeometry=false&f=json&orderByFields=OBJECTID&resultOffset=10000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-12T03:14:15Z",
+        "bytes": 243188,
+        "sha256": "353b281490bd698a06d9bbe4c00c660282ef805b1e931c8799cf2ce9ea968996",
+        "features": 2000
+      },
+      {
+        "file": "mbhg-2026-sa1-ta-p006.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/Meshblock_Higher_Geographies_2026/FeatureServer/0/query?where=1%3D1&outFields=MB2026_V1_00,SA12026_V1_00,TA2026_V1_00,TA2026_V1_00_NAME&returnGeometry=false&f=json&orderByFields=OBJECTID&resultOffset=12000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-12T03:14:16Z",
+        "bytes": 254262,
+        "sha256": "5604fc0e6e016e9bf07267d62ea5cfdc8dede4a85840460905bc31cba926cd2b",
+        "features": 2000
+      },
+      {
+        "file": "mbhg-2026-sa1-ta-p007.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/Meshblock_Higher_Geographies_2026/FeatureServer/0/query?where=1%3D1&outFields=MB2026_V1_00,SA12026_V1_00,TA2026_V1_00,TA2026_V1_00_NAME&returnGeometry=false&f=json&orderByFields=OBJECTID&resultOffset=14000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-12T03:14:17Z",
+        "bytes": 267565,
+        "sha256": "468a2755a6759c57a9aa27302a52aec2a490107188ec750602400840022402ec",
+        "features": 2000
+      },
+      {
+        "file": "mbhg-2026-sa1-ta-p008.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/Meshblock_Higher_Geographies_2026/FeatureServer/0/query?where=1%3D1&outFields=MB2026_V1_00,SA12026_V1_00,TA2026_V1_00,TA2026_V1_00_NAME&returnGeometry=false&f=json&orderByFields=OBJECTID&resultOffset=16000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-12T03:14:17Z",
+        "bytes": 259839,
+        "sha256": "c316f2d3c135da379b1df7b72fe2e5334103e6daa66607097700167d5bb59646",
+        "features": 2000
+      },
+      {
+        "file": "mbhg-2026-sa1-ta-p009.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/Meshblock_Higher_Geographies_2026/FeatureServer/0/query?where=1%3D1&outFields=MB2026_V1_00,SA12026_V1_00,TA2026_V1_00,TA2026_V1_00_NAME&returnGeometry=false&f=json&orderByFields=OBJECTID&resultOffset=18000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-12T03:14:18Z",
+        "bytes": 256935,
+        "sha256": "cb3b21eda5e083dbcd581f3e3577a0cd13a622df3c83829d7890087fcf5325d9",
+        "features": 2000
+      },
+      {
+        "file": "mbhg-2026-sa1-ta-p010.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/Meshblock_Higher_Geographies_2026/FeatureServer/0/query?where=1%3D1&outFields=MB2026_V1_00,SA12026_V1_00,TA2026_V1_00,TA2026_V1_00_NAME&returnGeometry=false&f=json&orderByFields=OBJECTID&resultOffset=20000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-12T03:14:18Z",
+        "bytes": 262640,
+        "sha256": "52868b9124df52600895a5d0bda5f86ebb0895b1a649421e018dc6bea3d8a50a",
+        "features": 2000
+      },
+      {
+        "file": "mbhg-2026-sa1-ta-p011.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/Meshblock_Higher_Geographies_2026/FeatureServer/0/query?where=1%3D1&outFields=MB2026_V1_00,SA12026_V1_00,TA2026_V1_00,TA2026_V1_00_NAME&returnGeometry=false&f=json&orderByFields=OBJECTID&resultOffset=22000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-12T03:14:19Z",
+        "bytes": 263925,
+        "sha256": "0cfa0cf83647732cc69551149f627117d6f79f4599b6f79845dfcb32ecbaea2b",
+        "features": 2000
+      },
+      {
+        "file": "mbhg-2026-sa1-ta-p012.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/Meshblock_Higher_Geographies_2026/FeatureServer/0/query?where=1%3D1&outFields=MB2026_V1_00,SA12026_V1_00,TA2026_V1_00,TA2026_V1_00_NAME&returnGeometry=false&f=json&orderByFields=OBJECTID&resultOffset=24000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-12T03:14:19Z",
+        "bytes": 261370,
+        "sha256": "16613a297a338e33695121fe18b75d96ab4b7efc8d6e5a973fde759f89837cf2",
+        "features": 2000
+      },
+      {
+        "file": "mbhg-2026-sa1-ta-p013.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/Meshblock_Higher_Geographies_2026/FeatureServer/0/query?where=1%3D1&outFields=MB2026_V1_00,SA12026_V1_00,TA2026_V1_00,TA2026_V1_00_NAME&returnGeometry=false&f=json&orderByFields=OBJECTID&resultOffset=26000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-12T03:14:20Z",
+        "bytes": 255268,
+        "sha256": "d32dab5d12cec80a0b3ad411755b8413d5b138828f5650afceba925f4d63114a",
+        "features": 2000
+      },
+      {
+        "file": "mbhg-2026-sa1-ta-p014.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/Meshblock_Higher_Geographies_2026/FeatureServer/0/query?where=1%3D1&outFields=MB2026_V1_00,SA12026_V1_00,TA2026_V1_00,TA2026_V1_00_NAME&returnGeometry=false&f=json&orderByFields=OBJECTID&resultOffset=28000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-12T03:14:20Z",
+        "bytes": 259028,
+        "sha256": "1fcb9c8312cad5073ae06e047e13cc7bb2c5c003975a2e3021a2dfb03b415407",
+        "features": 2000
+      },
+      {
+        "file": "mbhg-2026-sa1-ta-p015.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/Meshblock_Higher_Geographies_2026/FeatureServer/0/query?where=1%3D1&outFields=MB2026_V1_00,SA12026_V1_00,TA2026_V1_00,TA2026_V1_00_NAME&returnGeometry=false&f=json&orderByFields=OBJECTID&resultOffset=30000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-12T03:14:21Z",
+        "bytes": 256602,
+        "sha256": "3adbd22873c4e4b04f8237e013ba8f09b06e8b1a7292721520cc54bd93476d3b",
+        "features": 2000
+      },
+      {
+        "file": "mbhg-2026-sa1-ta-p016.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/Meshblock_Higher_Geographies_2026/FeatureServer/0/query?where=1%3D1&outFields=MB2026_V1_00,SA12026_V1_00,TA2026_V1_00,TA2026_V1_00_NAME&returnGeometry=false&f=json&orderByFields=OBJECTID&resultOffset=32000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-12T03:14:21Z",
+        "bytes": 259190,
+        "sha256": "3b57720887ffd121657df2da8499df7bbc219e416ef3b262d95641551e291ee0",
+        "features": 2000
+      },
+      {
+        "file": "mbhg-2026-sa1-ta-p017.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/Meshblock_Higher_Geographies_2026/FeatureServer/0/query?where=1%3D1&outFields=MB2026_V1_00,SA12026_V1_00,TA2026_V1_00,TA2026_V1_00_NAME&returnGeometry=false&f=json&orderByFields=OBJECTID&resultOffset=34000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-12T03:14:22Z",
+        "bytes": 258960,
+        "sha256": "88931036c61e45274dffec88134e73e65db2d7df46dfd827cbefc6888f8d459c",
+        "features": 2000
+      },
+      {
+        "file": "mbhg-2026-sa1-ta-p018.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/Meshblock_Higher_Geographies_2026/FeatureServer/0/query?where=1%3D1&outFields=MB2026_V1_00,SA12026_V1_00,TA2026_V1_00,TA2026_V1_00_NAME&returnGeometry=false&f=json&orderByFields=OBJECTID&resultOffset=36000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-12T03:14:22Z",
+        "bytes": 252651,
+        "sha256": "242f6369ab9a43a64123bb2d898b67dc7a675af8a3696e37308f4f49dae42955",
+        "features": 2000
+      },
+      {
+        "file": "mbhg-2026-sa1-ta-p019.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/Meshblock_Higher_Geographies_2026/FeatureServer/0/query?where=1%3D1&outFields=MB2026_V1_00,SA12026_V1_00,TA2026_V1_00,TA2026_V1_00_NAME&returnGeometry=false&f=json&orderByFields=OBJECTID&resultOffset=38000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-12T03:14:23Z",
+        "bytes": 260990,
+        "sha256": "e7485391a30b685c07692fe54c1de47cdbd2e6b96a007a116fccc54645493f0f",
+        "features": 2000
+      },
+      {
+        "file": "mbhg-2026-sa1-ta-p020.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/Meshblock_Higher_Geographies_2026/FeatureServer/0/query?where=1%3D1&outFields=MB2026_V1_00,SA12026_V1_00,TA2026_V1_00,TA2026_V1_00_NAME&returnGeometry=false&f=json&orderByFields=OBJECTID&resultOffset=40000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-12T03:14:23Z",
+        "bytes": 255615,
+        "sha256": "80d42d9fd37948cfc54eeca6d5ade18b80ef3a892e45f1c046e81e6e2560603d",
+        "features": 2000
+      },
+      {
+        "file": "mbhg-2026-sa1-ta-p021.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/Meshblock_Higher_Geographies_2026/FeatureServer/0/query?where=1%3D1&outFields=MB2026_V1_00,SA12026_V1_00,TA2026_V1_00,TA2026_V1_00_NAME&returnGeometry=false&f=json&orderByFields=OBJECTID&resultOffset=42000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-12T03:14:24Z",
+        "bytes": 249175,
+        "sha256": "6baef86d6cae0cc411fb717e97097704d6fafaae86f99a9dbfdc67f39a098d92",
+        "features": 2000
+      },
+      {
+        "file": "mbhg-2026-sa1-ta-p022.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/Meshblock_Higher_Geographies_2026/FeatureServer/0/query?where=1%3D1&outFields=MB2026_V1_00,SA12026_V1_00,TA2026_V1_00,TA2026_V1_00_NAME&returnGeometry=false&f=json&orderByFields=OBJECTID&resultOffset=44000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-12T03:14:25Z",
+        "bytes": 253191,
+        "sha256": "ad29c33f5088d26f77bf6fa4646000a9231f4a26f4d685f25a0a70a4da618764",
+        "features": 2000
+      },
+      {
+        "file": "mbhg-2026-sa1-ta-p023.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/Meshblock_Higher_Geographies_2026/FeatureServer/0/query?where=1%3D1&outFields=MB2026_V1_00,SA12026_V1_00,TA2026_V1_00,TA2026_V1_00_NAME&returnGeometry=false&f=json&orderByFields=OBJECTID&resultOffset=46000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-12T03:14:25Z",
+        "bytes": 257088,
+        "sha256": "2dfe088635a8d3cce53c927676d76c25022e9129e807f9984e4db4f9fe67f8cc",
+        "features": 2000
+      },
+      {
+        "file": "mbhg-2026-sa1-ta-p024.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/Meshblock_Higher_Geographies_2026/FeatureServer/0/query?where=1%3D1&outFields=MB2026_V1_00,SA12026_V1_00,TA2026_V1_00,TA2026_V1_00_NAME&returnGeometry=false&f=json&orderByFields=OBJECTID&resultOffset=48000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-12T03:14:26Z",
+        "bytes": 259149,
+        "sha256": "61756892f29b744a1b6fd58c2a3e9b8abb1fd5f1f1e03097258f9f79c4b1eacc",
+        "features": 2000
+      },
+      {
+        "file": "mbhg-2026-sa1-ta-p025.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/Meshblock_Higher_Geographies_2026/FeatureServer/0/query?where=1%3D1&outFields=MB2026_V1_00,SA12026_V1_00,TA2026_V1_00,TA2026_V1_00_NAME&returnGeometry=false&f=json&orderByFields=OBJECTID&resultOffset=50000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-12T03:14:26Z",
+        "bytes": 254663,
+        "sha256": "63221c8c22d95de1009d97a09d1f00a9291941b5134a4229ccbaa5602c0834f0",
+        "features": 2000
+      },
+      {
+        "file": "mbhg-2026-sa1-ta-p026.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/Meshblock_Higher_Geographies_2026/FeatureServer/0/query?where=1%3D1&outFields=MB2026_V1_00,SA12026_V1_00,TA2026_V1_00,TA2026_V1_00_NAME&returnGeometry=false&f=json&orderByFields=OBJECTID&resultOffset=52000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-12T03:14:27Z",
+        "bytes": 253662,
+        "sha256": "02b69d149e0805cdbab461232e57853e1e6d7fc84da9f765dee77d119ca8c163",
+        "features": 2000
+      },
+      {
+        "file": "mbhg-2026-sa1-ta-p027.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/Meshblock_Higher_Geographies_2026/FeatureServer/0/query?where=1%3D1&outFields=MB2026_V1_00,SA12026_V1_00,TA2026_V1_00,TA2026_V1_00_NAME&returnGeometry=false&f=json&orderByFields=OBJECTID&resultOffset=54000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-12T03:14:27Z",
+        "bytes": 254204,
+        "sha256": "5d8e60912232c591a0908fcc447bf5fa0a94f9530a6d1d5c785e3ca8c578fa00",
+        "features": 2000
+      },
+      {
+        "file": "mbhg-2026-sa1-ta-p028.json",
+        "url": "https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services/Meshblock_Higher_Geographies_2026/FeatureServer/0/query?where=1%3D1&outFields=MB2026_V1_00,SA12026_V1_00,TA2026_V1_00,TA2026_V1_00_NAME&returnGeometry=false&f=json&orderByFields=OBJECTID&resultOffset=56000&resultRecordCount=2000",
+        "http_status": 200,
+        "fetched_at": "2026-10-12T03:14:28Z",
+        "bytes": 201217,
+        "sha256": "3dd5f887be0f736dbc227626b70a845b71cd0ab816a8f830676633b872e02bab",
+        "features": 1575
+      }
+    ],
+    "simplification": {
+      "outSR": 4326,
+      "maxAllowableOffset": 0.0001,
+      "geometryPrecision": 6
+    },
+    "assignment_rule": {
+      "point": "AU2017: deterministic strictly interior point for every staged SA1 polygon, otherwise SA1 2023 centroid. TA: Meshblock Higher Geographies 2026 concordance by SA1 code; centroid-in-TA2025 is a cross-check only.",
+      "containment": "Global even-odd parity over every ring of a feature, including nested rings supplied as separate MultiPolygon parts (observed for Motutangi-Kareponia enclosing Awanui). Disjoint parts are equivalent to their union. Boundary included with angular epsilon 1e-10 degrees. Every feature hit is inspected. Interior overlaps are repaired only when the point is within 20 m of every candidate boundary: choose the uniquely deepest interior (greatest boundary distance); tied distances within 1e-6 m or deeper overlaps refuse. Every candidate distance and selected code is reported. The 20 m sliver limit accommodates the approximately 10 m server simplification and 6-decimal rounding. Multiple boundary-only hits choose smallest code and are reported.",
+      "no_hit": "Nearest polygon boundary in local equirectangular metres (Earth radius 6371008.8); positive population refuses beyond 20000 m; zero population may use an unlimited nearest boundary. Equal nearest distances within 1e-6 m refuse. All no-hit assignments reported.",
+      "max_distance_m": 20000,
+      "zero_population_ta": "Area Outside Territorial Authority (999), if zero population, is explicitly represented by Area 4 share 1, modal 4; this is a non-population placeholder, not an estimated share.",
+      "max_overlap_m": 20,
+      "interior_point": {
+        "algorithm": "deterministic best-first pole-of-inaccessibility search with global even-odd ring parity",
+        "tolerance_degrees": 2e-05,
+        "guarantee": "Return only a strictly interior point in the staged simplified polygon; fail if none can be found. This does not guarantee an interior point in the unsimplified source.",
+        "polygon_simplification": {
+          "maxAllowableOffset": 2e-05,
+          "geometryPrecision": 6,
+          "outSR": 4326
+        }
+      },
+      "ta_concordance": "Every SA1 2023 code must appear under SA12026_V1_00 and map to exactly one TA2026 code/name; the entire TA2026 code/name set must equal the TA2025 polygon set. Missing codes, multiple TAs or a set mismatch refuse.",
+      "water_au": "Names starting Inlet, Inlets, Inland Water or Oceanic are water AUs. A centroid in one requires a staged SA1 polygon, regardless of population; missing polygons refuse with all SA1 codes and populations. Interior points remaining in water AUs keep their assignments and are reported."
+    }
+  },
+  "heading_ta_expectations": {
+    "Ashburton": [
+      "Ashburton District"
+    ],
+    "Blenheim": [
+      "Marlborough District"
+    ],
+    "Cambridge Zone": [
+      "Waipa District"
+    ],
+    "Central Auckland Zone": [
+      "Auckland"
+    ],
+    "Christchurch": [
+      "Christchurch City"
+    ],
+    "Dunedin": [
+      "Dunedin City"
+    ],
+    "Feilding": [
+      "Manawatu District"
+    ],
+    "Gisborne": [
+      "Gisborne District"
+    ],
+    "Greymouth": [
+      "Grey District"
+    ],
+    "Hamilton Zone": [
+      "Hamilton City"
+    ],
+    "Hastings Zone": [
+      "Hastings District"
+    ],
+    "Hawera": [
+      "South Taranaki District"
+    ],
+    "Hokitika": [
+      "Westland District"
+    ],
+    "Huntly": [
+      "Waikato District"
+    ],
+    "Kaitaia": [
+      "Far North District"
+    ],
+    "Kapiti": [
+      "Kapiti Coast District"
+    ],
+    "Levin": [
+      "Horowhenua District"
+    ],
+    "Lower Hutt Zone": [
+      "Lower Hutt City"
+    ],
+    "Masterton": [
+      "Masterton District"
+    ],
+    "Matamata": [
+      "Matamata-Piako District"
+    ],
+    "Morrinsville": [
+      "Matamata-Piako District"
+    ],
+    "Motueka": [
+      "Tasman District"
+    ],
+    "Napier Zone": [
+      "Napier City"
+    ],
+    "Nelson": [
+      "Nelson City"
+    ],
+    "New Plymouth": [
+      "New Plymouth District"
+    ],
+    "Northern Auckland Zone": [
+      "Auckland"
+    ],
+    "Oamaru": [
+      "Waitaki District"
+    ],
+    "Palmerston North": [
+      "Palmerston North City"
+    ],
+    "Picton": [
+      "Marlborough District"
+    ],
+    "Porirua Zone": [
+      "Porirua City"
+    ],
+    "Pukekohe": [
+      "Auckland"
+    ],
+    "Queenstown": [
+      "Queenstown-Lakes District"
+    ],
+    "Rangiora": [
+      "Waimakariri District"
+    ],
+    "Rolleston": [
+      "Selwyn District"
+    ],
+    "Rotorua": [
+      "Rotorua District"
+    ],
+    "Southern Auckland Zone": [
+      "Auckland"
+    ],
+    "Taupo": [
+      "Taupo District"
+    ],
+    "Tauranga": [
+      "Tauranga City"
+    ],
+    "Te Awamutu Zone": [
+      "Waipa District"
+    ],
+    "Te Puke Community": [
+      "Western Bay of Plenty District"
+    ],
+    "Thames": [
+      "Thames-Coromandel District"
+    ],
+    "Timaru": [
+      "Timaru District"
+    ],
+    "Upper Hutt Zone": [
+      "Upper Hutt City"
+    ],
+    "Waitara": [
+      "New Plymouth District"
+    ],
+    "Waiuku": [
+      "Auckland"
+    ],
+    "Wellington Zone": [
+      "Wellington City"
+    ],
+    "Western Auckland Zone": [
+      "Auckland"
+    ],
+    "Whakatane": [
+      "Whakatane District"
+    ],
+    "Whangarei": [
+      "Whangarei District"
+    ],
+    "Woodend": [
+      "Waimakariri District"
+    ],
+    "Other locations": null
+  },
+  "heading_ta_expectations_note": "Review flags compare town/Zone headings to their primary TA, not asserted AS boundaries. Adjacent-district area units can be legitimate and are reported without changing exact matches. Other locations has no territorial implication and is recorded without a conflict check.",
+  "unmatched_definition_entries": [],
+  "queenstown_sensitivity": {
+    "label": "sensitivity only; not the central assignment rule",
+    "definition": "Within Queenstown-Lakes District, otherwise unlisted AU2017 names containing Frankton or Queenstown are assigned Area 1",
+    "ta_code": "070",
+    "area_units": [
+      {
+        "au_code": "609033",
+        "au_name": "Frankton East",
+        "population": 1182
+      }
+    ],
+    "moved_population": 1182,
+    "moved_population_share": 0.024717691342534504,
+    "shares": [
+      {
+        "as_area": 1,
+        "population_share": 0.6023212045169385
+      },
+      {
+        "as_area": 2,
+        "population_share": 0.0
+      },
+      {
+        "as_area": 3,
+        "population_share": 0.0
+      },
+      {
+        "as_area": 4,
+        "population_share": 0.39767879548306145
+      }
+    ],
+    "modal_area": 1
+  },
+  "diagnostics": {
+    "sa1_count": 32817,
+    "meshblock_count": 57575,
+    "au_count": 2004,
+    "ta_count": 68,
+    "national_layer_population": 4993314,
+    "assigned_population": 4993314,
+    "ta_concordance_disagreement_count": 17,
+    "ta_concordance_disagreement_population": 1575,
+    "flagged_sa1_count": 65,
+    "flagged_sa1_population": 3927,
+    "remaining_water_au_sa1_count": 22,
+    "remaining_water_au_population": 3,
+    "as_area_changed_population": 1515,
+    "definition_heading_check_count": 1331,
+    "definition_heading_conflict_count": 42,
+    "au_no_polygon_count": 1,
+    "au_no_polygon_population": 156,
+    "suppressed_population_count": 0
+  },
+  "definition_name_aliases": [
+    {
+      "definition_name": "Whakarewarewa",
+      "au_code": "540700",
+      "au_name": "Whaka",
+      "evidence": "Hub checked Area Unit 2013, 2016 and 2017 layers: code 540700 is named Whaka. No AU name starts Whakare; the Rotorua definition names no other Whaka unit."
+    }
+  ],
+  "resolved_definition_entries": [
+    {
+      "name": "Queenstown urban area",
+      "heading": "Queenstown",
+      "as_area": 1,
+      "au_codes": [],
+      "resolution": "no additional area unit",
+      "evidence": {
+        "layer": "Urban_area_2014",
+        "ua_code": "117",
+        "ua_name": "Queenstown",
+        "method": "Hub overlay script ua_overlay.py: numpy default_rng(0), 6000 uniform samples in each AU2017 bounding box, retain samples inside the AU by ring parity, report fraction also inside Urban Area 2014 Queenstown. Read, not re-run; the urban polygon is not staged. Fractions are sampled overlap estimates, not exact intersections.",
+        "au_area_shares_inside_urban_area": {
+          "Kelvin Heights": 0.999,
+          "Sunshine Bay": 1.0,
+          "Queenstown Hill": 1.0,
+          "Arthurs Point": 0.999,
+          "Queenstown Bay": 0.998,
+          "Frankton": 0.833,
+          "Frankton East": 0.012
+        },
+        "conclusion": "All substantially overlapping units are already listed. Frankton East is the only unlisted unit with overlap and remains sensitivity only."
+      }
+    }
+  ]
 }
