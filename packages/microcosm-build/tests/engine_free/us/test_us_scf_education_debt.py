@@ -556,6 +556,13 @@ def test_imputation_reaches_only_reference_persons_and_their_spouses() -> None:
 def test_a_spouse_draw_without_a_spouse_moves_to_the_reference_person() -> None:
     frame = _us_frame(_person_rows(30))
     donor = _ready_donor()
+    # Every donor family borrows, so every household draws a positive total and
+    # the test checks only where the spouse's draw lands. With the synthetic
+    # donor's random incidence, a 30-household frame otherwise draws no debt for
+    # any couple on about 2 seeds in 20.
+    donor[SCF_EDUCATION_DEBT_TOTAL_TARGET] = np.maximum(
+        donor[SCF_EDUCATION_DEBT_TOTAL_TARGET], 1_000.0
+    )
     donor["head_own_share"] = np.where(donor[SCF_EDUCATION_DEBT_TOTAL_TARGET] > 0, 0, 0)
     donor["spouse_own_share"] = np.where(
         donor[SCF_EDUCATION_DEBT_TOTAL_TARGET] > 0, 1.0, 0.0

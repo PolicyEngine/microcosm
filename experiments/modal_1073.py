@@ -358,7 +358,9 @@ def preflight_remote(commit: str) -> dict:
 @app.function(
     image=image, cpu=CPU, memory=MEMORY_MB, timeout=4 * 3600, volumes={"/cache": cache}
 )
-def run_steps(commit: str, steps: list[str], run_id: str) -> dict:
+def run_steps(
+    commit: str, steps: list[str], run_id: str, script_text: str = ""
+) -> dict:
     import resource  # Unix-only; the local entrypoint runs on Windows too
 
     started = datetime.now(UTC)
@@ -388,7 +390,14 @@ def run_steps(commit: str, steps: list[str], run_id: str) -> dict:
     }
     failed = False
     for step in steps:
-        commands = [_expand(command, fields) for command in STEPS[step]]
+        if step == "script":
+            # An uncommitted local probe passed by --script; it runs in the
+            # clone like any step, and the run log records its text.
+            (WORK / "_modal_probe.py").write_text(script_text, encoding="utf-8")
+            log["script_sha256"] = hashlib.sha256(script_text.encode()).hexdigest()
+            commands = [[fields["python"], "_modal_probe.py"]]
+        else:
+            commands = [_expand(command, fields) for command in STEPS[step]]
         before = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
         t0 = time.time()
         returncodes = []
@@ -450,15 +459,18 @@ def preflight(commit: str) -> None:
 
 
 @app.local_entrypoint()
-def main(commit: str, steps: str = "tests,shift,explore") -> None:
+def main(commit: str, steps: str = "tests,shift,explore", script: str = "") -> None:
     _check_commit(commit)
     names = [s for s in steps.split(",") if s]
-    unknown = sorted(set(names) - set(STEPS))
+    script_text = Path(script).read_text(encoding="utf-8") if script else ""
+    if script and "script" not in names:
+        names.append("script")
+    unknown = sorted(set(names) - set(STEPS) - {"script"})
     if unknown:
         raise SystemExit(f"unknown steps: {unknown}")
     run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ") + "-" + commit[:9]
     print(f"run_id={run_id}")
-    print(json.dumps(run_steps.remote(commit, names, run_id), indent=2))
+    print(json.dumps(run_steps.remote(commit, names, run_id, script_text), indent=2))
 
 
 @app.local_entrypoint()
