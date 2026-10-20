@@ -43,7 +43,11 @@ PR CI (`.github/workflows/test.yml`) has `lint`, `engine-free`, `engine-us`,
 `engine-uk`, `integration-uk`, and `wheels` jobs, plus the
 `select-countries` orchestration job. It runs for pull requests into any base
 branch, so a stacked pull request, whose base is another pull request's
-branch, gets the same jobs; pushes run it only for `main`.
+branch, gets the same jobs; pushes run it only for `main`. That costs runner
+time: every push to a pull request's branch, whatever its base, runs the full
+workflow on the organization's shared runners, with the jobs and country
+selection a pull request into `main` would get. Merging one change up a stack
+of N pull requests therefore starts N full runs.
 `tools/ci_test_plan.py` is the only authority for test-directory ownership, CI
 job assignment, country ownership, US timing-report categories, and
 changed-path country selection. Its `TEST_GROUPS` registry defines every valid
