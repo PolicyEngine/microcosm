@@ -792,6 +792,9 @@ def _add_person_income(
     pe_person["maintenance_income"] = (
         maintenance_to_self + _positive(person, "mntamt2").to_numpy()
     ) * WEEKS_IN_YEAR
+    # ALLPAY2, "Amount of allowance: organisation", is one amount, so it is
+    # miscellaneous income alone and not also a private transfer
+    # (microcosm#1320, uk-data#627; María's ruling of 2026-10-20).
     pe_person["miscellaneous_income"] = (
         _odd_job_income(person, oddjob)
         + _sum_positive_fields(
@@ -800,7 +803,7 @@ def _add_person_income(
     ) * WEEKS_IN_YEAR
     pe_person["private_transfer_income"] = (
         _sum_positive_fields(
-            person, ("apamt", "apdamt", "pareamt", "allpay2", "allpay3", "allpay4")
+            person, ("apamt", "apdamt", "pareamt", "allpay3", "allpay4")
         )
         * WEEKS_IN_YEAR
     )

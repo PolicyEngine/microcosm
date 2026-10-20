@@ -41,6 +41,7 @@ from microcosm.build.uk_runtime.frs_relationships import (
     frs_relationships_operation_parameters,
 )
 from microcosm.build.uk_runtime.frs_spine import (
+    BENEFIT_CODES,
     FRS_SPINE_TABLES,
     OWNER_MANAGER_COLUMNS,
     REGION_MAP,
@@ -1178,8 +1179,11 @@ def test_direct_person_mapping_values_are_ported(tmp_path: Path) -> None:
     assert adult["rent_paid_as_lodger"] == pytest.approx(WEEKS_IN_YEAR)
     assert adult["rent_paid_as_boarder"] == 0
     assert adult["maintenance_income"] == pytest.approx(3 * WEEKS_IN_YEAR)
+    # Odd jobs 4, ALLPAY2 6, ROYYR2-4 3 + 4 + 5, CHAMTERN 9 and CHAMTTST 10.
     assert adult["miscellaneous_income"] == pytest.approx(41 * WEEKS_IN_YEAR)
-    assert adult["private_transfer_income"] == pytest.approx(57 * WEEKS_IN_YEAR)
+    # APAMT 11, APDAMT 12, PAREAMT 13, ALLPAY3 7 and ALLPAY4 8: ALLPAY2 is
+    # miscellaneous income alone (#1320).
+    assert adult["private_transfer_income"] == pytest.approx(51 * WEEKS_IN_YEAR)
     assert adult["lump_sum_income"] == pytest.approx(100)
     assert adult["student_loan_repayments"] == pytest.approx(2 * WEEKS_IN_YEAR)
     assert adult["statutory_sick_pay"] == pytest.approx(WEEKS_IN_YEAR)
@@ -1202,6 +1206,96 @@ def test_direct_person_mapping_values_are_ported(tmp_path: Path) -> None:
     )
     assert adult["salary_sacrifice_reported"] == 1
     assert adult["salary_sacrifice_asked"] == 1
+
+
+#: The spine's person income columns (#1320, uk-data#627).
+#: tax_free_savings_income is not one: it is the ISA part of
+#: savings_interest_income.
+_PERSON_INCOME_COLUMNS = (
+    "employment_income",
+    "self_employment_income",
+    "private_pension_income",
+    "savings_interest_income",
+    "dividend_income",
+    "property_income",
+    "maintenance_income",
+    "miscellaneous_income",
+    "private_transfer_income",
+    "lump_sum_income",
+    "statutory_sick_pay",
+    "statutory_maternity_pay",
+    "statutory_paternity_pay",
+    "student_loans",
+    "access_fund",
+    "education_grants",
+    "healthy_start_vouchers",
+    "free_school_breakfasts",
+    "free_school_fruit_veg",
+    "free_school_meals",
+    "council_tax_benefit_reported",
+    *(f"{name}_reported" for name in BENEFIT_CODES),
+    "jsa_contrib_reported",
+    "jsa_income_reported",
+    "esa_contrib_reported",
+    "esa_income_reported",
+    "bsp_reported",
+)
+
+
+def test_no_frs_field_feeds_two_income_columns(tmp_path: Path) -> None:
+    """Each FRS field adds to one person income column at most (#1320).
+
+    ALLPAY2, "Amount of allowance: organisation", was counted in both
+    miscellaneous_income and private_transfer_income (uk-data#627). Household
+    1 is copied once for each field of its adult, child, household, odd-job
+    and pension rows, with that field raised by one in its copy, and each
+    copy's people are compared with an unchanged copy's. The benefits and
+    accounts tabs route one amount column by a row code, and the other tabs
+    carry no person income, so they are not varied.
+    """
+
+    tables = _fixture_tables()
+    fields = [
+        (table, field)
+        for table in ("adult", "child", "househol", "oddjob", "pension")
+        for field in dict.fromkeys(
+            field for row in tables[table] if row["SERNUM"] == 1 for field in row
+        )
+        if field not in {"SERNUM", "BENUNIT", "PERSON"}
+    ]
+    copies: dict[str, list[dict[str, object]]] = {table: [] for table in tables}
+    for household, varied in enumerate([None, *fields], start=1):
+        for table, rows in tables.items():
+            for row in rows:
+                if row["SERNUM"] != 1:
+                    continue
+                copy = {**row, "SERNUM": household}
+                if varied is not None and varied[0] == table:
+                    value = pd.to_numeric(copy[varied[1]], errors="coerce")
+                    copy[varied[1]] = float(np.nan_to_num(value)) + 1.0
+                copies[table].append(copy)
+    stage = _write_fixture(tmp_path, copies)
+
+    person = build_uk_frs_spine_frame(tmp_path, stage=stage).table("person")
+    incomes = person.set_index("person_id")[list(_PERSON_INCOME_COLUMNS)]
+    moved: dict[tuple[str, str], set[str]] = {}
+    for household, varied in enumerate(fields, start=2):
+        for number in (1, 2):
+            changed = ~np.isclose(
+                incomes.loc[household * 1000 + number], incomes.loc[1000 + number]
+            )
+            moved.setdefault(varied, set()).update(incomes.columns[changed])
+
+    assert {
+        field: columns for field, columns in moved.items() if len(columns) > 1
+    } == {}
+    # The comparison sees a field's own column.
+    assert moved[("adult", "ALLPAY2")] == {"miscellaneous_income"}
+    assert moved[("adult", "APAMT")] == {"private_transfer_income"}
+    assert moved[("adult", "INEARNS")] == {"employment_income"}
+    assert moved[("househol", "CTREBAMT")] == {"council_tax_benefit_reported"}
+    assert moved[("oddjob", "OJAMT")] == {"miscellaneous_income"}
+    assert moved[("pension", "PENPAY")] == {"private_pension_income"}
 
 
 @pytest.mark.parametrize("seed", range(8))
