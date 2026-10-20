@@ -303,8 +303,8 @@ does (see step 5). To block on the call instead, use the modal tool's own
 interpreter (system `python3` has no `modal`):
 `~/.local/share/uv/tools/modal/bin/python -c 'import modal; print(modal.FunctionCall.from_id("<id>").get())'`.
 It returns the receipt (COMPLETED or FAILED), or re-raises the error of an
-attempt that raised: a rejected plan, a refusal or an exception. Remove `base.fc` only when its call has ended and a relaunch has
-Max's go. A launchd job's own exit status is in
+attempt that raised: a rejected plan, a refusal or an exception.
+Remove `base.fc` only when its call has ended and a relaunch has Max's go. A launchd job's own exit status is in
 `launchctl print gui/$(id -u)/com.maxghenis.claude893.<label>`.
 
 Keep launchd's default `ProcessType=Standard`; do not set `KEEPALIVE=1`.
@@ -555,7 +555,9 @@ mkdir -p "$CHECKS"
 # an output file would change between passes). A check whose recorded config
 # is identical is not rerun: its result is reused, and the reuse is logged. A
 # different config (a new register, say) refuses with 99. Move that check's
-# -config.json and -sup aside to rerun it.
+# -config.json and -sup aside to rerun it. Any file passed through
+# RELEASE_EXTRA_ARGS must also be listed as an INPUT, or rewriting it at the
+# same path would reuse an old result.
 supervised() {
   local name=$1 rss=$2 ram=$3 disk=$4 wall=$5 cpu=$6 rendered
   local inputs=()
@@ -646,7 +648,7 @@ sweep_rc=$(supervised guard-sweep 16 12 30 21600 43200 \
 [ "$sweep_rc" = 0 ] || { echo "Guard sweep failed ($sweep_rc)"; exit 1; }
 if [ "$GUARDS_ONLY" = 1 ]; then echo 'Guard checks passed; gate dry run deferred'; exit 0; fi
 test -f "$RUN/base-sup/ACCEPTED" || { echo "The base is not ACCEPTED (step 5)"; exit 1; }
-EXTRA=($RELEASE_EXTRA_ARGS)
+EXTRA=(${RELEASE_EXTRA_ARGS-})
 gate_rc=$(supervised gate-dry-run 64 40 30 21600 43200 \
   "$RUN/base-out/base_populace_us_2024_puf_support.h5" "$FEED" "$QRF_TAIL_EXCLUSIONS" \
   "$SSI" "$SCF" ${EXPORT_MASS_REF_H5:+"$EXPORT_MASS_REF_H5"} \
@@ -660,7 +662,7 @@ gate_rc=$(supervised gate-dry-run 64 40 30 21600 43200 \
   --ssi-take-up-prior-weight-basis-sha256 25fe8af50a99d717f3408b2de7f0849d2307d4f05b1a7d55d2703999002fff0a \
   --scf-summary-extract "$SCF" --out "$LOCAL/gate-dry-run" \
   --release-id "populace-us-2024-gate-check-${COMMIT:0:12}" \
-  --checkpoint-root "$LOCAL/gate-checkpoints" --seed 0 --no-staging "${EXTRA[@]}")
+  --checkpoint-root "$LOCAL/gate-checkpoints" --seed 0 --no-staging ${EXTRA[@]+"${EXTRA[@]}"})
 case "$gate_rc" in
   0) echo 'Release guards completed cleanly' ;;
   2) echo 'AT-RISK: review dry-run-gates.json before starting release'
