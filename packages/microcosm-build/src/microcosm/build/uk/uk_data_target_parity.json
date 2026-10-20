@@ -882,7 +882,7 @@
         "purpose": "Avoid treating a rate as an additive target.",
         "verdict_basis": "Keep excluded until a rate-aware non-linear objective exists."
       },
-      "reason": "Band D currency amounts are per-rate, not additive household controls.",
+      "reason": "Band D currency amounts are per-rate, not additive household controls. So are the eight per-band amounts, band_A_amount to band_H_amount, that uk-data#482 (open, so not in the a43e8c5 inventory) adds to storage/la_council_tax.csv: each English authority's 2026-27 amount for one band (MHCLG Table 9, England only), its Band D amount times the band's statutory ratio. None of the eight is to be ported as a target either.",
       "status": "reviewed_exclusion"
     },
     {
