@@ -694,6 +694,26 @@ def test_output_leaving_a_missing_folder_inside_the_build_creates_nothing_there(
     )
 
 
+def test_output_named_by_a_dangling_link_leading_outside_the_build_is_refused(
+    tmp_path,
+):
+    # The given name exists, as a symbolic link, but the path it resolves to
+    # does not. Checking only the resolved path would accept it and write the
+    # publication wherever the link points.
+    build = write_pre_1144_build(tmp_path / "build")
+    (tmp_path / "elsewhere").mkdir()
+    link_target = tmp_path / "elsewhere" / "publication"
+    dangling_link = tmp_path / "publication-link"
+    dangling_link.symlink_to(link_target, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="already exists"):
+        reconstruct_uk_publication(build, dangling_link)
+
+    assert dangling_link.is_symlink()
+    assert not os.path.lexists(link_target)
+    assert list((tmp_path / "elsewhere").iterdir()) == []
+
+
 def test_declaration_behind_a_symbolic_link_is_refused(tmp_path):
     build = write_pre_1144_build(tmp_path / "build")
     elsewhere = tmp_path / "elsewhere.json"
@@ -720,6 +740,27 @@ def test_cli_writes_the_publication_and_prints_a_summary(tmp_path, capsys):
         main(["--build", str(build), "--output", str(output)])
     assert refusal.value.code == 2
     assert "already exists" in capsys.readouterr().err
+
+
+def test_cli_prints_the_resolved_output_path_it_wrote(tmp_path, capsys):
+    # The given spelling enters a folder the build does not have and leaves
+    # it with "..", so it names no reachable path; the publication is written
+    # at its resolved path beside the build, which is the one to print.
+    build = write_pre_1144_build(tmp_path / "build")
+    given_output = build / "missing" / ".." / ".." / "cli_publication"
+    written_output = tmp_path.resolve() / "cli_publication"
+
+    assert main(["--build", str(build), "--output", str(given_output)]) == 0
+
+    printed = capsys.readouterr().out
+    assert (
+        f"Wrote a reconstructed Orrery publication (declaration only) to "
+        f"{written_output}\n"
+    ) in printed
+    assert f"  report: {written_output / REPORT_NAME}" in printed.splitlines()
+    assert str(given_output) not in printed
+    assert (written_output / REPORT_NAME).is_file()
+    assert not os.path.lexists(given_output)
 
 
 def test_cli_refuses_a_declaration_that_is_not_a_json_object(tmp_path, capsys):

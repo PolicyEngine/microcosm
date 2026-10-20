@@ -465,10 +465,12 @@ The build directory is only read. The command:
 
 It writes a new directory with the layout of a normal publication, and moves the
 directory into place only after every file is written. The output must not
-exist, and must not be the build directory or lie inside it once `..` and links
-are resolved. The command writes to that resolved path, so a path that passes
-through a missing folder inside the build creates nothing there, and a
-read-only build can be reconstructed:
+exist, either as given (a symbolic link counts, even one whose target does not
+exist) or once resolved. It must not be the build directory or lie inside it
+once `..` and links are resolved. The command writes to that resolved path, so
+a path that passes through a missing folder inside the build creates nothing
+there, and a read-only build can be reconstructed. It prints the resolved path,
+because the path as given need not reach it:
 
 | File | Contents |
 | --- | --- |
