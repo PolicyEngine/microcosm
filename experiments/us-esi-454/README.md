@@ -27,7 +27,7 @@ Each receipt records the input digests, the columns the restoration added per
 vintage with their observed code counts, the stage summary (scale factor, raw
 and scaled totals for both universes, totals by tier and employer sector,
 weighted policyholder counts), totals by vintage, both gate verdicts before
-and after the clone with the BEA and MEPS-IC cross-checks, and
+and after the clone with the NHE Table 24 and MEPS-IC cross-checks, and
 `other_policyholder_sensitivity`: the employed column under each reading of
 the anchor and of how policyholders outside the column are priced.
 
