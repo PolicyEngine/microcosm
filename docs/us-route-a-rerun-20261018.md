@@ -302,8 +302,8 @@ The launcher's exit code no longer says how the stage ended; the runs volume
 does (see step 5). To block on the call instead, use the modal tool's own
 interpreter (system `python3` has no `modal`):
 `~/.local/share/uv/tools/modal/bin/python -c 'import modal; print(modal.FunctionCall.from_id("<id>").get())'`.
-It returns the receipt, or re-raises the error of a rejected, refused or failed
-attempt. Remove `base.fc` only when its call has ended and a relaunch has
+It returns the receipt (COMPLETED or FAILED), or re-raises the error of an
+attempt that raised: a rejected plan, a refusal or an exception. Remove `base.fc` only when its call has ended and a relaunch has
 Max's go. A launchd job's own exit status is in
 `launchctl print gui/$(id -u)/com.maxghenis.claude893.<label>`.
 
@@ -365,7 +365,7 @@ gib = 1024 ** 3
 config = {
     "cwd": worktree,
     "argv": [worktree + "/.venv/bin/python", "-B", "tools/build_us_puf_support_base.py", *args, "--stage", stage],
-    "env": {"PYTHONHASHSEED": "0", "PYTHONUNBUFFERED": "1"},
+    "env": {"PYTHONHASHSEED": "0", "PYTHONUNBUFFERED": "1", "HF_HUB_OFFLINE": "1"},
     "authorization": "d1386: local 000/001 comparison evidence only",
     "limits": {"wall_seconds": 21600, "cpu_seconds": 64800,
                "rss_bytes": 32*gib, "available_ram_admission_bytes": 24*gib,
@@ -492,17 +492,21 @@ the two stage-001 checkpoints. Modal mirrors its copy to the runs volume
 (about 0.84 GB); fetch it to scratch and delete it afterwards.
 
 ```bash
-SCRATCH=$(mktemp -d)
-trap 'rm -rf "$SCRATCH"' EXIT
-MODAL_001=$SCRATCH/001_pre_clone_enrichment.frame.h5
-"$MODAL" volume get microcosm-us-stage-runs \
-  "runs/$R/state/base-checkpoints/001_pre_clone_enrichment.frame.h5" "$SCRATCH/"
-# The receipt's digest for this file must match what was fetched.
-EXPECTED=$(python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); print(next(o["sha256"] for o in r["outputs"] if o["path"].endswith("001_pre_clone_enrichment.frame.h5")))' "$RECEIPT")
-test "$(shasum -a 256 "$MODAL_001" | cut -c1-64)" = "$EXPECTED"
 CLASS=$LOCAL/lineage-class-check-stage001.json
-"$W/.venv/bin/python" tools/route_a/lineage_class_check.py \
-  "$REFROOT/base-checkpoints/001_pre_clone_enrichment.frame.h5" "$MODAL_001" "$CLASS"
+(
+  # A subshell, so the scratch copy and its trap end with this block.
+  set -euo pipefail
+  SCRATCH=$(mktemp -d)
+  trap 'rm -rf "$SCRATCH"' EXIT
+  MODAL_001=$SCRATCH/001_pre_clone_enrichment.frame.h5
+  "$MODAL" volume get microcosm-us-stage-runs \
+    "runs/$R/state/base-checkpoints/001_pre_clone_enrichment.frame.h5" "$SCRATCH/"
+  # The receipt's digest for this file must match what was fetched.
+  EXPECTED=$(python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); print(next(o["sha256"] for o in r["outputs"] if o["path"].endswith("001_pre_clone_enrichment.frame.h5")))' "$RECEIPT")
+  test "$(shasum -a 256 "$MODAL_001" | cut -c1-64)" = "$EXPECTED"
+  "$W/.venv/bin/python" tools/route_a/lineage_class_check.py \
+    "$REFROOT/base-checkpoints/001_pre_clone_enrichment.frame.h5" "$MODAL_001" "$CLASS"
+)
 ```
 
 The fetched file must hash to the receipt's digest for it, the same digest
@@ -645,7 +649,8 @@ test -f "$RUN/base-sup/ACCEPTED" || { echo "The base is not ACCEPTED (step 5)"; 
 EXTRA=($RELEASE_EXTRA_ARGS)
 gate_rc=$(supervised gate-dry-run 64 40 30 21600 43200 \
   "$RUN/base-out/base_populace_us_2024_puf_support.h5" "$FEED" "$QRF_TAIL_EXCLUSIONS" \
-  "$SSI" "$SCF" tools/dry_run_us_release_gates.py tools/build_us_fiscal_refresh_release.py -- \
+  "$SSI" "$SCF" ${EXPORT_MASS_REF_H5:+"$EXPORT_MASS_REF_H5"} \
+  tools/dry_run_us_release_gates.py tools/build_us_fiscal_refresh_release.py -- \
   "$W/.venv/bin/python" tools/dry_run_us_release_gates.py \
   --json-out "$LOCAL/dry-run-gates.json" -- \
   --base-h5 "$RUN/base-out/base_populace_us_2024_puf_support.h5" \
@@ -659,7 +664,8 @@ gate_rc=$(supervised gate-dry-run 64 40 30 21600 43200 \
 case "$gate_rc" in
   0) echo 'Release guards completed cleanly' ;;
   2) echo 'AT-RISK: review dry-run-gates.json before starting release'
-     # The report must be this run's: a stale one would not say exit 2.
+     # The report must agree with the recorded return code. That does not prove
+     # it is this run's: an older AT-RISK report also says exit 2.
      python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["exit_code"] == 2, d["exit_code"]; print("report status:", d["status"])' "$LOCAL/dry-run-gates.json"
      exit 2 ;;
   *) echo "Release guard dry run failed ($gate_rc)"; exit 1 ;;
