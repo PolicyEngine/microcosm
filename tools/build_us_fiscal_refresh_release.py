@@ -507,6 +507,19 @@ assert set(US_DENSE_SSI_TAKE_UP_ENFORCEMENT_FENCES) == set(
 )
 
 US_FISCAL_TARGET_LOSS_CAP = 1.0
+# The critical-target band (microcosm#1330). The solve holds each critical
+# fiscal target inside DEFAULT_CRITICAL_TARGET_BAND_MARGIN of its gate
+# tolerance. Outside the band, the band term's slope in that target's relative
+# error is the penalty. The fit loss is a weighted mean, so its slope in any
+# one target's relative error is that target's loss share, which is at most 1.
+# A penalty of 1 therefore wins any trade that gains less in loss-share-weighted
+# error elsewhere than it costs the critical target. A stronger opposing pull
+# is possible, and it would show as a nonzero final violation: the calibration
+# diagnostics record it, and the gate still judges the result. The d1386
+# release missed its Social Security total by 6.4% against a 5% gate, while
+# that target carried 0.19% of the loss weight.
+DEFAULT_CRITICAL_TARGET_BAND_PENALTY = 1.0
+DEFAULT_CRITICAL_TARGET_BAND_MARGIN = 0.9
 RATIFIED_EXACT_K_COUNTS = frozenset({57_240, 20_000})
 
 
@@ -1408,6 +1421,29 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--critical-target-band-penalty",
+        type=float,
+        default=DEFAULT_CRITICAL_TARGET_BAND_PENALTY,
+        help=(
+            "Hold each critical fiscal target (US_CRITICAL_TARGET_FIT_REQUIREMENTS) "
+            "inside its gate tolerance during calibration. The objective adds "
+            "PENALTY * max(|relative error| - tolerance, 0) for each target the "
+            "critical-target gate matches; zero inside the band, so the fit is "
+            "left alone there. 0 turns the band off. Default "
+            f"{DEFAULT_CRITICAL_TARGET_BAND_PENALTY}."
+        ),
+    )
+    parser.add_argument(
+        "--critical-target-band-margin",
+        type=float,
+        default=DEFAULT_CRITICAL_TARGET_BAND_MARGIN,
+        help=(
+            "Fraction of each critical target's gate tolerance the band uses, in "
+            "(0, 1], so the solve settles inside the gate rather than on its edge. "
+            f"Default {DEFAULT_CRITICAL_TARGET_BAND_MARGIN}."
+        ),
+    )
+    parser.add_argument(
         "--l0-refit-lambda-share",
         type=float,
         default=DEFAULT_L0_REFIT_LAMBDA_SHARE,
@@ -2031,6 +2067,22 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         )
     except ValueError as error:
         parser.error(str(error))
+    if (
+        not math.isfinite(args.critical_target_band_penalty)
+        or args.critical_target_band_penalty < 0.0
+    ):
+        parser.error(
+            "--critical-target-band-penalty must be finite and non-negative, got "
+            f"{args.critical_target_band_penalty!r}."
+        )
+    if not (
+        math.isfinite(args.critical_target_band_margin)
+        and 0.0 < args.critical_target_band_margin <= 1.0
+    ):
+        parser.error(
+            "--critical-target-band-margin must be in (0, 1], got "
+            f"{args.critical_target_band_margin!r}."
+        )
     return args
 
 
@@ -9082,6 +9134,39 @@ def _critical_target_specs_by_row_name(
     return {_target_row_name(spec): spec for spec in target_registry.specs}
 
 
+def _critical_target_band_tolerances(
+    target_registry: TargetRegistry,
+    *,
+    margin: float,
+) -> np.ndarray | None:
+    """Per-row band tolerances for the solve, aligned to ``target_registry.specs``.
+
+    A row the critical-target gate would judge gets its requirement's
+    ``max_abs_relative_error`` times ``margin``; any other row gets NaN (no
+    band). Rows are matched with :func:`_critical_requirement_matches_target`,
+    the gate's own matcher, so the solve holds exactly what the gate will
+    judge. A row two requirements match takes the tighter tolerance. Returns
+    None when no row matches.
+    """
+
+    tolerances = np.full(len(target_registry.specs), np.nan, dtype=np.float64)
+    for index, spec in enumerate(target_registry.specs):
+        row_name = _target_row_name(spec)
+        for requirement in US_CRITICAL_TARGET_FIT_REQUIREMENTS:
+            if _critical_requirement_matches_target(
+                requirement, row_name=row_name, target=spec
+            ):
+                tolerance = float(requirement.max_abs_relative_error) * margin
+                tolerances[index] = (
+                    tolerance
+                    if np.isnan(tolerances[index])
+                    else min(float(tolerances[index]), tolerance)
+                )
+    if np.isnan(tolerances).all():
+        return None
+    return tolerances
+
+
 def _congressional_district_release_gates_enabled(
     compilation: Mapping[str, object],
 ) -> bool:
@@ -14736,6 +14821,21 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # calibration_diagnostics.json (every run, gate-failed ones included) and
     # both manifests.
     calibration_runtime = _calibration_runtime()
+    critical_target_band = (
+        _critical_target_band_tolerances(
+            registry, margin=float(args.critical_target_band_margin)
+        )
+        if float(args.critical_target_band_penalty) > 0.0
+        else None
+    )
+    band_kwargs: dict[str, object] = (
+        {}
+        if critical_target_band is None
+        else {
+            "target_band_tolerances": critical_target_band,
+            "target_band_penalty": float(args.critical_target_band_penalty),
+        }
+    )
     ladder_outcome = None
     exact_k_puf_tail_gate: GateResult | None = None
     if args.exact_k is not None:
@@ -14777,6 +14877,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             progress_callback=(
                 telemetry.calibration_progress if telemetry is not None else None
             ),
+            **band_kwargs,
         )
         assert_exact_k_realized_count(ladder_outcome, args.exact_k)
         result = ladder_outcome.result
@@ -14847,6 +14948,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             progress_callback=(
                 telemetry.calibration_progress if telemetry is not None else None
             ),
+            **band_kwargs,
         )
         default_dataset = {
             "method": "dense_no_l0",
@@ -14876,6 +14978,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             progress_callback=(
                 telemetry.calibration_progress if telemetry is not None else None
             ),
+            **band_kwargs,
         )
         default_dataset = {
             "method": "l0_refit",

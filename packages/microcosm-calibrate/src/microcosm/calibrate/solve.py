@@ -780,9 +780,12 @@ def _validate_target_loss_cap(target_loss_cap: float) -> float:
 #     target_band_penalty * max(|relative error| - tolerance, 0)
 #
 # to the objective. It is zero inside the band, so it leaves the fit alone
-# there. Outside, it is a linear (exact) penalty whose slope is
-# target_band_penalty. The fit loss is a weighted mean, so any one row's share
-# of it is at most 1, and a penalty of 1 already outweighs any single row's pull.
+# there. Outside, it is a linear (exact) penalty whose slope in the row's
+# relative error is target_band_penalty. The fit loss is a weighted mean, so
+# its slope in any one row's relative error is that row's loss share (at most
+# 1). Whether the band holds against the rest of the fit depends on how far
+# the other rows' errors move with this one's, so a solve reports each banded
+# row's final violation rather than assuming it is zero.
 # The relative error is the critical-target gate's: (estimate - target) /
 # target, or estimate - target when the target is zero. It is not the loss's
 # capped, scaled miss. ``relative_error_loss`` is unchanged.

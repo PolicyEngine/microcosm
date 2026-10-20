@@ -20,7 +20,9 @@ def _frame(n: int = 120, seed: int = 0) -> tuple[Frame, np.ndarray]:
     x = rng.lognormal(8.0, 0.6, n)
     frame = Frame(
         {
-            "person": pd.DataFrame({"person_id": range(n), "person_household_id": range(n)}),
+            "person": pd.DataFrame(
+                {"person_id": range(n), "person_household_id": range(n)}
+            ),
             "household": pd.DataFrame({"household_id": range(n), "x": x}),
         },
         EntitySchema(group_entities=("household",)),
@@ -53,7 +55,9 @@ def _critical_error(result) -> float:
 
 def test_without_a_band_the_heavier_target_wins() -> None:
     frame, x = _frame()
-    result = calibrate(frame, _conflict(frame, x), target_loss_weights=_LOSS_WEIGHTS, **_SOLVE)
+    result = calibrate(
+        frame, _conflict(frame, x), target_loss_weights=_LOSS_WEIGHTS, **_SOLVE
+    )
     assert _critical_error(result) > 0.15
     assert result.options["target_band"] == {"enabled": False, "penalty": 0.0}
 
@@ -165,7 +169,9 @@ def test_malformed_bands_are_refused(tolerances, penalty, message) -> None:
 # The violation measure                                                       #
 # --------------------------------------------------------------------------- #
 
-_VALUES = st.floats(min_value=-1e9, max_value=1e9, allow_nan=False, allow_infinity=False)
+_VALUES = st.floats(
+    min_value=-1e9, max_value=1e9, allow_nan=False, allow_infinity=False
+)
 # Targets are counts or dollars: zero, or at least 1e-3 in magnitude, which
 # float32 (the solve's dtype) represents without underflow.
 _TARGETS = st.one_of(
@@ -183,7 +189,9 @@ def _rows(draw):
     tolerances = np.array(
         draw(
             st.lists(
-                st.one_of(st.just(float("nan")), st.floats(min_value=0.0, max_value=2.0)),
+                st.one_of(
+                    st.just(float("nan")), st.floats(min_value=0.0, max_value=2.0)
+                ),
                 min_size=n,
                 max_size=n,
             )
@@ -193,7 +201,11 @@ def _rows(draw):
 
 
 def _relative_errors(estimates, targets):
-    return np.where(targets == 0.0, estimates - targets, (estimates - targets) / np.where(targets == 0.0, 1.0, targets))
+    return np.where(
+        targets == 0.0,
+        estimates - targets,
+        (estimates - targets) / np.where(targets == 0.0, 1.0, targets),
+    )
 
 
 @settings(max_examples=200, deadline=None)
@@ -208,7 +220,9 @@ def test_property_violation_is_the_distance_outside_the_band(rows) -> None:
     inside = banded & (errors <= tolerances)
     assert (violations[inside] == 0.0).all()
     outside = banded & (errors > tolerances)
-    np.testing.assert_allclose(violations[outside], errors[outside] - tolerances[outside], rtol=1e-12, atol=0.0)
+    np.testing.assert_allclose(
+        violations[outside], errors[outside] - tolerances[outside], rtol=1e-12, atol=0.0
+    )
 
 
 @settings(max_examples=100, deadline=None)
@@ -235,7 +249,9 @@ def test_property_torch_term_matches_the_numpy_reference(rows, penalty) -> None:
             torch.tensor(targets, dtype=torch.float32),
         )
     )
-    reference = penalty * float(target_band_violations(estimates, targets, tolerances).sum())
+    reference = penalty * float(
+        target_band_violations(estimates, targets, tolerances).sum()
+    )
     # float32 against float64: relative tolerance on the total, plus an absolute floor.
     assert term == pytest.approx(reference, rel=1e-4, abs=1e-3 * penalty)
 
