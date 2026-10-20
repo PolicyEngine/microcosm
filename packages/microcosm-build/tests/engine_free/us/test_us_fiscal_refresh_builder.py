@@ -8555,6 +8555,20 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         )
 
     monkeypatch.setattr(builder, "calibrate_l0_refit", fake_calibrate_l0_refit)
+    # microcosm#1330: the harness's one target is not critical, so a stand-in
+    # bands it; main() must hand that band to whichever solve it runs.
+    fixture_band = np.asarray([0.045])
+
+    def fake_critical_target_band_tolerances(registry, *, margin):
+        captured["band_margin"] = margin
+        captured["band_registry_size"] = len(registry.specs)
+        return fixture_band
+
+    monkeypatch.setattr(
+        builder,
+        "_critical_target_band_tolerances",
+        fake_critical_target_band_tolerances,
+    )
     monkeypatch.setattr(
         builder,
         "target_surface_payload",
@@ -8580,10 +8594,15 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             },
             refit_baseline_diagnostics={"method": "fixture-full-pool"},
         )
+
+        def fake_calibrate_exact_k_ladder(*args, **kwargs):
+            captured["ladder_kwargs"] = kwargs
+            return ladder_outcome
+
         monkeypatch.setattr(
             builder,
             "calibrate_exact_k_ladder",
-            lambda *args, **kwargs: ladder_outcome,
+            fake_calibrate_exact_k_ladder,
         )
         monkeypatch.setattr(
             builder,
@@ -9087,6 +9106,17 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
                 "failures": ["fixture PUF own-tail donor missing"],
                 "details": {"status": "failed"},
             }
+            # microcosm#1330: the exact-k branch forwards the band too.
+            assert captured["band_margin"] == 0.9
+            np.testing.assert_array_equal(
+                captured["ladder_kwargs"]["target_band_tolerances"], fixture_band
+            )
+            assert captured["ladder_kwargs"]["target_band_penalty"] == 1.0
+            assert captured["diagnostics"]["critical_target_band"] == {
+                "penalty": 1.0,
+                "margin": 0.9,
+                "banded_rows": 1,
+            }
             return
     else:
         # Corridor order: SSI delivery + basis note, health-input crash
@@ -9150,6 +9180,19 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert captured["l0_kwargs"]["epochs"] == 1500
     assert captured["l0_kwargs"]["refit_epochs"] == 1500
     assert captured["l0_kwargs"]["warm_start_weights"] is None
+    # microcosm#1330: main() bands the rows the stand-in names, at the default
+    # margin and penalty, and records the band it used.
+    assert captured["band_margin"] == 0.9
+    assert captured["band_registry_size"] == 1
+    np.testing.assert_array_equal(
+        captured["l0_kwargs"]["target_band_tolerances"], fixture_band
+    )
+    assert captured["l0_kwargs"]["target_band_penalty"] == 1.0
+    assert captured["diagnostics"]["critical_target_band"] == {
+        "penalty": 1.0,
+        "margin": 0.9,
+        "banded_rows": 1,
+    }
     assert captured["target_loss_cap"] == 1.0
     assert np.array_equal(captured["target_loss_weights"], np.asarray([1.0]))
     assert (

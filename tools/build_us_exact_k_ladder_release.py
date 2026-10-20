@@ -39,7 +39,13 @@ Schema-v1 configuration (paths are resolved relative to the config file)::
 may additionally carry the paired
 ``ssi_take_up_prior_weight_basis`` and
 ``ssi_take_up_prior_weight_basis_sha256`` fields for the house one-retry
-delivery-gate protocol.
+delivery-gate protocol. ``calibration`` may additionally carry
+``critical_target_band_penalty`` and ``critical_target_band_margin``
+(microcosm#1330), which pin the builder's critical-target band for this
+release; when absent, the builder's defaults apply. The exact-k incumbent
+gate scores fit loss alone, so a banded candidate spends some fit to hold its
+critical targets against an incumbent that may have been solved without a
+band.
 """
 
 # The sibling house builder is importable only after its tools directory is
@@ -101,6 +107,10 @@ class LadderReleaseConfig:
     refit_l2_lambda: float
     release_id: str
     repo_id: str
+    # The critical-target band (microcosm#1330). None inherits the release
+    # builder's default; a config that sets either pins it for this release.
+    critical_target_band_penalty: float | None = None
+    critical_target_band_margin: float | None = None
 
 
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -180,6 +190,7 @@ def _read_config(path: Path) -> LadderReleaseConfig:
             "l2_lambda",
             "refit_l2_lambda",
         },
+        optional={"critical_target_band_penalty", "critical_target_band_margin"},
         label="calibration",
     )
     release = _object(root["release"], label="release")
@@ -250,6 +261,27 @@ def _read_config(path: Path) -> LadderReleaseConfig:
         calibration["refit_l2_lambda"],
         label="calibration.refit_l2_lambda",
     )
+    band_penalty = (
+        None
+        if "critical_target_band_penalty" not in calibration
+        else _nonnegative_number(
+            calibration["critical_target_band_penalty"],
+            label="calibration.critical_target_band_penalty",
+        )
+    )
+    band_margin = (
+        None
+        if "critical_target_band_margin" not in calibration
+        else _finite_number(
+            calibration["critical_target_band_margin"],
+            label="calibration.critical_target_band_margin",
+        )
+    )
+    if band_margin is not None and not 0.0 < band_margin <= 1.0:
+        raise ValueError(
+            "calibration.critical_target_band_margin must be in (0, 1], got "
+            f"{band_margin!r}."
+        )
 
     pool_release_id = _nonempty_string(pool["release_id"], label="pool.release_id")
     release_id = _nonempty_string(release["id"], label="release.id")
@@ -298,6 +330,8 @@ def _read_config(path: Path) -> LadderReleaseConfig:
         refit_l2_lambda=refit_l2_lambda,
         release_id=release_id,
         repo_id=repo_id,
+        critical_target_band_penalty=band_penalty,
+        critical_target_band_margin=band_margin,
     )
 
 
@@ -443,6 +477,14 @@ def _builder_argv(
         str(config.refit_l2_lambda),
         "--no-staging",
     ]
+    if config.critical_target_band_penalty is not None:
+        argv.extend(
+            ["--critical-target-band-penalty", str(config.critical_target_band_penalty)]
+        )
+    if config.critical_target_band_margin is not None:
+        argv.extend(
+            ["--critical-target-band-margin", str(config.critical_target_band_margin)]
+        )
     if config.ssi_take_up_prior_weight_basis is not None:
         argv.extend(
             [

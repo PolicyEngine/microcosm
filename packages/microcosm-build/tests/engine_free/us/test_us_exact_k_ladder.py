@@ -224,3 +224,51 @@ def test_ladder_calibration_rejects_invalid_cardinality_before_selection() -> No
             seed=0,
             l0_lambda=0.0,
         )
+
+
+@pytest.mark.parametrize(
+    ("k", "phases"), ((8, ("calibrate",)), (6, ("calibrate", "refit_l0_selection")))
+)
+def test_every_ladder_solve_receives_the_critical_target_band(
+    monkeypatch: pytest.MonkeyPatch, k: int, phases: tuple[str, ...]
+) -> None:
+    # microcosm#1330: the full-pool solve, the Sampford selection and its
+    # refit must each receive the band the release asked for.
+    from microcosm.build.us_runtime import exact_k_ladder as ladder
+
+    frame, targets = _fixture_pool()
+    tolerances = np.asarray([0.045])
+    seen: list[tuple[str, object, object]] = []
+    for name in ("calibrate", "refit_l0_selection"):
+        real = getattr(ladder, name)
+
+        def spy(*args, _name=name, _real=real, **kwargs):
+            seen.append(
+                (
+                    _name,
+                    kwargs.get("target_band_tolerances"),
+                    kwargs.get("target_band_penalty"),
+                )
+            )
+            return _real(*args, **kwargs)
+
+        monkeypatch.setattr(ladder, name, spy)
+
+    outcome = ladder.calibrate_exact_k_ladder(
+        frame,
+        targets,
+        k=k,
+        pi_hi=1.0,
+        seed=17,
+        epochs=3,
+        refit_epochs=3,
+        l0_lambda=1e-8,
+        target_band_tolerances=tolerances,
+        target_band_penalty=1.0,
+    )
+
+    assert tuple(name for name, _, _ in seen) == phases
+    for _, seen_tolerances, seen_penalty in seen:
+        np.testing.assert_array_equal(seen_tolerances, tolerances)
+        assert seen_penalty == 1.0
+    assert outcome.result.options["target_band"]["enabled"] is True

@@ -507,17 +507,17 @@ assert set(US_DENSE_SSI_TAKE_UP_ENFORCEMENT_FENCES) == set(
 )
 
 US_FISCAL_TARGET_LOSS_CAP = 1.0
-# The critical-target band (microcosm#1330). The solve holds each critical
-# fiscal target inside DEFAULT_CRITICAL_TARGET_BAND_MARGIN of its gate
-# tolerance. Outside the band, the band term's slope in that target's relative
-# error is the penalty. The fit loss is a weighted mean, so its slope in any
-# one target's relative error is that target's loss share, which is at most 1.
-# A penalty of 1 therefore wins any trade that gains less in loss-share-weighted
-# error elsewhere than it costs the critical target. A stronger opposing pull
-# is possible, and it would show as a nonzero final violation: the calibration
-# diagnostics record it, and the gate still judges the result. The d1386
-# release missed its Social Security total by 6.4% against a 5% gate, while
-# that target carried 0.19% of the loss weight.
+# The critical-target band (microcosm#1330). The objective penalizes each
+# critical fiscal target's relative error beyond DEFAULT_CRITICAL_TARGET_BAND_MARGIN
+# times its gate tolerance, at a slope of the penalty. The release uses the
+# default target-defined loss scales, so the fit loss's slope in any one
+# target's relative error is that target's loss share, at most 1: a penalty of
+# 1 outweighs the target's own pull in the fit. Whether the band holds against
+# the combined pull of the other targets depends on how their errors move with
+# this one's, so this steers the solve rather than guaranteeing the gate. A
+# remaining violation shows in the calibration diagnostics, and the gate still
+# judges the result. The d1386 release missed its Social Security total by
+# 6.4% against a 5% gate, while that target carried 0.19% of the loss weight.
 DEFAULT_CRITICAL_TARGET_BAND_PENALTY = 1.0
 DEFAULT_CRITICAL_TARGET_BAND_MARGIN = 0.9
 RATIFIED_EXACT_K_COUNTS = frozenset({57_240, 20_000})
@@ -1425,11 +1425,13 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=float,
         default=DEFAULT_CRITICAL_TARGET_BAND_PENALTY,
         help=(
-            "Hold each critical fiscal target (US_CRITICAL_TARGET_FIT_REQUIREMENTS) "
-            "inside its gate tolerance during calibration. The objective adds "
-            "PENALTY * max(|relative error| - tolerance, 0) for each target the "
+            "Penalize, during calibration, each critical fiscal target's "
+            "(US_CRITICAL_TARGET_FIT_REQUIREMENTS) relative error beyond MARGIN "
+            "times its gate tolerance. The objective adds PENALTY * "
+            "max(|relative error| - tolerance, 0) for each target the "
             "critical-target gate matches; zero inside the band, so the fit is "
-            "left alone there. 0 turns the band off. Default "
+            "left alone there. This steers the solve toward the gate; the gate "
+            "still judges the result. 0 turns the band off. Default "
             f"{DEFAULT_CRITICAL_TARGET_BAND_PENALTY}."
         ),
     )
@@ -9802,6 +9804,7 @@ def _write_release_calibration_diagnostics(
     validation_input_coverage_gate: GateResult | None = None,
     target_loss_family_multipliers: Mapping[str, float] | None = None,
     target_loss_basis: Mapping[str, object] | None = None,
+    critical_target_band: Mapping[str, object] | None = None,
     exact_k_ladder: Mapping[str, object] | None = None,
     calibration_runtime: Mapping[str, object] | None = None,
     post_export_scoring: Mapping[str, object] | None = None,
@@ -9840,6 +9843,14 @@ def _write_release_calibration_diagnostics(
             **(
                 {"target_loss_basis": dict(target_loss_basis)}
                 if target_loss_basis is not None
+                else {}
+            ),
+            # microcosm#1330: the critical-target band the solve used (penalty
+            # 0 means none). Each banded row's final violation is under
+            # options["target_band"].
+            **(
+                {"critical_target_band": dict(critical_target_band)}
+                if critical_target_band is not None
                 else {}
             ),
             "target_profile_coverage": {
@@ -14765,6 +14776,30 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         if args.exact_k is not None
         else None
     )
+    critical_target_band = (
+        _critical_target_band_tolerances(
+            registry, margin=float(args.critical_target_band_margin)
+        )
+        if float(args.critical_target_band_penalty) > 0.0
+        else None
+    )
+    band_kwargs: dict[str, object] = (
+        {}
+        if critical_target_band is None
+        else {
+            "target_band_tolerances": critical_target_band,
+            "target_band_penalty": float(args.critical_target_band_penalty),
+        }
+    )
+    critical_target_band_record = {
+        "penalty": float(args.critical_target_band_penalty),
+        "margin": float(args.critical_target_band_margin),
+        "banded_rows": (
+            0
+            if critical_target_band is None
+            else int(np.count_nonzero(~np.isnan(critical_target_band)))
+        ),
+    }
     if telemetry is not None:
         telemetry.stage(
             "calibrating",
@@ -14793,6 +14828,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             target_family_loss_multipliers=(
                 dict(args.target_family_loss_multipliers) or None
             ),
+            critical_target_band=dict(critical_target_band_record),
             n_targets=len(registry),
             n_candidate_households=candidate_households,
             l0_refit_lambda_share=(
@@ -14821,21 +14857,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # calibration_diagnostics.json (every run, gate-failed ones included) and
     # both manifests.
     calibration_runtime = _calibration_runtime()
-    critical_target_band = (
-        _critical_target_band_tolerances(
-            registry, margin=float(args.critical_target_band_margin)
-        )
-        if float(args.critical_target_band_penalty) > 0.0
-        else None
-    )
-    band_kwargs: dict[str, object] = (
-        {}
-        if critical_target_band is None
-        else {
-            "target_band_tolerances": critical_target_band,
-            "target_band_penalty": float(args.critical_target_band_penalty),
-        }
-    )
     ladder_outcome = None
     exact_k_puf_tail_gate: GateResult | None = None
     if args.exact_k is not None:
@@ -15402,6 +15423,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         validation_input_coverage_gate=validation_input_coverage_gate,
         target_loss_family_multipliers=args.target_family_loss_multipliers,
         target_loss_basis=target_loss_basis,
+        critical_target_band=critical_target_band_record,
         exact_k_ladder=exact_k_ladder_provenance,
         calibration_runtime=calibration_runtime,
         post_export_scoring=post_export_scoring_plan.record(),

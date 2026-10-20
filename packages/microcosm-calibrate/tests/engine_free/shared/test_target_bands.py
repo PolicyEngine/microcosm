@@ -18,12 +18,13 @@ from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 def _frame(n: int = 120, seed: int = 0) -> tuple[Frame, np.ndarray]:
     rng = np.random.default_rng(seed)
     x = rng.lognormal(8.0, 0.6, n)
+    y = rng.lognormal(7.0, 0.8, n)
     frame = Frame(
         {
             "person": pd.DataFrame(
                 {"person_id": range(n), "person_household_id": range(n)}
             ),
-            "household": pd.DataFrame({"household_id": range(n), "x": x}),
+            "household": pd.DataFrame({"household_id": range(n), "x": x, "y": y}),
         },
         EntitySchema(group_entities=("household",)),
         {"household": Weights(values=np.full(n, 100.0), kind=WeightKind.DESIGN)},
@@ -127,18 +128,173 @@ def test_tolerances_without_a_penalty_change_nothing() -> None:
 
 def test_the_band_reaches_both_phases_of_an_l0_refit() -> None:
     frame, x = _frame()
+    kwargs = dict(
+        epochs=600,
+        learning_rate=0.02,
+        mass="free",
+        l0_lambda=1e-4,
+        target_loss_weights=_LOSS_WEIGHTS,
+    )
+    plain = calibrate_l0_refit(frame, _conflict(frame, x), **kwargs)
     result = calibrate_l0_refit(
         frame,
         _conflict(frame, x),
-        epochs=300,
-        mass="conserve",
-        l0_lambda=1e-4,
-        target_loss_weights=_LOSS_WEIGHTS,
+        **kwargs,
         target_band_tolerances=np.array([0.05, np.nan]),
         target_band_penalty=1.0,
     )
     assert result.selection.options["target_band"]["enabled"] is True
     assert result.refit.options["target_band"]["enabled"] is True
+    # The selection phase solves through stochastic gates with an L0 penalty,
+    # so the band pulls it in without holding it; the refit, whose weights
+    # ship, holds it.
+    assert _critical_error(plain.selection) > 0.15
+    assert _critical_error(result.selection) < _critical_error(plain.selection) - 0.1
+    assert _critical_error(plain.refit) > 0.15
+    assert abs(_critical_error(result.refit)) <= 0.05 + 2e-3
+    assert result.refit.options["target_band"]["max_final_violation"] <= 2e-3
+
+
+@pytest.mark.parametrize(
+    ("path", "solve"),
+    [
+        ("prox", dict(method="prox", epochs=600, learning_rate=0.02, mass="free")),
+        (
+            "budget search",
+            dict(epochs=300, learning_rate=0.02, mass="free", target_records=60),
+        ),
+        (
+            "conserve mass with a ratio cap",
+            dict(epochs=600, learning_rate=0.1, mass="conserve", max_weight_ratio=5.0),
+        ),
+    ],
+)
+def test_the_band_holds_on_every_solve_path(path, solve) -> None:
+    frame, x = _frame()
+    targets = _conflict(frame, x)
+    plain = calibrate(
+        frame, targets, target_loss_weights=_LOSS_WEIGHTS, seed=0, **solve
+    )
+    banded = calibrate(
+        frame,
+        targets,
+        target_loss_weights=_LOSS_WEIGHTS,
+        seed=0,
+        target_band_tolerances=np.array([0.05, np.nan]),
+        target_band_penalty=1.0,
+        **solve,
+    )
+    assert _critical_error(plain) > 0.10, path
+    assert abs(_critical_error(banded)) <= 0.05 + 2e-3, path
+    assert banded.options["target_band"]["max_final_violation"] <= 2e-3, path
+    if solve["mass"] == "conserve":
+        np.testing.assert_allclose(banded.weights.sum(), 100.0 * len(x), rtol=1e-9)
+        assert (banded.weights <= 5.0 * 100.0 * (1 + 1e-12)).all()
+
+
+def test_a_band_on_only_skipped_targets_is_refused() -> None:
+    # The input check refuses a band on no row; a band whose every row the
+    # constraint matrix skipped (here, a missing column) must not solve
+    # silently without a band.
+    frame, x = _frame()
+    targets = TargetSet(
+        (
+            Target(name="missing", entity="household", value=1.0, measure="absent"),
+            Target(name="heavier", entity="household", value=1.0e6, measure="x"),
+        )
+    )
+    with pytest.raises(ValueError, match="skipped: missing@0"):
+        calibrate(
+            frame,
+            targets,
+            epochs=2,
+            target_band_tolerances=np.array([0.05, np.nan]),
+            target_band_penalty=1.0,
+        )
+
+
+def test_a_skipped_banded_target_is_listed_and_the_rest_stay_aligned() -> None:
+    frame, x = _frame()
+    conflict = _conflict(frame, x).targets
+    targets = TargetSet(
+        (
+            Target(name="missing", entity="household", value=1.0, measure="absent"),
+            conflict[1],
+            conflict[0],
+        )
+    )
+    result = calibrate(
+        frame,
+        targets,
+        target_loss_weights=np.array([1.0, 9.0, 1.0]),
+        target_band_tolerances=np.array([0.05, np.nan, 0.05]),
+        target_band_penalty=1.0,
+        **_SOLVE,
+    )
+    band = result.options["target_band"]
+    assert band["skipped_banded_targets"] == ["missing@0"]
+    assert [row["target"] for row in band["targets"]] == ["critical@0"]
+    critical = [t.name for t in result.problem.targets].index("critical")
+    estimate = float(result.problem.estimates(result.weights)[critical])
+    target = float(result.problem.target_vector[critical])
+    assert abs(estimate / target - 1.0) <= 0.05 + 2e-3
+
+
+def _tiny_frame(n: int = 50) -> tuple[Frame, np.ndarray]:
+    x = np.random.default_rng(0).lognormal(8.0, 0.6, n)
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {"person_id": range(n), "person_household_id": range(n)}
+            ),
+            "household": pd.DataFrame(
+                {"household_id": range(n), "x": x, "tiny": np.full(n, 1e-52)}
+            ),
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(values=np.full(n, 100.0), kind=WeightKind.DESIGN)},
+    )
+    return frame, x
+
+
+def test_an_unbanded_target_below_float32_range_cannot_poison_the_band() -> None:
+    # A nonzero target too small for float32 has a zero float32 scale. Only
+    # banded rows enter the band term, so this unbanded one cannot divide 0 by
+    # 0 in the gradient.
+    frame, x = _tiny_frame()
+    targets = TargetSet(
+        (
+            Target(
+                name="x", entity="household", value=float((x * 100).sum()), measure="x"
+            ),
+            Target(name="tiny", entity="household", value=2e-50, measure="tiny"),
+        )
+    )
+    result = calibrate(
+        frame,
+        targets,
+        epochs=50,
+        mass="free",
+        seed=0,
+        target_band_tolerances=np.array([0.05, np.nan]),
+        target_band_penalty=1.0,
+    )
+    assert np.isfinite(result.weights).all()
+
+
+def test_a_banded_target_below_float32_range_is_refused() -> None:
+    frame, x = _tiny_frame()
+    targets = TargetSet(
+        (Target(name="tiny", entity="household", value=2e-50, measure="tiny"),)
+    )
+    with pytest.raises(ValueError, match="rounds to zero in float32"):
+        calibrate(
+            frame,
+            targets,
+            epochs=2,
+            target_band_tolerances=np.array([0.05]),
+            target_band_penalty=1.0,
+        )
 
 
 @pytest.mark.parametrize(
@@ -172,8 +328,10 @@ def test_malformed_bands_are_refused(tolerances, penalty, message) -> None:
 _VALUES = st.floats(
     min_value=-1e9, max_value=1e9, allow_nan=False, allow_infinity=False
 )
-# Targets are counts or dollars: zero, or at least 1e-3 in magnitude, which
-# float32 (the solve's dtype) represents without underflow.
+# Targets are counts or dollars: zero, or at least 1e-3 in magnitude. The
+# floor keeps the float32 term (the solve's dtype) away from subnormal
+# magnitudes, where it cannot match the float64 reference to 1e-4; the
+# below-float32-range cases have their own tests above.
 _TARGETS = st.one_of(
     st.just(0.0),
     st.floats(min_value=1e-3, max_value=1e9),

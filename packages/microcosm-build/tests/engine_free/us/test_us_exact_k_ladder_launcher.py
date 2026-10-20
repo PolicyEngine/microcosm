@@ -400,3 +400,56 @@ def test_staging_credentials_cannot_enable_pointer_writes(
     assert progress.staging_bundle is None
     assert constructed is False
     assert not (tmp_path / "out" / "staging").exists()
+
+
+def test_config_can_pin_the_critical_target_band(tmp_path: Path) -> None:
+    # microcosm#1330: a ladder config may pin the builder's critical-target
+    # band; without the keys the builder's defaults apply.
+    launcher = _launcher_module()
+    default_config = launcher._read_config(_write_config(tmp_path, _config_payload()))
+    default_argv = launcher._builder_argv(
+        config=default_config,
+        pool_manifest=tmp_path / "pool.manifest.json",
+        out=tmp_path / "out",
+        k=8,
+    )
+    assert "--critical-target-band-penalty" not in default_argv
+    default_args = launcher.fiscal_release._parse_args(default_argv)
+    assert default_args.critical_target_band_penalty == 1.0
+    assert default_args.critical_target_band_margin == 0.9
+
+    payload = _config_payload()
+    payload["calibration"]["critical_target_band_penalty"] = 0.0
+    payload["calibration"]["critical_target_band_margin"] = 0.8
+    pinned = launcher._read_config(_write_config(tmp_path, payload))
+    parsed = launcher.fiscal_release._parse_args(
+        launcher._builder_argv(
+            config=pinned,
+            pool_manifest=tmp_path / "pool.manifest.json",
+            out=tmp_path / "out",
+            k=8,
+        )
+    )
+    assert parsed.critical_target_band_penalty == 0.0
+    assert parsed.critical_target_band_margin == 0.8
+
+
+@pytest.mark.parametrize(
+    ("key", "value", "message"),
+    [
+        ("critical_target_band_penalty", -1.0, "must be non-negative"),
+        ("critical_target_band_margin", 0.0, r"must be in \(0, 1\]"),
+        ("critical_target_band_margin", 1.5, r"must be in \(0, 1\]"),
+        (
+            "critical_target_band_slope",
+            1.0,
+            r"unknown=\['critical_target_band_slope'\]",
+        ),
+    ],
+)
+def test_config_refuses_a_malformed_band(tmp_path: Path, key, value, message) -> None:
+    launcher = _launcher_module()
+    payload = _config_payload()
+    payload["calibration"][key] = value
+    with pytest.raises(ValueError, match=message):
+        launcher._read_config(_write_config(tmp_path, payload))

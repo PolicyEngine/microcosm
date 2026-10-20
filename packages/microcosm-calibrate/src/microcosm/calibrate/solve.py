@@ -87,7 +87,7 @@ from __future__ import annotations
 
 import math
 import warnings
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -781,11 +781,13 @@ def _validate_target_loss_cap(target_loss_cap: float) -> float:
 #
 # to the objective. It is zero inside the band, so it leaves the fit alone
 # there. Outside, it is a linear (exact) penalty whose slope in the row's
-# relative error is target_band_penalty. The fit loss is a weighted mean, so
-# its slope in any one row's relative error is that row's loss share (at most
-# 1). Whether the band holds against the rest of the fit depends on how far
-# the other rows' errors move with this one's, so a solve reports each banded
-# row's final violation rather than assuming it is zero.
+# relative error is target_band_penalty. With the default target-defined loss
+# scales, the fit loss is a weighted mean of capped relative misses, so its
+# slope in any one row's relative error is that row's loss share (at most 1);
+# caller-supplied scales smaller than |target| steepen it. Whether the band
+# holds against the rest of the fit depends on how far the other rows' errors
+# move with this one's, so a solve reports each banded row's final violation
+# rather than assuming it is zero.
 # The relative error is the critical-target gate's: (estimate - target) /
 # target, or estimate - target when the target is zero. It is not the loss's
 # capped, scaled miss. ``relative_error_loss`` is unchanged.
@@ -879,11 +881,16 @@ def _validate_target_band(
 
 @dataclass(frozen=True)
 class _TargetBand:
-    """A validated band, aligned to the problem's target rows, for the optimizer."""
+    """A validated band on the problem's banded target rows, for the optimizer.
 
+    Only the banded rows enter the term, so an unbanded row can never reach
+    it (a nonzero target too small for float32 would otherwise divide 0 by 0
+    in the gradient and poison the weights).
+    """
+
+    index: torch.Tensor
     tolerances: torch.Tensor
     scales: torch.Tensor
-    mask: torch.Tensor
     penalty: float
 
     @classmethod
@@ -895,24 +902,29 @@ class _TargetBand:
     ) -> _TargetBand | None:
         if tolerances is None or penalty <= 0.0:
             return None
-        banded = ~np.isnan(tolerances)
-        if not banded.any():
+        index = np.flatnonzero(~np.isnan(tolerances))
+        if index.size == 0:
             return None
+        scales = _target_band_scales(np.asarray(targets, dtype=np.float64)[index])
+        scales_t = torch.tensor(scales, dtype=torch.float32)
+        if not bool((scales_t > 0.0).all()):
+            raise ValueError(
+                "target_band_tolerances bands a nonzero target whose magnitude "
+                "rounds to zero in float32 (below about 1.4e-45)."
+            )
         return cls(
-            tolerances=torch.tensor(
-                np.where(banded, tolerances, 0.0), dtype=torch.float32
-            ),
-            scales=torch.tensor(_target_band_scales(targets), dtype=torch.float32),
-            mask=torch.tensor(banded),
+            index=torch.tensor(index, dtype=torch.long),
+            tolerances=torch.tensor(tolerances[index], dtype=torch.float32),
+            scales=scales_t,
             penalty=float(penalty),
         )
 
     def term(self, estimate: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
         """``penalty * sum(max(|relative error| - tolerance, 0))`` over banded rows."""
 
-        errors = torch.abs(estimate - targets) / self.scales
+        errors = torch.abs(estimate[self.index] - targets[self.index]) / self.scales
         hinge = torch.clamp(errors - self.tolerances, min=0.0)
-        return self.penalty * hinge[self.mask].sum()
+        return self.penalty * hinge.sum()
 
 
 def default_target_loss_scales(
@@ -1005,8 +1017,15 @@ def _target_band_options(
     tolerances: np.ndarray | None,
     penalty: float,
     final_weights: np.ndarray,
+    *,
+    skipped_banded_targets: Sequence[str] = (),
 ) -> Mapping[str, object]:
-    """The band a solve used and where each banded target ended, for diagnostics."""
+    """The band a solve used and where each banded target ended, for diagnostics.
+
+    ``skipped_banded_targets`` names banded targets the constraint matrix
+    skipped; the solve could not hold them, so they are listed, not dropped
+    silently.
+    """
 
     if tolerances is None:
         return {"enabled": False, "penalty": penalty}
@@ -1030,6 +1049,7 @@ def _target_band_options(
         "form": TARGET_BAND_PENALTY_FORM,
         "banded_targets": len(rows),
         "max_final_violation": max(row["final_violation"] for row in rows),
+        "skipped_banded_targets": list(skipped_banded_targets),
         "targets": rows,
     }
 
@@ -1266,9 +1286,10 @@ def _optimize(
     ``None`` when no gates were active.
 
     ``target_band`` adds its hinge term (see :class:`_TargetBand`) to the
-    objective. The trajectory still records the fit loss alone; best-iterate
-    retention compares the objective with the band term included, so a kept
-    iterate never trades a band away for fit.
+    objective. The trajectory still records the fit loss alone. Best-iterate
+    retention compares the same objective the optimizer minimizes, fit plus
+    band, so it can keep an iterate that is slightly outside a band when the
+    fit it gains is worth more than the penalty.
     """
     w0 = np.asarray(initial_weights, dtype=np.float64)
     start = _prepare_warm_start_weights(
@@ -1346,10 +1367,11 @@ def _optimize(
         w0_t = None
         anchor_share_t = None
 
-    # Without an L2 penalty the solve keeps its best target-loss epoch. With
-    # one, ``retain_best_objective`` keeps the epoch with the lowest objective
-    # the optimizer minimizes (target loss plus the weighted penalty); without
-    # it the closing state is returned, as before.
+    # Without an L2 penalty the solve keeps its best epoch by target loss, plus
+    # the band term when a target band is set. With one, ``retain_best_objective``
+    # keeps the epoch with the lowest objective the optimizer minimizes (target
+    # loss plus the weighted penalty, plus any band term); without it the
+    # closing state is returned, as before.
     track_objective = l2_lambda != 0.0 and retain_best_objective
     retain_best = (
         gates is None and not conserve_mass and (l2_lambda == 0.0 or track_objective)
@@ -2526,8 +2548,10 @@ def calibrate(
             optimizer minimizes, target loss plus ``l2_lambda`` times the
             penalty, instead of the closing state. Recorded as
             ``options["iterate_selection"] == "best_feasible_objective"``.
-            Without an L2 penalty the solve already keeps its best target-loss
-            epoch, and the flag changes nothing.
+            Without an L2 penalty the solve already keeps its best epoch (by
+            target loss, or by target loss plus the band term when a target
+            band is set, also recorded as ``"best_feasible_objective"``), and
+            the flag changes nothing.
         target_band_tolerances: Optional per-target tolerances on relative
             error, aligned to ``targets``: a finite non-negative value bands
             that target, NaN leaves it unbanded. Used only with
@@ -2784,6 +2808,7 @@ def calibrate(
     )
     target_loss_scales_t = torch.tensor(target_loss_scales_np, dtype=torch.float32)
     target_band_np: np.ndarray | None = None
+    skipped_banded_targets: list[str] = []
     if target_band_input is not None:
         tolerances_by_key = {
             target.key: tolerance
@@ -2793,6 +2818,21 @@ def calibrate(
             [tolerances_by_key[target.key] for target in problem.targets],
             dtype=np.float64,
         )
+        compiled_keys = {target.key for target in problem.targets}
+        skipped_banded_targets = [
+            f"{target.name}@{target.period}"
+            for target, tolerance in zip(targets, target_band_input, strict=True)
+            if not np.isnan(tolerance) and target.key not in compiled_keys
+        ]
+        if np.isnan(target_band_np).all():
+            # The input check refuses a band on no row; a band whose every row
+            # the constraint matrix skipped is the same request, so it fails
+            # the same way rather than solving silently without a band.
+            raise ValueError(
+                "target_band_tolerances band only targets the constraint matrix "
+                f"skipped: {', '.join(skipped_banded_targets[:5])}"
+                f"{', ...' if len(skipped_banded_targets) > 5 else ''}."
+            )
     target_band = _TargetBand.build(
         target_band_np, problem.target_vector, float(target_band_penalty)
     )
@@ -3029,6 +3069,7 @@ def calibrate(
                 target_band_np if target_band is not None else None,
                 float(target_band_penalty),
                 final_weights,
+                skipped_banded_targets=skipped_banded_targets,
             ),
         },
         gate_open_probabilities=gate_open_probabilities,
