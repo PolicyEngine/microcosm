@@ -731,9 +731,10 @@ def test_packaged_exclusions_load():
     # mechanism receipts (#882) and moved to the 2026-12-08 clock; the
     # savings-interest row moved to the 2026-09-22 concept clock; the two
     # plan-2 borrower rows were renewed one month on 2026-10-02 (microcosm#1063
-    # stack), so nothing remains on the 2026-09-03 clock. The plan-2 rows
-    # track microcosm#1278 since microcosm#868 closed (María's ruling of
-    # 2026-10-17).
+    # stack) and again on 2026-10-20, to the November PR's renewals (María's
+    # ruling on the pre-Budget PR, microcosm#1278), so nothing remains on the
+    # 2026-09-03 clock. The plan-2 rows track microcosm#1278 since
+    # microcosm#868 closed (María's ruling of 2026-10-17).
     a16_issues = {
         "ons.savings_interest_income": "microcosm#866",
         "obr.housing_benefit": "microcosm#867",
@@ -742,9 +743,11 @@ def test_packaged_exclusions_load():
         "dwp.jsa_claimants": "microcosm#869",
     }
     assert [e for e in exclusions if e["approved_on"] == "2026-09-03"] == []
-    renewed = [e for e in exclusions if e["approved_on"] == "2026-10-02"]
     # The two thin UC payment cells that joined the uk-data#452 class on the
-    # #1063 stack arm retired 2026-10-16: the support floor drops them.
+    # #1063 stack arm retired 2026-10-16 (the support floor drops them), and
+    # the plan-2 rows left the 2026-10-02 clock on their 2026-10-20 renewal.
+    assert [e for e in exclusions if e["approved_on"] == "2026-10-02"] == []
+    renewed = [e for e in exclusions if e["approved_on"] == "2026-10-20"]
     assert sorted(e["name"] for e in renewed) == sorted(_A16_UNREACHABLE_ROWS[:2])
     # So did the two bands the engine bump of microcosm#1095 (policyengine-uk
     # 2.122.2) emptied, the 2026-10-07 entries.
@@ -758,7 +761,9 @@ def test_packaged_exclusions_load():
     # worse, so they are held out of the objective and measured by the
     # diagnose tool. The PR that added them closes microcosm#1113, so the
     # three that tracked it tracked its follow-up issue, microcosm#1207, and
-    # since that closed into it, microcosm#1278.
+    # since that closed into it, microcosm#1278. obr.vat tracked
+    # policyengine-uk#1996 until policyengine-uk#2187 (released in 2.135.7)
+    # closed it; it tracks microcosm#1278 until a lock bump lets it rebind.
     consumption_taxes = [e for e in exclusions if e["approved_on"] == "2026-10-08"]
     assert sorted(e["name"] for e in consumption_taxes) == [
         "obr.fuel_duties_cars",
@@ -777,11 +782,14 @@ def test_packaged_exclusions_load():
         ), entry["name"]
     trackings = {e["name"]: e["tracking"] for e in consumption_taxes}
     assert trackings == {
-        "obr.vat": "policyengine-uk#1996",
+        "obr.vat": "microcosm#1278",
         "obr.fuel_duties_cars": "microcosm#1278",
         "ons.household_electricity_expenditure": "microcosm#1278",
         "ons.household_gas_expenditure": "microcosm#1278",
     }
+    vat = next(e for e in consumption_taxes if e["name"] == "obr.vat")
+    assert "policyengine-uk#2187" in vat["adjudication"]
+    assert "lock bump" in vat["adjudication"]
     # microcosm#1095: the five-or-more children row held out on 2026-10-14
     # (María's ruling on microcosm#1271) is no target since 2026-10-16, but a
     # diagnostic beside the two-child-limit rows, so no exclusion names it and
@@ -794,12 +802,27 @@ def test_packaged_exclusions_load():
         e["name"] for e in exclusions if e["approved_on"] == "2026-10-14"
     ) == sorted(_UC_ELEMENT_REGISTER_ROWS)
     assert "dwp.uc.households_children_5_or_more" not in names
+    # María's ruling of 2026-10-20 (microcosm#1278): renewed rather than made
+    # diagnostics, and restated on the academic year 2024/25 stock the rows
+    # bind since microcosm#868, not the 2025/26 one the reasons quoted.
+    plan_2_stocks = {
+        "slc.borrowers.plan_2_liable": "8.94M",
+        "slc.borrowers.plan_2_above_threshold": "3.985M",
+    }
     for entry in renewed:
-        assert entry["expires_on"] == "2026-11-03", entry["name"]
+        assert entry["approved_by"] == "juaristi22", entry["name"]
+        assert entry["expires_on"] == "2026-11-26", entry["name"]
         assert entry["tracking"] == a16_issues[entry["name"]], entry["name"]
         assert "A16" in entry["adjudication"], entry["name"]
         assert "renewed one month on 2026-10-02" in entry["adjudication"], entry["name"]
         assert "microcosm#1063" in entry["adjudication"], entry["name"]
+        assert "renewed on 2026-10-20 to 2026-11-26" in entry["adjudication"], entry[
+            "name"
+        ]
+        assert "AY2024/25" in entry["reason"], entry["name"]
+        assert "Table 6a" in entry["reason"], entry["name"]
+        assert plan_2_stocks[entry["name"]] in entry["reason"], entry["name"]
+        assert "frame-side gap" in entry["reason"], entry["name"]
     for name in _A16_READJUDICATED_ROWS:
         entry = next(e for e in exclusions if e["name"] == name)
         assert entry["approved_on"] == "2026-09-16", name
