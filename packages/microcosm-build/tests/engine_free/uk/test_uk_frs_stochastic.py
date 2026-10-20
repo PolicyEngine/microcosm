@@ -178,7 +178,7 @@ def test_uc_take_up_population_excludes_units_without_a_working_age_adult() -> N
 def test_uc_take_up_population_needs_a_claimant_or_partner_of_working_age() -> None:
     """A working-age dependant does not bring a unit into the UC population.
 
-    policyengine-uk 2.134.4's is_uc_eligible reads the age of the unit's UC
+    policyengine-uk 2.139.2's is_uc_eligible reads the age of the unit's UC
     claimant or partner (is_uc_claimant), not of any adult: a pensioner unit
     with an 18-year-old dependant cannot claim Universal Credit.
     """
