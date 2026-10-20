@@ -1090,13 +1090,21 @@ def population_targets(frame, ladder_populations, geographies: list[str]):
 
 
 def population_target_specs(names, values):
-    """Declare ladder population targets with the shared diagnostics hierarchy."""
+    """Declare ladder population targets with the shared diagnostics hierarchy.
+
+    Each geography carries the label the release's other targets give the
+    same id: a state its Census name, the name the ledger targets take from
+    their facts ("Maine"), and a district the Census Bureau's name, which
+    the IRS SOI district rows carry too. A registry refuses one US geography
+    with two labels (microcosm#1335).
+    """
 
     from microcosm.build.us_runtime.congressional_district_vintage import (
         CURRENT_CONGRESSIONAL_DISTRICT_PREFIX,
+        congressional_district_label,
     )
     from microcosm.calibrate import TargetSpec
-    from microcosm.calibrate.geography_constants import US_STATE_FIPS_TO_POSTAL
+    from microcosm.calibrate.geography_constants import US_STATE_FIPS_TO_NAME
     from microcosm.calibrate.hierarchy import (
         CalibrationHierarchy,
         HierarchyCategory,
@@ -1114,21 +1122,19 @@ def population_target_specs(names, values):
     for name, value in zip(names, values, strict=True):
         if name.startswith("pop_state_"):
             fips = name.removeprefix("pop_state_")
-            label = US_STATE_FIPS_TO_POSTAL.get(fips, f"State {fips}")
+            label = US_STATE_FIPS_TO_NAME.get(fips)
+            if label is None:
+                raise ValueError(
+                    f"Population target {name!r} names no US state FIPS code."
+                )
             geography = HierarchyGeography(f"0400000US{fips}", label, "state")
         elif name.startswith("pop_cd_"):
             geoid = name.removeprefix("pop_cd_")
-            state_fips, district = geoid[:2], geoid[2:]
-            state = US_STATE_FIPS_TO_POSTAL.get(state_fips, state_fips)
-            district_label = (
-                "at-large" if district == "00" else f"district {int(district)}"
-            )
-            label = f"{state} congressional {district_label}"
             # The ladder's districts are the 119th Congress plan.
+            geography_id = f"{CURRENT_CONGRESSIONAL_DISTRICT_PREFIX}{geoid}"
+            label = congressional_district_label(geography_id)
             geography = HierarchyGeography(
-                f"{CURRENT_CONGRESSIONAL_DISTRICT_PREFIX}{geoid}",
-                label,
-                "congressional_district",
+                geography_id, label, "congressional_district"
             )
         else:  # pragma: no cover - names originate in population_measure_arrays
             raise ValueError(f"Unknown population target name {name!r}.")
@@ -1152,6 +1158,44 @@ def population_target_specs(names, values):
             )
         )
     return tuple(specs)
+
+
+def ladder_population_target_specs(ladder_populations, geographies):
+    """Every population target the ladder declares, before a household is read.
+
+    :func:`population_targets` later drops a ladder cell no staged household
+    supports, so its targets are a subset of these with the same labels.
+    """
+
+    cells = [
+        (cd_surface.population_target_name(geography, code), float(population))
+        for geography in geographies
+        for code, population in sorted(ladder_populations[geography].items())
+    ]
+    return population_target_specs(
+        [name for name, _population in cells],
+        [population for _name, population in cells],
+    )
+
+
+def require_one_label_per_geography(admin_registry, ladder_populations, geographies):
+    """Refuse admin and population targets that label one geography two ways.
+
+    The two first share a registry in the lean checkpoint, after the engine
+    pass over every staged household; assembling them here moves the
+    registry's geography-label refusal (microcosm#1335) to the start of the
+    materialize stage.
+    """
+
+    from microcosm.calibrate import TargetRegistry
+
+    return TargetRegistry(
+        (
+            *admin_registry.specs,
+            *ladder_population_target_specs(ladder_populations, geographies),
+        ),
+        country="us",
+    )
 
 
 #: Household columns the lean checkpoint keeps: identity, geography, and the
@@ -1392,6 +1436,8 @@ def do_materialize(args) -> None:
         f"admin specs: {len(registry)} ({families}, soi_mode={args.soi_mode}); "
         f"RI substitution records={len(surface.ri_substitutions)}"
     )
+    populations = ladder_population(args.ladder, sorted(set(geographies) | {"cd"}))
+    require_one_label_per_geography(registry, populations, geographies)
     summary_path = _staging_summary_path(args)
     if not summary_path.exists():
         raise SystemExit(
@@ -1446,7 +1492,6 @@ def do_materialize(args) -> None:
         )
     admin_roles = [cd_surface.target_record(spec) for spec in compiled_specs]
 
-    populations = ladder_population(args.ladder, sorted(set(geographies) | {"cd"}))
     if args.soi_mode == SOI_MODE_STATE_CD:
         _attach_pro_rata_populations(admin_roles, populations["cd"])
         _require_pro_rata_populations(admin_roles)

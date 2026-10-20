@@ -317,7 +317,8 @@ ACS_LOCAL_POPULATION_PREFIXES: Mapping[str, tuple[str, int]] = {
 #:
 #: - ``ledger_fact_label`` and ``ledger_layout_groupby_value_label``: the
 #:   human-readable labels the ledger compiler (``ledger_targets.py``) stamps
-#:   on every row, which name the district ("WV congressional district 1").
+#:   on every row, which name the district ("Congressional District 1 (119th
+#:   Congress), West Virginia").
 #:   :data:`US_FISCAL_TARGET_CONCEPT_METADATA_EXCLUSIONS` does not list them,
 #:   so under the national mapping every compiled district row is its own
 #:   group; the national mapping is kept as it is here.
