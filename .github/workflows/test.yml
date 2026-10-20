@@ -3,9 +3,8 @@ name: Tests
 on:
   push:
     branches: [main]
-  # Pull requests into any base branch: a stacked pull request targets
-  # another pull request's branch and needs the same jobs.
   pull_request:
+    branches: [main]
 
 # Cancel outdated PR runs; give each main push its own independent group.
 concurrency:
