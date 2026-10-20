@@ -472,6 +472,7 @@ stages:
   - esa_income_reported
   - esa_includes_support_component
   - bsp_reported
+  - war_widows_pension_reported
   - benunit_id
   - frs_benunit_capital
   - is_married
@@ -1777,6 +1778,7 @@ stages:
     - iidb_reported
     - afcs_reported
     - bsp_reported
+    - war_widows_pension_reported
     - winter_fuel_allowance_reported
     - council_tax_benefit_reported
     - jsa_contrib_reported
@@ -2094,6 +2096,7 @@ stages:
   - iidb_reported
   - afcs_reported
   - bsp_reported
+  - war_widows_pension_reported
   - winter_fuel_allowance_reported
   - council_tax_benefit_reported
   - jsa_contrib_reported
@@ -4210,6 +4213,7 @@ stages:
     - iidb_reported
     - afcs_reported
     - bsp_reported
+    - war_widows_pension_reported
     linkage: person_source_id -> FRS-channel person_id
     reason: follows an injury, service or a death, not income
   - kind: derive
@@ -4249,6 +4253,7 @@ stages:
   - iidb_reported
   - afcs_reported
   - bsp_reported
+  - war_widows_pension_reported
   - is_disabled_for_benefits
   - is_enhanced_disabled_for_benefits
   - is_severely_disabled_for_benefits

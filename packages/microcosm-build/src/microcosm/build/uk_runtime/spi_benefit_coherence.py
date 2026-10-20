@@ -120,7 +120,12 @@ SPI_ZEROED_REPORT_REASON = (
 )
 #: Reports that follow an injury, service or a death, not income: the SPI row
 #: keeps the FRS twin's value.
-SPI_RESTORED_REPORT_COLUMNS = ("iidb_reported", "afcs_reported", "bsp_reported")
+SPI_RESTORED_REPORT_COLUMNS = (
+    "iidb_reported",
+    "afcs_reported",
+    "bsp_reported",
+    "war_widows_pension_reported",
+)
 SPI_RESTORED_REPORT_REASON = "follows an injury, service or a death, not income"
 SPI_TWIN_LINKAGE = "person_source_id -> FRS-channel person_id"
 SPI_BENEFITS_IN_OWN_RIGHT_OUTPUT = "receives_benefits_in_own_right"

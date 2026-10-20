@@ -367,6 +367,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
                     "iidb_reported",
                     "afcs_reported",
                     "bsp_reported",
+                    "war_widows_pension_reported",
                     "universal_credit_reported",
                     "esa_contrib_reported",
                     "esa_income_reported",
@@ -985,6 +986,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
                 "iidb_reported",
                 "afcs_reported",
                 "bsp_reported",
+                "war_widows_pension_reported",
             ),
         ),
         *_cells(
@@ -1119,6 +1121,7 @@ _HMRC_SPI_FLOAT_COLUMNS = (
     "iidb_reported",
     "afcs_reported",
     "bsp_reported",
+    "war_widows_pension_reported",
     "winter_fuel_allowance_reported",
     "council_tax_benefit_reported",
     "jsa_contrib_reported",
