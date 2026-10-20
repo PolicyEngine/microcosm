@@ -1,11 +1,11 @@
 {
   "source_fact_feed": "chronicle-uk-abf0921-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1341,
-  "contract_target_count": 359,
-  "active_reference_count": 1319,
+  "candidate_count": 1344,
+  "contract_target_count": 362,
+  "active_reference_count": 1322,
   "status_counts": {
-    "active": 1319,
+    "active": 1322,
     "no_fact_at_or_before_period": 5,
     "signed_excluded": 17
   },
@@ -805,6 +805,18 @@
           "geography_id": "N92000002"
         }
       ]
+    },
+    "ons.population.age_0": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.population.age_1": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.population.age_2": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
     },
     "ons.population.female_0_4": {
       "geography_level": "country",
@@ -4411,6 +4423,7 @@
     "dwp.workplace_pension.employer_contributions",
     "nithc.public_transport_support",
     "ons.household_road_fuel_expenditure",
+    "ons.population.age_0",
     "ons.population.age_0_9_by_region@E12000001",
     "ons.population.age_0_9_by_region@E12000002",
     "ons.population.age_0_9_by_region@E12000003",
@@ -4423,6 +4436,7 @@
     "ons.population.age_0_9_by_region@N92000002",
     "ons.population.age_0_9_by_region@S92000003",
     "ons.population.age_0_9_by_region@W92000004",
+    "ons.population.age_1",
     "ons.population.age_10_19_by_region@E12000001",
     "ons.population.age_10_19_by_region@E12000002",
     "ons.population.age_10_19_by_region@E12000003",
@@ -4435,6 +4449,7 @@
     "ons.population.age_10_19_by_region@N92000002",
     "ons.population.age_10_19_by_region@S92000003",
     "ons.population.age_10_19_by_region@W92000004",
+    "ons.population.age_2",
     "ons.population.age_20_29_by_region@E12000001",
     "ons.population.age_20_29_by_region@E12000002",
     "ons.population.age_20_29_by_region@E12000003",
@@ -7088,6 +7103,11 @@
     },
     {
       "name": "orr.rail_government_support",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.household_road_fuel_expenditure",
       "from": "2024",
       "to": "2025"
     },
@@ -16533,6 +16553,51 @@
         }
       ]
     },
+    "ons.population.age_0": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.population.age_0",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "resolved_period": 2025,
+          "resolved_value": 658357.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_0c75c3f83df0cd1090772ac6"
+        }
+      ]
+    },
+    "ons.population.age_1": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.population.age_1",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "resolved_period": 2025,
+          "resolved_value": 679232.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ab4bba642f61ca6bcc2f9722"
+        }
+      ]
+    },
+    "ons.population.age_2": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.population.age_2",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "resolved_period": 2025,
+          "resolved_value": 696010.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c617f5c67e886aa92ddef487"
+        }
+      ]
+    },
     "ons.population.female_0_4": {
       "status": "active",
       "candidates": [
@@ -19612,12 +19677,12 @@
         {
           "name": "ons.household_road_fuel_expenditure",
           "status": "active",
-          "matched_fact_count_overall": 6,
-          "matched_fact_count_at_or_before_period": 6,
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 35099000000.0,
-          "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_98696a3d0a85269f7b2445ff"
+          "resolved_value": 37025000000.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d5c11a14d2062955b622275a"
         }
       ]
     },
