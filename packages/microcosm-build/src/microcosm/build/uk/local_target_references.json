@@ -287,6 +287,7 @@
       "ons.age.70_80": "ons.population",
       "ons.census.households": "ons.household_composition",
       "ons.rent.private_rent": "ons.housing",
+      "ons.rent.private_rent_brma": "ons.housing",
       "ons.tenure.owned_mortgage": "ons.housing",
       "ons.tenure.owned_outright": "ons.housing",
       "ons.tenure.private_rent": "ons.housing",
@@ -343,6 +344,7 @@
       "ons.age.70_80": "70 80",
       "ons.census.households": "Occupied households",
       "ons.rent.private_rent": "Private rent",
+      "ons.rent.private_rent_brma": "Private rent (Scottish BRMA)",
       "ons.tenure.owned_mortgage": "Owned mortgage",
       "ons.tenure.owned_outright": "Owned outright",
       "ons.tenure.private_rent": "Private rent",
@@ -496499,6 +496501,456 @@
         "measure_kind": "prepared_column",
         "geography_level": "local_authority",
         "geography_id": "W06000024",
+        "fact_aggregation": "time_mean",
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
+      },
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "ons.rent.private_rent_brma@S33000001",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_measure_id": "private_rent",
+        "record_set_spec_id": "uk.local_geography.private_rent.average_by_area.v1",
+        "geography_level": "statistical_scope",
+        "geography_id": "S33000001"
+      },
+      "entity": "benunit",
+      "measure": "rent/private_rent_brma",
+      "family": "ons_housing",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.rent.private_rent_brma",
+        "measure_kind": "prepared_column",
+        "geography_level": "statistical_scope",
+        "geography_id": "S33000001",
+        "fact_aggregation": "time_mean",
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
+      },
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "ons.rent.private_rent_brma@S33000002",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_measure_id": "private_rent",
+        "record_set_spec_id": "uk.local_geography.private_rent.average_by_area.v1",
+        "geography_level": "statistical_scope",
+        "geography_id": "S33000002"
+      },
+      "entity": "benunit",
+      "measure": "rent/private_rent_brma",
+      "family": "ons_housing",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.rent.private_rent_brma",
+        "measure_kind": "prepared_column",
+        "geography_level": "statistical_scope",
+        "geography_id": "S33000002",
+        "fact_aggregation": "time_mean",
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
+      },
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "ons.rent.private_rent_brma@S33000003",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_measure_id": "private_rent",
+        "record_set_spec_id": "uk.local_geography.private_rent.average_by_area.v1",
+        "geography_level": "statistical_scope",
+        "geography_id": "S33000003"
+      },
+      "entity": "benunit",
+      "measure": "rent/private_rent_brma",
+      "family": "ons_housing",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.rent.private_rent_brma",
+        "measure_kind": "prepared_column",
+        "geography_level": "statistical_scope",
+        "geography_id": "S33000003",
+        "fact_aggregation": "time_mean",
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
+      },
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "ons.rent.private_rent_brma@S33000004",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_measure_id": "private_rent",
+        "record_set_spec_id": "uk.local_geography.private_rent.average_by_area.v1",
+        "geography_level": "statistical_scope",
+        "geography_id": "S33000004"
+      },
+      "entity": "benunit",
+      "measure": "rent/private_rent_brma",
+      "family": "ons_housing",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.rent.private_rent_brma",
+        "measure_kind": "prepared_column",
+        "geography_level": "statistical_scope",
+        "geography_id": "S33000004",
+        "fact_aggregation": "time_mean",
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
+      },
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "ons.rent.private_rent_brma@S33000005",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_measure_id": "private_rent",
+        "record_set_spec_id": "uk.local_geography.private_rent.average_by_area.v1",
+        "geography_level": "statistical_scope",
+        "geography_id": "S33000005"
+      },
+      "entity": "benunit",
+      "measure": "rent/private_rent_brma",
+      "family": "ons_housing",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.rent.private_rent_brma",
+        "measure_kind": "prepared_column",
+        "geography_level": "statistical_scope",
+        "geography_id": "S33000005",
+        "fact_aggregation": "time_mean",
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
+      },
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "ons.rent.private_rent_brma@S33000006",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_measure_id": "private_rent",
+        "record_set_spec_id": "uk.local_geography.private_rent.average_by_area.v1",
+        "geography_level": "statistical_scope",
+        "geography_id": "S33000006"
+      },
+      "entity": "benunit",
+      "measure": "rent/private_rent_brma",
+      "family": "ons_housing",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.rent.private_rent_brma",
+        "measure_kind": "prepared_column",
+        "geography_level": "statistical_scope",
+        "geography_id": "S33000006",
+        "fact_aggregation": "time_mean",
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
+      },
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "ons.rent.private_rent_brma@S33000007",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_measure_id": "private_rent",
+        "record_set_spec_id": "uk.local_geography.private_rent.average_by_area.v1",
+        "geography_level": "statistical_scope",
+        "geography_id": "S33000007"
+      },
+      "entity": "benunit",
+      "measure": "rent/private_rent_brma",
+      "family": "ons_housing",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.rent.private_rent_brma",
+        "measure_kind": "prepared_column",
+        "geography_level": "statistical_scope",
+        "geography_id": "S33000007",
+        "fact_aggregation": "time_mean",
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
+      },
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "ons.rent.private_rent_brma@S33000008",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_measure_id": "private_rent",
+        "record_set_spec_id": "uk.local_geography.private_rent.average_by_area.v1",
+        "geography_level": "statistical_scope",
+        "geography_id": "S33000008"
+      },
+      "entity": "benunit",
+      "measure": "rent/private_rent_brma",
+      "family": "ons_housing",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.rent.private_rent_brma",
+        "measure_kind": "prepared_column",
+        "geography_level": "statistical_scope",
+        "geography_id": "S33000008",
+        "fact_aggregation": "time_mean",
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
+      },
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "ons.rent.private_rent_brma@S33000009",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_measure_id": "private_rent",
+        "record_set_spec_id": "uk.local_geography.private_rent.average_by_area.v1",
+        "geography_level": "statistical_scope",
+        "geography_id": "S33000009"
+      },
+      "entity": "benunit",
+      "measure": "rent/private_rent_brma",
+      "family": "ons_housing",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.rent.private_rent_brma",
+        "measure_kind": "prepared_column",
+        "geography_level": "statistical_scope",
+        "geography_id": "S33000009",
+        "fact_aggregation": "time_mean",
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
+      },
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "ons.rent.private_rent_brma@S33000010",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_measure_id": "private_rent",
+        "record_set_spec_id": "uk.local_geography.private_rent.average_by_area.v1",
+        "geography_level": "statistical_scope",
+        "geography_id": "S33000010"
+      },
+      "entity": "benunit",
+      "measure": "rent/private_rent_brma",
+      "family": "ons_housing",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.rent.private_rent_brma",
+        "measure_kind": "prepared_column",
+        "geography_level": "statistical_scope",
+        "geography_id": "S33000010",
+        "fact_aggregation": "time_mean",
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
+      },
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "ons.rent.private_rent_brma@S33000011",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_measure_id": "private_rent",
+        "record_set_spec_id": "uk.local_geography.private_rent.average_by_area.v1",
+        "geography_level": "statistical_scope",
+        "geography_id": "S33000011"
+      },
+      "entity": "benunit",
+      "measure": "rent/private_rent_brma",
+      "family": "ons_housing",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.rent.private_rent_brma",
+        "measure_kind": "prepared_column",
+        "geography_level": "statistical_scope",
+        "geography_id": "S33000011",
+        "fact_aggregation": "time_mean",
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
+      },
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "ons.rent.private_rent_brma@S33000012",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_measure_id": "private_rent",
+        "record_set_spec_id": "uk.local_geography.private_rent.average_by_area.v1",
+        "geography_level": "statistical_scope",
+        "geography_id": "S33000012"
+      },
+      "entity": "benunit",
+      "measure": "rent/private_rent_brma",
+      "family": "ons_housing",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.rent.private_rent_brma",
+        "measure_kind": "prepared_column",
+        "geography_level": "statistical_scope",
+        "geography_id": "S33000012",
+        "fact_aggregation": "time_mean",
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
+      },
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "ons.rent.private_rent_brma@S33000013",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_measure_id": "private_rent",
+        "record_set_spec_id": "uk.local_geography.private_rent.average_by_area.v1",
+        "geography_level": "statistical_scope",
+        "geography_id": "S33000013"
+      },
+      "entity": "benunit",
+      "measure": "rent/private_rent_brma",
+      "family": "ons_housing",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.rent.private_rent_brma",
+        "measure_kind": "prepared_column",
+        "geography_level": "statistical_scope",
+        "geography_id": "S33000013",
+        "fact_aggregation": "time_mean",
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
+      },
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "ons.rent.private_rent_brma@S33000014",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_measure_id": "private_rent",
+        "record_set_spec_id": "uk.local_geography.private_rent.average_by_area.v1",
+        "geography_level": "statistical_scope",
+        "geography_id": "S33000014"
+      },
+      "entity": "benunit",
+      "measure": "rent/private_rent_brma",
+      "family": "ons_housing",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.rent.private_rent_brma",
+        "measure_kind": "prepared_column",
+        "geography_level": "statistical_scope",
+        "geography_id": "S33000014",
+        "fact_aggregation": "time_mean",
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
+      },
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "ons.rent.private_rent_brma@S33000015",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_measure_id": "private_rent",
+        "record_set_spec_id": "uk.local_geography.private_rent.average_by_area.v1",
+        "geography_level": "statistical_scope",
+        "geography_id": "S33000015"
+      },
+      "entity": "benunit",
+      "measure": "rent/private_rent_brma",
+      "family": "ons_housing",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.rent.private_rent_brma",
+        "measure_kind": "prepared_column",
+        "geography_level": "statistical_scope",
+        "geography_id": "S33000015",
+        "fact_aggregation": "time_mean",
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
+      },
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "ons.rent.private_rent_brma@S33000016",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_measure_id": "private_rent",
+        "record_set_spec_id": "uk.local_geography.private_rent.average_by_area.v1",
+        "geography_level": "statistical_scope",
+        "geography_id": "S33000016"
+      },
+      "entity": "benunit",
+      "measure": "rent/private_rent_brma",
+      "family": "ons_housing",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.rent.private_rent_brma",
+        "measure_kind": "prepared_column",
+        "geography_level": "statistical_scope",
+        "geography_id": "S33000016",
+        "fact_aggregation": "time_mean",
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
+      },
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "ons.rent.private_rent_brma@S33000017",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_measure_id": "private_rent",
+        "record_set_spec_id": "uk.local_geography.private_rent.average_by_area.v1",
+        "geography_level": "statistical_scope",
+        "geography_id": "S33000017"
+      },
+      "entity": "benunit",
+      "measure": "rent/private_rent_brma",
+      "family": "ons_housing",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.rent.private_rent_brma",
+        "measure_kind": "prepared_column",
+        "geography_level": "statistical_scope",
+        "geography_id": "S33000017",
+        "fact_aggregation": "time_mean",
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
+      },
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "ons.rent.private_rent_brma@S33000018",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_measure_id": "private_rent",
+        "record_set_spec_id": "uk.local_geography.private_rent.average_by_area.v1",
+        "geography_level": "statistical_scope",
+        "geography_id": "S33000018"
+      },
+      "entity": "benunit",
+      "measure": "rent/private_rent_brma",
+      "family": "ons_housing",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.rent.private_rent_brma",
+        "measure_kind": "prepared_column",
+        "geography_level": "statistical_scope",
+        "geography_id": "S33000018",
         "fact_aggregation": "time_mean",
         "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },

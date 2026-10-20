@@ -36,7 +36,11 @@ DESCRIPTION = (
     "explicitly reviewed. Deferred area absences are recorded in the membership "
     "report."
 )
-LOCAL_GEOGRAPHY_LEVELS = frozenset({"constituency", "local_authority"})
+#: ``statistical_scope`` is Scotland's BRMA grain, where PIPR publishes its
+#: Scottish rents (microcosm#1090, #1262).
+LOCAL_GEOGRAPHY_LEVELS = frozenset(
+    {"constituency", "local_authority", "statistical_scope"}
+)
 
 POLICYENGINE_BINDING_KEYS = frozenset(
     {
@@ -84,13 +88,14 @@ def main() -> None:
         area_scope_by_target_id=_area_scope_by_target_id(contract, crosswalk),
         area_id_aliases=_area_id_aliases(crosswalk),
         reference_metadata_by_target_id={
-            "ons.rent.private_rent": {
+            target_id: {
                 "fact_aggregation": "time_mean",
                 "period_basis_note": (
                     "Calendar-year average of the available 2025 PIPR monthly "
                     "area price levels; approved by María on 2026-09-05."
                 ),
             }
+            for target_id in ("ons.rent.private_rent", "ons.rent.private_rent_brma")
         },
         binding_vocabulary=POLICYENGINE_BINDING_KEYS,
         uprating_appliers=UK_UPRATING_APPLIERS,
@@ -359,7 +364,7 @@ def _value_operation_by_target_id(contract: Mapping[str, Any]) -> dict[str, str]
             "ons.tenure.social_rent",
         }:
             operations[target_id] = "sum"
-        if target_id == "ons.rent.private_rent":
+        if target_id in {"ons.rent.private_rent", "ons.rent.private_rent_brma"}:
             operations[target_id] = "calendar_year_average"
     return operations
 
@@ -612,14 +617,14 @@ def _area_signed_deferrals(
         target_id="ons.rent.private_rent",
         geography_level="local_authority",
         reason_id="private_rent_pipr_scotland_brma_grain",
-        rationale="The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred.",
+        rationale="PIPR publishes Scotland's rents for its 18 Broad Rental Market Areas only, and they bind at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262). The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so a council has no published rent of its own, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. All 32 council cells remain deferred.",
         area_ids=scottish_local_authorities,
     )
     add(
         target_id="ons.rent.private_rent",
         geography_level="local_authority",
         reason_id="private_rent_pipr_ni_absent",
-        rationale="The pinned PIPR monthly series contains zero Northern Ireland rows at any geography level, so all 11 Northern Ireland local-authority cells remain signed absent.",
+        rationale="PIPR publishes Northern Ireland only as a country mean (every month of 2025, beside the UK, Great Britain, nation and region means), with no district rows, so all 11 Northern Ireland local-authority cells remain signed absent. A nation or region mean is no higher control for the district cells: a mean is not additive, and the rents' level comes from the FRS (microcosm#1262).",
         area_ids=ni_local_authorities,
     )
     # microcosm#1207: Orkney and Shetland have no mains gas network, so DESNZ

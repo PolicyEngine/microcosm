@@ -27,6 +27,7 @@ from microcosm.build.uk_runtime.ledger_targets import (
     uk_cross_grain_leg_of_area,
     uk_ledger_households_total,
     uk_local_target_surface,
+    uk_private_rent_brma_mean_to_total,
     uk_private_rent_mean_to_total,
 )
 from microcosm.calibrate import TargetRegistry, TargetSpec
@@ -1050,13 +1051,15 @@ def test_household_condition_still_reduces_group_entities():
 
 def test_uk_cross_grain_rule_constants_are_review_pinned():
     # microcosm#1123: a nation grain sits between the UK/GB/E&W rows and the
-    # regions, and the nation tier controls the grains below it.
+    # regions, and the nation tier controls the grains below it. microcosm#1262
+    # adds Scotland's BRMAs, finest and parent of nothing.
     assert UK_CROSS_GRAIN_GRAIN_PRECEDENCE == (
         "country",
         "nation",
         "region",
         "constituency",
         "la",
+        "brma",
     )
     assert UK_CROSS_GRAIN_RULE.grain_precedence == UK_CROSS_GRAIN_GRAIN_PRECEDENCE
     assert UK_CROSS_GRAIN_RULE.control_grains == ("country", "nation", "region")
@@ -2036,10 +2039,14 @@ def test_uk_private_rent_mean_to_total_composes_and_receipts_cells() -> None:
         "reason": (
             "PIPR supplies monthly private-rent price levels while the bound "
             "metric is an annual weighted total; compose each mean with the "
-            "same authority's A17-uprated private-renter household count."
+            "same authority's private-renter household count, SPREE-drifted in "
+            "England and reconciled to the nation household controls."
         ),
         "price_level_source": "ons_pipr_private_rents calendar_year_average 2025",
-        "renter_count_source": "ons.tenure.private_rent (A17-uprated)",
+        "renter_count_source": (
+            "ons.tenure.private_rent (SPREE-drifted in England, reconciled to "
+            "the nation household controls)"
+        ),
         "cells_detail": [
             {
                 "area_code": "E09000001",
@@ -2676,3 +2683,111 @@ def test_the_census_household_level_is_the_nations_controls_summed():
         uk_nation_households_reference(
             TargetRegistry(specs[:3], country="uk"), facts, period=2025
         )
+
+
+def _brma_rent_target_frame() -> pd.DataFrame:
+    """Scotland's 32 council tenure cells and its 18 BRMA rent means."""
+
+    from microcosm.build.uk_runtime.scotland_brma_la_overlap import (
+        load_uk_scotland_brma_la_overlap,
+    )
+
+    overlap = load_uk_scotland_brma_la_overlap()
+    councils = sorted({cell["local_authority"] for cell in overlap["cells"]})
+    codes = sorted(entry["pipr_area_code"] for entry in overlap["brmas"].values())
+    rows = [
+        {
+            "area_type": "la",
+            "area_code": council,
+            "metric": "tenure/private_rent",
+            "family": "tenure",
+            "value": 1_000.0 + 10.0 * index,
+            "target_name": f"ons.tenure.private_rent@{council}@2025",
+        }
+        for index, council in enumerate(councils)
+    ]
+    rows += [
+        {
+            "area_type": "brma",
+            "area_code": code,
+            "metric": "rent/private_rent_brma",
+            "family": "private_rent",
+            "value": 700.0 + 25.0 * index,
+            "target_name": f"ons.rent.private_rent_brma@{code}@2025",
+        }
+        for index, code in enumerate(codes)
+    ]
+    return pd.DataFrame(rows)
+
+
+def test_brma_rent_rows_take_the_councils_renters_through_the_census_shares() -> None:
+    from microcosm.build.uk_runtime.scotland_brma_la_overlap import (
+        scotland_brma_council_overlaps,
+    )
+
+    frame = _brma_rent_target_frame()
+    composed, receipt = uk_private_rent_brma_mean_to_total(frame)
+
+    tenure = {
+        row.area_code: row.value
+        for row in frame.itertuples()
+        if row.metric == "tenure/private_rent"
+    }
+    by_code = {cell["area_code"]: cell for cell in receipt["cells_detail"]}
+    assert receipt["applied"] is True
+    assert receipt["cells"] == 18 and receipt["councils"] == 32
+    # Every council's renters land in its BRMAs exactly once.
+    counts = [cell["renter_households"] for cell in receipt["cells_detail"]]
+    assert sum(counts) == pytest.approx(sum(tenure.values()), rel=1e-12)
+    assert receipt["renter_households_total"] == pytest.approx(sum(tenure.values()))
+    shares: dict[str, float] = {}
+    for item in scotland_brma_council_overlaps():
+        shares[item.brma] = shares.get(item.brma, 0.0) + (
+            item.share_of_council * tenure[item.local_authority]
+        )
+    rent = composed.loc[composed["metric"] == "rent/private_rent_brma"]
+    for row in rent.itertuples():
+        cell = by_code[row.area_code]
+        assert cell["renter_households"] == pytest.approx(shares[cell["brma"]])
+        assert row.value == pytest.approx(
+            12 * cell["mean_monthly_rent"] * cell["renter_households"]
+        )
+        assert row.metadata["renter_households_councils"] == cell["councils"]
+    # The council cells themselves are untouched.
+    pd.testing.assert_frame_equal(
+        composed.loc[composed["metric"] == "tenure/private_rent"].drop(
+            columns="metadata"
+        ),
+        frame.loc[frame["metric"] == "tenure/private_rent"],
+    )
+
+
+def test_brma_rent_rows_refuse_a_council_without_its_tenure_cell() -> None:
+    frame = _brma_rent_target_frame()
+    frame = frame.loc[frame["area_code"] != "S12000047"]
+    with pytest.raises(ValueError, match="S12000047"):
+        uk_private_rent_brma_mean_to_total(frame)
+
+
+def test_brma_rent_rows_refuse_an_unknown_brma_and_a_bad_mean() -> None:
+    frame = _brma_rent_target_frame()
+    unknown = frame.copy()
+    unknown.loc[unknown["metric"] == "rent/private_rent_brma", "area_code"] = (
+        "S33000099"
+    )
+    with pytest.raises(ValueError, match="not one of the overlap's 18 BRMAs"):
+        uk_private_rent_brma_mean_to_total(unknown.head(33))
+    negative = frame.copy()
+    negative.loc[negative["metric"] == "rent/private_rent_brma", "value"] = -1.0
+    with pytest.raises(ValueError, match="positive and finite"):
+        uk_private_rent_brma_mean_to_total(negative)
+
+
+def test_brma_rent_composer_reports_no_brma_rows() -> None:
+    frame = _private_rent_target_frame()
+    unchanged, receipt = uk_private_rent_brma_mean_to_total(frame)
+    pd.testing.assert_frame_equal(unchanged, frame)
+    assert receipt == {
+        "applied": False,
+        "reason": "no Scottish BRMA private-rent rows on the surface",
+    }

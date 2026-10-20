@@ -96,6 +96,21 @@ UK_LOCAL_MAX_WEIGHT_RATIO = 10.0
 #: overrides; the other row-metadata rules too.
 UK_LOCAL_TARGET_WEIGHT_RULE = "nation_grain_family_equal_sqrt_count"
 
+#: The grain a local row's loss share is taken in, where it is not its own.
+#: Scotland's 18 BRMA rent rows weigh inside the local-authority grain, in
+#: its private-rent family: a grain of their own would take a fifth of the
+#: loss for 18 rows and dilute the local energy and bus families below their
+#: floors (microcosm#1262). Every rule maps through it, ``grain_equal``
+#: included (the #1305 review).
+UK_LOCAL_WEIGHT_GRAIN: Mapping[str, str] = MappingProxyType({"brma": "la"})
+
+
+def uk_weight_grains(grain_labels: Sequence[str]) -> list[str]:
+    """Each row's weighting grain: its own, or the one it weighs inside."""
+
+    return [UK_LOCAL_WEIGHT_GRAIN.get(str(label), str(label)) for label in grain_labels]
+
+
 #: The least share of the dense solve's loss weight a named family must carry
 #: (microcosm#1207, ruling of 2026-10-14: a check on the rule, never a change
 #: to its arithmetic). Under the doctrine's rule DESNZ's local energy is one of
@@ -322,7 +337,9 @@ def uk_local_target_loss_weights(
         uk_national_target_loss_weights,
     )
 
-    return uk_national_target_loss_weights(grain_labels, rule="family_equal")
+    return uk_national_target_loss_weights(
+        uk_weight_grains(grain_labels), rule="family_equal"
+    )
 
 
 def uk_local_doctrine_with_overrides(

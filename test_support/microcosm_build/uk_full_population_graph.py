@@ -79,6 +79,20 @@ def source_frame():
     household["council_tax_band"] = pd.array(
         ["D", "C", "B", "D"][: len(household)], dtype="string"
     )
+    # microcosm#1262: the spine's regional BRMA draw, which the area-BRMA node
+    # replaces outside Northern Ireland.
+    household["brma"] = pd.array(
+        ["MAIDSTONE", "MAIDSTONE", "MAIDSTONE", "BELFAST"][: len(household)],
+        dtype="string",
+    )
+    # The Scottish household is the toy's one private renter; the private-rent
+    # node re-draws its rent from its area's toy list.
+    household["rent"] = np.asarray(
+        [0.0, 0.0, 9_000.0, 0.0][: len(household)], dtype="float64"
+    )
+    household["num_bedrooms"] = np.asarray(
+        [3, 3, 2, 3][: len(household)], dtype="int64"
+    )
     return Frame(
         tables,
         original.schema,
@@ -136,6 +150,9 @@ def graph_and_registry(
     definition=None,
     seed=7,
     property_localisation_mode="none",
+    brma_localisation_mode="none",
+    private_rent_localisation_mode="none",
+    full_scale=True,
 ):
     graph = append_uk_population_nodes(
         Graph(
@@ -153,6 +170,9 @@ def graph_and_registry(
         atomic_geography_definition=definition,
         source_vintage=SOURCE_VINTAGE if geography_assignment == "atomic" else None,
         property_localisation_mode=property_localisation_mode,
+        brma_localisation_mode=brma_localisation_mode,
+        private_rent_localisation_mode=private_rent_localisation_mode,
+        full_scale=full_scale,
     )
     registry = KernelRegistry()
     registry.register(Source())

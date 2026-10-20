@@ -80,6 +80,7 @@ UK_CALIBRATION_GATE_SCOPE = (
 
 UK_LOCAL_GATE_SCOPE = (
     "uk_local_geography_ladder_post_calibration",
+    "uk_local_brma_enum_domain",
     "uk_local_area_support",
     "uk_local_target_fit",
     "uk_local_per_family_fit",
@@ -265,7 +266,7 @@ def uk_local_gate_scope_exclusions() -> dict[str, str]:
         elif gate_id in UK_LOCAL_DIAGNOSTIC_GATE_SCOPE:
             reason = (
                 "local diagnostic gate; evaluated by the dense battery but outside "
-                "the six-gate local release contract (microcosm#1240)."
+                "the seven-gate local release contract (microcosm#1240, #1262)."
             )
         else:  # pragma: no cover - _scope_exclusions enforces closed-world ownership
             raise RuntimeError(f"UK gate {gate_id!r} belongs to no declared scope.")
