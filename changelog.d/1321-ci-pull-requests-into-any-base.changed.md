@@ -1,1 +1,0 @@
-The Tests workflow (`.github/workflows/test.yml`) now runs for pull requests into any base branch, not only `main` (microcosm#1321). A stacked pull request, whose base is another pull request's branch, previously got no CI at all. Pushes still run it only for `main`, and the jobs, the country selection, the concurrency group and the secrets are unchanged.
