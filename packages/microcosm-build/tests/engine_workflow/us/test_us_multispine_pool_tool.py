@@ -340,9 +340,9 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             "schema_version": 1,
             # The US bundle's semantic hash covers microcosm.calibrate.solve's
             # bytes (its seed protocol); microcosm#1124's opt-in
-            # retain_best_objective and microcosm#1301's budget_search_bracket
-            # move it.
-            "spec_sha256": "116b8a1d5808fc3658f5732bc77390f9c2f12e6c19d7bbd0956bbe3ace918e8e",
+            # retain_best_objective, microcosm#1301's budget_search_bracket and
+            # microcosm#1330's target band move it.
+            "spec_sha256": "28029671ec7463f29674f2790c34d0b5395bd6f6d632a80be7fd7983e3951f2e",
         },
     }
 
