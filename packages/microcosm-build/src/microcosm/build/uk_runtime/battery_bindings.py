@@ -62,7 +62,10 @@ from microcosm.build.uk_runtime.cgt_projection import (
     UK_CGT_PROJECTION_ARTIFACT_KEY,
     UKCGTProjection,
 )
-from microcosm.build.uk_runtime.diagnostics import uk_support_family_weights
+from microcosm.build.uk_runtime.diagnostics import (
+    uk_support_family_weights,
+    uk_withheld_gate_keys,
+)
 from microcosm.build.uk_runtime.frs_take_up import uk_take_up_signal_gate
 from microcosm.build.uk_runtime.geography_ladder import uk_geography_ladder_gate
 from microcosm.build.uk_runtime.high_value_home_gates import (
@@ -1416,11 +1419,34 @@ def _local_target_error_items(evidence: object) -> tuple[tuple[str, float], ...]
 def _evaluate_per_family_fit(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
-    items = _local_target_error_items(context.artifacts["local_target_diagnostics"])
-    return per_family_fit_gate(
-        (name for name, _ in items),
-        (error for _, error in items),
+    """Each family's fit over its published rows (microcosm#1262).
+
+    A row whose model figures are withheld stays out of every rollup, so the
+    family shares, sizes and the decision rest on the published rows and the
+    details count the withheld ones by family: a share over every row, set
+    beside the published rows' errors, would give a withheld row's fit back.
+    """
+
+    evidence = context.artifacts["local_target_diagnostics"]
+    items = _local_target_error_items(evidence)
+    withheld = uk_withheld_gate_keys(evidence)
+    published = [(name, error) for name, error in items if name not in withheld]
+    result = per_family_fit_gate(
+        (name for name, _ in published),
+        (error for _, error in published),
         **dict(parameters),
+    )
+    if not withheld:
+        return result
+    counts: dict[str, int] = {}
+    for name in withheld:
+        family = name.split("/", 1)[0]
+        counts[family] = counts.get(family, 0) + 1
+    return GateResult(
+        name=result.name,
+        passed=result.passed,
+        failures=result.failures,
+        details={**result.details, "withheld_targets": dict(sorted(counts.items()))},
     )
 
 
@@ -1568,6 +1594,8 @@ def _local_default_expected_surface(crosswalk_resource: str) -> frozenset[str]:
     for area_type, geography_level in (
         ("constituency", "constituency"),
         ("la", "local_authority"),
+        # Scotland's PIPR BRMAs (microcosm#1262).
+        ("brma", "statistical_scope"),
     ):
         level = levels.get(geography_level)
         if not isinstance(level, Mapping):
@@ -1681,18 +1709,38 @@ def _evaluate_target_fit(
                 f"uk/gates.json names local exclusion register {register!r} but "
                 f"the runtime loads {UK_LOCAL_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE!r}."
             )
-        errors = dict(
-            _local_target_error_items(context.artifacts["local_target_diagnostics"])
-        )
+        evidence = context.artifacts["local_target_diagnostics"]
+        # María's ruling of 2026-10-19 on the third review of #1305: the gate
+        # decides on the published rows. A withheld BRMA row's status against
+        # the bound would be a two-sided bound on an estimate resting on fewer
+        # than ten households, so the gate neither checks it nor reads its
+        # register entry, and counts it only.
+        withheld = uk_withheld_gate_keys(evidence)
+        errors = {
+            key: error
+            for key, error in _local_target_error_items(evidence)
+            if key not in withheld
+        }
         exclusions, out_of_line = _in_line(
             uk_default_local_target_fit_reviewed_exclusions(), context
         )
+        exclusions = {
+            key: record for key, record in exclusions.items() if key not in withheld
+        }
+        out_of_line = [key for key in out_of_line if key not in withheld]
         result = uk_target_fit_gate(
             errors,
             reviewed_exclusions=exclusions,
             now=_exclusion_clock(context),
             **kwargs,
         )
+        if withheld:
+            result = GateResult(
+                name=result.name,
+                passed=result.passed,
+                failures=result.failures,
+                details={**result.details, "withheld_targets": len(withheld)},
+            )
         return _with_out_of_line(result, context, out_of_line)
     if register != UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE:
         raise ValueError(

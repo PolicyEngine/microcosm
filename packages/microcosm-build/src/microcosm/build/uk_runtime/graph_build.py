@@ -92,6 +92,18 @@ class UKFullBuildConfig:
     #: refuses it). Unset, the mode follows the geography assignment:
     #: ``price_paid`` on the atomic assignment, ``none`` on the legacy one.
     property_localisation: str | None = None
+    #: ``area`` reads each placed Great Britain household's BRMA off its
+    #: assigned area (microcosm#1262); ``none`` keeps the spine's regional
+    #: draw on every clone (measurement builds only; a release candidate
+    #: refuses it). Unset, the mode follows the geography assignment: ``area``
+    #: on the atomic assignment, ``none`` on the legacy one.
+    brma_localisation: str | None = None
+    #: ``brma_list`` re-draws each Great Britain private renter's rent from its
+    #: assigned BRMA's list of rents at its FRS rank and region level
+    #: (microcosm#1262); ``none`` keeps the spine's rents (measurement builds
+    #: only; a release candidate refuses it). Unset, it follows the BRMA mode:
+    #: ``brma_list`` with area BRMAs, ``none`` otherwise.
+    private_rent_localisation: str | None = None
 
     def __post_init__(self) -> None:
         from .graph_population import GEOGRAPHY_ASSIGNMENTS
@@ -120,6 +132,38 @@ class UKFullBuildConfig:
             raise ValueError(
                 "Property localisation needs the atomic geography assignment."
             )
+        from .graph_population import BRMA_LOCALISATION_MODES
+
+        if self.brma_localisation is None:
+            object.__setattr__(
+                self,
+                "brma_localisation",
+                "area" if self.geography_assignment == "atomic" else "none",
+            )
+        if self.brma_localisation not in BRMA_LOCALISATION_MODES:
+            raise ValueError(
+                f"BRMA localisation must be one of {BRMA_LOCALISATION_MODES}."
+            )
+        if self.brma_localisation != "none" and self.geography_assignment != "atomic":
+            raise ValueError("Area BRMAs need the atomic geography assignment.")
+        from .graph_population import PRIVATE_RENT_LOCALISATION_MODES
+
+        if self.private_rent_localisation is None:
+            object.__setattr__(
+                self,
+                "private_rent_localisation",
+                "brma_list" if self.brma_localisation == "area" else "none",
+            )
+        if self.private_rent_localisation not in PRIVATE_RENT_LOCALISATION_MODES:
+            raise ValueError(
+                "Private rent localisation must be one of "
+                f"{PRIVATE_RENT_LOCALISATION_MODES}."
+            )
+        if (
+            self.private_rent_localisation != "none"
+            and self.brma_localisation != "area"
+        ):
+            raise ValueError("Private rents from the lists need the area BRMAs.")
         if not isinstance(self.source_vintage, str) or not self.source_vintage:
             raise ValueError("The FRS source vintage must be a non-empty string.")
         validate_sample_fraction(self.sample_fraction, label="UK full pool")
@@ -140,12 +184,18 @@ class UKFullBuildConfig:
                 "region",
                 "constituency",
                 "la",
+                "brma",
             }:
                 raise ValueError(
                     "Use explicit supported geography levels or omit the selector for all."
                 )
             if len(set(self.geography_levels)) != len(self.geography_levels):
                 raise ValueError("Geographic target levels must not repeat.")
+            if "brma" in self.geography_levels and self.brma_localisation != "area":
+                raise ValueError(
+                    "BRMA targets need the area BRMAs: without them the rows "
+                    "would bind on the spine's regional BRMA draw."
+                )
         if self.target_families is not None and (
             not self.target_families
             or any(not isinstance(f, str) or not f for f in self.target_families)
@@ -236,6 +286,12 @@ def uk_full_graph(
         atomic_geography_definition=atomic_geography_definition,
         source_vintage=config.source_vintage,
         property_localisation_mode=config.property_localisation,
+        brma_localisation_mode=config.brma_localisation,
+        private_rent_localisation_mode=config.private_rent_localisation,
+        # A sampled rung's rent node may rank a region on Great Britain's FRS
+        # renters; a full-scale build refuses (microcosm#1305 review).
+        full_scale=config.sample_fraction == 1.0
+        and config.source_sample_fraction == 1.0,
     )
     graph = append_uk_target_nodes(
         graph,
@@ -248,6 +304,7 @@ def uk_full_graph(
         target_weight_rule=config.calibration.target_weight_rule,
         optional_sources=optional_target_sources,
         review_date=review_date,
+        brma_rows=config.brma_localisation == "area",
     )
     cells = population_columns(graph, "uk.full.expand")
     # This structural checkpoint depends on every pool operation, including

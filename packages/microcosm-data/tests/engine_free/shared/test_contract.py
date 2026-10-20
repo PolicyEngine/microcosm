@@ -213,13 +213,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "921806343e97f2ce2cc246cd417fd8a3ca2b69110e42d2c2877814e3e6477eb2"
+    "a326d26c249b8b359284f739fe4327180a7c86b9c21b8994cf270b9c0e27787f"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "c354c874a2d3b6801b04b4cf4e186384c3da5e3382f6b61d2a56638e3b0efdab"
+    "5bed933d2e261e3c4f0bfaa3ae949e9623a5a70c968eaaf4194e70b72df0b728"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "aac722c4e22ad8ea2c5b055669e8e7647d712cf1eda0377752dd9ba6598b0b64"
+    "2009911edabae63ab2b31d9d50588754fc40129aac952d4a2be6f17e1a8a736b"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "6a179222c6b6058ad9caacfd347f7bdb8cb98a62237b50d1fc1136df09337251"
@@ -414,6 +414,7 @@ UK_GATE_BATTERY_ENTRIES = {
         "terminal",
         None,
     ),
+    "uk_local_brma_enum_domain": ("enum_domain", "terminal", "enum_domain"),
     "uk_local_area_support": ("area_support", "terminal", None),
     "uk_local_target_fit": ("target_fit", "terminal", None),
     "uk_local_per_family_fit": ("per_family_fit", "terminal", None),

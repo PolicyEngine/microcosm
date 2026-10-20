@@ -332,6 +332,11 @@ def gate_payload(phase, failed=None, release_candidate=False):
 
 
 LADDER_TARGET = "ons.census.households@E14000001"
+#: microcosm#1262: tests flip ``WITHHELD_BRMA_ROW`` to stage a Scottish BRMA
+#: row whose model figures the terminal gates withhold (it rests on fewer than
+#: ten source households), so the projection reads it blank.
+WITHHELD_BRMA_ROW = False
+BRMA_TARGET = "ons.rent.private_rent_brma@S33000001"
 
 #: The synthetic measures node's engine resolution, as the problem bindings
 #: carry it: ``run_dense_main`` sets the block count from ``--engine-blocks``;
@@ -357,33 +362,51 @@ def measure_resolution_evidence() -> dict:
 def problem_payload() -> bytes:
     """One ordered local problem over the two fixture households."""
     frame = _frame()
-    targets = TargetSet(
-        [
+    targets = [
+        Target(
+            LADDER_TARGET,
+            "household",
+            lambda f: np.ones(f.n("household")),
+            100.0,
+            period=2025,
+        )
+    ]
+    metadata = [
+        {
+            "materialization": "uk_local_surface",
+            "geography_level": "constituency",
+            "geography_id": "E14000001",
+            "family": "census_households",
+            "source": "fixture",
+        }
+    ]
+    if WITHHELD_BRMA_ROW:
+        targets.append(
             Target(
-                LADDER_TARGET,
+                BRMA_TARGET,
                 "household",
                 lambda f: np.ones(f.n("household")),
-                100.0,
+                1000.0,
                 period=2025,
             )
-        ]
-    )
-    return encode_problem(
-        build_constraint_matrix(frame, targets, weight_entity="household"),
-        entity_ids=frame.table("household")["household_id"].tolist(),
-        target_metadata=[
+        )
+        metadata.append(
             {
                 "materialization": "uk_local_surface",
-                "geography_level": "constituency",
-                "geography_id": "E14000001",
-                "family": "census_households",
+                "geography_level": "brma",
+                "geography_id": "S33000001",
+                "family": "private_rent",
                 "source": "fixture",
             }
-        ],
+        )
+    return encode_problem(
+        build_constraint_matrix(frame, TargetSet(targets), weight_entity="household"),
+        entity_ids=frame.table("household")["household_id"].tolist(),
+        target_metadata=metadata,
         bindings={
             "mass_reason": "fixture selected constraints",
             "max_weight_ratio": 10.0,
-            "target_loss_weights": [1.0],
+            "target_loss_weights": [1.0] * len(targets),
             "target_loss_cap": 10.0,
             "bound_families": ["census_households/constituency"],
             "binding_adjudications": {
@@ -555,6 +578,20 @@ TARGET_ROWS_CSV = (
     "census_households,constituency,constituency,E14000001,households\n"
 ).encode()
 
+
+def target_rows_csv() -> bytes:
+    """The terminal targets table; a withheld BRMA row reads blank (#1262)."""
+
+    if not WITHHELD_BRMA_ROW:
+        return TARGET_ROWS_CSV
+    header, ladder = TARGET_ROWS_CSV.decode().splitlines()
+    return (
+        f"{header},model_figures_withheld\n{ladder},False\n"
+        f"{BRMA_TARGET}@2025,{BRMA_TARGET}@2025,1000.0,,,,"
+        "private_rent,brma,brma,S33000001,rent/private_rent_brma,True\n"
+    ).encode()
+
+
 SUPPORT_CSV = (
     b"area_code,assigned_households,nonzero_households,nonzero_source_households,"
     b"weight_sum,max_weight,effective_sample_size,geography_level\n"
@@ -608,7 +645,7 @@ class Evidence(KernelBase):
                 calibration_diagnostics=diagnostics_payload(
                     rotated_holdout=bool(context.params.get("rotated_holdout"))
                 ),
-                target_diagnostics_csv=TARGET_ROWS_CSV,
+                target_diagnostics_csv=target_rows_csv(),
                 area_support_csv=SUPPORT_CSV,
                 high_value_home_support_csv=HV_SUPPORT_CSV,
             )

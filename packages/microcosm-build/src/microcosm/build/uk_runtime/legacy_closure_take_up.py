@@ -229,7 +229,7 @@ def legacy_closure_claim_probabilities(
     receipt: dict[str, dict[str, object]] = {}
 
     def count(mask: np.ndarray) -> int:
-        return distinct_count(source_ids, mask)
+        return distinct_count(source_ids, mask, weights)
 
     for key in sorted(set(combination[drawn])):
         cohort = drawn & (combination == key)
@@ -352,7 +352,7 @@ def assign_uc_claim_at_legacy_closure(
     # Great Britain's weighted aggregates only, DWP's universe; a figure one to
     # nine source households carry is "<10" (UKDS disclosure control).
     def sources(mask: np.ndarray) -> int:
-        return distinct_count(source_ids, mask)
+        return distinct_count(source_ids, mask, weights)
 
     gb_drawn = drawn & great_britain
     gb_sources = sources(gb_drawn)

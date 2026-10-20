@@ -35,7 +35,10 @@ from microcosm.calibrate import (
     relative_error_loss,
 )
 
-_LOCAL_GRAINS = ("constituency", "local_authority", "la")
+#: ``statistical_scope`` (the rowwise ``brma`` grain) is Scotland's PIPR BRMA
+#: rows, which the incumbent never fitted: they score candidate-only, as
+#: areas the incumbent lacks (microcosm#1262).
+_LOCAL_GRAINS = ("constituency", "local_authority", "la", "statistical_scope", "brma")
 UK_LOCAL_SCORE_TARGET_PERIOD = 2025
 #: The incumbent is scored from published weights, never re-solved, so no
 #: incumbent holdout exists to place beside the candidate's rotation.
@@ -94,7 +97,13 @@ def _verify_artifact(path: str | Path, expected_sha256: str) -> dict[str, object
 def _candidate_estimates(
     diagnostics: Mapping[str, object],
     registry: TargetRegistry,
-) -> tuple[dict[str, float], dict[str, object]]:
+) -> tuple[dict[str, float], dict[str, object], frozenset[str]]:
+    """The candidate's final estimates, its rows outside the register, and the
+    rows whose model figures it withholds.
+
+    A withheld row (microcosm#1262) carries the note in its metadata and no
+    final estimate; it is neither scored nor missing.
+    """
     if diagnostics.get("schema_version") != CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION:
         raise ValueError(
             "UK local scoring requires calibration diagnostics schema "
@@ -104,11 +113,18 @@ def _candidate_estimates(
     if not isinstance(rows, list):
         raise ValueError("candidate diagnostics must contain target rows.")
     estimates: dict[str, float] = {}
+    withheld: set[str] = set()
     for row in rows:
         if not isinstance(row, Mapping):
             raise ValueError("candidate diagnostics contain a malformed target row.")
         name = str(row.get("name") or "")
         raw = row.get("final_estimate")
+        metadata = row.get("metadata")
+        if isinstance(metadata, Mapping) and metadata.get("model_figures_withheld"):
+            if not name or raw is not None or name in withheld or name in estimates:
+                raise ValueError("candidate diagnostics withhold a row inconsistently.")
+            withheld.add(name)
+            continue
         if (
             not name
             or not isinstance(raw, (int, float))
@@ -119,7 +135,7 @@ def _candidate_estimates(
             raise ValueError("candidate diagnostics contain invalid target estimates.")
         estimates[name] = float(raw)
     expected = {spec.to_target().row_name for spec in registry.specs}
-    missing = sorted(expected - set(estimates))
+    missing = sorted(expected - set(estimates) - withheld)
     if missing:
         raise ValueError(
             "candidate diagnostics must cover every frozen local register row; "
@@ -127,8 +143,9 @@ def _candidate_estimates(
         )
     extra = sorted(set(estimates) - expected)
     return (
-        {name: estimates[name] for name in expected},
+        {name: estimates[name] for name in expected - withheld},
         {"count": len(extra), "rows": extra},
+        frozenset(withheld & expected),
     )
 
 
@@ -203,7 +220,7 @@ def _candidate_holdout(diagnostics: Mapping[str, object]) -> dict[str, object] |
     if (
         not isinstance(grains, list)
         or not grains
-        or any(g not in ("constituency", "local_authority", "la") for g in grains)
+        or any(g not in _LOCAL_GRAINS for g in grains)
         or len(set(grains)) != len(grains)
     ):
         raise ValueError(
@@ -428,16 +445,20 @@ def score_uk_local_candidate(
             for s in target_registry.specs
         }
     )
-    if any(
-        grain not in ("constituency", "local_authority", "la")
-        for grain in fitted_grains
-    ):
+    if any(grain not in _LOCAL_GRAINS for grain in fitted_grains):
         raise ValueError("fitted target grains must identify the local surface.")
     holdout = _candidate_holdout(candidate_diagnostics)
-    candidate, rows_outside_register = _candidate_estimates(
+    candidate, rows_outside_register, withheld = _candidate_estimates(
         candidate_diagnostics,
         target_registry,
     )
+    # A row whose model figures the build withholds is scored on neither side
+    # (microcosm#1262): its error, or a loss including it, would give it back.
+    specs = [
+        spec
+        for spec in target_registry.specs
+        if spec.to_target().row_name not in withheld
+    ]
     incumbent, incumbent_missing_areas = _incumbent_estimates(
         target_registry,
         incumbent_weights,
@@ -446,27 +467,24 @@ def score_uk_local_candidate(
 
     families: dict[str, dict[str, int]] = {}
     drift: list[dict[str, object]] = []
-    targets = np.array([spec.value for spec in target_registry.specs], dtype=np.float64)
+    targets = np.array([spec.value for spec in specs], dtype=np.float64)
     candidate_estimates = np.array(
-        [candidate[spec.to_target().row_name] for spec in target_registry.specs],
+        [candidate[spec.to_target().row_name] for spec in specs],
         dtype=np.float64,
     )
     compared_mask = np.array(
-        [spec.to_target().row_name in incumbent for spec in target_registry.specs],
+        [spec.to_target().row_name in incumbent for spec in specs],
         dtype=bool,
     )
     incumbent_estimates = np.array(
-        [
-            incumbent.get(spec.to_target().row_name, np.nan)
-            for spec in target_registry.specs
-        ],
+        [incumbent.get(spec.to_target().row_name, np.nan) for spec in specs],
         dtype=np.float64,
     )
     candidate_errors = _relative_errors(candidate_estimates, targets)
     incumbent_errors = _relative_errors(incumbent_estimates, targets)
     candidate_wins = 0
     incumbent_wins = 0
-    for index, spec in enumerate(target_registry.specs):
+    for index, spec in enumerate(specs):
         name = spec.to_target().row_name
         candidate_error = float(candidate_errors[index])
         bucket = families.setdefault(
@@ -546,6 +564,7 @@ def score_uk_local_candidate(
         "incumbent_target_wins": incumbent_wins,
         "rows_compared": int(compared_mask.sum()),
         "rows_candidate_only": int((~compared_mask).sum()),
+        "rows_withheld": len(withheld),
         "incumbent_missing_areas": incumbent_missing_areas,
         "rows_outside_register": rows_outside_register,
         "holdout_basis": (

@@ -61,6 +61,7 @@ from microcosm.build.uk_runtime.local_doctrine import (
     UK_LOCAL_FAMILY_LOSS_SHARE_FLOORS,
     UK_LOCAL_ROW_METADATA_RULES,
     UK_LOCAL_TARGET_WEIGHT_RULES,
+    UK_LOCAL_WEIGHT_GRAIN,
     uk_local_target_loss_weights,
 )
 from microcosm.build.uk_runtime.local_targets import AREA_TYPES, area_groups_from_codes
@@ -375,13 +376,13 @@ def uk_target_value_basis(rows: UKTargetRows) -> tuple[str, ...]:
 
 def _rule_grains(rows: UKTargetRows, *, nation: bool) -> tuple[str, ...]:
     if not nation:
-        return rows.grain
+        return tuple(UK_LOCAL_WEIGHT_GRAIN.get(grain, grain) for grain in rows.grain)
     grains = []
     for name, grain, geography in zip(
         rows.names, rows.grain, rows.geography, strict=True
     ):
         if grain != NATIONAL_GRAIN:
-            grains.append(grain)
+            grains.append(UK_LOCAL_WEIGHT_GRAIN.get(grain, grain))
             continue
         if not geography:
             raise ValueError(

@@ -192,7 +192,7 @@ LOCAL_LINE = "local"
 NATIONAL_LINE = "national"
 #: The geography levels whose targets the local surface materializes
 #: (``full_gates._LOCAL_LEVELS``); every other row is a national row.
-LOCAL_LEVELS = frozenset({"constituency", "local_authority", "la"})
+LOCAL_LEVELS = frozenset({"constituency", "local_authority", "la", "brma"})
 
 FIT_WINDOW_DAYS = 28
 AREA_WINDOW_MONTHS = 3
@@ -504,6 +504,11 @@ class BuildEvidence:
     #: the file that receipts them (:func:`receipted_measure_exclusions`).
     measure_exclusions: Mapping[str, date]
     measure_exclusions_from: str
+    #: Local cells whose model figures the build withholds (microcosm#1262):
+    #: targets.csv leaves them blank, so ``local_errors`` lacks them, and the
+    #: local fit gate decides on the other rows and counts them (María's
+    #: ruling of 2026-10-19). Nothing signs a withheld cell.
+    local_withheld: frozenset[str] = frozenset()
 
     def details(self, gate_id: str) -> Mapping[str, Any]:
         return self.outcomes.get(gate_id, {}).get("details") or {}
@@ -610,14 +615,39 @@ def _phase_outcomes(document: Mapping[str, Any]) -> dict[str, Mapping[str, Any]]
 
 
 def _read_targets(path: Path) -> pd.DataFrame:
+    """targets.csv's keys and errors; a withheld row's error is blank.
+
+    A row whose model figures the build withholds (microcosm#1262) reads NaN,
+    with ``model_figures_withheld`` true; a blank anywhere else is refused as
+    a non-finite error when the errors are split.
+    """
+
+    header = pd.read_csv(path, nrows=0).columns
+    flagged = "model_figures_withheld" in header
     frame = pd.read_csv(
         path,
-        usecols=[*_TARGET_KEY_COLUMNS, "relative_error"],
-        dtype={column: str for column in _TARGET_KEY_COLUMNS},
+        usecols=[
+            *_TARGET_KEY_COLUMNS,
+            "relative_error",
+            *(["model_figures_withheld"] if flagged else []),
+        ],
+        dtype={
+            **{column: str for column in _TARGET_KEY_COLUMNS},
+            "model_figures_withheld": str,
+        },
         keep_default_na=False,
+        na_values={"relative_error": [""]},
         float_precision="round_trip",
     )
     frame["relative_error"] = pd.to_numeric(frame["relative_error"], errors="raise")
+    withheld = (
+        frame["model_figures_withheld"].str.strip().str.lower() == "true"
+        if flagged
+        else pd.Series(False, index=frame.index)
+    )
+    if frame.loc[withheld, "relative_error"].notna().any():
+        raise InputError("targets.csv gives a withheld row's relative error.")
+    frame["model_figures_withheld"] = withheld.to_numpy(dtype=bool)
     return frame
 
 
@@ -653,9 +683,21 @@ def _check_targets(frame: pd.DataFrame, embedded: object) -> None:
     if not np.array_equal(
         expected["relative_error"].to_numpy(dtype=float),
         frame["relative_error"].to_numpy(dtype=float),
+        equal_nan=True,
     ):
         raise InputError(
             "targets.csv relative errors do not match the full gate report."
+        )
+    embedded_flags = (
+        expected["model_figures_withheld"].fillna(False).astype(bool).to_numpy()
+        if "model_figures_withheld" in expected
+        else np.zeros(len(expected), dtype=bool)
+    )
+    if not np.array_equal(
+        embedded_flags, frame["model_figures_withheld"].to_numpy(dtype=bool)
+    ):
+        raise InputError(
+            "targets.csv withholds different rows from the full gate report."
         )
 
 
@@ -683,23 +725,31 @@ def _check_support(frame: pd.DataFrame, embedded: object) -> None:
 
 def _split_errors(
     frame: pd.DataFrame,
-) -> tuple[dict[str, float], dict[str, float]]:
+) -> tuple[dict[str, float], dict[str, float], frozenset[str]]:
+    """National and local errors by gate key, and the withheld local keys."""
+
     national: dict[str, float] = {}
     local: dict[str, float] = {}
+    withheld: set[str] = set()
     for row in frame.itertuples(index=False):
-        error = float(row.relative_error)
-        if not math.isfinite(error):
-            raise InputError("targets.csv carries a non-finite relative error.")
         if row.geography_level in LOCAL_LEVELS:
             key = f"{row.family.strip()}/{row.area_code.strip()}/{row.metric.strip()}"
             target = local
         else:
             key = row.name
             target = national
-        if key in target:
+        if key in target or key in withheld:
             raise InputError(f"targets.csv repeats the gate key {key!r}.")
+        if row.model_figures_withheld:
+            if target is national:
+                raise InputError("targets.csv withholds a national row.")
+            withheld.add(key)
+            continue
+        error = float(row.relative_error)
+        if not math.isfinite(error):
+            raise InputError("targets.csv carries a non-finite relative error.")
         target[key] = error
-    return national, local
+    return national, local, frozenset(withheld)
 
 
 def _check_fit_details(
@@ -707,7 +757,15 @@ def _check_fit_details(
     outcome: Mapping[str, Any],
     errors: Mapping[str, float],
     bound: float,
+    withheld: frozenset[str] = frozenset(),
 ) -> None:
+    """A fit gate's details against targets.csv.
+
+    The gate checks the published rows and counts the withheld ones
+    (microcosm#1262, María's ruling of 2026-10-19), so its count of withheld
+    rows must be targets.csv's and no withheld row may be among its rows.
+    """
+
     if outcome.get("status") not in ("passed", "failed"):
         return
     details = outcome.get("details") or {}
@@ -715,9 +773,15 @@ def _check_fit_details(
         raise InputError(
             f"{gate_id} checked a different number of rows than targets.csv holds."
         )
+    if int(details.get("withheld_targets") or 0) != len(withheld):
+        raise InputError(
+            f"{gate_id} counts different withheld rows from targets.csv's."
+        )
     breaching = {key for key, error in errors.items() if abs(error) > bound}
     failing = set(details.get("failing_targets") or {})
     excused = set(details.get("reviewed_exclusions") or {})
+    if (failing | excused) & withheld:
+        raise InputError(f"{gate_id} names a row targets.csv withholds.")
     if failing | excused != breaching:
         raise InputError(
             f"{gate_id}'s failing and excused rows differ from targets.csv's "
@@ -798,16 +862,16 @@ def load_build(run_dir: Path, *, allow_dev_build: bool = False) -> BuildEvidence
     missing = sorted(SIGNABLE_GATES - set(parameters))
     if missing:
         raise InputError(f"the terminal report has no outcome for {missing}.")
-    national, local = _split_errors(targets)
-    for gate_id, errors in (
-        ("uk_target_fit", national),
-        ("uk_local_target_fit", local),
+    national, local, withheld = _split_errors(targets)
+    for gate_id, errors, hidden in (
+        ("uk_target_fit", national, frozenset()),
+        ("uk_local_target_fit", local, withheld),
     ):
         outcome = outcomes[gate_id]
         if (outcome.get("details") or {}).get("evaluation_error") is not None:
             raise InputError(f"{gate_id} failed closed; there is nothing to sign.")
         bound = float(parameters[gate_id]["max_abs_relative_error"])
-        _check_fit_details(gate_id, outcome, errors, bound)
+        _check_fit_details(gate_id, outcome, errors, bound, hidden)
     if (outcomes["uk_local_area_support"].get("details") or {}).get(
         "evaluation_error"
     ) is not None:
@@ -841,6 +905,7 @@ def load_build(run_dir: Path, *, allow_dev_build: bool = False) -> BuildEvidence
         dev_build=dev_build,
         measure_exclusions=measure_exclusions,
         measure_exclusions_from=measure_exclusions_from,
+        local_withheld=withheld,
     )
     below = area_support_below_floor(support, **evidence.area_floors)
     if "support_below_floor" in support and not np.array_equal(
@@ -2879,14 +2944,22 @@ def verify(
         )
         if not reused:
             warnings.append("build 2 did not reuse build 1's solve")
-        differing = sum(
-            1
-            for errors_1, errors_2 in (
-                (build_1.national_errors, build_2.national_errors),
-                (build_1.local_errors, build_2.local_errors),
-            )
-            for key in set(errors_1) | set(errors_2)
-            if errors_1.get(key) != errors_2.get(key)
+        # A row withheld in one build and published in the other differs once
+        # (the fourth review of #1305).
+        differing = len(
+            {
+                (line, key)
+                for line, errors_1, errors_2 in (
+                    ("national", build_1.national_errors, build_2.national_errors),
+                    ("local", build_1.local_errors, build_2.local_errors),
+                )
+                for key in set(errors_1) | set(errors_2)
+                if errors_1.get(key) != errors_2.get(key)
+            }
+            | {
+                ("local", key)
+                for key in build_1.local_withheld ^ build_2.local_withheld
+            }
         )
         if differing:
             warnings.append(f"{differing} target rows differ from build 1")

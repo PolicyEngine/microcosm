@@ -1351,7 +1351,7 @@ def replay_uk_dense_gate_battery(
     """Write the local gate report the dense release contract verifies.
 
     The graph evaluated every UK gate once (``uk.full.gates.calibrated``);
-    the dense line ships the six-gate local battery, signed and bound to its
+    the dense line ships the seven-gate local battery, signed and bound to its
     Logbook attempt. The stored terminal outcomes are projected onto the
     local scope in the scoped manifest's order — nothing is re-evaluated:
     both manifests hold the same frozen declarations, and the projection
