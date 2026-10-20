@@ -132,6 +132,9 @@ _STAGE_MODULES = {
 # helpers and the adapter's input-retention checks into every consuming stage.
 _STAGE_HELPER_MODULES = {
     "frs_hmrc_spine_leaves": (frs_hmrc_source,),
+    # The SPI income stage's imputation, band-donor resample and receipt live
+    # in spi_income, so an edit there moves the stage's hash (microcosm#1278).
+    "hmrc_spi_income_spine": (spi_income,),
     "frs_spine": (uc_relationships,),
     "frs_legacy_proxies": (uk_engine_adapter,),
     "frs_education_grant_split": (uk_engine_adapter,),

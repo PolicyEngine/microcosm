@@ -189,6 +189,35 @@ def test_uc_relationship_helper_changes_affected_kernel_hashes(monkeypatch) -> N
     assert registry.implementation_hash(control_ref) == before[control_ref]
 
 
+def test_spi_income_source_changes_invalidate_the_stages_that_run_it(monkeypatch):
+    # The SPI income stage's module only imports the imputation, the band-donor
+    # resample and its receipt from spi_income, so spi_income is bound as the
+    # stage's helper; the landlords' stage already binds it (microcosm#1278).
+    from microcosm.build.uk_runtime import spi_income
+
+    graph = uk_spine_graph()
+    registry = uk_registry(graph=graph)
+    affected = [
+        graph.node(stage).kernel
+        for stage in ("hmrc_spi_income_spine", "property_components")
+    ]
+    control = graph.node("frs_council_tax").kernel
+    before = {ref: registry.implementation_hash(ref) for ref in (*affected, control)}
+    helper_path = Path(spi_income.__file__).resolve()
+    original = Path.read_bytes
+
+    def changed_helper_bytes(path: Path) -> bytes:
+        content = original(path)
+        if path.resolve() == helper_path:
+            return content + b"\n# A helper-only source change.\n"
+        return content
+
+    monkeypatch.setattr(Path, "read_bytes", changed_helper_bytes)
+    for ref in affected:
+        assert registry.implementation_hash(ref) != before[ref]
+    assert registry.implementation_hash(control) == before[control]
+
+
 def test_uk_adapter_source_changes_invalidate_all_consuming_stages(monkeypatch):
     from microcosm.frame.adapters import policyengine_uk
 
