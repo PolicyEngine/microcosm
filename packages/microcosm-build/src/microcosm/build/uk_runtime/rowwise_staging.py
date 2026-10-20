@@ -372,7 +372,10 @@ _staging_epoch_every = staging_epoch_every
 
 
 def thinned_epochs(
-    sink: Callable[[Mapping[str, Any]], None], *, every: int = STAGING_EPOCH_EVERY
+    sink: Callable[[Mapping[str, Any]], None],
+    *,
+    every: int = STAGING_EPOCH_EVERY,
+    withhold_loss: bool = False,
 ) -> Callable[[dict[str, object]], None]:
     """Forward every ``every``-th epoch and each phase's last epoch to ``sink``.
 
@@ -381,6 +384,10 @@ def thinned_epochs(
     (the national command never runs a budget search and never met this). A
     contract or content refusal from the telemetry is reported once and stops
     the forwarding: the solve must never abort on its own progress report.
+
+    ``withhold_loss`` forwards each epoch with a null ``loss``: an epoch's loss
+    covers every row, so for a problem that may withhold a row's model figures
+    it would give them back against the published ones (microcosm#1262).
     """
 
     disabled = False
@@ -394,6 +401,8 @@ def thinned_epochs(
         if epoch % every != 0 and epoch != epochs:
             return
         forwarded = dict(event)
+        if withhold_loss:
+            forwarded["loss"] = None
         budget_search = forwarded.get("budget_search")
         if isinstance(budget_search, bool):
             forwarded["budget_search"] = 1 if budget_search else None

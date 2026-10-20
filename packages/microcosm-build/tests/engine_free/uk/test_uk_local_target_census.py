@@ -44,7 +44,7 @@ def test_census_top_level_shape() -> None:
     census = build_uk_local_target_census()
     assert census["schema_version"] == CENSUS_SCHEMA_VERSION
     assert census["census_kind"] == CENSUS_KIND
-    assert census["area_types"] == ["constituency", "la"]
+    assert census["area_types"] == ["constituency", "la", "brma"]
     for key in ("metrics", "families", "sources", "binding_fences"):
         assert isinstance(census[key], list)
         assert census[key], f"census {key!r} must not be empty"
@@ -55,12 +55,16 @@ def test_census_covers_every_bound_metric_exactly_once() -> None:
     rows = {row["name"]: row for row in census["metrics"]}
     assert len(rows) == len(census["metrics"]), "metric rows must be unique by name"
 
-    for area_type in ("constituency", "la"):
+    for area_type in ("constituency", "la", "brma"):
         for name in metric_names(area_type):
             assert name in rows, f"in-code metric {name!r} missing from census"
             assert area_type in rows[name]["area_types"]
 
-    in_code = set(metric_names("constituency")) | set(metric_names("la"))
+    in_code = (
+        set(metric_names("constituency"))
+        | set(metric_names("la"))
+        | set(metric_names("brma"))
+    )
     assert set(rows) == in_code, "census must not invent metrics absent from code"
     for row in census["metrics"]:
         assert row["status"] == METRIC_STATUS_BOUND_IN_CODE
@@ -131,8 +135,15 @@ def test_census_source_rows_are_reviewed_pointers() -> None:
             assert source["signed_rationale"], source["source_id"]
         assert source["geographies"], source["source_id"]
         # "country": a nation's total that sets a family's level factor and
-        # binds no cell (DESNZ's Northern Ireland rows, microcosm#1278).
-        assert set(source["geographies"]) <= {"constituency", "la", "msoa", "country"}
+        # binds no cell (DESNZ's Northern Ireland rows, microcosm#1278); "brma":
+        # Scotland's PIPR rents (microcosm#1262).
+        assert set(source["geographies"]) <= {
+            "constituency",
+            "la",
+            "brma",
+            "msoa",
+            "country",
+        }
 
     household_family = next(
         family

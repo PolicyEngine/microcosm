@@ -1,11 +1,11 @@
 {
   "source_fact_feed": "chronicle-uk-artifact-abf0921",
   "target_period": 2025,
-  "candidate_count": 27115,
-  "contract_target_count": 58,
-  "active_reference_count": 22986,
+  "candidate_count": 27133,
+  "contract_target_count": 59,
+  "active_reference_count": 23004,
   "status_counts": {
-    "active": 22986,
+    "active": 23004,
     "no_fact_for_area": 1242,
     "signed_deferral_compile_error": 1,
     "signed_deferred": 2886
@@ -1025,6 +1025,26 @@
       "W06000022",
       "W06000023",
       "W06000024"
+    ],
+    "statistical_scope": [
+      "S33000001",
+      "S33000002",
+      "S33000003",
+      "S33000004",
+      "S33000005",
+      "S33000006",
+      "S33000007",
+      "S33000008",
+      "S33000009",
+      "S33000010",
+      "S33000011",
+      "S33000012",
+      "S33000013",
+      "S33000014",
+      "S33000015",
+      "S33000016",
+      "S33000017",
+      "S33000018"
     ]
   },
   "area_scope_by_target_id": {
@@ -12035,7 +12055,7 @@
       "target_id": "ons.rent.private_rent",
       "geography_level": "local_authority",
       "reason_id": "private_rent_pipr_scotland_brma_grain",
-      "rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred.",
+      "rationale": "PIPR publishes Scotland's rents for its 18 Broad Rental Market Areas only, and they bind at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262). The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so a council has no published rent of its own, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. All 32 council cells remain deferred.",
       "area_ids": [
         "S12000005",
         "S12000006",
@@ -12075,7 +12095,7 @@
       "target_id": "ons.rent.private_rent",
       "geography_level": "local_authority",
       "reason_id": "private_rent_pipr_ni_absent",
-      "rationale": "The pinned PIPR monthly series contains zero Northern Ireland rows at any geography level, so all 11 Northern Ireland local-authority cells remain signed absent.",
+      "rationale": "PIPR publishes Northern Ireland only as a country mean (every month of 2025, beside the UK, Great Britain, nation and region means), with no district rows, so all 11 Northern Ireland local-authority cells remain signed absent. A nation or region mean is no higher control for the district cells: a mean is not additive, and the rents' level comes from the FRS (microcosm#1262).",
       "area_ids": [
         "N09000001",
         "N09000002",
@@ -117808,6 +117828,150 @@
       "to": "2025"
     },
     {
+      "name": "ons.rent.private_rent_brma@S33000001",
+      "target_id": "ons.rent.private_rent_brma",
+      "geography_level": "statistical_scope",
+      "geography_id": "S33000001",
+      "from": "2025-12",
+      "to": "2025"
+    },
+    {
+      "name": "ons.rent.private_rent_brma@S33000002",
+      "target_id": "ons.rent.private_rent_brma",
+      "geography_level": "statistical_scope",
+      "geography_id": "S33000002",
+      "from": "2025-12",
+      "to": "2025"
+    },
+    {
+      "name": "ons.rent.private_rent_brma@S33000003",
+      "target_id": "ons.rent.private_rent_brma",
+      "geography_level": "statistical_scope",
+      "geography_id": "S33000003",
+      "from": "2025-12",
+      "to": "2025"
+    },
+    {
+      "name": "ons.rent.private_rent_brma@S33000004",
+      "target_id": "ons.rent.private_rent_brma",
+      "geography_level": "statistical_scope",
+      "geography_id": "S33000004",
+      "from": "2025-12",
+      "to": "2025"
+    },
+    {
+      "name": "ons.rent.private_rent_brma@S33000005",
+      "target_id": "ons.rent.private_rent_brma",
+      "geography_level": "statistical_scope",
+      "geography_id": "S33000005",
+      "from": "2025-12",
+      "to": "2025"
+    },
+    {
+      "name": "ons.rent.private_rent_brma@S33000006",
+      "target_id": "ons.rent.private_rent_brma",
+      "geography_level": "statistical_scope",
+      "geography_id": "S33000006",
+      "from": "2025-12",
+      "to": "2025"
+    },
+    {
+      "name": "ons.rent.private_rent_brma@S33000007",
+      "target_id": "ons.rent.private_rent_brma",
+      "geography_level": "statistical_scope",
+      "geography_id": "S33000007",
+      "from": "2025-12",
+      "to": "2025"
+    },
+    {
+      "name": "ons.rent.private_rent_brma@S33000008",
+      "target_id": "ons.rent.private_rent_brma",
+      "geography_level": "statistical_scope",
+      "geography_id": "S33000008",
+      "from": "2025-12",
+      "to": "2025"
+    },
+    {
+      "name": "ons.rent.private_rent_brma@S33000009",
+      "target_id": "ons.rent.private_rent_brma",
+      "geography_level": "statistical_scope",
+      "geography_id": "S33000009",
+      "from": "2025-12",
+      "to": "2025"
+    },
+    {
+      "name": "ons.rent.private_rent_brma@S33000010",
+      "target_id": "ons.rent.private_rent_brma",
+      "geography_level": "statistical_scope",
+      "geography_id": "S33000010",
+      "from": "2025-12",
+      "to": "2025"
+    },
+    {
+      "name": "ons.rent.private_rent_brma@S33000011",
+      "target_id": "ons.rent.private_rent_brma",
+      "geography_level": "statistical_scope",
+      "geography_id": "S33000011",
+      "from": "2025-12",
+      "to": "2025"
+    },
+    {
+      "name": "ons.rent.private_rent_brma@S33000012",
+      "target_id": "ons.rent.private_rent_brma",
+      "geography_level": "statistical_scope",
+      "geography_id": "S33000012",
+      "from": "2025-12",
+      "to": "2025"
+    },
+    {
+      "name": "ons.rent.private_rent_brma@S33000013",
+      "target_id": "ons.rent.private_rent_brma",
+      "geography_level": "statistical_scope",
+      "geography_id": "S33000013",
+      "from": "2025-12",
+      "to": "2025"
+    },
+    {
+      "name": "ons.rent.private_rent_brma@S33000014",
+      "target_id": "ons.rent.private_rent_brma",
+      "geography_level": "statistical_scope",
+      "geography_id": "S33000014",
+      "from": "2025-12",
+      "to": "2025"
+    },
+    {
+      "name": "ons.rent.private_rent_brma@S33000015",
+      "target_id": "ons.rent.private_rent_brma",
+      "geography_level": "statistical_scope",
+      "geography_id": "S33000015",
+      "from": "2025-12",
+      "to": "2025"
+    },
+    {
+      "name": "ons.rent.private_rent_brma@S33000016",
+      "target_id": "ons.rent.private_rent_brma",
+      "geography_level": "statistical_scope",
+      "geography_id": "S33000016",
+      "from": "2025-12",
+      "to": "2025"
+    },
+    {
+      "name": "ons.rent.private_rent_brma@S33000017",
+      "target_id": "ons.rent.private_rent_brma",
+      "geography_level": "statistical_scope",
+      "geography_id": "S33000017",
+      "from": "2025-12",
+      "to": "2025"
+    },
+    {
+      "name": "ons.rent.private_rent_brma@S33000018",
+      "target_id": "ons.rent.private_rent_brma",
+      "geography_level": "statistical_scope",
+      "geography_id": "S33000018",
+      "from": "2025-12",
+      "to": "2025"
+    },
+    {
       "name": "ons.census.households@E14001063",
       "target_id": "ons.census.households",
       "geography_level": "constituency",
@@ -161618,6 +161782,7 @@
     "ons.age.70_80": 650,
     "ons.census.households": 1011,
     "ons.rent.private_rent": 316,
+    "ons.rent.private_rent_brma": 18,
     "ons.tenure.owned_mortgage": 359,
     "ons.tenure.owned_outright": 359,
     "ons.tenure.private_rent": 359,
@@ -402124,7 +402289,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_ni_absent",
-              "signed_rationale": "The pinned PIPR monthly series contains zero Northern Ireland rows at any geography level, so all 11 Northern Ireland local-authority cells remain signed absent."
+              "signed_rationale": "PIPR publishes Northern Ireland only as a country mean (every month of 2025, beside the UK, Great Britain, nation and region means), with no district rows, so all 11 Northern Ireland local-authority cells remain signed absent. A nation or region mean is no higher control for the district cells: a mean is not additive, and the rents' level comes from the FRS (microcosm#1262)."
             },
             {
               "name": "ons.rent.private_rent@N09000002",
@@ -402136,7 +402301,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_ni_absent",
-              "signed_rationale": "The pinned PIPR monthly series contains zero Northern Ireland rows at any geography level, so all 11 Northern Ireland local-authority cells remain signed absent."
+              "signed_rationale": "PIPR publishes Northern Ireland only as a country mean (every month of 2025, beside the UK, Great Britain, nation and region means), with no district rows, so all 11 Northern Ireland local-authority cells remain signed absent. A nation or region mean is no higher control for the district cells: a mean is not additive, and the rents' level comes from the FRS (microcosm#1262)."
             },
             {
               "name": "ons.rent.private_rent@N09000003",
@@ -402148,7 +402313,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_ni_absent",
-              "signed_rationale": "The pinned PIPR monthly series contains zero Northern Ireland rows at any geography level, so all 11 Northern Ireland local-authority cells remain signed absent."
+              "signed_rationale": "PIPR publishes Northern Ireland only as a country mean (every month of 2025, beside the UK, Great Britain, nation and region means), with no district rows, so all 11 Northern Ireland local-authority cells remain signed absent. A nation or region mean is no higher control for the district cells: a mean is not additive, and the rents' level comes from the FRS (microcosm#1262)."
             },
             {
               "name": "ons.rent.private_rent@N09000004",
@@ -402160,7 +402325,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_ni_absent",
-              "signed_rationale": "The pinned PIPR monthly series contains zero Northern Ireland rows at any geography level, so all 11 Northern Ireland local-authority cells remain signed absent."
+              "signed_rationale": "PIPR publishes Northern Ireland only as a country mean (every month of 2025, beside the UK, Great Britain, nation and region means), with no district rows, so all 11 Northern Ireland local-authority cells remain signed absent. A nation or region mean is no higher control for the district cells: a mean is not additive, and the rents' level comes from the FRS (microcosm#1262)."
             },
             {
               "name": "ons.rent.private_rent@N09000005",
@@ -402172,7 +402337,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_ni_absent",
-              "signed_rationale": "The pinned PIPR monthly series contains zero Northern Ireland rows at any geography level, so all 11 Northern Ireland local-authority cells remain signed absent."
+              "signed_rationale": "PIPR publishes Northern Ireland only as a country mean (every month of 2025, beside the UK, Great Britain, nation and region means), with no district rows, so all 11 Northern Ireland local-authority cells remain signed absent. A nation or region mean is no higher control for the district cells: a mean is not additive, and the rents' level comes from the FRS (microcosm#1262)."
             },
             {
               "name": "ons.rent.private_rent@N09000006",
@@ -402184,7 +402349,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_ni_absent",
-              "signed_rationale": "The pinned PIPR monthly series contains zero Northern Ireland rows at any geography level, so all 11 Northern Ireland local-authority cells remain signed absent."
+              "signed_rationale": "PIPR publishes Northern Ireland only as a country mean (every month of 2025, beside the UK, Great Britain, nation and region means), with no district rows, so all 11 Northern Ireland local-authority cells remain signed absent. A nation or region mean is no higher control for the district cells: a mean is not additive, and the rents' level comes from the FRS (microcosm#1262)."
             },
             {
               "name": "ons.rent.private_rent@N09000007",
@@ -402196,7 +402361,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_ni_absent",
-              "signed_rationale": "The pinned PIPR monthly series contains zero Northern Ireland rows at any geography level, so all 11 Northern Ireland local-authority cells remain signed absent."
+              "signed_rationale": "PIPR publishes Northern Ireland only as a country mean (every month of 2025, beside the UK, Great Britain, nation and region means), with no district rows, so all 11 Northern Ireland local-authority cells remain signed absent. A nation or region mean is no higher control for the district cells: a mean is not additive, and the rents' level comes from the FRS (microcosm#1262)."
             },
             {
               "name": "ons.rent.private_rent@N09000008",
@@ -402208,7 +402373,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_ni_absent",
-              "signed_rationale": "The pinned PIPR monthly series contains zero Northern Ireland rows at any geography level, so all 11 Northern Ireland local-authority cells remain signed absent."
+              "signed_rationale": "PIPR publishes Northern Ireland only as a country mean (every month of 2025, beside the UK, Great Britain, nation and region means), with no district rows, so all 11 Northern Ireland local-authority cells remain signed absent. A nation or region mean is no higher control for the district cells: a mean is not additive, and the rents' level comes from the FRS (microcosm#1262)."
             },
             {
               "name": "ons.rent.private_rent@N09000009",
@@ -402220,7 +402385,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_ni_absent",
-              "signed_rationale": "The pinned PIPR monthly series contains zero Northern Ireland rows at any geography level, so all 11 Northern Ireland local-authority cells remain signed absent."
+              "signed_rationale": "PIPR publishes Northern Ireland only as a country mean (every month of 2025, beside the UK, Great Britain, nation and region means), with no district rows, so all 11 Northern Ireland local-authority cells remain signed absent. A nation or region mean is no higher control for the district cells: a mean is not additive, and the rents' level comes from the FRS (microcosm#1262)."
             },
             {
               "name": "ons.rent.private_rent@N09000010",
@@ -402232,7 +402397,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_ni_absent",
-              "signed_rationale": "The pinned PIPR monthly series contains zero Northern Ireland rows at any geography level, so all 11 Northern Ireland local-authority cells remain signed absent."
+              "signed_rationale": "PIPR publishes Northern Ireland only as a country mean (every month of 2025, beside the UK, Great Britain, nation and region means), with no district rows, so all 11 Northern Ireland local-authority cells remain signed absent. A nation or region mean is no higher control for the district cells: a mean is not additive, and the rents' level comes from the FRS (microcosm#1262)."
             },
             {
               "name": "ons.rent.private_rent@N09000011",
@@ -402244,7 +402409,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_ni_absent",
-              "signed_rationale": "The pinned PIPR monthly series contains zero Northern Ireland rows at any geography level, so all 11 Northern Ireland local-authority cells remain signed absent."
+              "signed_rationale": "PIPR publishes Northern Ireland only as a country mean (every month of 2025, beside the UK, Great Britain, nation and region means), with no district rows, so all 11 Northern Ireland local-authority cells remain signed absent. A nation or region mean is no higher control for the district cells: a mean is not additive, and the rents' level comes from the FRS (microcosm#1262)."
             },
             {
               "name": "ons.rent.private_rent@S12000005",
@@ -402256,7 +402421,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "PIPR publishes Scotland's rents for its 18 Broad Rental Market Areas only, and they bind at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262). The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so a council has no published rent of its own, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. All 32 council cells remain deferred."
             },
             {
               "name": "ons.rent.private_rent@S12000006",
@@ -402268,7 +402433,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "PIPR publishes Scotland's rents for its 18 Broad Rental Market Areas only, and they bind at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262). The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so a council has no published rent of its own, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. All 32 council cells remain deferred."
             },
             {
               "name": "ons.rent.private_rent@S12000008",
@@ -402280,7 +402445,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "PIPR publishes Scotland's rents for its 18 Broad Rental Market Areas only, and they bind at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262). The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so a council has no published rent of its own, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. All 32 council cells remain deferred."
             },
             {
               "name": "ons.rent.private_rent@S12000010",
@@ -402292,7 +402457,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "PIPR publishes Scotland's rents for its 18 Broad Rental Market Areas only, and they bind at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262). The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so a council has no published rent of its own, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. All 32 council cells remain deferred."
             },
             {
               "name": "ons.rent.private_rent@S12000011",
@@ -402304,7 +402469,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "PIPR publishes Scotland's rents for its 18 Broad Rental Market Areas only, and they bind at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262). The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so a council has no published rent of its own, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. All 32 council cells remain deferred."
             },
             {
               "name": "ons.rent.private_rent@S12000013",
@@ -402316,7 +402481,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "PIPR publishes Scotland's rents for its 18 Broad Rental Market Areas only, and they bind at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262). The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so a council has no published rent of its own, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. All 32 council cells remain deferred."
             },
             {
               "name": "ons.rent.private_rent@S12000014",
@@ -402328,7 +402493,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "PIPR publishes Scotland's rents for its 18 Broad Rental Market Areas only, and they bind at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262). The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so a council has no published rent of its own, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. All 32 council cells remain deferred."
             },
             {
               "name": "ons.rent.private_rent@S12000017",
@@ -402340,7 +402505,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "PIPR publishes Scotland's rents for its 18 Broad Rental Market Areas only, and they bind at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262). The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so a council has no published rent of its own, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. All 32 council cells remain deferred."
             },
             {
               "name": "ons.rent.private_rent@S12000018",
@@ -402352,7 +402517,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "PIPR publishes Scotland's rents for its 18 Broad Rental Market Areas only, and they bind at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262). The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so a council has no published rent of its own, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. All 32 council cells remain deferred."
             },
             {
               "name": "ons.rent.private_rent@S12000019",
@@ -402364,7 +402529,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "PIPR publishes Scotland's rents for its 18 Broad Rental Market Areas only, and they bind at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262). The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so a council has no published rent of its own, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. All 32 council cells remain deferred."
             },
             {
               "name": "ons.rent.private_rent@S12000020",
@@ -402376,7 +402541,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "PIPR publishes Scotland's rents for its 18 Broad Rental Market Areas only, and they bind at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262). The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so a council has no published rent of its own, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. All 32 council cells remain deferred."
             },
             {
               "name": "ons.rent.private_rent@S12000021",
@@ -402388,7 +402553,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "PIPR publishes Scotland's rents for its 18 Broad Rental Market Areas only, and they bind at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262). The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so a council has no published rent of its own, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. All 32 council cells remain deferred."
             },
             {
               "name": "ons.rent.private_rent@S12000023",
@@ -402400,7 +402565,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "PIPR publishes Scotland's rents for its 18 Broad Rental Market Areas only, and they bind at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262). The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so a council has no published rent of its own, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. All 32 council cells remain deferred."
             },
             {
               "name": "ons.rent.private_rent@S12000026",
@@ -402412,7 +402577,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "PIPR publishes Scotland's rents for its 18 Broad Rental Market Areas only, and they bind at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262). The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so a council has no published rent of its own, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. All 32 council cells remain deferred."
             },
             {
               "name": "ons.rent.private_rent@S12000027",
@@ -402424,7 +402589,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "PIPR publishes Scotland's rents for its 18 Broad Rental Market Areas only, and they bind at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262). The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so a council has no published rent of its own, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. All 32 council cells remain deferred."
             },
             {
               "name": "ons.rent.private_rent@S12000028",
@@ -402436,7 +402601,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "PIPR publishes Scotland's rents for its 18 Broad Rental Market Areas only, and they bind at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262). The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so a council has no published rent of its own, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. All 32 council cells remain deferred."
             },
             {
               "name": "ons.rent.private_rent@S12000029",
@@ -402448,7 +402613,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "PIPR publishes Scotland's rents for its 18 Broad Rental Market Areas only, and they bind at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262). The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so a council has no published rent of its own, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. All 32 council cells remain deferred."
             },
             {
               "name": "ons.rent.private_rent@S12000030",
@@ -402460,7 +402625,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "PIPR publishes Scotland's rents for its 18 Broad Rental Market Areas only, and they bind at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262). The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so a council has no published rent of its own, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. All 32 council cells remain deferred."
             },
             {
               "name": "ons.rent.private_rent@S12000033",
@@ -402472,7 +402637,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "PIPR publishes Scotland's rents for its 18 Broad Rental Market Areas only, and they bind at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262). The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so a council has no published rent of its own, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. All 32 council cells remain deferred."
             },
             {
               "name": "ons.rent.private_rent@S12000034",
@@ -402484,7 +402649,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "PIPR publishes Scotland's rents for its 18 Broad Rental Market Areas only, and they bind at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262). The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so a council has no published rent of its own, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. All 32 council cells remain deferred."
             },
             {
               "name": "ons.rent.private_rent@S12000035",
@@ -402496,7 +402661,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "PIPR publishes Scotland's rents for its 18 Broad Rental Market Areas only, and they bind at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262). The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so a council has no published rent of its own, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. All 32 council cells remain deferred."
             },
             {
               "name": "ons.rent.private_rent@S12000036",
@@ -402508,7 +402673,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "PIPR publishes Scotland's rents for its 18 Broad Rental Market Areas only, and they bind at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262). The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so a council has no published rent of its own, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. All 32 council cells remain deferred."
             },
             {
               "name": "ons.rent.private_rent@S12000038",
@@ -402520,7 +402685,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "PIPR publishes Scotland's rents for its 18 Broad Rental Market Areas only, and they bind at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262). The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so a council has no published rent of its own, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. All 32 council cells remain deferred."
             },
             {
               "name": "ons.rent.private_rent@S12000039",
@@ -402532,7 +402697,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "PIPR publishes Scotland's rents for its 18 Broad Rental Market Areas only, and they bind at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262). The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so a council has no published rent of its own, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. All 32 council cells remain deferred."
             },
             {
               "name": "ons.rent.private_rent@S12000040",
@@ -402544,7 +402709,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "PIPR publishes Scotland's rents for its 18 Broad Rental Market Areas only, and they bind at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262). The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so a council has no published rent of its own, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. All 32 council cells remain deferred."
             },
             {
               "name": "ons.rent.private_rent@S12000041",
@@ -402556,7 +402721,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "PIPR publishes Scotland's rents for its 18 Broad Rental Market Areas only, and they bind at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262). The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so a council has no published rent of its own, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. All 32 council cells remain deferred."
             },
             {
               "name": "ons.rent.private_rent@S12000042",
@@ -402568,7 +402733,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "PIPR publishes Scotland's rents for its 18 Broad Rental Market Areas only, and they bind at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262). The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so a council has no published rent of its own, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. All 32 council cells remain deferred."
             },
             {
               "name": "ons.rent.private_rent@S12000045",
@@ -402580,7 +402745,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "PIPR publishes Scotland's rents for its 18 Broad Rental Market Areas only, and they bind at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262). The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so a council has no published rent of its own, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. All 32 council cells remain deferred."
             },
             {
               "name": "ons.rent.private_rent@S12000047",
@@ -402592,7 +402757,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "PIPR publishes Scotland's rents for its 18 Broad Rental Market Areas only, and they bind at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262). The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so a council has no published rent of its own, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. All 32 council cells remain deferred."
             },
             {
               "name": "ons.rent.private_rent@S12000048",
@@ -402604,7 +402769,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "PIPR publishes Scotland's rents for its 18 Broad Rental Market Areas only, and they bind at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262). The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so a council has no published rent of its own, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. All 32 council cells remain deferred."
             },
             {
               "name": "ons.rent.private_rent@S12000049",
@@ -402616,7 +402781,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "PIPR publishes Scotland's rents for its 18 Broad Rental Market Areas only, and they bind at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262). The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so a council has no published rent of its own, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. All 32 council cells remain deferred."
             },
             {
               "name": "ons.rent.private_rent@S12000050",
@@ -402628,7 +402793,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "PIPR publishes Scotland's rents for its 18 Broad Rental Market Areas only, and they bind at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262). The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so a council has no published rent of its own, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. All 32 council cells remain deferred."
             },
             {
               "name": "ons.rent.private_rent@W06000001",
@@ -402915,6 +403080,251 @@
               "resolved_value": 749.5,
               "resolved_fact_period": "2025-12",
               "resolved_fact_key": "ledger_aggregate_fact_v2_1e0b6ba855ae49031bb692e8"
+            }
+          ]
+        }
+      }
+    },
+    "ons.rent.private_rent_brma": {
+      "status": "active",
+      "geography_levels": {
+        "statistical_scope": {
+          "status": "active",
+          "candidate_count": 18,
+          "candidates": [
+            {
+              "name": "ons.rent.private_rent_brma@S33000001",
+              "target_id": "ons.rent.private_rent_brma",
+              "geography_level": "statistical_scope",
+              "geography_id": "S33000001",
+              "status": "active",
+              "matched_fact_count_overall": 42,
+              "matched_fact_count_at_or_before_period": 36,
+              "resolved_period": 2025,
+              "resolved_value": 847.75,
+              "resolved_fact_period": "2025-12",
+              "resolved_fact_key": "ledger_aggregate_fact_v2_fc8a5dc8f993b167723b0e2b"
+            },
+            {
+              "name": "ons.rent.private_rent_brma@S33000002",
+              "target_id": "ons.rent.private_rent_brma",
+              "geography_level": "statistical_scope",
+              "geography_id": "S33000002",
+              "status": "active",
+              "matched_fact_count_overall": 42,
+              "matched_fact_count_at_or_before_period": 36,
+              "resolved_period": 2025,
+              "resolved_value": 832.4166666666666,
+              "resolved_fact_period": "2025-12",
+              "resolved_fact_key": "ledger_aggregate_fact_v2_2049cd2b5d034986467e8166"
+            },
+            {
+              "name": "ons.rent.private_rent_brma@S33000003",
+              "target_id": "ons.rent.private_rent_brma",
+              "geography_level": "statistical_scope",
+              "geography_id": "S33000003",
+              "status": "active",
+              "matched_fact_count_overall": 42,
+              "matched_fact_count_at_or_before_period": 36,
+              "resolved_period": 2025,
+              "resolved_value": 627.9166666666666,
+              "resolved_fact_period": "2025-12",
+              "resolved_fact_key": "ledger_aggregate_fact_v2_63d5f0fd7bdc448d1b75f716"
+            },
+            {
+              "name": "ons.rent.private_rent_brma@S33000004",
+              "target_id": "ons.rent.private_rent_brma",
+              "geography_level": "statistical_scope",
+              "geography_id": "S33000004",
+              "status": "active",
+              "matched_fact_count_overall": 42,
+              "matched_fact_count_at_or_before_period": 36,
+              "resolved_period": 2025,
+              "resolved_value": 526.5833333333334,
+              "resolved_fact_period": "2025-12",
+              "resolved_fact_key": "ledger_aggregate_fact_v2_16b66f5e4f3065c172c96105"
+            },
+            {
+              "name": "ons.rent.private_rent_brma@S33000005",
+              "target_id": "ons.rent.private_rent_brma",
+              "geography_level": "statistical_scope",
+              "geography_id": "S33000005",
+              "status": "active",
+              "matched_fact_count_overall": 42,
+              "matched_fact_count_at_or_before_period": 36,
+              "resolved_period": 2025,
+              "resolved_value": 828.9166666666666,
+              "resolved_fact_period": "2025-12",
+              "resolved_fact_key": "ledger_aggregate_fact_v2_e1c8e897a803697f48102c68"
+            },
+            {
+              "name": "ons.rent.private_rent_brma@S33000006",
+              "target_id": "ons.rent.private_rent_brma",
+              "geography_level": "statistical_scope",
+              "geography_id": "S33000006",
+              "status": "active",
+              "matched_fact_count_overall": 42,
+              "matched_fact_count_at_or_before_period": 36,
+              "resolved_period": 2025,
+              "resolved_value": 1110.5,
+              "resolved_fact_period": "2025-12",
+              "resolved_fact_key": "ledger_aggregate_fact_v2_18a2238f0715f61b0eec4e4b"
+            },
+            {
+              "name": "ons.rent.private_rent_brma@S33000007",
+              "target_id": "ons.rent.private_rent_brma",
+              "geography_level": "statistical_scope",
+              "geography_id": "S33000007",
+              "status": "active",
+              "matched_fact_count_overall": 42,
+              "matched_fact_count_at_or_before_period": 36,
+              "resolved_period": 2025,
+              "resolved_value": 812.4166666666666,
+              "resolved_fact_period": "2025-12",
+              "resolved_fact_key": "ledger_aggregate_fact_v2_73a6e0201d7d93aa78b9c7d4"
+            },
+            {
+              "name": "ons.rent.private_rent_brma@S33000008",
+              "target_id": "ons.rent.private_rent_brma",
+              "geography_level": "statistical_scope",
+              "geography_id": "S33000008",
+              "status": "active",
+              "matched_fact_count_overall": 42,
+              "matched_fact_count_at_or_before_period": 36,
+              "resolved_period": 2025,
+              "resolved_value": 879.25,
+              "resolved_fact_period": "2025-12",
+              "resolved_fact_key": "ledger_aggregate_fact_v2_75b72e54ffe45064770ca6f9"
+            },
+            {
+              "name": "ons.rent.private_rent_brma@S33000009",
+              "target_id": "ons.rent.private_rent_brma",
+              "geography_level": "statistical_scope",
+              "geography_id": "S33000009",
+              "status": "active",
+              "matched_fact_count_overall": 42,
+              "matched_fact_count_at_or_before_period": 36,
+              "resolved_period": 2025,
+              "resolved_value": 1237.75,
+              "resolved_fact_period": "2025-12",
+              "resolved_fact_key": "ledger_aggregate_fact_v2_b37acb95ea8f276fb8422bee"
+            },
+            {
+              "name": "ons.rent.private_rent_brma@S33000010",
+              "target_id": "ons.rent.private_rent_brma",
+              "geography_level": "statistical_scope",
+              "geography_id": "S33000010",
+              "status": "active",
+              "matched_fact_count_overall": 42,
+              "matched_fact_count_at_or_before_period": 36,
+              "resolved_period": 2025,
+              "resolved_value": 704.8333333333334,
+              "resolved_fact_period": "2025-12",
+              "resolved_fact_key": "ledger_aggregate_fact_v2_15a1ea706028563a4ed15f05"
+            },
+            {
+              "name": "ons.rent.private_rent_brma@S33000011",
+              "target_id": "ons.rent.private_rent_brma",
+              "geography_level": "statistical_scope",
+              "geography_id": "S33000011",
+              "status": "active",
+              "matched_fact_count_overall": 42,
+              "matched_fact_count_at_or_before_period": 36,
+              "resolved_period": 2025,
+              "resolved_value": 1408.5833333333333,
+              "resolved_fact_period": "2025-12",
+              "resolved_fact_key": "ledger_aggregate_fact_v2_e1d25f8dc21a19b6f3da3e82"
+            },
+            {
+              "name": "ons.rent.private_rent_brma@S33000012",
+              "target_id": "ons.rent.private_rent_brma",
+              "geography_level": "statistical_scope",
+              "geography_id": "S33000012",
+              "status": "active",
+              "matched_fact_count_overall": 42,
+              "matched_fact_count_at_or_before_period": 36,
+              "resolved_period": 2025,
+              "resolved_value": 818.9166666666666,
+              "resolved_fact_period": "2025-12",
+              "resolved_fact_key": "ledger_aggregate_fact_v2_2974603be730bffa34155c32"
+            },
+            {
+              "name": "ons.rent.private_rent_brma@S33000013",
+              "target_id": "ons.rent.private_rent_brma",
+              "geography_level": "statistical_scope",
+              "geography_id": "S33000013",
+              "status": "active",
+              "matched_fact_count_overall": 42,
+              "matched_fact_count_at_or_before_period": 36,
+              "resolved_period": 2025,
+              "resolved_value": 746.5833333333334,
+              "resolved_fact_period": "2025-12",
+              "resolved_fact_key": "ledger_aggregate_fact_v2_59a96d2d19fcb1a623502635"
+            },
+            {
+              "name": "ons.rent.private_rent_brma@S33000014",
+              "target_id": "ons.rent.private_rent_brma",
+              "geography_level": "statistical_scope",
+              "geography_id": "S33000014",
+              "status": "active",
+              "matched_fact_count_overall": 42,
+              "matched_fact_count_at_or_before_period": 36,
+              "resolved_period": 2025,
+              "resolved_value": 811.8333333333334,
+              "resolved_fact_period": "2025-12",
+              "resolved_fact_key": "ledger_aggregate_fact_v2_1db5e0ff166f98f03b3f2d2e"
+            },
+            {
+              "name": "ons.rent.private_rent_brma@S33000015",
+              "target_id": "ons.rent.private_rent_brma",
+              "geography_level": "statistical_scope",
+              "geography_id": "S33000015",
+              "status": "active",
+              "matched_fact_count_overall": 42,
+              "matched_fact_count_at_or_before_period": 36,
+              "resolved_period": 2025,
+              "resolved_value": 704.5833333333334,
+              "resolved_fact_period": "2025-12",
+              "resolved_fact_key": "ledger_aggregate_fact_v2_7c1e0a07ebb426307661ca75"
+            },
+            {
+              "name": "ons.rent.private_rent_brma@S33000016",
+              "target_id": "ons.rent.private_rent_brma",
+              "geography_level": "statistical_scope",
+              "geography_id": "S33000016",
+              "status": "active",
+              "matched_fact_count_overall": 42,
+              "matched_fact_count_at_or_before_period": 36,
+              "resolved_period": 2025,
+              "resolved_value": 872.0833333333334,
+              "resolved_fact_period": "2025-12",
+              "resolved_fact_key": "ledger_aggregate_fact_v2_561d653ed1dc846a2451451f"
+            },
+            {
+              "name": "ons.rent.private_rent_brma@S33000017",
+              "target_id": "ons.rent.private_rent_brma",
+              "geography_level": "statistical_scope",
+              "geography_id": "S33000017",
+              "status": "active",
+              "matched_fact_count_overall": 42,
+              "matched_fact_count_at_or_before_period": 36,
+              "resolved_period": 2025,
+              "resolved_value": 904.1666666666666,
+              "resolved_fact_period": "2025-12",
+              "resolved_fact_key": "ledger_aggregate_fact_v2_df83f2d3fa40048d5095871c"
+            },
+            {
+              "name": "ons.rent.private_rent_brma@S33000018",
+              "target_id": "ons.rent.private_rent_brma",
+              "geography_level": "statistical_scope",
+              "geography_id": "S33000018",
+              "status": "active",
+              "matched_fact_count_overall": 42,
+              "matched_fact_count_at_or_before_period": 36,
+              "resolved_period": 2025,
+              "resolved_value": 838.9166666666666,
+              "resolved_fact_period": "2025-12",
+              "resolved_fact_key": "ledger_aggregate_fact_v2_1996ed12e1ea0b78b174b50e"
             }
           ]
         }

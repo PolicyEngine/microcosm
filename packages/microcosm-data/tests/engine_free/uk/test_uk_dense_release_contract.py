@@ -460,6 +460,294 @@ def test_local_area_diagnostics_use_canonical_v8_count_fields() -> None:
     assert failures == []
 
 
+def _withheld_diagnostics(**row_overrides) -> dict:
+    """A published row and a withheld BRMA row, with totals over the first."""
+
+    withheld_row = {
+        "name": "brma",
+        "target": 50.0,
+        "compiled_target": 50.0,
+        "initial_estimate": None,
+        "final_estimate": None,
+        "relative_error": None,
+        "target_loss_weight_share": 0.5,
+        "target_loss_scale": 50.0,
+        "metadata": {
+            "model_figures_withheld": "model figures withheld",
+            "area_type": "brma",
+            "carrier_floor_met": False,
+        },
+        **row_overrides,
+    }
+    return {
+        "schema_version": 8,
+        "n_records": 4,
+        "target_surface": {"n_targets": 2},
+        "initial_loss": 0.1,
+        "final_loss": 0.025,
+        "fraction_within_10pct": 1.0,
+        "target_loss_basis": {"cap": 10.0},
+        "targets": [
+            {
+                "name": "target",
+                "target": 1.0,
+                "compiled_target": 1.0,
+                "initial_estimate": 1.2,
+                "final_estimate": 1.05,
+                "relative_error": 0.05,
+                "target_loss_weight_share": 0.5,
+                "target_loss_scale": 1.0,
+                "final_capped_scaled_error": 0.05,
+                "final_loss_contribution": 0.025,
+            },
+            withheld_row,
+        ],
+        "past_cap_census": {
+            "cap": 10.0,
+            "n_targets": 1,
+            "initial_past_cap": 0,
+            "final_past_cap": 0,
+            "escaped": 0,
+            "frozen": 0,
+            "pushed_out": 0,
+            "pushed_out_rows": [],
+        },
+        "uk_diagnostics": {
+            "model_figures_withheld": {"targets": 1},
+            "target_pass_rates_by_geography_level": [
+                {
+                    "geography_level": "local_authority",
+                    "n_targets": 1,
+                    "n_scored": 1,
+                    "n_skipped": 0,
+                    "n_within_10pct": 1,
+                },
+                {
+                    "geography_level": "brma",
+                    "n_targets": 1,
+                    "n_scored": 1,
+                    "n_skipped": 0,
+                    "n_within_10pct": 0,
+                },
+            ],
+        },
+        "loss_trajectory": [],
+        "options": {
+            "method": "adam",
+            "budget_search": None,
+            "iterate_selection_receipt": {
+                "rule": "best_feasible_loss",
+                "selected_epoch": 3,
+                "selected_loss_float32": None,
+                "closing_iterate_loss_float32": None,
+            },
+        },
+    }
+
+
+def test_a_withheld_row_may_leave_its_estimates_null() -> None:
+    """microcosm#1262: a thin BRMA row keeps its place without its figures."""
+
+    failures: list[str] = []
+    dc._check_local_area_calibration_diagnostics(_withheld_diagnostics(), failures)
+    assert failures == []
+
+
+@pytest.mark.parametrize(
+    "overrides,message",
+    [
+        ({"final_estimate": 40.0}, "withholds its model figures but carries one"),
+        ({"relative_error": -0.2}, "withholds its model figures but carries one"),
+        ({"metadata": {}}, "must be a finite number"),
+    ],
+)
+def test_a_withheld_row_is_held_to_its_note(overrides, message) -> None:
+    failures: list[str] = []
+    dc._check_local_area_calibration_diagnostics(
+        _withheld_diagnostics(**overrides), failures
+    )
+    assert any(message in failure for failure in failures), failures
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["within_tolerance", "final_capped_scaled_error", "final_loss_contribution"],
+)
+def test_a_withheld_row_carries_none_of_its_model_fields(field) -> None:
+    """The third review of #1305: every model field, from the shared tuple."""
+
+    failures: list[str] = []
+    dc._check_local_area_calibration_diagnostics(
+        _withheld_diagnostics(**{field: 0.05}), failures
+    )
+    assert any("withholds its model figures but carries one" in f for f in failures)
+
+
+@pytest.mark.parametrize(
+    "mutate,message",
+    [
+        (lambda d: d.update(loss_trajectory=[0.4, 0.3]), "keeps a loss trajectory"),
+        (
+            lambda d: d["options"]["iterate_selection_receipt"].update(
+                selected_loss_float32=0.3
+            ),
+            "iterate_selection_receipt keeps ['selected_loss_float32']",
+        ),
+        (
+            lambda d: d["options"].update(budget_search={"probes": [{"loss": 0.4}]}),
+            "options.budget_search is not null",
+        ),
+        (
+            lambda d: d.update(past_cap_census={"pushed_out_rows": [{"name": "brma"}]}),
+            "names 1 withheld row(s)",
+        ),
+        (
+            lambda d: d["uk_diagnostics"].update(
+                weakest_families=[{"family": "private_rent", "worst_target": "brma"}]
+            ),
+            "names 1 withheld row(s)",
+        ),
+        (
+            lambda d: d["uk_diagnostics"].update(
+                weakest_areas_by_fit={"bottom_by_fit": [{"worst_target": "brma"}]}
+            ),
+            "names 1 withheld row(s)",
+        ),
+    ],
+    ids=["trajectory", "iterate-loss", "budget-search", "census", "rollup", "areas"],
+)
+def test_no_total_over_every_row_ships_beside_a_withheld_row(mutate, message) -> None:
+    """While a row is withheld, the totals and rollups cannot give it back."""
+
+    diagnostics = _withheld_diagnostics()
+    failures: list[str] = []
+    dc._check_local_area_calibration_diagnostics(diagnostics, failures)
+    assert failures == []
+    mutate(diagnostics)
+    dc._check_local_area_calibration_diagnostics(diagnostics, failures)
+    assert any(message in failure for failure in failures), failures
+
+
+def _set_level_passes(diagnostics: dict) -> None:
+    levels = diagnostics["uk_diagnostics"]["target_pass_rates_by_geography_level"]
+    levels[1]["n_within_10pct"] = 1
+
+
+@pytest.mark.parametrize(
+    "mutate,message",
+    [
+        (lambda d: d.update(final_loss=0.125), "its final_loss is not restated"),
+        (lambda d: d.update(initial_loss=0.3), "its initial_loss is not restated"),
+        (
+            lambda d: d.update(fraction_within_10pct=0.5),
+            "its fraction_within_10pct is not restated",
+        ),
+        (
+            lambda d: d["past_cap_census"].update(n_targets=2),
+            "past_cap_census does not count the published rows only",
+        ),
+        (_set_level_passes, "pass rates by geography level"),
+        (
+            lambda d: d["targets"][1]["metadata"].update(estimate=40.0),
+            "its metadata carries one",
+        ),
+        (
+            lambda d: d["targets"][0].pop("final_loss_contribution"),
+            "lacks the fields its restated totals are recomputed from",
+        ),
+    ],
+    ids=["final", "initial", "fraction", "census", "level", "metadata", "fields"],
+)
+def test_a_total_over_every_row_put_back_is_refused(mutate, message) -> None:
+    """The fourth review of #1305: the contract recomputes the restated totals.
+
+    Each put-back total or figure passed the shape checks; less the published
+    rows, the final loss gave the withheld row's contribution back.
+    """
+
+    diagnostics = _withheld_diagnostics()
+    failures: list[str] = []
+    dc._check_local_area_calibration_diagnostics(diagnostics, failures)
+    assert failures == []
+    mutate(diagnostics)
+    dc._check_local_area_calibration_diagnostics(diagnostics, failures)
+    assert any(message in failure for failure in failures), failures
+
+
+def test_the_candidate_manifest_restates_the_diagnostics_totals() -> None:
+    diagnostics = _withheld_diagnostics()
+    census = diagnostics["past_cap_census"]
+    candidate = {
+        "solve": {
+            "model_figures_withheld": {"targets": 1, "totals_basis": "published_rows"},
+            "initial_loss": diagnostics["initial_loss"],
+            "final_loss": diagnostics["final_loss"],
+            "past_cap": {
+                "n_targets": census["n_targets"],
+                "past_at_init": census["initial_past_cap"],
+                "past_at_final": census["final_past_cap"],
+                "escaped": census["escaped"],
+                "frozen": census["frozen"],
+                "pushed_out": census["pushed_out"],
+            },
+        }
+    }
+    failures: list[str] = []
+    dc._check_uk_candidate_restated_losses(candidate, diagnostics, failures)
+    assert failures == []
+    candidate["solve"]["final_loss"] = 0.125
+    candidate["solve"]["past_cap"]["n_targets"] = 2
+    candidate["solve"].pop("model_figures_withheld")
+    dc._check_uk_candidate_restated_losses(candidate, diagnostics, failures)
+    assert len(failures) == 3, failures
+
+
+def test_a_brma_row_without_its_carrier_verdict_is_warned_not_refused() -> None:
+    """María's ruling of 2026-10-19 on the fourth review of #1305: warn only."""
+
+    assert dc._uk_brma_floor_verdict_warnings(_withheld_diagnostics()) == []
+    unflagged = _withheld_diagnostics()
+    del unflagged["targets"][1]["metadata"]["carrier_floor_met"]
+    (warning,) = dc._uk_brma_floor_verdict_warnings(unflagged)
+    # A count, never a row.
+    assert warning.startswith("calibration_diagnostics.json has 1 BRMA row(s) without")
+    disagreeing = _withheld_diagnostics()
+    disagreeing["targets"][1]["metadata"]["carrier_floor_met"] = True
+    (warning,) = dc._uk_brma_floor_verdict_warnings(disagreeing)
+    assert "disagrees with their withheld flag" in warning
+    failures: list[str] = []
+    dc._check_local_area_calibration_diagnostics(unflagged, failures)
+    assert failures == []
+
+
+def test_the_dense_validator_runs_the_withheld_checks(tmp_path, monkeypatch) -> None:
+    """The candidate cross-check and the verdict warnings run on a release."""
+
+    seen: list[str] = []
+
+    def restated(candidate, diagnostics, failures) -> None:
+        seen.append("restated")
+        assert "solve" in candidate and "targets" in diagnostics
+
+    def verdicts(diagnostics) -> list[str]:
+        seen.append("verdicts")
+        return ["a synthetic verdict warning"]
+
+    monkeypatch.setattr(dc, "_check_uk_candidate_restated_losses", restated)
+    monkeypatch.setattr(dc, "_uk_brma_floor_verdict_warnings", verdicts)
+    warnings = validate_release_dir(write_dense_bundle(tmp_path))
+    assert sorted(seen) == ["restated", "verdicts"]
+    assert "a synthetic verdict warning" in warnings
+
+
+def test_the_withheld_block_must_count_the_withheld_rows() -> None:
+    diagnostics = _withheld_diagnostics()
+    diagnostics["uk_diagnostics"] = {}
+    failures: list[str] = []
+    dc._check_local_area_calibration_diagnostics(diagnostics, failures)
+    assert any("counts 0 withheld rows" in failure for failure in failures)
+
+
 def test_valid_dense_bundle_passes(tmp_path: Path) -> None:
     validate_release_dir(write_dense_bundle(tmp_path))
 

@@ -49,6 +49,7 @@ def _fixture_hierarchy(name: str, geography_level: str) -> CalibrationHierarchy:
         "country": "E92000001",
         "local_authority": "E09000001",
         "constituency": "E14000001",
+        "brma": "S33999999",
     }
     return CalibrationHierarchy(
         provider=HierarchyNode("fixture", "Fixture provider"),
@@ -635,6 +636,15 @@ def test_payload_preserves_common_schema_and_adds_versioned_uk_evidence() -> Non
             "n_within_10pct": 1,
             "pass_rate": 1.0,
         },
+        # Every level is written; Scotland's BRMA rows bind no target here.
+        {
+            "geography_level": "brma",
+            "n_targets": 0,
+            "n_scored": 0,
+            "n_skipped": 0,
+            "n_within_10pct": 0,
+            "pass_rate": None,
+        },
     ]
     assert json.loads(json.dumps(payload, allow_nan=False)) == payload
 
@@ -1048,6 +1058,7 @@ def test_geography_level_vocabulary_includes_future_release_levels() -> None:
         "country",
         "local_authority",
         "constituency",
+        "brma",
     )
 
 
@@ -1155,3 +1166,542 @@ class TestSupportFamilyWeights:
         household = self._household(copies=True).drop(columns=["source_household_id"])
         with pytest.raises(ValueError, match="source_household_id"):
             uk_support_family_weights(household)
+
+
+def test_a_thin_brma_row_keeps_its_place_but_not_its_model_figures() -> None:
+    """María's ruling of 2026-10-17 (#1305 review): ten source households per BRMA row.
+
+    One BRMA row rests on three source households, the other on eleven. The
+    thin row stays in the payload with its model figures null and a note;
+    it counts as scored but never as passing, and stays out of the family
+    rollup, so nothing published can be differenced to recover it.
+    """
+
+    n = 14
+    sources = [0, 0, 1, 1, 2, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    household = pd.DataFrame(
+        {
+            "household_id": np.arange(n, dtype=np.int64),
+            "source_household_id": np.asarray(sources, dtype=np.int64),
+            _SPI_COLUMN: [False] * n,
+            _CG_COLUMN: [False] * n,
+            "thin_measure": [1.0] * 6 + [0.0] * 8,
+            "wide_measure": [1.0] * n,
+        }
+    )
+    specs = [
+        TargetSpec(
+            name=name,
+            entity="household",
+            value=10.0,
+            measure=measure,
+            period=2023,
+            source="Synthetic UK diagnostics fixture",
+            family="private_rent",
+            hierarchy=_fixture_hierarchy(name, "brma"),
+        )
+        for name, measure in (
+            ("thin_brma_target", "thin_measure"),
+            ("wide_brma_target", "wide_measure"),
+        )
+    ]
+    geography = {f"{spec.name}@2023": "brma" for spec in specs}
+    weights = np.ones(n)
+    tables = {
+        "person": pd.DataFrame(
+            {
+                "person_id": np.arange(n, dtype=np.int64),
+                "person_household_id": np.arange(n, dtype=np.int64),
+            }
+        ),
+        "household": household,
+    }
+    frame = Frame(
+        tables,
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(weights, WeightKind.DESIGN)},
+    )
+    registry = TargetRegistry(specs, country="uk")
+    result = score_targets(frame, registry.to_target_set(), weights=weights)
+    support = pd.DataFrame(
+        columns=[
+            "geography_level",
+            "area_code",
+            "nonzero_households",
+            "nonzero_source_households",
+            "effective_sample_size",
+        ]
+    )
+    payload = uk_calibration_diagnostics_payload(
+        result,
+        frame,
+        target_geography_levels=geography,
+        target_registry=registry,
+        local_area_support=support,
+    )
+    rows = {row["target_name"]: row for row in payload["targets"]}
+    thin, wide = rows["thin_brma_target"], rows["wide_brma_target"]
+    assert thin["final_estimate"] is None and thin["relative_error"] is None
+    assert thin["within_tolerance"] is None
+    assert "model_figures_withheld" in thin["metadata"]
+    assert wide["final_estimate"] == pytest.approx(14.0)
+    (brma,) = [
+        row
+        for row in payload["uk_diagnostics"]["target_pass_rates_by_geography_level"]
+        if row["geography_level"] == "brma"
+    ]
+    assert (brma["n_targets"], brma["n_scored"], brma["n_within_10pct"]) == (2, 2, 0)
+    (family,) = payload["uk_diagnostics"]["weakest_families"]
+    assert family["n_targets"] == 1 and family["worst_target"] == wide["name"]
+
+
+def _thin_and_wide_brma_payload(
+    thin_values=(1.0,) * 6 + (0.0,) * 8, extra_options=None, thin_target=10.0
+):
+    """The thin/wide BRMA fixture's diagnostics payload and its result.
+
+    ``extra_options`` joins the result's options, as a solve records them.
+    """
+
+    n = 14
+    sources = [0, 0, 1, 1, 2, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    household = pd.DataFrame(
+        {
+            "household_id": np.arange(n, dtype=np.int64),
+            "source_household_id": np.asarray(sources, dtype=np.int64),
+            _SPI_COLUMN: [False] * n,
+            _CG_COLUMN: [False] * n,
+            "thin_measure": list(thin_values),
+            "wide_measure": [1.0] * n,
+            "other_measure": [0.5] * n,
+        }
+    )
+    specs = [
+        TargetSpec(
+            name=name,
+            entity="household",
+            value=value,
+            measure=measure,
+            period=2023,
+            source="Synthetic UK diagnostics fixture",
+            family="private_rent",
+            hierarchy=_fixture_hierarchy(name, "brma"),
+        )
+        for name, measure, value in (
+            ("thin_brma_target", "thin_measure", thin_target),
+            ("wide_brma_target", "wide_measure", 10.0),
+            ("other_brma_target", "other_measure", 7.5),
+        )
+    ]
+    geography = {f"{spec.name}@2023": "brma" for spec in specs}
+    weights = np.ones(n)
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {
+                    "person_id": np.arange(n, dtype=np.int64),
+                    "person_household_id": np.arange(n, dtype=np.int64),
+                }
+            ),
+            "household": household,
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(weights, WeightKind.DESIGN)},
+    )
+    registry = TargetRegistry(specs, country="uk")
+    result = score_targets(frame, registry.to_target_set(), weights=weights)
+    if extra_options:
+        from dataclasses import replace
+
+        result = replace(result, options={**result.options, **extra_options})
+    support = pd.DataFrame(
+        columns=[
+            "geography_level",
+            "area_code",
+            "nonzero_households",
+            "nonzero_source_households",
+            "effective_sample_size",
+        ]
+    )
+    payload = uk_calibration_diagnostics_payload(
+        result,
+        frame,
+        target_geography_levels=geography,
+        target_registry=registry,
+        local_area_support=support,
+    )
+    return payload, result
+
+
+def test_no_published_total_gives_a_withheld_row_back() -> None:
+    """María's ruling of 2026-10-18: the totals cover the published rows only.
+
+    Try to recover the withheld row from what the payload publishes: the
+    final and initial losses less the published rows' contributions leave
+    nothing, the fraction within 10% is the published rows' own, and the
+    trajectory, which no published row can be set against, is empty.
+    """
+
+    import math
+
+    payload, result = _thin_and_wide_brma_payload()
+    rows = {row["target_name"]: row for row in payload["targets"]}
+    thin = rows.pop("thin_brma_target")
+    assert thin["final_estimate"] is None
+    assert thin.get("final_loss_contribution") is None
+    published = list(rows.values())
+    assert payload["final_loss"] == math.fsum(
+        row["final_loss_contribution"] for row in published
+    )
+    # The initial loss is the published rows' too, from their own fields.
+    assert payload["initial_loss"] == pytest.approx(
+        math.fsum(
+            row["target_loss_weight_share"]
+            * min(
+                abs(row["initial_estimate"] - row["target"]) / row["target_loss_scale"],
+                payload["target_loss_basis"]["cap"],
+            )
+            for row in published
+        ),
+        rel=1e-12,
+    )
+    # Either total over every row would have left the thin row's share.
+    assert payload["final_loss"] < result.final_loss
+    assert payload["fraction_within_10pct"] == pytest.approx(
+        sum(abs(row["relative_error"]) <= 0.10 for row in published) / len(published)
+    )
+    assert payload["loss_trajectory"] == []
+    assert payload["past_cap_census"]["n_targets"] == len(published)
+    block = payload["uk_diagnostics"]["model_figures_withheld"]
+    assert block["targets"] == 1 and block["totals_basis"] == "published_rows"
+    # A build with nothing withheld keeps the solve's own totals.
+    payload, result = _thin_and_wide_brma_payload(thin_values=(1.0,) * 14)
+    assert payload["final_loss"] == pytest.approx(result.final_loss, rel=1e-12)
+    assert payload["loss_trajectory"] == pytest.approx(list(result.loss_trajectory))
+    assert "model_figures_withheld" not in payload["uk_diagnostics"]
+
+
+def _numbers(value):
+    if isinstance(value, bool):
+        return
+    if isinstance(value, (int, float)):
+        yield float(value)
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from _numbers(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _numbers(item)
+
+
+def test_a_withheld_row_inside_ten_percent_counts_nowhere() -> None:
+    """The third review of #1305: no test had a withheld row inside 10%.
+
+    The thin row now misses its target by about 3%. Of the published rows
+    one is inside 10% and one is not, so the fraction is a half; counting the
+    numerator over every row would make it one.
+    """
+
+    payload, _ = _thin_and_wide_brma_payload(thin_target=6.2)
+    rows = {row["target_name"]: row for row in payload["targets"]}
+    assert rows["thin_brma_target"]["final_estimate"] is None
+    assert payload["fraction_within_10pct"] == 0.5
+    (brma,) = [
+        row
+        for row in payload["uk_diagnostics"]["target_pass_rates_by_geography_level"]
+        if row["geography_level"] == "brma"
+    ]
+    assert brma["n_within_10pct"] == 1
+
+
+def test_every_brma_row_states_its_ten_household_verdict() -> None:
+    """María's ruling of 2026-10-19 on the fourth review of #1305.
+
+    Every BRMA row carries ``carrier_floor_met``, false exactly where its model
+    figures are withheld, so the release contract can warn about a thin row
+    the build never flagged.
+    """
+
+    payload, _ = _thin_and_wide_brma_payload()
+    verdicts = {
+        row["target_name"]: row["metadata"]["carrier_floor_met"]
+        for row in payload["targets"]
+    }
+    assert verdicts == {
+        "thin_brma_target": False,
+        "wide_brma_target": True,
+        "other_brma_target": True,
+    }
+
+
+def test_the_published_options_are_settings_only() -> None:
+    """The fourth review of #1305: an outcome key added to the allow-list
+    passed every test. Each key here is a setting the solve was given; a new
+    one is added here, after checking that it holds no outcome."""
+
+    from microcosm.diagnostics import (
+        UK_WITHHELD_PUBLISHED_ITERATE_FIELDS,
+        UK_WITHHELD_PUBLISHED_OPTIONS,
+    )
+
+    assert UK_WITHHELD_PUBLISHED_OPTIONS == {
+        "budget_basis",
+        "epochs",
+        "feasible_draw_pi_hi",
+        "gate_initialization_supplied",
+        "iterate_selection",
+        "l1_lambda",
+        "l1_penalty",
+        "l2_anchor",
+        "l2_anchor_weights_supplied",
+        "l2_basis",
+        "l2_lambda",
+        "l2_penalty",
+        "learning_rate",
+        "mass",
+        "mass_parametrization",
+        "mass_reason",
+        "matrix_format",
+        "max_weight_ratio",
+        "method",
+        "seed",
+        "target_loss_cap",
+        "target_loss_scales",
+        "target_loss_weights",
+        "target_records",
+        "warm_start_weights",
+    }
+    assert UK_WITHHELD_PUBLISHED_ITERATE_FIELDS == {
+        "rule",
+        "selected_epoch",
+        "epochs_executed",
+        "epoch_convention",
+    }
+
+
+def test_no_loss_over_every_row_survives_in_the_payload() -> None:
+    """The third review of #1305: the solve's options kept its iterate's loss.
+
+    ``iterate_selection_receipt`` held the selected iterate's loss over every
+    row, which less the restated final loss gave the withheld row back. While
+    a row is withheld the options keep their settings only, and no number in
+    the payload equals a loss over every row.
+    """
+
+    import math
+
+    receipt = {
+        "rule": "best_feasible_loss",
+        "selected_epoch": 3,
+        "epochs_executed": 5,
+        "epoch_convention": "completed_optimizer_updates; zero is start",
+        "selected_loss_float32": 0.2617,
+        "closing_iterate_loss_float32": 0.2711,
+    }
+    extra = {
+        "iterate_selection_receipt": receipt,
+        "budget_search": {"probes": [{"loss": 0.3119}]},
+        "an_outcome_nobody_listed": 0.2903,
+    }
+    payload, result = _thin_and_wide_brma_payload(extra_options=extra)
+    options = payload["options"]
+    assert options["iterate_selection_receipt"] == {
+        **receipt,
+        "selected_loss_float32": None,
+        "closing_iterate_loss_float32": None,
+    }
+    assert options["budget_search"] is None
+    assert options["an_outcome_nobody_listed"] is None
+    assert options["method"] == "score_only"
+    every_row = (result.final_loss, result.initial_loss, 0.2617, 0.2711, 0.3119)
+    for number in _numbers(payload):
+        assert not any(math.isclose(number, loss, rel_tol=1e-9) for loss in every_row)
+    # With nothing withheld the options stay as the solve wrote them.
+    payload, _ = _thin_and_wide_brma_payload(
+        thin_values=(1.0,) * 14, extra_options=extra
+    )
+    assert payload["options"]["iterate_selection_receipt"] == receipt
+    assert payload["options"]["an_outcome_nobody_listed"] == 0.2903
+
+
+def test_the_restated_totals_match_the_solve_and_drop_a_pushed_out_row() -> None:
+    """Over every row the restatement reproduces the solve's own totals.
+
+    A withheld row pushed past the cap leaves the census's listing and count.
+    """
+
+    from types import SimpleNamespace
+
+    from microcosm.build.uk_runtime.diagnostics import (
+        _restate_totals_over_published_rows,
+    )
+
+    def row(name, target, initial, final):
+        return SimpleNamespace(
+            name=name,
+            target=target,
+            initial_estimate=initial,
+            final_estimate=final,
+            relative_error=(final - target) / target,
+        )
+
+    rows = [
+        row("a@2025", 10.0, 11.0, 10.5),
+        row("b@2025", 20.0, 19.0, 21.0),
+        row("thin@2025", 10.0, 12.0, 400.0),
+    ]
+    result = SimpleNamespace(
+        diagnostics=rows,
+        target_loss_weights=np.array([1.0, 2.0, 1.0]),
+        target_loss_scales=np.array([10.0, 20.0, 10.0]),
+        target_loss_cap=10.0,
+        options={"target_loss_cap": 10.0},
+    )
+    payload: dict[str, object] = {}
+    _restate_totals_over_published_rows(payload, result, frozenset())
+    shares = np.array([0.25, 0.5, 0.25])
+    assert payload["final_loss"] == pytest.approx(
+        0.25 * 0.05 + 0.5 * 0.05 + 0.25 * min(39.0, 10.0)
+    )
+    assert payload["initial_loss"] == pytest.approx(
+        float(shares @ np.array([0.1, 0.05, 0.2]))
+    )
+    assert payload["past_cap_census"]["pushed_out"] == 1
+    _restate_totals_over_published_rows(payload, result, frozenset({"thin@2025"}))
+    assert payload["final_loss"] == pytest.approx(0.25 * 0.05 + 0.5 * 0.05)
+    assert payload["fraction_within_10pct"] == 1.0
+    census = payload["past_cap_census"]
+    assert census["n_targets"] == 2
+    assert census["pushed_out"] == 0 and census["pushed_out_rows"] == []
+
+
+def test_written_rows_flag_every_row_while_any_is_withheld() -> None:
+    from microcosm.build.uk_runtime.diagnostics import uk_withhold_brma_figures
+
+    withheld = frozenset({"thin@2025"})
+    rows = [
+        {"name": "thin@2025", "target": 10.0, "estimate": 6.0, "relative_error": -0.4},
+        {"name": "wide@2025", "target": 10.0, "estimate": 14.0, "relative_error": 0.4},
+    ]
+    thin, wide = uk_withhold_brma_figures(rows, withheld)
+    assert thin["estimate"] is None and thin["relative_error"] is None
+    assert thin["target"] == 10.0 and thin["model_figures_withheld"] is True
+    assert wide == {**rows[1], "model_figures_withheld": False}
+    assert rows[0]["estimate"] == 6.0
+    # With nothing withheld the written table keeps its old columns.
+    flagged = [{**rows[0], "model_figures_withheld": True}]
+    assert uk_withhold_brma_figures(flagged, frozenset()) == [rows[0]]
+
+
+def test_the_report_guard_refuses_any_mention_of_a_withheld_row(capsys) -> None:
+    """María's ruling of 2026-10-19: no gate output names a withheld row.
+
+    The third review of #1305 found more than fifteen shapes that slipped
+    past a guard looking for figures beside a name. The guard now refuses the
+    name, the gate key and the area code themselves, in any case, anywhere.
+    The fourth found that its message named the place, and a failed receipt
+    sends the message on: it is now constant, and the place stays on stderr.
+    """
+
+    from microcosm.build.uk_runtime.diagnostics import (
+        UK_WITHHELD_ROW_NAMED_MESSAGE,
+        UKWithheldRowNamedError,
+        uk_refuse_named_withheld_rows,
+    )
+
+    names = frozenset({"ons.rent.private_rent_brma@S33999999@2025"})
+    keys = frozenset({"private_rent/S33999999/rent/private_rent_brma"})
+    (key,) = keys
+
+    def guard(report):
+        uk_refuse_named_withheld_rows(report, names=names, keys=keys)
+
+    # Counts, published rows and other areas pass.
+    guard(
+        {
+            "outcomes": [
+                {
+                    "failures": ["private_rent/E06000001/rent/private_rent +30.0%"],
+                    "details": {
+                        "withheld_targets": 1,
+                        "family_sizes": {"private_rent": 7},
+                        "failing_targets": {
+                            "private_rent/S33999998/rent/private_rent_brma": 0.3
+                        },
+                    },
+                }
+            ]
+        }
+    )
+    for report in (
+        {"failing_targets": {key: -0.4}},
+        {"rows": [{"name": key, "relative_error": -0.4}]},
+        {"pairs": [[key, -0.4]]},
+        {key: "-41.2%"},
+        {"names": [key], "errors": [-0.4]},
+        {"failures": [f"{key} is 40 per cent out"]},
+        {"failures": [f"err=-4.0e-01 for {key.upper()}"]},
+        {"failures": ["ons.rent.private_rent_brma@S33999999 failed"]},
+        {"failures": ["S33999999 is beyond the bound"]},
+        {"dormant_exclusions": [key]},
+    ):
+        with pytest.raises(UKWithheldRowNamedError) as excinfo:
+            guard(report)
+        message = str(excinfo.value)
+        assert message == UK_WITHHELD_ROW_NAMED_MESSAGE
+        for label in (key, "S33999999", "failing_targets", "failures", "40"):
+            assert label.casefold() not in message.casefold()
+        assert "names a withheld row" in capsys.readouterr().err
+    # Nothing withheld: nothing to guard.
+    uk_refuse_named_withheld_rows(
+        {"failing_targets": {key: -0.4}}, names=frozenset(), keys=frozenset()
+    )
+
+
+def test_an_explicit_zero_in_a_brma_row_carries_nothing() -> None:
+    """A stored zero is no entry: the household does not carry the row."""
+
+    from types import SimpleNamespace
+
+    from scipy import sparse
+
+    from microcosm.build.uk_runtime.diagnostics import uk_withheld_brma_rows
+
+    n = 12
+    data = np.array([1.0] * 9 + [0.0] * 3)
+    matrix = sparse.csr_array((data, (np.zeros(n, dtype=int), np.arange(n))), (1, n))
+    assert matrix.nnz == n
+    problem = SimpleNamespace(matrix=matrix, names=["brma_row@2025"])
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {
+                    "person_id": np.arange(n, dtype=np.int64),
+                    "person_household_id": np.arange(n, dtype=np.int64),
+                }
+            ),
+            "household": pd.DataFrame(
+                {
+                    "household_id": np.arange(n, dtype=np.int64),
+                    "source_household_id": np.arange(n, dtype=np.int64),
+                }
+            ),
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(np.ones(n), WeightKind.DESIGN)},
+    )
+    rows = [{"name": "brma_row@2025"}]
+    levels = {"brma_row@2025": "brma"}
+    assert uk_withheld_brma_rows(problem, np.ones(n), frame, rows, levels) == {
+        "brma_row@2025"
+    }
+    data[9] = 1.0
+    matrix = sparse.csr_array((data, (np.zeros(n, dtype=int), np.arange(n))), (1, n))
+    problem = SimpleNamespace(matrix=matrix, names=["brma_row@2025"])
+    assert uk_withheld_brma_rows(problem, np.ones(n), frame, rows, levels) == set()
+    # A zero weight carries nothing either.
+    weights = np.ones(n)
+    weights[0] = 0.0
+    assert uk_withheld_brma_rows(problem, weights, frame, rows, levels) == {
+        "brma_row@2025"
+    }

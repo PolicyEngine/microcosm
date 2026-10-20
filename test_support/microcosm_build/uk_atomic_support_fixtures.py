@@ -211,4 +211,142 @@ def write_toy_property_resources(directory: Path) -> dict[str, Path]:
     return paths
 
 
+#: The BRMA the toy layer gives each toy area (microcosm#1262); every other
+#: England-and-Wales filler area sits in MAIDSTONE.
+TOY_AREA_BRMAS = {
+    "E00000001": "CENTRAL_LONDON",
+    "E00000002": "INNER_EAST_LONDON",
+    "W00000001": "CARDIFF",
+    "S00000001": "LOTHIAN",
+}
+
+
+def toy_brma_area_layer() -> dict:
+    """The microcosm#1262 area-to-BRMA layer over the toy supports."""
+    from microcosm.build.uk_runtime import brma_area_layer as bal
+
+    regions = {code: name for name, code in FRS_REGION_TO_REGION_CODE.items()}
+    frames = toy_support_frames()
+    layout: dict[str, dict] = {"ew_lsoa21": {}, "scotland_oa22": {}}
+    rosters: dict[str, list[str]] = {"ew_lsoa21": [], "scotland_oa22": []}
+    for grain, system, key in (
+        ("ew_lsoa21", EW, "lsoa_code"),
+        ("scotland_oa22", SCOT, "oa_code"),
+    ):
+        for row in frames[system]:
+            code = str(row[key])
+            brma = TOY_AREA_BRMAS.get(code, "MAIDSTONE")
+            region = regions[str(row["region_code"])]
+            layout[grain].setdefault(region, {}).setdefault(brma, []).append(code)
+            rosters[grain].append(code)
+    return {
+        "schema_version": bal.SCHEMA_VERSION,
+        "kind": bal.KIND,
+        "method": bal.METHOD_VERSION,
+        "grains": {
+            grain: {
+                "area_system": bal.GRAINS[grain].system,
+                "key": bal.GRAINS[grain].key,
+                "areas": len(codes),
+                "roster_sha256": bal.roster_sha256(codes),
+            }
+            for grain, codes in rosters.items()
+        },
+        "scotland_brma_codes": {"LOTHIAN": "S33000011"},
+        "brmas": layout,
+    }
+
+
+def write_toy_brma_area_layer(directory: Path) -> dict[str, Path]:
+    """Write the toy layer as the graph source the area-BRMA node reads."""
+    from microcosm.build.uk_runtime.brma_area_layer import BRMA_AREA_LAYER_SOURCE
+
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / "toy-brma-area-layer.json"
+    path.write_text(json.dumps(toy_brma_area_layer()), encoding="utf-8")
+    return {BRMA_AREA_LAYER_SOURCE: path}
+
+
+#: Toy weekly rent levels by BRMA; each category scales its BRMA's level.
+TOY_BRMA_RENT_LEVELS = {
+    "CENTRAL_LONDON": 400.0,
+    "INNER_EAST_LONDON": 250.0,
+    "CARDIFF": 180.0,
+    "LOTHIAN": 170.0,
+    "MAIDSTONE": 200.0,
+}
+_TOY_CATEGORY_FACTORS = {"B": 0.8, "C": 1.0, "D": 1.2, "E": 1.5}
+
+
+def toy_private_rent_resources() -> dict[str, dict]:
+    """The microcosm#1262 rent quantiles and census counts over the toy BRMAs.
+
+    Each toy BRMA's list runs linearly from half to one and a half times its
+    level, so a rank ``u`` reads ``level * (0.5 + u)`` inside the knots; the
+    counts put every toy region's private renters in the toy region's BRMAs,
+    London's with a different mix for each category, so that a scale which
+    ignored the category would not pass.
+    """
+    from microcosm.build.uk_runtime import private_rent_localisation as prl
+
+    grid = list(prl.GRID)
+    brmas = {}
+    for brma, level in TOY_BRMA_RENT_LEVELS.items():
+        cells = {"nation": "toy"}
+        for category, factor in _TOY_CATEGORY_FACTORS.items():
+            knots = [level * factor * (0.5 + p) for p in grid]
+            cells[category] = {
+                "lets": 100,
+                "basis": "own_lets",
+                "quantiles": knots,
+                "mean": prl.knot_mean(grid, knots),
+            }
+        brmas[brma] = cells
+    quantiles = {
+        "schema_version": prl.QUANTILES_SCHEMA_VERSION,
+        "kind": prl.QUANTILES_KIND,
+        "method": prl.QUANTILES_METHOD,
+        "unit": "gbp_per_week",
+        "grid": grid,
+        "categories": list(prl.CATEGORIES),
+        "brmas": brmas,
+    }
+    london_central = {"A": 90.0, "B": 70.0, "C": 50.0, "D": 30.0, "E": 20.0}
+    regions = {
+        "LONDON": {
+            category: {
+                "CENTRAL_LONDON": central,
+                "INNER_EAST_LONDON": 100.0 - central,
+            }
+            for category, central in london_central.items()
+        },
+        "WALES": {category: {"CARDIFF": 100.0} for category in ("A", *prl.CATEGORIES)},
+        "SCOTLAND": {
+            category: {"LOTHIAN": 100.0} for category in ("A", *prl.CATEGORIES)
+        },
+    }
+    counts = {"cells": regions}
+    return {"quantiles": quantiles, "counts": counts}
+
+
+def write_toy_private_rent_resources(directory: Path) -> dict[str, Path]:
+    """Write the toy rent quantiles and counts as the rent node's graph sources."""
+    from microcosm.build.uk_runtime.private_rent_localisation import (
+        COUNTS_SOURCE,
+        QUANTILES_SOURCE,
+    )
+
+    directory.mkdir(parents=True, exist_ok=True)
+    resources = toy_private_rent_resources()
+    paths = {
+        QUANTILES_SOURCE: directory / "toy-brma-rent-quantiles.json",
+        COUNTS_SOURCE: directory / "toy-brma-private-renters.json",
+    }
+    paths[QUANTILES_SOURCE].write_text(
+        json.dumps(resources["quantiles"]), encoding="utf-8"
+    )
+    paths[COUNTS_SOURCE].write_text(json.dumps(resources["counts"]), encoding="utf-8")
+    return paths
+
+
 __all__ = [name for name in globals() if not name.startswith("__")]

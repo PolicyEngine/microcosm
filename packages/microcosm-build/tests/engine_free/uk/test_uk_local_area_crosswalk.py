@@ -163,3 +163,16 @@ def test_desnz_publication_vintage_binds_in_great_britain_only() -> None:
     )
     with pytest.raises(ValueError, match="publication_2025_nspl"):
         _assert_local_fact_vintages((fact("N09000001"),), reference, rosters)
+
+
+def test_the_brma_level_pins_the_committed_area_layer() -> None:
+    """A ladder-free check of the BRMA level's layer pin (#1305 review)."""
+    import hashlib
+
+    layer = (
+        importlib_resources.files("microcosm.build.uk")
+        .joinpath("brma_area_layer.json")
+        .read_bytes()
+    )
+    level = _load()["levels"]["statistical_scope"]
+    assert level["area_layer_sha256"] == hashlib.sha256(layer).hexdigest()

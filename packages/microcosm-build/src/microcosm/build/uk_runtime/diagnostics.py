@@ -16,9 +16,11 @@ from __future__ import annotations
 
 import json
 import math
-from collections.abc import Mapping, Sequence
+import sys
+from collections.abc import Collection, Mapping, Sequence
 from importlib import resources as importlib_resources
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -30,10 +32,14 @@ from microcosm.calibrate import (
     diagnostics_payload,
     effective_sample_size,
 )
+from microcosm.calibrate.diagnostics import past_cap_census
 from microcosm.calibrate.solve import CalibrationResult
 from microcosm.diagnostics import (
     UK_DIAGNOSTICS_SCHEMA_VERSION,
+    UK_MODEL_FIGURE_FIELDS,
     UK_TARGET_GEOGRAPHY_LEVELS,
+    UK_WITHHELD_PUBLISHED_ITERATE_FIELDS,
+    UK_WITHHELD_PUBLISHED_OPTIONS,
     CalibrationDiagnosticsV8,
     DiagnosticsWriteOutcome,
     failed_diagnostics_outcome,
@@ -65,6 +71,17 @@ _UK_DEFAULT_ZERO_WEIGHT_STRATUM_COLUMNS: tuple[str, ...] = (
 
 _TARGET_PASS_RELATIVE_ERROR = 0.10
 _AREA_FIT_LIMIT = 15
+#: A BRMA row's model figures leave the build only when at least this many
+#: distinct source households carry them (María's ruling of 2026-10-17 on the
+#: #1305 review, UKDS CD137 clause 8); the support gate covers constituencies
+#: and authorities, not the partial BRMA grain.
+UK_BRMA_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS = 10
+#: The fields of a target row that the model's weights produce (the shared
+#: tuple the release contract checks too).
+_MODEL_FIGURE_FIELDS = UK_MODEL_FIGURE_FIELDS
+_WITHHELD_NOTE = (
+    "model figures withheld: fewer than 10 distinct source households carry this row"
+)
 
 _COUNTRY_BY_AREA_PREFIX = {
     "E": "England",
@@ -808,15 +825,20 @@ def uk_zero_weight_strata(
     return rows
 
 
+#: Adapter and Ledger spellings of a diagnostics level: the rowwise area
+#: type ``la``, and ``statistical_scope``, the Ledger level of PIPR's Scottish
+#: BRMA rows, the only targets the contract binds at it (microcosm#1262).
+_GEOGRAPHY_LEVEL_ALIASES = {"la": "local_authority", "statistical_scope": "brma"}
+
+
 def _normalize_geography_level(value: object) -> str:
     raw = getattr(value, "value", value)
     level = str(raw).strip().lower()
-    if level == "la":
-        level = "local_authority"
+    level = _GEOGRAPHY_LEVEL_ALIASES.get(level, level)
     if level not in UK_TARGET_GEOGRAPHY_LEVELS:
         raise ValueError(
             f"Unknown UK target geography level {raw!r}; expected one of "
-            f"{UK_TARGET_GEOGRAPHY_LEVELS} (or adapter alias 'la')."
+            f"{UK_TARGET_GEOGRAPHY_LEVELS} (or alias 'la' or 'statistical_scope')."
         )
     return level
 
@@ -937,10 +959,274 @@ def _declared_target_partition(
     return declared, compiled, skipped_names
 
 
+def uk_withheld_brma_rows(
+    problem: Any,
+    weights: Sequence[float] | np.ndarray,
+    frame: Frame,
+    target_rows: Sequence[Mapping[str, object]],
+    geography_levels: Mapping[str, str],
+) -> set[str]:
+    """The BRMA rows whose model figures rest on fewer than ten source households.
+
+    ``problem`` is the numerical problem the rows were scored on (its
+    ``matrix`` and ``names``) and ``weights`` the weights they were scored at.
+    A row's carriers are the distinct ``source_household_id`` values of the
+    positive-weight households with a nonzero entry in its problem row, as the
+    area support counts them.
+    """
+
+    names = [
+        str(row["name"])
+        for row in target_rows
+        if geography_levels.get(str(row["name"])) == "brma"
+    ]
+    if not names:
+        return set()
+    household = frame.table("household")
+    if "source_household_id" not in household.columns:
+        raise ValueError(
+            "UK BRMA diagnostics need household source_household_id to count "
+            "each row's carriers."
+        )
+    sources = household["source_household_id"].to_numpy()
+    positive = np.asarray(weights, dtype=float) > 0
+    if positive.shape != sources.shape:
+        raise ValueError("UK BRMA carriers need one weight per household.")
+    matrix = problem.matrix.tocsr()
+    index = {str(name): position for position, name in enumerate(problem.names)}
+    withheld = set()
+    for name in names:
+        position = index.get(name)
+        if position is None:
+            raise ValueError(f"UK BRMA diagnostic {name!r} has no problem row.")
+        span = slice(matrix.indptr[position], matrix.indptr[position + 1])
+        columns = matrix.indices[span][matrix.data[span] != 0]
+        columns = columns[positive[columns]]
+        if len(pd.unique(sources[columns])) < UK_BRMA_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS:
+            withheld.add(name)
+    return withheld
+
+
+def uk_withheld_flag(value: object) -> bool:
+    """Whether a row's ``model_figures_withheld`` flag is set (a true bool)."""
+
+    return isinstance(value, (bool, np.bool_)) and bool(value)
+
+
+def uk_withheld_gate_keys(rows: object) -> frozenset[str]:
+    """The local gate keys (``family/area_code/metric``) of withheld rows."""
+
+    records = rows.to_dict(orient="records") if hasattr(rows, "to_dict") else rows
+    return frozenset(
+        f"{str(row.get('family', '')).strip()}/"
+        f"{str(row.get('area_code', '')).strip()}/"
+        f"{str(row.get('metric', '')).strip()}"
+        for row in records or ()
+        if isinstance(row, Mapping)
+        and uk_withheld_flag(row.get("model_figures_withheld"))
+    )
+
+
+def uk_withhold_brma_figures(
+    rows: Sequence[Mapping[str, object]],
+    withheld: frozenset[str],
+    *,
+    fields: Sequence[str] = ("estimate", "relative_error", "abs_relative_error"),
+) -> list[dict[str, object]]:
+    """Copies of written target rows with a withheld row's model figures blank.
+
+    While any row is withheld every row carries ``model_figures_withheld``, a
+    bool, so a reader of the written table tells a withheld row from a
+    missing figure.
+    """
+
+    out = []
+    for row in rows:
+        copy = dict(row)
+        hidden = str(copy.get("name")) in withheld
+        if hidden:
+            for field in fields:
+                if field in copy:
+                    copy[field] = None
+        if withheld:
+            copy["model_figures_withheld"] = hidden
+        else:
+            copy.pop("model_figures_withheld", None)
+        out.append(copy)
+    return out
+
+
+#: The guard's one message (the fourth review of #1305). A failed receipt
+#: keeps an exception's message and the emitter sends it on, so it names no
+#: place: a report path can carry the withheld row's key, and beside the
+#: public register, its status.
+UK_WITHHELD_ROW_NAMED_MESSAGE = (
+    "The gate report names a withheld row; the build's local stderr says where."
+)
+
+
+class UKWithheldRowNamedError(ValueError):
+    """A written gate report names a withheld row (microcosm#1262)."""
+
+    def __init__(self) -> None:
+        super().__init__(UK_WITHHELD_ROW_NAMED_MESSAGE)
+
+
+def uk_refuse_named_withheld_rows(
+    payload: object, *, names: frozenset[str], keys: frozenset[str]
+) -> None:
+    """Fail closed if a written gate report names a withheld row at all.
+
+    María's ruling of 2026-10-19 on the third review of #1305: the fit gates
+    decide on the published rows and count the withheld ones, so no gate has
+    a reason to name one, and a name beside a figure or a verdict would give
+    the row back. A withheld row's name, gate key or area code, in any case,
+    in any key or string of the report, stops the build before the report
+    leaves it. The error's message is constant; the place goes to this
+    machine's stderr only.
+
+    It matches literal text, and a bare area code: one family is bound per
+    BRMA today, and a second would stop the build on its published rows
+    until the guard matched each withheld row's own keys instead.
+    """
+
+    areas = {key.split("/")[1] for key in keys if key.count("/") >= 2}
+    labels = {label.casefold() for label in (*names, *keys, *areas) if label}
+    if not labels:
+        return
+
+    def check(text: str, path: str) -> None:
+        folded = text.casefold()
+        if any(label in folded for label in labels):
+            print(f"error: {path} names a withheld row.", file=sys.stderr)
+            raise UKWithheldRowNamedError
+
+    def walk(value: object, path: str) -> None:
+        if isinstance(value, Mapping):
+            for key, item in value.items():
+                check(str(key), f"{path}.{key}")
+                walk(item, f"{path}.{key}")
+        elif isinstance(value, (list, tuple)):
+            for position, item in enumerate(value):
+                walk(item, f"{path}[{position}]")
+        elif isinstance(value, str):
+            check(value, path)
+
+    walk(payload, "report")
+
+
+_WITHHELD_TOTALS_NOTE = (
+    "A target row resting on fewer than ten distinct source households keeps "
+    "its place without its model figures. initial_loss, final_loss, "
+    "fraction_within_10pct and past_cap_census are restated over the published "
+    "rows, on the solve's own loss weights, scales and cap (initial_loss at the "
+    "input weights, the rows' initial estimates); loss_trajectory, the solve's "
+    "path over every row, is empty, and options keep their settings only."
+)
+
+
+def _restate_totals_over_published_rows(
+    payload: dict[str, object],
+    result: CalibrationResult,
+    withheld: frozenset[str],
+) -> dict[str, object]:
+    """Restate the payload's totals over the published rows (microcosm#1262).
+
+    María's ruling of 2026-10-18 on the #1305 re-review: a total over every
+    row would give a withheld row back by difference against the published
+    rows' contributions. The final loss becomes the published rows' summed
+    contributions (each a share of the solve's whole loss weight, as the rows
+    record them), the initial loss the same at the input weights, and the
+    fraction within 10% and the past-cap census count the published rows
+    only. The loss trajectory cannot be restated and is emptied. Returns the
+    ``uk_diagnostics`` block that labels the basis.
+    """
+
+    rows = list(result.diagnostics)
+    kept = [index for index, row in enumerate(rows) if str(row.name) not in withheld]
+
+    def published_loss(estimates: Sequence[float]) -> float | None:
+        try:
+            weights = np.asarray(result.target_loss_weights, dtype=float)
+            scales = np.asarray(result.target_loss_scales, dtype=float)
+            cap = float(result.target_loss_cap)
+        except (AttributeError, TypeError, ValueError):
+            return None
+        if (
+            weights.shape != (len(rows),)
+            or scales.shape != (len(rows),)
+            or not np.isfinite(weights).all()
+            or not np.isfinite(scales).all()
+            or (scales <= 0).any()
+            or not weights.sum() > 0
+            or not math.isfinite(cap)
+        ):
+            return None
+        shares = weights / weights.sum()
+        terms = []
+        for index in kept:
+            target, estimate = float(rows[index].target), float(estimates[index])
+            if not (math.isfinite(target) and math.isfinite(estimate)):
+                return None
+            terms.append(
+                float(shares[index])
+                * min(abs(estimate - target) / float(scales[index]), cap)
+            )
+        return math.fsum(terms)
+
+    payload["initial_loss"] = published_loss([row.initial_estimate for row in rows])
+    payload["final_loss"] = published_loss([row.final_estimate for row in rows])
+    payload["fraction_within_10pct"] = (
+        sum(abs(float(rows[index].relative_error)) <= 0.10 for index in kept)
+        / len(kept)
+        if kept
+        else None
+    )
+    payload["loss_trajectory"] = []
+    payload["options"] = uk_published_options(dict(payload.get("options") or {}))
+    payload["past_cap_census"] = past_cap_census(
+        SimpleNamespace(
+            options=getattr(result, "options", None),
+            diagnostics=[rows[index] for index in kept],
+        )
+    )
+    return {
+        "targets": len(withheld),
+        "min_source_households": UK_BRMA_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS,
+        "totals_basis": "published_rows",
+        "note": _WITHHELD_TOTALS_NOTE,
+    }
+
+
+def uk_published_options(options: Mapping[str, object]) -> dict[str, object]:
+    """A payload's solve options while any row is withheld (microcosm#1262).
+
+    The third review of #1305: the solve keeps its best iterate's loss over
+    every row in ``iterate_selection_receipt``, and that loss less the
+    restated final loss gives the withheld rows' contribution back. Settings
+    on the allow-list stay; every other option, and the receipt's two
+    iterate losses, read null.
+    """
+
+    published: dict[str, object] = {}
+    for key, value in options.items():
+        if key in UK_WITHHELD_PUBLISHED_OPTIONS:
+            published[key] = value
+        elif key == "iterate_selection_receipt" and isinstance(value, Mapping):
+            published[key] = {
+                field: (item if field in UK_WITHHELD_PUBLISHED_ITERATE_FIELDS else None)
+                for field, item in value.items()
+            }
+        else:
+            published[key] = None
+    return published
+
+
 def _target_pass_rates(
     target_rows: list[dict[str, object]],
     skipped_names: Sequence[str],
     geography_levels: Mapping[str, str],
+    withheld: frozenset[str] = frozenset(),
 ) -> list[dict[str, object]]:
     counts = {
         level: {
@@ -954,6 +1240,11 @@ def _target_pass_rates(
     for row in target_rows:
         name = str(row["name"])
         level = geography_levels[name]
+        if name in withheld:
+            # Scored, never counted as passing: its outcome stays unknowable.
+            counts[level]["n_targets"] += 1
+            counts[level]["n_scored"] += 1
+            continue
         raw_error = row.get("relative_error")
         if not isinstance(raw_error, (int, float)) or isinstance(raw_error, bool):
             raise ValueError(
@@ -1000,12 +1291,17 @@ def uk_calibration_diagnostics_payload(
     build: dict[str, Any] | None = None,
     local_area_support: pd.DataFrame | None = None,
     rotated_holdout: Mapping[str, object] | None = None,
+    withheld: Collection[str] | None = None,
 ) -> dict[str, object]:
     """Render shared diagnostics plus the versioned UK release evidence.
 
     ``target_geography_levels`` is deliberately explicit and exact.  Target
     names are never parsed to guess their geography, and a missing, stale, or
     unknown mapping aborts instead of silently shrinking a scoreboard level.
+
+    ``withheld`` names the rows whose model figures stay in the build
+    (:func:`uk_withheld_brma_rows`); the gate kernel passes the set its gate
+    evidence carries, and by default it is counted here on the same rule.
     """
 
     registry = _require_uk_target_registry(target_registry)
@@ -1035,7 +1331,37 @@ def uk_calibration_diagnostics_payload(
     declared, _, skipped = _declared_target_partition(result, target_rows, registry)
     geography = _geography_mapping(declared, target_geography_levels)
     weights = uk_weight_summary(result_weights)
-    pass_rates = _target_pass_rates(target_rows, skipped, geography)
+    withheld = frozenset(
+        uk_withheld_brma_rows(
+            result.problem, result.weights, frame, target_rows, geography
+        )
+        if withheld is None
+        else withheld
+    )
+    for row in target_rows:
+        name = str(row["name"])
+        if geography.get(name) == "brma":
+            # Every BRMA row states its ten-household verdict, so the release
+            # contract can see one that skipped the floor (María's ruling of
+            # 2026-10-19 on the fourth review of #1305: it warns).
+            row["metadata"] = {
+                **dict(row.get("metadata") or {}),
+                "carrier_floor_met": name not in withheld,
+            }
+        if name in withheld:
+            for field in _MODEL_FIGURE_FIELDS:
+                if field in row:
+                    row[field] = None
+            row["metadata"] = {
+                **dict(row.get("metadata") or {}),
+                "model_figures_withheld": _WITHHELD_NOTE,
+            }
+    pass_rates = _target_pass_rates(target_rows, skipped, geography, withheld)
+    withheld_block = (
+        _restate_totals_over_published_rows(payload, result, withheld)
+        if withheld
+        else None
+    )
     strata = uk_zero_weight_strata(
         household,
         result_weights,
@@ -1054,7 +1380,11 @@ def uk_calibration_diagnostics_payload(
         },
     }
     if local_area_support is not None:
-        uk_diagnostics["weakest_families"] = uk_weakest_families(target_rows)
+        # A withheld row stays out of every rollup, so that no family total
+        # can be differenced against the published rows to recover it.
+        uk_diagnostics["weakest_families"] = uk_weakest_families(
+            [row for row in target_rows if str(row["name"]) not in withheld]
+        )
         uk_diagnostics["weakest_areas_by_fit"] = uk_weakest_areas_by_fit(
             target_rows,
             local_area_support,
@@ -1064,6 +1394,8 @@ def uk_calibration_diagnostics_payload(
     drift = uk_consumption_drift(household, result.initial_weights, result_weights)
     if drift is not None:
         uk_diagnostics["consumption_drift"] = drift
+    if withheld_block is not None:
+        uk_diagnostics["model_figures_withheld"] = withheld_block
     payload["uk_diagnostics"] = uk_diagnostics
     return CalibrationDiagnosticsV8.model_validate(payload).model_dump(
         mode="python",

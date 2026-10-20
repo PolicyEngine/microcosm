@@ -121,6 +121,29 @@ def test_probabilities_clip_where_the_claimants_exceed_the_rate() -> None:
     np.testing.assert_array_equal(probability, 0.0)
 
 
+def test_a_cohort_counts_only_its_sources_of_positive_weight() -> None:
+    """The fourth review of #1305: one carrier rule across the receipts.
+
+    Twenty-four sources, five of them weighted: the cohort rests on five, so
+    its support and its flag read "<10", not "10-29".
+    """
+
+    n = 24
+    weights = np.zeros(n)
+    weights[:5] = 1.0
+    _, receipt = lc.legacy_closure_claim_probabilities(
+        combination=np.array(["esa_income"] * n, dtype=object),
+        drawn=np.ones(n, dtype=bool),
+        claims_anyway=np.arange(n) % 2 == 0,
+        weights=weights,
+        rates={"esa_income": 0.5, "all": 0.5},
+        great_britain=np.ones(n, dtype=bool),
+        source_ids=np.arange(n),
+    )
+    assert receipt["esa_income"]["support"] == "<10"
+    assert receipt["esa_income"]["rate_unreachable"] == "<10"
+
+
 _REPORTED = (
     *(f"{name}_reported" for name, _ in lc.LEGACY_BENEFITS),
     "universal_credit_reported",
