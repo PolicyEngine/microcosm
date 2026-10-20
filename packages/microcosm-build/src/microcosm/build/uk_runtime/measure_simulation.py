@@ -37,6 +37,7 @@ from microcosm.build.uk_runtime.income_tax_rate_classes import (
 from microcosm.build.uk_runtime.national_frame import (
     UK_BUILD_IDENTIFIER_COLUMNS,
     UK_RELEASE_EXPORT_DROPPED_COLUMNS,
+    UK_TIME_PERIOD_METADATA_KEY,
     load_uk_national_frame,
     uk_release_identifier_tables,
     write_uk_national_frame,
@@ -313,6 +314,20 @@ def _uc_calibration_composition(
     return family_type, child_count.astype(float)
 
 
+def _measured_at_frame_period(frame: Any, year: int | str) -> bool:
+    """Whether ``year`` is the period the frame's stored columns hold.
+
+    A frame with no period label is treated as holding the requested year,
+    which keeps the frame route of hermetic frames that carry no metadata.
+    """
+
+    metadata = getattr(frame, "metadata", None) or {}
+    period = metadata.get(UK_TIME_PERIOD_METADATA_KEY)
+    if not isinstance(period, str) or not period.strip():
+        return True
+    return period == str(year)
+
+
 def compute_uk_measure_input(
     frame: Any, simulation: Any, entity: str, variable: str, year: int
 ) -> tuple[np.ndarray, str]:
@@ -360,12 +375,15 @@ def compute_uk_measure_input(
         if entity != "person":
             raise KeyError(f"{variable} is person-only: {entity}")
         person = frame.table("person")
-        if variable == UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF and (
-            "self_employment_income" in person
+        if (
+            variable == UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF
+            and "self_employment_income" in person
+            and _measured_at_frame_period(frame, year)
         ):
-            # A binding on a stored column reads the frame's own value, as the
-            # rows read self_employment_income before the move; the profit
-            # after the relief is read the same way (microcosm#1095).
+            # At the frame's own period the stored columns are the values:
+            # the profit after the relief is read from them (microcosm#1095).
+            # At any other period the engine computes both components there,
+            # as it does every other stored value (microcosm#1324).
             stored_relief = (
                 person[LOSS_RELIEF_COLUMN].to_numpy(dtype=float)
                 if LOSS_RELIEF_COLUMN in person

@@ -30,6 +30,7 @@ from microcosm.build.ledger_targets import (
     reference_fact_selectors,
 )
 from microcosm.build.target_materialization import (
+    ENGINE_PERIOD_COLUMN_PREFIX,
     TargetMaterializationResult,
     materialize_target_bindings,
 )
@@ -55,6 +56,7 @@ from microcosm.build.uk_runtime.local_targets import (
     load_uk_local_geography_contract,
     metric_names,
 )
+from microcosm.build.uk_runtime.national_frame import UK_TIME_PERIOD_METADATA_KEY
 from microcosm.build.uk_runtime.off_surface_cells import (
     uk_membership_bound_areas,
     uk_off_surface_frame_rows,
@@ -1614,9 +1616,48 @@ class UKFrameTargetAdapter:
         self.frame = frame
         self.tables = {entity: frame.table(entity).copy() for entity in frame.entities}
         self.link_tables = {name: frame.link(name).copy() for name in frame.links}
+        # The columns the frame itself stores, and the period they hold
+        # (microcosm#1324): a stored column is the frame's own year, so a
+        # value read at another period goes to the measure provider.
+        self.stored_columns = {
+            entity: frozenset(table.columns) for entity, table in self.tables.items()
+        }
+        period = frame.metadata.get(UK_TIME_PERIOD_METADATA_KEY)
+        self.frame_period = (
+            str(period) if isinstance(period, str) and period.strip() else None
+        )
 
     def has_column(self, entity: str, variable: str) -> bool:
         return variable in self.tables[entity]
+
+    def column_at(
+        self,
+        entity: str,
+        variable: str,
+        *,
+        period: int | str,
+        route_stored: bool,
+    ) -> np.ndarray:
+        """A value variable at ``period`` (microcosm#1324).
+
+        The frame's own period reads the stored column. At any other period
+        a stored column's injected engine-period value is read; before it is
+        injected, ``route_stored`` reports the column missing, so the
+        measure resolver computes it at that period. Without a provider
+        (``route_stored`` false and nothing injected) the stored column is
+        read as it is.
+        """
+
+        stored = variable in self.stored_columns.get(entity, ())
+        if not stored or self.frame_period is None or str(period) == self.frame_period:
+            return self.column(entity, variable)
+        table = self.tables[entity]
+        engine_period = ENGINE_PERIOD_COLUMN_PREFIX + variable
+        if engine_period in table:
+            return np.asarray(table[engine_period])
+        if route_stored:
+            raise KeyError(f"{entity}.{variable}")
+        return self.column(entity, variable)
 
     def column(self, entity: str, variable: str) -> np.ndarray:
         table = self.tables[entity]
