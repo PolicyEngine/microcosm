@@ -105,9 +105,7 @@ from microcosm.build.uk_runtime.spi_support import (
     SPI_HMRC_TOTAL_EARNED_INCOME_COLUMN,
     SPI_HMRC_TOTAL_INVESTMENT_INCOME_COLUMN,
     SPI_INCOME_QRF_OUTPUT_COLUMNS,
-    SPI_PRIOR_SHAPE_DESIGN_DAMPED,
     SPI_SYNTHETIC_SUPPORT_CHANNEL,
-    UKSPIPriorShape,
     UKSPISupportResult,
     build_uk_spi_support_channel,
     support_channel_column,
@@ -369,22 +367,6 @@ SPI_SPINE_PRECLONE_GATE_NAME = "e7_spi_synthetic_preclone"
 #: 0.5) keeps the low-income pensioners the benefit caseloads need in the prior.
 SPI_SPINE_PENSION_AGE_PRIOR_MASS_SHARE = 0.2
 SPI_SPINE_PENSION_AGE_STRATUM = "any_member_at_or_over_state_pension_age"
-#: The reviewed share of each stratum's channel mass among its copies. The
-#: draw is uniform, so equal copy weights reproduce the FRS respondent mix
-#: (young families, single adults and one-earner couples over-represented,
-#: households of three or more adults under-represented); each copy's weight
-#: follows its source household's raw FRS design weight (GROSS4, the incoming
-#: spine weight) over the stratum's copies' mean, damped to the square root.
-#: Chosen 2026-10-21 by a re-solve of the release calibration over the same
-#: hosts against the equal shape, the full design shape and the shape clipped
-#: to [0.5, 2] and to [0.67, 1.5]: the clipped [0.5, 2] shape put more rows at
-#: the weight-ratio cap than the equal shape and widened the GBP 125,000 to
-#: 150,000 band's standard error past the damped shape's, and the damped shape
-#: was the first of the fallbacks to keep the cap rows, Kish ESS and loss
-#: within the pre-declared rule.
-SPI_SPINE_PRIOR_SHAPE = UKSPIPriorShape(
-    kind=SPI_PRIOR_SHAPE_DESIGN_DAMPED, exponent=0.5
-)
 SPI_SPINE_EFFECTIVE_MASS_COLUMNS = ("gift_aid", "charitable_investment_gifts")
 
 
@@ -656,7 +638,6 @@ class UKSPISupportChannelStageTransform:
             zero_weight_declarations=declarations,
             pension_age_share=pension_age_share,
             state_pension_age=state_pension_age,
-            prior_shape=_support_prior_shape(self.stage),
         )
         if result.household_weight_kind is not WeightKind.IMPORTANCE:
             got = (
@@ -703,11 +684,6 @@ class UKSPISupportChannelStageTransform:
                     None
                     if self.last_result.pension_age_allocation is None
                     else dict(self.last_result.pension_age_allocation)
-                ),
-                "prior_shape_allocation": (
-                    None
-                    if self.last_result.prior_shape_allocation is None
-                    else dict(self.last_result.prior_shape_allocation)
                 ),
                 "household_weight_kind": (
                     self.last_result.household_weight_kind.value
@@ -1184,7 +1160,6 @@ def _support_stage_parameters(
             )
     elif "pension_age_stratum" in allocation.parameters:
         raise ValueError("SPI support pension-age stratum declared without a share.")
-    _support_prior_shape(stage)
     declarations = _coerce_declarations(gate.parameters.get("declarations", ()))
     if len(declarations) != 1:
         raise ValueError("SPI support gate must declare exactly one pre-clone stratum.")
@@ -1207,37 +1182,6 @@ def _support_stage_parameters(
     )
 
 
-def _support_prior_shape(stage: SourceStageSpec) -> UKSPIPriorShape:
-    """The declared share of each stratum's channel mass among its copies.
-
-    No ``prior_shape`` is the equal shape of microcosm#710; a declared shape
-    must be the reviewed one, with only the parameters its kind takes.
-    """
-
-    allocation = _operation(stage, "allocate_zero_weight_prior_mass")
-    parameters = allocation.parameters
-    kind = parameters.get("prior_shape")
-    exponent = parameters.get("prior_shape_exponent")
-    bounds = parameters.get("prior_shape_bounds")
-    if kind is None:
-        if exponent is not None or bounds is not None:
-            raise ValueError(
-                "SPI support prior-shape parameters declared without a prior_shape."
-            )
-        return UKSPIPriorShape()
-    shape = UKSPIPriorShape(
-        kind=str(kind),
-        exponent=exponent,
-        bounds=None if bounds is None else tuple(bounds),
-    )
-    if shape != SPI_SPINE_PRIOR_SHAPE:
-        raise ValueError(
-            "SPI support prior shape drifted from the reviewed "
-            f"{SPI_SPINE_PRIOR_SHAPE.to_evidence()}: got {shape.to_evidence()}."
-        )
-    return shape
-
-
 def uk_spi_support_mass_change_reason(stage: SourceStageSpec) -> str:
     """The reason the declared SPI support allocation writes on its MassChangeRecord.
 
@@ -1254,7 +1198,6 @@ def uk_spi_support_mass_change_reason(stage: SourceStageSpec) -> str:
         pension_age_share=(
             None if pension_age_share is None else float(pension_age_share)
         ),
-        prior_shape=_support_prior_shape(stage),
     )
 
 
