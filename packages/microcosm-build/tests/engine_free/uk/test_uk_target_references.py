@@ -72,7 +72,7 @@ from tools.generate_uk_target_references import (
 
 _TEST_PATHS = paths_for("microcosm-build")
 
-ACTIVE_REFERENCE_COUNT = 1322
+ACTIVE_REFERENCE_COUNT = 1333
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 
 
@@ -700,6 +700,40 @@ def test_ons_age_total_targets_pin_exact_age_dimension_set() -> None:
     ] == ["age"]
 
 
+def test_ons_single_year_age_references_pin_the_uk_and_england() -> None:
+    """The single years 0 to 6 resolve at the UK and at England, one fact each.
+
+    The UK rows take the default UK pin and England's rows the nation
+    substring rule (their target ids name England), so each reads its own
+    country row of the ONS estimate by single year of age (the childcare
+    costing fixes, item 6; microcosm#1278).
+    """
+
+    pins = _geography_pins(_load_uk_resource("uk_population_targets.json"))
+    references = {
+        reference["name"]: reference
+        for reference in _load_uk_resource("target_references.json")[
+            "target_references"
+        ]
+    }
+    for age in range(7):
+        for target_id, geography_id in (
+            (f"ons.population.age_{age}", "K02000001"),
+            (f"ons.population.england_age_{age}", "E92000001"),
+        ):
+            assert pins[target_id] == {
+                "geography_level": "country",
+                "geography_id": geography_id,
+            }
+            reference = references[target_id]
+            assert reference["ledger_selector"]["geography_id"] == geography_id
+            assert reference["ledger_selector"]["dimension_values"] == {"age": [age]}
+            assert reference["ledger_selector"]["dimensions"] == ["age"]
+            assert reference["family"] == "ons_population"
+            assert reference["entity"] == "person"
+            assert reference["expected_member_count"] == 1
+
+
 UC_ELEMENT_TARGET_IDS = frozenset(
     {
         "dwp.uc.households_lcwra_element",
@@ -898,7 +932,7 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
     assert membership["status_counts"] == {
-        "active": 1322,
+        "active": 1333,
         "no_fact_at_or_before_period": 5,
         "signed_excluded": 17,
     }
