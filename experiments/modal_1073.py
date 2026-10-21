@@ -12,7 +12,7 @@ run's files back into this checkout. Inputs:
 
     export PYTHONIOENCODING=utf-8 PYTHONUTF8=1
     modal run experiments/modal_1073.py::preflight --commit <sha>
-    modal run --detach experiments/modal_1073.py::main --commit <sha> --steps tests,shift,explore
+    modal run --detach experiments/modal_1073.py::launch --commit <sha> --steps tests,shift,explore
     modal run experiments/modal_1073.py::collect --run-id <run_id>
 
 Steps (see STEPS; each runs one or more commands, stopping at the first that
@@ -471,6 +471,29 @@ def main(commit: str, steps: str = "tests,shift,explore", script: str = "") -> N
     run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ") + "-" + commit[:9]
     print(f"run_id={run_id}")
     print(json.dumps(run_steps.remote(commit, names, run_id, script_text), indent=2))
+
+
+@app.local_entrypoint()
+def launch(commit: str, steps: str = "tests,shift,explore", script: str = "") -> None:
+    """Spawn the run and exit at once (use with ``modal run --detach``).
+
+    ``main`` keeps a local client attached for the whole run, and stopping that
+    client (for example when the machine runs low on memory) cancels the
+    remote input even under --detach. ``launch`` returns as soon as the call is
+    spawned, so nothing local can cancel it; ``collect`` fetches the results.
+    """
+    _check_commit(commit)
+    names = [s for s in steps.split(",") if s]
+    script_text = Path(script).read_text(encoding="utf-8") if script else ""
+    if script and "script" not in names:
+        names.append("script")
+    unknown = sorted(set(names) - set(STEPS) - {"script"})
+    if unknown:
+        raise SystemExit(f"unknown steps: {unknown}")
+    run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ") + "-" + commit[:9]
+    call = run_steps.spawn(commit, names, run_id, script_text)
+    print(f"run_id={run_id}")
+    print(f"function_call_id={call.object_id}")
 
 
 @app.local_entrypoint()
