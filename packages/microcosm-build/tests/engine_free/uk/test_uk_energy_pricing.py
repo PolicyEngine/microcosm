@@ -18,6 +18,9 @@ from microcosm.build.uk_runtime.energy_pricing import (
     NEED_PROPERTY_TYPE_IDS_BY_GEOGRAPHY,
     NEED_TENURE_IDS,
     SCOTLAND_GEOGRAPHY_ID,
+    cap_household_kwh,
+    declared_household_kwh_ceilings,
+    declared_zero_kwh_cells_at_need_mean,
     fiscal_year_quarters,
     impose_gas_connection,
     income_band_ids,
@@ -463,6 +466,108 @@ def test_identity_uniform_order_is_keyed_by_identity_not_row_order() -> None:
         impose_gas_connection(gas, frs_region=region, weights=weights, **kwargs)
 
 
+def test_connect_walk_fills_a_region_below_its_share_by_gas_payer_probability() -> None:
+    # microcosm#1164: a region whose draw falls short of its published share
+    # connects zero-gas households, drawn in proportion to their probability of
+    # paying for gas; a household of probability zero is never connected.
+    rng = np.random.default_rng(11)
+    n = 4000
+    region = np.array(["LONDON"] * n, dtype=object)
+    weights = rng.uniform(0.5, 1.5, n)
+    gas = np.where(np.arange(n) % 10 < 7, 5000.0, 0.0)  # 70 % drawn connected
+    likely = np.arange(n) % 10 == 7
+    never = np.arange(n) % 10 == 9
+    probability = np.where(likely, 0.9, np.where(never, 0.0, 0.1))
+    ids = np.arange(n) + 100
+    connected, receipt = impose_gas_connection(
+        gas,
+        frs_region=region,
+        weights=weights,
+        shares={"LONDON": 0.8},
+        disconnect_rule="identity_uniform_order",
+        identity=ids,
+        connect_probability=probability,
+        connect_salt="lcfs_gas_connection",
+    )
+    entry = receipt["by_region"]["LONDON"]
+    assert entry["share_after"] == pytest.approx(0.8, abs=0.001)
+    assert entry["shortfall"] == 0.0 and entry["candidates_exhausted"] is False
+    assert entry["rows_connected"] == receipt["rows_connected"] > 0
+    assert connected[gas > 0].all()
+    assert not connected[never].any()
+    added = connected & ~(gas > 0)
+    # The likely payers take most of the new connections.
+    assert added[likely].sum() > 3 * added[~likely].sum()
+    assert receipt["connect_rule"] == "gas_payer_probability_order"
+    assert receipt["connect_salt"] == "lcfs_gas_connection"
+    # Too few candidates: everyone with a probability is connected and the
+    # remaining shortfall is receipted as exhausted.
+    short, exhausted = impose_gas_connection(
+        gas,
+        frs_region=region,
+        weights=weights,
+        shares={"LONDON": 0.95},
+        disconnect_rule="identity_uniform_order",
+        identity=ids,
+        connect_probability=probability,
+        connect_salt="lcfs_gas_connection",
+    )
+    tail = exhausted["by_region"]["LONDON"]
+    assert tail["candidates_exhausted"] is True and tail["shortfall"] > 0
+    assert short[~never].all() and not short[never].any()
+    with pytest.raises(ValueError, match="connect_salt"):
+        impose_gas_connection(
+            gas,
+            frs_region=region,
+            weights=weights,
+            shares={"LONDON": 0.8},
+            identity=ids,
+            connect_probability=probability,
+        )
+
+
+def test_the_energy_rake_gate_holds_a_connect_rule_to_its_shortfalls() -> None:
+    # A region left short with households still to connect fails; one that
+    # ran out of candidates may stand short (microcosm#1164).
+    from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
+
+    gates = json.loads(
+        (
+            _TEST_PATHS.repository
+            / "packages/microcosm-build/src/microcosm/build/uk/gates.json"
+        ).read_text("utf-8")
+    )
+    parameters = {gate["id"]: gate["parameters"] for gate in gates["gates"]}[
+        "uk_stage_lcfs_consumption_energy_rake"
+    ]
+    generous = {**parameters, "maximum_relative_deviation": 1.0}
+    _, _, _, _, receipt = _synthetic_rake_receipt()
+
+    def run(ev):
+        return uk_stage_health_gate(
+            evidence={"stage": "lcfs_consumption", "energy_rake": ev},
+            stage="lcfs_consumption",
+            check="energy_rake",
+            parameters=generous,
+        )
+
+    assert run(receipt).passed
+    short = copy.deepcopy(receipt)
+    short["gas_connection"]["by_region"]["LONDON"].update(
+        shortfall=0.02, candidates_exhausted=False
+    )
+    result = run(short)
+    assert not result.passed
+    assert any("households left to connect" in f for f in result.failures)
+    short["gas_connection"]["by_region"]["LONDON"]["candidates_exhausted"] = True
+    assert run(short).passed
+    renamed = copy.deepcopy(receipt)
+    renamed["gas_connection"]["connect_salt"] = "other"
+    result = run(renamed)
+    assert not result.passed
+    assert any("connect rule" in f for f in result.failures)
+
+
 def test_published_level_is_the_calendar_year_sum_of_energy_trends_quarters() -> None:
     level, receipt = published_energy_level(_declared())
     quarters = period_quarters("calendar_year", 2024)
@@ -638,11 +743,22 @@ def _synthetic_rake_receipt(n: int = 1200):
     accommodation = np.array(["HOUSE_DETACHED", "FLAT"], dtype=object)[
         (np.arange(n) // 2) % 2
     ]
+    # Weights summing to about the UK's households, so the DESNZ level gives
+    # each household a plausible kWh under the declared domestic ceilings.
     weights = rng.uniform(0.5, 2.0, n)
+    weights *= 28_500_000.0 / weights.sum()
+    drawn = table[GAS_KWH].to_numpy()
     connected, connection = impose_gas_connection(
-        table[GAS_KWH].to_numpy(), frs_region=region, weights=weights, shares=shares
+        drawn,
+        frs_region=region,
+        weights=weights,
+        shares=shares,
+        identity=np.arange(n),
+        connect_probability=np.full(n, 0.5),
+        connect_salt=declared["connect_salt"],
     )
     table.loc[~connected, GAS_KWH] = 0.0
+    table.loc[connected & ~(drawn > 0), GAS_KWH] = 8000.0
     raked, receipt = rake_energy_kwh(
         table,
         margins=margins,
@@ -655,6 +771,7 @@ def _synthetic_rake_receipt(n: int = 1200):
         use_region_margin=True,
         gas_connected=connected,
         level=level,
+        ceilings=declared_household_kwh_ceilings(declared),
     )
     receipt["gas_connection"] = {"rule": "published_meter_share", **connection}
     return margins, level, raked, weights, receipt
@@ -1061,3 +1178,332 @@ def test_gas_is_raked_over_connected_rows_and_electricity_over_all() -> None:
         iterations=1,
     )
     assert unmasked[GAS_KWH].mean() == pytest.approx(cell[GAS_KWH])
+
+
+def test_cap_household_kwh_keeps_the_total_and_caps_every_household() -> None:
+    # microcosm#1164: the kWh a capped household loses goes to the others in
+    # proportion to their use, and a household lifted over is capped in turn.
+    values = np.array([10.0, 4.0, 2.0, 1.0, 3.0])
+    weights = np.array([1.0, 1.0, 2.0, 1.0, 2.0])
+    population = np.array([True, True, True, True, False])
+    capped, receipt = cap_household_kwh(
+        values, weights=weights, population=population, ceiling=5.0
+    )
+    total = float(np.dot(weights[population], values[population]))
+    assert float(np.dot(weights[population], capped[population])) == pytest.approx(
+        total
+    )
+    assert (capped[population] <= 5.0 + 1e-9).all()
+    assert capped[4] == 3.0  # outside the population, untouched
+    assert receipt["ceiling_kwh"] == 5.0
+    assert receipt["households_above_after"] == 0
+    # One household was drawn above the ceiling; the rescaling lifts another
+    # to it, which gives nothing up.
+    assert receipt["households_capped"] == 1
+    assert receipt["households_at_ceiling"] == 2
+    assert receipt["capped_share_of_total"] == pytest.approx(5.0 / total)
+    assert receipt["frame_kwh_after"] == pytest.approx(total)
+    # Nothing to cap leaves the values as they were.
+    same, untouched = cap_household_kwh(
+        values, weights=weights, population=population, ceiling=50.0
+    )
+    np.testing.assert_array_equal(same, values)
+    assert untouched["households_capped"] == 0 and untouched["rounds"] == 0
+    # A frame too small for its level caps everyone and says the total fell
+    # short; the energy_rake gate then refuses the receipt.
+    short, infeasible = cap_household_kwh(
+        np.array([10.0, 10.0]),
+        weights=np.ones(2),
+        population=np.ones(2, dtype=bool),
+        ceiling=5.0,
+    )
+    assert short.tolist() == [5.0, 5.0]
+    assert infeasible["feasible"] is False
+    assert infeasible["frame_kwh_after"] == 10.0
+    assert receipt["feasible"] is True
+
+
+def test_cap_household_kwh_hands_the_excess_to_the_capped_households_cells() -> None:
+    # microcosm#1164: with the rake's cells, what a capped household gives up
+    # goes to the households below the ceiling in its own cells, so the cell
+    # means stay at their targets where proportional handing-out moves them.
+    band = np.array(["a", "a", "a", "b", "b", "b"])
+    values = np.array([9.0, 2.0, 1.0, 2.0, 2.0, 2.0])
+    weights = np.ones(6)
+    population = np.ones(6, dtype=bool)
+    cells = [(band, {"a": 4.0, "b": 2.0})]
+
+    proportional, _ = cap_household_kwh(
+        values, weights=weights, population=population, ceiling=6.0
+    )
+    raked, receipt = cap_household_kwh(
+        values,
+        weights=weights,
+        population=population,
+        ceiling=6.0,
+        cells=cells,
+        sweeps=20,
+    )
+
+    def mean(x, key):
+        return float(x[band == key].mean())
+
+    # Proportional handing-out moves both cells off their targets ...
+    assert mean(proportional, "a") < 4.0 - 0.1 and mean(proportional, "b") > 2.0
+    # ... the re-rake keeps both, with the capped household at the ceiling.
+    assert mean(raked, "a") == pytest.approx(4.0)
+    assert mean(raked, "b") == pytest.approx(2.0)
+    assert raked[0] == 6.0 and (raked <= 6.0 + 1e-9).all()
+    assert float(raked.sum()) == pytest.approx(float(values.sum()))
+    assert receipt["households_capped"] == 1
+    assert receipt["households_above_after"] == 0
+    assert receipt["feasible"] is True
+
+
+def test_declared_household_ceilings_are_the_domestic_meter_limits() -> None:
+    ceilings = declared_household_kwh_ceilings(_declared())
+    assert ceilings == {ELECTRICITY_KWH: 50_000.0, GAS_KWH: 73_200.0}
+    assert declared_household_kwh_ceilings({}) is None
+    for bad in ({"electricity": 50_000.0}, {"electricity": 50_000.0, "gas": 0.0}):
+        with pytest.raises(ValueError, match="household_kwh_ceiling"):
+            declared_household_kwh_ceilings({"household_kwh_ceiling": bad})
+
+
+def test_rake_caps_after_the_level_and_keeps_the_published_totals() -> None:
+    declared = _declared()
+    margins = need_margins_from_facts(period_value=NEED_PERIOD)
+    level, _ = published_energy_level(declared)
+    n = 600
+    rng = np.random.default_rng(11)
+    table = pd.DataFrame(
+        {
+            ELECTRICITY_KWH: rng.uniform(1000.0, 5000.0, n),
+            GAS_KWH: rng.uniform(5000.0, 20000.0, n),
+        }
+    )
+    # Two outliers far above the domestic limits.
+    table.loc[0, ELECTRICITY_KWH] = 400_000.0
+    table.loc[1, GAS_KWH] = 900_000.0
+    weights = np.full(n, 28_500_000.0 / n)
+    raked, receipt = rake_energy_kwh(
+        table,
+        margins=margins,
+        frs_region=np.array(["LONDON"] * n, dtype=object),
+        income=rng.uniform(5e3, 2e5, n),
+        weights=weights,
+        iterations=1,
+        level=level,
+        ceilings=declared_household_kwh_ceilings(declared),
+    )
+    for fuel, ceiling in ((ELECTRICITY_KWH, 50_000.0), (GAS_KWH, 73_200.0)):
+        values = raked[fuel].to_numpy(dtype=float)
+        assert values.max() <= ceiling * (1 + 1e-9)
+        assert float(np.dot(weights, values)) == pytest.approx(level[fuel], rel=1e-9)
+        block = receipt["ceiling"][fuel]
+        assert block["households_capped"] >= 1
+        assert block["households_above_after"] == 0
+
+
+def test_the_energy_rake_gate_checks_the_declared_household_ceilings() -> None:
+    # microcosm#1164: the stage declares the domestic meter limits, so the gate
+    # needs the ceiling block, no household above it and the total kept.
+    from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
+
+    gates = json.loads(
+        (
+            _TEST_PATHS.repository
+            / "packages/microcosm-build/src/microcosm/build/uk/gates.json"
+        ).read_text("utf-8")
+    )
+    by_id = {gate["id"]: gate for gate in gates["gates"]}
+    parameters = {
+        **by_id["uk_stage_lcfs_consumption_energy_rake"]["parameters"],
+        "maximum_relative_deviation": 1.0,
+    }
+    _, _, _, _, receipt = _synthetic_rake_receipt()
+
+    def run(energy_rake):
+        return uk_stage_health_gate(
+            evidence={"stage": "lcfs_consumption", "energy_rake": energy_rake},
+            stage="lcfs_consumption",
+            check="energy_rake",
+            parameters=parameters,
+        )
+
+    passed = run(receipt)
+    assert passed.passed, passed.failures
+    assert passed.details["ceiling"][ELECTRICITY_KWH]["ceiling_kwh"] == 50_000.0
+    assert passed.details["ceiling"][GAS_KWH]["ceiling_kwh"] == 73_200.0
+    missing = copy.deepcopy(receipt)
+    missing["ceiling"] = None
+    assert any("no ceiling block" in f for f in run(missing).failures)
+    above = copy.deepcopy(receipt)
+    above["ceiling"][GAS_KWH]["households_above_after"] = 3
+    assert any("above the declared" in f for f in run(above).failures)
+    other = copy.deepcopy(receipt)
+    other["ceiling"][ELECTRICITY_KWH]["ceiling_kwh"] = 25_000.0
+    assert any("not the declared" in f for f in run(other).failures)
+    lost = copy.deepcopy(receipt)
+    lost["ceiling"][ELECTRICITY_KWH]["frame_kwh_after"] *= 0.9
+    lost["ceiling"][ELECTRICITY_KWH]["feasible"] = False
+    failures = run(lost).failures
+    assert any("total after the cap" in f for f in failures)
+    assert any("left below the electricity_kwh ceiling" in f for f in failures)
+
+
+def test_the_stage_starts_only_the_mobile_home_cells_at_the_need_mean() -> None:
+    # microcosm#1240: mobile homes are the one FRS dwelling type NEED has no
+    # row for; the declaration names the all-dwellings mean they map to.
+    declared = declared_zero_kwh_cells_at_need_mean(_declared())
+    assert declared == {"accommodation": ("all_dwellings",)}
+    for mapping in NEED_PROPERTY_TYPE_IDS_BY_GEOGRAPHY.values():
+        assert mapping["MOBILE"] == "all_dwellings"
+    assert declared_zero_kwh_cells_at_need_mean({}) is None
+    for bad in (
+        [],
+        {},
+        {"dwelling": ["all_dwellings"]},
+        {"accommodation": "all_dwellings"},
+        {"accommodation": []},
+        {"accommodation": [""]},
+    ):
+        with pytest.raises(ValueError, match="zero_kwh_cells_at_need_mean"):
+            declared_zero_kwh_cells_at_need_mean({"zero_kwh_cells_at_need_mean": bad})
+
+
+def _mobile_home_table(n: int = 60):
+    """England and Wales rows in one income band, every third a mobile home
+    that drew no kWh (so the mobile-home cell is the only one with no kWh)."""
+
+    rng = np.random.default_rng(17)
+    accommodation = np.array(["HOUSE_DETACHED", "FLAT", "MOBILE"], dtype=object)[
+        np.arange(n) % 3
+    ]
+    mobile = accommodation == "MOBILE"
+    table = pd.DataFrame(
+        {
+            ELECTRICITY_KWH: np.where(mobile, 0.0, rng.uniform(1000.0, 5000.0, n)),
+            GAS_KWH: np.where(mobile, 0.0, rng.uniform(5000.0, 20000.0, n)),
+        }
+    )
+    arguments = {
+        "margins": need_margins_from_facts(period_value=NEED_PERIOD),
+        "frs_region": np.full(n, "LONDON", dtype=object),
+        "income": rng.uniform(21e3, 29e3, n),
+        "weights": rng.uniform(0.5, 2.0, n),
+        "iterations": 50,
+        "accommodation": accommodation,
+        "gas_connected": ~mobile,
+    }
+    return table, mobile, arguments
+
+
+def test_a_declared_cell_that_drew_no_kwh_starts_at_its_need_mean() -> None:
+    table, mobile, arguments = _mobile_home_table()
+    cell = f"{ENGLAND_AND_WALES_GEOGRAPHY_ID}:all_dwellings"
+    # Undeclared, the cell has nothing to scale and stays at zero.
+    plain, plain_receipt = rake_energy_kwh(table, **arguments)
+    assert {
+        (zero["margin"], zero["category"], zero["column"])
+        for zero in plain_receipt["zero_current_cells"]
+    } == {("_need_accommodation", cell, ELECTRICITY_KWH)}
+    assert plain_receipt["cells_held_at_need_mean"] == []
+    assert (plain.loc[mobile, ELECTRICITY_KWH] == 0.0).all()
+    # Declared, its households start at the NEED mean and the rake fits it.
+    raked, receipt = rake_energy_kwh(
+        table,
+        **arguments,
+        zero_kwh_cells_at_need_mean={"accommodation": ("all_dwellings",)},
+    )
+    assert receipt["zero_current_cells"] == []
+    assert receipt["cells_held_at_need_mean"] == [
+        {"margin": "accommodation", "cell": cell, "column": ELECTRICITY_KWH}
+    ]
+    assert (raked.loc[mobile, ELECTRICITY_KWH] > 0.0).all()
+    fitted = receipt["fit"]["accommodation"]["cells"][cell][ELECTRICITY_KWH]
+    assert abs(fitted["relative_deviation"]) < 0.05
+    # The mobile homes have no gas connection, so gas has no cell to start
+    # and its rake runs as it did undeclared.
+    assert (raked.loc[mobile, GAS_KWH] == 0.0).all()
+    assert (
+        receipt["sweep_residuals"][GAS_KWH] == plain_receipt["sweep_residuals"][GAS_KWH]
+    )
+    # A cell with one positive row is left to the rake.
+    drawn = table.copy()
+    drawn.loc[np.flatnonzero(mobile)[0], ELECTRICITY_KWH] = 500.0
+    _, kept = rake_energy_kwh(
+        drawn,
+        **arguments,
+        zero_kwh_cells_at_need_mean={"accommodation": ("all_dwellings",)},
+    )
+    assert kept["cells_held_at_need_mean"] == []
+    assert kept["zero_current_cells"] == []
+
+
+def test_a_held_cell_must_be_a_published_cell_of_a_swept_margin() -> None:
+    table, _, arguments = _mobile_home_table()
+    with pytest.raises(ValueError, match="NEED publishes no accommodation cell"):
+        rake_energy_kwh(
+            table,
+            **arguments,
+            zero_kwh_cells_at_need_mean={"accommodation": ("park_homes",)},
+        )
+    with pytest.raises(ValueError, match="does not sweep"):
+        rake_energy_kwh(
+            table,
+            **arguments,
+            zero_kwh_cells_at_need_mean={"tenure": ("owner_occupied",)},
+        )
+
+
+def test_the_energy_rake_gate_takes_only_the_declared_held_cells() -> None:
+    from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
+
+    gates = json.loads(
+        (
+            _TEST_PATHS.repository
+            / "packages/microcosm-build/src/microcosm/build/uk/gates.json"
+        ).read_text("utf-8")
+    )
+    by_id = {gate["id"]: gate for gate in gates["gates"]}
+    parameters = {
+        **by_id["uk_stage_lcfs_consumption_energy_rake"]["parameters"],
+        "maximum_relative_deviation": 1.0,
+    }
+    _, _, _, _, receipt = _synthetic_rake_receipt()
+
+    def run(energy_rake):
+        return uk_stage_health_gate(
+            evidence={"stage": "lcfs_consumption", "energy_rake": energy_rake},
+            stage="lcfs_consumption",
+            check="energy_rake",
+            parameters=parameters,
+        )
+
+    passed = run(receipt)
+    assert passed.passed, passed.failures
+    assert passed.details["cells_held_at_need_mean"] == 0
+    held = copy.deepcopy(receipt)
+    held["cells_held_at_need_mean"] = [
+        {
+            "margin": "accommodation",
+            "cell": f"{SCOTLAND_GEOGRAPHY_ID}:all_dwellings",
+            "column": ELECTRICITY_KWH,
+        }
+    ]
+    declared = run(held)
+    assert declared.passed, declared.failures
+    # The details count the cells and never name one.
+    assert declared.details["cells_held_at_need_mean"] == 1
+    assert "all_dwellings" not in json.dumps(declared.details)
+    undeclared = copy.deepcopy(receipt)
+    undeclared["cells_held_at_need_mean"] = [
+        {
+            "margin": "accommodation",
+            "cell": f"{ENGLAND_AND_WALES_GEOGRAPHY_ID}:detached",
+            "column": ELECTRICITY_KWH,
+        }
+    ]
+    assert any("does not declare" in f for f in run(undeclared).failures)
+    missing = {k: v for k, v in receipt.items() if k != "cells_held_at_need_mean"}
+    assert any("carries no cells_held_at_need_mean" in f for f in run(missing).failures)

@@ -1,6 +1,23 @@
 """Tests split from packages/microcosm-build/tests/test_us_stored_input_register.py."""
 
 # ruff: noqa: F403, F405
+import json  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+import pytest  # noqa: E402
+
+from microcosm.data import contract  # noqa: E402
+from microcosm.data.contract import (  # noqa: E402
+    US_FISCAL_STORED_INPUTS_STAGE,
+    US_STORED_INPUTS_EVIDENCE_FILE,
+    US_STORED_INPUTS_EVIDENCE_KEY,
+    stored_input_evidence_manifest_block,
+)
+from microcosm.data.stored_inputs import (  # noqa: E402
+    _US_ENTITIES,
+    CertifiedEngine,
+    undefined_stored_inputs,
+)
 from test_support.microcosm_build.us_stored_input_register import *
 
 
@@ -392,6 +409,12 @@ def test_main_runs_the_gate_in_the_batch_and_checks_the_written_h5(builder):
     assert isinstance(target, ast.Tuple)
     failures_name = target.elts[0].id
     details_name = target.elts[1].id
+    gate_call = next(
+        inner for inner in ast.walk(body[gate].value) if isinstance(inner, ast.Call)
+    )
+    assert {kw.arg: ast.unparse(kw.value) for kw in gate_call.keywords} == {
+        "stage": "US_FISCAL_STORED_INPUTS_STAGE"
+    }
 
     joined = position(
         lambda node: (
@@ -445,3 +468,267 @@ def test_main_runs_the_gate_in_the_batch_and_checks_the_written_h5(builder):
     assert gate < joined < batched < write < premise < abort < scorer
     assert premise == write + 1 and abort == premise + 1
     assert sum(calls(node, "_stored_input_gate_failures") for node in body) == 1
+
+    # microcosm#1034: the verdict is written as gate evidence by one
+    # unconditional statement right after the stale-evidence clear (so the
+    # file is this run's own) and before the batched raise (so a refused run
+    # keeps it too), from exactly the gate's failures and details.
+    clear = position(
+        lambda node: (
+            isinstance(node, ast.For)
+            and ast.unparse(node.iter) == "US_RELEASE_GATE_EVIDENCE_FILES.values()"
+        ),
+        "stale gate-evidence clear",
+    )
+    evidence = position(
+        lambda node: (
+            isinstance(node, ast.Expr)
+            and calls(node, "_record_stored_inputs_gate_evidence")
+        ),
+        "stored-input gate evidence",
+    )
+    evidence_call = body[evidence].value
+    assert [ast.unparse(arg) for arg in evidence_call.args] == ["release_dir"]
+    assert {kw.arg: ast.unparse(kw.value) for kw in evidence_call.keywords} == {
+        "failures": failures_name,
+        "details": details_name,
+        "telemetry": "terminal_batch_telemetry",
+    }
+    assert gate < joined < clear < evidence < batched
+    assert evidence == clear + 1
+    assert sum(calls(node, "_record_stored_inputs_gate_evidence") for node in body) == 1
+
+
+# ---------------------------------------------------------------------------
+# The verdict as release evidence (microcosm#1034)
+# ---------------------------------------------------------------------------
+
+
+class _Telemetry:
+    """A telemetry sink that records attached artifacts."""
+
+    def __init__(self):
+        self.attached: list[tuple[str, Path]] = []
+
+    def attach_artifact(self, label, path):
+        self.attached.append((label, Path(path)))
+
+
+def test_the_tool_binds_the_contracts_evidence_file(builder):
+    """Lockstep: the registry entry the tool binds and uploads is the key and
+    file the publisher requires."""
+    assert (
+        builder.US_RELEASE_GATE_EVIDENCE_FILES[US_STORED_INPUTS_EVIDENCE_KEY]
+        == US_STORED_INPUTS_EVIDENCE_FILE
+    )
+
+
+@pytest.mark.parametrize(
+    ("failures", "details"),
+    [
+        ([], {"evaluated": True, "engine": "policyengine-us 2.2.1", "refused": []}),
+        (
+            ["Stored model inputs failed (export frame): stored column 'x_y' ..."],
+            {"evaluated": True, "engine": "policyengine-us 2.2.1", "refused": ["x_y"]},
+        ),
+        (
+            ["Stored model inputs failed (export frame): no engine"],
+            {"evaluated": False},
+        ),
+    ],
+    ids=["passed", "refused", "not-evaluated"],
+)
+def test_the_evidence_file_is_the_gates_verdict(builder, tmp_path, failures, details):
+    """The file carries the gate's lines and details verbatim, passes exactly
+    when there are no lines, is never waived, names its stage, is written
+    deterministically, and is attached to the run's telemetry."""
+    telemetry = _Telemetry()
+
+    payload = builder._record_stored_inputs_gate_evidence(
+        tmp_path, failures=failures, details=details, telemetry=telemetry
+    )
+
+    path = tmp_path / US_STORED_INPUTS_EVIDENCE_FILE
+    assert payload == {
+        "schema_version": 1,
+        "enforced": True,
+        "checked_at_stage": US_FISCAL_STORED_INPUTS_STAGE,
+        "stored_inputs": {
+            "passed": failures == [],
+            "failures": failures,
+            "details": details,
+        },
+    }
+    assert path.read_text() == json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    assert telemetry.attached == [(US_STORED_INPUTS_EVIDENCE_KEY, path)]
+    assert builder._stored_inputs_manifest_block(
+        tmp_path, dataset_sha256="d" * 64
+    ) == stored_input_evidence_manifest_block(payload, dataset_sha256="d" * 64)
+
+
+def _hypothesis():
+    pytest.importorskip("hypothesis")
+    import hypothesis
+    from hypothesis import strategies as st
+
+    return hypothesis, st
+
+
+#: Columns a writer might store: engine variables, register entries, stale
+#: inputs no engine here defines, and names outside the naming convention.
+_ENGINE_POOL = ("age", "person_id", "household_weight", "takes_up_wic_if_eligible")
+_COLUMN_POOL = (
+    *_ENGINE_POOL,
+    "person_source_id",
+    "source_year",
+    "would_claim_wic",
+    "medicare_part_b_premiums",
+    "A_AGE",
+    "_scratch",
+)
+
+
+def test_property_the_publisher_accepts_the_gates_evidence_exactly_when_it_should(
+    builder, tmp_path_factory
+):
+    """For all stored tables and engines, the evidence the tool writes from
+    its own gate is a verdict the publisher accepts at the evidence tier, is
+    accepted at the certified tier if and only if the gate evaluated and
+    refused nothing, names as refused exactly the rule's refusal
+    (undefined_stored_inputs), and projects to the manifests' block for the
+    pinned H5: producer and contract agree."""
+    hypothesis, st = _hypothesis()
+    tables = st.dictionaries(
+        st.sampled_from(_US_ENTITIES),
+        st.lists(st.sampled_from(_COLUMN_POOL), max_size=5, unique=True).map(tuple),
+        max_size=3,
+    )
+
+    @hypothesis.settings(max_examples=150, deadline=None)
+    @hypothesis.given(
+        stored=tables,
+        variables=st.sets(st.sampled_from(_ENGINE_POOL)),
+        version=st.sampled_from(["2.2.1", "2.3.0", "1.764.6"]),
+        listable=st.booleans(),
+    )
+    def check(stored, variables, version, listable):
+        engine = CertifiedEngine(
+            label=f"policyengine-us {version}", variables=frozenset(variables)
+        )
+
+        def export_tables(frame):
+            if not listable:
+                raise KeyError("person")
+            return stored
+
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(builder, "installed_us_engine", lambda: engine)
+            patch.setattr(builder, "_export_stored_tables", export_tables)
+            failures, details = builder._stored_input_gate_failures(
+                None, stage=US_FISCAL_STORED_INPUTS_STAGE
+            )
+        release_dir = tmp_path_factory.mktemp("evidence")
+        payload = builder._record_stored_inputs_gate_evidence(
+            release_dir, failures=failures, details=details, telemetry=_Telemetry()
+        )
+        written = json.loads((release_dir / US_STORED_INPUTS_EVIDENCE_FILE).read_text())
+        assert written == payload
+
+        certified = contract._stored_input_evidence_payload_failures(
+            written, engine_label=engine.label, evidence_tier=False
+        )
+        evidence = contract._stored_input_evidence_payload_failures(
+            written, engine_label=engine.label, evidence_tier=True
+        )
+
+        columns = {column for names in stored.values() for column in names}
+        refused = list(
+            undefined_stored_inputs(columns, engine_variables=engine.variables)
+        )
+        assert evidence == []
+        assert (certified == []) == (listable and refused == [])
+        if listable:
+            assert written["stored_inputs"]["details"]["refused"] == refused
+        block = builder._stored_inputs_manifest_block(
+            release_dir, dataset_sha256="d" * 64
+        )
+        assert block == stored_input_evidence_manifest_block(
+            written, dataset_sha256="d" * 64
+        )
+
+    check()
+
+
+def test_property_evidence_names_another_engine_and_is_refused(
+    builder, tmp_path_factory
+):
+    """For all gate verdicts, evidence graded against one engine is refused
+    against a release whose built-with engine is another: the verdict counts
+    only for the engine the release records."""
+    hypothesis, st = _hypothesis()
+
+    @hypothesis.settings(max_examples=60, deadline=None)
+    @hypothesis.given(
+        graded=st.sampled_from(["2.2.1", "2.3.0"]),
+        built_with=st.sampled_from(["2.2.1", "2.3.0", "1.764.6"]),
+    )
+    def check(graded, built_with):
+        engine = CertifiedEngine(
+            label=f"policyengine-us {graded}", variables=frozenset(_ENGINE_POOL)
+        )
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(builder, "installed_us_engine", lambda: engine)
+            patch.setattr(builder, "_export_stored_tables", lambda frame: {})
+            failures, details = builder._stored_input_gate_failures(
+                None, stage=US_FISCAL_STORED_INPUTS_STAGE
+            )
+        payload = builder._record_stored_inputs_gate_evidence(
+            tmp_path_factory.mktemp("engine"),
+            failures=failures,
+            details=details,
+            telemetry=_Telemetry(),
+        )
+
+        verdict = contract._stored_input_evidence_payload_failures(
+            payload,
+            engine_label=f"policyengine-us {built_with}",
+            evidence_tier=False,
+        )
+
+        assert (verdict == []) == (graded == built_with)
+
+    check()
+
+
+@pytest.mark.parametrize("error", [ImportError(), ValueError("")])
+def test_an_ungraded_gate_names_its_reason_even_without_a_message(
+    builder, tmp_path, error
+):
+    """A gate that cannot evaluate records the exception's type with its
+    message, so an empty message still leaves evidence the evidence-tier
+    contract accepts (it requires a non-empty reason) rather than a release
+    refused on its own evidence."""
+
+    def fail(*args, **kwargs):
+        raise error
+
+    with pytest.MonkeyPatch.context() as patch:
+        if isinstance(error, ImportError):
+            patch.setattr(builder, "installed_us_engine", fail)
+            patch.setattr(builder, "_export_stored_tables", lambda frame: {})
+        else:
+            patch.setattr(builder, "_export_stored_tables", fail)
+        failures, details = builder._stored_input_gate_failures(
+            None, stage=US_FISCAL_STORED_INPUTS_STAGE
+        )
+    payload = builder._record_stored_inputs_gate_evidence(
+        tmp_path, failures=failures, details=details, telemetry=_Telemetry()
+    )
+
+    assert details == {"evaluated": False, "error": f"{type(error).__name__}: "}
+    assert (
+        contract._stored_input_evidence_payload_failures(
+            payload, engine_label="policyengine-us 2.2.1", evidence_tier=True
+        )
+        == []
+    )

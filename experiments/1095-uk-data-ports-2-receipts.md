@@ -146,8 +146,20 @@ floored), which a calibration of the current head would include.
     corrected upstream to include other investment income (pe-uk#2174, filed 2026-10-07).
 - **Y excludes the two UC bands.** Replaying the target-fit gate on the head arm's evidence without
   them passes, with X in force, and the other six seam gates passed on that arm. The replay keeps
-  the head arm's weights, which were solved with both bands bound; a calibration of the new head,
-  the national build and the certifier have not been run.
+  the head arm's weights, which were solved with both bands bound; arm head-r3 below solves without
+  them.
+- **Arm head-r3 (2026-10-08, built as `c7fe76e8a`, the tree of the pushed head).** Loss 0.00712
+  (A9 0.00715), 98.3% of 1,167 targets within 10%, ESS 4,874. With X and Y in force, 7 of 7
+  calibrated-seam gates pass, and so do the exported file's terminal gates.
+  - The certifier's input-mass gate (`input_mass_check.py`) passes, with no stale, expired or
+    dormant exclusion.
+  - The West Midlands cell, deferred by X, is at +28.9%. `obr.vat` is at +24.1%, under its 25%
+    bound. `dwp.hb.amount_pension_age` calibrates to 0.0%.
+  - C6's weighted-share rewrite leaves `uc_is_in_startup_period` unchanged: no value differs on the
+    142,129 person rows this spine shares with arm head's.
+  - The ledger is feed 825406f, rebuilt with the original's manifest after the original's fact file
+    was lost on 2026-10-08.
+  - The national build and the certifier follow the merge.
 
 ## Verification
 
@@ -179,8 +191,8 @@ floored), which a calibration of the current head would include.
   `MicroSeries`, because microdf reaches an environment only with an engine and the FRS spine runs
   in the engine-free lane. B0's forward-year note cites pe-uk#2173. The FRS spine tests pass (101),
   and no generated surface moved.
-- Head calibration: queued on 2026-10-08 at tree `c7fe76e8a`, which is this head's tree. Its results
-  are owed before merge.
+- Head calibration (2026-10-08, tree `c7fe76e8a`, this head's tree): 7 of 7 seam gates and the
+  certifier's input-mass gate pass (Measurement, arm head-r3).
 
 ## Signature drafts
 

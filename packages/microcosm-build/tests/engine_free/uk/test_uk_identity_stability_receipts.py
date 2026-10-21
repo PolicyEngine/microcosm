@@ -184,8 +184,18 @@ class TestE6Receipt:
                 del donor, predictors, weights
                 return {"targets": list(targets)}
 
-            def fit_draw_next(self, donor, recipient_base, raw, *, state, weights):
-                del recipient_base, raw, weights
+            def fit_draw_next(
+                self,
+                donor,
+                recipient_base,
+                raw,
+                *,
+                state,
+                weights,
+                quantiles,
+                sign_uniforms,
+            ):
+                del recipient_base, raw, weights, quantiles, sign_uniforms
                 target = state["targets"][0]
                 state = {"targets": state["targets"][1:]}
                 return SimpleNamespace(
@@ -209,7 +219,7 @@ class TestE6Receipt:
                 "is_SP_age": "person",
                 "dla": "person",
                 "pip": "person",
-                "hbai_household_net_income": "household",
+                "hbai_household_net_income_before_reset_to_zero": "household",
                 "current_education": "person",
             }
 
@@ -226,7 +236,9 @@ class TestE6Receipt:
                     "is_SP_age": np.ones(person_rows),
                     "dla": np.zeros(person_rows),
                     "pip": np.zeros(person_rows),
-                    "hbai_household_net_income": np.full(household_rows, 100.0),
+                    "hbai_household_net_income_before_reset_to_zero": np.full(
+                        household_rows, 100.0
+                    ),
                     "current_education": np.full(
                         person_rows, "NOT_IN_EDUCATION", dtype=object
                     ),
@@ -491,9 +503,10 @@ class TestPreSalarySacrificeRestoration:
 
         Household 6 is the band-37,700 family the split divides (wealth 20 over
         household 5's 10). Its carrier sacrifices enough pay to fall into band
-        0, the way the stage rewrites a converted record: pay lowered,
-        employee contribution zeroed and moved whole into the salary-sacrifice
-        column, the pre-conversion pay kept on the carrier.
+        0, the way the stage rewrites a converted record: pay lowered by the
+        amount moved into the salary-sacrifice column, and the pre-conversion
+        pay kept on the carrier. Here the whole contribution moves, so no
+        employee contribution remains.
         """
 
         from microcosm.build.uk_runtime.salary_sacrifice import (
@@ -590,20 +603,48 @@ class TestPreSalarySacrificeRestoration:
         )
         assert tool._pre_salary_sacrifice_frame(frame) is frame
 
+    def test_a_contribution_the_record_kept_is_restored_with_the_amount_moved(
+        self,
+    ) -> None:
+        # The conversion moves at most half the pay and leaves the rest of the
+        # contribution in place (uk-data#518), so the contribution before it is
+        # what the record kept plus what moved.
+        tool = _load_tool()
+        _, frame = _split_then_cloned()
+        rewritten, carrier_id, pay, sacrificed = self._converted(frame)
+        person = rewritten.table("person").copy()
+        person.loc[
+            person["person_id"] == carrier_id, "employee_pension_contributions"
+        ] = 125.0
+        kept = uk_national_frame(
+            person=person,
+            benunit=rewritten.table("benunit"),
+            household=rewritten.table("household"),
+            time_period="2024",
+            weight_kind=WeightKind.IMPORTANCE,
+            household_weights=rewritten.weights_for("household").values,
+            mass_log=rewritten.mass_log,
+        )
+        restored = tool._pre_salary_sacrifice_frame(kept).table("person")
+        restored = restored.set_index("person_id")
+        assert restored.loc[carrier_id, "employment_income"] == pay
+        assert restored.loc[carrier_id, "employee_pension_contributions"] == (
+            125.0 + sacrificed
+        )
+
     def test_a_carrier_disagreeing_with_the_columns_is_refused(self) -> None:
         from microcosm.build.uk_runtime.salary_sacrifice import (
+            SALSAC_OUTPUT,
             SALSAC_PRE_CONVERSION_PAY_COLUMN,
         )
 
         tool = _load_tool()
         _, frame = _split_then_cloned()
-        rewritten, carrier_id, _, _ = self._converted(frame)
+        rewritten, carrier_id, _, sacrificed = self._converted(frame)
         person = rewritten.table("person").copy()
-        # A positive employee contribution on a record the carrier calls
-        # converted is not the state the conversion leaves.
-        person.loc[
-            person["person_id"] == carrier_id, "employee_pension_contributions"
-        ] = 1.0
+        # Pay plus the sacrifice must give the pay before the conversion; a
+        # sacrifice that does not is not the state the conversion leaves.
+        person.loc[person["person_id"] == carrier_id, SALSAC_OUTPUT] = sacrificed + 1.0
         tampered = uk_national_frame(
             person=person,
             benunit=rewritten.table("benunit"),

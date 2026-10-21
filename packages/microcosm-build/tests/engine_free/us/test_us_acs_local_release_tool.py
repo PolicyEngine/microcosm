@@ -14,6 +14,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.gates import GateResult
+from microcosm.build.us_runtime import spm_measurement_gate
 from microcosm.data import stored_inputs
 from test_support.paths import paths_for
 
@@ -74,6 +76,45 @@ def _stored_input_contract_passes(monkeypatch):
             "register_sha256": stored_inputs.register_sha256(),
             "registered_non_variables": [],
         },
+    )
+
+
+#: The SPM measurement gate's real entry point, kept before the autouse
+#: fixture below replaces it, for the tests that grade real bytes.
+_REAL_CHECK_RELEASE_SPM_MEASUREMENT = spm_measurement_gate.check_release_spm_measurement
+#: What the stand-in gate reports: a measurable release under an engine that
+#: measures every unit, in the shape the publisher's contract requires.
+_MEASURABLE_DETAILS = {
+    "role_column_present": True,
+    "role_null_values": 0,
+    "role_non_boolean_values": 0,
+    "engine_scopes_spm_universe": False,
+    "universe_declared_in_release": False,
+    "measured_scope": "all_units",
+    "n_units": 8,
+    "n_units_by_universe": {"INCLUDED": 8, "OUTSIDE": 0},
+    "n_measured_units": 8,
+    "n_measured_units_without_classified_adult": 0,
+    "n_units_without_classified_adult": 0,
+    "n_units_without_classified_adult_by_universe": {"INCLUDED": 0, "OUTSIDE": 0},
+}
+
+
+@pytest.fixture(autouse=True)
+def _spm_measurement_gate_passes(monkeypatch):
+    """The package stage grades the calibrated frame's SPM measurement
+    (microcosm#1263). Most package tests here load a frame built for another
+    gate, so the verdict passes by default. The tests that pin it restore
+    :data:`_REAL_CHECK_RELEASE_SPM_MEASUREMENT` against real bytes."""
+
+    monkeypatch.setattr(
+        spm_measurement_gate,
+        "check_release_spm_measurement",
+        lambda frame, *, engine_scopes_universe: GateResult(
+            name=spm_measurement_gate.SPM_MEASUREMENT_GATE_NAME,
+            passed=True,
+            details=dict(_MEASURABLE_DETAILS),
+        ),
     )
 
 
@@ -225,8 +266,138 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
     }
     donor = by_id["donor_sparse_selection_training_set"]
     assert "populace-us-2024-buildo-sparse-rmloss100-x" in donor["reason"]
+    # Every published donor predates microcosm#1186, so the inherited
+    # Social Security erasure is disclosed by default.
+    social_security = by_id["social_security_cps_reporters_erased_inherited"]
+    assert social_security["status"] == "reviewed_inherited_defect"
+    assert social_security["calibration_blocker"] is False
+    assert social_security["donor_release"] == (
+        "populace-us-2024-buildo-sparse-rmloss100-x"
+    )
+    assert "microcosm#1186" in social_security["fixed_by"]
     # Ids are unique after dedupe.
     assert len(by_id) == len(limitations)
+
+
+def test_a_donor_verified_free_of_the_social_security_erasure_drops_the_disclosure(
+    monkeypatch,
+) -> None:
+    """The disclosure is fail-safe: it leaves the register only for a donor
+    added to DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE after checking."""
+
+    module = _load_tool_module()
+    assert module.DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE == frozenset()
+    staging_summary = {
+        "base": {"donor_release": {"release_id": "populace-us-2024-after-1186"}},
+        "reviewed_limitations": [],
+    }
+    diagnostics = {"effective_sample_size": 1.0, "ess_fraction": 0.5}
+
+    def ids():
+        return {
+            item["id"]
+            for item in module.finalize_reviewed_limitations(
+                staging_summary, diagnostics, {}
+            )
+        }
+
+    assert "social_security_cps_reporters_erased_inherited" in ids()
+    monkeypatch.setattr(
+        module,
+        "DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE",
+        frozenset({"populace-us-2024-after-1186"}),
+    )
+    assert "social_security_cps_reporters_erased_inherited" not in ids()
+
+
+def test_the_acs_wic_assumption_is_disclosed_exactly_when_it_was_applied() -> None:
+    """microcosm#1263: the limitation follows the consumer export's receipt."""
+
+    module = _load_tool_module()
+    staging_summary = {"base": {"donor_release": {}}, "reviewed_limitations": []}
+    diagnostics = {"effective_sample_size": 1.0, "ess_fraction": 0.5}
+
+    def limitation(consumer_export):
+        return {
+            item["id"]: item
+            for item in module.finalize_reviewed_limitations(
+                staging_summary, diagnostics, {}, consumer_export=consumer_export
+            )
+        }.get("acs_wic_takeup_assumed_interim")
+
+    applied = {
+        "live_stored_inputs": {
+            "wic": {
+                "renamed": True,
+                "from": "would_claim_wic",
+                "to": "takes_up_wic_if_eligible",
+                "people_assumed_true": 12,
+                "flip_condition": "Drop it once microcosm#1156 lands.",
+            }
+        }
+    }
+    entry = limitation(applied)
+    assert entry["status"] == "reviewed_interim_assumption"
+    assert entry["column"] == "takes_up_wic_if_eligible"
+    assert entry["people_assumed_true"] == 12
+    assert entry["treatment"] == "Drop it once microcosm#1156 lands."
+    assert entry["calibration_blocker"] is False
+    assert limitation(None) is None
+    assert limitation({}) is None
+    assert limitation({"live_stored_inputs": {"wic": {"renamed": False}}}) is None
+
+
+def _spine_frame(spines, decisions):
+    from microcosm.frame import Frame
+    from test_support.microcosm_build.us_acs_spm_role import acs_frame
+
+    frame = acs_frame([[(20, 40.0)] for _ in spines])
+    person = frame.table("person").copy()
+    person["person_spine"] = spines
+    person["would_claim_wic"] = pd.Series(decisions, dtype=object)
+    person["medicare_part_b_premiums"] = [
+        0.0 if decision is not None else np.nan for decision in decisions
+    ]
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables["person"] = person
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+    )
+
+
+def test_only_acs_spine_people_may_lack_a_wic_decision() -> None:
+    """The tool hands the rule the ACS spine, read from the spine tag."""
+
+    module = _load_tool_module()
+    frame = _spine_frame(
+        ["asec_puf", "acs_2024_1yr", "acs_2024_1yr"], [False, None, None]
+    )
+
+    result = module._with_live_stored_inputs(frame)
+
+    person = result.frame.table("person")
+    assert person["takes_up_wic_if_eligible"].tolist() == [False, True, True]
+    assert "would_claim_wic" not in person.columns
+    assert "medicare_part_b_premiums" not in person.columns
+    assert result.provenance["wic"]["people_assumed_true"] == 2
+    # Neither retired name, nor the live one, is left for the package gate to
+    # refuse.
+    engine = stored_inputs.installed_us_engine()
+    refused = stored_inputs.undefined_stored_inputs(
+        person.columns, engine_variables=engine.variables
+    )
+    assert not {
+        "would_claim_wic",
+        "medicare_part_b_premiums",
+        "takes_up_wic_if_eligible",
+    } & set(refused)
+
+    with pytest.raises(SystemExit, match="did not allow"):
+        module._with_live_stored_inputs(
+            _spine_frame(["asec_puf", "acs_2024_1yr"], [None, None])
+        )
 
 
 def test_parse_args_enforces_stage_requirements(tmp_path: Path) -> None:
@@ -1455,6 +1626,366 @@ def test_package_records_the_stored_input_gate_bound_to_the_packaged_bytes(
             "artifact_sha256": result["root_artifact"]["sha256"],
             "checked_at_stage": "package",
         }
+
+
+def test_the_package_stage_output_meets_the_publisher_gate_requirement(
+    tmp_path, monkeypatch
+):
+    """Producer and publisher agree (microcosm#1034): the gate the package
+    stage writes, keyed and staged by the contract's own constants, passes
+    the publisher's US local-area stored-input requirement against the
+    release manifest and build manifest written alongside it, and the same
+    output with the gate dropped is refused."""
+
+    import importlib.metadata as metadata
+
+    from microcosm.data import contract
+
+    real_version = metadata.version
+    # The built-with record reads installed metadata; the engine-free lane has
+    # no policyengine-us, so pin it to the stand-in engine's version.
+    monkeypatch.setattr(
+        metadata,
+        "version",
+        lambda name: "2.2.1" if name == "policyengine-us" else real_version(name),
+    )
+    module = _load_tool_module()
+    assert (
+        module.US_STORED_INPUTS_EVIDENCE_KEY == contract.US_STORED_INPUTS_EVIDENCE_KEY
+    )
+    assert (
+        module.US_LOCAL_AREA_STORED_INPUTS_STAGE
+        == contract.US_LOCAL_AREA_STORED_INPUTS_STAGE
+    )
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    release_dir = Path(module.do_package(args)["release_dir"])
+
+    def load(name):
+        return json.loads((release_dir / name).read_text())
+
+    gate_summary = load("gate_summary.json")
+    release_manifest = load("release_manifest.json")
+    build_manifest = load("build_manifest.json")
+    assert release_manifest["build"]["built_with_model_package"] == {
+        "name": "policyengine-us",
+        "version": "2.2.1",
+    }
+    failures: list[str] = []
+    contract._check_local_area_gates(gate_summary, failures)
+    contract._check_us_local_area_stored_inputs_gate(
+        gate_summary,
+        release_manifest=release_manifest,
+        build_manifest=build_manifest,
+        failures=failures,
+    )
+    assert failures == []
+
+    del gate_summary["gates"][contract.US_STORED_INPUTS_EVIDENCE_KEY]
+    contract._check_us_local_area_stored_inputs_gate(
+        gate_summary,
+        release_manifest=release_manifest,
+        build_manifest=build_manifest,
+        failures=failures,
+    )
+    assert len(failures) == 1
+    assert "must carry the 'stored_inputs' gate" in failures[0]
+
+
+def _write_measurable_lane_h5(
+    path: Path, *, group_quarters_child: bool, role=None
+) -> None:
+    """The plausible-hours frame with the columns the SPM gate reads.
+
+    Eight one-person ACS housing units of adults; with
+    ``group_quarters_child`` the last is instead a group-quarters record of a
+    ten-year-old, whom no role can classify. ``role`` replaces the stored
+    role column, which is otherwise Boolean ``True`` for everyone.
+    """
+
+    from microcosm.frame import Frame
+
+    staging = _load_staging_builder_module()
+    frame = _plausible_hours_frame()
+    ages = [40.0, 38.0, 20.0, 45.0, 70.0, 67.0, 30.0, 50.0]
+    kinds = [1.0] * 8
+    if group_quarters_child:
+        ages[-1], kinds[-1] = 10.0, 2.0
+    person = frame.table("person").assign(
+        age=ages,
+        is_spm_independent_minor_role=[True] * 8 if role is None else role,
+        person_support_clone_index=0,
+    )
+    household = frame.table("household").assign(
+        household_spine="acs_2024_1yr", TYPEHUGQ=kinds
+    )
+    frame = Frame(
+        {
+            **{entity: frame.table(entity) for entity in frame.entities},
+            "person": person,
+            "household": household,
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+    staging._write_dataset(
+        frame, path, period=2024, artifact_kind="calibrated_local_area_artifact"
+    )
+
+
+@requires_pytables
+def test_package_records_the_spm_measurement_gate_bound_to_the_packaged_bytes(
+    tmp_path, monkeypatch
+):
+    """microcosm#1263: the package stage grades the calibrated H5 it ships
+    against the engine it records as built-with, and both manifests carry the
+    verdict bound to the packaged bytes."""
+
+    monkeypatch.setattr(
+        spm_measurement_gate,
+        "check_release_spm_measurement",
+        _REAL_CHECK_RELEASE_SPM_MEASUREMENT,
+    )
+    module = _load_tool_module()
+    assert (
+        module.US_SPM_MEASUREMENT_EVIDENCE_KEY
+        == spm_measurement_gate.SPM_MEASUREMENT_GATE_NAME
+    )
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    _write_measurable_lane_h5(args.out_h5, group_quarters_child=False)
+    _refresh_package_evidence_bindings(module, args)
+
+    result = module.do_package(args)
+
+    release_dir = Path(result["release_dir"])
+    recorded = [
+        json.loads((release_dir / name).read_text())["gates"][
+            "spm_measurement_composition"
+        ]
+        for name in ("gate_summary.json", "build_manifest.json")
+    ]
+    assert recorded[0] == recorded[1]
+    gate = recorded[0]
+    assert gate["passed"] is True
+    assert gate["failures"] == []
+    assert gate["engine"] == "policyengine-us 2.2.1"
+    assert gate["checked_at_stage"] == "package"
+    assert gate["artifact_sha256"] == result["root_artifact"]["sha256"]
+    assert gate["details"]["measured_scope"] == "all_units"
+    assert gate["details"]["n_measured_units"] == 8
+    assert gate["details"]["n_measured_units_without_classified_adult"] == 0
+
+
+@requires_pytables
+def test_package_refuses_an_unmeasurable_release_before_any_release_dir(
+    tmp_path, monkeypatch
+):
+    """The 2026-09-23 failure in this lane: one group-quarters child makes
+    every SPM measurement on the release raise SPM_COMPOSITION_REQUIRED under
+    an engine that measures every unit. The package stage refuses it, and no
+    release directory is created."""
+
+    monkeypatch.setattr(
+        spm_measurement_gate,
+        "check_release_spm_measurement",
+        _REAL_CHECK_RELEASE_SPM_MEASUREMENT,
+    )
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    _write_measurable_lane_h5(args.out_h5, group_quarters_child=True)
+    _refresh_package_evidence_bindings(module, args)
+
+    with pytest.raises(SystemExit) as refusal:
+        module.do_package(args)
+
+    message = str(refusal.value)
+    assert message.startswith("Refusing to package: the SPM measurement gate failed")
+    assert "1 of 8 SPM units" in message
+    assert "0 inside the source SPM universe and 1 outside it" in message
+    assert not (args.out / "releases").exists()
+    assert not (args.out / "package_result.json").exists()
+
+
+@requires_pytables
+def test_package_refuses_a_complex_role_after_the_h5_round_trip(tmp_path, monkeypatch):
+    """A complex role column survives the lane's H5 writer and reader. Its
+    ``1j`` casts to True, yet its real part is 0, so the gate must refuse the
+    column on the bytes the release would ship rather than read it one way."""
+
+    monkeypatch.setattr(
+        spm_measurement_gate,
+        "check_release_spm_measurement",
+        _REAL_CHECK_RELEASE_SPM_MEASUREMENT,
+    )
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    _write_measurable_lane_h5(
+        args.out_h5,
+        group_quarters_child=False,
+        role=np.array([1 + 0j] * 7 + [1j], dtype=np.complex128),
+    )
+    _refresh_package_evidence_bindings(module, args)
+    stored = module._load_staging_frame(args.out_h5).table("person")[
+        "is_spm_independent_minor_role"
+    ]
+    assert pd.api.types.is_complex_dtype(stored.dtype)
+
+    with pytest.raises(SystemExit) as refusal:
+        module.do_package(args)
+
+    message = str(refusal.value)
+    assert message.startswith("Refusing to package: the SPM measurement gate failed")
+    assert "8 person row(s)" in message
+    assert "complex" in message
+    assert not (args.out / "releases").exists()
+
+
+def test_package_refuses_an_spm_gate_without_an_importable_engine(
+    tmp_path, monkeypatch
+):
+    """The gate grades against the built-with engine, so it needs one."""
+
+    module = _load_tool_module()
+
+    def missing():
+        raise ImportError("No module named 'policyengine_us'")
+
+    monkeypatch.setattr(stored_inputs, "installed_us_engine", missing)
+    with pytest.raises(SystemExit, match="SPM measurement cannot be graded"):
+        module._require_spm_measurement(object())
+
+
+@pytest.mark.parametrize(
+    ("defines_declaration", "registered", "refused"),
+    [
+        (False, False, False),
+        (True, True, False),
+        (True, False, True),
+        (False, True, True),
+    ],
+)
+def test_package_refuses_an_engine_whose_scoping_disagrees_with_the_register(
+    monkeypatch, defines_declaration, registered, refused
+):
+    """The publisher trusts the reviewed register of universe-scoping engines.
+    An engine that defines the declaration without being registered, or is
+    registered without defining it, has not been reviewed: no verdict graded
+    on either reading is recorded."""
+
+    from microcosm.build.us_runtime.spm_universe_source import UNIVERSE_INPUT
+    from microcosm.data import contract
+
+    variables = set(_PACKAGE_ENGINE.variables)
+    if defines_declaration:
+        variables.add(UNIVERSE_INPUT)
+    monkeypatch.setattr(
+        stored_inputs,
+        "installed_us_engine",
+        lambda: stored_inputs.CertifiedEngine(
+            label="policyengine-us 2.2.1", variables=frozenset(variables)
+        ),
+    )
+    monkeypatch.setattr(
+        contract,
+        "US_SPM_UNIVERSE_SCOPING_MODEL_VERSIONS",
+        frozenset({"2.2.1"}) if registered else frozenset(),
+    )
+    graded_as = []
+    monkeypatch.setattr(
+        spm_measurement_gate,
+        "check_release_spm_measurement",
+        lambda frame, *, engine_scopes_universe: (
+            graded_as.append(engine_scopes_universe)
+            or GateResult(
+                name=spm_measurement_gate.SPM_MEASUREMENT_GATE_NAME,
+                passed=True,
+                details=dict(_MEASURABLE_DETAILS),
+            )
+        ),
+    )
+    module = _load_tool_module()
+
+    if refused:
+        with pytest.raises(SystemExit, match="reviewed register"):
+            module._require_spm_measurement(object())
+        assert graded_as == []
+    else:
+        module._require_spm_measurement(object())
+        assert graded_as == [defines_declaration]
+
+
+@requires_pytables
+def test_the_spm_measurement_gate_meets_the_publisher_requirement(
+    tmp_path, monkeypatch
+):
+    """Producer and publisher agree (microcosm#1263): the gate the package
+    stage writes from real bytes passes the publisher's requirement against
+    the manifests written alongside it, and the same output with the gate
+    dropped, or recording a measured unit without an adult, is refused."""
+
+    import importlib.metadata as metadata
+
+    from microcosm.data import contract
+
+    real_version = metadata.version
+    monkeypatch.setattr(
+        metadata,
+        "version",
+        lambda name: "2.2.1" if name == "policyengine-us" else real_version(name),
+    )
+    monkeypatch.setattr(
+        spm_measurement_gate,
+        "check_release_spm_measurement",
+        _REAL_CHECK_RELEASE_SPM_MEASUREMENT,
+    )
+    module = _load_tool_module()
+    assert (
+        module.US_LOCAL_AREA_SPM_MEASUREMENT_STAGE
+        == contract.US_LOCAL_AREA_SPM_MEASUREMENT_STAGE
+    )
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    _write_measurable_lane_h5(args.out_h5, group_quarters_child=False)
+    _refresh_package_evidence_bindings(module, args)
+    release_dir = Path(module.do_package(args)["release_dir"])
+
+    def load(name):
+        return json.loads((release_dir / name).read_text())
+
+    gate_summary = load("gate_summary.json")
+    release_manifest = load("release_manifest.json")
+    build_manifest = load("build_manifest.json")
+
+    def failures_for(summary, build=build_manifest):
+        failures: list[str] = []
+        contract._check_us_local_area_spm_measurement_gate(
+            summary,
+            release_manifest=release_manifest,
+            build_manifest=build,
+            failures=failures,
+        )
+        return failures
+
+    assert failures_for(gate_summary) == []
+
+    key = contract.US_SPM_MEASUREMENT_EVIDENCE_KEY
+    dropped = json.loads(json.dumps(gate_summary))
+    del dropped["gates"][key]
+    assert len(failures_for(dropped)) == 1
+    assert (
+        "must carry the 'spm_measurement_composition' gate"
+        in (failures_for(dropped)[0])
+    )
+
+    crashing = json.loads(json.dumps(gate_summary))
+    crashing["gates"][key]["details"].update(
+        n_measured_units_without_classified_adult=1,
+        n_units_without_classified_adult=1,
+        n_units_without_classified_adult_by_universe={"INCLUDED": 1, "OUTSIDE": 0},
+    )
+    build = json.loads(json.dumps(build_manifest))
+    build["gates"][key] = crashing["gates"][key]
+    assert any(
+        "SPM_COMPOSITION_REQUIRED" in line for line in failures_for(crashing, build)
+    )
 
 
 def _write_lane_h5(path: Path, **person_columns) -> None:

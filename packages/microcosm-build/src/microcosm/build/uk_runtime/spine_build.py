@@ -72,6 +72,9 @@ from microcosm.build.uk_runtime.calibration_run import (
     UK_SPINE_GATE_SCOPE,
     uk_scoped_gate_manifest,
 )
+from microcosm.build.uk_runtime.carers_allowance_take_up import (
+    UKCarersAllowanceTakeUpStageTransform,
+)
 from microcosm.build.uk_runtime.cgt_asset_type import (
     uk_cgt_asset_type_stage_transform,
 )
@@ -128,8 +131,14 @@ from microcosm.build.uk_runtime.graph_evidence import (
     register_spine_gate_kernel,
     spine_sidecar_evidence,
 )
+from microcosm.build.uk_runtime.high_value_home_support import (
+    UKHighValueHomeSupportStageTransform,
+)
 from microcosm.build.uk_runtime.lcfs_consumption import (
     UKLCFSConsumptionStageTransform,
+)
+from microcosm.build.uk_runtime.legacy_closure_take_up import (
+    UKLegacyClosureTakeUpStageTransform,
 )
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
@@ -147,8 +156,17 @@ from microcosm.build.uk_runtime.orrery_contract import (
 from microcosm.build.uk_runtime.pension_credit_take_up import (
     UKPensionCreditTakeUpStageTransform,
 )
+from microcosm.build.uk_runtime.private_school_attendance import (
+    UKPrivateSchoolAttendanceStageTransform,
+)
 from microcosm.build.uk_runtime.property_components import (
     UKPropertyComponentsStageTransform,
+)
+from microcosm.build.uk_runtime.property_purchases import (
+    UKPropertyPurchasesStageTransform,
+)
+from microcosm.build.uk_runtime.regional_home_values import (
+    UKRegionalHomeValuesStageTransform,
 )
 from microcosm.build.uk_runtime.regional_uprating import (
     UKRegionalPropertyUpratingStageTransform,
@@ -361,12 +379,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--lcfs-hh-tab",
         type=Path,
-        help="Caller-supplied private LCFS 2023-24 household tab for lcfs_consumption.",
+        help="Caller-supplied private LCFS 2024-25 household tab for lcfs_consumption.",
     )
     parser.add_argument(
         "--lcfs-person-tab",
         type=Path,
-        help="Caller-supplied private LCFS 2023-24 person tab for lcfs_consumption.",
+        help="Caller-supplied private LCFS 2024-25 person tab for lcfs_consumption.",
     )
     parser.add_argument(
         "--etb-tab",
@@ -688,6 +706,11 @@ def _rules_engine() -> PolicyEngineUKEngine:
             "build_uk_frs_spine requires the microcosm-build 'uk' extra "
             "(policyengine-uk). Run: uv sync --all-packages --extra uk"
         ) from exc
+    from microcosm.build.uk_runtime.hmrc_uprating import (
+        assert_installed_engine_is_pinned,
+    )
+
+    assert_installed_engine_is_pinned()
     return PolicyEngineUKEngine()
 
 
@@ -1622,6 +1645,14 @@ def prepare_uk_spine_execution(
                 spi_tab_path=sources["spi"],
             )
         )
+    if "regional_home_values" in stage_names:
+        implementations["regional_home_values"] = UKRegionalHomeValuesStageTransform(
+            stage=stages_by_name["regional_home_values"],
+        )
+    if "property_purchases" in stage_names:
+        implementations["property_purchases"] = UKPropertyPurchasesStageTransform(
+            stage=stages_by_name["property_purchases"],
+        )
     if "lcfs_consumption" in stage_names:
         implementations["lcfs_consumption"] = _GraphSourceTransform(
             lambda sources: UKLCFSConsumptionStageTransform(
@@ -1684,6 +1715,12 @@ def prepare_uk_spine_execution(
         implementations["uc_capital_coherence"] = UKUCCapitalCoherenceStageTransform(
             stage=stages_by_name["uc_capital_coherence"]
         )
+    if "uc_legacy_closure_take_up" in stage_names:
+        implementations["uc_legacy_closure_take_up"] = (
+            UKLegacyClosureTakeUpStageTransform(
+                stage=stages_by_name["uc_legacy_closure_take_up"]
+            )
+        )
     if "pension_credit_take_up" in stage_names:
         implementations["pension_credit_take_up"] = UKPensionCreditTakeUpStageTransform(
             stage=stages_by_name["pension_credit_take_up"],
@@ -1694,10 +1731,24 @@ def prepare_uk_spine_execution(
             stage=stages_by_name["child_benefit_take_up"],
             engine=engine,
         )
+    if "carers_allowance_take_up" in stage_names:
+        implementations["carers_allowance_take_up"] = (
+            UKCarersAllowanceTakeUpStageTransform(
+                stage=stages_by_name["carers_allowance_take_up"],
+                engine=engine,
+                contract=stochastic_contract,
+            )
+        )
     if "uc_deduction_attributes" in stage_names:
         implementations["uc_deduction_attributes"] = (
             UKUCDeductionAttributesStageTransform(
                 stage=stages_by_name["uc_deduction_attributes"]
+            )
+        )
+    if "high_value_home_support" in stage_names:
+        implementations["high_value_home_support"] = (
+            UKHighValueHomeSupportStageTransform(
+                stage=stages_by_name["high_value_home_support"]
             )
         )
     if "cgt_support_split" in stage_names:
@@ -1734,6 +1785,14 @@ def prepare_uk_spine_execution(
         implementations["student_loans"] = UKStudentLoansStageTransform(
             stage=stages_by_name["student_loans"],
             calibration_year=frs_release.calibration_year,
+        )
+    if "private_school_attendance" in stage_names:
+        implementations["private_school_attendance"] = (
+            UKPrivateSchoolAttendanceStageTransform(
+                stage=stages_by_name["private_school_attendance"],
+                engine=engine,
+                calibration_year=frs_release.calibration_year,
+            )
         )
     if "age_tail" in stage_names:
         implementations["age_tail"] = UKAgeTailStageTransform(

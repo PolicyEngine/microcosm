@@ -247,7 +247,7 @@ def _collect_executable_content(
                 and not compiler_identity_field
             ):
                 offenders.append(child_location)
-            if compiler_identity_field:
+            if compiler_identity_field or _is_fact_key_field(key=key, value=child):
                 continue
             _collect_executable_content(child, child_location, offenders)
     elif isinstance(value, list):
@@ -318,6 +318,33 @@ def _looks_like_python_entrypoint(value: str) -> bool:
             r"\b[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)+:[a-zA-Z_]\w*\b",
             value,
         )
+    )
+
+
+_FACT_KEY_FIELDS = frozenset(
+    {"aggregate_fact_key", "semantic_fact_key", "legacy_fact_key", "fact_key"}
+)
+_FACT_KEY_NAMESPACES = (
+    "ledger.",
+    "microcosm.derived_fact.",
+    "microcosm.semantic_fact.",
+)
+
+
+def _is_fact_key_field(*, key: str, value: object) -> bool:
+    """Admit consumer-fact identifiers in their published ``namespace:id`` shape.
+
+    Chronicle keys its facts ``ledger.aggregate_fact.v2:<id>`` and Microcosm's
+    derived facts (microcosm#1240) follow the same shape under the owned
+    ``microcosm.derived_fact.`` and ``microcosm.semantic_fact.`` namespaces. They are opaque identifiers the
+    compiler matches by prefix, never entrypoints; only the named key fields
+    with a known namespace are admitted.
+    """
+
+    return (
+        key in _FACT_KEY_FIELDS
+        and isinstance(value, str)
+        and value.startswith(_FACT_KEY_NAMESPACES)
     )
 
 

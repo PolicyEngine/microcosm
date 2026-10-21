@@ -17,6 +17,10 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.source_manifest import SourceStageSpec
+from microcosm.build.stochastic_assignment import (
+    integer_record_keys,
+    stable_identity_uniforms,
+)
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_national_frame,
@@ -30,8 +34,15 @@ from microcosm.build.uk_runtime.spi_support import (
     support_clone_index_column,
 )
 from microcosm.build.uk_runtime.uc_capital_coherence import (
+    PROPERTY_CAPITAL_OWNER_COLUMN,
+    UC_CAPITAL_WITH_PROPERTY_DEFINITION,
+    UC_PROPERTY_CAPITAL_SHARE,
+    UC_PROPERTY_CAPITAL_SHARE_DEFINITION,
+    UC_PROPERTY_CAPITAL_SOURCES,
     _boolean_values,
     _household_to_benunit_weights,
+    recorded_capital_with_property,
+    uc_property_capital_share,
 )
 from microcosm.build.uk_runtime.uc_relationships import (
     UC_COUPLE_DEFINITION,
@@ -69,9 +80,20 @@ UC_REPORTER_NUMERIC_PREDICTORS = tuple(
     predictor for predictor in UC_REPORTER_PREDICTORS if predictor != "region"
 )
 UC_REPORTER_TARGET = "universal_credit_reported_amount"
+UC_REPORTER_SCREEN_CAPITAL_DEFINITION = (
+    f"{UC_CAPITAL_WITH_PROPERTY_DEFINITION}; a base FRS-channel unit with "
+    f"{UC_REPORTER_TARGET} > 0 takes frs_benunit_capital alone"
+)
 UC_REPORTER_TEMPORARY_DERIVED = {
     "is_uc_couple": UC_COUPLE_DEFINITION,
-    "uc_reported_capital": "frs_benunit_capital",
+    # The screen reads the capital uc_capital_coherence records. An FRS unit
+    # that reports Universal Credit is screened on its carrier alone, so the
+    # training set keeps the reporters whose imputed property would take them
+    # over the capital limit. Every other unit is screened on the carrier plus
+    # its property share, so a drawn SPI reporter does not land on a unit its
+    # property takes over the limit (microcosm#1095).
+    UC_PROPERTY_CAPITAL_SHARE: UC_PROPERTY_CAPITAL_SHARE_DEFINITION,
+    "uc_reported_capital": UC_REPORTER_SCREEN_CAPITAL_DEFINITION,
     "positive_pre_takeup_uc_award": (
         "max(0, uc_maximum_amount - uc_income_reduction) > 0"
     ),
@@ -184,6 +206,7 @@ def redraw_spi_reported_uc(
             "is_benunit_head",
             "is_parent",
             "age",
+            PROPERTY_CAPITAL_OWNER_COLUMN,
             UC_REPORTER_REDRAW_OUTPUT,
             *_PERSON_INCOME_COLUMNS,
         ),
@@ -202,7 +225,7 @@ def redraw_spi_reported_uc(
     )
     _require_columns(
         household,
-        ("household_id", "region"),
+        ("household_id", "region", *UC_PROPERTY_CAPITAL_SOURCES),
         label="household",
     )
 
@@ -295,7 +318,25 @@ def redraw_spi_reported_uc(
         weights=weights[training],
     )
     draws = np.zeros(len(benunit), dtype=np.float64)
-    predicted = fitted.predict(encoded_target)
+    # Uniforms keyed on each benefit unit's own id, never a positional
+    # stream: a unit's redraw moves only when its own predictors do.
+    keys = integer_record_keys(
+        benunit["benunit_id"].to_numpy()[target], label="UC reporter benunit_id"
+    )
+    salt = f"uc_reporter_redraw:{UC_REPORTER_TARGET}"
+    predicted = fitted.predict_from_uniforms(
+        encoded_target,
+        quantiles={
+            UC_REPORTER_TARGET: stable_identity_uniforms(
+                keys, seed=UC_REPORTER_REDRAW_SEED, salt=salt
+            )
+        },
+        sign_uniforms={
+            UC_REPORTER_TARGET: stable_identity_uniforms(
+                keys, seed=UC_REPORTER_REDRAW_SEED, salt=f"{salt}:sign"
+            )
+        },
+    )
     if list(predicted.columns) != [UC_REPORTER_TARGET]:
         raise ValueError(
             "UC reporter redraw model must return exactly the declared target."
@@ -364,9 +405,21 @@ def _materialize_screen_inputs(
     household: pd.DataFrame,
 ) -> Mapping[str, np.ndarray]:
     temporary_benunit = benunit.copy()
-    temporary_benunit["uc_reported_capital"] = pd.to_numeric(
-        temporary_benunit["frs_benunit_capital"], errors="coerce"
-    ).to_numpy(dtype=np.float64, na_value=np.nan)
+    frs_reporter = temporary_benunit[support_channel_column("benunit")].astype(str).eq(
+        BASE_FRS_SUPPORT_CHANNEL
+    ).to_numpy(dtype=bool) & (
+        _benefit_unit_reporter_amounts(person, temporary_benunit) > 0.0
+    )
+    temporary_benunit["uc_reported_capital"] = recorded_capital_with_property(
+        pd.to_numeric(
+            temporary_benunit["frs_benunit_capital"], errors="coerce"
+        ).to_numpy(dtype=np.float64, na_value=np.nan),
+        np.where(
+            frs_reporter,
+            0.0,
+            uc_property_capital_share(person, temporary_benunit, household),
+        ),
+    )
     temporary = uk_national_frame(
         person=person,
         benunit=temporary_benunit,

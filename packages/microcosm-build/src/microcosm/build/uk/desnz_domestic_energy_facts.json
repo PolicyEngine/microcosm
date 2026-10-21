@@ -3,7 +3,7 @@
   "country": "uk",
   "kind": "uk_vendored_ledger_facts",
   "resource": "desnz_domestic_energy_facts.json",
-  "purpose": "DESNZ domestic energy volumes: Energy Trends domestic electricity (table 5.5) and gas (table 4.1) consumption at actual temperature, annual and quarterly, United Kingdom, 2022 to the latest quarter (the published level the LCFS kWh rake scales to over FY2024-25), and the subnational electricity and gas statistics' domestic consumption and meter counts for Great Britain, England and Wales, the countries and the English regions, 2023 and 2024 (the published gas-connected share by region: gas meters over electricity meters).",
+  "purpose": "DESNZ domestic energy volumes: Energy Trends domestic electricity (table 5.5) and gas (table 4.1) consumption at actual temperature, annual and quarterly, United Kingdom, 2022 to the latest quarter (the published level the LCFS kWh rake scales to, summed over the four quarters of calendar 2024; microcosm#1113), and the subnational electricity and gas statistics' domestic consumption and meter counts for Great Britain, England and Wales, the countries and the English regions, 2023 and 2024 (the published gas-connected share by region: gas meters over electricity meters; and the Great Britain totals that level the local-authority energy rows, microcosm#1207).",
   "consumers": [
     "uk_runtime.energy_pricing"
   ],
@@ -15,12 +15,12 @@
   },
   "source_fact_feed": {
     "source_repo": "PolicyEngine/chronicle",
-    "source_commit": "1ee7dfe257415ec0066fcf511e01fbaaec23cacd",
+    "source_commit": "abf0921b896d29ee0745ed2aefde8d6337ed7164",
     "build": "build-bundle --suite uk -> build-consumer-artifact",
     "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
-    "fact_row_count": 352549,
-    "facts_sha256": "3515800a522f6aa6d076c0ba95a37b924e8505dd8e13d33a55413afd84172f2d",
-    "manifest_sha256": "0ee42919d02c0dced9048033c43ef057e14b2af05166d96c0bd00cd1128cd4e0"
+    "fact_row_count": 1499301,
+    "facts_sha256": "2b64fecfe746164203dac1726aae6ffdb3e5d8e478bd3d64d118ac76cb00780b",
+    "manifest_sha256": "b90fb1b8f1a910458fac41425360209d101796e6de0b134f952ad93323ca6e21"
   },
   "selections": [
     {
@@ -47,7 +47,8 @@
         "geography_level": [
           "country",
           "region"
-        ]
+        ],
+        "geography_vintage": "publication_2025_nspl"
       },
       "row_count": 112
     }
@@ -4764,8 +4765,8 @@
       "value": 1443291
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_cff1c9ece479b564557532a8",
-      "semantic_fact_key": "ledger_semantic_fact_v2_a8dd508d3537c1729ea4b445",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_5c35cbad0a4ae471273a609c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_77f51c6b8bc1a353e4777fb4",
       "source_record_id": "desnz.subnational.gas.cy2023.e12000001.domestic_consumption",
       "concept": "desnz.subnational.domestic_gas_consumption",
       "measure_id": "domestic_consumption",
@@ -4781,7 +4782,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2023
       },
       "period_coverage": {
@@ -4812,8 +4813,8 @@
       "value": 13399545514.72016
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_ab92248f50a9dc5b3870034c",
-      "semantic_fact_key": "ledger_semantic_fact_v2_68ed49d010d30eefb3f672e3",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b956e3fe6e405bd5ebc76903",
+      "semantic_fact_key": "ledger_semantic_fact_v2_12d100bb476233946e761e36",
       "source_record_id": "desnz.subnational.gas.cy2024.e12000001.domestic_consumption",
       "concept": "desnz.subnational.domestic_gas_consumption",
       "measure_id": "domestic_consumption",
@@ -4829,7 +4830,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2024
       },
       "period_coverage": {
@@ -4860,8 +4861,8 @@
       "value": 13471171946.32457
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_a7f8182184396660708aea1a",
-      "semantic_fact_key": "ledger_semantic_fact_v2_54904bfec53da66d0eba7bc1",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_620f0d92b3fe05f321abfce5",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3603cc4024078b47f4b9cd35",
       "source_record_id": "desnz.subnational.gas.cy2023.e12000002.domestic_consumption",
       "concept": "desnz.subnational.domestic_gas_consumption",
       "measure_id": "domestic_consumption",
@@ -4877,7 +4878,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2023
       },
       "period_coverage": {
@@ -4908,8 +4909,8 @@
       "value": 34186967876.61768
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_7607c647326ae4c2a1c3c43c",
-      "semantic_fact_key": "ledger_semantic_fact_v2_c98f5d2605a38eed22444190",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9953f2de128f7d7aae179366",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3d8a033e7da94c6366eca664",
       "source_record_id": "desnz.subnational.gas.cy2024.e12000002.domestic_consumption",
       "concept": "desnz.subnational.domestic_gas_consumption",
       "measure_id": "domestic_consumption",
@@ -4925,7 +4926,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2024
       },
       "period_coverage": {
@@ -4956,8 +4957,8 @@
       "value": 33841192833.175884
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_b1cec936e99a947138bb5430",
-      "semantic_fact_key": "ledger_semantic_fact_v2_13ce1ac003bbfde7052bae01",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_5755f1de5ed898f76d6851fd",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f8ca5f712160476113b649d2",
       "source_record_id": "desnz.subnational.gas.cy2023.e12000003.domestic_consumption",
       "concept": "desnz.subnational.domestic_gas_consumption",
       "measure_id": "domestic_consumption",
@@ -4973,7 +4974,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2023
       },
       "period_coverage": {
@@ -5004,8 +5005,8 @@
       "value": 26109840945.84101
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_ac0f999fbfa8acfc785dc851",
-      "semantic_fact_key": "ledger_semantic_fact_v2_b9821d490f7fa39c92492bd7",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a11ac97b8be0f54d0ba8c4d8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_50c576548cf0cae68961dc67",
       "source_record_id": "desnz.subnational.gas.cy2024.e12000003.domestic_consumption",
       "concept": "desnz.subnational.domestic_gas_consumption",
       "measure_id": "domestic_consumption",
@@ -5021,7 +5022,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2024
       },
       "period_coverage": {
@@ -5052,8 +5053,8 @@
       "value": 25872386684.23584
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_b21d2bcd070a6699cf93395c",
-      "semantic_fact_key": "ledger_semantic_fact_v2_6d668fca6969c5e948e5977a",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c10cbe61d8487c72a13c11df",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f06b2c0d119b92a211a81fb0",
       "source_record_id": "desnz.subnational.gas.cy2023.e12000004.domestic_consumption",
       "concept": "desnz.subnational.domestic_gas_consumption",
       "measure_id": "domestic_consumption",
@@ -5069,7 +5070,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2023
       },
       "period_coverage": {
@@ -5100,8 +5101,8 @@
       "value": 21965142523.19607
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_fcf52d4dbcba16b24664f0fa",
-      "semantic_fact_key": "ledger_semantic_fact_v2_a748b70d4cc4dc4f28bdd5ef",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d691f44e41b1fec560d2d7ed",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b162c67b818b8356dd9b3121",
       "source_record_id": "desnz.subnational.gas.cy2024.e12000004.domestic_consumption",
       "concept": "desnz.subnational.domestic_gas_consumption",
       "measure_id": "domestic_consumption",
@@ -5117,7 +5118,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2024
       },
       "period_coverage": {
@@ -5148,8 +5149,8 @@
       "value": 22034497776.15162
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_f48a00d4b9351be7d7a0f74a",
-      "semantic_fact_key": "ledger_semantic_fact_v2_58f47a5ddfbf7a88e73009db",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_41fafbb4cf5009b89352a1c1",
+      "semantic_fact_key": "ledger_semantic_fact_v2_cedad0f660b7d3739e171784",
       "source_record_id": "desnz.subnational.gas.cy2023.e12000005.domestic_consumption",
       "concept": "desnz.subnational.domestic_gas_consumption",
       "measure_id": "domestic_consumption",
@@ -5165,7 +5166,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2023
       },
       "period_coverage": {
@@ -5196,8 +5197,8 @@
       "value": 26017020218.55113
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_65e2c110dbb70d506619f23e",
-      "semantic_fact_key": "ledger_semantic_fact_v2_7b7e296ce615a44769da9a78",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_056fe7fa9da27185df4a38be",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b9f4ff6152461d637727c290",
       "source_record_id": "desnz.subnational.gas.cy2024.e12000005.domestic_consumption",
       "concept": "desnz.subnational.domestic_gas_consumption",
       "measure_id": "domestic_consumption",
@@ -5213,7 +5214,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2024
       },
       "period_coverage": {
@@ -5244,8 +5245,8 @@
       "value": 25818367614.88299
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_8a28437236a9442436ee2a15",
-      "semantic_fact_key": "ledger_semantic_fact_v2_a7ff28503d6b33719f62943c",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c2b8b9fafbe3470b248da2a3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9ad567ad79b08e2910f13871",
       "source_record_id": "desnz.subnational.gas.cy2023.e12000006.domestic_consumption",
       "concept": "desnz.subnational.domestic_gas_consumption",
       "measure_id": "domestic_consumption",
@@ -5261,7 +5262,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2023
       },
       "period_coverage": {
@@ -5292,8 +5293,8 @@
       "value": 25673105211.01983
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_a5146e79ae315e8969ce69d0",
-      "semantic_fact_key": "ledger_semantic_fact_v2_6d0e2c26f60887c7e6868df5",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6e14f42e6b4553cf0c80964f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3fdda886282ca18fe7e04341",
       "source_record_id": "desnz.subnational.gas.cy2024.e12000006.domestic_consumption",
       "concept": "desnz.subnational.domestic_gas_consumption",
       "measure_id": "domestic_consumption",
@@ -5309,7 +5310,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2024
       },
       "period_coverage": {
@@ -5340,8 +5341,8 @@
       "value": 25690772273.5581
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_9dbe7ddb6b51c7ad09864a92",
-      "semantic_fact_key": "ledger_semantic_fact_v2_9fa5bc6b9c50c6309a861a95",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2e2d90e43502935cc481e3c6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3d86a82957c2cdf387e8538c",
       "source_record_id": "desnz.subnational.gas.cy2023.e12000007.domestic_consumption",
       "concept": "desnz.subnational.domestic_gas_consumption",
       "measure_id": "domestic_consumption",
@@ -5357,7 +5358,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2023
       },
       "period_coverage": {
@@ -5388,8 +5389,8 @@
       "value": 36092164261.65945
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_1db7955ef1068b687683dedb",
-      "semantic_fact_key": "ledger_semantic_fact_v2_be5f1441574849512550bab3",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_790d7d142a9b9a7b0c8eca92",
+      "semantic_fact_key": "ledger_semantic_fact_v2_62f55365ff9474000fe150ff",
       "source_record_id": "desnz.subnational.gas.cy2024.e12000007.domestic_consumption",
       "concept": "desnz.subnational.domestic_gas_consumption",
       "measure_id": "domestic_consumption",
@@ -5405,7 +5406,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2024
       },
       "period_coverage": {
@@ -5436,8 +5437,8 @@
       "value": 35792918710.68454
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_9b520f404e5338a838d3024b",
-      "semantic_fact_key": "ledger_semantic_fact_v2_b2b4cced81f53b2a866b9c48",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_10980e61d103667989a0d1a0",
+      "semantic_fact_key": "ledger_semantic_fact_v2_24acde90d3b63db1767d9bed",
       "source_record_id": "desnz.subnational.gas.cy2023.e12000008.domestic_consumption",
       "concept": "desnz.subnational.domestic_gas_consumption",
       "measure_id": "domestic_consumption",
@@ -5453,7 +5454,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2023
       },
       "period_coverage": {
@@ -5484,8 +5485,8 @@
       "value": 40406689657.01348
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_41323a9cba3406f7737a6569",
-      "semantic_fact_key": "ledger_semantic_fact_v2_d796e751b046a93f262efae1",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c1c09659d146818c476e2f98",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6032806ce701c5d124ea40d3",
       "source_record_id": "desnz.subnational.gas.cy2024.e12000008.domestic_consumption",
       "concept": "desnz.subnational.domestic_gas_consumption",
       "measure_id": "domestic_consumption",
@@ -5501,7 +5502,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2024
       },
       "period_coverage": {
@@ -5532,8 +5533,8 @@
       "value": 40478814244.86535
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_3137b063fe571b97c48a89ca",
-      "semantic_fact_key": "ledger_semantic_fact_v2_383abd880b189a217e78fcfd",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_cebea1c5270e6ed0b4e5c802",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1aeaa09d8813818669dd7ef9",
       "source_record_id": "desnz.subnational.gas.cy2023.e12000009.domestic_consumption",
       "concept": "desnz.subnational.domestic_gas_consumption",
       "measure_id": "domestic_consumption",
@@ -5549,7 +5550,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2023
       },
       "period_coverage": {
@@ -5580,8 +5581,8 @@
       "value": 20054563109.86689
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_0560dd8813c14e742519825d",
-      "semantic_fact_key": "ledger_semantic_fact_v2_26de456923aae40769ca980d",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_cb539fca1347e4f37daf4c1a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c594d1f6ee61e7285c0cb447",
       "source_record_id": "desnz.subnational.gas.cy2024.e12000009.domestic_consumption",
       "concept": "desnz.subnational.domestic_gas_consumption",
       "measure_id": "domestic_consumption",
@@ -5597,7 +5598,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2024
       },
       "period_coverage": {
@@ -5628,8 +5629,8 @@
       "value": 19971805297.323643
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_7cf049f244272c6b059ec77c",
-      "semantic_fact_key": "ledger_semantic_fact_v2_22f8e69271fd450299423a22",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3eebd97d39afc1ee09becda0",
+      "semantic_fact_key": "ledger_semantic_fact_v2_424a642129e901fd04699f8f",
       "source_record_id": "desnz.subnational.gas.cy2023.e92000001.domestic_consumption",
       "concept": "desnz.subnational.domestic_gas_consumption",
       "measure_id": "domestic_consumption",
@@ -5645,7 +5646,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2023
       },
       "period_coverage": {
@@ -5676,8 +5677,8 @@
       "value": 243905039318.4903
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_98adcebd068954bec9f10054",
-      "semantic_fact_key": "ledger_semantic_fact_v2_9a38f81bb81587e4f34fc9b5",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_111917960c59b9f24d4db884",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8ee47894761a239365a602ef",
       "source_record_id": "desnz.subnational.gas.cy2024.e92000001.domestic_consumption",
       "concept": "desnz.subnational.domestic_gas_consumption",
       "measure_id": "domestic_consumption",
@@ -5693,7 +5694,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2024
       },
       "period_coverage": {
@@ -5724,8 +5725,8 @@
       "value": 242971927381.21558
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_605961b24e4ff35d41c2d402",
-      "semantic_fact_key": "ledger_semantic_fact_v2_3a69543d9fb211cf9ca1e6dd",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ed421dea0357b6013b477f05",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7eafa0fcbbfe89cac98abf6c",
       "source_record_id": "desnz.subnational.gas.cy2023.k03000001.domestic_consumption",
       "concept": "desnz.subnational.domestic_gas_consumption",
       "measure_id": "domestic_consumption",
@@ -5741,7 +5742,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2023
       },
       "period_coverage": {
@@ -5772,8 +5773,8 @@
       "value": 281746966286.2582
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_a3c493151b3b2522a02d254c",
-      "semantic_fact_key": "ledger_semantic_fact_v2_5e5a783877515b4420d8804d",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_276f5271d8beeab9d11506ea",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d3354961b4a39bab905fe96a",
       "source_record_id": "desnz.subnational.gas.cy2024.k03000001.domestic_consumption",
       "concept": "desnz.subnational.domestic_gas_consumption",
       "measure_id": "domestic_consumption",
@@ -5789,7 +5790,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2024
       },
       "period_coverage": {
@@ -5820,8 +5821,8 @@
       "value": 280605464567.46014
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_742a1a9a500d37a0870ff232",
-      "semantic_fact_key": "ledger_semantic_fact_v2_7710df623dece0a9ce87d3a1",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_00a50c261187f34a6c4e4aba",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0fb21b9fb1d021a3d9377bd5",
       "source_record_id": "desnz.subnational.gas.cy2023.k04000001.domestic_consumption",
       "concept": "desnz.subnational.domestic_gas_consumption",
       "measure_id": "domestic_consumption",
@@ -5837,7 +5838,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2023
       },
       "period_coverage": {
@@ -5868,8 +5869,8 @@
       "value": 256615431236.4361
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_2b600ee544be6622e23e28ee",
-      "semantic_fact_key": "ledger_semantic_fact_v2_887ee639a30039eb595adff0",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_faec1dacb14e71f0d91d8307",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1c7102fd2a2422c3a0b0262f",
       "source_record_id": "desnz.subnational.gas.cy2024.k04000001.domestic_consumption",
       "concept": "desnz.subnational.domestic_gas_consumption",
       "measure_id": "domestic_consumption",
@@ -5885,7 +5886,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2024
       },
       "period_coverage": {
@@ -5916,8 +5917,8 @@
       "value": 255520906281.5453
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_ff39929fda4aaf5d2940f4df",
-      "semantic_fact_key": "ledger_semantic_fact_v2_d3bbc217896b609a466ea22f",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7e2b5c90a4944945843e649b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_922409c48621bc6df42f47f5",
       "source_record_id": "desnz.subnational.gas.cy2023.s92000003.domestic_consumption",
       "concept": "desnz.subnational.domestic_gas_consumption",
       "measure_id": "domestic_consumption",
@@ -5933,7 +5934,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2023
       },
       "period_coverage": {
@@ -5964,8 +5965,8 @@
       "value": 25131535049.82519
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_81d796786fe6ff0aae8ccb95",
-      "semantic_fact_key": "ledger_semantic_fact_v2_5904b1082af0c26ac92e4db1",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_fd22498d04a5cf5926d49088",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f0f225020f02445c6ee058a3",
       "source_record_id": "desnz.subnational.gas.cy2024.s92000003.domestic_consumption",
       "concept": "desnz.subnational.domestic_gas_consumption",
       "measure_id": "domestic_consumption",
@@ -5981,7 +5982,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2024
       },
       "period_coverage": {
@@ -6012,8 +6013,8 @@
       "value": 25084558285.90915
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_8e97888b4b07a8bc6cb0be09",
-      "semantic_fact_key": "ledger_semantic_fact_v2_09161e1c60b6da1eec86f19e",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_32057fbcbd2c1291661ed127",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0d4b44f10c41cf3595038782",
       "source_record_id": "desnz.subnational.gas.cy2023.w92000004.domestic_consumption",
       "concept": "desnz.subnational.domestic_gas_consumption",
       "measure_id": "domestic_consumption",
@@ -6029,7 +6030,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2023
       },
       "period_coverage": {
@@ -6060,8 +6061,8 @@
       "value": 12571960159.890202
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_1524bd83c8d61f65a45687d2",
-      "semantic_fact_key": "ledger_semantic_fact_v2_8c3ea6bce2343daa10729f30",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ad6f74f09ba12f79dcc911a8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_067b54cc44b7352a29dc79dd",
       "source_record_id": "desnz.subnational.gas.cy2024.w92000004.domestic_consumption",
       "concept": "desnz.subnational.domestic_gas_consumption",
       "measure_id": "domestic_consumption",
@@ -6077,7 +6078,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2024
       },
       "period_coverage": {
@@ -6108,8 +6109,8 @@
       "value": 12349653171.87014
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_b09679d4b7da5769394a5f5b",
-      "semantic_fact_key": "ledger_semantic_fact_v2_63f818acda667e5aada8d670",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ebaf25c2bb4a79aa603817e6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c9c4d6c733e983d18e3ae763",
       "source_record_id": "desnz.subnational.gas.cy2023.e12000001.domestic_meter_count",
       "concept": "desnz.subnational.domestic_gas_meter_count",
       "measure_id": "domestic_meter_count",
@@ -6125,7 +6126,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2023
       },
       "period_coverage": {
@@ -6156,8 +6157,8 @@
       "value": 1164712
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_d7cd9bd5ed254d76ba124733",
-      "semantic_fact_key": "ledger_semantic_fact_v2_50204116d181393bba835944",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_802b99321aa2516d2f431642",
+      "semantic_fact_key": "ledger_semantic_fact_v2_dc2b7f4804eb82a5c8263339",
       "source_record_id": "desnz.subnational.gas.cy2024.e12000001.domestic_meter_count",
       "concept": "desnz.subnational.domestic_gas_meter_count",
       "measure_id": "domestic_meter_count",
@@ -6173,7 +6174,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2024
       },
       "period_coverage": {
@@ -6204,8 +6205,8 @@
       "value": 1170949
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_dd44d3b5db56fd0523f9d96c",
-      "semantic_fact_key": "ledger_semantic_fact_v2_967f51ff981f9470fff3da8b",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f79e3dbefb59c66e1885d8f3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4decfb345ded9d3bddee6412",
       "source_record_id": "desnz.subnational.gas.cy2023.e12000002.domestic_meter_count",
       "concept": "desnz.subnational.domestic_gas_meter_count",
       "measure_id": "domestic_meter_count",
@@ -6221,7 +6222,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2023
       },
       "period_coverage": {
@@ -6252,8 +6253,8 @@
       "value": 3029515
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_64f3c2f4512900ab0b774be6",
-      "semantic_fact_key": "ledger_semantic_fact_v2_b8fc9ac08d45002518d28d1b",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_710f6d87f887b46b612c3f13",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5d4a8bb0f528d893ac9077e9",
       "source_record_id": "desnz.subnational.gas.cy2024.e12000002.domestic_meter_count",
       "concept": "desnz.subnational.domestic_gas_meter_count",
       "measure_id": "domestic_meter_count",
@@ -6269,7 +6270,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2024
       },
       "period_coverage": {
@@ -6300,8 +6301,8 @@
       "value": 3040306
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_9744e3815d9ef9ca57a673a5",
-      "semantic_fact_key": "ledger_semantic_fact_v2_573db47351bdb4bc20e342d4",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b12e8f10c1b9457ff6d6479a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a991404493bc886c9b6474c3",
       "source_record_id": "desnz.subnational.gas.cy2023.e12000003.domestic_meter_count",
       "concept": "desnz.subnational.domestic_gas_meter_count",
       "measure_id": "domestic_meter_count",
@@ -6317,7 +6318,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2023
       },
       "period_coverage": {
@@ -6348,8 +6349,8 @@
       "value": 2221657
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_25ee58ee0a5ce6095b713822",
-      "semantic_fact_key": "ledger_semantic_fact_v2_c0111c2d77042b5a7a6bb272",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_5afe06dec461dd3e0c67563c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_41fde3add3823fc4fe3c7acf",
       "source_record_id": "desnz.subnational.gas.cy2024.e12000003.domestic_meter_count",
       "concept": "desnz.subnational.domestic_gas_meter_count",
       "measure_id": "domestic_meter_count",
@@ -6365,7 +6366,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2024
       },
       "period_coverage": {
@@ -6396,8 +6397,8 @@
       "value": 2230332
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_03a3c840900afd6077b96ccb",
-      "semantic_fact_key": "ledger_semantic_fact_v2_90ec17f3b6c5945454583e18",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_de22cc3a21094f60ac112148",
+      "semantic_fact_key": "ledger_semantic_fact_v2_12b9c1712cebc0f20437e995",
       "source_record_id": "desnz.subnational.gas.cy2023.e12000004.domestic_meter_count",
       "concept": "desnz.subnational.domestic_gas_meter_count",
       "measure_id": "domestic_meter_count",
@@ -6413,7 +6414,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2023
       },
       "period_coverage": {
@@ -6444,8 +6445,8 @@
       "value": 1917392
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_e15ee77b2a8a59517c90027b",
-      "semantic_fact_key": "ledger_semantic_fact_v2_0b299c95bfa628f38cc737ac",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6e05aa75439877cc15a3d571",
+      "semantic_fact_key": "ledger_semantic_fact_v2_10cd220b473ded60ac9ac616",
       "source_record_id": "desnz.subnational.gas.cy2024.e12000004.domestic_meter_count",
       "concept": "desnz.subnational.domestic_gas_meter_count",
       "measure_id": "domestic_meter_count",
@@ -6461,7 +6462,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2024
       },
       "period_coverage": {
@@ -6492,8 +6493,8 @@
       "value": 1931236
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_185c5552e18b81368e8d6e42",
-      "semantic_fact_key": "ledger_semantic_fact_v2_b2b82d82b73d88f1e3f0b25e",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_885065fd387dc79a2872e6a7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_357e6f22d1e2723e2eaa4af0",
       "source_record_id": "desnz.subnational.gas.cy2023.e12000005.domestic_meter_count",
       "concept": "desnz.subnational.domestic_gas_meter_count",
       "measure_id": "domestic_meter_count",
@@ -6509,7 +6510,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2023
       },
       "period_coverage": {
@@ -6540,8 +6541,8 @@
       "value": 2232152
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_fcb08483c3512bea5f1abb52",
-      "semantic_fact_key": "ledger_semantic_fact_v2_cb78d283106366d83ca858fe",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a427aa16d7140df730c808fb",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0d25ef61539540a913eedbd5",
       "source_record_id": "desnz.subnational.gas.cy2024.e12000005.domestic_meter_count",
       "concept": "desnz.subnational.domestic_gas_meter_count",
       "measure_id": "domestic_meter_count",
@@ -6557,7 +6558,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2024
       },
       "period_coverage": {
@@ -6588,8 +6589,8 @@
       "value": 2240399
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_04d7dd3e423071af81cfa638",
-      "semantic_fact_key": "ledger_semantic_fact_v2_9e607df25a22375b008693a9",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a545b4251758c665531af7ea",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b4055c5f292151a07a6597fd",
       "source_record_id": "desnz.subnational.gas.cy2023.e12000006.domestic_meter_count",
       "concept": "desnz.subnational.domestic_gas_meter_count",
       "measure_id": "domestic_meter_count",
@@ -6605,7 +6606,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2023
       },
       "period_coverage": {
@@ -6636,8 +6637,8 @@
       "value": 2233414
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_ae96e878510b6247aa1bbda5",
-      "semantic_fact_key": "ledger_semantic_fact_v2_26a5d5e82bdcbd89aae2bf48",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9695aee4f4e804c6ff6af292",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8b45ce185459de287c05fe1b",
       "source_record_id": "desnz.subnational.gas.cy2024.e12000006.domestic_meter_count",
       "concept": "desnz.subnational.domestic_gas_meter_count",
       "measure_id": "domestic_meter_count",
@@ -6653,7 +6654,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2024
       },
       "period_coverage": {
@@ -6684,8 +6685,8 @@
       "value": 2244616
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_4c72884111a1a6723eaedf44",
-      "semantic_fact_key": "ledger_semantic_fact_v2_a672f9ee4525924b72cb5fe7",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_600b47821a6d37bc7afacf1b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a43cc508047de6a1e45dfc49",
       "source_record_id": "desnz.subnational.gas.cy2023.e12000007.domestic_meter_count",
       "concept": "desnz.subnational.domestic_gas_meter_count",
       "measure_id": "domestic_meter_count",
@@ -6701,7 +6702,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2023
       },
       "period_coverage": {
@@ -6732,8 +6733,8 @@
       "value": 3001605
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_d1e7472550c2d825bf429bed",
-      "semantic_fact_key": "ledger_semantic_fact_v2_e7be9f706dadb9ba39deeec4",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a023f69dc937238b4ce44f1d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a1ae143ba229586077b1e272",
       "source_record_id": "desnz.subnational.gas.cy2024.e12000007.domestic_meter_count",
       "concept": "desnz.subnational.domestic_gas_meter_count",
       "measure_id": "domestic_meter_count",
@@ -6749,7 +6750,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2024
       },
       "period_coverage": {
@@ -6780,8 +6781,8 @@
       "value": 2998751
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_4244e455aaaf2ff0ae404821",
-      "semantic_fact_key": "ledger_semantic_fact_v2_3337c02fa69cb379dfae2729",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_248418a58895df016c0f0a96",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d7b04bebbb112f7e408fe704",
       "source_record_id": "desnz.subnational.gas.cy2023.e12000008.domestic_meter_count",
       "concept": "desnz.subnational.domestic_gas_meter_count",
       "measure_id": "domestic_meter_count",
@@ -6797,7 +6798,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2023
       },
       "period_coverage": {
@@ -6828,8 +6829,8 @@
       "value": 3446322
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_f5e281cfab0e458d02e90222",
-      "semantic_fact_key": "ledger_semantic_fact_v2_d12abc844ca5f25bc1c4a8f5",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_41bf731846b246f26c8c8743",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a4550b1bdb10ead2aae0a697",
       "source_record_id": "desnz.subnational.gas.cy2024.e12000008.domestic_meter_count",
       "concept": "desnz.subnational.domestic_gas_meter_count",
       "measure_id": "domestic_meter_count",
@@ -6845,7 +6846,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2024
       },
       "period_coverage": {
@@ -6876,8 +6877,8 @@
       "value": 3460481
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_e6717223076f597971454b26",
-      "semantic_fact_key": "ledger_semantic_fact_v2_8fe4dee1a42a1f810fed2c8c",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ee61085abede98445fd6b965",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8164a6a07cf7ab74b2180196",
       "source_record_id": "desnz.subnational.gas.cy2023.e12000009.domestic_meter_count",
       "concept": "desnz.subnational.domestic_gas_meter_count",
       "measure_id": "domestic_meter_count",
@@ -6893,7 +6894,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2023
       },
       "period_coverage": {
@@ -6924,8 +6925,8 @@
       "value": 2006465
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_21ac80b940b06b1914b5b5cd",
-      "semantic_fact_key": "ledger_semantic_fact_v2_1abc3a06e31a41a5a09f8e16",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2e89e292f729d1a1ab5fffc2",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2fa6bf2616ed5474db9470d3",
       "source_record_id": "desnz.subnational.gas.cy2024.e12000009.domestic_meter_count",
       "concept": "desnz.subnational.domestic_gas_meter_count",
       "measure_id": "domestic_meter_count",
@@ -6941,7 +6942,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2024
       },
       "period_coverage": {
@@ -6972,8 +6973,8 @@
       "value": 2013841
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_fef8c71cfd7b4476d47ae3cb",
-      "semantic_fact_key": "ledger_semantic_fact_v2_2b6f44ff86e370f2b2a4febd",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3b2b409e20c5f532119fb563",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c3f4d28559f26ad9ef858e1e",
       "source_record_id": "desnz.subnational.gas.cy2023.e92000001.domestic_meter_count",
       "concept": "desnz.subnational.domestic_gas_meter_count",
       "measure_id": "domestic_meter_count",
@@ -6989,7 +6990,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2023
       },
       "period_coverage": {
@@ -7020,8 +7021,8 @@
       "value": 21253234
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_bc27e0a650f1fd5a67fd38a4",
-      "semantic_fact_key": "ledger_semantic_fact_v2_5a784f21b2b38d6e942395ce",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7b97c1744a9e26f8f5ef6b48",
+      "semantic_fact_key": "ledger_semantic_fact_v2_12a957433a95f572e5dccfaa",
       "source_record_id": "desnz.subnational.gas.cy2024.e92000001.domestic_meter_count",
       "concept": "desnz.subnational.domestic_gas_meter_count",
       "measure_id": "domestic_meter_count",
@@ -7037,7 +7038,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2024
       },
       "period_coverage": {
@@ -7068,8 +7069,8 @@
       "value": 21330911
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_b29ee346faca7d0b231bd825",
-      "semantic_fact_key": "ledger_semantic_fact_v2_2d23015b4be1a76dded8f3ec",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_62a6e4622e241f85124cae6a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7992c1e682ee5259a6ad3cd6",
       "source_record_id": "desnz.subnational.gas.cy2023.k03000001.domestic_meter_count",
       "concept": "desnz.subnational.domestic_gas_meter_count",
       "measure_id": "domestic_meter_count",
@@ -7085,7 +7086,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2023
       },
       "period_coverage": {
@@ -7116,8 +7117,8 @@
       "value": 24605456
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_0c45c4e415519380d340f20a",
-      "semantic_fact_key": "ledger_semantic_fact_v2_677ef8d0db8a05b79bea05a2",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b1dde6b9e7f4d96871eebc61",
+      "semantic_fact_key": "ledger_semantic_fact_v2_328182f6987d82387404fff7",
       "source_record_id": "desnz.subnational.gas.cy2024.k03000001.domestic_meter_count",
       "concept": "desnz.subnational.domestic_gas_meter_count",
       "measure_id": "domestic_meter_count",
@@ -7133,7 +7134,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2024
       },
       "period_coverage": {
@@ -7164,8 +7165,8 @@
       "value": 24702708
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_af494ce79374d1957bc21f64",
-      "semantic_fact_key": "ledger_semantic_fact_v2_6c9cd740b8c99097ad4e65f1",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c833496073489b53cd324fc3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ccec1c9b00eb53a9e8e330d9",
       "source_record_id": "desnz.subnational.gas.cy2023.k04000001.domestic_meter_count",
       "concept": "desnz.subnational.domestic_gas_meter_count",
       "measure_id": "domestic_meter_count",
@@ -7181,7 +7182,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2023
       },
       "period_coverage": {
@@ -7212,8 +7213,8 @@
       "value": 22439062
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_c39150e8d20eb13a6df6afaf",
-      "semantic_fact_key": "ledger_semantic_fact_v2_76f765c3b6d5e57a7a412ed0",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1a03b086077e1727cc2a7e7e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_94169b782b12a60d224a1918",
       "source_record_id": "desnz.subnational.gas.cy2024.k04000001.domestic_meter_count",
       "concept": "desnz.subnational.domestic_gas_meter_count",
       "measure_id": "domestic_meter_count",
@@ -7229,7 +7230,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2024
       },
       "period_coverage": {
@@ -7260,8 +7261,8 @@
       "value": 22525093
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_f351061b9d1ea5e65bfe13df",
-      "semantic_fact_key": "ledger_semantic_fact_v2_e5d3ac5f49c79221c43a7855",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_54eff3d9f05bb382b4f90d47",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8a173d2fc679e006e4c150a2",
       "source_record_id": "desnz.subnational.gas.cy2023.s92000003.domestic_meter_count",
       "concept": "desnz.subnational.domestic_gas_meter_count",
       "measure_id": "domestic_meter_count",
@@ -7277,7 +7278,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2023
       },
       "period_coverage": {
@@ -7308,8 +7309,8 @@
       "value": 2166394
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_ca0746b02bd38d2f8b572c80",
-      "semantic_fact_key": "ledger_semantic_fact_v2_5d6d5e28f36003993c15d5be",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_51fcbbea269c3b75b6b21765",
+      "semantic_fact_key": "ledger_semantic_fact_v2_189902d125aa64361f61721b",
       "source_record_id": "desnz.subnational.gas.cy2024.s92000003.domestic_meter_count",
       "concept": "desnz.subnational.domestic_gas_meter_count",
       "measure_id": "domestic_meter_count",
@@ -7325,7 +7326,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2024
       },
       "period_coverage": {
@@ -7356,8 +7357,8 @@
       "value": 2177615
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_ad0b9abab5db9774d4c8f70c",
-      "semantic_fact_key": "ledger_semantic_fact_v2_103b127e00e6335f9d433195",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9d48f3cd51e141ac8824da05",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ed2bb5713fd9c0db360067f4",
       "source_record_id": "desnz.subnational.gas.cy2023.w92000004.domestic_meter_count",
       "concept": "desnz.subnational.domestic_gas_meter_count",
       "measure_id": "domestic_meter_count",
@@ -7373,7 +7374,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2023
       },
       "period_coverage": {
@@ -7404,8 +7405,8 @@
       "value": 1173232
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_6cb0e354ac3758bb7ee8f760",
-      "semantic_fact_key": "ledger_semantic_fact_v2_68eae81b91ae54957c9dd9d6",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_5309b32026fe7a0bb73de7be",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1581b55fc86402e0d7ee8f6e",
       "source_record_id": "desnz.subnational.gas.cy2024.w92000004.domestic_meter_count",
       "concept": "desnz.subnational.domestic_gas_meter_count",
       "measure_id": "domestic_meter_count",
@@ -7421,7 +7422,7 @@
         "vintage": "publication_2025_nspl"
       },
       "period": {
-        "type": "calendar_year",
+        "type": "gas_year",
         "value": 2024
       },
       "period_coverage": {

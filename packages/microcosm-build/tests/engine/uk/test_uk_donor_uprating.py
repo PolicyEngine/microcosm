@@ -10,11 +10,11 @@ def test_declared_factors_lockstep_with_the_installed_engine() -> None:
     reader = module.engine_parameter_reader()
 
     lcfs_factors, lcfs_receipt = lcfs_donor_uprating(stages["lcfs_consumption"])
-    cpi_ratio = reader(CPI, 2024) / reader(CPI, 2023)
-    # The diary columns start from the April-to-March 2023-24 year and end at
-    # calendar 2024, so they take the bridged step, not the full year's.
+    # The diary columns start from the April 2024 to March 2025 year and end at
+    # calendar 2024 (microcosm#1164), so they take the bridged step back a
+    # quarter: a factor below one.
     diary_ratio = reader(CPI, 2024) / (
-        0.75 * reader(CPI, 2023) + 0.25 * reader(CPI, 2024)
+        0.75 * reader(CPI, 2024) + 0.25 * reader(CPI, 2025)
     )
     cpi_columns = [
         column
@@ -24,19 +24,22 @@ def test_declared_factors_lockstep_with_the_installed_engine() -> None:
     assert len(cpi_columns) == 13
     for column in cpi_columns:
         assert lcfs_factors[column] == pytest.approx(diary_ratio), column
-    assert diary_ratio < cpi_ratio
-    assert lcfs_factors["employment_income"] == reader(
-        "gov.economic_assumptions.indices.obr.average_earnings", 2024
-    ) / reader("gov.economic_assumptions.indices.obr.average_earnings", 2023)
-    assert lcfs_factors["petrol_spending"] == pytest.approx(0.9846, abs=5e-4)
-    assert lcfs_factors["diesel_spending"] == pytest.approx(0.8977, abs=5e-4)
+        assert lcfs_receipt["columns"][column]["following"] == reader(CPI, 2025)
+    assert diary_ratio < 1.0
+    # The diary year is the FRS 2024-25 year: incomes and the litre proxies
+    # take one; the level step sets petrol and diesel anyway.
+    assert lcfs_factors["employment_income"] == 1.0
+    assert lcfs_factors["petrol_spending"] == 1.0
+    assert lcfs_factors["diesel_spending"] == 1.0
     audits = {
         column: lcfs_receipt["columns"][column]["engine_audit"]
         for column in ("petrol_spending", "diesel_spending")
     }
-    assert audits["petrol_spending"]["engine_ratio"] == pytest.approx(0.852, abs=1e-3)
-    assert audits["diesel_spending"]["engine_ratio"] == pytest.approx(1.032, abs=1e-3)
+    assert audits["petrol_spending"]["engine_ratio"] == pytest.approx(1.0)
+    assert audits["diesel_spending"]["engine_ratio"] == pytest.approx(1.0)
 
+    # The ETB FYE-2024 donor still moves a full year's step.
+    cpi_ratio = reader(CPI, 2024) / reader(CPI, 2023)
     etb_factors, _receipt = etb_donor_uprating(stages["etb_services"])
     assert etb_factors["dfe_education_spending"] == cpi_ratio
     assert etb_factors["rail_subsidy_spending"] == pytest.approx(0.9351, abs=5e-4)

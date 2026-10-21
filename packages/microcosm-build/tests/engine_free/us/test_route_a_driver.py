@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import os
@@ -101,6 +102,111 @@ def _example_extra_args() -> str:
     )
     assert result.returncode == 0, result.stderr.decode()
     return result.stdout.decode()
+
+
+def _input_settings_result(
+    tmp_path: Path, overrides: dict[str, str], commands: str
+) -> subprocess.CompletedProcess[bytes]:
+    source = (ROUTE_A_TOOLS / "route_a.sh").read_text(encoding="utf-8")
+    prefix, delimiter, _ = source.partition("FETCH_OK=1\n")
+    assert delimiter
+    # Only initialize settings and define functions. The remainder fetches
+    # refs and may launch stages, so this harness never executes it.
+    script = tmp_path / "input-settings-check.sh"
+    script.write_text(prefix + commands, encoding="utf-8")
+    required = (
+        "PE MAIN WT_ROOT RUN_ROOT CHAIN_ROOT CHAIN_LOG DISK_PATH UV PYTHON "
+        "STORAGE EDU FEED LADDER SSI SCF AGENT_SECRET"
+    ).split()
+    settings = {key: str(tmp_path / key.lower()) for key in required}
+    settings.update(PYTHON=sys.executable, **overrides)
+    settings_path = tmp_path / "route_a.env"
+    settings_path.write_text(
+        "\n".join(f"{key}={shlex.quote(value)}" for key, value in settings.items())
+        + "\n",
+        encoding="utf-8",
+    )
+    return subprocess.run(
+        ["bash", str(script)],
+        env={"PATH": os.environ["PATH"], "ROUTE_A_ENV": str(settings_path)},
+        capture_output=True,
+        check=False,
+        timeout=20,
+    )
+
+
+@pytest.mark.parametrize("override", [False, True])
+def test_feed_and_crosswalk_pins_keep_defaults_or_settings_overrides(
+    tmp_path: Path, override: bool
+) -> None:
+    historical_feed = "b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801"
+    historical_crosswalk = (
+        "c7cb040b1f57ca2ea2adcbfe60cc2b250ca23acbc4b640cd421e766fa54c1aec"
+    )
+    overrides = (
+        {
+            "FEED_SHA": "a" * 64,
+            "FEED_BYTES": "123",
+            "CROSSWALK_SHA": "b" * 64,
+            "BASE_LEDGER_FACTS": str(tmp_path / "historical-base-feed.jsonl"),
+            "BASE_LEDGER_FACTS_SHA": historical_feed,
+        }
+        if override
+        else {}
+    )
+    result = _input_settings_result(
+        tmp_path,
+        overrides,
+        '\ninput_rows\nprintf "crosswalk|%s\\n" "$CROSSWALK_SHA"\n',
+    )
+    assert result.returncode == 0, result.stderr.decode()
+    rows = {
+        row[0]: row[1:]
+        for row in map(lambda s: s.split("|"), result.stdout.decode().splitlines())
+    }
+    release = rows["release_ledger_facts"]
+    base = rows["base_ledger_facts"]
+    assert release[1:3] == (
+        ["a" * 64, "123"] if override else [historical_feed, "164603204"]
+    )
+    assert rows["crosswalk"] == ["b" * 64 if override else historical_crosswalk]
+    assert base[1] == historical_feed
+    assert base[0] == (overrides["BASE_LEDGER_FACTS"] if override else release[0])
+
+
+@pytest.mark.parametrize("mismatch", [None, "sha", "size"])
+def test_overridden_feed_pin_still_verifies_digest_and_size(
+    tmp_path: Path, mismatch: str | None
+) -> None:
+    feed = tmp_path / "new-feed.jsonl"
+    payload = b'{"fixture": "new release feed"}\n'
+    feed.write_bytes(payload)
+    result = _input_settings_result(
+        tmp_path,
+        {
+            "FEED": str(feed),
+            "FEED_SHA": "0" * 64
+            if mismatch == "sha"
+            else hashlib.sha256(payload).hexdigest(),
+            "FEED_BYTES": str(len(payload) + (mismatch == "size")),
+        },
+        """
+# Exercise the driver's registered release row with real tiny bytes; no
+# production input or git repository is read. Adapt its BSD stat call for CI.
+registered_rows=$(input_rows)
+input_rows() { printf '%s\\n' "$registered_rows" | awk -F '|' '$1 == "release_ledger_facts"'; }
+stat() { "$PYTHON" -c 'import os,sys; print(os.stat(sys.argv[1]).st_size)' "$3"; }
+verify_inputs
+printf '%s\\n' "${#INPUT_PROBLEMS[@]}"
+""",
+    )
+    assert result.returncode == 0, result.stderr.decode()
+    assert result.stdout.decode().strip() == ("0" if mismatch is None else "1")
+    report = json.loads((tmp_path / "run_root" / "inputs.resolved.json").read_text())
+    assert len(report["inputs"]) == 1
+    assert report["inputs"][0]["status"] == (
+        "ok" if mismatch is None else f"{mismatch}_mismatch"
+    )
 
 
 def test_shell_scripts_are_valid_bash() -> None:

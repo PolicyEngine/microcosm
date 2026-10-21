@@ -65,13 +65,16 @@ from microcosm.build.transport.compose import (
     TransportGraphConfig,
     compose_transport_graph,
     load_transport_spec,
+    skeleton_create_declaration,
     validate_transport_activation,
 )
 from microcosm.build.transport.population_kernels import TRANSPORT_CURRENCY
+from microcosm.build.transport.takeup_kernels import GAP_TYPE
 from microcosm.build.transport.terminal_kernels import materialize_export
 from microcosm.frame.kernels import SimulateRulesKernel
 from microcosm.graph import (
     ArtifactInput,
+    ArtifactOutput,
     Capabilities,
     ContentStore,
     Determinism,
@@ -88,7 +91,9 @@ from microcosm.graph import (
     graph_to_json,
     run_graph,
 )
+from microcosm.graph.canonical import canonical_json
 from microcosm.graph.keys import node_key, source_content_key
+from test_support.microcosm_build.chronicle_feed import write_pinned_artifact
 from test_support.microcosm_build.transport_composed import (
     FAMILY_INPUTS,
     PROGRAMS,
@@ -245,6 +250,38 @@ def composed(tmp_path_factory):
 
 
 @pytest.fixture(scope="module")
+def feed_compilation_config(composed):
+    """Compose every feed compiler, with an optional explicit gap pin."""
+
+    def make_config(*, gap_pin=None):
+        def extension(spec, config, skeleton):
+            nodes = toy_extension(spec, config, skeleton)
+            compare = next(node for node in nodes if node.kernel == "takeup.compare@1")
+            references = json.loads(compare.params["references"])
+            params = {
+                **compare.params,
+                "annualisation_factors": canonical_json(
+                    {row["name"]: 1 for row in references["target_references"]}
+                ).decode("utf-8"),
+                "scenario": "toy",
+            }
+            if gap_pin is not None:
+                params["chronicle_feed_pin"] = gap_pin
+            gap = replace(
+                compare,
+                id="nz.test.validate.gap",
+                kernel="takeup.gap@1",
+                params=params,
+                artifact_outputs=(ArtifactOutput("gap", GAP_TYPE),),
+            )
+            return (*nodes, gap)
+
+        return replace(composed.config, extensions=(extension,))
+
+    return make_config
+
+
+@pytest.fixture(scope="module")
 def cold(composed, tmp_path_factory):
     """One timed cold run of the extended graph."""
     graph = composed.graph(extended=True)
@@ -258,6 +295,71 @@ def cold(composed, tmp_path_factory):
 # ---------------------------------------------------------------------------
 # Composition invariants
 # ---------------------------------------------------------------------------
+
+
+def test_composition_binds_feed_pin_to_skeleton_preparation_and_extensions(
+    composed, feed_compilation_config
+):
+    rows = [
+        json.loads(line)
+        for line in composed.sources["nz_calibration_facts"].read_text().splitlines()
+    ]
+    _artifact, pin = write_pinned_artifact(composed.root / "pinned-facts", rows)
+    spec = copy.deepcopy(composed.spec)
+    spec["resources"]["chronicle_feed"] = pin
+    config = feed_compilation_config()
+    graph = compose_transport_graph(spec, config)
+    compilers = [
+        node
+        for node in graph.nodes
+        if node.kernel
+        in {
+            "transport.create@1",
+            "targets.compile@1",
+            "takeup.compare@1",
+            "takeup.gap@1",
+        }
+    ]
+    assert {node.kernel for node in compilers} == {
+        "transport.create@1",
+        "targets.compile@1",
+        "takeup.compare@1",
+        "takeup.gap@1",
+    }
+    for node in compilers:
+        assert json.loads(node.params["chronicle_feed_pin"]) == pin
+    declaration = skeleton_create_declaration(spec)
+    assert dict(declaration.params) == dict(graph.node(declaration.id).params)
+    changed = copy.deepcopy(spec)
+    changed["resources"]["chronicle_feed"]["manifest_sha256"] = "0" * 64
+    altered = compose_transport_graph(changed, config)
+    for node in compilers:
+        assert node.params != altered.node(node.id).params
+    for node in graph.nodes:
+        if node not in compilers:
+            assert node.params == altered.node(node.id).params
+
+
+def test_composition_refuses_a_compiler_pin_that_overrides_the_country_pin(composed):
+    spec = copy.deepcopy(composed.spec)
+    spec["resources"]["chronicle_feed"] = {"manifest_sha256": "1" * 64}
+    declaration = next(
+        row
+        for row in spec["resources"]["transport_graph"]["nodes"]
+        if row["kernel"] == "targets.compile@1"
+    )
+    declaration["params"]["chronicle_feed_pin"] = "{}"
+    with pytest.raises(ValueError, match="feed pin differs"):
+        compose_transport_graph(spec, composed.config)
+
+
+def test_composition_refuses_a_gap_pin_that_overrides_the_country_pin(
+    composed, feed_compilation_config
+):
+    spec = copy.deepcopy(composed.spec)
+    spec["resources"]["chronicle_feed"] = {"manifest_sha256": "1" * 64}
+    with pytest.raises(ValueError, match=r"takeup\.gap@1 Chronicle feed pin differs"):
+        compose_transport_graph(spec, feed_compilation_config(gap_pin="{}"))
 
 
 @PROPERTY
@@ -1043,7 +1145,6 @@ def test_cli_arguments():
 # ---------------------------------------------------------------------------
 
 _GAPS = (
-    "benefit_unit_rule.dependent_child.age_limit_years",
     "placeholder reference precal_references.",
     "placeholder reference target_references.",
     "placeholder reference holdout_references.",
@@ -1061,6 +1162,9 @@ def test_packaged_spec_refuses_with_every_activation_gap_named():
         validate_transport_activation(spec)
     for gap in _GAPS:
         assert gap in str(error.value), gap
+    # The dependent-child rule is settled from the Social Security Act 2018
+    # Schedule 2, so it is no longer an activation gap.
+    assert "benefit_unit_rule.dependent_child" not in str(error.value)
     for resource in ("precal_references", "target_references", "holdout_references"):
         for reference in spec["resources"][resource]["target_references"]:
             if reference["metadata"].get("activation_status", "active") != "active":

@@ -722,8 +722,6 @@ def test_support_clip_gate_holds_the_declared_donor_floor() -> None:
                 "columns": {
                     "housing_water_and_electricity_consumption": {
                         "rows_raised": 250,
-                        "negative_mass": -1.0e6,
-                        "minimum_before": -14_165.0,
                     }
                 },
                 **floor_changes,
@@ -766,7 +764,7 @@ def test_support_clip_gate_holds_the_declared_donor_floor() -> None:
     below = evidence()
     below["support_clip"]["columns"]["housing_water_and_electricity_consumption"][
         "donor_min"
-    ] = -14_165.0
+    ] = -50.0
     assert any("below the donor floor" in f for f in gate(below).failures)
     # Without a declared floor (the WAS clip gate) the receipt is not required.
     undeclared = {**parameters}
@@ -1824,7 +1822,14 @@ def test_recomposed_totals_gate_holds_totals_above_their_components() -> None:
         }
     )
     _, receipt = recompose_parent_totals(
-        draws, drawn=drawn, parameters=declared, weights=np.array([2.0, 1.0])
+        draws,
+        drawn=drawn,
+        parameters=declared,
+        weights=np.array([2.0, 1.0]),
+        donor_support={
+            "housing_water_and_electricity_consumption": (0.0, 6000.0),
+            "transport_consumption": (0.0, 1e9),
+        },
     )
 
     def run(ev):
@@ -1848,6 +1853,21 @@ def test_recomposed_totals_gate_holds_totals_above_their_components() -> None:
     assert passed.passed, passed.failures
     assert passed.details["uncarried_total"] == receipt["uncarried"]["total"]
     housing = "housing_water_and_electricity_consumption"
+    # 7000 - 2000 + 1600 is held at 6000 (microcosm#1164).
+    assert receipt["parents"][housing]["rows_held_at_maximum"] == 1
+    assert receipt["parents"][housing]["weighted_held_mass"] == 2.0 * 600.0
+    failing(
+        lambda r: r["parents"][housing].update(weighted_held_mass=0.0),
+        "is not its remainder plus components",
+    )
+    failing(
+        lambda r: r["parents"][housing].update(maximum_total="none"),
+        "declared maximum_total",
+    )
+    failing(
+        lambda r: r["parents"][housing].update(rows_held_at_maximum=-1),
+        "rows held at the maximum",
+    )
     failing(
         lambda r: r["parents"][housing].update(minimum_remainder=-1.0),
         "negative remainder",
@@ -2196,13 +2216,14 @@ def test_spi_support_channel_checks_the_declared_pension_age_share() -> None:
 
 
 def test_pension_credit_take_up_checks_each_band_against_its_rate() -> None:
-    def band(name, rate, realized, *, exceed=False, units=10):
+    def band(name, rate, realized, *, exceed=False, units=10, scope="great_britain"):
         return {
             "band": name,
             "rate": rate,
             "realized_take_up": realized,
             "reporters_exceed_rate": exceed,
             "entitled_units": units,
+            "scope": scope,
         }
 
     parameters = {
@@ -2231,6 +2252,9 @@ def test_pension_credit_take_up_checks_each_band_against_its_rate() -> None:
     assert not gate(band("guarantee_credit", 0.69, 0.50, exceed=True)).passed
     assert not gate(band("guarantee_credit", 0.69, None, units=0)).passed
     assert not gate().passed
+    # DWP's rates cover Great Britain: a band measured UK-wide fails even at
+    # its rate (uk-data#510).
+    assert not gate(band("guarantee_credit", 0.69, 0.69, scope="united_kingdom")).passed
     # The realised rates are population facts: a synthetic smoke fixture records
     # the failure without blocking, every other posture blocks on it.
     committed = _gate_parameters("uk_stage_pension_credit_take_up")

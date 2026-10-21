@@ -3,6 +3,12 @@
 This consumer does not rerun a battery, solve weights or authorize publication.
 Historical split-lane signatures remain verifiable in release_certification;
 current builds bind one complete gate roster and the selected target scope.
+
+Readiness is non-gating (microcosm#1301): no release step reads
+``certification.json``. The rotated holdout and the native and matched-size
+scorecards are opt-in diagnostics, so their absence is recorded as
+``not_requested`` rather than as a readiness failure, and a supplied scorecard
+whose identities hold but whose measured limits fail is ``diagnostic_failed``.
 """
 
 from __future__ import annotations
@@ -86,17 +92,20 @@ def _equal(actual, expected, label: str) -> None:
 
 
 def _scorecard_status(payload, *, expected_identity, matched_households=None):
-    """Use the existing release-quality assessment, preserving incomplete evidence."""
+    """Use the existing release-quality assessment, preserving incomplete evidence.
+
+    A scorecard is an opt-in diagnostic (microcosm#1301): none supplied is
+    ``not_requested``; one whose identities or comparison declaration fail is
+    ``failed``; one that is sound but misses the measured limits is
+    ``diagnostic_failed``, with those misses as ``limit_failures``.
+    """
     from microcosm.data.contract import _check_uk_incumbent_surface_evaluation
 
     if payload is None:
-        return {
-            "status": "evidence_absent",
-            "failures": ["No declared scorecard source."],
-        }
+        return {"status": "not_requested", "failures": []}
     failures = []
-    _check_uk_incumbent_surface_evaluation(
-        payload, failures, expected_identity=expected_identity
+    record = _check_uk_incumbent_surface_evaluation(
+        payload, failures, expected_identity=expected_identity, enforce_limits=False
     )
     if matched_households is not None:
         comparison = payload.get("comparison", {})
@@ -115,7 +124,15 @@ def _scorecard_status(payload, *, expected_identity, matched_households=None):
             failures.append(
                 "Matched-size scorecard population counts must both equal the exported k."
             )
-    return {"status": "passed" if not failures else "failed", "failures": failures}
+    if failures:
+        return {"status": "failed", "failures": failures}
+    if record["limit_failures"]:
+        return {
+            "status": "diagnostic_failed",
+            "failures": [],
+            "limit_failures": list(record["limit_failures"]),
+        }
+    return {"status": "passed", "failures": []}
 
 
 def compose_uk_full_certification_readiness(
@@ -321,23 +338,29 @@ def compose_uk_full_certification_readiness(
             "Development sample fraction does not establish native population readiness."
         )
     holdout = documents["holdout"]
-    if scope["local_fit_claim"] and (
-        holdout.get("skipped")
-        or holdout.get("method") != "rotated_folds"
-        or holdout.get("n_folds") != 5
-        or len(holdout.get("folds", ())) != 5
-        or any(
-            isinstance(holdout.get(field), bool)
-            or not isinstance(holdout.get(field), int | float)
-            or not math.isfinite(holdout[field])
-            for field in ("mean_holdout_loss", "worst_holdout_loss")
+    # The rotated holdout is opt-in (microcosm#1301): a skipped holdout claims
+    # nothing and is not a readiness failure; a measured one must be complete.
+    if (
+        scope["local_fit_claim"]
+        and holdout.get("skipped") is not True
+        and (
+            holdout.get("method") != "rotated_folds"
+            or holdout.get("n_folds") != 5
+            or len(holdout.get("folds", ())) != 5
+            or any(
+                isinstance(holdout.get(field), bool)
+                or not isinstance(holdout.get(field), int | float)
+                or not math.isfinite(holdout[field])
+                for field in ("mean_holdout_loss", "worst_holdout_loss")
+            )
         )
     ):
-        reasons.append("The declared five-fold local holdout is skipped or incomplete.")
+        reasons.append("The measured five-fold local holdout is incomplete.")
     reasons.extend(
         f"{role}: {record['status']}"
         for role, record in comparisons.items()
-        if record["status"] not in {"passed", "not_required"}
+        if record["status"]
+        not in {"passed", "not_required", "not_requested", "diagnostic_failed"}
     )
     return {
         "schema_version": 1,

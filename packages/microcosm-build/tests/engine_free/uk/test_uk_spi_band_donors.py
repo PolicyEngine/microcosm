@@ -139,6 +139,11 @@ def _raw_tape(rows: int = 240, *, seed: int = 0) -> pd.DataFrame:
                 "PAY": pay,
                 "DIVIDENDS": pay * 0.05,
                 "INCBBS": pay * 0.01,
+                # Annex A bridge codes: pay is every record's main source, no
+                # trade pages, below State Pension age; composites carry none.
+                "MAINSRCE": -1.0 if composite else 1.0,
+                "SEINC_NUM": -1.0 if composite else 0.0,
+                "SPA": -1.0 if composite else 0.0,
             }
         )
         row["TEI"] = row["PAY"]
@@ -543,8 +548,13 @@ def test_resample_gives_carriers_band_conditional_leaves_and_receipts() -> None:
     assert receipt["carriers"] == 4 and receipt["weighting"] == "FACT"
     rows = {row["lower_bound"]: row for row in receipt["bands"]}
     assert rows[2_000_000]["pool_composite_records"] > 0
-    assert rows[2_000_000]["realized_min_total_income"] >= 2_000_000
-    assert rows[500_000]["realized_max_total_income"] < 1_000_000
+    # No drawn record's own value, such as a band's lowest or highest, is in
+    # the receipt, and a band whose carriers drew fewer than ten records
+    # withholds its mean (UKDS disclosure control).
+    for row in receipt["bands"]:
+        assert "realized_min_total_income" not in row
+        assert "realized_max_total_income" not in row
+        assert row["realized_mean_total_income"] == "<10"
     assert all(row["carriers"] == 1 for row in receipt["bands"])
 
     # A carrier matches its region only where that regional band pool holds
@@ -566,20 +576,25 @@ def test_resample_gives_carriers_band_conditional_leaves_and_receipts() -> None:
 def test_resample_cuts_the_pools_on_the_total_income_a_record_realises() -> None:
     # Given: pay uprated threefold, so the tape's 80k records (published total
     # 84.8k, below every reserved band) realise 240k-and-over on the frame
-    # while the 260k records realise 780k-and-over.
+    # while the 260k records realise 780k-and-over. Twenty carriers in each
+    # band draw from at least ten of its records, so each band's mean is
+    # recorded rather than withheld.
     donor = prepare_spi_donor_table(_raw_tape(), seed=1)
+    per_band = 20
+    ids = np.arange(1, 2 * per_band + 1)
     household = pd.DataFrame(
         {
-            "household_id": [1, 2],
-            "region": ["LONDON", "LONDON"],
-            SPI_INCOME_BAND_DONOR_LOWER_BOUND_COLUMN: [200_000.0, 500_000.0],
+            "household_id": ids,
+            "region": ["LONDON"] * len(ids),
+            SPI_INCOME_BAND_DONOR_LOWER_BOUND_COLUMN: [200_000.0] * per_band
+            + [500_000.0] * per_band,
         }
     )
     person = pd.DataFrame(
         {
-            "person_id": [11, 21],
-            "person_household_id": [1, 2],
-            PERSON_IS_SPI_INCOME_BAND_CARRIER: [True, True],
+            "person_id": ids * 10 + 1,
+            "person_household_id": ids,
+            PERSON_IS_SPI_INCOME_BAND_CARRIER: [True] * len(ids),
         }
     )
     for column in SPI_INCOME_QRF_OUTPUT_COLUMNS:
@@ -590,16 +605,16 @@ def test_resample_cuts_the_pools_on_the_total_income_a_record_realises() -> None
         person,
         donor,
         household=household,
-        spi_people=pd.Series([True, True], index=person.index),
+        spi_people=pd.Series(True, index=person.index),
         uprating_factors=factors,
         lower_bounds=BANDS,
         regional_pool_minimum=5,
         seed=44,
     )
-    # Then: the 200k carrier drew an 80k record (its uprated pay is 240k), the
-    # 500k carrier a 260k record, and the pools are the uprated bands.
+    # Then: every 200k carrier drew an 80k record (its uprated pay is 240k),
+    # every 500k carrier a 260k record, and the pools are the uprated bands.
     pay = updated.loc[updated[PERSON_IS_SPI_INCOME_BAND_CARRIER], "hmrc_spi_pay"]
-    assert pay.tolist() == [240_000.0, 780_000.0]
+    assert pay.tolist() == [240_000.0] * per_band + [780_000.0] * per_band
     rows = {row["lower_bound"]: row for row in receipt["bands"]}
     assert rows[200_000]["pool_records"] == int(
         (donor["hmrc_spi_pay"] == 80_000.0).sum()

@@ -360,9 +360,15 @@ EXPECTED_HASHES = {
     "ownership": "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356",
     "primary_tuples": "fdf23da429f8c501e198a2f5b719763d523a41565c2153fdf17b0344f21bcd7c",
     # #1178: puf_support's source bytes attest CPS Social Security preservation.
-    # RNG rules and the ordered QRF targets are unchanged.
-    "seed_map": "7d03cc07e973165f38781d5932d5fe6d16ca0b1e4dc854e7841460737fd043fb",
-    "seed_protocol": "37da8f68444677850a97bdf958b7f62b426a60da570b80a002eeba8af4861f68",
+    # RNG rules and the ordered QRF targets are unchanged. microcosm#104 moves
+    # both again: the protocol attests microcosm.calibrate.solve. microcosm#1124
+    # moves both once more: solve gains the opt-in retain_best_objective, off
+    # by default, so no US solve, RNG rule or QRF target changes. microcosm#1301
+    # moves both again: calibrate gains budget_search_bracket, whose default
+    # keeps the US bracket, and the budget search, which the US solve does
+    # not run, changes its probes, so again no US solve changes.
+    "seed_map": "0db599df419dd16779097361dc72afdefb8df2abf8b134078da9c52d31d8e017",
+    "seed_protocol": "2b7bdc1d6b0da1bdaf54b4cac29f10f2d3c8bed2e177729c2c89e6b33a099cc5",
     "source_manifest": "78a2164e5b0c62c7a534c3e53dbd26ba9761804f88f8f0f9c3e7f2d67e33377a",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "b3e7289f8107138e23e8d7c9a172285afd2099d45558d253cc369eebe8ba3406",

@@ -1,0 +1,1466 @@
+{
+  "schema_version": 1,
+  "country": "uk",
+  "kind": "uk_vendored_ledger_facts",
+  "resource": "obr_hvcts_costing_facts.json",
+  "purpose": "OBR costing of the high value council tax surcharge (2 April 2026): Table 1.1 and 1.2 properties in scope by band for 2028-29 to 2030-31 (static and post-behaviour) and the paragraph 1.13 non-owner-occupied share. Consumed by the uk_high_value_homes_benchmarks diagnostic gate and the high-value home stock builder's owner-occupied control (microcosm#1240).",
+  "consumers": [
+    "uk_runtime.high_value_homes",
+    "uk_runtime.high_value_homes"
+  ],
+  "planned_consumers": [],
+  "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",
+  "generator": {
+    "tool": "tools/vendor_uk_ledger_facts.py",
+    "version": 1
+  },
+  "source_fact_feed": {
+    "source_repo": "PolicyEngine/chronicle",
+    "source_commit": "abf0921b896d29ee0745ed2aefde8d6337ed7164",
+    "build": "build-bundle --suite uk -> build-consumer-artifact",
+    "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+    "fact_row_count": 1499301,
+    "facts_sha256": "2b64fecfe746164203dac1726aae6ffdb3e5d8e478bd3d64d118ac76cb00780b",
+    "manifest_sha256": "b90fb1b8f1a910458fac41425360209d101796e6de0b134f952ad93323ca6e21"
+  },
+  "selections": [
+    {
+      "label": "hvcts_properties_in_scope",
+      "selector": {
+        "source_name": "obr",
+        "source_concept": "obr.hvcts_costing.properties_in_scope",
+        "period_type": "fiscal_year"
+      },
+      "row_count": 30
+    },
+    {
+      "label": "hvcts_non_owner_occupied_share",
+      "selector": {
+        "source_name": "obr",
+        "source_concept": "obr.hvcts_costing.non_owner_occupied_share",
+        "period_type": "fiscal_year"
+      },
+      "row_count": 1
+    }
+  ],
+  "row_count": 31,
+  "rows": [
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6ae750bc79ad4efce34dabb9",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1a4d10729abe26dac350f683",
+      "source_record_id": "obr.hvcts_costing_2026_04.non_owner_occupied_share.fy2028.non_owner_occupied_share.non_owner_occupied_share",
+      "concept": "obr.hvcts_costing.non_owner_occupied_share",
+      "measure_id": "non_owner_occupied_share",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "dwelling",
+        "role": "hvcts_property_in_scope"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2028
+      },
+      "period_coverage": {
+        "start_date": "2028-04-01",
+        "end_date": "2029-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.hvcts_costing_2026_04.non_owner_occupied_share.fy2028",
+        "groupby_dimension": "costing_parameter",
+        "groupby_value_id": "non_owner_occupied_share",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "obr",
+        "source_table": "Supplementary forecast information release: costing of high value council tax surcharge, Tables 1.1, 1.2 and 1.5 and paragraph 1.13",
+        "source_file": "Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf",
+        "source_sha256": "dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373",
+        "vintage": "supplementary_forecast_information_2026_04_02",
+        "raw_r2_key": "raw/uk/obr/obr-hvcts-costing-april-2026/2026/dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373/Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf"
+      },
+      "value": 40
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_66381909308a7b3575bc469e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_948144865dc786fcef5239e1",
+      "source_record_id": "obr.hvcts_costing_2026_04.properties_in_scope.post_behaviour.fy2028.gbp_2_5m_to_3_5m.properties_in_scope",
+      "concept": "obr.hvcts_costing.properties_in_scope",
+      "measure_id": "properties_in_scope",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "hvcts_property_in_scope"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2028
+      },
+      "period_coverage": {
+        "start_date": "2028-04-01",
+        "end_date": "2029-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.hvcts_costing_2026_04.properties_in_scope.post_behaviour.fy2028",
+        "groupby_dimension": "property_value_band",
+        "groupby_value_id": "gbp_2_5m_to_3_5m",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "behaviour_basis": "post_behaviour",
+        "property_value_band": "gbp_2_5m_to_3_5m"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Supplementary forecast information release: costing of high value council tax surcharge, Tables 1.1, 1.2 and 1.5 and paragraph 1.13",
+        "source_file": "Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf",
+        "source_sha256": "dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373",
+        "vintage": "supplementary_forecast_information_2026_04_02",
+        "raw_r2_key": "raw/uk/obr/obr-hvcts-costing-april-2026/2026/dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373/Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf"
+      },
+      "value": 53000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e7cafaaaf4de3bef6138f237",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8d2756e96509893fda832d35",
+      "source_record_id": "obr.hvcts_costing_2026_04.properties_in_scope.static.fy2028.gbp_2_5m_to_3_5m.properties_in_scope",
+      "concept": "obr.hvcts_costing.properties_in_scope",
+      "measure_id": "properties_in_scope",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "hvcts_property_in_scope"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2028
+      },
+      "period_coverage": {
+        "start_date": "2028-04-01",
+        "end_date": "2029-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.hvcts_costing_2026_04.properties_in_scope.static.fy2028",
+        "groupby_dimension": "property_value_band",
+        "groupby_value_id": "gbp_2_5m_to_3_5m",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "behaviour_basis": "static",
+        "property_value_band": "gbp_2_5m_to_3_5m"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Supplementary forecast information release: costing of high value council tax surcharge, Tables 1.1, 1.2 and 1.5 and paragraph 1.13",
+        "source_file": "Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf",
+        "source_sha256": "dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373",
+        "vintage": "supplementary_forecast_information_2026_04_02",
+        "raw_r2_key": "raw/uk/obr/obr-hvcts-costing-april-2026/2026/dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373/Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf"
+      },
+      "value": 54000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3e7d2c17bc32309ce40259f6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8a102d78004b2da350647cf2",
+      "source_record_id": "obr.hvcts_costing_2026_04.properties_in_scope.post_behaviour.fy2028.gbp_2m_to_2_5m.properties_in_scope",
+      "concept": "obr.hvcts_costing.properties_in_scope",
+      "measure_id": "properties_in_scope",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "hvcts_property_in_scope"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2028
+      },
+      "period_coverage": {
+        "start_date": "2028-04-01",
+        "end_date": "2029-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.hvcts_costing_2026_04.properties_in_scope.post_behaviour.fy2028",
+        "groupby_dimension": "property_value_band",
+        "groupby_value_id": "gbp_2m_to_2_5m",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "behaviour_basis": "post_behaviour",
+        "property_value_band": "gbp_2m_to_2_5m"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Supplementary forecast information release: costing of high value council tax surcharge, Tables 1.1, 1.2 and 1.5 and paragraph 1.13",
+        "source_file": "Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf",
+        "source_sha256": "dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373",
+        "vintage": "supplementary_forecast_information_2026_04_02",
+        "raw_r2_key": "raw/uk/obr/obr-hvcts-costing-april-2026/2026/dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373/Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf"
+      },
+      "value": 66000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_49ea3d48e50f371a44c8acba",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7c7cda39f5ae658536b60a43",
+      "source_record_id": "obr.hvcts_costing_2026_04.properties_in_scope.static.fy2028.gbp_2m_to_2_5m.properties_in_scope",
+      "concept": "obr.hvcts_costing.properties_in_scope",
+      "measure_id": "properties_in_scope",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "hvcts_property_in_scope"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2028
+      },
+      "period_coverage": {
+        "start_date": "2028-04-01",
+        "end_date": "2029-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.hvcts_costing_2026_04.properties_in_scope.static.fy2028",
+        "groupby_dimension": "property_value_band",
+        "groupby_value_id": "gbp_2m_to_2_5m",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "behaviour_basis": "static",
+        "property_value_band": "gbp_2m_to_2_5m"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Supplementary forecast information release: costing of high value council tax surcharge, Tables 1.1, 1.2 and 1.5 and paragraph 1.13",
+        "source_file": "Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf",
+        "source_sha256": "dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373",
+        "vintage": "supplementary_forecast_information_2026_04_02",
+        "raw_r2_key": "raw/uk/obr/obr-hvcts-costing-april-2026/2026/dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373/Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf"
+      },
+      "value": 71000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_cc25b244a3d2d1f45ac1aac6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2b04c156ca4ddec4f4e5c2e1",
+      "source_record_id": "obr.hvcts_costing_2026_04.properties_in_scope.post_behaviour.fy2028.gbp_3_5m_to_5m.properties_in_scope",
+      "concept": "obr.hvcts_costing.properties_in_scope",
+      "measure_id": "properties_in_scope",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "hvcts_property_in_scope"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2028
+      },
+      "period_coverage": {
+        "start_date": "2028-04-01",
+        "end_date": "2029-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.hvcts_costing_2026_04.properties_in_scope.post_behaviour.fy2028",
+        "groupby_dimension": "property_value_band",
+        "groupby_value_id": "gbp_3_5m_to_5m",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "behaviour_basis": "post_behaviour",
+        "property_value_band": "gbp_3_5m_to_5m"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Supplementary forecast information release: costing of high value council tax surcharge, Tables 1.1, 1.2 and 1.5 and paragraph 1.13",
+        "source_file": "Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf",
+        "source_sha256": "dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373",
+        "vintage": "supplementary_forecast_information_2026_04_02",
+        "raw_r2_key": "raw/uk/obr/obr-hvcts-costing-april-2026/2026/dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373/Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf"
+      },
+      "value": 24000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_32118a0511cfb1d27813f682",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5b88851774b000ec0cf9354c",
+      "source_record_id": "obr.hvcts_costing_2026_04.properties_in_scope.static.fy2028.gbp_3_5m_to_5m.properties_in_scope",
+      "concept": "obr.hvcts_costing.properties_in_scope",
+      "measure_id": "properties_in_scope",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "hvcts_property_in_scope"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2028
+      },
+      "period_coverage": {
+        "start_date": "2028-04-01",
+        "end_date": "2029-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.hvcts_costing_2026_04.properties_in_scope.static.fy2028",
+        "groupby_dimension": "property_value_band",
+        "groupby_value_id": "gbp_3_5m_to_5m",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "behaviour_basis": "static",
+        "property_value_band": "gbp_3_5m_to_5m"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Supplementary forecast information release: costing of high value council tax surcharge, Tables 1.1, 1.2 and 1.5 and paragraph 1.13",
+        "source_file": "Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf",
+        "source_sha256": "dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373",
+        "vintage": "supplementary_forecast_information_2026_04_02",
+        "raw_r2_key": "raw/uk/obr/obr-hvcts-costing-april-2026/2026/dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373/Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf"
+      },
+      "value": 25000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ae213613cbb1ad2c5b1ad785",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9eb2e006de5bd1df31478c68",
+      "source_record_id": "obr.hvcts_costing_2026_04.properties_in_scope.post_behaviour.fy2028.over_gbp_5m.properties_in_scope",
+      "concept": "obr.hvcts_costing.properties_in_scope",
+      "measure_id": "properties_in_scope",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "hvcts_property_in_scope"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2028
+      },
+      "period_coverage": {
+        "start_date": "2028-04-01",
+        "end_date": "2029-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.hvcts_costing_2026_04.properties_in_scope.post_behaviour.fy2028",
+        "groupby_dimension": "property_value_band",
+        "groupby_value_id": "over_gbp_5m",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "behaviour_basis": "post_behaviour",
+        "property_value_band": "over_gbp_5m"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Supplementary forecast information release: costing of high value council tax surcharge, Tables 1.1, 1.2 and 1.5 and paragraph 1.13",
+        "source_file": "Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf",
+        "source_sha256": "dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373",
+        "vintage": "supplementary_forecast_information_2026_04_02",
+        "raw_r2_key": "raw/uk/obr/obr-hvcts-costing-april-2026/2026/dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373/Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf"
+      },
+      "value": 14000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a152efb64cd124b3ee1aba4e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4bc211a5c0eb2a1585799a00",
+      "source_record_id": "obr.hvcts_costing_2026_04.properties_in_scope.static.fy2028.over_gbp_5m.properties_in_scope",
+      "concept": "obr.hvcts_costing.properties_in_scope",
+      "measure_id": "properties_in_scope",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "hvcts_property_in_scope"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2028
+      },
+      "period_coverage": {
+        "start_date": "2028-04-01",
+        "end_date": "2029-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.hvcts_costing_2026_04.properties_in_scope.static.fy2028",
+        "groupby_dimension": "property_value_band",
+        "groupby_value_id": "over_gbp_5m",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "behaviour_basis": "static",
+        "property_value_band": "over_gbp_5m"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Supplementary forecast information release: costing of high value council tax surcharge, Tables 1.1, 1.2 and 1.5 and paragraph 1.13",
+        "source_file": "Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf",
+        "source_sha256": "dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373",
+        "vintage": "supplementary_forecast_information_2026_04_02",
+        "raw_r2_key": "raw/uk/obr/obr-hvcts-costing-april-2026/2026/dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373/Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf"
+      },
+      "value": 15000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_5699258f86ef0334d5a567dc",
+      "semantic_fact_key": "ledger_semantic_fact_v2_81f1460f6ccaa5866e5ec2fe",
+      "source_record_id": "obr.hvcts_costing_2026_04.properties_in_scope.post_behaviour.fy2028.total.properties_in_scope",
+      "concept": "obr.hvcts_costing.properties_in_scope",
+      "measure_id": "properties_in_scope",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "hvcts_property_in_scope"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2028
+      },
+      "period_coverage": {
+        "start_date": "2028-04-01",
+        "end_date": "2029-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.hvcts_costing_2026_04.properties_in_scope.post_behaviour.fy2028",
+        "groupby_dimension": "property_value_band",
+        "groupby_value_id": "total",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "behaviour_basis": "post_behaviour"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Supplementary forecast information release: costing of high value council tax surcharge, Tables 1.1, 1.2 and 1.5 and paragraph 1.13",
+        "source_file": "Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf",
+        "source_sha256": "dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373",
+        "vintage": "supplementary_forecast_information_2026_04_02",
+        "raw_r2_key": "raw/uk/obr/obr-hvcts-costing-april-2026/2026/dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373/Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf"
+      },
+      "value": 156000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6ba2bfa04b13a412ee39e2cf",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8f25a9057e355566b7bbf8c1",
+      "source_record_id": "obr.hvcts_costing_2026_04.properties_in_scope.static.fy2028.total.properties_in_scope",
+      "concept": "obr.hvcts_costing.properties_in_scope",
+      "measure_id": "properties_in_scope",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "hvcts_property_in_scope"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2028
+      },
+      "period_coverage": {
+        "start_date": "2028-04-01",
+        "end_date": "2029-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.hvcts_costing_2026_04.properties_in_scope.static.fy2028",
+        "groupby_dimension": "property_value_band",
+        "groupby_value_id": "total",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "behaviour_basis": "static"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Supplementary forecast information release: costing of high value council tax surcharge, Tables 1.1, 1.2 and 1.5 and paragraph 1.13",
+        "source_file": "Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf",
+        "source_sha256": "dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373",
+        "vintage": "supplementary_forecast_information_2026_04_02",
+        "raw_r2_key": "raw/uk/obr/obr-hvcts-costing-april-2026/2026/dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373/Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf"
+      },
+      "value": 165000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0bebc9dd7cc2566cc414b864",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0e7b67c9453c888dab2000f9",
+      "source_record_id": "obr.hvcts_costing_2026_04.properties_in_scope.post_behaviour.fy2029.gbp_2_5m_to_3_5m.properties_in_scope",
+      "concept": "obr.hvcts_costing.properties_in_scope",
+      "measure_id": "properties_in_scope",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "hvcts_property_in_scope"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2029
+      },
+      "period_coverage": {
+        "start_date": "2029-04-01",
+        "end_date": "2030-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.hvcts_costing_2026_04.properties_in_scope.post_behaviour.fy2029",
+        "groupby_dimension": "property_value_band",
+        "groupby_value_id": "gbp_2_5m_to_3_5m",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "behaviour_basis": "post_behaviour",
+        "property_value_band": "gbp_2_5m_to_3_5m"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Supplementary forecast information release: costing of high value council tax surcharge, Tables 1.1, 1.2 and 1.5 and paragraph 1.13",
+        "source_file": "Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf",
+        "source_sha256": "dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373",
+        "vintage": "supplementary_forecast_information_2026_04_02",
+        "raw_r2_key": "raw/uk/obr/obr-hvcts-costing-april-2026/2026/dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373/Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf"
+      },
+      "value": 53000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9e7a1c0824e4047156b9d0e6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f62fa98ee10f8c1f79b49e2f",
+      "source_record_id": "obr.hvcts_costing_2026_04.properties_in_scope.static.fy2029.gbp_2_5m_to_3_5m.properties_in_scope",
+      "concept": "obr.hvcts_costing.properties_in_scope",
+      "measure_id": "properties_in_scope",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "hvcts_property_in_scope"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2029
+      },
+      "period_coverage": {
+        "start_date": "2029-04-01",
+        "end_date": "2030-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.hvcts_costing_2026_04.properties_in_scope.static.fy2029",
+        "groupby_dimension": "property_value_band",
+        "groupby_value_id": "gbp_2_5m_to_3_5m",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "behaviour_basis": "static",
+        "property_value_band": "gbp_2_5m_to_3_5m"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Supplementary forecast information release: costing of high value council tax surcharge, Tables 1.1, 1.2 and 1.5 and paragraph 1.13",
+        "source_file": "Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf",
+        "source_sha256": "dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373",
+        "vintage": "supplementary_forecast_information_2026_04_02",
+        "raw_r2_key": "raw/uk/obr/obr-hvcts-costing-april-2026/2026/dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373/Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf"
+      },
+      "value": 55000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_86cc4779b61c2c3c3de00c5d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f59174ec33ae5f9faeaba42b",
+      "source_record_id": "obr.hvcts_costing_2026_04.properties_in_scope.post_behaviour.fy2029.gbp_2m_to_2_5m.properties_in_scope",
+      "concept": "obr.hvcts_costing.properties_in_scope",
+      "measure_id": "properties_in_scope",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "hvcts_property_in_scope"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2029
+      },
+      "period_coverage": {
+        "start_date": "2029-04-01",
+        "end_date": "2030-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.hvcts_costing_2026_04.properties_in_scope.post_behaviour.fy2029",
+        "groupby_dimension": "property_value_band",
+        "groupby_value_id": "gbp_2m_to_2_5m",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "behaviour_basis": "post_behaviour",
+        "property_value_band": "gbp_2m_to_2_5m"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Supplementary forecast information release: costing of high value council tax surcharge, Tables 1.1, 1.2 and 1.5 and paragraph 1.13",
+        "source_file": "Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf",
+        "source_sha256": "dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373",
+        "vintage": "supplementary_forecast_information_2026_04_02",
+        "raw_r2_key": "raw/uk/obr/obr-hvcts-costing-april-2026/2026/dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373/Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf"
+      },
+      "value": 66000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_236151b0024448e8e8e93848",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0747b1f2ecc7d372a532e328",
+      "source_record_id": "obr.hvcts_costing_2026_04.properties_in_scope.static.fy2029.gbp_2m_to_2_5m.properties_in_scope",
+      "concept": "obr.hvcts_costing.properties_in_scope",
+      "measure_id": "properties_in_scope",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "hvcts_property_in_scope"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2029
+      },
+      "period_coverage": {
+        "start_date": "2029-04-01",
+        "end_date": "2030-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.hvcts_costing_2026_04.properties_in_scope.static.fy2029",
+        "groupby_dimension": "property_value_band",
+        "groupby_value_id": "gbp_2m_to_2_5m",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "behaviour_basis": "static",
+        "property_value_band": "gbp_2m_to_2_5m"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Supplementary forecast information release: costing of high value council tax surcharge, Tables 1.1, 1.2 and 1.5 and paragraph 1.13",
+        "source_file": "Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf",
+        "source_sha256": "dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373",
+        "vintage": "supplementary_forecast_information_2026_04_02",
+        "raw_r2_key": "raw/uk/obr/obr-hvcts-costing-april-2026/2026/dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373/Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf"
+      },
+      "value": 72000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_67aceaa98d0f5081c3c02df9",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2d8b28a4f3159c224f6f361e",
+      "source_record_id": "obr.hvcts_costing_2026_04.properties_in_scope.post_behaviour.fy2029.gbp_3_5m_to_5m.properties_in_scope",
+      "concept": "obr.hvcts_costing.properties_in_scope",
+      "measure_id": "properties_in_scope",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "hvcts_property_in_scope"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2029
+      },
+      "period_coverage": {
+        "start_date": "2029-04-01",
+        "end_date": "2030-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.hvcts_costing_2026_04.properties_in_scope.post_behaviour.fy2029",
+        "groupby_dimension": "property_value_band",
+        "groupby_value_id": "gbp_3_5m_to_5m",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "behaviour_basis": "post_behaviour",
+        "property_value_band": "gbp_3_5m_to_5m"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Supplementary forecast information release: costing of high value council tax surcharge, Tables 1.1, 1.2 and 1.5 and paragraph 1.13",
+        "source_file": "Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf",
+        "source_sha256": "dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373",
+        "vintage": "supplementary_forecast_information_2026_04_02",
+        "raw_r2_key": "raw/uk/obr/obr-hvcts-costing-april-2026/2026/dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373/Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf"
+      },
+      "value": 24000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c2d006a3c9903418020adafe",
+      "semantic_fact_key": "ledger_semantic_fact_v2_145d40cdd2dac574ad1c6718",
+      "source_record_id": "obr.hvcts_costing_2026_04.properties_in_scope.static.fy2029.gbp_3_5m_to_5m.properties_in_scope",
+      "concept": "obr.hvcts_costing.properties_in_scope",
+      "measure_id": "properties_in_scope",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "hvcts_property_in_scope"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2029
+      },
+      "period_coverage": {
+        "start_date": "2029-04-01",
+        "end_date": "2030-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.hvcts_costing_2026_04.properties_in_scope.static.fy2029",
+        "groupby_dimension": "property_value_band",
+        "groupby_value_id": "gbp_3_5m_to_5m",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "behaviour_basis": "static",
+        "property_value_band": "gbp_3_5m_to_5m"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Supplementary forecast information release: costing of high value council tax surcharge, Tables 1.1, 1.2 and 1.5 and paragraph 1.13",
+        "source_file": "Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf",
+        "source_sha256": "dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373",
+        "vintage": "supplementary_forecast_information_2026_04_02",
+        "raw_r2_key": "raw/uk/obr/obr-hvcts-costing-april-2026/2026/dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373/Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf"
+      },
+      "value": 25000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c8658ba5779bf6e7fd9ec86c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_849d9b2e9981d7d1d7e1eb74",
+      "source_record_id": "obr.hvcts_costing_2026_04.properties_in_scope.post_behaviour.fy2029.over_gbp_5m.properties_in_scope",
+      "concept": "obr.hvcts_costing.properties_in_scope",
+      "measure_id": "properties_in_scope",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "hvcts_property_in_scope"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2029
+      },
+      "period_coverage": {
+        "start_date": "2029-04-01",
+        "end_date": "2030-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.hvcts_costing_2026_04.properties_in_scope.post_behaviour.fy2029",
+        "groupby_dimension": "property_value_band",
+        "groupby_value_id": "over_gbp_5m",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "behaviour_basis": "post_behaviour",
+        "property_value_band": "over_gbp_5m"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Supplementary forecast information release: costing of high value council tax surcharge, Tables 1.1, 1.2 and 1.5 and paragraph 1.13",
+        "source_file": "Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf",
+        "source_sha256": "dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373",
+        "vintage": "supplementary_forecast_information_2026_04_02",
+        "raw_r2_key": "raw/uk/obr/obr-hvcts-costing-april-2026/2026/dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373/Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf"
+      },
+      "value": 14000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_df25ef94630981869044014a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0c06f49471ef22bfe1c26edc",
+      "source_record_id": "obr.hvcts_costing_2026_04.properties_in_scope.static.fy2029.over_gbp_5m.properties_in_scope",
+      "concept": "obr.hvcts_costing.properties_in_scope",
+      "measure_id": "properties_in_scope",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "hvcts_property_in_scope"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2029
+      },
+      "period_coverage": {
+        "start_date": "2029-04-01",
+        "end_date": "2030-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.hvcts_costing_2026_04.properties_in_scope.static.fy2029",
+        "groupby_dimension": "property_value_band",
+        "groupby_value_id": "over_gbp_5m",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "behaviour_basis": "static",
+        "property_value_band": "over_gbp_5m"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Supplementary forecast information release: costing of high value council tax surcharge, Tables 1.1, 1.2 and 1.5 and paragraph 1.13",
+        "source_file": "Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf",
+        "source_sha256": "dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373",
+        "vintage": "supplementary_forecast_information_2026_04_02",
+        "raw_r2_key": "raw/uk/obr/obr-hvcts-costing-april-2026/2026/dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373/Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf"
+      },
+      "value": 15000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4cb8c39522e7d74225668c95",
+      "semantic_fact_key": "ledger_semantic_fact_v2_fc67ed4235227295fa66380e",
+      "source_record_id": "obr.hvcts_costing_2026_04.properties_in_scope.post_behaviour.fy2029.total.properties_in_scope",
+      "concept": "obr.hvcts_costing.properties_in_scope",
+      "measure_id": "properties_in_scope",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "hvcts_property_in_scope"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2029
+      },
+      "period_coverage": {
+        "start_date": "2029-04-01",
+        "end_date": "2030-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.hvcts_costing_2026_04.properties_in_scope.post_behaviour.fy2029",
+        "groupby_dimension": "property_value_band",
+        "groupby_value_id": "total",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "behaviour_basis": "post_behaviour"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Supplementary forecast information release: costing of high value council tax surcharge, Tables 1.1, 1.2 and 1.5 and paragraph 1.13",
+        "source_file": "Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf",
+        "source_sha256": "dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373",
+        "vintage": "supplementary_forecast_information_2026_04_02",
+        "raw_r2_key": "raw/uk/obr/obr-hvcts-costing-april-2026/2026/dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373/Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf"
+      },
+      "value": 157000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6541319dcf0479f816c7a2d6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_fedd93cdc1130f55f303eb88",
+      "source_record_id": "obr.hvcts_costing_2026_04.properties_in_scope.static.fy2029.total.properties_in_scope",
+      "concept": "obr.hvcts_costing.properties_in_scope",
+      "measure_id": "properties_in_scope",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "hvcts_property_in_scope"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2029
+      },
+      "period_coverage": {
+        "start_date": "2029-04-01",
+        "end_date": "2030-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.hvcts_costing_2026_04.properties_in_scope.static.fy2029",
+        "groupby_dimension": "property_value_band",
+        "groupby_value_id": "total",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "behaviour_basis": "static"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Supplementary forecast information release: costing of high value council tax surcharge, Tables 1.1, 1.2 and 1.5 and paragraph 1.13",
+        "source_file": "Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf",
+        "source_sha256": "dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373",
+        "vintage": "supplementary_forecast_information_2026_04_02",
+        "raw_r2_key": "raw/uk/obr/obr-hvcts-costing-april-2026/2026/dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373/Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf"
+      },
+      "value": 166000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d8658b3d941566c11c4466d7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9bfffc8810b632582c5e20b6",
+      "source_record_id": "obr.hvcts_costing_2026_04.properties_in_scope.post_behaviour.fy2030.gbp_2_5m_to_3_5m.properties_in_scope",
+      "concept": "obr.hvcts_costing.properties_in_scope",
+      "measure_id": "properties_in_scope",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "hvcts_property_in_scope"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2030
+      },
+      "period_coverage": {
+        "start_date": "2030-04-01",
+        "end_date": "2031-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.hvcts_costing_2026_04.properties_in_scope.post_behaviour.fy2030",
+        "groupby_dimension": "property_value_band",
+        "groupby_value_id": "gbp_2_5m_to_3_5m",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "behaviour_basis": "post_behaviour",
+        "property_value_band": "gbp_2_5m_to_3_5m"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Supplementary forecast information release: costing of high value council tax surcharge, Tables 1.1, 1.2 and 1.5 and paragraph 1.13",
+        "source_file": "Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf",
+        "source_sha256": "dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373",
+        "vintage": "supplementary_forecast_information_2026_04_02",
+        "raw_r2_key": "raw/uk/obr/obr-hvcts-costing-april-2026/2026/dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373/Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf"
+      },
+      "value": 53000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_31e9dc618fc73e5dcb829b9e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f4b2ba087423865f29c079c2",
+      "source_record_id": "obr.hvcts_costing_2026_04.properties_in_scope.static.fy2030.gbp_2_5m_to_3_5m.properties_in_scope",
+      "concept": "obr.hvcts_costing.properties_in_scope",
+      "measure_id": "properties_in_scope",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "hvcts_property_in_scope"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2030
+      },
+      "period_coverage": {
+        "start_date": "2030-04-01",
+        "end_date": "2031-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.hvcts_costing_2026_04.properties_in_scope.static.fy2030",
+        "groupby_dimension": "property_value_band",
+        "groupby_value_id": "gbp_2_5m_to_3_5m",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "behaviour_basis": "static",
+        "property_value_band": "gbp_2_5m_to_3_5m"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Supplementary forecast information release: costing of high value council tax surcharge, Tables 1.1, 1.2 and 1.5 and paragraph 1.13",
+        "source_file": "Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf",
+        "source_sha256": "dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373",
+        "vintage": "supplementary_forecast_information_2026_04_02",
+        "raw_r2_key": "raw/uk/obr/obr-hvcts-costing-april-2026/2026/dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373/Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf"
+      },
+      "value": 55000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8bd34e101c728a6443918595",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3b2b26f952b206e751c67ba9",
+      "source_record_id": "obr.hvcts_costing_2026_04.properties_in_scope.post_behaviour.fy2030.gbp_2m_to_2_5m.properties_in_scope",
+      "concept": "obr.hvcts_costing.properties_in_scope",
+      "measure_id": "properties_in_scope",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "hvcts_property_in_scope"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2030
+      },
+      "period_coverage": {
+        "start_date": "2030-04-01",
+        "end_date": "2031-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.hvcts_costing_2026_04.properties_in_scope.post_behaviour.fy2030",
+        "groupby_dimension": "property_value_band",
+        "groupby_value_id": "gbp_2m_to_2_5m",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "behaviour_basis": "post_behaviour",
+        "property_value_band": "gbp_2m_to_2_5m"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Supplementary forecast information release: costing of high value council tax surcharge, Tables 1.1, 1.2 and 1.5 and paragraph 1.13",
+        "source_file": "Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf",
+        "source_sha256": "dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373",
+        "vintage": "supplementary_forecast_information_2026_04_02",
+        "raw_r2_key": "raw/uk/obr/obr-hvcts-costing-april-2026/2026/dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373/Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf"
+      },
+      "value": 67000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3c390fb86bfb00c8db7ad970",
+      "semantic_fact_key": "ledger_semantic_fact_v2_aa34bd8ff4cb4ab6cac63b7d",
+      "source_record_id": "obr.hvcts_costing_2026_04.properties_in_scope.static.fy2030.gbp_2m_to_2_5m.properties_in_scope",
+      "concept": "obr.hvcts_costing.properties_in_scope",
+      "measure_id": "properties_in_scope",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "hvcts_property_in_scope"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2030
+      },
+      "period_coverage": {
+        "start_date": "2030-04-01",
+        "end_date": "2031-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.hvcts_costing_2026_04.properties_in_scope.static.fy2030",
+        "groupby_dimension": "property_value_band",
+        "groupby_value_id": "gbp_2m_to_2_5m",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "behaviour_basis": "static",
+        "property_value_band": "gbp_2m_to_2_5m"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Supplementary forecast information release: costing of high value council tax surcharge, Tables 1.1, 1.2 and 1.5 and paragraph 1.13",
+        "source_file": "Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf",
+        "source_sha256": "dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373",
+        "vintage": "supplementary_forecast_information_2026_04_02",
+        "raw_r2_key": "raw/uk/obr/obr-hvcts-costing-april-2026/2026/dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373/Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf"
+      },
+      "value": 72000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ba5595d9bdb22fe971fb73cb",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a7bdb53fb1fd6f85c3431023",
+      "source_record_id": "obr.hvcts_costing_2026_04.properties_in_scope.post_behaviour.fy2030.gbp_3_5m_to_5m.properties_in_scope",
+      "concept": "obr.hvcts_costing.properties_in_scope",
+      "measure_id": "properties_in_scope",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "hvcts_property_in_scope"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2030
+      },
+      "period_coverage": {
+        "start_date": "2030-04-01",
+        "end_date": "2031-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.hvcts_costing_2026_04.properties_in_scope.post_behaviour.fy2030",
+        "groupby_dimension": "property_value_band",
+        "groupby_value_id": "gbp_3_5m_to_5m",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "behaviour_basis": "post_behaviour",
+        "property_value_band": "gbp_3_5m_to_5m"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Supplementary forecast information release: costing of high value council tax surcharge, Tables 1.1, 1.2 and 1.5 and paragraph 1.13",
+        "source_file": "Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf",
+        "source_sha256": "dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373",
+        "vintage": "supplementary_forecast_information_2026_04_02",
+        "raw_r2_key": "raw/uk/obr/obr-hvcts-costing-april-2026/2026/dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373/Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf"
+      },
+      "value": 24000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1b6b09d712f9a098a024bbe1",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b9c86a1ce93eedd64a0ba123",
+      "source_record_id": "obr.hvcts_costing_2026_04.properties_in_scope.static.fy2030.gbp_3_5m_to_5m.properties_in_scope",
+      "concept": "obr.hvcts_costing.properties_in_scope",
+      "measure_id": "properties_in_scope",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "hvcts_property_in_scope"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2030
+      },
+      "period_coverage": {
+        "start_date": "2030-04-01",
+        "end_date": "2031-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.hvcts_costing_2026_04.properties_in_scope.static.fy2030",
+        "groupby_dimension": "property_value_band",
+        "groupby_value_id": "gbp_3_5m_to_5m",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "behaviour_basis": "static",
+        "property_value_band": "gbp_3_5m_to_5m"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Supplementary forecast information release: costing of high value council tax surcharge, Tables 1.1, 1.2 and 1.5 and paragraph 1.13",
+        "source_file": "Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf",
+        "source_sha256": "dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373",
+        "vintage": "supplementary_forecast_information_2026_04_02",
+        "raw_r2_key": "raw/uk/obr/obr-hvcts-costing-april-2026/2026/dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373/Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf"
+      },
+      "value": 25000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c1871b7be2f7416e79432d64",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5b2939705de84fd68f916790",
+      "source_record_id": "obr.hvcts_costing_2026_04.properties_in_scope.post_behaviour.fy2030.over_gbp_5m.properties_in_scope",
+      "concept": "obr.hvcts_costing.properties_in_scope",
+      "measure_id": "properties_in_scope",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "hvcts_property_in_scope"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2030
+      },
+      "period_coverage": {
+        "start_date": "2030-04-01",
+        "end_date": "2031-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.hvcts_costing_2026_04.properties_in_scope.post_behaviour.fy2030",
+        "groupby_dimension": "property_value_band",
+        "groupby_value_id": "over_gbp_5m",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "behaviour_basis": "post_behaviour",
+        "property_value_band": "over_gbp_5m"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Supplementary forecast information release: costing of high value council tax surcharge, Tables 1.1, 1.2 and 1.5 and paragraph 1.13",
+        "source_file": "Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf",
+        "source_sha256": "dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373",
+        "vintage": "supplementary_forecast_information_2026_04_02",
+        "raw_r2_key": "raw/uk/obr/obr-hvcts-costing-april-2026/2026/dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373/Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf"
+      },
+      "value": 14000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_03c144c88121e378cff476da",
+      "semantic_fact_key": "ledger_semantic_fact_v2_99eb9a1c4eac848924cd7928",
+      "source_record_id": "obr.hvcts_costing_2026_04.properties_in_scope.static.fy2030.over_gbp_5m.properties_in_scope",
+      "concept": "obr.hvcts_costing.properties_in_scope",
+      "measure_id": "properties_in_scope",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "hvcts_property_in_scope"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2030
+      },
+      "period_coverage": {
+        "start_date": "2030-04-01",
+        "end_date": "2031-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.hvcts_costing_2026_04.properties_in_scope.static.fy2030",
+        "groupby_dimension": "property_value_band",
+        "groupby_value_id": "over_gbp_5m",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "behaviour_basis": "static",
+        "property_value_band": "over_gbp_5m"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Supplementary forecast information release: costing of high value council tax surcharge, Tables 1.1, 1.2 and 1.5 and paragraph 1.13",
+        "source_file": "Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf",
+        "source_sha256": "dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373",
+        "vintage": "supplementary_forecast_information_2026_04_02",
+        "raw_r2_key": "raw/uk/obr/obr-hvcts-costing-april-2026/2026/dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373/Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf"
+      },
+      "value": 15000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_fa282ecdb94a7b7322df871c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_bc6e1d0b567b42dce55e91f9",
+      "source_record_id": "obr.hvcts_costing_2026_04.properties_in_scope.post_behaviour.fy2030.total.properties_in_scope",
+      "concept": "obr.hvcts_costing.properties_in_scope",
+      "measure_id": "properties_in_scope",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "hvcts_property_in_scope"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2030
+      },
+      "period_coverage": {
+        "start_date": "2030-04-01",
+        "end_date": "2031-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.hvcts_costing_2026_04.properties_in_scope.post_behaviour.fy2030",
+        "groupby_dimension": "property_value_band",
+        "groupby_value_id": "total",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "behaviour_basis": "post_behaviour"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Supplementary forecast information release: costing of high value council tax surcharge, Tables 1.1, 1.2 and 1.5 and paragraph 1.13",
+        "source_file": "Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf",
+        "source_sha256": "dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373",
+        "vintage": "supplementary_forecast_information_2026_04_02",
+        "raw_r2_key": "raw/uk/obr/obr-hvcts-costing-april-2026/2026/dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373/Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf"
+      },
+      "value": 158000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6ab8671b504c5cf3e7f445b3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ca890b7bfead63d3a0c30699",
+      "source_record_id": "obr.hvcts_costing_2026_04.properties_in_scope.static.fy2030.total.properties_in_scope",
+      "concept": "obr.hvcts_costing.properties_in_scope",
+      "measure_id": "properties_in_scope",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "hvcts_property_in_scope"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2030
+      },
+      "period_coverage": {
+        "start_date": "2030-04-01",
+        "end_date": "2031-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.hvcts_costing_2026_04.properties_in_scope.static.fy2030",
+        "groupby_dimension": "property_value_band",
+        "groupby_value_id": "total",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "behaviour_basis": "static"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Supplementary forecast information release: costing of high value council tax surcharge, Tables 1.1, 1.2 and 1.5 and paragraph 1.13",
+        "source_file": "Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf",
+        "source_sha256": "dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373",
+        "vintage": "supplementary_forecast_information_2026_04_02",
+        "raw_r2_key": "raw/uk/obr/obr-hvcts-costing-april-2026/2026/dfc648399bd968623206bf55ca88fc7e312108413ee7a266cc45d7971a4bb373/Supplementary-forecast-information-high-value-council-tax-surcharge-costing.pdf"
+      },
+      "value": 167000
+    }
+  ]
+}

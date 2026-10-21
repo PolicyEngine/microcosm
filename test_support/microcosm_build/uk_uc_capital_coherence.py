@@ -14,6 +14,7 @@ from microcosm.build.uk_runtime.graph_kernels import UKStageKernel
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.spi_support import support_channel_column
 from microcosm.build.uk_runtime.uc_capital_coherence import (
+    PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES,
     UC_CAPITAL_COARSENING,
     UC_CAPITAL_INCOME_BAND_EDGES,
     UC_CAPITAL_MINIMUM_CELL_DONORS,
@@ -27,6 +28,10 @@ from microcosm.build.uk_runtime.uc_capital_coherence import (
     _investment_income_band,
     _redraw_spi_capital,
     cohere_uc_capital,
+    pension_credit_property_capital_share,
+    recorded_capital_with_property,
+    uc_property_capital_share,
+    uc_recorded_property_share,
 )
 from microcosm.build.uk_runtime.uc_relationships import (
     UC_FINANCIAL_INVESTMENT_INCOME_COLUMNS,
@@ -67,7 +72,10 @@ def _frame():
             "person_household_id": [row[0] for row in rows],
             "universal_credit_reported": [row[8] for row in rows],
             "is_benunit_head": True,
+            "is_household_head": True,
             "is_parent": [row[5] > 0 for row in rows],
+            "age": 40,
+            "is_uc_claimant": True,
         }
     )
     other_members = []
@@ -80,7 +88,10 @@ def _frame():
                     "person_household_id": row[0],
                     "universal_credit_reported": 0.0,
                     "is_benunit_head": False,
+                    "is_household_head": False,
                     "is_parent": row[5] > 0,
+                    "age": 40,
+                    "is_uc_claimant": True,
                 }
             )
         for child in range(row[5]):
@@ -91,7 +102,10 @@ def _frame():
                     "person_household_id": row[0],
                     "universal_credit_reported": 0.0,
                     "is_benunit_head": False,
+                    "is_household_head": False,
                     "is_parent": False,
+                    "age": 5,
+                    "is_uc_claimant": False,
                 }
             )
     person = pd.concat([person, pd.DataFrame(other_members)], ignore_index=True)
@@ -108,6 +122,9 @@ def _frame():
         }
     )
     household = pd.DataFrame({"household_id": [row[0] for row in rows]})
+    # No household holds property here; the property-share tests add it.
+    for column in PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES:
+        household[column] = 0.0
     return uk_national_frame(
         person=person,
         benunit=benunit,

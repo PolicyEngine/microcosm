@@ -53,7 +53,11 @@ from microcosm.calibrate import TargetRegistry, TargetSpec, calibrate
 from microcosm.calibrate.artifacts import decode_problem
 from microcosm.frame import EntitySchema, Frame, MassChange, WeightKind, Weights
 
-ACTIVE_REFERENCE_COUNT = 1245
+# microcosm#1301: the references include the high-value homes region cells (30
+# less the two signed out below the small-cell floor), which
+# load_uk_national_target_inputs drops after the compile; microcosm#1278 adds
+# the ONS single years 0, 1 and 2 for all persons.
+ACTIVE_REFERENCE_COUNT = 1322
 
 
 def _uc_reference(**overrides) -> LedgerTargetReference:
@@ -364,6 +368,10 @@ def _materialization_binding_frame(
             "region": "LONDON",
             "esa_income": [10.0, 20.0, 0.0],
             "esa_contrib": [1.0, 2.0, 0.0],
+            # OBR's incapacity line also carries Incapacity Benefit and SDA
+            # (table 4.9 footnote 2; microcosm#1095, uk-data#582).
+            "incapacity_benefit": [0.0, 0.0, 0.5],
+            "sda": [0.0, 3.0, 4.0],
         }
     )
     salary_sacrifice_metric = "hmrc/salary_sacrifice_it_relief_basic_rate"
@@ -638,6 +646,13 @@ def test_chronicle_184_uc_and_obr_references_compile_fail_closed() -> None:
                 ),
                 "aggregate_fact_key": f"ledger.aggregate_fact.v2:obr-fixture-fy{year}",
                 "period": {"type": "fiscal_year", "value": year},
+                # Chronicle stamps OBR table 4.9's DWP lines with the
+                # geography DWP counts them over (microcosm#1300).
+                "geography": {
+                    "level": "country",
+                    "id": "K03000001",
+                    "name": "Great Britain",
+                },
             }
             for year in (2024, 2025)
         ],
@@ -712,7 +727,7 @@ def test_packaged_binding_classes_materialize_through_the_national_route() -> No
     materialize_uk_ledger_targets(adapter, registry, period=2025)
     materialized = {
         ("benunit", "dwp/uc/households"): [1.0, 0.0, 1.0],
-        ("household", "obr/esa"): [11.0, 22.0, 0.0],
+        ("household", "obr/esa"): [11.0, 25.0, 4.5],
         ("person", "hmrc/cgt_taxpayers"): [0.0, 1.0, 1.0, 0.0, 0.0, 0.0],
         # The prepared affected-child counts stay distinct from the claim
         # indicator [1.0, 0.0, 1.0] and legacy person-native entitlement flags.

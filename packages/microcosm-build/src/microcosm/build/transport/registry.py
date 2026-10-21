@@ -47,6 +47,7 @@ from .gate_bindings import TRANSPORT_GATE_REGISTRY
 from .gate_kernels import register_gate_kernel
 from .geography_kernels import register_geography_kernels
 from .population_kernels import register_population_kernels
+from .reporting_kernels import register_reporting_kernels
 from .takeup_kernels import register_takeup_kernels
 from .target_kernels import register_target_kernels
 from .terminal_kernels import register_terminal_kernels
@@ -380,6 +381,7 @@ def build_transport_registry(
     kernels.register(SimulateCounterfactualKernel(engine_mapping, dependencies))
     kernels.register(SimulateSolveZeroKernel(engine_mapping, dependencies))
     register_takeup_kernels(kernels)
+    register_reporting_kernels(kernels)
     return TransportRegistry(
         kernels, codecs, engine_mapping, MappingProxyType(refs), schema, nesting
     )

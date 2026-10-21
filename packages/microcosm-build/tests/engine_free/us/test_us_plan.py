@@ -1040,6 +1040,15 @@ class TestUsSources:
             "docs/evidence/uk-poverty-968/scripts/measure_968_basis_swap.py",
             "docs/evidence/uk-poverty-968/scripts/measure_968_poverty_audit.py",
             "docs/evidence/uk-poverty-968/scripts/measure_968_tail_profile.py",
+            # The microcosm#1191 wage-concept evidence runs the archived
+            # generator's utils/uprating.py unchanged, so it stubs that file's
+            # own package import name in sys.modules with a temp
+            # STORAGE_FOLDER. Nothing is installed, imported or fetched from
+            # the retired package.
+            (
+                "docs/evidence/us-puf-wage-concept-1191/scripts/"
+                "run_archived_uprating_loop.py"
+            ),
         }
         checked_suffixes = {".py", ".toml", ".md", ".json"}
         offenders: list[tuple[str, str]] = []
