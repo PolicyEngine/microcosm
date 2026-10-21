@@ -99,3 +99,40 @@ def spi_2023_facts(registry: Mapping[str, Any]) -> list[SpiFact]:
             )
         )
     return facts
+
+
+#: SPI 2023-24 as HMRC published it: Table 3.7 (property income by range of
+#: total income) and Table 3.11 (Scotland), from Collated_Tables_3_1_to_3_11_2324.ods
+#: (https://www.gov.uk/government/statistics/personal-incomes-statistics-for-the-tax-year-2023-to-2024,
+#: sha256 ad063b06…), in thousands and £ millions as printed.
+PUBLISHED_PATH = Path(__file__).with_name("spi_2023_24_published.csv")
+
+
+def check_against_published(
+    facts: list[SpiFact], path: str | Path = PUBLISHED_PATH
+) -> list[dict[str, Any]]:
+    """Each fact read back from the registry beside HMRC's printed figure.
+
+    A fact agrees when it is within half the printed unit, the rounding of
+    the published table. Facts with no printed figure here are skipped.
+    """
+
+    published = {}
+    for line in Path(path).read_text().splitlines()[1:]:
+        fact, table, value, unit = line.split(",")
+        published[fact] = (table, float(value) * float(unit), float(unit))
+    rows = []
+    for fact in facts:
+        if fact.name not in published:
+            continue
+        table, value, unit = published[fact.name]
+        rows.append(
+            {
+                "fact": fact.name,
+                "table": table,
+                "read_back": fact.value,
+                "published": value,
+                "agrees": abs(fact.value - value) <= unit / 2,
+            }
+        )
+    return rows

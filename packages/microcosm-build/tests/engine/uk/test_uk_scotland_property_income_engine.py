@@ -12,7 +12,9 @@ from policyengine_uk.data import UKSingleYearDataset
 from policyengine_uk.data.economic_assumptions import extend_single_year_dataset
 
 from tools.uk_scotland_property_income.backcast import (
+    NOT_INVERTED,
     backcast_one_year,
+    held_at_file_year,
     refuse_earlier_period,
     with_household_weights,
 )
@@ -34,6 +36,8 @@ def _dataset(year: int) -> UKSingleYearDataset:
                 "property_income": [10_000.0, 14_000.0, 10_000.0],
                 "property_finance_costs": [0.0, 3_000.0, 0.0],
                 "savings_interest_income": [200.0, 0.0, 200.0],
+                # Unmapped: the forward step leaves it flat, and so does the back-cast.
+                "gift_aid": [100.0, 0.0, 0.0],
             }
         ),
         benunit=pd.DataFrame({"benunit_id": ids}),
@@ -67,18 +71,29 @@ def test_the_backcast_inverts_the_engines_forward_step():
         < released.person["employment_income"].iloc[0]
     )
 
+    assert held_at_file_year(released, divided)["person"] == ["gift_aid"]
+
+    # Every column the forward step touches comes back, not only the divided ones.
     forward = extend_single_year_dataset(earlier, parameters, end_year=2024).datasets[
         2024
     ]
-    for table in ("person", "household"):
+    for table in ("person", "benunit", "household"):
         for column in getattr(released, table).columns:
-            if column in divided:
+            if column in NOT_INVERTED:
+                continue
+            after, before = (
+                getattr(forward, table)[column],
+                getattr(released, table)[column],
+            )
+            if pd.api.types.is_numeric_dtype(before.dtype):
                 np.testing.assert_allclose(
-                    getattr(forward, table)[column].to_numpy(dtype=float),
-                    getattr(released, table)[column].to_numpy(dtype=float),
+                    after.to_numpy(dtype=float),
+                    before.to_numpy(dtype=float),
                     rtol=1e-12,
                     err_msg=column,
                 )
+            else:
+                assert after.tolist() == before.tolist(), column
 
 
 def test_an_earlier_period_is_refused():

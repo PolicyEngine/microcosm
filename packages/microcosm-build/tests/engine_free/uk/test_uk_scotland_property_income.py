@@ -185,23 +185,44 @@ def test_rake_stops_at_its_bounds_when_a_fact_is_out_of_reach():
     assert result.after[0] == pytest.approx(20.0)
 
 
-def test_source_keys_count_clones_and_copies_once():
+def _persons_table():
     table = pd.DataFrame(
         {
-            "person_support_channel": [b"frs", b"frs", b"spi", b"spi", b"spi"],
-            "person_source_id": [1001, 1001, 2001, 2001, 2001],
-            **{name: [0.0] * 5 for name in release.SOURCE_INCOME_COLUMNS},
+            "person_support_channel": [b"frs", b"frs", b"spi", b"spi", b"spi", b"spi"],
+            "person_source_id": [1001, 1001, 2001, 2001, 2001, 1001],
+            "person_is_spi_income_recipient": [0, 0, 1, 1, 1, 0],
+            **{name: [0.0] * 6 for name in release.SOURCE_INCOME_COLUMNS},
         }
     )
+    table.loc[[0, 1, 5], "property_income"] = 8_000.0
     table.loc[[2, 3], "property_income"] = 12_000.0
     table.loc[4, "property_income"] = 13_000.0
-    keys = release.source_keys(table)
+    return table
+
+
+def test_source_keys_count_clones_and_copies_once():
+    keys = release.source_keys(_persons_table())
     assert keys[0] == keys[1] == "frs:1001"
-    # SPI rows share their FRS host's id, so their incomes tell them apart.
+    # Tape rows share their FRS host's id, so their incomes tell them apart.
     assert keys[2] == keys[3] != keys[4]
+    # An SPI-channel row that keeps its FRS person's values is that person.
+    assert keys[5] == "frs:1001"
 
 
-def _cells(sources_per_band, rows_per_source=3, band_values=(13_000, 16_000, 21_000)):
+def test_clusters_are_frs_households_and_tape_records():
+    table = _persons_table()
+    clusters = release.cluster_keys(table, ["h1", "h1", "h2", "h2", "h3", "h4"])
+    assert clusters[0] == clusters[1] == "frs-hh:h1"
+    assert clusters[5] == "frs-hh:h4"
+    assert clusters[2] == clusters[3] == release.source_keys(table)[2]
+
+
+def _cells(
+    sources_per_band,
+    rows_per_source=3,
+    band_values=(13_000, 16_000, 21_000),
+    weight=10.0,
+):
     rows = []
     for band_value, n_sources in zip(band_values, sources_per_band, strict=True):
         for source in range(n_sources):
@@ -210,7 +231,8 @@ def _cells(sources_per_band, rows_per_source=3, band_values=(13_000, 16_000, 21_
                     {
                         "nsnd": band_value,
                         "source": f"{band_value}:{source}",
-                        "w": 10.0,
+                        "cluster": f"{band_value}:{source}",
+                        "w": weight,
                         "taxable_property_income": 1_000.0 + source,
                     }
                 )
@@ -226,13 +248,22 @@ def test_audit_counts_sources_not_rows():
     assert table["source_ess"].tolist() == pytest.approx([4, 12, 20])
 
 
-def test_bootstrap_moves_clones_together():
+def test_bootstrap_moves_clones_together_and_lets_the_domain_vary():
     cells = _cells((1, 0, 0), rows_per_source=5)
-    intervals = release.bootstrap(
-        cells, (12_570, 15_000, 20_000), AMOUNTS, replicates=50
+    edges = (12_570, 15_000, 20_000)
+    alone = release.bootstrap(
+        cells, edges, AMOUNTS, universe=cells["cluster"], replicates=50
     )
-    # A single source is drawn once in every replicate, so its band never varies.
-    assert intervals.loc[0, "count_low"] == intervals.loc[0, "count_high"] == 50.0
+    # A single cluster is drawn once in every replicate, so its band never varies.
+    assert alone.loc[0, "count_low"] == alone.loc[0, "count_high"] == 50.0
+    # Among many non-landlord clusters, it is drawn 0, 1, 2… times.
+    universe = [*cells["cluster"].unique(), *[f"other:{i}" for i in range(200)]]
+    varying = release.bootstrap(
+        cells, edges, AMOUNTS, universe=universe, replicates=200
+    )
+    assert varying.loc[0, "count_low"] == 0.0 and varying.loc[0, "count_high"] >= 100.0
+    with pytest.raises(ValueError, match="outside"):
+        release.bootstrap(cells, edges, AMOUNTS, universe=["other"], replicates=5)
 
 
 FEW, SECOND, PUBLISHED = release.FEWER_THAN_FLOOR, release.SECONDARY, release.PUBLISHED
@@ -266,14 +297,51 @@ def test_one_dominant_record_withholds_its_band():
     assert fine_status[1] == release.DOMINATED
 
 
-def test_public_tables_blank_withheld_bands_and_floor_record_counts():
-    edges = (12_570, 15_000, 20_000)
+def test_two_dominant_records_withhold_their_band():
+    cells = _cells((0, 12, 0))
+    # Each of the two is under half, but together they are over 85%.
+    cells.loc[cells["source"].isin(["16000:0", "16000:1"]), "w"] = 300.0
+    table = release.audit(cells, FINE_EDGES, AMOUNTS)
+    assert table.loc[1, "top_source_weight_share"] < release.DOMINANCE_SHARE
+    assert table.loc[1, "top_two_source_weight_share"] > release.TOP_TWO_SHARE
+    fine_status, _ = release.disclosure_statuses(cells, FINE_EDGES, (12_570,), AMOUNTS)
+    assert fine_status[1] == release.DOMINATED
+
+
+def _public_tables(cells, fine_edges, coarse_edges):
+    statuses = release.disclosure_statuses(cells, fine_edges, coarse_edges, AMOUNTS)
+    tables = []
+    for edges, status in zip((fine_edges, coarse_edges), statuses, strict=True):
+        table = release.audit(cells, edges, AMOUNTS)
+        intervals = release.bootstrap(
+            cells, edges, AMOUNTS, universe=cells["cluster"], replicates=20
+        )
+        tables.append(release.render(table, intervals, status, AMOUNTS, mode="public"))
+    return tables
+
+
+def test_public_record_counts_do_not_rebuild_a_withheld_band():
+    # Vahid's case on #1327: a thin band beside two bands of 30 in one bin.
+    cells = _cells((6, 30, 30), band_values=(13_000, 16_000, 21_000))
+    fine, coarse = _public_tables(cells, (12_570, 15_000, 20_000), (12_570,))
+    shown = pd.to_numeric(fine["distinct_records"], errors="coerce")
+    bin_records = int(coarse.loc[0, "distinct_records"])
+    hidden = fine.loc[shown.isna(), "band"].tolist()
+    # Every band whose count is hidden shares the remainder with another one.
+    assert len(hidden) >= 2
+    assert bin_records - shown.sum() == 36
+    assert fine["distinct_records"].tolist()[:2] == [release.WITHHELD_RECORDS] * 2
+
+
+def test_public_tables_blank_withheld_bands_and_their_record_counts():
     cells = _cells((4, 12, 20))
-    table = release.audit(cells, edges, AMOUNTS)
-    intervals = release.bootstrap(cells, edges, AMOUNTS, replicates=20)
-    statuses = [release.FEWER_THAN_FLOOR, release.SECONDARY, release.PUBLISHED]
+    table = release.audit(cells, FINE_EDGES, AMOUNTS)
+    intervals = release.bootstrap(
+        cells, FINE_EDGES, AMOUNTS, universe=cells["cluster"], replicates=20
+    )
+    statuses = [FEW, SECOND, PUBLISHED]
     public = release.render(table, intervals, statuses, AMOUNTS, mode="public")
-    assert public["distinct_records"].tolist() == ["<10", "12", "20"]
+    assert public["distinct_records"].tolist() == ["withheld", "withheld", "20"]
     assert pd.isna(public.loc[0, "count"]) and pd.isna(
         public.loc[1, "taxable_property_income"]
     )
@@ -281,3 +349,57 @@ def test_public_tables_blank_withheld_bands_and_floor_record_counts():
     restricted = release.render(table, intervals, statuses, AMOUNTS, mode="restricted")
     assert restricted["distinct_records"].tolist() == ["4", "12", "20"]
     assert restricted.loc[0, "count"] == 100.0
+
+
+def test_a_single_number_needs_records_and_no_dominant_ones():
+    shares = release.record_shares([5.0, 5.0, 0.0, 90.0], ["a", "a", "b", "c"])
+    assert shares == {
+        "records": 2,
+        "top_record_share": 0.9,
+        "top_two_record_share": 1.0,
+    }
+    assert release.passes_primary(12, [0.2], [0.3]) == PUBLISHED
+    assert release.passes_primary(9, [0.2], [0.3]) == FEW
+    assert release.passes_primary(12, [0.2], [0.9]) == release.DOMINATED
+
+
+def test_read_back_facts_are_checked_against_the_printed_tables(tmp_path):
+    printed = tmp_path / "printed.csv"
+    printed.write_text(
+        "fact,table,published,unit\n"
+        "hmrc/property_income_income_band_20_000_to_30_000,3.7,3820,1000000\n"
+        "hmrc.spi_region.taxpayers_by_region_20000_30000@S92000003,3.11,841,1000\n"
+    )
+    facts = [
+        registry.SpiFact(
+            "hmrc/property_income_income_band_20_000_to_30_000",
+            "property_amount",
+            20_000,
+            30_000,
+            None,
+            3_820.3e6,
+        ),
+        registry.SpiFact(
+            "hmrc.spi_region.taxpayers_by_region_20000_30000@S92000003",
+            "taxpayers",
+            20_000,
+            30_000,
+            "SCOTLAND",
+            843_061.0,
+        ),
+        registry.SpiFact("not_printed", "income_tax", 0, 1, "SCOTLAND", 1.0),
+    ]
+    rows = registry.check_against_published(facts, printed)
+    assert [(row["fact"][:8], row["agrees"]) for row in rows] == [
+        ("hmrc/pro", True),
+        ("hmrc.spi", False),
+    ]
+
+
+def test_the_shipped_printed_tables_cover_the_reweighted_facts():
+    lines = registry.PUBLISHED_PATH.read_text().splitlines()[1:]
+    names = {line.split(",")[0] for line in lines}
+    assert "hmrc/property_income_income_band_1_000_000_to_inf" in names
+    assert "hmrc/property_income_count_income_band_300_000_to_500_000" in names
+    assert "hmrc.spi_region.total_income_by_region_200000_plus@S92000003" in names
+    assert len(names) == len(lines) == 56

@@ -7,15 +7,26 @@ the engine's own forward step: divide each input by the growth
 ``apply_single_year_uprating`` would multiply it by. Household weights move
 with ONS population growth, as they do going forward.
 
-The forward step's custom pieces are not inverted. Council tax and rent move
-by region, and student-loan plans are re-labelled; none of them enters income
-tax, and they stay at the file's own year.
+What the back-cast leaves at the file's own year:
+
+- the forward step's custom pieces. Council tax and rent move by region, and
+  student-loan plans are re-labelled. None of them enters income tax.
+- every stored input that ``uprating_indices.yaml`` doesn't map, which the
+  forward step leaves flat too. Some feed income tax, such as ``gift_aid``,
+  ``loss_relief``, ``capital_allowances``, ``employment_expenses`` and
+  salary-sacrificed pension contributions. They are small, but not zero.
+  ``held_at_file_year`` lists them for the run's manifest.
+
+The indices are OBR national aggregates per person (per-capita GDP for
+property income, mortgage interest for finance costs, ONS population for
+weights). Differences between income bands are left to the reweight.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+import pandas as pd
 from policyengine_uk.data import UKSingleYearDataset
 from policyengine_uk.data.economic_assumptions import (
     LEGACY_PROJECTION_END_YEAR,
@@ -84,3 +95,27 @@ def with_household_weights(
         household=household,
         fiscal_year=int(dataset.time_period),
     )
+
+
+#: Identifier and weight columns that carry no money amount.
+_NOT_AMOUNTS = ("_id", "_weight", "_index", "_build_id", "_source_id", "_key")
+
+
+def held_at_file_year(
+    dataset: UKSingleYearDataset, divided: dict[str, Any]
+) -> dict[str, list[str]]:
+    """The stored numeric columns, by table, that the back-cast leaves at the
+    file's own year: neither divided nor among the custom pieces."""
+
+    held = {}
+    for name in ("person", "benunit", "household"):
+        table = getattr(dataset, name)
+        held[name] = sorted(
+            column
+            for column in table.columns
+            if pd.api.types.is_float_dtype(table[column].dtype)
+            and column not in divided
+            and column not in NOT_INVERTED
+            and not column.endswith(_NOT_AMOUNTS)
+        )
+    return held
