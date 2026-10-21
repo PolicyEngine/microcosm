@@ -1,11 +1,11 @@
 {
   "source_fact_feed": "chronicle-uk-abf0921-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1344,
-  "contract_target_count": 362,
-  "active_reference_count": 1322,
+  "candidate_count": 1355,
+  "contract_target_count": 373,
+  "active_reference_count": 1333,
   "status_counts": {
-    "active": 1322,
+    "active": 1333,
     "no_fact_at_or_before_period": 5,
     "signed_excluded": 17
   },
@@ -817,6 +817,50 @@
     "ons.population.age_2": {
       "geography_level": "country",
       "geography_id": "K02000001"
+    },
+    "ons.population.age_3": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.population.age_4": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.population.age_5": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.population.age_6": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.population.england_age_0": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "ons.population.england_age_1": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "ons.population.england_age_2": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "ons.population.england_age_3": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "ons.population.england_age_4": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "ons.population.england_age_5": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "ons.population.england_age_6": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
     },
     "ons.population.female_0_4": {
       "geography_level": "country",
@@ -4462,6 +4506,7 @@
     "ons.population.age_20_29_by_region@N92000002",
     "ons.population.age_20_29_by_region@S92000003",
     "ons.population.age_20_29_by_region@W92000004",
+    "ons.population.age_3",
     "ons.population.age_30_39_by_region@E12000001",
     "ons.population.age_30_39_by_region@E12000002",
     "ons.population.age_30_39_by_region@E12000003",
@@ -4474,6 +4519,7 @@
     "ons.population.age_30_39_by_region@N92000002",
     "ons.population.age_30_39_by_region@S92000003",
     "ons.population.age_30_39_by_region@W92000004",
+    "ons.population.age_4",
     "ons.population.age_40_49_by_region@E12000001",
     "ons.population.age_40_49_by_region@E12000002",
     "ons.population.age_40_49_by_region@E12000003",
@@ -4486,6 +4532,7 @@
     "ons.population.age_40_49_by_region@N92000002",
     "ons.population.age_40_49_by_region@S92000003",
     "ons.population.age_40_49_by_region@W92000004",
+    "ons.population.age_5",
     "ons.population.age_50_59_by_region@E12000001",
     "ons.population.age_50_59_by_region@E12000002",
     "ons.population.age_50_59_by_region@E12000003",
@@ -4498,6 +4545,7 @@
     "ons.population.age_50_59_by_region@N92000002",
     "ons.population.age_50_59_by_region@S92000003",
     "ons.population.age_50_59_by_region@W92000004",
+    "ons.population.age_6",
     "ons.population.age_60_69_by_region@E12000001",
     "ons.population.age_60_69_by_region@E12000002",
     "ons.population.age_60_69_by_region@E12000003",
@@ -4534,6 +4582,13 @@
     "ons.population.age_80_89_by_region@N92000002",
     "ons.population.age_80_89_by_region@S92000003",
     "ons.population.age_80_89_by_region@W92000004",
+    "ons.population.england_age_0",
+    "ons.population.england_age_1",
+    "ons.population.england_age_2",
+    "ons.population.england_age_3",
+    "ons.population.england_age_4",
+    "ons.population.england_age_5",
+    "ons.population.england_age_6",
     "ons.population.female_0_4",
     "ons.population.female_10_14",
     "ons.population.female_15",
@@ -16595,6 +16650,171 @@
           "resolved_value": 696010.0,
           "resolved_fact_period": "2025",
           "resolved_fact_key": "ledger_aggregate_fact_v2_c617f5c67e886aa92ddef487"
+        }
+      ]
+    },
+    "ons.population.age_3": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.population.age_3",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "resolved_period": 2025,
+          "resolved_value": 735292.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_4a4586fdbc26d2ca35622c57"
+        }
+      ]
+    },
+    "ons.population.age_4": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.population.age_4",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "resolved_period": 2025,
+          "resolved_value": 723859.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_4b5ee836cca86ef5740d84ff"
+        }
+      ]
+    },
+    "ons.population.age_5": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.population.age_5",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "resolved_period": 2025,
+          "resolved_value": 745129.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_72b1b35916ec38455ab85123"
+        }
+      ]
+    },
+    "ons.population.age_6": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.population.age_6",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "resolved_period": 2025,
+          "resolved_value": 760014.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a2c40accbafe611074a57b9e"
+        }
+      ]
+    },
+    "ons.population.england_age_0": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.population.england_age_0",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 566856.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_016f96de92d9c331782eef36"
+        }
+      ]
+    },
+    "ons.population.england_age_1": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.population.england_age_1",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 583995.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_0b652f4262d87b5bed1ae7db"
+        }
+      ]
+    },
+    "ons.population.england_age_2": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.population.england_age_2",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 598812.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_76c2895246d55d796d19de56"
+        }
+      ]
+    },
+    "ons.population.england_age_3": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.population.england_age_3",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 632519.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a1b7f863c10c0f53a31dc5c0"
+        }
+      ]
+    },
+    "ons.population.england_age_4": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.population.england_age_4",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 621735.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_8812d3295449b82854e294d4"
+        }
+      ]
+    },
+    "ons.population.england_age_5": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.population.england_age_5",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 639573.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_100a9c2e5c5d4119b44a36ed"
+        }
+      ]
+    },
+    "ons.population.england_age_6": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.population.england_age_6",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 649939.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_83049955fba3eae9f732d689"
         }
       ]
     },
