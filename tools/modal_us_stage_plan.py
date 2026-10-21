@@ -991,6 +991,12 @@ US_ACS_MULTISPINE_STAGING = ToolSpec(
             "--puma-ladder",
             "--out-h5",
             "--summary",
+            # microcosm#1022 SSI disability criteria: the builder reads the
+            # pinned SIPP 2023 donor from its canonical cache, fetching it
+            # there when missing. The runner never passes the flag, so no
+            # option can point it at a path the container lacks. Staging the
+            # file as a pinned volume input (a HomeSeed) is a follow-up.
+            "--sipp-donor",
         }
     ),
     argv_builder=_acs_multispine_staging_argv,

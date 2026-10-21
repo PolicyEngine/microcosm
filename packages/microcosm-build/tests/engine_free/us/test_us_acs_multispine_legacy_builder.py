@@ -131,6 +131,8 @@ def test_parser_exposes_production_defaults_and_transfer_controls() -> None:
     assert args.seed == 0
     assert args.geography_seed == 0
     assert args.donor_channel == builder.ACS_DONOR_CHANNEL_AUTO
+    # microcosm#1022: the SIPP donor resolves through the canonical cache.
+    assert args.sipp_donor is None
 
     custom = builder._parse_args(
         [
@@ -164,6 +166,10 @@ def test_parser_exposes_production_defaults_and_transfer_controls() -> None:
     assert custom.n_estimators == 9
     assert custom.max_targets_per_fit == 3
     assert custom.donor_channel == "benefit_support"
+    local = builder._parse_args(
+        ["--base-h5", "d.h5", "--out-h5", "c.h5", "--sipp-donor", "pu2023.csv"]
+    )
+    assert local.sipp_donor == Path("pu2023.csv")
 
 
 @pytest.mark.parametrize("staging_hours_pass", [True, False])
@@ -199,6 +205,20 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     # What build_optional_acs_multispine records for the separate ASEC-channel
     # income transfer pass (microcosm#1022).
     income_receipt = {"issue": "microcosm#1022", "donor_channel": "asec"}
+    # What the ACS local SSI disability-criteria stage returns
+    # (microcosm#1022): the null audit, hours gate and export must see it.
+    ssi_filled = Frame(
+        {entity: combined.table(entity) for entity in combined.entities},
+        combined.schema,
+        {"household": combined.weights_for("household")},
+    )
+    ssi_receipt = {
+        "issue": "microcosm#1022",
+        "column": "meets_ssi_disability_criteria",
+    }
+    sipp_path = tmp_path / "pu2023.csv"
+    sipp_training = pd.DataFrame({"age": [40.0]})
+    sipp_identity = {"path": str(sipp_path), "sha256": "5" * 64}
     base_h5 = tmp_path / "dense.h5"
     base_h5.write_bytes(b"dense-base")
     manifest_path = tmp_path / "acs_sources.json"
@@ -248,6 +268,7 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
 
     def fake_fetch(cache_dir, *, manifest):
         captured["fetch"] = (cache_dir, manifest)
+        order.append("acs_fetch")
         return source
 
     def fake_build(actual_base, actual_source, **kwargs):
@@ -322,6 +343,30 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
             details={"per_spine": {}},
         )
 
+    def fake_sipp_load(path, *, time_period):
+        captured["sipp_load"] = (path, time_period)
+        order.append("sipp_load")
+        return sipp_training, sipp_identity
+
+    def fake_ssi_stage(frame, *, sipp_donor, donor_identity, seed):
+        assert frame is labelled
+        assert sipp_donor is sipp_training
+        assert donor_identity is sipp_identity
+        captured["ssi_seed"] = seed
+        order.append("ssi_disability")
+        return ssi_filled, ssi_receipt
+
+    def fake_ssi_gate(frame, *, receipt):
+        assert frame is ssi_filled
+        assert receipt is ssi_receipt
+        order.append("ssi_disability_gate")
+        return GateResult(
+            name="acs_local_ssi_disability_signal",
+            passed=True,
+            failures=(),
+            details={"per_spine": {}},
+        )
+
     def fake_work_disability_gate(frame, *, receipt):
         assert frame is labelled
         assert receipt is work_disability_receipt
@@ -334,13 +379,13 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         )
 
     def fake_null_audit(frame):
-        assert frame is labelled
+        assert frame is ssi_filled
         captured["audited"] = True
         order.append("null_audit")
         return [reviewed_null]
 
     def staging_hours_gate(frame, *, source_null_audit):
-        assert frame is labelled
+        assert frame is ssi_filled
         assert source_null_audit == [reviewed_null]
         captured["staging_hours_gate"] = True
         return GateResult(
@@ -423,6 +468,19 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     monkeypatch.setattr(
         builder, "acs_local_income_transfer_signal_gate", fake_income_gate
     )
+    monkeypatch.setattr(
+        builder,
+        "require_acs_local_ssi_disability_donor",
+        lambda frame: captured.setdefault("ssi_donor_base", frame),
+    )
+    monkeypatch.setattr(
+        builder, "fetch_sipp_2023_ssi_disability_donor", lambda: sipp_path
+    )
+    monkeypatch.setattr(builder, "load_acs_local_ssi_disability_donor", fake_sipp_load)
+    monkeypatch.setattr(
+        builder, "with_acs_local_ssi_disability_criteria", fake_ssi_stage
+    )
+    monkeypatch.setattr(builder, "acs_local_ssi_disability_signal_gate", fake_ssi_gate)
 
     arguments = [
         "--base-h5",
@@ -482,16 +540,22 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         "max_targets_per_fit": 8,
         "geography_seed": 19,
     }
-    assert captured["write"] == (labelled, output_h5, 2024)
+    assert captured["write"] == (ssi_filled, output_h5, 2024)
     assert captured["immigration_donor"] == (base, 2024)
     assert captured["immigration"] == (11, 2024)
     assert captured["audited"] is True
     # microcosm#1021: the work/disability gate sees the labelled frame, after
-    # the immigration stage and before the input-null audit.
+    # the immigration stage and before the input-null audit. microcosm#1022:
+    # the SIPP donor is verified before the ACS fetch, and the SSI disability
+    # stage runs after the income gate and before the input-null audit.
     assert order == [
+        "sipp_load",
+        "acs_fetch",
         "immigration",
         "work_disability_gate",
         "income_gate",
+        "ssi_disability",
+        "ssi_disability_gate",
         "null_audit",
     ]
 
@@ -523,6 +587,16 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     assert summary["acs_local_income_transfer"] == income_receipt
     assert summary["acs_local_income_transfer_gate"] == {
         "name": "acs_local_income_transfer_signal",
+        "passed": True,
+        "failures": [],
+        "details": {"per_spine": {}},
+    }
+    assert captured["ssi_donor_base"] is base
+    assert captured["sipp_load"] == (sipp_path, 2024)
+    assert captured["ssi_seed"] == 11
+    assert summary["acs_local_ssi_disability"] == ssi_receipt
+    assert summary["acs_local_ssi_disability_gate"] == {
+        "name": "acs_local_ssi_disability_signal",
         "passed": True,
         "failures": [],
         "details": {"per_spine": {}},
@@ -685,6 +759,122 @@ def test_work_disability_gate_failures_abort_staging(monkeypatch) -> None:
     entries = builder._require_local_work_disability(result)
     assert entries["acs_local_work_disability"] is receipt
     assert entries["acs_local_work_disability_gate"]["passed"] is True
+
+
+def test_ssi_disability_stage_failures_abort_staging(monkeypatch) -> None:
+    """microcosm#1022: a failed stage or gate never reaches the null audit."""
+
+    builder = _load_builder_module()
+    result = builder.AcsMultispineResult(frame=_frame())
+
+    def refusing_stage(frame, *, sipp_donor, donor_identity, seed):
+        raise ValueError("1 ACS person(s) have a blank transferred disability_benefits")
+
+    monkeypatch.setattr(
+        builder, "with_acs_local_ssi_disability_criteria", refusing_stage
+    )
+    with pytest.raises(SystemExit, match=r"microcosm#1022\): 1 ACS person"):
+        builder._with_local_ssi_disability(
+            result, sipp_donor=None, donor_identity={}, seed=0
+        )
+
+    filled = _frame()
+    receipt = {"issue": "microcosm#1022"}
+    monkeypatch.setattr(
+        builder,
+        "with_acs_local_ssi_disability_criteria",
+        lambda frame, **kwargs: (filled, receipt),
+    )
+    monkeypatch.setattr(
+        builder,
+        "acs_local_ssi_disability_signal_gate",
+        lambda frame, *, receipt: GateResult(
+            name="acs_local_ssi_disability_signal",
+            passed=False,
+            failures=("acs_2024_1yr: meets_ssi_disability_criteria is constant",),
+        ),
+    )
+    with pytest.raises(
+        SystemExit,
+        match="Local staging SSI disability-criteria gate failed: acs_2024_1yr",
+    ):
+        builder._with_local_ssi_disability(
+            result, sipp_donor=None, donor_identity={}, seed=0
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "acs_local_ssi_disability_signal_gate",
+        lambda frame, *, receipt: GateResult(
+            name="acs_local_ssi_disability_signal", passed=True, failures=()
+        ),
+    )
+    updated, entries = builder._with_local_ssi_disability(
+        result, sipp_donor=None, donor_identity={}, seed=0
+    )
+    assert updated.frame is filled
+    assert entries["acs_local_ssi_disability"] is receipt
+    assert entries["acs_local_ssi_disability_gate"]["passed"] is True
+
+
+def test_ssi_disability_donor_preflight_refuses_before_transfer(monkeypatch) -> None:
+    builder = _load_builder_module()
+
+    def refusing_donor(frame):
+        raise ValueError(
+            "The donor release lacks person column 'meets_ssi_disability_criteria'"
+        )
+
+    monkeypatch.setattr(
+        builder, "require_acs_local_ssi_disability_donor", refusing_donor
+    )
+    with pytest.raises(SystemExit, match=r"cannot anchor .* lacks person column"):
+        builder._require_ssi_disability_donor(_frame())
+
+
+def test_sipp_donor_uses_the_given_path_or_refuses_clearly(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """microcosm#1022: --sipp-donor skips the fetch; an unavailable or
+    unverifiable donor stops staging with the option to pass."""
+
+    builder = _load_builder_module()
+    calls: list[tuple[Path, int]] = []
+
+    def loader(path, *, time_period):
+        calls.append((path, time_period))
+        return "donor", {"path": str(path)}
+
+    monkeypatch.setattr(
+        builder,
+        "fetch_sipp_2023_ssi_disability_donor",
+        lambda: pytest.fail("an explicit --sipp-donor must not fetch"),
+    )
+    monkeypatch.setattr(builder, "load_acs_local_ssi_disability_donor", loader)
+    local = tmp_path / "pu2023.csv"
+    assert builder._load_ssi_disability_donor(local, period=2024) == (
+        "donor",
+        {"path": str(local)},
+    )
+    assert calls == [(local, 2024)]
+
+    def offline():
+        raise OSError("network is unreachable")
+
+    monkeypatch.setattr(builder, "fetch_sipp_2023_ssi_disability_donor", offline)
+    with pytest.raises(
+        SystemExit,
+        match=r"microcosm#1022\) is unavailable: network is unreachable Pass "
+        r"--sipp-donor",
+    ):
+        builder._load_ssi_disability_donor(None, period=2024)
+
+    def corrupt(path, *, time_period):
+        raise ValueError("SIPP 2023 SSI disability donor failed sha-256 verification")
+
+    monkeypatch.setattr(builder, "load_acs_local_ssi_disability_donor", corrupt)
+    with pytest.raises(SystemExit, match="sha-256 verification"):
+        builder._load_ssi_disability_donor(local, period=2024)
 
 
 def test_weights_audit_failure_aborts_before_export() -> None:

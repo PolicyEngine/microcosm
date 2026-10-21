@@ -1096,16 +1096,23 @@ and the QRF implementation has no other active network acquisition:
 - The engine-default and null audits construct `PolicyEngineUSEngine`,
   using the installed engine's local definitions and parameters. They do
   not create a `Microsimulation` or acquire a default dataset.
-- Imported ASEC, education, ORG, SCF, SIPP and unemployment-weeks fetchers
-  are not called by this builder's path or package initialization.
+- Imported ASEC, education, ORG, SCF and unemployment-weeks fetchers are
+  not called by this builder's path or package initialization.
+- The SIPP 2023 fetcher is. The ACS SSI disability-criteria stage
+  (microcosm#1022) reads the pinned full public-use file (`pu2023.csv`,
+  3.73 GB) from the canonical SIPP cache, and downloads it there when it
+  is missing, because the runner does not pass `--sipp-donor`.
 
-No `HomeSeed` is needed for this tool. The runner's image clone and
+No `HomeSeed` is registered for this tool yet, so a fresh container makes
+that one SIPP download. Staging the file as a pinned input that seeds the
+cache (a `HomeSeed`) is a follow-up. The runner's image clone and
 dependency installation, branch proof and input preparation retain their
 existing network use; the tool runs with `HF_HUB_OFFLINE=1`, without
 credential-name environment values, and consumes the staged files.
 
 The runner owns `--base-h5`, `--donor-release-manifest`, `--source-manifest`,
-`--inputs-dir`, `--puma-ladder`, `--out-h5` and `--summary`. Plans may set
+`--inputs-dir`, `--puma-ladder`, `--out-h5`, `--summary` and `--sipp-donor`,
+which it never passes. Plans may set
 only the builder's tuning flags: `--acs-share`, `--n-estimators`,
 `--max-targets-per-fit`, `--seed`, `--geography-seed`, `--chunksize`,
 `--donor-channel`, `--hours-under15-policy`, `--max-households` and
