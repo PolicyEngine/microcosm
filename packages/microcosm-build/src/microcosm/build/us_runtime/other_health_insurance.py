@@ -19,7 +19,9 @@ restored targets.
 from __future__ import annotations
 
 import gc
+from collections.abc import Iterable, Mapping, Sequence
 from importlib.resources import files
+from types import MappingProxyType
 from typing import Any
 
 import numpy as np
@@ -59,7 +61,8 @@ __all__ = [
     "US_OTHER_HEALTH_INSURANCE_STAGE_OUTPUT_COLUMNS",
     "US_SE_HEALTH_ATTRIBUTION_OUTPUT_COLUMNS",
     "US_SE_HEALTH_MEDICARE_AGE_THRESHOLD",
-    "US_SE_HEALTH_SELF_EMPLOYMENT_INCOME_SOURCES",
+    "US_SE_HEALTH_PLAN_BUSINESS_INCOME_SOURCES",
+    "US_SE_HEALTH_PLAN_BUSINESS_SOURCE_COLUMNS",
     "attribute_us_se_health_premiums",
     "attribute_us_se_health_premiums_from_manifest",
     "derive_us_other_health_insurance_from_asec",
@@ -113,20 +116,46 @@ US_OTHER_HEALTH_INSURANCE_MODELED_PREMIUM_VARIABLES: tuple[str, ...] = (
     "medicaid_premium",
 )
 # Self-employed premium attribution (PolicyEngine/microcosm#451 item 2): the
-# section 162(l) ALD chain in PolicyEngine-US 2.2.1 reads person inputs
+# section 162(l) ALD chain in PolicyEngine-US reads person inputs
 # health_insurance_premiums (via the self_employed_health_insurance_premiums
-# adds-aggregation, gated by is_self_employed) and caps the deduction at
-# total_self_employment_income = self_employment_income +
-# sstb_self_employment_income. self_employed_health_insurance_premiums itself
-# is formula-owned (adds) and cannot ship as a column, so the stage ships the
-# two pure inputs the engine intends.
+# adds-aggregation, gated by is_self_employed) and caps the deduction at the
+# earned income of the business the plan is established under.
+# self_employed_health_insurance_premiums itself is formula-owned (adds) and
+# cannot ship as a column, so the stage ships the two pure inputs the engine
+# intends.
 US_SE_HEALTH_ATTRIBUTION_OUTPUT_COLUMNS: tuple[str, ...] = (
     "health_insurance_premiums",
     "is_self_employed",
 )
-US_SE_HEALTH_SELF_EMPLOYMENT_INCOME_SOURCES: tuple[str, ...] = (
-    "self_employment_income_before_lsr",
-    "sstb_self_employment_income_before_lsr",
+# 26 USC 162(l)(2)(A) limits the deduction to the earned income "derived by
+# the taxpayer from the trade or business with respect to which the plan
+# providing the medical care coverage is established". The Form 7206
+# instructions (2023, p. 1) name who qualifies: a net profit on Schedule C or
+# Schedule F, a partner's net earnings on Schedule K-1 box 14 code A, the
+# Schedule SE optional methods, and wages of a more-than-2% S corporation
+# shareholder. No measured input carries the last two.
+# PolicyEngine/policyengine-us#10120 computes the limit for each business
+# from these person inputs and, with no named plan business, takes the
+# largest. Treating both Schedule C inputs as one business (the engine's
+# total_self_employment_income) is that PR's modelling choice, followed here
+# so the flag opens exactly where its limit can be positive. Each business's
+# net earnings stand alone, so a loss in one never cancels another's profit.
+US_SE_HEALTH_PLAN_BUSINESS_INCOME_SOURCES: Mapping[str, tuple[str, ...]] = (
+    MappingProxyType(
+        {
+            "schedule_c": (
+                "self_employment_income_before_lsr",
+                "sstb_self_employment_income_before_lsr",
+            ),
+            "schedule_f": ("farm_operations_income",),
+            "partnership": ("partnership_self_employment_net_earnings",),
+        }
+    )
+)
+US_SE_HEALTH_PLAN_BUSINESS_SOURCE_COLUMNS: tuple[str, ...] = tuple(
+    column
+    for columns in US_SE_HEALTH_PLAN_BUSINESS_INCOME_SOURCES.values()
+    for column in columns
 )
 # Attribution is withheld from people on the Medicare proxy (age 65+ or any
 # Social Security disability income) so the statutory medical-expense premium
@@ -463,12 +492,24 @@ def _finite_values(person: pd.DataFrame, column: str) -> np.ndarray:
     return values
 
 
+def _has_positive_plan_business(
+    net_earnings_by_business: Iterable[np.ndarray],
+    size: int,
+) -> np.ndarray:
+    """Whether any one plan business has strictly positive net earnings."""
+
+    positive = np.zeros(size, dtype=bool)
+    for net_earnings in net_earnings_by_business:
+        positive |= net_earnings > 0.0
+    return positive
+
+
 def attribute_us_se_health_premiums(
     person: pd.DataFrame,
     *,
     reported_source_column: str = _REPORTED_OUTPUT,
-    self_employment_income_source_columns: tuple[str, ...] = (
-        US_SE_HEALTH_SELF_EMPLOYMENT_INCOME_SOURCES
+    plan_business_income_source_columns: Mapping[str, Sequence[str]] = (
+        US_SE_HEALTH_PLAN_BUSINESS_INCOME_SOURCES
     ),
     medicare_age_source_column: str = _SE_MEDICARE_AGE_SOURCE,
     medicare_age_threshold: int = US_SE_HEALTH_MEDICARE_AGE_THRESHOLD,
@@ -479,30 +520,36 @@ def attribute_us_se_health_premiums(
 ) -> pd.DataFrame:
     """Attribute reported premiums to self-employed people deterministically.
 
-    The premium output copies the reported non-Part-B premium exactly for
-    people with strictly positive combined Schedule C income who are outside
-    the Medicare proxy AND outside measured employer-sponsored coverage, and
-    is zero elsewhere: attribution never invents premium mass. Section
-    162(l)(2)(B) disallows the deduction for months the taxpayer is eligible
-    to participate in a subsidized employer plan; the measured ``has_esi``
+    A person is self-employed here when any business a plan can be
+    established under has strictly positive net earnings: Schedule C (both
+    Schedule C inputs summed), a Schedule F farm, or a partnership's Schedule
+    K-1 box 14 code A earnings. The premium output copies the reported
+    non-Part-B premium exactly for self-employed people outside the Medicare
+    proxy AND outside measured employer-sponsored coverage, and is zero
+    elsewhere: attribution never invents premium mass. Section 162(l)(2)(B)
+    disallows the deduction for months the taxpayer is eligible to
+    participate in a subsidized employer plan; the measured ``has_esi``
     indicator (actual employer-sponsored coverage) is the conservative,
     incomplete proxy for that eligibility — eligibility through a spouse's or
     dependent's employer is not measured and remains documented residual
-    overbreadth. The flag marks every strictly-positive Schedule C person so
-    the engine's ``defined_for`` gate opens exactly where the section 162(l)
-    earned-income cap can bind. Schedule C losses are legitimate measured
-    signal and simply leave the flag off.
+    overbreadth. The flag marks every self-employed person so the engine's
+    ``defined_for`` gate opens exactly where a section 162(l) earned-income
+    limit can be positive. A loss is legitimate measured signal: it leaves
+    the flag off unless another business is profitable.
     """
 
     reported = _strict_nonnegative_values(person, reported_source_column)
-    self_employment = np.zeros(len(person), dtype=np.float64)
-    for column in self_employment_income_source_columns:
-        self_employment += _finite_values(person, column)
+    net_earnings_by_business = []
+    for columns in plan_business_income_source_columns.values():
+        net_earnings = np.zeros(len(person), dtype=np.float64)
+        for column in columns:
+            net_earnings += _finite_values(person, column)
+        net_earnings_by_business.append(net_earnings)
     age = _finite_values(person, medicare_age_source_column)
     ssdi = _strict_nonnegative_values(person, medicare_ssdi_source_column)
     employer_covered = _boolean_values(person, employer_coverage_source_column)
 
-    self_employed = self_employment > 0.0
+    self_employed = _has_positive_plan_business(net_earnings_by_business, len(person))
     medicare_proxy = (age >= float(medicare_age_threshold)) | (ssdi > 0.0)
 
     result = person.copy(deep=True)
@@ -564,9 +611,10 @@ def attribute_us_se_health_premiums_from_manifest(
         )
     expected = {
         "reported_source": _REPORTED_OUTPUT,
-        "self_employment_income_sources": list(
-            US_SE_HEALTH_SELF_EMPLOYMENT_INCOME_SOURCES
-        ),
+        "plan_business_income_sources": {
+            business: list(columns)
+            for business, columns in US_SE_HEALTH_PLAN_BUSINESS_INCOME_SOURCES.items()
+        },
         "medicare_age_source": _SE_MEDICARE_AGE_SOURCE,
         "medicare_age_threshold": US_SE_HEALTH_MEDICARE_AGE_THRESHOLD,
         "medicare_ssdi_source": _SE_MEDICARE_SSDI_SOURCE,
@@ -583,9 +631,10 @@ def attribute_us_se_health_premiums_from_manifest(
     return attribute_us_se_health_premiums(
         frame,
         reported_source_column=parameters["reported_source"],
-        self_employment_income_source_columns=tuple(
-            parameters["self_employment_income_sources"]
-        ),
+        plan_business_income_source_columns={
+            business: tuple(columns)
+            for business, columns in parameters["plan_business_income_sources"].items()
+        },
         medicare_age_source_column=parameters["medicare_age_source"],
         medicare_age_threshold=int(parameters["medicare_age_threshold"]),
         medicare_ssdi_source_column=parameters["medicare_ssdi_source"],
@@ -1005,7 +1054,7 @@ def _se_attribution_summary(
         column
         for column in (
             *US_SE_HEALTH_ATTRIBUTION_OUTPUT_COLUMNS,
-            *US_SE_HEALTH_SELF_EMPLOYMENT_INCOME_SOURCES,
+            *US_SE_HEALTH_PLAN_BUSINESS_SOURCE_COLUMNS,
             _SE_MEDICARE_AGE_SOURCE,
             _SE_MEDICARE_SSDI_SOURCE,
             _SE_EMPLOYER_COVERAGE_SOURCE,
@@ -1037,15 +1086,18 @@ def _se_attribution_summary(
     # any of them makes the recomputed identity meaningless, so it is a
     # failure in its own right, not a silently not-self-employed person.
     nonfinite_sources: dict[str, int] = {}
-    self_employment = np.zeros(len(person), dtype=np.float64)
-    for column in US_SE_HEALTH_SELF_EMPLOYMENT_INCOME_SOURCES:
-        values = pd.to_numeric(person[column], errors="coerce").to_numpy(
-            dtype=np.float64
-        )
-        bad = int(np.count_nonzero(~np.isfinite(values)))
-        if bad:
-            nonfinite_sources[column] = bad
-        self_employment += values
+    net_earnings_by_business: dict[str, np.ndarray] = {}
+    for business, columns in US_SE_HEALTH_PLAN_BUSINESS_INCOME_SOURCES.items():
+        net_earnings = np.zeros(len(person), dtype=np.float64)
+        for column in columns:
+            values = pd.to_numeric(person[column], errors="coerce").to_numpy(
+                dtype=np.float64
+            )
+            bad = int(np.count_nonzero(~np.isfinite(values)))
+            if bad:
+                nonfinite_sources[column] = bad
+            net_earnings += values
+        net_earnings_by_business[business] = net_earnings
     age = pd.to_numeric(person[_SE_MEDICARE_AGE_SOURCE], errors="coerce").to_numpy(
         dtype=np.float64
     )
@@ -1063,7 +1115,9 @@ def _se_attribution_summary(
         bad = int(np.count_nonzero(~np.isfinite(values)))
         if bad:
             nonfinite_sources[column] = bad
-    self_employed = self_employment > 0.0
+    self_employed = _has_positive_plan_business(
+        net_earnings_by_business.values(), len(person)
+    )
     medicare_proxy = (age >= float(US_SE_HEALTH_MEDICARE_AGE_THRESHOLD)) | (ssdi > 0.0)
     employer_covered = employer_numeric == 1.0
     expected = np.where(
@@ -1091,6 +1145,12 @@ def _se_attribution_summary(
         "flag_share": (
             float(weights[flag].sum()) / total_weight if total_weight > 0.0 else 0.0
         ),
+        # Diagnostics only: a person can have more than one profitable
+        # business, so these overlap and need not sum to flag_rows.
+        "positive_plan_business_rows": {
+            business: int(np.count_nonzero(net_earnings > 0.0))
+            for business, net_earnings in net_earnings_by_business.items()
+        },
         "invalid_flag_values": invalid_flag_values,
         "nonfinite_sources": nonfinite_sources,
         "identity_violations": identity_violations,

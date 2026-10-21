@@ -765,14 +765,21 @@
       "output_self_employed_flag": {
        "type": "string"
       },
+      "plan_business_income_sources": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "array",
+        "minItems": 1,
+        "uniqueItems": true,
+        "items": {
+         "type": "string",
+         "minLength": 1
+        }
+       }
+      },
       "reported_source": {
        "type": "string"
-      },
-      "self_employment_income_sources": {
-       "type": "array",
-       "items": {
-        "type": "string"
-       }
       }
      },
      "required": [
@@ -783,8 +790,8 @@
       "medicare_ssdi_source",
       "output_premiums",
       "output_self_employed_flag",
-      "reported_source",
-      "self_employment_income_sources"
+      "plan_business_income_sources",
+      "reported_source"
      ]
     },
     {

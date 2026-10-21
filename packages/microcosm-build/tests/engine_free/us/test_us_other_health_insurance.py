@@ -74,9 +74,14 @@ def test_stage_manifest_pins_residual_and_joint_puf_qrf() -> None:
     }
     assert spec.operations[3].parameters == {
         "reported_source": _REPORTED,
-        "self_employment_income_sources": list(
-            US_SE_HEALTH_SELF_EMPLOYMENT_INCOME_SOURCES
-        ),
+        "plan_business_income_sources": {
+            "schedule_c": [
+                "self_employment_income_before_lsr",
+                "sstb_self_employment_income_before_lsr",
+            ],
+            "schedule_f": ["farm_operations_income"],
+            "partnership": ["partnership_self_employment_net_earnings"],
+        },
         "medicare_age_source": "age",
         "medicare_age_threshold": US_SE_HEALTH_MEDICARE_AGE_THRESHOLD,
         "medicare_ssdi_source": "social_security_disability",
@@ -396,6 +401,26 @@ def test_se_attribution_is_deterministic_reported_identity_with_guards() -> None
             "has_esi",
         ),
         (
+            lambda source: source.drop(columns=["farm_operations_income"]),
+            "farm_operations_income",
+        ),
+        (
+            lambda source: source.drop(
+                columns=["partnership_self_employment_net_earnings"]
+            ),
+            "partnership_self_employment_net_earnings",
+        ),
+        (
+            lambda source: source.assign(farm_operations_income=[np.inf]),
+            "nonnumeric or nonfinite",
+        ),
+        (
+            lambda source: source.assign(
+                partnership_self_employment_net_earnings=[np.nan]
+            ),
+            "nonnumeric or nonfinite",
+        ),
+        (
             lambda source: source.assign(has_esi=["True"]),
             "object dtype",
         ),
@@ -426,6 +451,86 @@ def test_se_attribution_allows_negative_self_employment_losses() -> None:
     assert result[_FLAG_OUTPUT].tolist() == [False, False]
 
 
+def test_se_attribution_covers_farm_and_partnership_plan_businesses() -> None:
+    # 26 USC 162(l)(2)(A) and the Form 7206 instructions let the plan be
+    # established under a Schedule F farm or a partnership (Schedule K-1 box
+    # 14 code A), and PolicyEngine-US #10120 limits the deduction business by
+    # business, so each profitable business qualifies on its own.
+    source = _attribution_source(
+        reported=[6_000.0] * 9,
+        self_employment=[0.0, 0.0, -10_000.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        farm=[20_000.0, 0.0, 5_000.0, -3_000.0, 20_000.0, 20_000.0, 0.0, 0.0, -1.0],
+        partnership=[0.0, 15_000.0, 0.0, 8_000.0, 0.0, 0.0, 15_000.0, 0.0, -1.0],
+        age=[40.0, 40.0, 40.0, 40.0, 65.0, 40.0, 40.0, 40.0, 40.0],
+        ssdi=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 12_000.0, 0.0, 0.0],
+        esi=[False, False, False, False, False, True, False, False, False],
+    )
+
+    result = attribute_us_se_health_premiums(source)
+
+    assert result[_PREMIUMS_OUTPUT].tolist() == [
+        6_000.0,  # farm profit alone
+        6_000.0,  # partnership earnings alone
+        6_000.0,  # a Schedule C loss does not cancel the farm's profit
+        6_000.0,  # nor does a farm loss cancel the partnership's earnings
+        0.0,  # farm profit, Medicare age proxy
+        0.0,  # farm profit, measured employer coverage
+        0.0,  # partnership earnings, SSDI Medicare proxy
+        0.0,  # no business at all
+        0.0,  # losses everywhere
+    ]
+    assert result[_FLAG_OUTPUT].tolist() == [
+        True,
+        True,
+        True,
+        True,
+        True,
+        True,
+        True,
+        False,
+        False,
+    ]
+
+
+def test_se_attribution_manifest_refuses_the_schedule_c_only_parameter() -> None:
+    from microcosm.build.source_manifest import SourceOperationSpec
+
+    spec = us_other_health_insurance_stage_spec()
+    operation = spec.operations[3]
+    retired = {
+        key: value
+        for key, value in operation.parameters.items()
+        if key != "plan_business_income_sources"
+    }
+    retired["self_employment_income_sources"] = [
+        "self_employment_income_before_lsr",
+        "sstb_self_employment_income_before_lsr",
+    ]
+    source = _attribution_source(reported=[5_000.0], self_employment=[0.0])
+
+    with pytest.raises(SourceRuntimeError, match="drifted from the pinned"):
+        attribute_us_se_health_premiums_from_manifest(
+            source,
+            SourceOperationSpec.from_mapping({"kind": operation.kind, **retired}),
+            None,
+        )
+    narrowed = dict(operation.parameters)
+    narrowed["plan_business_income_sources"] = {
+        "schedule_c": narrowed["plan_business_income_sources"]["schedule_c"]
+    }
+    with pytest.raises(SourceRuntimeError, match="drifted from the pinned"):
+        attribute_us_se_health_premiums_from_manifest(
+            source,
+            SourceOperationSpec.from_mapping({"kind": operation.kind, **narrowed}),
+            None,
+        )
+    assert attribute_us_se_health_premiums_from_manifest(
+        _attribution_source(reported=[5_000.0], self_employment=[0.0], farm=[1.0]),
+        operation,
+        None,
+    )[_FLAG_OUTPUT].tolist() == [True]
+
+
 def test_with_inputs_materializes_se_attribution_and_carries_signal(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -434,16 +539,64 @@ def test_with_inputs_materializes_se_attribution_and_carries_signal(
     result = with_us_other_health_insurance_inputs(_frame(), seed=0, time_period=2024)
 
     person = result.table("person")
+    self_employed = (
+        (_SELF_EMPLOYMENT_VALUES > 0.0)
+        | (_FARM_VALUES > 0.0)
+        | (_PARTNERSHIP_VALUES > 0.0)
+    )
     expected_premiums = np.where(
-        (_SELF_EMPLOYMENT_VALUES > 0.0) & ~person["has_esi"].to_numpy(),
+        self_employed & ~person["has_esi"].to_numpy(),
         _REPORTED_VALUES,
         0.0,
     )
     np.testing.assert_allclose(person[_PREMIUMS_OUTPUT], expected_premiums)
-    assert person[_FLAG_OUTPUT].tolist() == (_SELF_EMPLOYMENT_VALUES > 0.0).tolist()
+    assert person[_FLAG_OUTPUT].tolist() == self_employed.tolist()
+    # The farm and partnership paths flag their people; neither carries a
+    # premium here (no reported premium; measured employer coverage).
+    assert person[_FLAG_OUTPUT].tolist()[2:4] == [True, True]
+    assert person[_FLAG_OUTPUT].tolist()[8] is False
+    summary = us_other_health_insurance_summary(result)["se_attribution"]
+    assert summary["positive_plan_business_rows"] == {
+        "schedule_c": 1,
+        "schedule_f": 1,
+        "partnership": 1,
+    }
     assert person[_FLAG_OUTPUT].dtype == bool
     gate = us_other_health_insurance_signal_gate(result)
     assert gate.passed, gate.failures
+
+
+def test_with_inputs_carries_farm_and_partnership_premiums_through_the_gate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(module, "PolicyEngineUSEngine", _ZeroPremiumEngine)
+    frame = _frame()
+    person = frame.table("person")
+    # Person 7 (reported 4,000) farms and person 1 (reported 1,000) is a
+    # partner; neither has Schedule C income or measured employer coverage.
+    person.loc[[1, 7], "has_esi"] = False
+    person.loc[7, "farm_operations_income"] = 12_000.0
+    person.loc[1, "partnership_self_employment_net_earnings"] = 9_000.0
+
+    result = with_us_other_health_insurance_inputs(frame, seed=0, time_period=2024)
+
+    attributed = result.table("person")
+    assert attributed.loc[7, _PREMIUMS_OUTPUT] == 4_000.0
+    assert attributed.loc[1, _PREMIUMS_OUTPUT] == 1_000.0
+    assert attributed.loc[[1, 7], _FLAG_OUTPUT].tolist() == [True, True]
+    assert attributed.loc[[1, 7], "self_employment_income_before_lsr"].tolist() == [
+        0.0,
+        0.0,
+    ]
+    gate = us_other_health_insurance_signal_gate(result)
+    assert gate.passed, gate.failures
+    assert gate.details["se_attribution"]["positive_rows"] == 3
+
+    # Dropping the farm person's premium breaks the identity the gate checks.
+    attributed.loc[7, _PREMIUMS_OUTPUT] = 0.0
+    gate = us_other_health_insurance_signal_gate(result)
+    assert not gate.passed
+    assert any("attribution identity" in failure for failure in gate.failures)
 
 
 def test_signal_gate_rejects_broken_or_absent_se_attribution(
@@ -476,6 +629,29 @@ def test_signal_gate_rejects_broken_or_absent_se_attribution(
     unflagged.table("person")[_FLAG_OUTPUT] = False
     gate = us_other_health_insurance_signal_gate(unflagged)
     assert not gate.passed
+
+    # The farm person's flag is part of the identity the gate recomputes.
+    farm_unflagged = with_us_other_health_insurance_inputs(
+        _frame(), seed=0, time_period=2024
+    )
+    farm_unflagged.table("person").loc[2, _FLAG_OUTPUT] = False
+    gate = us_other_health_insurance_signal_gate(farm_unflagged)
+    assert not gate.passed
+    assert any("attribution identity" in failure for failure in gate.failures)
+
+    # Without a plan-business source the identity cannot be recomputed.
+    unsourced = with_us_other_health_insurance_inputs(
+        _frame(), seed=0, time_period=2024
+    )
+    unsourced.table("person").drop(
+        columns=["partnership_self_employment_net_earnings"], inplace=True
+    )
+    gate = us_other_health_insurance_signal_gate(unsourced)
+    assert not gate.passed
+    assert any(
+        "partnership_self_employment_net_earnings" in failure
+        for failure in gate.failures
+    )
 
 
 def test_signal_gate_rejects_malformed_flag_and_nonfinite_identity_sources(

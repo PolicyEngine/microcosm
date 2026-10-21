@@ -350,12 +350,12 @@ EXPECTED_HASHES = {
     "acs_person_predictors": "878c788a6f037d7aca12b3586ea034eff04f3034ffa11935a736493042551f25",
     "authority": "9d4a9672a0f03039b1fe874b9fe21ed575be0d29f14afc396d03cdf5c809bdd2",
     "early_families": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd",
-    "full_checkpoint": "3db095ce2d1ef89028d3862f0edc827d704f099c5b3323f9b115642a3c27e007",
+    "full_checkpoint": "20b2ae05226896666d5a1d3a323538832bb6a640bb752d6f4833d10db5d8c0b8",
     "gap_fill_schedule": "1c31f9868f7884347cc19cf1ff65da43f950b9114941a715bab168246db414a7",
     "graph_nodes": "40cd51ffdfe2e9d9d08d48c08e8ded9de1e4b134783bab05c4abc6ad5c72ca1e",
     "geography_assignment": "44e7f5f6cd7ceeef85d532c3d46306d03de4f4ee811376e6d29920742746b65c",
     "late_families": "d91f9ff0eb52f43e7b6eed3d5c58c37abe1620c3a11021da15dae9c10e16d382",
-    "late_resource_semantics": "cc34ba11288d01145fc2dc1a669df3f7c4ef2019d73afb02dd8eeee852b16d20",
+    "late_resource_semantics": "a5a8b7263c68ecc7d7a11f007e197bfbebd26c852987d80b19b21e577af0726d",
     "late_schedule": "e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f",
     "ownership": "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356",
     "primary_tuples": "fdf23da429f8c501e198a2f5b719763d523a41565c2153fdf17b0344f21bcd7c",
@@ -367,9 +367,9 @@ EXPECTED_HASHES = {
     # moves both again: calibrate gains budget_search_bracket, whose default
     # keeps the US bracket, and the budget search, which the US solve does
     # not run, changes its probes, so again no US solve changes.
-    "seed_map": "b3d3f769647212a81d796a28f2b5ff759f513572bd3c70e253816c88ff496091",
-    "seed_protocol": "d756be07ab66c179f8612eb5c614527586004506d88be3e1ab62b934de0b61ce",
-    "source_manifest": "f4f8bfeb79268a4043a843b47cec1d1c0e58e9f5dd6bc23417ada95446dd7b8e",
+    "seed_map": "72d98051f5a6d1a6ed3287758fdb61fda3d8c33aae87790d49243c3ead5613df",
+    "seed_protocol": "8868ce3ff37bc7315f3fd06a55faf23db4ac2fa47e496c18b6daaf8e816e1571",
+    "source_manifest": "220e9a68f82e32e08118c121b91be9675771227e5f198366634636bd2b7238f4",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "ac92829c88a1a4fb6460d61190918d5d99c6c377fc8dd8f62f02b332d09bf59c",
 }
