@@ -794,13 +794,20 @@ def test_entry_clock_is_an_arrival_proxy_with_a_lag_sensitivity() -> None:
         "neither the ACS nor the ASEC donor records the date qualified status",
         "the clock runs from arrival",
         "the policyengine-us 2.2.1 tests that read the clock",
-        "Medicaid (CHIP follows it) and Washington TANF and RCA",
+        "Medicaid (CHIP follows it) and Washington TANF read it against a "
+        "five-year bar",
+        "Washington RCA reads it as a window that closes",
+        "wrongly exclude a recently qualified person from RCA",
         "federal SNAP status test reads the status, not this clock",
         "any SNAP effect is indirect",
         "microcosm#1093",
     ):
         assert text in clock["caveat"]
-    assert "Washington TANF and RCA" in clock["engine_readers"]
+    # microcosm#1052 review: RCA reads the clock as a closing window, so the
+    # long arrival clock excludes rather than admits early.
+    assert "Washington TANF and RCA" not in clock["caveat"]
+    assert "in Washington TANF, as a five-year bar" in clock["engine_readers"]
+    assert "Washington RCA, as a closing window" in clock["engine_readers"]
     block = clock["adjustment_lag_sensitivity"]
     assert block["graded"] is False
     assert block["statuses"] == list(FIVE_YEAR_BAR_STATUSES)
