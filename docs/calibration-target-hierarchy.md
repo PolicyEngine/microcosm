@@ -201,6 +201,12 @@ choice resolves it (`microcosm.calibrate.hierarchy_labels`):
   (chronicle#377 for `under_1`), so these choices matter only for feeds and
   releases built before it. Each choice covers only the two spellings
   Chronicle registers as reviewed variants; a third spelling is refused.
+- Belgium: `measure` `country_total` is "Country total", the label chosen in
+  review on 2026-10-22 and the one Chronicle's canonical register gives it
+  (chronicle#377). Each Belgian package (SPF Finances, ONSS, ONEM, NBB)
+  labels its national figure with its own measure name, so without this choice
+  the transport graph's diagnostics step raises and a Belgian build fails. The
+  choice covers only those four spellings; another is refused.
 
 Every disagreement a choice settles is logged as a warning naming the id, each
 spelling with its first target, and the label written, so a choice never hides

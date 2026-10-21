@@ -24,8 +24,17 @@ The choices cover the spellings found in published releases:
   chosen in review on 2026-10-21; a US feed re-pin brings the same labels from
   Chronicle, so releases built after it carry one spelling and these choices
   then apply only to older feeds. Each choice covers only the two reviewed
-  spellings, so a third spelling is still refused, and every disagreement a
-  choice settles is logged as a warning.
+  spellings, so a third spelling is still refused.
+- Belgium: each Belgian Chronicle package states its national figure as the
+  group-by value ``measure`` = ``country_total`` and labels it with its own
+  measure name (SPF Finances, ONSS, ONEM and NBB; Chronicle registers the four
+  as reviewed variants, chronicle#265). The value is written as "Country
+  total", the label chosen in review on 2026-10-22 and the one Chronicle's
+  canonical register gives it (chronicle#377). Without it the transport
+  graph's diagnostics step would raise and stop a Belgian build. The choice
+  covers only the four package spellings, so another is still refused.
+
+Every disagreement a choice settles is logged as a warning.
 
 Any other spelling difference still stops the writer; correct the source or
 add a reviewed choice here.
@@ -40,6 +49,9 @@ from microcosm.calibrate.geography_constants import UK_GEOGRAPHY_ID_TO_LABEL
 from microcosm.diagnostics import HierarchyLabelChoices
 
 __all__ = [
+    "BE_DIMENSION_VALUE_LABEL_CHOICES",
+    "BE_DIMENSION_VALUE_REVIEWED_SPELLINGS",
+    "BE_HIERARCHY_LABEL_CHOICES",
     "UK_HIERARCHY_LABEL_CHOICES",
     "US_DIMENSION_VALUE_LABEL_CHOICES",
     "US_DIMENSION_VALUE_REVIEWED_SPELLINGS",
@@ -81,6 +93,35 @@ US_DIMENSION_VALUE_REVIEWED_SPELLINGS: Mapping[tuple[str, str], frozenset[str]] 
     )
 )
 
+_COUNTRY_TOTAL = ("measure", "country_total")
+
+#: ``(dimension ID, value ID)`` -> label, for the Belgian value each source
+#: package labels its own way.
+BE_DIMENSION_VALUE_LABEL_CHOICES: Mapping[tuple[str, str], str] = MappingProxyType(
+    {_COUNTRY_TOTAL: "Country total"}
+)
+#: The spellings the Belgian choice was reviewed for; another is refused.
+BE_DIMENSION_VALUE_REVIEWED_SPELLINGS: Mapping[tuple[str, str], frozenset[str]] = (
+    MappingProxyType(
+        {
+            _COUNTRY_TOTAL: frozenset(
+                {
+                    # spf_finances/pit_2023 (calibration target
+                    # spf_finances_pit_total)
+                    "Belgium PIT federal and local tax before withholding",
+                    # onss/contributions_2024 (onss_employee_contribution_total)
+                    "Worker-borne personal social security contributions",
+                    # onem_rva/unemployment_2024 (onem_unemployment_caseload)
+                    "Complete unemployment benefit recipients",
+                    # nbb/national_accounts_household_disposable_income_2024
+                    # (validation target nbb_household_disposable_income)
+                    "Household disposable income gross",
+                }
+            ),
+        }
+    )
+)
+
 UK_HIERARCHY_LABEL_CHOICES = HierarchyLabelChoices(
     geographies=UK_GEOGRAPHY_ID_TO_LABEL,
     geography_dimensions=frozenset({"geography"}),
@@ -89,8 +130,16 @@ US_HIERARCHY_LABEL_CHOICES = HierarchyLabelChoices(
     dimension_values=US_DIMENSION_VALUE_LABEL_CHOICES,
     dimension_value_spellings=US_DIMENSION_VALUE_REVIEWED_SPELLINGS,
 )
+BE_HIERARCHY_LABEL_CHOICES = HierarchyLabelChoices(
+    dimension_values=BE_DIMENSION_VALUE_LABEL_CHOICES,
+    dimension_value_spellings=BE_DIMENSION_VALUE_REVIEWED_SPELLINGS,
+)
 _CHOICES_BY_COUNTRY: Mapping[str, HierarchyLabelChoices] = MappingProxyType(
-    {"uk": UK_HIERARCHY_LABEL_CHOICES, "us": US_HIERARCHY_LABEL_CHOICES}
+    {
+        "be": BE_HIERARCHY_LABEL_CHOICES,
+        "uk": UK_HIERARCHY_LABEL_CHOICES,
+        "us": US_HIERARCHY_LABEL_CHOICES,
+    }
 )
 
 
