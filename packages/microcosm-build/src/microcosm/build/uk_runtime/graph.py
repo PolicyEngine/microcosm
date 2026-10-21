@@ -129,6 +129,10 @@ _READER_ISOLATION_BOUNDARIES = frozenset(
         # the root cell the SPI income stage refreshes, which the open-surface
         # readers before it bind (microcosm#1319).
         "carers_allowance_take_up",
+        # The copies' childcare re-draw rewrites ``frs_take_up``'s childcare
+        # flags and extended-hours usage, which the open-surface readers before
+        # it bind.
+        "childcare_copy_take_up",
         # ``frs_education_grant_split`` rewrites the root cell
         # ``education_grants`` that the open-surface ``frs_legacy_proxies``
         # reader already bound to.  In the root version that rewrite opened a
@@ -531,6 +535,10 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     # One engine materialization of private-school attendance over the whole
     # frame at its weights: an open surface (microcosm#1095).
     "private_school_attendance": None,
+    # The copies' childcare re-draw reads every household's clone path (the
+    # lineage columns of each copy stage) and keeps the native units' cells:
+    # an open surface, like the other take-up redraws.
+    "childcare_copy_take_up": None,
     "student_loans": frozenset(
         {
             ("person", "age"),
@@ -1070,6 +1078,19 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
     ),
     "student_loans": (_Cell("person", "student_loan_plan", "string"),),
     "private_school_attendance": (_Cell("person", "attends_private_school", "bool"),),
+    "childcare_copy_take_up": (
+        *_cells(
+            "benunit",
+            (
+                "would_claim_tfc",
+                "would_claim_extended_childcare",
+                "would_claim_universal_childcare",
+                "would_claim_targeted_childcare",
+            ),
+            "bool",
+        ),
+        _Cell("benunit", "maximum_extended_childcare_hours_usage", "float64"),
+    ),
     "age_tail": (_Cell("person", "age", "int64"),),
 }
 

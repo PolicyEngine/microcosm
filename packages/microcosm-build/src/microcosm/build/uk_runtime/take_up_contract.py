@@ -185,6 +185,14 @@ def _entries(values: object, *, section: str) -> tuple[UKRateEntry, ...]:
             raise ValueError(f"UK take-up contract {key!r} requires source.")
         _validate_source(key, source)
         _validate_fitting_receipt(key, item.get("fitting_receipt"))
+        nested_under = item.get("nested_under")
+        if nested_under is not None and (
+            not isinstance(nested_under, str) or nested_under == item.get("output")
+        ):
+            raise ValueError(
+                f"UK take-up contract {key!r} nested_under must name another "
+                "output: the flag this conditional rate is nested under."
+            )
         entries.append(
             UKRateEntry(
                 key=key,

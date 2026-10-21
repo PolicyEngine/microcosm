@@ -160,6 +160,10 @@ def _apply_pending_roster_transformations(
     # the last stage of the spine.
     assert "private_school_attendance" not in roster
     roster.append("private_school_attendance")
+    # Re-mint pending: the copies' childcare re-draw runs after every copy
+    # stage, as the spine's last stage.
+    assert "childcare_copy_take_up" not in roster
+    roster.append("childcare_copy_take_up")
     return tuple(roster)
 
 

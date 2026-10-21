@@ -1058,6 +1058,8 @@
      "output": "would_claim_universal_childcare",
      "draw": "would_claim_universal_childcare",
      "rate_key": "universal_childcare",
+     "nested_under": "would_claim_extended_childcare",
+     "rate_derivation": "the contract's universal_childcare rate is the rate among benefit units not claiming the extended hours; would_claim_universal_childcare = would_claim_extended_childcare OR u < rate, so every unit claiming the extended hours claims the universal hours",
      "seed": 0
     },
     {
@@ -1106,7 +1108,7 @@
    "nonnegative_outputs": [
     "maximum_extended_childcare_hours_usage"
    ],
-   "notes": "Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only. The Universal Credit draw's population is the benefit units with a UC claimant or partner (is_uc_claimant) aged 18 or over and under Pension Credit qualifying age (66 for everyone who can reach it in this release), the age and role conditions of policyengine-uk 2.134.4's is_uc_eligible; the engine lockstep test pins it and names the three engine cases not mirrored (16- and 17-year-old claimants under the UC Regs 2013 reg 8 exceptions, mixed-age couples on the Pension Credit route, and from 2.128.0 pension-age families moved onto Universal Credit when their legacy benefit closes, SI 2014/1230 reg 60A). So the contract rate is a share of those units, an anchor outside them stays true, and any other unit is never drawn; a unit with no claimant or partner of that age keeps its reported Housing Benefit, which a claim it cannot make no longer zeroes (#882, microcosm#867, microcosm#1095)."
+   "notes": "Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only. The Universal Credit draw's population is the benefit units with a UC claimant or partner (is_uc_claimant) aged 18 or over and under Pension Credit qualifying age (66 for everyone who can reach it in this release), the age and role conditions of policyengine-uk 2.134.4's is_uc_eligible; the engine lockstep test pins it and names the three engine cases not mirrored (16- and 17-year-old claimants under the UC Regs 2013 reg 8 exceptions, mixed-age couples on the Pension Credit route, and from 2.128.0 pension-age families moved onto Universal Credit when their legacy benefit closes, SI 2014/1230 reg 60A). So the contract rate is a share of those units, an anchor outside them stays true, and any other unit is never drawn; a unit with no claimant or partner of that age keeps its reported Housing Benefit, which a claim it cannot make no longer zeroes (#882, microcosm#867, microcosm#1095). The universal childcare flag is nested under the working-parent one. A unit that claims the extended hours claims the universal hours, and any other unit claims them at the contract's universal_childcare rate, the rate conditional on not claiming the extended hours; the extended draw is unchanged. childcare_copy_take_up later re-draws the childcare flags and hours of the support and CGT copies on their own benefit units."
   },
   {
    "stage": "frs_person_draws",
@@ -6494,6 +6496,70 @@
     "attends_private_school"
    ],
    "notes": "The last spine stage (uk-data#568, microcosm#1095). policyengine-uk imputes attends_private_school with a formula that ranks households by net income at their weights and compares a percentile rate, scaled to the national pupil count, with the stored attends_private_school_random_draw. Left to the formula, attendance is re-imputed in every simulation, so a reform to income tax, National Insurance or benefits switches pupils in or out, a population under one million people of weight imputes none (pe-uk#1905), and the calibration and the release read different flags once the weights change. This stage materializes the engine's attendance once, at the calibration year and the spine's design weights, and stores it, as the root stage stores months_since_last_birthday, so the solve and the release read the same flags; no stage after it copies or re-keys a person. Stored attendance no longer responds to income changes or to reforms of the attendance parameters, and a reform to the fee VAT does not move pupils either way in the pinned engine."
+  },
+  {
+   "stage": "childcare_copy_take_up",
+   "survey": "Family Resources Survey 2024-25",
+   "source": "The UK take-up contract's childcare rates and extended-hours usage distribution, as frs_take_up draws them, applied to the support and CGT copies on their own benefit units.",
+   "grain": "benunit",
+   "artifacts": [],
+   "operations": [
+    {
+     "kind": "assign_binary_from_rate",
+     "output": "would_claim_tfc",
+     "draw": "would_claim_tfc",
+     "rate_key": "tax_free_childcare",
+     "eligibility": "copy benefit units only, a unit whose household has a non-empty clone path (SPI support channel or income-band donor, CGT support split, high-value home support, CGT incidence clone, residential arm) or whose benunit_support_clone_index is positive; native units keep their frs_take_up draw",
+     "assignment_unit": "benunit_id",
+     "seed": 0
+    },
+    {
+     "kind": "assign_binary_from_rate",
+     "output": "would_claim_extended_childcare",
+     "draw": "would_claim_extended_childcare",
+     "rate_key": "extended_childcare",
+     "eligibility": "copy benefit units only, a unit whose household has a non-empty clone path (SPI support channel or income-band donor, CGT support split, high-value home support, CGT incidence clone, residential arm) or whose benunit_support_clone_index is positive; native units keep their frs_take_up draw",
+     "assignment_unit": "benunit_id",
+     "seed": 0
+    },
+    {
+     "kind": "assign_binary_from_rate",
+     "output": "would_claim_universal_childcare",
+     "draw": "would_claim_universal_childcare",
+     "rate_key": "universal_childcare",
+     "nested_under": "would_claim_extended_childcare",
+     "rate_derivation": "the contract's universal_childcare rate is the rate among benefit units not claiming the extended hours; would_claim_universal_childcare = would_claim_extended_childcare OR u < rate, as in frs_take_up",
+     "eligibility": "copy benefit units only, a unit whose household has a non-empty clone path (SPI support channel or income-band donor, CGT support split, high-value home support, CGT incidence clone, residential arm) or whose benunit_support_clone_index is positive; native units keep their frs_take_up draw",
+     "assignment_unit": "benunit_id",
+     "seed": 0
+    },
+    {
+     "kind": "assign_binary_from_rate",
+     "output": "would_claim_targeted_childcare",
+     "draw": "would_claim_targeted_childcare",
+     "rate_key": "targeted_childcare",
+     "eligibility": "copy benefit units only, a unit whose household has a non-empty clone path (SPI support channel or income-band donor, CGT support split, high-value home support, CGT incidence clone, residential arm) or whose benunit_support_clone_index is positive; native units keep their frs_take_up draw",
+     "assignment_unit": "benunit_id",
+     "seed": 0
+    },
+    {
+     "kind": "assign_clipped_normal",
+     "output": "maximum_extended_childcare_hours_usage",
+     "draw": "maximum_extended_childcare_hours_usage",
+     "distribution_key": "maximum_extended_childcare_hours_usage",
+     "eligibility": "copy benefit units only, a unit whose household has a non-empty clone path (SPI support channel or income-band donor, CGT support split, high-value home support, CGT incidence clone, residential arm) or whose benunit_support_clone_index is positive; native units keep their frs_take_up draw",
+     "seed": 0
+    }
+   ],
+   "outputs": [],
+   "rewrites": [
+    "would_claim_tfc",
+    "would_claim_extended_childcare",
+    "would_claim_universal_childcare",
+    "would_claim_targeted_childcare",
+    "maximum_extended_childcare_hours_usage"
+   ],
+   "notes": "Runs after the last copy stage and before calibration. frs_take_up draws the childcare flags and the extended-hours usage on FRS benefit units before any copy exists, so every SPI support copy, income-band donor, high-value home support copy, CGT support copy, CGT incidence clone and residential arm inherited its host's draws, and a cell with few hosts fixed the take-up of all their copies. This stage re-draws would_claim_tfc, would_claim_extended_childcare, would_claim_universal_childcare (nested under the extended flag) and would_claim_targeted_childcare at the contract rates, and maximum_extended_childcare_hours_usage from the contract's clipped normal, for the copies only, with frs_take_up's own helper, seed 0 and output-name salts, keyed on the copy's own benunit_id. A copy's structural id is its source id plus a multiple of an offset above every id in the frame, so it is unique, differs from every native id and gives the copy streams independent of its host's; a rebuild of the same frame draws the same values. Native benefit units keep their frs_take_up draws. The anchored Child Benefit, Pension Credit and Universal Credit flags and would_claim_uc_childcare are left as they are."
   }
  ]
 }
