@@ -353,6 +353,57 @@ def test_acs_loader_leaves_absent_receipt_sources_absent(tmp_path: Path) -> None
     assert "PAP" not in tables["person"]
 
 
+def _vehicle_source(tmp_path: Path) -> AcsPumsSource:
+    household_zip = tmp_path / "vehicle-hh.zip"
+    person_zip = tmp_path / "vehicle-person.zip"
+    _write_csv_zip(
+        household_zip,
+        {
+            "psam_husa.csv": [
+                _household("veh1", NP=1, VEH=6),
+                _household("veh2", NP=1, VEH=0),
+                # Group quarters: VEH is a housing-unit item, blank here.
+                _household("veh3", NP=1, WGTP=0, TYPEHUGQ=3, TEN=None, VEH=None),
+            ]
+        },
+    )
+    _write_csv_zip(
+        person_zip,
+        {
+            "psam_pusa.csv": [
+                _person("veh1", 1, 20, MAR=5),
+                _person("veh2", 1, 20, MAR=5),
+                _person("veh3", 1, 38, MAR=5),
+            ]
+        },
+    )
+    return AcsPumsSource(household_zip, person_zip)
+
+
+def test_acs_loader_keeps_vehicles_available(tmp_path: Path) -> None:
+    """microcosm#1022: the local lane records VEH as vehicle availability,
+    never as the owned count; the top code and the group-quarters blank are
+    kept as read."""
+
+    tables, _ = load_acs_pums_tables(_vehicle_source(tmp_path))
+    household = tables["household"].set_index("SERIALNO")
+    assert household.loc["veh1", "VEH"] == 6
+    assert household.loc["veh2", "VEH"] == 0
+    assert pd.isna(household.loc["veh3", "VEH"])
+    assert "household_vehicles_owned" not in household
+    assert "VEH" not in load_acs_pums_tables(_source(tmp_path))[0]["household"]
+
+
+def test_built_acs_frame_carries_veh_on_the_household_table(tmp_path: Path) -> None:
+    pytest.importorskip("microunit")  # sanctioned tax-unit constructor (us extra)
+    frame, _metadata = build_acs_pums_unit_frame(_vehicle_source(tmp_path))
+    household = frame.table("household").set_index("SERIALNO")
+    assert household.loc["veh1", "VEH"] == 6
+    assert pd.isna(household.loc["veh3", "VEH"])
+    assert "VEH" not in frame.table("person")
+    assert "household_vehicles_owned" not in household
+
+
 def _other_income_source(tmp_path: Path) -> AcsPumsSource:
     household_zip = tmp_path / "other-income-hh.zip"
     person_zip = tmp_path / "other-income-person.zip"
