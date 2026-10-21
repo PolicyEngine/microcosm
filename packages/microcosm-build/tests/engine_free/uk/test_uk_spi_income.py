@@ -1000,3 +1000,206 @@ def test_stage_refuses_a_sign_class_mismatch_unless_sampled(
     assert seen.get("reached") is True
     if result is not None:
         assert result.stage1_transport["sign_class_mismatches"] == mismatch
+
+
+_PAY_FLOOR_2024_25 = spi_income.SPIEmploymentPayFloor(
+    age_thresholds=(0.0, 18.0, 21.0, 23.0, 25.0),
+    hourly_rates=(6.40, 8.60, 11.44, 11.44, 11.44),
+    weeks_in_year=52.0,
+    instant="2024-04-30",
+    source="fixture",
+)
+
+
+def _pay_floor_frames(
+    rows: list[dict[str, object]],
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
+    """One person per household; ``source`` names its source household."""
+
+    weeks = 365.25 / 7
+    person = pd.DataFrame(
+        {
+            "person_household_id": np.arange(1, len(rows) + 1),
+            "age": [row["age"] for row in rows],
+            "employment_status": [row.get("status", "FT_EMPLOYED") for row in rows],
+            "hours_worked": [row["weekly_hours"] * weeks for row in rows],
+            SPI_HMRC_PAY_COLUMN: [row["pay"] for row in rows],
+            "self_employment_income": [row.get("trade", 0.0) for row in rows],
+        },
+        index=np.arange(10, 10 + len(rows)),
+    )
+    household = pd.DataFrame(
+        {
+            "household_id": np.arange(1, len(rows) + 1),
+            "household_source_id": [row.get("source", i) for i, row in enumerate(rows)],
+        }
+    )
+    rows_mask = pd.Series([row.get("drawn", True) for row in rows], index=person.index)
+    weights = pd.Series(
+        [float(row.get("weight", 100.0)) for row in rows], index=person.index
+    )
+    return person, household, rows_mask, weights
+
+
+def test_spi_pay_floor_rate_follows_the_age_bands() -> None:
+    rates = _PAY_FLOOR_2024_25.hourly_rate(np.array([16, 17.9, 18, 20.5, 21, 64]))
+    np.testing.assert_allclose(rates, [6.40, 6.40, 8.60, 8.60, 11.44, 11.44])
+    with pytest.raises(ValueError, match="increasing age thresholds from zero"):
+        spi_income.SPIEmploymentPayFloor(
+            age_thresholds=(16.0, 21.0),
+            hourly_rates=(6.40, 11.44),
+            weeks_in_year=52.0,
+            instant="2024-04-30",
+            source="fixture",
+        )
+    with pytest.raises(ValueError, match="hourly rates must be positive"):
+        spi_income.SPIEmploymentPayFloor(
+            age_thresholds=(0.0,),
+            hourly_rates=(0.0,),
+            weeks_in_year=52.0,
+            instant="2024-04-30",
+            source="fixture",
+        )
+
+
+def test_spi_pay_floor_lifts_only_drawn_employee_pay_below_the_minimum() -> None:
+    person, household, rows, weights = _pay_floor_frames(
+        [
+            {"age": 30, "weekly_hours": 30, "pay": 5_000.0},  # floored, 21+
+            {"age": 19, "weekly_hours": 20, "pay": 2_000.0},  # floored, 18-20
+            {"age": 17, "weekly_hours": 10, "pay": 1_000.0},  # floored, under 18
+            {"age": 30, "weekly_hours": 30, "pay": 50_000.0},  # above the floor
+            {"age": 30, "weekly_hours": 0, "pay": 1_000.0},  # no hours
+            {"age": 30, "weekly_hours": 30, "pay": 0.0},  # no drawn pay
+            {
+                "age": 30,
+                "weekly_hours": 40,
+                "pay": 1_000.0,
+                "status": "FT_SELF_EMPLOYED",
+            },
+            {"age": 30, "weekly_hours": 40, "pay": 1_000.0, "drawn": False},  # FRS row
+        ]
+    )
+    before = person.copy()
+    floored, receipt = spi_income._floor_employment_pay_at_minimum_wage(
+        person,
+        rows=rows,
+        floor=_PAY_FLOOR_2024_25,
+        household=household,
+        person_weights=weights,
+    )
+
+    pay = floored[SPI_HMRC_PAY_COLUMN].to_numpy()
+    np.testing.assert_allclose(
+        pay[:3], [30 * 52 * 11.44, 20 * 52 * 8.60, 10 * 52 * 6.40]
+    )
+    np.testing.assert_array_equal(pay[3:], before[SPI_HMRC_PAY_COLUMN].to_numpy()[3:])
+    # Only the PAY leaf moves; the input frame is not modified.
+    pd.testing.assert_frame_equal(
+        floored.drop(columns=[SPI_HMRC_PAY_COLUMN]),
+        before.drop(columns=[SPI_HMRC_PAY_COLUMN]),
+    )
+    pd.testing.assert_frame_equal(person, before)
+    # Three floored rows on three source households: no weighted figure.
+    assert receipt["floored"] == {
+        "source_households": "<10",
+        "weighted_people": "<10",
+        "weighted_share_of_eligible": "<10",
+        "weighted_mean_uplift_gbp": "<10",
+        "weighted_amount_added_gbp": "<10",
+    }
+    assert receipt["eligible"]["source_households"] == "<10"
+    assert receipt["hourly_rate_by_age_from"] == {
+        "0": 6.40,
+        "18": 8.60,
+        "21": 11.44,
+        "23": 11.44,
+        "25": 11.44,
+    }
+    # Deterministic: the same inputs floor the same rows to the same pay.
+    again, again_receipt = spi_income._floor_employment_pay_at_minimum_wage(
+        person,
+        rows=rows,
+        floor=_PAY_FLOOR_2024_25,
+        household=household,
+        person_weights=weights,
+    )
+    pd.testing.assert_frame_equal(again, floored)
+    assert again_receipt == receipt
+
+
+def test_spi_pay_floor_receipt_counts_source_households_not_copies() -> None:
+    # Twelve floored copies of three source households, then twelve floored
+    # rows of twelve households beside ten, then eight, unfloored ones.
+    copies = [
+        {"age": 40, "weekly_hours": 35, "pay": 1_000.0, "source": index % 3}
+        for index in range(12)
+    ]
+    person, household, rows, weights = _pay_floor_frames(copies)
+    _, receipt = spi_income._floor_employment_pay_at_minimum_wage(
+        person,
+        rows=rows,
+        floor=_PAY_FLOOR_2024_25,
+        household=household,
+        person_weights=weights,
+    )
+    assert receipt["floored"]["source_households"] == "<10"
+    assert receipt["floored"]["weighted_mean_uplift_gbp"] == "<10"
+
+    def receipt_of(unfloored: int) -> dict[str, object]:
+        rows_ = [
+            {"age": 40, "weekly_hours": 35, "pay": 1_000.0, "source": 100 + index}
+            for index in range(12)
+        ] + [
+            {"age": 40, "weekly_hours": 35, "pay": 90_000.0, "source": 200 + index}
+            for index in range(unfloored)
+        ]
+        person, household, rows, weights = _pay_floor_frames(rows_)
+        return spi_income._floor_employment_pay_at_minimum_wage(
+            person,
+            rows=rows,
+            floor=_PAY_FLOOR_2024_25,
+            household=household,
+            person_weights=weights,
+        )[1]
+
+    receipt = receipt_of(10)
+    minimum = 35 * 52 * 11.44
+    assert receipt["eligible"] == {"source_households": 20, "weighted_people": 2_200.0}
+    assert receipt["floored"]["source_households"] == 10
+    assert receipt["floored"]["weighted_people"] == pytest.approx(1_200.0)
+    assert receipt["floored"]["weighted_share_of_eligible"] == pytest.approx(
+        1_200.0 / 2_200.0
+    )
+    assert receipt["floored"]["weighted_mean_uplift_gbp"] == pytest.approx(
+        minimum - 1_000.0
+    )
+    assert receipt["floored"]["weighted_amount_added_gbp"] == pytest.approx(
+        1_200.0 * (minimum - 1_000.0)
+    )
+
+    # Eight unfloored sources: the floored weight, share or amount beside the
+    # eligible weight would give back their weight, so none is given.
+    receipt = receipt_of(8)
+    assert receipt["eligible"] == {"source_households": 20, "weighted_people": 2_000.0}
+    assert receipt["floored"] == {
+        "source_households": 10,
+        "weighted_people": "<10",
+        "weighted_share_of_eligible": "<10",
+        "weighted_mean_uplift_gbp": pytest.approx(minimum - 1_000.0),
+        "weighted_amount_added_gbp": "<10",
+    }
+
+
+def test_spi_pay_floor_refuses_a_frame_without_hours() -> None:
+    person, household, rows, weights = _pay_floor_frames(
+        [{"age": 30, "weekly_hours": 30, "pay": 5_000.0}]
+    )
+    with pytest.raises(ValueError, match="hours_worked"):
+        spi_income._floor_employment_pay_at_minimum_wage(
+            person.drop(columns=["hours_worked"]),
+            rows=rows,
+            floor=_PAY_FLOOR_2024_25,
+            household=household,
+            person_weights=weights,
+        )

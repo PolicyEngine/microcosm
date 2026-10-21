@@ -699,6 +699,7 @@ class TestE3ManifestLockstep:
             "draw_spi_donor_ages_by_population",
             "fit_weighted_qrf_stage1",
             "resample_band_donor_leaves",
+            "floor_spi_employment_pay_at_minimum_wage",
             "fit_weighted_qrf_stage2",
             "zero_pension_age_reports_below_state_pension_age",
             "materialize_hmrc_income_bands_fail_closed",
@@ -1032,12 +1033,13 @@ class TestE3ManifestLockstep:
         assert stages["hmrc_spi_income_spine"].operations[3].parameters["seed"] == 42
         # The reserved carriers' resample draws at stage seed + 2 (PolicyEngine/chronicle#280 lane).
         assert stages["hmrc_spi_income_spine"].operations[4].parameters["seed"] == 44
-        assert stages["hmrc_spi_income_spine"].operations[5].parameters["seed"] == 43
-        # The donor age draw and the State Pension age guard take no seed of
-        # their own: ages draw on the stage-1 seed, the guard is deterministic
-        # (microcosm#1069).
+        assert stages["hmrc_spi_income_spine"].operations[6].parameters["seed"] == 43
+        # The donor age draw, the employment pay floor and the State Pension
+        # age guard take no seed of their own: ages draw on the stage-1 seed,
+        # the floor and the guard are deterministic (microcosm#1069).
         assert "seed" not in stages["hmrc_spi_income_spine"].operations[2].parameters
-        assert "seed" not in stages["hmrc_spi_income_spine"].operations[6].parameters
+        assert "seed" not in stages["hmrc_spi_income_spine"].operations[5].parameters
+        assert "seed" not in stages["hmrc_spi_income_spine"].operations[7].parameters
         assert stages["spi_income_band_donors"].operations[0].parameters["seed"] == 3
         assert stages["uc_reporter_redraw"].operations[3].parameters["seed"] == 44
         assert stages["uc_capital_coherence"].operations[1].parameters["seed"] == 0
