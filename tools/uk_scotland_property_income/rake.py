@@ -27,6 +27,13 @@ class RakeResult:
     after: np.ndarray
     converged: bool
     message: str
+    #: L-BFGS-B's status: 0 converged, 1 stopped at the iteration limit, 2 stopped
+    #: abnormally (a failed line search, for instance).
+    status: int
+
+    @property
+    def stopped_at_iteration_limit(self) -> bool:
+        return self.status == 1
 
     @property
     def relative_error_before(self) -> np.ndarray:
@@ -54,11 +61,13 @@ def rake(
     lower: float = 0.25,
     upper: float = 4.0,
     divergence_weight: float = 1e-3,
-    max_iterations: int = 5_000,
+    max_iterations: int = 20_000,
 ) -> RakeResult:
     """Ratios on ``initial_weights`` so that ``matrix.T @ weights`` meets ``targets``.
 
-    ``matrix`` is households by facts.
+    ``matrix`` is households by facts. With few facts the misses reach zero
+    long before the divergence stops shrinking, so the search can end at
+    ``max_iterations`` with the facts met; the caller judges the misses.
     """
 
     a = sparse.csr_matrix(matrix, dtype=float)
@@ -107,4 +116,5 @@ def rake(
         after=a_t @ weights,
         converged=bool(solution.success),
         message=str(solution.message),
+        status=int(solution.status),
     )

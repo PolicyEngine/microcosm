@@ -199,10 +199,14 @@ def _reweight(
     facts: list[registry.SpiFact],
     args: argparse.Namespace,
 ) -> tuple[rake.RakeResult, list[registry.SpiFact], list[str], dict[str, float]]:
+    # UK property income by band, and Scotland's taxpayers by band. Scotland's
+    # total income by band is left out: on 6cba5d71 meeting it moved weight onto
+    # a few very high-income records, so Scotland's untargeted investment,
+    # employment and pension income all moved away from Table 3.11.
     raked_facts = [fact for fact in facts if fact.region is None] + [
         fact
         for fact in facts
-        if fact.region == "SCOTLAND" and fact.measure in {"taxpayers", "total_income"}
+        if fact.region == "SCOTLAND" and fact.measure == "taxpayers"
     ]
     w0 = earlier.household["household_weight"].to_numpy(dtype=float)
     household_regions = release.as_text(earlier.household["region"]).to_numpy()
@@ -228,9 +232,10 @@ def _reweight(
         "facts": float(errors[: len(raked_facts)].max()),
         "region_households": float(errors[len(raked_facts) :].max()),
     }
-    if not raked.converged or max(misses.values()) > args.max_miss:
+    settled = raked.converged or raked.stopped_at_iteration_limit
+    if not settled or max(misses.values()) > args.max_miss:
         raise SystemExit(
-            f"The reweight didn't settle: converged={raked.converged}, "
+            f"The reweight didn't settle: {raked.message}, "
             f"largest misses {misses}, allowed {args.max_miss}."
         )
     return raked, raked_facts, regions, misses
@@ -436,6 +441,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "region_controls": regions,
             "ratio_bounds": list(args.ratio_bounds),
             "converged": raked.converged,
+            "stopped_at_iteration_limit": raked.stopped_at_iteration_limit,
             "message": raked.message,
             "max_abs_error_before": float(np.abs(raked.relative_error_before).max()),
             "max_abs_error_after": misses,
@@ -589,13 +595,19 @@ Prepared by PolicyEngine from the Microcosm UK national file {file_label}
   forward, stay at their 2024-25 levels.
 - **Reweight:** the back-cast weights are reweighted to the SPI 2023-24 tables
   HMRC published. The targets are UK property income by range of total income
-  (counts and amounts, Table 3.7) and Scotland's taxpayers and total income by
+  (counts and amounts, Table 3.7) and the number of Scottish taxpayers by
   range (Table 3.11). Each region's household total is held to within
-  {max(region_miss, 1e-4):.2%}. Because those figures are calibrated, they
-  don't test the data. The split of Scottish property income across NSND
-  bands is not targeted, so that split is what the outturn tests. It is not
-  untouched, though: the UK property targets move Scottish landlords' weights
-  along with everyone else's.
+  {max(region_miss, 1e-4):.2%}.
+  - **Not a test:** because those figures are calibrated, they don't test the
+    data.
+  - **Left out on purpose:** Scotland's total income by range. Meeting it moved
+    weight onto a few very high-income records and pulled Scotland's other
+    income away from the published table.
+  - **What the outturn tests:** the split of Scottish property income across
+    NSND bands, which is not targeted. It isn't untouched, though. The UK
+    property targets lower Scottish landlords' weights along with everyone
+    else's, while matching the taxpayer counts moves Scottish taxpayers up the
+    bands, where landlords are more common.
 - **Law:** 2023-24 income tax.
 
 ## Uncertainty

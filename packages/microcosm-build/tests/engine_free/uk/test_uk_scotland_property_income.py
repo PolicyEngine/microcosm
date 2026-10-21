@@ -185,6 +185,14 @@ def test_rake_stops_at_its_bounds_when_a_fact_is_out_of_reach():
     assert result.after[0] == pytest.approx(20.0)
 
 
+def test_rake_reports_the_iteration_limit_apart_from_failure():
+    matrix = sparse.csr_matrix(np.ones((10, 1)))
+    result = rake.rake(matrix, np.ones(10), [12.0], max_iterations=1)
+    assert not result.converged
+    assert result.stopped_at_iteration_limit
+    assert rake.rake(matrix, np.ones(10), [12.0]).converged
+
+
 def _persons_table():
     table = pd.DataFrame(
         {
