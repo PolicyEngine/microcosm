@@ -23,8 +23,9 @@ identity-keyed uniform:
 
 A reporter stays true. A carer under the limit who reports no allowance
 stays false, as the survey records them entitled and not claiming. Scotland
-is left closed: Carer Support Payment reads the same flag and the engine
-applies it no earnings test, so a draw there would pay it. The incoming flag
+is left closed: Carer Support Payment reads the same flag, and in law it has
+the allowance's earnings limit, but policyengine-uk does not yet apply that
+limit, so a draw there would pay it to carers over the limit. The incoming flag
 must still follow reported receipt, since the stage rebuilds it from that
 anchor.
 
@@ -99,7 +100,8 @@ CARERS_ALLOWANCE_ENGINE_VARIABLES = (CARERS_ALLOWANCE_EARNINGS_TEST,)
 CARERS_ALLOWANCE_YEAR_RULE = "survey_year"
 CARERS_ALLOWANCE_NEWLY_ENTITLED_RATE_KEY = "carers_allowance_newly_entitled"
 #: Carer Support Payment replaces the allowance in Scotland and reads the same
-#: flag with no earnings test in the engine, so Scotland is never drawn.
+#: flag; policyengine-uk does not yet apply its earnings limit, so Scotland is
+#: never drawn.
 CARERS_ALLOWANCE_CLOSED_REGION = "SCOTLAND"
 CARERS_ALLOWANCE_PARAMETERS = "gov.dwp.carers_allowance"
 CARERS_ALLOWANCE_REPORTED_ANCHOR = "carers_allowance_reported > 0"
@@ -109,7 +111,7 @@ CARERS_ALLOWANCE_ELIGIBILITY = (
     "whom is_gainfully_employed_for_carers_allowance holds gainfully employed at "
     "the survey year: the carers the earnings limit alone keeps from the "
     "allowance. Scotland stays closed, since Carer Support Payment reads the same "
-    "flag and the engine applies it no earnings test"
+    "flag and policyengine-uk does not yet apply its earnings limit"
 )
 CARERS_ALLOWANCE_RATE_DERIVATION = (
     "the take-up contract's carers_allowance_newly_entitled rate, drawn flat over "
