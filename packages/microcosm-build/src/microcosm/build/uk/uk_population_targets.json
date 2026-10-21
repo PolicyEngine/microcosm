@@ -1980,7 +1980,7 @@
       "bindings": {
         "policyengine": {
           "metric_name": "obr/income_tax",
-          "value_variable": "income_tax",
+          "value_variable": "income_tax_annual",
           "from_entity": "person",
           "map_to": "household",
           "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
@@ -3667,15 +3667,15 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/employment_income_income_band",
-          "value_variable": "employment_income",
+          "value_variable": "employment_income_annual",
           "from_entity": "person",
           "map_to": "household",
-          "groupby_variable": "total_income_after_loss_relief",
+          "groupby_variable": "total_income_after_loss_relief_annual",
           "band_filter_dimension": "total_income",
           "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20).",
           "filters": [
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             }
@@ -3696,7 +3696,7 @@
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Amount by total income band",
       "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to calendar 2025 by HMRC's projected total income in the band (Income Tax Liabilities Table 2.5, hmrc.itl_2026), the index the count, total-income and tax rows by band already use: an amount held in a fixed nominal band moves with the band's membership, which a flat national earnings index ignores (microcosm#1063, 2026-10-02). The calibration binds at calendar 2025 under María's ruling of 2026-09-22 (PolicyEngine/chronicle#280 lane). Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
+      "selector_note": "Uprated from the SPI 2023-24 fact to calendar 2025 by HMRC's projected total income in the band (Income Tax Liabilities Table 2.5, hmrc.itl_2026), the index the count, total-income and tax rows by band already use: an amount held in a fixed nominal band moves with the band's membership, which a flat national earnings index ignores (microcosm#1063, 2026-10-02). The calibration binds at calendar 2025 under María's ruling of 2026-09-22 (PolicyEngine/chronicle#280 lane). Taxpayers only (income_tax_annual > 0, the tax on each person's income over the tax year), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
     },
     {
       "target_id": "hmrc.spi.employment_income.count_by_total_income_band",
@@ -3725,16 +3725,16 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/employment_income_count_income_band",
-          "groupby_variable": "total_income_after_loss_relief",
+          "groupby_variable": "total_income_after_loss_relief_annual",
           "band_filter_dimension": "total_income",
           "filters": [
             {
-              "variable": "employment_income",
+              "variable": "employment_income_annual",
               "operator": "!=",
               "value": 0
             },
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             }
@@ -3757,7 +3757,7 @@
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Count by total income band",
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts. Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere). Counted as income != 0: HMRC includes an individual whose source made a loss, with nil income (SPI Table 3.10 notes), so the national and area counts share one rule."
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts. Taxpayers only (income_tax_annual > 0, the tax on each person's income over the tax year), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere). Counted as income != 0: HMRC includes an individual whose source made a loss, with nil income (SPI Table 3.10 notes), so the national and area counts share one rule."
     },
     {
       "target_id": "hmrc.spi.self_employment_income.amount_by_total_income_band",
@@ -3781,15 +3781,15 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/self_employment_income_income_band",
-          "value_variable": "self_employment_income_after_loss_relief",
+          "value_variable": "self_employment_income_after_loss_relief_annual",
           "from_entity": "person",
           "map_to": "household",
-          "groupby_variable": "total_income_after_loss_relief",
+          "groupby_variable": "total_income_after_loss_relief_annual",
           "band_filter_dimension": "total_income",
           "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20). HMRC counts the profit after losses brought forward, which the spine keeps apart in loss_relief, so the value and the band read it after that relief (microcosm#1095).",
           "filters": [
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             }
@@ -3810,7 +3810,7 @@
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Amount by total income band",
       "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to calendar 2025 by HMRC's projected total income in the band (Income Tax Liabilities Table 2.5, hmrc.itl_2026), the index the count, total-income and tax rows by band already use: an amount held in a fixed nominal band moves with the band's membership, which a flat national mixed-income index ignores (microcosm#1063, 2026-10-02). The calibration binds at calendar 2025 under María's ruling of 2026-09-22 (PolicyEngine/chronicle#280 lane). Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
+      "selector_note": "Uprated from the SPI 2023-24 fact to calendar 2025 by HMRC's projected total income in the band (Income Tax Liabilities Table 2.5, hmrc.itl_2026), the index the count, total-income and tax rows by band already use: an amount held in a fixed nominal band moves with the band's membership, which a flat national mixed-income index ignores (microcosm#1063, 2026-10-02). The calibration binds at calendar 2025 under María's ruling of 2026-09-22 (PolicyEngine/chronicle#280 lane). Taxpayers only (income_tax_annual > 0, the tax on each person's income over the tax year), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
     },
     {
       "target_id": "hmrc.spi.self_employment_income.count_by_total_income_band",
@@ -3839,16 +3839,16 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/self_employment_income_count_income_band",
-          "groupby_variable": "total_income_after_loss_relief",
+          "groupby_variable": "total_income_after_loss_relief_annual",
           "band_filter_dimension": "total_income",
           "filters": [
             {
-              "variable": "self_employment_income_after_loss_relief",
+              "variable": "self_employment_income_after_loss_relief_annual",
               "operator": "!=",
               "value": 0
             },
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             }
@@ -3871,7 +3871,7 @@
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Count by total income band",
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts. Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere). Counted as income != 0: HMRC includes an individual whose source made a loss, with nil income (SPI Table 3.10 notes), so the national and area counts share one rule."
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts. Taxpayers only (income_tax_annual > 0, the tax on each person's income over the tax year), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere). Counted as income != 0: HMRC includes an individual whose source made a loss, with nil income (SPI Table 3.10 notes), so the national and area counts share one rule."
     },
     {
       "target_id": "hmrc.spi.dividend_income.amount_by_total_income_band",
@@ -3898,12 +3898,12 @@
           "value_variable": "dividend_income",
           "from_entity": "person",
           "map_to": "household",
-          "groupby_variable": "total_income_after_loss_relief",
+          "groupby_variable": "total_income_after_loss_relief_annual",
           "band_filter_dimension": "total_income",
           "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20).",
           "filters": [
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             }
@@ -3924,7 +3924,7 @@
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Amount by total income band",
       "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.obr.per_capita.gdp between 1 January 2023 and 1 January 2025, the instants the SPI donor rebasing uses (the engine's OBR indices are calendar-year series, so period 2025 is calendar 2025 for incomes). Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the calibration binds at calendar 2025 and published facts move to it; the v20 national build measured the held 2023-24 levels as income tax 13 percent under and the state-pension bands 8 to 18 percent over. Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.obr.per_capita.gdp between 1 January 2023 and 1 January 2025, the instants the SPI donor rebasing uses (the engine's OBR indices are calendar-year series, so period 2025 is calendar 2025 for incomes). Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the calibration binds at calendar 2025 and published facts move to it; the v20 national build measured the held 2023-24 levels as income tax 13 percent under and the state-pension bands 8 to 18 percent over. Taxpayers only (income_tax_annual > 0, the tax on each person's income over the tax year), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
     },
     {
       "target_id": "hmrc.spi.dividend_income.count_by_total_income_band",
@@ -3953,7 +3953,7 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/dividend_income_count_income_band",
-          "groupby_variable": "total_income_after_loss_relief",
+          "groupby_variable": "total_income_after_loss_relief_annual",
           "band_filter_dimension": "total_income",
           "filters": [
             {
@@ -3962,7 +3962,7 @@
               "value": 0
             },
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             }
@@ -3985,7 +3985,7 @@
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Count by total income band",
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts. Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts. Taxpayers only (income_tax_annual > 0, the tax on each person's income over the tax year), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
     },
     {
       "target_id": "hmrc.spi.property_income.amount_by_total_income_band",
@@ -4012,12 +4012,12 @@
           "value_variable": "property_income",
           "from_entity": "person",
           "map_to": "household",
-          "groupby_variable": "total_income_after_loss_relief",
+          "groupby_variable": "total_income_after_loss_relief_annual",
           "band_filter_dimension": "total_income",
           "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20). SPI Table 3.7 net income from property is landlords' profit after allowable expenses and before residential finance costs, the concept property_income holds, so the facts bind unscaled. The incumbent's x1.9 adjustment set HMRC Property Rental Income Statistics receipts, which are before expenses, against this net amount and is retired (microcosm#1106, ruled 2026-10-05); the receipts are constructed on property_rental_income by the property_components stage, and PRIS stays a diagnostic (ruled 2026-10-08). Uprated to 2025 by total_income_growth_by_total_income_band, the index the paired count rows' taxpayer_count_growth_by_total_income_band belongs with (microcosm#1063): the flat obr.per_capita.gdp, which policyengine-uk gives property_income itself, would have implied per-band mean profit moves of about -13% (GBP 100,000 to 150,000) to +11% (GBP 15,000 to 20,000) between 2023 and 2025 against those counts, where the band index keeps the pairing within about 2.5%, the GBP 1,000,000 and over band at +2.51% (ruled 2026-10-11 on the microcosm#1145 review). The dividend amount rows keep the flat index.",
           "filters": [
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             }
@@ -4038,7 +4038,7 @@
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Amount by total income band",
       "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to calendar 2025 by HMRC's projected total income in the band (Income Tax Liabilities Table 2.5, hmrc.itl_2026), the index the count, total-income and tax rows by band already use: an amount held in a fixed nominal band moves with the band's membership, which a flat national index ignores (microcosm#1063, 2026-10-02). Property joins the employment, self-employment and private pension amount rows on María's ruling of 2026-10-11 (microcosm#1145 review): paired with the count rows' taxpayer_count_growth_by_total_income_band, the flat per-capita GDP index implied per-band mean profit moves of -13% to +11% between 2023 and 2025. The calibration binds at calendar 2025 under María's ruling of 2026-09-22 (PolicyEngine/chronicle#280 lane). Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
+      "selector_note": "Uprated from the SPI 2023-24 fact to calendar 2025 by HMRC's projected total income in the band (Income Tax Liabilities Table 2.5, hmrc.itl_2026), the index the count, total-income and tax rows by band already use: an amount held in a fixed nominal band moves with the band's membership, which a flat national index ignores (microcosm#1063, 2026-10-02). Property joins the employment, self-employment and private pension amount rows on María's ruling of 2026-10-11 (microcosm#1145 review): paired with the count rows' taxpayer_count_growth_by_total_income_band, the flat per-capita GDP index implied per-band mean profit moves of -13% to +11% between 2023 and 2025. The calibration binds at calendar 2025 under María's ruling of 2026-09-22 (PolicyEngine/chronicle#280 lane). Taxpayers only (income_tax_annual > 0, the tax on each person's income over the tax year), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
     },
     {
       "target_id": "hmrc.spi.property_income.count_by_total_income_band",
@@ -4067,7 +4067,7 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/property_income_count_income_band",
-          "groupby_variable": "total_income_after_loss_relief",
+          "groupby_variable": "total_income_after_loss_relief_annual",
           "band_filter_dimension": "total_income",
           "filters": [
             {
@@ -4076,7 +4076,7 @@
               "value": 0
             },
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             }
@@ -4099,7 +4099,7 @@
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Count by total income band",
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts. Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts. Taxpayers only (income_tax_annual > 0, the tax on each person's income over the tax year), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
     },
     {
       "target_id": "hmrc.spi.private_pension_income.amount_by_total_income_band",
@@ -4123,15 +4123,15 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/private_pension_income_income_band",
-          "value_variable": "private_pension_income",
+          "value_variable": "private_pension_income_annual",
           "from_entity": "person",
           "map_to": "household",
-          "groupby_variable": "total_income_after_loss_relief",
+          "groupby_variable": "total_income_after_loss_relief_annual",
           "band_filter_dimension": "total_income",
           "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20).",
           "filters": [
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             }
@@ -4152,7 +4152,7 @@
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Amount by total income band",
       "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to calendar 2025 by HMRC's projected total income in the band (Income Tax Liabilities Table 2.5, hmrc.itl_2026), the index the count, total-income and tax rows by band already use: an amount held in a fixed nominal band moves with the band's membership, which a flat national private pension index ignores (microcosm#1063, 2026-10-02). The calibration binds at calendar 2025 under María's ruling of 2026-09-22 (PolicyEngine/chronicle#280 lane). Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
+      "selector_note": "Uprated from the SPI 2023-24 fact to calendar 2025 by HMRC's projected total income in the band (Income Tax Liabilities Table 2.5, hmrc.itl_2026), the index the count, total-income and tax rows by band already use: an amount held in a fixed nominal band moves with the band's membership, which a flat national private pension index ignores (microcosm#1063, 2026-10-02). The calibration binds at calendar 2025 under María's ruling of 2026-09-22 (PolicyEngine/chronicle#280 lane). Taxpayers only (income_tax_annual > 0, the tax on each person's income over the tax year), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
     },
     {
       "target_id": "hmrc.spi.private_pension_income.count_by_total_income_band",
@@ -4181,16 +4181,16 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/private_pension_income_count_income_band",
-          "groupby_variable": "total_income_after_loss_relief",
+          "groupby_variable": "total_income_after_loss_relief_annual",
           "band_filter_dimension": "total_income",
           "filters": [
             {
-              "variable": "private_pension_income",
+              "variable": "private_pension_income_annual",
               "operator": ">",
               "value": 0
             },
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             }
@@ -4213,7 +4213,7 @@
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Count by total income band",
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts. Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts. Taxpayers only (income_tax_annual > 0, the tax on each person's income over the tax year), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
     },
     {
       "target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
@@ -4237,15 +4237,15 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/state_pension_income_band",
-          "value_variable": "state_pension",
+          "value_variable": "state_pension_annual",
           "from_entity": "person",
           "map_to": "household",
-          "groupby_variable": "total_income_after_loss_relief",
+          "groupby_variable": "total_income_after_loss_relief_annual",
           "band_filter_dimension": "total_income",
           "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20).",
           "filters": [
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             }
@@ -4266,7 +4266,7 @@
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Amount by total income band",
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period as recipients times the amount per recipient: the band's recipients grow by HMRC's projected Income Tax payer growth for the Table 2.5 band containing it (the index its count row declares, the calendar-2025 window of the 2024-25 and 2025-26 projections over the 2023-24 outturn), and the amount per recipient by the new State Pension weekly rate the engine pays (203.85 at 2023, 230.25 at 2025 on the pinned engine). The rate alone held the band's recipients at the 2023-24 number while the count row grew them, so the two rows described different populations (microcosm#1069). Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period as recipients times the amount per recipient: the band's recipients grow by HMRC's projected Income Tax payer growth for the Table 2.5 band containing it (the index its count row declares, the calendar-2025 window of the 2024-25 and 2025-26 projections over the 2023-24 outturn), and the amount per recipient by the new State Pension weekly rate the engine pays (203.85 at 2023, 230.25 at 2025 on the pinned engine). The rate alone held the band's recipients at the 2023-24 number while the count row grew them, so the two rows described different populations (microcosm#1069). Taxpayers only (income_tax_annual > 0, the tax on each person's income over the tax year), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
     },
     {
       "target_id": "hmrc.spi.state_pension.count_by_total_income_band",
@@ -4295,16 +4295,16 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/state_pension_count_income_band",
-          "groupby_variable": "total_income_after_loss_relief",
+          "groupby_variable": "total_income_after_loss_relief_annual",
           "band_filter_dimension": "total_income",
           "filters": [
             {
-              "variable": "state_pension",
+              "variable": "state_pension_annual",
               "operator": ">",
               "value": 0
             },
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             }
@@ -4327,7 +4327,7 @@
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Count by total income band",
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts. Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts. Taxpayers only (income_tax_annual > 0, the tax on each person's income over the tax year), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
     },
     {
       "target_id": "hmrc.cgt.taxpayers_total",
@@ -21241,12 +21241,12 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "groupby_variable": "total_income_after_loss_relief",
+          "groupby_variable": "total_income_after_loss_relief_annual",
           "band_filter_dimension": "total_income",
           "notes": "Bound at the 2025 calibration period as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections (3/12 and 9/12; value_operation calendar_year_window), from the Income Tax liabilities statistics of 15 July 2026, HMRC's own projection of the 2023-24 SPI base with ONS population projections and OBR March 2026 assumptions. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the calibration binds at calendar 2025 and facts published by tax year use the months to the end of it. Banded by person-level total income on the publisher's eleven bands (30-50k, 50-100k and 200-500k are single bands here; 1m+ splits at 2m); the all-ranges row carries no band and stays out of the fan-out.",
           "filters": [
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             }
@@ -21286,10 +21286,10 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/itl_total_income_income_band",
-          "value_variable": "total_income_after_loss_relief",
+          "value_variable": "total_income_after_loss_relief_annual",
           "from_entity": "person",
           "map_to": "household",
-          "groupby_variable": "total_income_after_loss_relief",
+          "groupby_variable": "total_income_after_loss_relief_annual",
           "band_filter_dimension": "total_income",
           "notes": "Bound at the 2025 calibration period as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections (3/12 and 9/12; value_operation calendar_year_window), from the Income Tax liabilities statistics of 15 July 2026, HMRC's own projection of the 2023-24 SPI base with ONS population projections and OBR March 2026 assumptions. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the calibration binds at calendar 2025 and facts published by tax year use the months to the end of it. Banded by person-level total income on the publisher's eleven bands (30-50k, 50-100k and 200-500k are single bands here; 1m+ splits at 2m); the all-ranges row carries no band and stays out of the fan-out."
         },
@@ -21327,10 +21327,10 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/itl_income_tax_income_band",
-          "value_variable": "income_tax",
+          "value_variable": "income_tax_annual",
           "from_entity": "person",
           "map_to": "household",
-          "groupby_variable": "total_income_after_loss_relief",
+          "groupby_variable": "total_income_after_loss_relief_annual",
           "band_filter_dimension": "total_income",
           "notes": "Bound at the 2025 calibration period as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections (3/12 and 9/12; value_operation calendar_year_window), from the Income Tax liabilities statistics of 15 July 2026, HMRC's own projection of the 2023-24 SPI base with ONS population projections and OBR March 2026 assumptions. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the calibration binds at calendar 2025 and facts published by tax year use the months to the end of it. Banded by person-level total income on the publisher's eleven bands (30-50k, 50-100k and 200-500k are single bands here; 1m+ splits at 2m); the all-ranges row carries no band and stays out of the fan-out."
         },
@@ -21384,17 +21384,17 @@
           "map_to": "household",
           "filters": [
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             },
             {
-              "variable": "tax_band",
+              "variable": "tax_band_annual",
               "operator": "==",
               "value": "HIGHER"
             }
           ],
-          "notes": "Higher rate Income Tax payers, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), bound at the 2025 calibration period as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections (3/12 and 9/12; value_operation calendar_year_window) from Income Tax liabilities statistics Table 2.2 (July 2026). HMRC classes a taxpayer by the highest rate paid on any income; the engine's tax_band does the same on adjusted net income less allowances. From 2024-25 Scotland's higher row is the Scottish higher rate alone, as the engine's HIGHER band is for a Scottish taxpayer. microcosm#1123."
+          "notes": "Higher rate Income Tax payers, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), bound at the 2025 calibration period as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections (3/12 and 9/12; value_operation calendar_year_window) from Income Tax liabilities statistics Table 2.2 (July 2026). HMRC classes a taxpayer by the highest rate paid on any income; the engine's tax_band, read on each person's income over the tax year (tax_band_annual), does the same on adjusted net income less allowances. From 2024-25 Scotland's higher row is the Scottish higher rate alone, as the engine's HIGHER band is for a Scottish taxpayer. microcosm#1123."
         },
         "axiom": {
           "metric_name": "hmrc/itl_taxpayers_marginal_rate/higher",
@@ -21448,17 +21448,17 @@
           "map_to": "household",
           "filters": [
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             },
             {
-              "variable": "tax_band",
+              "variable": "tax_band_annual",
               "operator": "==",
               "value": "ADDITIONAL"
             }
           ],
-          "notes": "Additional rate Income Tax payers, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), bound at the 2025 calibration period as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections (3/12 and 9/12; value_operation calendar_year_window) from Income Tax liabilities statistics Table 2.2 (July 2026). HMRC classes a taxpayer by the highest rate paid on any income; the engine's tax_band does the same on adjusted net income less allowances. From 2024-25 Scotland's additional row is the Scottish advanced and top rates together, as the engine's ADDITIONAL band is for a Scottish taxpayer (the advanced rate began in 2024-25, so the 2023-24 row is the top rate alone). microcosm#1123."
+          "notes": "Additional rate Income Tax payers, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), bound at the 2025 calibration period as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections (3/12 and 9/12; value_operation calendar_year_window) from Income Tax liabilities statistics Table 2.2 (July 2026). HMRC classes a taxpayer by the highest rate paid on any income; the engine's tax_band, read on each person's income over the tax year (tax_band_annual), does the same on adjusted net income less allowances. From 2024-25 Scotland's additional row is the Scottish advanced and top rates together, as the engine's ADDITIONAL band is for a Scottish taxpayer (the advanced rate began in 2024-25, so the 2023-24 row is the top rate alone). microcosm#1123."
         },
         "axiom": {
           "metric_name": "hmrc/itl_taxpayers_marginal_rate/additional",
@@ -21506,12 +21506,12 @@
           "value_variable": "savings_interest_income",
           "from_entity": "person",
           "map_to": "household",
-          "groupby_variable": "total_income_after_loss_relief",
+          "groupby_variable": "total_income_after_loss_relief_annual",
           "band_filter_dimension": "total_income",
           "notes": "Taxable interest from banks and building societies of taxpayers by total-income band (SPI Table 3.7; ISA interest excluded), the taxpayer-concept anchor microcosm#866 asked for in place of the ONS D.41 row. Banded by person-level total income; band edges come from the fact dimension.",
           "filters": [
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             }
@@ -21561,7 +21561,7 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/savings_interest_income_count_income_band",
-          "groupby_variable": "total_income_after_loss_relief",
+          "groupby_variable": "total_income_after_loss_relief_annual",
           "band_filter_dimension": "total_income",
           "filters": [
             {
@@ -21570,7 +21570,7 @@
               "value": 0
             },
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             }
@@ -21593,7 +21593,7 @@
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Count by total income band",
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts. Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts. Taxpayers only (income_tax_annual > 0, the tax on each person's income over the tax year), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
     },
     {
       "target_id": "hmrc.spi_region.taxpayers_by_region_12570_15000",
@@ -21629,17 +21629,17 @@
           "metric_name": "hmrc/spi_region/taxpayers_12570_15000",
           "filters": [
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             },
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": ">=",
               "value": 12570
             },
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": "<",
               "value": 15000
             }
@@ -21647,7 +21647,7 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "SPI 2023-24 Table 3.11 income tax payers of taxpayers with total income 12,570 to 15,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax payers in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+          "notes": "SPI 2023-24 Table 3.11 income tax payers of taxpayers with total income 12,570 to 15,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax payers in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
         },
         "axiom": {
           "metric_name": "hmrc/spi_region/taxpayers_12570_15000",
@@ -21705,17 +21705,17 @@
           "metric_name": "hmrc/spi_region/taxpayers_15000_20000",
           "filters": [
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             },
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": ">=",
               "value": 15000
             },
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": "<",
               "value": 20000
             }
@@ -21723,7 +21723,7 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "SPI 2023-24 Table 3.11 income tax payers of taxpayers with total income 15,000 to 20,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax payers in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+          "notes": "SPI 2023-24 Table 3.11 income tax payers of taxpayers with total income 15,000 to 20,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax payers in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
         },
         "axiom": {
           "metric_name": "hmrc/spi_region/taxpayers_15000_20000",
@@ -21781,17 +21781,17 @@
           "metric_name": "hmrc/spi_region/taxpayers_20000_30000",
           "filters": [
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             },
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": ">=",
               "value": 20000
             },
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": "<",
               "value": 30000
             }
@@ -21799,7 +21799,7 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "SPI 2023-24 Table 3.11 income tax payers of taxpayers with total income 20,000 to 30,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax payers in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+          "notes": "SPI 2023-24 Table 3.11 income tax payers of taxpayers with total income 20,000 to 30,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax payers in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
         },
         "axiom": {
           "metric_name": "hmrc/spi_region/taxpayers_20000_30000",
@@ -21857,17 +21857,17 @@
           "metric_name": "hmrc/spi_region/taxpayers_30000_40000",
           "filters": [
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             },
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": ">=",
               "value": 30000
             },
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": "<",
               "value": 40000
             }
@@ -21875,7 +21875,7 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "SPI 2023-24 Table 3.11 income tax payers of taxpayers with total income 30,000 to 40,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax payers in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+          "notes": "SPI 2023-24 Table 3.11 income tax payers of taxpayers with total income 30,000 to 40,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax payers in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
         },
         "axiom": {
           "metric_name": "hmrc/spi_region/taxpayers_30000_40000",
@@ -21933,17 +21933,17 @@
           "metric_name": "hmrc/spi_region/taxpayers_40000_50000",
           "filters": [
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             },
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": ">=",
               "value": 40000
             },
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": "<",
               "value": 50000
             }
@@ -21951,7 +21951,7 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "SPI 2023-24 Table 3.11 income tax payers of taxpayers with total income 40,000 to 50,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax payers in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+          "notes": "SPI 2023-24 Table 3.11 income tax payers of taxpayers with total income 40,000 to 50,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax payers in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
         },
         "axiom": {
           "metric_name": "hmrc/spi_region/taxpayers_40000_50000",
@@ -22009,17 +22009,17 @@
           "metric_name": "hmrc/spi_region/taxpayers_50000_70000",
           "filters": [
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             },
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": ">=",
               "value": 50000
             },
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": "<",
               "value": 70000
             }
@@ -22027,7 +22027,7 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "SPI 2023-24 Table 3.11 income tax payers of taxpayers with total income 50,000 to 70,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax payers in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+          "notes": "SPI 2023-24 Table 3.11 income tax payers of taxpayers with total income 50,000 to 70,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax payers in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
         },
         "axiom": {
           "metric_name": "hmrc/spi_region/taxpayers_50000_70000",
@@ -22085,17 +22085,17 @@
           "metric_name": "hmrc/spi_region/taxpayers_70000_100000",
           "filters": [
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             },
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": ">=",
               "value": 70000
             },
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": "<",
               "value": 100000
             }
@@ -22103,7 +22103,7 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "SPI 2023-24 Table 3.11 income tax payers of taxpayers with total income 70,000 to 100,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax payers in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+          "notes": "SPI 2023-24 Table 3.11 income tax payers of taxpayers with total income 70,000 to 100,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax payers in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
         },
         "axiom": {
           "metric_name": "hmrc/spi_region/taxpayers_70000_100000",
@@ -22161,17 +22161,17 @@
           "metric_name": "hmrc/spi_region/taxpayers_100000_150000",
           "filters": [
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             },
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": ">=",
               "value": 100000
             },
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": "<",
               "value": 150000
             }
@@ -22179,7 +22179,7 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "SPI 2023-24 Table 3.11 income tax payers of taxpayers with total income 100,000 to 150,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax payers in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+          "notes": "SPI 2023-24 Table 3.11 income tax payers of taxpayers with total income 100,000 to 150,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax payers in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
         },
         "axiom": {
           "metric_name": "hmrc/spi_region/taxpayers_100000_150000",
@@ -22237,17 +22237,17 @@
           "metric_name": "hmrc/spi_region/taxpayers_150000_200000",
           "filters": [
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             },
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": ">=",
               "value": 150000
             },
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": "<",
               "value": 200000
             }
@@ -22255,7 +22255,7 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "SPI 2023-24 Table 3.11 income tax payers of taxpayers with total income 150,000 to 200,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax payers in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+          "notes": "SPI 2023-24 Table 3.11 income tax payers of taxpayers with total income 150,000 to 200,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax payers in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
         },
         "axiom": {
           "metric_name": "hmrc/spi_region/taxpayers_150000_200000",
@@ -22308,12 +22308,12 @@
           "metric_name": "hmrc/spi_region/taxpayers_200000_plus",
           "filters": [
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             },
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": ">=",
               "value": 200000
             }
@@ -22321,7 +22321,7 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "SPI 2023-24 Table 3.11 income tax payers of taxpayers with total income 200,000 and over, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax payers in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+          "notes": "SPI 2023-24 Table 3.11 income tax payers of taxpayers with total income 200,000 and over, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax payers in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
         },
         "axiom": {
           "metric_name": "hmrc/spi_region/taxpayers_200000_plus",
@@ -22374,20 +22374,20 @@
           "metric_name": "hmrc/spi_region/total_income_12570_15000",
           "filters": [
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": ">=",
               "value": 12570
             },
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": "<",
               "value": 15000
             }
           ],
-          "value_variable": "total_income_after_loss_relief",
+          "value_variable": "total_income_after_loss_relief_annual",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 12,570 to 15,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+          "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 12,570 to 15,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
         },
         "axiom": {
           "metric_name": "hmrc/spi_region/total_income_12570_15000",
@@ -22440,20 +22440,20 @@
           "metric_name": "hmrc/spi_region/total_income_15000_20000",
           "filters": [
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": ">=",
               "value": 15000
             },
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": "<",
               "value": 20000
             }
           ],
-          "value_variable": "total_income_after_loss_relief",
+          "value_variable": "total_income_after_loss_relief_annual",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 15,000 to 20,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+          "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 15,000 to 20,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
         },
         "axiom": {
           "metric_name": "hmrc/spi_region/total_income_15000_20000",
@@ -22506,20 +22506,20 @@
           "metric_name": "hmrc/spi_region/total_income_20000_30000",
           "filters": [
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": ">=",
               "value": 20000
             },
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": "<",
               "value": 30000
             }
           ],
-          "value_variable": "total_income_after_loss_relief",
+          "value_variable": "total_income_after_loss_relief_annual",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 20,000 to 30,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+          "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 20,000 to 30,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
         },
         "axiom": {
           "metric_name": "hmrc/spi_region/total_income_20000_30000",
@@ -22572,20 +22572,20 @@
           "metric_name": "hmrc/spi_region/total_income_30000_40000",
           "filters": [
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": ">=",
               "value": 30000
             },
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": "<",
               "value": 40000
             }
           ],
-          "value_variable": "total_income_after_loss_relief",
+          "value_variable": "total_income_after_loss_relief_annual",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 30,000 to 40,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+          "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 30,000 to 40,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
         },
         "axiom": {
           "metric_name": "hmrc/spi_region/total_income_30000_40000",
@@ -22638,20 +22638,20 @@
           "metric_name": "hmrc/spi_region/total_income_40000_50000",
           "filters": [
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": ">=",
               "value": 40000
             },
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": "<",
               "value": 50000
             }
           ],
-          "value_variable": "total_income_after_loss_relief",
+          "value_variable": "total_income_after_loss_relief_annual",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 40,000 to 50,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+          "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 40,000 to 50,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
         },
         "axiom": {
           "metric_name": "hmrc/spi_region/total_income_40000_50000",
@@ -22704,20 +22704,20 @@
           "metric_name": "hmrc/spi_region/total_income_50000_70000",
           "filters": [
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": ">=",
               "value": 50000
             },
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": "<",
               "value": 70000
             }
           ],
-          "value_variable": "total_income_after_loss_relief",
+          "value_variable": "total_income_after_loss_relief_annual",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 50,000 to 70,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+          "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 50,000 to 70,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
         },
         "axiom": {
           "metric_name": "hmrc/spi_region/total_income_50000_70000",
@@ -22770,20 +22770,20 @@
           "metric_name": "hmrc/spi_region/total_income_70000_100000",
           "filters": [
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": ">=",
               "value": 70000
             },
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": "<",
               "value": 100000
             }
           ],
-          "value_variable": "total_income_after_loss_relief",
+          "value_variable": "total_income_after_loss_relief_annual",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 70,000 to 100,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+          "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 70,000 to 100,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
         },
         "axiom": {
           "metric_name": "hmrc/spi_region/total_income_70000_100000",
@@ -22836,20 +22836,20 @@
           "metric_name": "hmrc/spi_region/total_income_100000_150000",
           "filters": [
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": ">=",
               "value": 100000
             },
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": "<",
               "value": 150000
             }
           ],
-          "value_variable": "total_income_after_loss_relief",
+          "value_variable": "total_income_after_loss_relief_annual",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 100,000 to 150,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+          "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 100,000 to 150,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
         },
         "axiom": {
           "metric_name": "hmrc/spi_region/total_income_100000_150000",
@@ -22902,20 +22902,20 @@
           "metric_name": "hmrc/spi_region/total_income_150000_200000",
           "filters": [
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": ">=",
               "value": 150000
             },
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": "<",
               "value": 200000
             }
           ],
-          "value_variable": "total_income_after_loss_relief",
+          "value_variable": "total_income_after_loss_relief_annual",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 150,000 to 200,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+          "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 150,000 to 200,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
         },
         "axiom": {
           "metric_name": "hmrc/spi_region/total_income_150000_200000",
@@ -22963,15 +22963,15 @@
           "metric_name": "hmrc/spi_region/total_income_200000_plus",
           "filters": [
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": ">=",
               "value": 200000
             }
           ],
-          "value_variable": "total_income_after_loss_relief",
+          "value_variable": "total_income_after_loss_relief_annual",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 200,000 and over, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+          "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 200,000 and over, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
         },
         "axiom": {
           "metric_name": "hmrc/spi_region/total_income_200000_plus",
@@ -23024,20 +23024,20 @@
           "metric_name": "hmrc/spi_region/income_tax_12570_15000",
           "filters": [
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": ">=",
               "value": 12570
             },
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": "<",
               "value": 15000
             }
           ],
-          "value_variable": "income_tax",
+          "value_variable": "income_tax_annual",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 12,570 to 15,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+          "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 12,570 to 15,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
         },
         "axiom": {
           "metric_name": "hmrc/spi_region/income_tax_12570_15000",
@@ -23090,20 +23090,20 @@
           "metric_name": "hmrc/spi_region/income_tax_15000_20000",
           "filters": [
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": ">=",
               "value": 15000
             },
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": "<",
               "value": 20000
             }
           ],
-          "value_variable": "income_tax",
+          "value_variable": "income_tax_annual",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 15,000 to 20,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+          "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 15,000 to 20,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
         },
         "axiom": {
           "metric_name": "hmrc/spi_region/income_tax_15000_20000",
@@ -23156,20 +23156,20 @@
           "metric_name": "hmrc/spi_region/income_tax_20000_30000",
           "filters": [
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": ">=",
               "value": 20000
             },
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": "<",
               "value": 30000
             }
           ],
-          "value_variable": "income_tax",
+          "value_variable": "income_tax_annual",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 20,000 to 30,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+          "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 20,000 to 30,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
         },
         "axiom": {
           "metric_name": "hmrc/spi_region/income_tax_20000_30000",
@@ -23222,20 +23222,20 @@
           "metric_name": "hmrc/spi_region/income_tax_30000_40000",
           "filters": [
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": ">=",
               "value": 30000
             },
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": "<",
               "value": 40000
             }
           ],
-          "value_variable": "income_tax",
+          "value_variable": "income_tax_annual",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 30,000 to 40,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+          "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 30,000 to 40,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
         },
         "axiom": {
           "metric_name": "hmrc/spi_region/income_tax_30000_40000",
@@ -23288,20 +23288,20 @@
           "metric_name": "hmrc/spi_region/income_tax_40000_50000",
           "filters": [
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": ">=",
               "value": 40000
             },
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": "<",
               "value": 50000
             }
           ],
-          "value_variable": "income_tax",
+          "value_variable": "income_tax_annual",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 40,000 to 50,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+          "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 40,000 to 50,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
         },
         "axiom": {
           "metric_name": "hmrc/spi_region/income_tax_40000_50000",
@@ -23354,20 +23354,20 @@
           "metric_name": "hmrc/spi_region/income_tax_50000_70000",
           "filters": [
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": ">=",
               "value": 50000
             },
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": "<",
               "value": 70000
             }
           ],
-          "value_variable": "income_tax",
+          "value_variable": "income_tax_annual",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 50,000 to 70,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+          "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 50,000 to 70,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
         },
         "axiom": {
           "metric_name": "hmrc/spi_region/income_tax_50000_70000",
@@ -23420,20 +23420,20 @@
           "metric_name": "hmrc/spi_region/income_tax_70000_100000",
           "filters": [
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": ">=",
               "value": 70000
             },
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": "<",
               "value": 100000
             }
           ],
-          "value_variable": "income_tax",
+          "value_variable": "income_tax_annual",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 70,000 to 100,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+          "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 70,000 to 100,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
         },
         "axiom": {
           "metric_name": "hmrc/spi_region/income_tax_70000_100000",
@@ -23486,20 +23486,20 @@
           "metric_name": "hmrc/spi_region/income_tax_100000_150000",
           "filters": [
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": ">=",
               "value": 100000
             },
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": "<",
               "value": 150000
             }
           ],
-          "value_variable": "income_tax",
+          "value_variable": "income_tax_annual",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 100,000 to 150,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+          "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 100,000 to 150,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
         },
         "axiom": {
           "metric_name": "hmrc/spi_region/income_tax_100000_150000",
@@ -23552,20 +23552,20 @@
           "metric_name": "hmrc/spi_region/income_tax_150000_200000",
           "filters": [
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": ">=",
               "value": 150000
             },
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": "<",
               "value": 200000
             }
           ],
-          "value_variable": "income_tax",
+          "value_variable": "income_tax_annual",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 150,000 to 200,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+          "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 150,000 to 200,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
         },
         "axiom": {
           "metric_name": "hmrc/spi_region/income_tax_150000_200000",
@@ -23613,15 +23613,15 @@
           "metric_name": "hmrc/spi_region/income_tax_200000_plus",
           "filters": [
             {
-              "variable": "total_income_after_loss_relief",
+              "variable": "total_income_after_loss_relief_annual",
               "operator": ">=",
               "value": 200000
             }
           ],
-          "value_variable": "income_tax",
+          "value_variable": "income_tax_annual",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 200,000 and over, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+          "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 200,000 and over, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
         },
         "axiom": {
           "metric_name": "hmrc/spi_region/income_tax_200000_plus",
