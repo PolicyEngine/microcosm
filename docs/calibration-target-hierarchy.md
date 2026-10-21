@@ -105,6 +105,28 @@ contain `materialization`. If Chronicle does not yet publish the required fact,
 add the source fact to Chronicle before declaring the Microcosm target. Do not
 construct an observed target value from a Microcosm runtime input.
 
+## One label per geography
+
+One geography id has exactly one label across a target registry, so a
+calibration diagnostics file names each geography once (microcosm#1335).
+`TargetRegistry` checks this whenever a build assembles targets into a
+registry, which is before calibration. A US registry refuses a second label
+with `GeographyLabelConflictError`, naming the id, the labels and the first
+target carrying each. Every other country's registry reports the conflict as a
+`GeographyLabelConflictWarning`: UK publishers name some regions, nations and
+local authorities differently ("Yorkshire and The Humber" and "Yorkshire and
+the Humber", "St Helens" and "St. Helens"), and one label per UK code has not
+been chosen yet.
+
+A target Microcosm declares itself takes the label its other sources give the
+same id. The US ACS local release's Census population targets label a state
+with `US_STATE_FIPS_TO_NAME` ("Maine", as Chronicle's state facts name it) and
+a congressional district with the Census Bureau's district name
+("Congressional District 1 (119th Congress), Alabama"), from the same function
+that labels the IRS SOI district rows translated to the 119th Congress plan.
+That release's materialize stage assembles its admin and population targets
+into one registry before the engine pass, so a conflict stops it at the start.
+
 ## Propagation stages
 
 The expected data flow is:

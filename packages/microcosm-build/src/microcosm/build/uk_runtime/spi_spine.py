@@ -389,6 +389,7 @@ class UKSPIIncomeSpineResult:
             "gainful_self_employment_refresh": (
                 self.imputation.gainful_self_employment_refresh
             ),
+            "pension_coherence": self.imputation.pension_coherence,
             "state_pension_age_guard": list(self.imputation.state_pension_age_guard),
             "targets": {
                 "count": len(self.source_targets.targets),
@@ -1032,6 +1033,7 @@ def _build_spine_replay_report(
         "bridge_validation": imputation.bridge_validation,
         "recipient_domain": imputation.recipient_domain,
         "gainful_self_employment_refresh": imputation.gainful_self_employment_refresh,
+        "pension_coherence": imputation.pension_coherence,
         "post_draw_identity": {
             "formula": SPI_SOURCE_TI_FORMULA,
             "rows_checked": identity_rows,

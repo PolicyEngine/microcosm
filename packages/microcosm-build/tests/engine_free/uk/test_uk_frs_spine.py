@@ -1298,6 +1298,51 @@ def test_no_frs_field_feeds_two_income_columns(tmp_path: Path) -> None:
     assert moved[("pension", "PENPAY")] == {"private_pension_income"}
 
 
+@pytest.mark.parametrize(
+    ("inearns", "deduction", "capped_at", "case"),
+    [
+        (10.0, 15.0, 10.0, "above_recorded_pay"),
+        (0.0, 2.0, 0.0, "beside_no_recorded_pay"),
+    ],
+    ids=["above_pay", "no_pay"],
+)
+def test_a_net_pay_deduction_above_pay_is_capped_at_it(
+    tmp_path: Path, inearns: float, deduction: float, capped_at: float, case: str
+) -> None:
+    """The FRS records each job's pension deduction apart from the adult's
+    usual earnings, so a deduction can exceed them; the spine caps it at them
+    (uk_runtime.pension_coherence). A deduction beside no recorded pay may
+    stand for pay the adult tab left blank, so the receipt counts it apart
+    (Vahid's review of microcosm#1332)."""
+
+    from microcosm.build.uk_runtime.receipt_counts import support_band
+
+    tables = _fixture_tables()
+    adult = next(
+        row for row in tables["adult"] if row["SERNUM"] == 1 and row["PERSON"] == 1
+    )
+    adult["INEARNS"] = inearns
+    tables["job"][0]["DEDUC1"] = deduction
+    stage = _write_fixture(tmp_path, tables)
+    evidence: dict[str, object] = {}
+    person = (
+        build_uk_frs_spine_frame(tmp_path, stage=stage, evidence=evidence)
+        .table("person")
+        .set_index("person_id")
+    )
+
+    assert person.loc[1001, "employment_income"] == pytest.approx(
+        inearns * WEEKS_IN_YEAR
+    )
+    assert person.loc[1001, "employee_pension_contributions"] == pytest.approx(
+        capped_at * WEEKS_IN_YEAR
+    )
+    receipt = evidence["net_pay_contributions"]
+    other = ({"above_recorded_pay", "beside_no_recorded_pay"} - {case}).pop()
+    assert receipt[case]["support"] == support_band(1)
+    assert receipt[other]["support"] == 0
+
+
 @pytest.mark.parametrize("seed", range(8))
 def test_property_income_matches_a_merge_of_the_raw_tabs(
     tmp_path: Path, seed: int
