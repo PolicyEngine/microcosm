@@ -895,13 +895,15 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
 ) -> None:
     """The release surface on the pinned feed: 33,250 compiled targets after
     Medicaid substitution, 6,102 national_state targets at registry
-    3fad14f85468, 32 CHIP rows none of them for an M-CHIP state, no
-    other-income row and no tips return count. microcosm#1227 moved the
-    version from e1f9906bf0e0 by doubling the eight Table 2.5 EITC child
-    total rows, whose uprating source sum had counted each split twice;
-    microcosm#1206 moved it from f96be9f41781 by binding the Part B premium
-    target to gross_medicare_part_b_premium_if_enrolled. Neither changed
-    the counts.
+    3aa2a0830e7d, 32 CHIP rows none of them for an M-CHIP state, no
+    other-income row and no tips return count. microcosm#1343 moved the
+    version from 3fad14f85468 by re-pinning to a feed that gives three
+    dimension values one label each (the version hashes hierarchy labels);
+    microcosm#1227 moved it from e1f9906bf0e0 by doubling the eight Table
+    2.5 EITC child total rows, whose uprating source sum had counted each
+    split twice; microcosm#1206 moved it from f96be9f41781 by binding the
+    Part B premium target to gross_medicare_part_b_premium_if_enrolled.
+    None of the three changed the counts.
     The 408 state AGI-band rows of
     microcosm#940 (51 states x 4 bands x 2 measures) took it from 32,842 /
     5,694 at d315c75804ef on the c5e5bf8 feed; before microcosm#956 it was
@@ -911,7 +913,7 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
     registry, surface, _ = pinned_feed_national_state_surface
     assert len(registry.specs) == 33_250
     assert len(surface.specs) == 6_102
-    assert surface.version == "3fad14f85468"
+    assert surface.version == "3aa2a0830e7d"
     chip = [
         spec
         for spec in surface.specs

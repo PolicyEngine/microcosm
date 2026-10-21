@@ -32,8 +32,8 @@ from test_support.paths import paths_for
 _TEST_PATHS = paths_for("microcosm-build")
 
 _ROOT = _TEST_PATHS.repository
-_CHRONICLE_COMMIT = "51aa40fd28e2ca81937752515e773d123fecfb71"
-_FACTS_SHA256 = "965a29ac9458edb58a05184917ee4a19772fd3dc7b4588db6eb6da5803641aac"
+_CHRONICLE_COMMIT = "9b91e8bc61802e5fd9d5fa19a8f991828c1025f8"
+_FACTS_SHA256 = "e477e04aa7c73209df2bcbf484f029a2357da8c2339217d1d0518f7a8a47bcbf"
 _SCHEMA_SHA256 = "bdb51e2a8115634633ba7448c4005930fd9c0bfbade5e1b079b6bc24da485d3d"
 
 

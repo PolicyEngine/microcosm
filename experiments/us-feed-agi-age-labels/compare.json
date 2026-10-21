@@ -1,0 +1,1696 @@
+{
+ "feeds": {
+  "old": {
+   "name": "consumer_facts_us_51aa40f.jsonl",
+   "sha256": "965a29ac9458edb58a05184917ee4a19772fd3dc7b4588db6eb6da5803641aac"
+  },
+  "new": {
+   "name": "consumer_facts_us_9b91e8b.jsonl",
+   "sha256": "e477e04aa7c73209df2bcbf484f029a2357da8c2339217d1d0518f7a8a47bcbf"
+  }
+ },
+ "rows": {
+  "old_rows": 40178,
+  "new_rows": 40178,
+  "keys_only_in_old": [],
+  "keys_only_in_new": [],
+  "changed_rows": 816,
+  "changed_fields": {
+   "dimension_value_labels/age/85_plus": {
+    "rows": 1,
+    "by_record_set": {
+     "census_pep.cy2024.national_resident_population_age": 1
+    }
+   },
+   "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all": {
+    "rows": 63,
+    "by_record_set": {
+     "irs_soi.ty2022.historic_table_2.us": 55,
+     "irs_soi.ty2022.table_1_1": 4,
+     "irs_soi.ty2023.table_1_1": 4
+    }
+   },
+   "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/under_1": {
+    "rows": 2,
+    "by_record_set": {
+     "irs_soi.ty2024.filing_season_week47.eitc_by_agi.amount": 1,
+     "irs_soi.ty2024.filing_season_week47.eitc_by_agi.count": 1
+    }
+   },
+   "layout/groupby_value_label": {
+    "rows": 66,
+    "by_record_set": {
+     "census_pep.cy2024.national_resident_population_age": 1,
+     "irs_soi.ty2022.historic_table_2.us": 55,
+     "irs_soi.ty2022.table_1_1": 4,
+     "irs_soi.ty2023.table_1_1": 4,
+     "irs_soi.ty2024.filing_season_week47.eitc_by_agi.amount": 1,
+     "irs_soi.ty2024.filing_season_week47.eitc_by_agi.count": 1
+    }
+   },
+   "layout/record_set_spec_hash": {
+    "rows": 816,
+    "by_record_set": {
+     "census_pep.cy2024.national_resident_population_age": 19,
+     "irs_soi.ty2022.historic_table_2.us": 605,
+     "irs_soi.ty2022.table_1_1": 80,
+     "irs_soi.ty2023.table_1_1": 80,
+     "irs_soi.ty2024.filing_season_week47.eitc_by_agi.amount": 16,
+     "irs_soi.ty2024.filing_season_week47.eitc_by_agi.count": 16
+    }
+   }
+  },
+  "label_and_other_changes": [
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.real_estate_taxes_amount",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.real_estate_taxes_amount",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.taxable_social_security_amount",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.taxable_social_security_amount",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.eitc_claims",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.eitc_claims",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2023.table_1_1",
+    "source_record_id": "irs_soi.ty2023.table_1_1.all.total_income_tax",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2023.table_1_1",
+    "source_record_id": "irs_soi.ty2023.table_1_1.all.total_income_tax",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2023.table_1_1",
+    "source_record_id": "irs_soi.ty2023.table_1_1.all.return_count",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2023.table_1_1",
+    "source_record_id": "irs_soi.ty2023.table_1_1.all.return_count",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.net_capital_gains_amount",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.net_capital_gains_amount",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.table_1_1",
+    "source_record_id": "irs_soi.ty2022.table_1_1.all.return_count",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.table_1_1",
+    "source_record_id": "irs_soi.ty2022.table_1_1.all.return_count",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.taxable_ira_distributions_amount",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.taxable_ira_distributions_amount",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.net_capital_gains_returns",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.net_capital_gains_returns",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2023.table_1_1",
+    "source_record_id": "irs_soi.ty2023.table_1_1.all.income_tax_after_credits_returns",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2023.table_1_1",
+    "source_record_id": "irs_soi.ty2023.table_1_1.all.income_tax_after_credits_returns",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.itemized_deductions_amount",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.itemized_deductions_amount",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.itemized_deductions_returns",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.itemized_deductions_returns",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2023.table_1_1",
+    "source_record_id": "irs_soi.ty2023.table_1_1.all.adjusted_gross_income",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2023.table_1_1",
+    "source_record_id": "irs_soi.ty2023.table_1_1.all.adjusted_gross_income",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.unemployment_compensation_returns",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.unemployment_compensation_returns",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.qbi_claims",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.qbi_claims",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.tax_filer_individual_count",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.tax_filer_individual_count",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.taxable_pension_income_amount",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.taxable_pension_income_amount",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.ordinary_dividends_returns",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.ordinary_dividends_returns",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.income_tax_liability_amount",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.income_tax_liability_amount",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.total_income_amount",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.total_income_amount",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.taxable_interest_returns",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.taxable_interest_returns",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.real_estate_taxes_claims",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.real_estate_taxes_claims",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.wages_salaries_amount",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.wages_salaries_amount",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.medical_dental_expense_amount",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.medical_dental_expense_amount",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.tax_exempt_interest_returns",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.tax_exempt_interest_returns",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.table_1_1",
+    "source_record_id": "irs_soi.ty2022.table_1_1.all.adjusted_gross_income",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.table_1_1",
+    "source_record_id": "irs_soi.ty2022.table_1_1.all.adjusted_gross_income",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.qualified_dividends_amount",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.qualified_dividends_amount",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.taxable_social_security_returns",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.taxable_social_security_returns",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "census_pep.cy2024.national_resident_population_age",
+    "source_record_id": "census_pep.cy2024.national_resident_population_age.85_plus.population",
+    "field": "dimension_value_labels/age/85_plus",
+    "old": "Age 85 and over",
+    "new": "Age 85 plus"
+   },
+   {
+    "record_set_id": "census_pep.cy2024.national_resident_population_age",
+    "source_record_id": "census_pep.cy2024.national_resident_population_age.85_plus.population",
+    "field": "layout/groupby_value_label",
+    "old": "Age 85 and over",
+    "new": "Age 85 plus"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.schedule_c_income_amount",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.schedule_c_income_amount",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.limited_state_local_taxes_amount",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.limited_state_local_taxes_amount",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.actc_amount",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.actc_amount",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.taxable_pension_income_returns",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.taxable_pension_income_returns",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.ctc_claims",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.ctc_claims",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.actc_claims",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.actc_claims",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.table_1_1",
+    "source_record_id": "irs_soi.ty2022.table_1_1.all.total_income_tax",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.table_1_1",
+    "source_record_id": "irs_soi.ty2022.table_1_1.all.total_income_tax",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.total_income_returns",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.total_income_returns",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.taxable_income_returns",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.taxable_income_returns",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.qualified_dividends_returns",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.qualified_dividends_returns",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.unemployment_compensation_amount",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.unemployment_compensation_amount",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.ordinary_dividends_amount",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.ordinary_dividends_amount",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.table_1_1",
+    "source_record_id": "irs_soi.ty2022.table_1_1.all.income_tax_after_credits_returns",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.table_1_1",
+    "source_record_id": "irs_soi.ty2022.table_1_1.all.income_tax_after_credits_returns",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.taxable_income_amount",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.taxable_income_amount",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_returns",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_returns",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.taxable_ira_distributions_returns",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.taxable_ira_distributions_returns",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.tax_exempt_interest_amount",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.tax_exempt_interest_amount",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.medical_dental_expense_returns",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.medical_dental_expense_returns",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.ctc_amount",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.ctc_amount",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.rental_royalty_income_amount",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.rental_royalty_income_amount",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.taxable_interest_amount",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.taxable_interest_amount",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_amount",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_amount",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.partnership_scorp_income_amount",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.partnership_scorp_income_amount",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2024.filing_season_week47.eitc_by_agi.amount",
+    "source_record_id": "irs_soi.ty2024.filing_season_week47.eitc_by_agi.under_1.total_earned_income_credit_amount",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/under_1",
+    "old": "No adjusted gross income and deficit",
+    "new": "No adjusted gross income"
+   },
+   {
+    "record_set_id": "irs_soi.ty2024.filing_season_week47.eitc_by_agi.amount",
+    "source_record_id": "irs_soi.ty2024.filing_season_week47.eitc_by_agi.under_1.total_earned_income_credit_amount",
+    "field": "layout/groupby_value_label",
+    "old": "No adjusted gross income and deficit",
+    "new": "No adjusted gross income"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.qbi_amount",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.qbi_amount",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.rental_royalty_income_returns",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.rental_royalty_income_returns",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.wages_salaries_returns",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.wages_salaries_returns",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.eitc_amount",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.eitc_amount",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.income_tax_before_credits_returns",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.income_tax_before_credits_returns",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.partnership_scorp_income_returns",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.partnership_scorp_income_returns",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.schedule_c_income_returns",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.schedule_c_income_returns",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.return_count",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.return_count",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.limited_state_local_taxes_returns",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.limited_state_local_taxes_returns",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.adjusted_gross_income",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.adjusted_gross_income",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2024.filing_season_week47.eitc_by_agi.count",
+    "source_record_id": "irs_soi.ty2024.filing_season_week47.eitc_by_agi.under_1.total_earned_income_credit_returns",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/under_1",
+    "old": "No adjusted gross income and deficit",
+    "new": "No adjusted gross income"
+   },
+   {
+    "record_set_id": "irs_soi.ty2024.filing_season_week47.eitc_by_agi.count",
+    "source_record_id": "irs_soi.ty2024.filing_season_week47.eitc_by_agi.under_1.total_earned_income_credit_returns",
+    "field": "layout/groupby_value_label",
+    "old": "No adjusted gross income and deficit",
+    "new": "No adjusted gross income"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.income_tax_liability_returns",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.income_tax_liability_returns",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.income_tax_before_credits_amount",
+    "field": "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+    "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.income_tax_before_credits_amount",
+    "field": "layout/groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   }
+  ],
+  "record_set_spec_hash_changes": {
+   "census_pep.cy2024.national_resident_population_age": {
+    "old": "59905afe30f1ce5453cc739c",
+    "new": "d8f61d7a253d35f07fa4d9b5"
+   },
+   "irs_soi.ty2022.historic_table_2.us": {
+    "old": "1fc31fee739bee69eeee5597",
+    "new": "252c5fd5a5d970ec9ab379ed"
+   },
+   "irs_soi.ty2022.table_1_1": {
+    "old": "414721aacbfe4686c1dfbfdd",
+    "new": "a5c9e77ec0817b6d51600f8a"
+   },
+   "irs_soi.ty2023.table_1_1": {
+    "old": "a1ecc4d67a3d281548a4660e",
+    "new": "34a421f665dc61864f21c060"
+   },
+   "irs_soi.ty2024.filing_season_week47.eitc_by_agi.amount": {
+    "old": "164f9b82a4305158d1a57b85",
+    "new": "36e05f9664a6140b656ea3ac"
+   },
+   "irs_soi.ty2024.filing_season_week47.eitc_by_agi.count": {
+    "old": "5baf962c82f213018a03f6c3",
+    "new": "77f6db8c345c2d153b870242"
+   }
+  }
+ },
+ "feed_label_variants": {
+  "old": {
+   "age=85_plus": {
+    "Age 85 and over": 1,
+    "Age 85 plus": 51
+   },
+   "age=age_20": {
+    "Age 20": 1,
+    "Female 20 years": 52
+   },
+   "age=age_21": {
+    "Age 21": 1,
+    "Female 21 years": 52
+   },
+   "us:statutes/26/62#adjusted_gross_income=all": {
+    "All returns": 63,
+    "All returns, total": 180
+   },
+   "us:statutes/26/62#adjusted_gross_income=under_1": {
+    "No adjusted gross income": 501,
+    "No adjusted gross income and deficit": 2
+   }
+  },
+  "new": {
+   "age=age_20": {
+    "Age 20": 1,
+    "Female 20 years": 52
+   },
+   "age=age_21": {
+    "Age 21": 1,
+    "Female 21 years": 52
+   }
+  }
+ },
+ "targets": {
+  "old_count": 33250,
+  "new_count": 33250,
+  "same_order": true,
+  "names_only_in_old": [],
+  "names_only_in_new": [],
+  "changed_targets": 50,
+  "changed_field_counts": {
+   "hierarchy/dimensions/age/value_label": 1,
+   "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label": 49,
+   "metadata/ledger_layout_groupby_value_label": 50
+  },
+  "differences": [
+   {
+    "name": "census_pep.cy2024.national_resident_population_age.85_plus.population",
+    "field": "hierarchy/dimensions/age/value_label",
+    "old": "Age 85 and over",
+    "new": "Age 85 plus"
+   },
+   {
+    "name": "census_pep.cy2024.national_resident_population_age.85_plus.population",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "Age 85 and over",
+    "new": "Age 85 plus"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.actc_amount",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.actc_amount",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.actc_claims",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.actc_claims",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.adjusted_gross_income",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.adjusted_gross_income",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.ctc_amount",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.ctc_amount",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.ctc_claims",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.ctc_claims",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.eitc_amount",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.eitc_amount",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.eitc_claims",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.eitc_claims",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.income_tax_before_credits_amount",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.income_tax_before_credits_amount",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.income_tax_before_credits_returns",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.income_tax_before_credits_returns",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.income_tax_liability_amount",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.income_tax_liability_amount",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.income_tax_liability_returns",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.income_tax_liability_returns",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.itemized_deductions_amount",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.itemized_deductions_amount",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.limited_state_local_taxes_amount",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.limited_state_local_taxes_amount",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.limited_state_local_taxes_returns",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.limited_state_local_taxes_returns",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.medical_dental_expense_amount",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.medical_dental_expense_amount",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.medical_dental_expense_returns",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.medical_dental_expense_returns",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.ordinary_dividends_amount",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.ordinary_dividends_amount",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.ordinary_dividends_returns",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.ordinary_dividends_returns",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.partnership_scorp_income_amount",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.partnership_scorp_income_amount",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.partnership_scorp_income_returns",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.partnership_scorp_income_returns",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_amount",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_amount",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_returns",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_returns",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.qualified_dividends_amount",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.qualified_dividends_amount",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.qualified_dividends_returns",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.qualified_dividends_returns",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.real_estate_taxes_amount",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.real_estate_taxes_amount",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.real_estate_taxes_claims",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.real_estate_taxes_claims",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.rental_royalty_income_amount",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.rental_royalty_income_amount",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.rental_royalty_income_returns",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.rental_royalty_income_returns",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.return_count",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.return_count",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.schedule_c_income_amount",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.schedule_c_income_amount",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.schedule_c_income_returns",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.schedule_c_income_returns",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.tax_exempt_interest_amount",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.tax_exempt_interest_amount",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.tax_exempt_interest_returns",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.tax_exempt_interest_returns",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.taxable_income_amount",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.taxable_income_amount",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.taxable_income_returns",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.taxable_income_returns",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.taxable_ira_distributions_amount",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.taxable_ira_distributions_amount",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.taxable_ira_distributions_returns",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.taxable_ira_distributions_returns",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.taxable_pension_income_amount",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.taxable_pension_income_amount",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.taxable_pension_income_returns",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.taxable_pension_income_returns",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.taxable_social_security_amount",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.taxable_social_security_amount",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.taxable_social_security_returns",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.taxable_social_security_returns",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.unemployment_compensation_amount",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.unemployment_compensation_amount",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.unemployment_compensation_returns",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.unemployment_compensation_returns",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.wages_salaries_amount",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.wages_salaries_amount",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.wages_salaries_returns",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2022.historic_table_2.us.all.wages_salaries_returns",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2023.table_1_1.all.adjusted_gross_income",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2023.table_1_1.all.adjusted_gross_income",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2023.table_1_1.all.return_count",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2023.table_1_1.all.return_count",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "All returns",
+    "new": "All returns, total"
+   },
+   {
+    "name": "irs_soi.ty2024.filing_season_week47.eitc_by_agi.under_1.total_earned_income_credit_amount",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "No adjusted gross income and deficit",
+    "new": "No adjusted gross income"
+   },
+   {
+    "name": "irs_soi.ty2024.filing_season_week47.eitc_by_agi.under_1.total_earned_income_credit_amount",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "No adjusted gross income and deficit",
+    "new": "No adjusted gross income"
+   },
+   {
+    "name": "irs_soi.ty2024.filing_season_week47.eitc_by_agi.under_1.total_earned_income_credit_returns",
+    "field": "hierarchy/dimensions/us:statutes/26/62#adjusted_gross_income/value_label",
+    "old": "No adjusted gross income and deficit",
+    "new": "No adjusted gross income"
+   },
+   {
+    "name": "irs_soi.ty2024.filing_season_week47.eitc_by_agi.under_1.total_earned_income_credit_returns",
+    "field": "metadata/ledger_layout_groupby_value_label",
+    "old": "No adjusted gross income and deficit",
+    "new": "No adjusted gross income"
+   }
+  ]
+ },
+ "registry_version": {
+  "old": "dde00e855af8",
+  "new": "b8d571e91c22"
+ },
+ "national_state_surface": {
+  "old": {
+   "targets": 6102,
+   "version": "3fad14f85468"
+  },
+  "new": {
+   "targets": 6102,
+   "version": "3aa2a0830e7d"
+  }
+ },
+ "target_label_variants": {
+  "old": {
+   "age=85_plus": {
+    "Age 85 and over": 1,
+    "Age 85 plus": 51
+   },
+   "us:statutes/26/62#adjusted_gross_income=all": {
+    "All returns": 47,
+    "All returns, total": 53
+   },
+   "us:statutes/26/62#adjusted_gross_income=under_1": {
+    "No adjusted gross income": 106,
+    "No adjusted gross income and deficit": 2
+   }
+  },
+  "new": {}
+ }
+}
