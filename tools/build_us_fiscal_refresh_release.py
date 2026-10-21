@@ -507,6 +507,20 @@ assert set(US_DENSE_SSI_TAKE_UP_ENFORCEMENT_FENCES) == set(
 )
 
 US_FISCAL_TARGET_LOSS_CAP = 1.0
+# The critical-target band (microcosm#1330). The objective penalizes each
+# critical fiscal target's relative error beyond DEFAULT_CRITICAL_TARGET_BAND_MARGIN
+# times its gate tolerance, at a slope of the penalty. The release uses the
+# default target-defined loss scales, so the fit loss's slope in any one
+# target's relative error is that target's loss share, at most 1. Past the
+# band, the band adds a pull of slope PENALTY on that target, in the same
+# direction as its own fit term; the other targets' fit terms can pull against
+# both. Whether the band holds depends on how their errors move with this
+# one's, so this steers the solve rather than guaranteeing the gate. A
+# remaining violation shows in the calibration diagnostics, and the gate still
+# judges the result. The d1386 release missed its Social Security total by
+# 6.4% against a 5% gate, while that target carried 0.19% of the loss weight.
+DEFAULT_CRITICAL_TARGET_BAND_PENALTY = 1.0
+DEFAULT_CRITICAL_TARGET_BAND_MARGIN = 0.9
 RATIFIED_EXACT_K_COUNTS = frozenset({57_240, 20_000})
 
 
@@ -1408,6 +1422,31 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--critical-target-band-penalty",
+        type=float,
+        default=DEFAULT_CRITICAL_TARGET_BAND_PENALTY,
+        help=(
+            "Penalize, during calibration, each critical fiscal target's "
+            "(US_CRITICAL_TARGET_FIT_REQUIREMENTS) relative error beyond MARGIN "
+            "times its gate tolerance. The objective adds PENALTY * "
+            "max(|relative error| - tolerance, 0) for each target the "
+            "critical-target gate matches; zero inside the band, so the fit is "
+            "left alone there. This steers the solve toward the gate; the gate "
+            "still judges the result. 0 turns the band off. Default "
+            f"{DEFAULT_CRITICAL_TARGET_BAND_PENALTY}."
+        ),
+    )
+    parser.add_argument(
+        "--critical-target-band-margin",
+        type=float,
+        default=DEFAULT_CRITICAL_TARGET_BAND_MARGIN,
+        help=(
+            "Fraction of each critical target's gate tolerance the band uses, in "
+            "(0, 1], so the solve settles inside the gate rather than on its edge. "
+            f"Default {DEFAULT_CRITICAL_TARGET_BAND_MARGIN}."
+        ),
+    )
+    parser.add_argument(
         "--l0-refit-lambda-share",
         type=float,
         default=DEFAULT_L0_REFIT_LAMBDA_SHARE,
@@ -2031,6 +2070,22 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         )
     except ValueError as error:
         parser.error(str(error))
+    if (
+        not math.isfinite(args.critical_target_band_penalty)
+        or args.critical_target_band_penalty < 0.0
+    ):
+        parser.error(
+            "--critical-target-band-penalty must be finite and non-negative, got "
+            f"{args.critical_target_band_penalty!r}."
+        )
+    if not (
+        math.isfinite(args.critical_target_band_margin)
+        and 0.0 < args.critical_target_band_margin <= 1.0
+    ):
+        parser.error(
+            "--critical-target-band-margin must be in (0, 1], got "
+            f"{args.critical_target_band_margin!r}."
+        )
     return args
 
 
@@ -9082,6 +9137,39 @@ def _critical_target_specs_by_row_name(
     return {_target_row_name(spec): spec for spec in target_registry.specs}
 
 
+def _critical_target_band_tolerances(
+    target_registry: TargetRegistry,
+    *,
+    margin: float,
+) -> np.ndarray | None:
+    """Per-row band tolerances for the solve, aligned to ``target_registry.specs``.
+
+    A row the critical-target gate would judge gets its requirement's
+    ``max_abs_relative_error`` times ``margin``; any other row gets NaN (no
+    band). Rows are matched with :func:`_critical_requirement_matches_target`,
+    the gate's own matcher, so the solve holds exactly what the gate will
+    judge. A row two requirements match takes the tighter tolerance. Returns
+    None when no row matches.
+    """
+
+    tolerances = np.full(len(target_registry.specs), np.nan, dtype=np.float64)
+    for index, spec in enumerate(target_registry.specs):
+        row_name = _target_row_name(spec)
+        for requirement in US_CRITICAL_TARGET_FIT_REQUIREMENTS:
+            if _critical_requirement_matches_target(
+                requirement, row_name=row_name, target=spec
+            ):
+                tolerance = float(requirement.max_abs_relative_error) * margin
+                tolerances[index] = (
+                    tolerance
+                    if np.isnan(tolerances[index])
+                    else min(float(tolerances[index]), tolerance)
+                )
+    if np.isnan(tolerances).all():
+        return None
+    return tolerances
+
+
 def _congressional_district_release_gates_enabled(
     compilation: Mapping[str, object],
 ) -> bool:
@@ -9717,6 +9805,7 @@ def _write_release_calibration_diagnostics(
     validation_input_coverage_gate: GateResult | None = None,
     target_loss_family_multipliers: Mapping[str, float] | None = None,
     target_loss_basis: Mapping[str, object] | None = None,
+    critical_target_band: Mapping[str, object] | None = None,
     exact_k_ladder: Mapping[str, object] | None = None,
     calibration_runtime: Mapping[str, object] | None = None,
     post_export_scoring: Mapping[str, object] | None = None,
@@ -9755,6 +9844,14 @@ def _write_release_calibration_diagnostics(
             **(
                 {"target_loss_basis": dict(target_loss_basis)}
                 if target_loss_basis is not None
+                else {}
+            ),
+            # microcosm#1330: the critical-target band the solve used (penalty
+            # 0 means none). Each banded row's final violation is under
+            # options["target_band"].
+            **(
+                {"critical_target_band": dict(critical_target_band)}
+                if critical_target_band is not None
                 else {}
             ),
             "target_profile_coverage": {
@@ -14680,6 +14777,30 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         if args.exact_k is not None
         else None
     )
+    critical_target_band = (
+        _critical_target_band_tolerances(
+            registry, margin=float(args.critical_target_band_margin)
+        )
+        if float(args.critical_target_band_penalty) > 0.0
+        else None
+    )
+    band_kwargs: dict[str, object] = (
+        {}
+        if critical_target_band is None
+        else {
+            "target_band_tolerances": critical_target_band,
+            "target_band_penalty": float(args.critical_target_band_penalty),
+        }
+    )
+    critical_target_band_record = {
+        "penalty": float(args.critical_target_band_penalty),
+        "margin": float(args.critical_target_band_margin),
+        "banded_rows": (
+            0
+            if critical_target_band is None
+            else int(np.count_nonzero(~np.isnan(critical_target_band)))
+        ),
+    }
     if telemetry is not None:
         telemetry.stage(
             "calibrating",
@@ -14708,6 +14829,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             target_family_loss_multipliers=(
                 dict(args.target_family_loss_multipliers) or None
             ),
+            critical_target_band=dict(critical_target_band_record),
             n_targets=len(registry),
             n_candidate_households=candidate_households,
             l0_refit_lambda_share=(
@@ -14777,6 +14899,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             progress_callback=(
                 telemetry.calibration_progress if telemetry is not None else None
             ),
+            **band_kwargs,
         )
         assert_exact_k_realized_count(ladder_outcome, args.exact_k)
         result = ladder_outcome.result
@@ -14847,6 +14970,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             progress_callback=(
                 telemetry.calibration_progress if telemetry is not None else None
             ),
+            **band_kwargs,
         )
         default_dataset = {
             "method": "dense_no_l0",
@@ -14876,6 +15000,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             progress_callback=(
                 telemetry.calibration_progress if telemetry is not None else None
             ),
+            **band_kwargs,
         )
         default_dataset = {
             "method": "l0_refit",
@@ -15299,6 +15424,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         validation_input_coverage_gate=validation_input_coverage_gate,
         target_loss_family_multipliers=args.target_family_loss_multipliers,
         target_loss_basis=target_loss_basis,
+        critical_target_band=critical_target_band_record,
         exact_k_ladder=exact_k_ladder_provenance,
         calibration_runtime=calibration_runtime,
         post_export_scoring=post_export_scoring_plan.record(),

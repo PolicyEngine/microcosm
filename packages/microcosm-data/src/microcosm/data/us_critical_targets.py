@@ -235,6 +235,9 @@ US_EXACT_CRITICAL_TARGET_FIT_REQUIREMENTS = (
         # (+146%), amounts blow out; all six amount rows sit past the loss
         # cap. A support defect, not a loss-priority problem, and the
         # owner doctrine (microcosm#492) forbids per-target loss knobs.
+        # (The critical-target band, microcosm#1330 and Max's 2026-10-20
+        # ruling, is not one: it leaves the fit loss unchanged, adds a term
+        # derived from this register's tolerances, and is zero inside them.)
         # Relaxed to the established 0.25 broad-fit bound; restore
         # US_CRITICAL_DEDUCTION_MAX_ABS_RELATIVE_ERROR once the six-state
         # carriers are fixed (owners microcosm#481/#487) and a run holds 0.15

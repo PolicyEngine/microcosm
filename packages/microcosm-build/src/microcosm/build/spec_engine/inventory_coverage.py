@@ -366,9 +366,12 @@ EXPECTED_HASHES = {
     # by default, so no US solve, RNG rule or QRF target changes. microcosm#1301
     # moves both again: calibrate gains budget_search_bracket, whose default
     # keeps the US bracket, and the budget search, which the US solve does
-    # not run, changes its probes, so again no US solve changes.
-    "seed_map": "b3d3f769647212a81d796a28f2b5ff759f513572bd3c70e253816c88ff496091",
-    "seed_protocol": "d756be07ab66c179f8612eb5c614527586004506d88be3e1ab62b934de0b61ce",
+    # not run, changes its probes, so again no US solve changes. microcosm#1330
+    # moves both again: solve gains an opt-in target band, off by default in
+    # the library, but build_us_fiscal_refresh_release.py turns it on for the
+    # critical targets, so US release solves do change this time.
+    "seed_map": "a2127325815c5fc24c73fe345ec04bad82577a102cf5cd8bb56ca2f40bf20409",
+    "seed_protocol": "4da2f66919a49e0fed996ef50f53b86aa05ae2c22cbf4e760301d33936ba0191",
     "source_manifest": "f4f8bfeb79268a4043a843b47cec1d1c0e58e9f5dd6bc23417ada95446dd7b8e",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "ac92829c88a1a4fb6460d61190918d5d99c6c377fc8dd8f62f02b332d09bf59c",
