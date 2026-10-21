@@ -29,10 +29,12 @@ from microcosm.build.uk_runtime.spi_income import (
 from microcosm.build.uk_runtime.spi_spine import (
     EMPLOYER_PENSION_CONTRIBUTIONS_COLUMN,
     SPI_SPINE_PENSION_AGE_PRIOR_MASS_SHARE,
+    SPI_SPINE_PRIOR_SHAPE,
     UKFRSHMRCSpineLeavesStageTransform,
     UKSPIIncomeSpineStageTransform,
     UKSPISupportChannelStageTransform,
     _assert_income_stage_parameters,
+    _support_prior_shape,
     _support_stage_parameters,
 )
 from microcosm.build.uk_runtime.spi_support import (
@@ -820,6 +822,9 @@ def test_support_stage_parameters_accept_the_committed_manifest() -> None:
     assert strata == ("region",)
     assert len(declarations) == 1
     assert pension_age_share == SPI_SPINE_PENSION_AGE_PRIOR_MASS_SHARE
+    shape = _support_prior_shape(_committed_stage("spi_support_channel"))
+    assert shape == SPI_SPINE_PRIOR_SHAPE
+    assert shape.to_evidence() == {"shape": "design_damped", "exponent": 0.5}
 
 
 @pytest.mark.parametrize(
@@ -854,6 +859,88 @@ def test_support_stage_parameters_refuse_pension_age_drift(
     )
     with pytest.raises(ValueError, match=message):
         _support_stage_parameters(stage, seed=42)
+
+
+@pytest.mark.parametrize(
+    ("changes", "message"),
+    [
+        ({"prior_shape_exponent": 1.0}, "prior shape drifted"),
+        (
+            {"prior_shape": "design_bounded", "prior_shape_exponent": None},
+            r"needs \(lower, upper\) bounds",
+        ),
+        (
+            {
+                "prior_shape": "design_bounded",
+                "prior_shape_exponent": None,
+                "prior_shape_bounds": [0.5, 2.0],
+            },
+            "prior shape drifted",
+        ),
+        ({"prior_shape": "proportional"}, "must be one of"),
+        ({"prior_shape": None}, "declared without a prior_shape"),
+        ({"prior_shape_bounds": [0.5, 2.0]}, "takes no bounds"),
+    ],
+)
+def test_support_stage_parameters_refuse_prior_shape_drift(
+    changes: dict, message: str
+) -> None:
+    committed = _committed_stage("spi_support_channel")
+    operations = []
+    for operation in committed.operations:
+        payload = {"kind": operation.kind, **dict(operation.parameters)}
+        if operation.kind == "allocate_zero_weight_prior_mass":
+            payload.update(changes)
+            payload = {
+                key: value for key, value in payload.items() if value is not None
+            }
+        operations.append(payload)
+    stage = SourceStageSpec.from_mapping(
+        {**committed.__dict__, "operations": operations}
+    )
+    with pytest.raises(ValueError, match=message):
+        _support_stage_parameters(stage, seed=42)
+
+
+def test_support_stage_without_a_prior_shape_keeps_equal_copy_weights() -> None:
+    committed = _committed_stage("spi_support_channel")
+    operations = []
+    for operation in committed.operations:
+        payload = {"kind": operation.kind, **dict(operation.parameters)}
+        if operation.kind == "allocate_zero_weight_prior_mass":
+            payload.pop("prior_shape")
+            payload.pop("prior_shape_exponent")
+        operations.append(payload)
+    stage = SourceStageSpec.from_mapping(
+        {**committed.__dict__, "operations": operations}
+    )
+
+    assert not _support_prior_shape(stage).reads_design_weights
+    transform = UKSPISupportChannelStageTransform(
+        stage=stage, sample_fraction=0.0002, state_pension_age=66
+    )
+    frame = transform(_base_frame())
+    evidence = transform.checkpoint_metadata()["evidence"]
+    assert evidence["prior_shape_allocation"] is None
+    assert "design weights" not in frame.mass_log[-1].reason
+
+
+def test_support_transform_records_the_declared_prior_shape() -> None:
+    transform = UKSPISupportChannelStageTransform(
+        stage=_committed_stage("spi_support_channel"),
+        sample_fraction=0.0002,
+        state_pension_age=66,
+    )
+    frame = transform(_base_frame())
+
+    evidence = transform.checkpoint_metadata()["evidence"]
+    receipt = evidence["prior_shape_allocation"]
+    assert receipt["shape"] == "design_damped"
+    assert receipt["exponent"] == 0.5
+    assert receipt["copies"] == "<10"
+    # One copy per region stratum: each takes its stratum's whole share.
+    assert receipt["copy_weight_over_equal_weight_p10_p50_p90"] == [1.0, 1.0, 1.0]
+    assert "design weights to the power 0.5" in frame.mass_log[-1].reason
 
 
 def test_support_transform_refuses_missing_builder_weight_kind(monkeypatch) -> None:
@@ -916,7 +1003,9 @@ def test_readers_of_the_support_record_take_the_declared_allocation_reason() -> 
     reason = uk_spi_support_mass_change_reason(stage)
 
     # The record the support stage writes for the declared shares.
-    assert reason == _spi_prior_mass_change_reason(0.5, pension_age_share=0.2)
+    assert reason == _spi_prior_mass_change_reason(
+        0.5, pension_age_share=0.2, prior_shape=SPI_SPINE_PRIOR_SHAPE
+    )
     assert reason != SPI_PRIOR_MASS_CHANGE_REASON
     # The release-cut coverage gate requires that record on the final dataset.
     manifest = load_uk_release_input_coverage_manifest()
