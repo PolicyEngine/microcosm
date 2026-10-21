@@ -111,6 +111,7 @@ _EXPECTED_OPERATION_KINDS = (
     "draw_spi_donor_ages_by_population",
     "fit_weighted_qrf_stage1",
     "resample_band_donor_leaves",
+    "floor_spi_employment_pay_at_minimum_wage",
     "fit_weighted_qrf_stage2",
     "zero_pension_age_reports_below_state_pension_age",
     "materialize_hmrc_income_bands_fail_closed",

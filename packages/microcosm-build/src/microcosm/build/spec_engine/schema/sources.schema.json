@@ -9436,6 +9436,63 @@
      "additionalProperties": false,
      "required": [
       "kind",
+      "column",
+      "hours_column",
+      "hours_basis",
+      "weeks_in_year",
+      "hourly_rate",
+      "employee_statuses",
+      "rows",
+      "pay_basis",
+      "reason",
+      "receipt"
+     ],
+     "properties": {
+      "kind": {
+       "const": "floor_spi_employment_pay_at_minimum_wage"
+      },
+      "column": {
+       "type": "string"
+      },
+      "hours_column": {
+       "type": "string"
+      },
+      "hours_basis": {
+       "type": "string"
+      },
+      "weeks_in_year": {
+       "type": "number",
+       "exclusiveMinimum": 0
+      },
+      "hourly_rate": {
+       "type": "string"
+      },
+      "employee_statuses": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "rows": {
+       "type": "string"
+      },
+      "pay_basis": {
+       "type": "string"
+      },
+      "reason": {
+       "type": "string"
+      },
+      "receipt": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
       "resource",
       "target",
       "donor_pool",
