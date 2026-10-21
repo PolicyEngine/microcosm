@@ -1,11 +1,11 @@
 {
   "source_fact_feed": "chronicle-uk-abf0921-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1355,
-  "contract_target_count": 373,
-  "active_reference_count": 1333,
+  "candidate_count": 1362,
+  "contract_target_count": 380,
+  "active_reference_count": 1340,
   "status_counts": {
-    "active": 1333,
+    "active": 1340,
     "no_fact_at_or_before_period": 5,
     "signed_excluded": 17
   },
@@ -2021,6 +2021,34 @@
       "geography_id": "E92000001"
     },
     "dfe.funded_childcare.universal_only_children": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dfe.funded_childcare.working_parent_children_age_1": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dfe.funded_childcare.working_parent_children_age_2": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dfe.funded_childcare.working_parent_children_age_3": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dfe.funded_childcare.working_parent_children_age_4": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dfe.funded_childcare.universal_nursery_children_age_3": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dfe.funded_childcare.universal_nursery_children_age_4": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dfe.funded_childcare.universal_reception_children_age_4": {
       "geography_level": "country",
       "geography_id": "E92000001"
     },
@@ -7050,6 +7078,41 @@
     },
     {
       "name": "dfe.funded_childcare.universal_only_children",
+      "from": "2025-01",
+      "to": "2025"
+    },
+    {
+      "name": "dfe.funded_childcare.working_parent_children_age_1",
+      "from": "2025-01",
+      "to": "2025"
+    },
+    {
+      "name": "dfe.funded_childcare.working_parent_children_age_2",
+      "from": "2025-01",
+      "to": "2025"
+    },
+    {
+      "name": "dfe.funded_childcare.working_parent_children_age_3",
+      "from": "2025-01",
+      "to": "2025"
+    },
+    {
+      "name": "dfe.funded_childcare.working_parent_children_age_4",
+      "from": "2025-01",
+      "to": "2025"
+    },
+    {
+      "name": "dfe.funded_childcare.universal_nursery_children_age_3",
+      "from": "2025-01",
+      "to": "2025"
+    },
+    {
+      "name": "dfe.funded_childcare.universal_nursery_children_age_4",
+      "from": "2025-01",
+      "to": "2025"
+    },
+    {
+      "name": "dfe.funded_childcare.universal_reception_children_age_4",
       "from": "2025-01",
       "to": "2025"
     },
@@ -19518,6 +19581,111 @@
           "resolved_value": 396965.0,
           "resolved_fact_period": "2025-01",
           "resolved_fact_key": "ledger_aggregate_fact_v2_471573def13ebdc67ff1f40a"
+        }
+      ]
+    },
+    "dfe.funded_childcare.working_parent_children_age_1": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dfe.funded_childcare.working_parent_children_age_1",
+          "status": "active",
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 195104.0,
+          "resolved_fact_period": "2025-01",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_6cbcc48c50d98484b296c765"
+        }
+      ]
+    },
+    "dfe.funded_childcare.working_parent_children_age_2": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dfe.funded_childcare.working_parent_children_age_2",
+          "status": "active",
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 242453.0,
+          "resolved_fact_period": "2025-01",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a57a0c03ac43b62dde04fabd"
+        }
+      ]
+    },
+    "dfe.funded_childcare.working_parent_children_age_3": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dfe.funded_childcare.working_parent_children_age_3",
+          "status": "active",
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 8,
+          "resolved_period": 2025,
+          "resolved_value": 278640.0,
+          "resolved_fact_period": "2025-01",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ae89c21da190202937f75e8a"
+        }
+      ]
+    },
+    "dfe.funded_childcare.working_parent_children_age_4": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dfe.funded_childcare.working_parent_children_age_4",
+          "status": "active",
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 8,
+          "resolved_period": 2025,
+          "resolved_value": 100389.0,
+          "resolved_fact_period": "2025-01",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b3c3cda5843d164984a3ffcb"
+        }
+      ]
+    },
+    "dfe.funded_childcare.universal_nursery_children_age_3": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dfe.funded_childcare.universal_nursery_children_age_3",
+          "status": "active",
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 8,
+          "resolved_period": 2025,
+          "resolved_value": 565954.0,
+          "resolved_fact_period": "2025-01",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_0c21c76c8195d04ceb47d2a2"
+        }
+      ]
+    },
+    "dfe.funded_childcare.universal_nursery_children_age_4": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dfe.funded_childcare.universal_nursery_children_age_4",
+          "status": "active",
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 8,
+          "resolved_period": 2025,
+          "resolved_value": 210040.0,
+          "resolved_fact_period": "2025-01",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_9e1cf19ecbf500c9c516fd44"
+        }
+      ]
+    },
+    "dfe.funded_childcare.universal_reception_children_age_4": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dfe.funded_childcare.universal_reception_children_age_4",
+          "status": "active",
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 8,
+          "resolved_period": 2025,
+          "resolved_value": 379308.0,
+          "resolved_fact_period": "2025-01",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d87850164063ff7f3923f27e"
         }
       ]
     },
