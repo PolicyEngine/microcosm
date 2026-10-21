@@ -510,8 +510,9 @@ def _assert_native_asec_partition(
 
     The check is deliberately ASEC-only. ACS PUMS supplies no ``SPM_ID`` at
     all, so the ACS arm reaches ``assign_us_unit_structure`` without one and
-    takes the household fallback by construction — there, one SPM unit per
-    household *is* the native partition and carries no information.
+    takes the household fallback by construction (the ACS local lane then
+    gives adult nonrelatives their own units, microcosm#1023) — there is no
+    native id for its partition to be a densification of.
     """
     if not asec_person.any():
         return
