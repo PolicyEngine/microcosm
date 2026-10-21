@@ -1,1 +1,0 @@
-The UK lock moves from policyengine-uk 2.134.4 to 2.139.2 (policyengine-core stays at 3.33.3): the uprating pins' stamp, the concept coverage (302 to 308 inputs), the coverage manifest, the H2 fixture, the cited versions and `APPROVED_UV_LOCK_SHA256` re-derive, and the concept mapping's capital reason follows 2.136.1's complete-override rule.

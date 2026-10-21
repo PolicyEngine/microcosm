@@ -413,8 +413,8 @@
   }
  ],
  "engine": "policyengine-uk",
- "engine_version": "2.139.2",
- "input_count": 308,
+ "engine_version": "2.142.0",
+ "input_count": 310,
  "schema_sha256": "5a55669d0447a686692911a6327ae298f19741dde29559f2654a75807878a141",
  "structural_inputs": [
   {
@@ -732,6 +732,10 @@
    "name": "deficiency_relief"
   },
   {
+   "entity": "person",
+   "name": "defined_benefit_pension_share"
+  },
+  {
    "entity": "household",
    "name": "dfe_education_spending"
   },
@@ -930,6 +934,10 @@
   {
    "entity": "person",
    "name": "is_engaged_in_owned_company_trade"
+  },
+  {
+   "entity": "person",
+   "name": "is_full_year_category_a_director"
   },
   {
    "entity": "person",
@@ -1260,6 +1268,10 @@
    "name": "role"
   },
   {
+   "entity": "person",
+   "name": "salary_sacrifice_returned_to_income"
+  },
+  {
    "entity": "household",
    "name": "savings"
   },
@@ -1442,10 +1454,6 @@
   {
    "entity": "person",
    "name": "universal_credit_reported"
-  },
-  {
-   "entity": "person",
-   "name": "unused_pension_annual_allowance"
   },
   {
    "entity": "household",
