@@ -109,6 +109,10 @@ E8_STAGE_NAMES = [
     "hmrc_cgt_asset_type_spine",
     "salary_sacrifice",
     "student_loans",
+    # The copies' childcare re-draw runs after every copy stage, before the
+    # private-school attendance ranks households on net income (which counts
+    # the childcare entitlements).
+    "childcare_copy_take_up",
     # microcosm#1095: the stored private-school attendance runs last.
     "private_school_attendance",
 ]
@@ -293,6 +297,7 @@ class TestUKSourceStagesManifest:
                     "salary_sacrifice": _identity,
                     "student_loans": _identity,
                     "private_school_attendance": _identity,
+                    "childcare_copy_take_up": _identity,
                     "age_tail": _identity,
                     "frs_relationships": _identity,
                     "hmrc_spi_income_fallback": _identity,

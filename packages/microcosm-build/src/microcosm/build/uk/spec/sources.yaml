@@ -975,6 +975,8 @@ stages:
     output: would_claim_universal_childcare
     draw: would_claim_universal_childcare
     rate_key: universal_childcare
+    nested_under: would_claim_extended_childcare
+    rate_derivation: the contract's universal_childcare rate is the rate among benefit units not claiming the extended hours; would_claim_universal_childcare = would_claim_extended_childcare OR u < rate, so every unit claiming the extended hours claims the universal hours
     seed: 0
   - kind: assign_binary_from_rate
     output: would_claim_targeted_childcare
@@ -1008,7 +1010,7 @@ stages:
   - maximum_extended_childcare_hours_usage
   nonnegative_outputs:
   - maximum_extended_childcare_hours_usage
-  notes: Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only. The Universal Credit draw's population is the benefit units with a UC claimant or partner (is_uc_claimant) aged 18 or over and under Pension Credit qualifying age (66 for everyone who can reach it in this release), the age and role conditions of policyengine-uk 2.134.4's is_uc_eligible; the engine lockstep test pins it and names the three engine cases not mirrored (16- and 17-year-old claimants under the UC Regs 2013 reg 8 exceptions, mixed-age couples on the Pension Credit route, and from 2.128.0 pension-age families moved onto Universal Credit when their legacy benefit closes, SI 2014/1230 reg 60A). So the contract rate is a share of those units, an anchor outside them stays true, and any other unit is never drawn; a unit with no claimant or partner of that age keeps its reported Housing Benefit, which a claim it cannot make no longer zeroes (#882, microcosm#867, microcosm#1095).
+  notes: Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only. The Universal Credit draw's population is the benefit units with a UC claimant or partner (is_uc_claimant) aged 18 or over and under Pension Credit qualifying age (66 for everyone who can reach it in this release), the age and role conditions of policyengine-uk 2.134.4's is_uc_eligible; the engine lockstep test pins it and names the three engine cases not mirrored (16- and 17-year-old claimants under the UC Regs 2013 reg 8 exceptions, mixed-age couples on the Pension Credit route, and from 2.128.0 pension-age families moved onto Universal Credit when their legacy benefit closes, SI 2014/1230 reg 60A). So the contract rate is a share of those units, an anchor outside them stays true, and any other unit is never drawn; a unit with no claimant or partner of that age keeps its reported Housing Benefit, which a claim it cannot make no longer zeroes (#882, microcosm#867, microcosm#1095). The universal childcare flag is nested under the working-parent one. A unit that claims the extended hours claims the universal hours, and any other unit claims them at the contract's universal_childcare rate, the rate conditional on not claiming the extended hours; the extended draw is unchanged. childcare_copy_take_up later re-draws the childcare flags and hours of the support and CGT copies on their own benefit units.
 - stage: frs_person_draws
   survey: Family Resources Survey 2024-25
   source: Sourced UK take-up contract rates and identity-keyed deterministic draws.
@@ -5211,6 +5213,56 @@ stages:
   rewrites:
   - student_loan_plan
   notes: 'Reported borrowers are PAYE repayers, classified without a country gate, and, in England and Wales, adults who report an outstanding loan (FRS SLOS) and are not in full-time education, the borrowers below the repayment threshold (microcosm#868). A course starts three years before its borrower left full-time education (FRS EDUCLEFT), or at 18 without an answer, and its start year sets the plan, except that before 2026 a repayer never takes PLAN_5: nobody repays a Plan 5 loan before April 2026, so SLC counts no Plan 5 borrower above the threshold in academic year 2024/25. England tertiary cohorts are then topped up PLAN_5 first and PLAN_2 second to the pinned liable stocks at the FRS release calibration year. The PLAN_2 walk takes nobody in full-time education, since a student is not yet liable to repay; the PLAN_5 walk keeps the age rule, since its starters have mostly not left education. The stocks are SLC academic year 2024/25, whose reference date falls in calendar 2025, the year the borrower targets bind (ruling of 2026-10-16). PLAN_4 is never imputed, and a Scottish or Northern Irish answer of an outstanding loan assigns no plan.'
+- stage: childcare_copy_take_up
+  survey: Family Resources Survey 2024-25
+  source: The UK take-up contract's childcare rates and extended-hours usage distribution, as frs_take_up draws them, applied to the support and CGT copies on their own benefit units.
+  grain: benunit
+  artifacts: []
+  operations:
+  - kind: assign_binary_from_rate
+    output: would_claim_tfc
+    draw: would_claim_tfc
+    rate_key: tax_free_childcare
+    eligibility: copy benefit units only, a unit whose household has a non-empty clone path (SPI support channel or income-band donor, CGT support split, high-value home support, CGT incidence clone, residential arm) or whose benunit_support_clone_index is positive; native units keep their frs_take_up draw
+    assignment_unit: benunit_id
+    seed: 0
+  - kind: assign_binary_from_rate
+    output: would_claim_extended_childcare
+    draw: would_claim_extended_childcare
+    rate_key: extended_childcare
+    eligibility: copy benefit units only, a unit whose household has a non-empty clone path (SPI support channel or income-band donor, CGT support split, high-value home support, CGT incidence clone, residential arm) or whose benunit_support_clone_index is positive; native units keep their frs_take_up draw
+    assignment_unit: benunit_id
+    seed: 0
+  - kind: assign_binary_from_rate
+    output: would_claim_universal_childcare
+    draw: would_claim_universal_childcare
+    rate_key: universal_childcare
+    nested_under: would_claim_extended_childcare
+    rate_derivation: the contract's universal_childcare rate is the rate among benefit units not claiming the extended hours; would_claim_universal_childcare = would_claim_extended_childcare OR u < rate, as in frs_take_up
+    eligibility: copy benefit units only, a unit whose household has a non-empty clone path (SPI support channel or income-band donor, CGT support split, high-value home support, CGT incidence clone, residential arm) or whose benunit_support_clone_index is positive; native units keep their frs_take_up draw
+    assignment_unit: benunit_id
+    seed: 0
+  - kind: assign_binary_from_rate
+    output: would_claim_targeted_childcare
+    draw: would_claim_targeted_childcare
+    rate_key: targeted_childcare
+    eligibility: copy benefit units only, a unit whose household has a non-empty clone path (SPI support channel or income-band donor, CGT support split, high-value home support, CGT incidence clone, residential arm) or whose benunit_support_clone_index is positive; native units keep their frs_take_up draw
+    assignment_unit: benunit_id
+    seed: 0
+  - kind: assign_clipped_normal
+    output: maximum_extended_childcare_hours_usage
+    draw: maximum_extended_childcare_hours_usage
+    distribution_key: maximum_extended_childcare_hours_usage
+    eligibility: copy benefit units only, a unit whose household has a non-empty clone path (SPI support channel or income-band donor, CGT support split, high-value home support, CGT incidence clone, residential arm) or whose benunit_support_clone_index is positive; native units keep their frs_take_up draw
+    seed: 0
+  outputs: []
+  rewrites:
+  - would_claim_tfc
+  - would_claim_extended_childcare
+  - would_claim_universal_childcare
+  - would_claim_targeted_childcare
+  - maximum_extended_childcare_hours_usage
+  notes: Runs after the last copy stage and before private_school_attendance, whose net-income ranking counts the childcare entitlements and Tax-Free Childcare. frs_take_up draws the childcare flags and the extended-hours usage on FRS benefit units before any copy exists, so every SPI support copy, income-band donor, high-value home support copy, CGT support copy, CGT incidence clone and residential arm inherited its host's draws, and a cell with few hosts fixed the take-up of all their copies. This stage re-draws would_claim_tfc, would_claim_extended_childcare, would_claim_universal_childcare (nested under the extended flag) and would_claim_targeted_childcare at the contract rates, and maximum_extended_childcare_hours_usage from the contract's clipped normal, for the copies only, with frs_take_up's own helper, seed 0 and output-name salts, keyed on the copy's own benunit_id. A copy's structural id is its source id plus a multiple of an offset above every id in the frame, so it is unique, differs from every native id and gives the copy streams independent of its host's; a rebuild of the same frame draws the same values. Native benefit units keep their frs_take_up draws. The anchored Child Benefit, Pension Credit and Universal Credit flags and would_claim_uc_childcare are left as they are.
 - stage: private_school_attendance
   survey: policyengine-uk private-school attendance imputation, stored at the spine's weights
   source: policyengine-uk attends_private_school (the gov.simulation.private_school_vat attendance rates and factor), evaluated by the pinned engine
