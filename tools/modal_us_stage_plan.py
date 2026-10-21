@@ -70,8 +70,17 @@ IMAGE_VENV = "/opt/venv"
 # too. compare-lineage checks the outputs the local run left (its first two
 # outer stages), not the stages after them.
 IMAGE_PYTHON_VERSION = "3.14"
-IMAGE_UV_VERSION = "0.11.7"
+# uv verifies HTTPS against a CA list compiled into it. 0.13.4 is the first
+# release whose list drops the compromised eMudhra (emSign) roots; earlier
+# releases trust certificates anyone can issue with the disclosed keys
+# (https://emudhra.we-have-a-problem.com).
+IMAGE_UV_VERSION = "0.13.4"
 RUNNER_HF_HUB_VERSION = "1.18.0"
+# The runner's Hub client verifies HTTPS against certifi's CA list, and
+# 2026.10.19 is the first certifi release without the eMudhra roots. Modal
+# reuses a cached layer while its definition is unchanged, so the floor is
+# stated rather than left to whatever certifi PyPI served at the first build.
+RUNNER_CERTIFI_MINIMUM_VERSION = "2026.10.19"
 WORK_ROOT = "/work"
 
 # Modal list prices for standard (non-sandbox) compute, read from
