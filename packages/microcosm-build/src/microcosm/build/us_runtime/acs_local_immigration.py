@@ -55,9 +55,13 @@ runs long, and can clear the five-year bar early, for anyone who adjusted
 status after arriving: a person who arrived in 2014 and obtained qualified
 status in 2023 gets 10 modeled years in 2024 but has one qualifying year
 (policyengine-us#9658). That matters for the policyengine-us 2.2.1 tests
-that read the clock: the Medicaid immigration-status test (CHIP follows it,
-because CHIP excludes Medicaid-eligible children) and Washington TANF and
-RCA. Under the statute the SNAP five-year bar also runs from entry with
+that read the clock. The Medicaid immigration-status test (CHIP follows it,
+because CHIP excludes Medicaid-eligible children) and Washington TANF read
+it against a five-year bar, so the long clock can clear the bar early.
+Washington RCA reads it the other way, as a window that closes
+(``years_since_us_entry < window_years``), so the long clock can wrongly
+exclude a recently qualified person from RCA. Under the statute the SNAP
+five-year bar also runs from entry with
 qualified status, but the pinned engine's federal SNAP status test reads
 the status, not this clock, so any SNAP effect is indirect. The receipt's
 ``adjustment_lag_sensitivity`` block reports the size of the affected group
@@ -134,8 +138,8 @@ ACS_LOCAL_IMMIGRATION_CONTROLS_METHOD = "national_control_minus_donor_pooled_del
 #: ``gov.hhs.medicaid.eligibility.eligible_immigration_statuses`` (the
 #: 2018-01-01 list) less ``CITIZEN`` and less
 #: ``bar_exempt_immigration_statuses`` (8 U.S.C. 1613(b)). In 2.2.1 Medicaid
-#: (and Washington TANF and RCA) read the clock; the federal SNAP status test
-#: does not. Of these, the stage assigns only ``LEGAL_PERMANENT_RESIDENT``.
+#: and Washington TANF read the clock against this bar, and Washington RCA
+#: reads it as a closing window; the federal SNAP status test does not. Of these, the stage assigns only ``LEGAL_PERMANENT_RESIDENT``.
 FIVE_YEAR_BAR_STATUSES: tuple[str, ...] = (
     "LEGAL_PERMANENT_RESIDENT",
     "CONDITIONAL_ENTRANT",
@@ -299,7 +303,11 @@ _ENTRY_CLOCK = {
         "status in 2023: 10 modeled years in 2024, one qualifying year; "
         "policyengine-us#9658). That affects the policyengine-us 2.2.1 "
         "tests that read the clock: Medicaid (CHIP follows it) and "
-        "Washington TANF and RCA. Under the statute the SNAP five-year "
+        "Washington TANF read it against a five-year bar, so the long "
+        "clock can clear the bar early; Washington RCA reads it as a "
+        "window that closes (years_since_us_entry < window_years), so "
+        "the long clock can wrongly exclude a recently qualified person "
+        "from RCA. Under the statute the SNAP five-year "
         "bar also runs from entry with qualified status, but the pinned "
         "engine's federal SNAP status test reads the status, not this "
         "clock, so any SNAP effect is indirect. adjustment_lag_sensitivity "
@@ -309,7 +317,8 @@ _ENTRY_CLOCK = {
     "engine_readers": (
         "policyengine-us 2.2.1 reads the clock in the Medicaid "
         "immigration-status test (CHIP follows it, because CHIP excludes "
-        "Medicaid-eligible children) and in Washington TANF and RCA; its "
+        "Medicaid-eligible children) and in Washington TANF, as a "
+        "five-year bar, and in Washington RCA, as a closing window; its "
         "federal SNAP status test reads the status alone"
     ),
 }
