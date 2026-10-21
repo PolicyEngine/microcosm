@@ -413,8 +413,8 @@
   }
  ],
  "engine": "policyengine-uk",
- "engine_version": "2.142.0",
- "input_count": 310,
+ "engine_version": "2.145.0",
+ "input_count": 311,
  "schema_sha256": "5a55669d0447a686692911a6327ae298f19741dde29559f2654a75807878a141",
  "structural_inputs": [
   {
@@ -977,6 +977,10 @@
   },
   {
    "entity": "person",
+   "name": "local_bus_uncapped_single_fare"
+  },
+  {
+   "entity": "person",
    "name": "loss_relief"
   },
   {
@@ -1201,11 +1205,11 @@
   },
   {
    "entity": "person",
-   "name": "pip_dl_category"
+   "name": "pip_dl_points"
   },
   {
    "entity": "person",
-   "name": "pip_m_category"
+   "name": "pip_m_points"
   },
   {
    "entity": "household",
