@@ -462,8 +462,16 @@ def _read_pinned_tab(
         raw = pd.read_csv(path, sep="\t")
     else:
         wanted = {str(column).lower() for column in columns}
+        # One pass over the selected columns: pandas' chunked parser
+        # mis-indexes a column whose type changes between chunks under a
+        # callable column filter, and raises IndexError on a long tab (FRS
+        # 2024-25 adult.tab). The values after the numeric conversion below
+        # are the chunked read's wherever that read succeeds.
         raw = pd.read_csv(
-            path, sep="\t", usecols=lambda column: str(column).lower() in wanted
+            path,
+            sep="\t",
+            usecols=lambda column: str(column).lower() in wanted,
+            low_memory=False,
         )
     raw.columns = raw.columns.str.lower()
     if columns is not None:
