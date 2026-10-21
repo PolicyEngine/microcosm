@@ -938,6 +938,42 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
     )
 
 
+@pytest.mark.parametrize(
+    ("dimension_id", "value_id", "value_label"),
+    [
+        (
+            "us:statutes/26/62#adjusted_gross_income",
+            "under_1",
+            "No adjusted gross income",
+        ),
+        ("us:statutes/26/62#adjusted_gross_income", "all", "All returns, total"),
+        ("age", "85_plus", "Age 85 plus"),
+    ],
+)
+def test_pinned_feed_targets_give_each_reviewed_value_one_label(
+    pinned_feed_national_state_surface, dimension_id, value_id, value_label
+) -> None:
+    """Every compiled target that selects one of these dimension values shows
+    it under the one wording microcosm#1343 chose. The 51aa40f feed labelled
+    each two ways: under_1 "No adjusted gross income and deficit" in the
+    week-47 filing-season package, all "All returns" in Historic Table 2 and
+    Table 1.1, and 85_plus "Age 85 and over" in the national Census PEP
+    package."""
+    registry, _, _ = pinned_feed_national_state_surface
+    labels_by_target = {
+        spec.name: dimension.value_label
+        for spec in registry.specs
+        if spec.hierarchy is not None
+        for dimension in spec.hierarchy.dimensions
+        if (dimension.id, dimension.value_id) == (dimension_id, value_id)
+    }
+
+    assert labels_by_target
+    assert {
+        name: label for name, label in labels_by_target.items() if label != value_label
+    } == {}
+
+
 _EITC_CHILD_SPLITS = (
     "no_qualifying_children",
     "one_qualifying_child",
