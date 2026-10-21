@@ -105,6 +105,27 @@
       }
     },
     {
+      "key": "carers_allowance_newly_entitled",
+      "output": "would_claim_carers_allowance",
+      "entity": "person",
+      "values": {
+        "2024-01-01": 0.6
+      },
+      "source": {
+        "source": "Independent Review of Carer's Allowance Overpayments (July 2025), chapter 7, and DWP benefit statistics",
+        "agency": "DWP",
+        "citation": "The share of the carers a reform or a later year newly entitles to Carer's Allowance who claim it. No published rate exists for them: the Independent Review estimates that the April 2025 rise of the earnings limit from 151 to 196 pounds a week brought about 61,000 more people into eligibility, and gives no estimate of how many claim. 0.6 is the central rate of María's ruling of 2026-10-20 (sensitivity 0.45 to 0.75), to be checked against the 61,000 and against DWP's Carer's Allowance caseload by the earnings-limit back-test on the national file (microcosm#1319). Applied by carers_allowance_take_up to a person outside Scotland whose care hours meet the hours condition, who reports no Carer's Allowance and whom the earnings limit holds gainfully employed at the survey year, the year it is keyed at.",
+        "url": "https://www.gov.uk/government/publications/review-of-carers-allowance-overpayments/independent-review-of-carers-allowance-overpayments",
+        "caseload_url": "https://www.gov.uk/government/statistics/dwp-benefit-statistics-february-2026/dwp-benefit-statistics-february-2026",
+        "status": "frozen_by_adjudication",
+        "freeze": {
+          "decision": "María's ruling of 2026-10-20 on the microcosm#1319 plan: a flat 0.6, sensitivity 0.45 to 0.75, with no stage-health gate until a caseload target binds it",
+          "followup": "microcosm#1319"
+        }
+      },
+      "population": "persons outside Scotland with care hours at the Carer's Allowance hours condition, no reported Carer's Allowance, and earnings above the limit at the survey year"
+    },
+    {
       "key": "universal_credit",
       "output": "would_claim_uc",
       "entity": "benunit",

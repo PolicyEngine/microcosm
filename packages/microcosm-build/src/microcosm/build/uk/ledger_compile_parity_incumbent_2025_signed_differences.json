@@ -1,11 +1,11 @@
 {
- "compiled_count": 1319,
+ "compiled_count": 1322,
  "counts_by_kind": {
   "calibration_drift": 561,
   "fixture_only": 46,
-  "ledger_only": 728
+  "ledger_only": 731
  },
- "difference_count": 1335,
+ "difference_count": 1338,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -5259,7 +5259,7 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 35099000000.0,
+   "ledger_value": 37025000000.0,
    "name": "ons.household_road_fuel_expenditure",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
@@ -5326,6 +5326,27 @@
    "name": "ons.households.english_regions@E12000009",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 658357.0,
+   "name": "ons.population.age_0",
+   "period": 2025,
+   "reason": "microcosm#1278 (the pre-Budget PR's plan, approved by María on 2026-10-20; microcosm#1095): one of the three all-persons rows for ages 0, 1 and 2, bound so the fit holds the single years inside the 0_4 sex bands, which stay bound beside them. The incumbent binds only the five-year bands, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 679232.0,
+   "name": "ons.population.age_1",
+   "period": 2025,
+   "reason": "microcosm#1278 (the pre-Budget PR's plan, approved by María on 2026-10-20; microcosm#1095): one of the three all-persons rows for ages 0, 1 and 2, bound so the fit holds the single years inside the 0_4 sex bands, which stay bound beside them. The incumbent binds only the five-year bands, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 696010.0,
+   "name": "ons.population.age_2",
+   "period": 2025,
+   "reason": "microcosm#1278 (the pre-Budget PR's plan, approved by María on 2026-10-20; microcosm#1095): one of the three all-persons rows for ages 0, 1 and 2, bound so the fit holds the single years inside the 0_4 sex bands, which stay bound beside them. The incumbent binds only the five-year bands, so this row has no fixture counterpart."
   },
   {
    "kind": "ledger_only",

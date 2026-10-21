@@ -41,10 +41,12 @@ from microcosm.build.uk_runtime.frs_relationships import (
     frs_relationships_operation_parameters,
 )
 from microcosm.build.uk_runtime.frs_spine import (
+    BENEFIT_CODES,
     FRS_SPINE_TABLES,
     OWNER_MANAGER_COLUMNS,
     REGION_MAP,
     SCOTTISH_WATER_CHARGES_REDUCTION_RECIPIENT_SHARE,
+    STATE_PENSION_WEEKS_IN_YEAR,
     UC_CAPITAL_UNAVAILABLE,
     WEEKS_IN_YEAR,
     UKFRSSpineStageTransform,
@@ -192,6 +194,8 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "TYPEACC": 1,
         "BEDROOM6": 3,
         "CTANNUAL": 1000.0,
+        # Someone in the household pays council tax (CTPAID 1).
+        "CTPAID": 1,
         "CTBAND": 4,
         "CTDISC": 2,
         "CT25D50D": "",
@@ -1175,8 +1179,11 @@ def test_direct_person_mapping_values_are_ported(tmp_path: Path) -> None:
     assert adult["rent_paid_as_lodger"] == pytest.approx(WEEKS_IN_YEAR)
     assert adult["rent_paid_as_boarder"] == 0
     assert adult["maintenance_income"] == pytest.approx(3 * WEEKS_IN_YEAR)
+    # Odd jobs 4, ALLPAY2 6, ROYYR2-4 3 + 4 + 5, CHAMTERN 9 and CHAMTTST 10.
     assert adult["miscellaneous_income"] == pytest.approx(41 * WEEKS_IN_YEAR)
-    assert adult["private_transfer_income"] == pytest.approx(57 * WEEKS_IN_YEAR)
+    # APAMT 11, APDAMT 12, PAREAMT 13, ALLPAY3 7 and ALLPAY4 8: ALLPAY2 is
+    # miscellaneous income alone (#1320).
+    assert adult["private_transfer_income"] == pytest.approx(51 * WEEKS_IN_YEAR)
     assert adult["lump_sum_income"] == pytest.approx(100)
     assert adult["student_loan_repayments"] == pytest.approx(2 * WEEKS_IN_YEAR)
     assert adult["statutory_sick_pay"] == pytest.approx(WEEKS_IN_YEAR)
@@ -1199,6 +1206,96 @@ def test_direct_person_mapping_values_are_ported(tmp_path: Path) -> None:
     )
     assert adult["salary_sacrifice_reported"] == 1
     assert adult["salary_sacrifice_asked"] == 1
+
+
+#: The spine's person income columns (#1320, uk-data#627).
+#: tax_free_savings_income is not one: it is the ISA part of
+#: savings_interest_income.
+_PERSON_INCOME_COLUMNS = (
+    "employment_income",
+    "self_employment_income",
+    "private_pension_income",
+    "savings_interest_income",
+    "dividend_income",
+    "property_income",
+    "maintenance_income",
+    "miscellaneous_income",
+    "private_transfer_income",
+    "lump_sum_income",
+    "statutory_sick_pay",
+    "statutory_maternity_pay",
+    "statutory_paternity_pay",
+    "student_loans",
+    "access_fund",
+    "education_grants",
+    "healthy_start_vouchers",
+    "free_school_breakfasts",
+    "free_school_fruit_veg",
+    "free_school_meals",
+    "council_tax_benefit_reported",
+    *(f"{name}_reported" for name in BENEFIT_CODES),
+    "jsa_contrib_reported",
+    "jsa_income_reported",
+    "esa_contrib_reported",
+    "esa_income_reported",
+    "bsp_reported",
+)
+
+
+def test_no_frs_field_feeds_two_income_columns(tmp_path: Path) -> None:
+    """Each FRS field adds to one person income column at most (#1320).
+
+    ALLPAY2, "Amount of allowance: organisation", was counted in both
+    miscellaneous_income and private_transfer_income (uk-data#627). Household
+    1 is copied once for each field of its adult, child, household, odd-job
+    and pension rows, with that field raised by one in its copy, and each
+    copy's people are compared with an unchanged copy's. The benefits and
+    accounts tabs route one amount column by a row code, and the other tabs
+    carry no person income, so they are not varied.
+    """
+
+    tables = _fixture_tables()
+    fields = [
+        (table, field)
+        for table in ("adult", "child", "househol", "oddjob", "pension")
+        for field in dict.fromkeys(
+            field for row in tables[table] if row["SERNUM"] == 1 for field in row
+        )
+        if field not in {"SERNUM", "BENUNIT", "PERSON"}
+    ]
+    copies: dict[str, list[dict[str, object]]] = {table: [] for table in tables}
+    for household, varied in enumerate([None, *fields], start=1):
+        for table, rows in tables.items():
+            for row in rows:
+                if row["SERNUM"] != 1:
+                    continue
+                copy = {**row, "SERNUM": household}
+                if varied is not None and varied[0] == table:
+                    value = pd.to_numeric(copy[varied[1]], errors="coerce")
+                    copy[varied[1]] = float(np.nan_to_num(value)) + 1.0
+                copies[table].append(copy)
+    stage = _write_fixture(tmp_path, copies)
+
+    person = build_uk_frs_spine_frame(tmp_path, stage=stage).table("person")
+    incomes = person.set_index("person_id")[list(_PERSON_INCOME_COLUMNS)]
+    moved: dict[tuple[str, str], set[str]] = {}
+    for household, varied in enumerate(fields, start=2):
+        for number in (1, 2):
+            changed = ~np.isclose(
+                incomes.loc[household * 1000 + number], incomes.loc[1000 + number]
+            )
+            moved.setdefault(varied, set()).update(incomes.columns[changed])
+
+    assert {
+        field: columns for field, columns in moved.items() if len(columns) > 1
+    } == {}
+    # The comparison sees a field's own column.
+    assert moved[("adult", "ALLPAY2")] == {"miscellaneous_income"}
+    assert moved[("adult", "APAMT")] == {"private_transfer_income"}
+    assert moved[("adult", "INEARNS")] == {"employment_income"}
+    assert moved[("househol", "CTREBAMT")] == {"council_tax_benefit_reported"}
+    assert moved[("oddjob", "OJAMT")] == {"miscellaneous_income"}
+    assert moved[("pension", "PENPAY")] == {"private_pension_income"}
 
 
 @pytest.mark.parametrize("seed", range(8))
@@ -1738,6 +1835,71 @@ def test_scottish_disability_payments_land_in_the_pip_and_dla_columns() -> None:
     )
     assert reported.to_numpy().sum() == pytest.approx(
         (110.40 + 28.70 + 72.65 + 28.70 + 73.90 + 29.20) * WEEKS_IN_YEAR
+    )
+
+
+def test_state_pension_alone_annualises_at_52_weeks() -> None:
+    """policyengine-uk reads the State Pension back at 52 weeks a year.
+
+    At 365.25 / 7 a full-rate pensioner would read above the full rate and the
+    excess would become a protected payment (María's ruling of 2026-10-20, an
+    exception to microcosm#1095's weekly amounts). Every other weekly benefit
+    keeps 365.25 / 7, and the Winter Fuel Payment, already annual, keeps its
+    amount.
+    """
+
+    person = pd.DataFrame({"person_id": [1001, 1002, 1003]})
+    pe_person = pd.DataFrame(index=person.index)
+    benefits = pd.DataFrame(
+        {
+            "person_id": [1001, 1002, 1002, 1002, 1003, 1003],
+            # The 2024-25 full new and basic State Pensions, a second State
+            # Pension row, Carer's Allowance and the Winter Fuel Payment.
+            "benefit": [5, 5, 5, 13, 13, 62],
+            "var2": [0] * 6,
+            "var3": [0] * 6,
+            "benamt": [221.20, 169.50, 10.0, 81.90, 81.90, 300.0],
+        }
+    )
+
+    _add_benefits(pe_person, person, benefits)
+
+    assert STATE_PENSION_WEEKS_IN_YEAR == 52
+    state_pension = pe_person["state_pension_reported"]
+    assert state_pension.tolist() == pytest.approx([221.20 * 52, 179.50 * 52, 0.0])
+    # Read back at the engine's 52 weeks, the full rate is the full rate.
+    assert (state_pension / 52).tolist() == pytest.approx([221.20, 179.50, 0.0])
+    assert pe_person["carers_allowance_reported"].tolist() == pytest.approx(
+        [0.0, 81.90 * WEEKS_IN_YEAR, 81.90 * WEEKS_IN_YEAR]
+    )
+    assert pe_person["winter_fuel_allowance_reported"].tolist() == pytest.approx(
+        [0.0, 0.0, 300.0]
+    )
+    # The 52-week State Pension stays out of the 365.25 / 7 sum.
+    reported = pe_person.drop(
+        columns=[
+            "state_pension_reported",
+            "winter_fuel_allowance_reported",
+            "esa_includes_support_component",
+        ]
+    )
+    assert reported.to_numpy().sum() == pytest.approx(2 * 81.90 * WEEKS_IN_YEAR)
+
+
+def test_manifest_declares_the_state_pension_weeks_in_year() -> None:
+    operation = next(
+        operation
+        for operation in _manifest_stage().operations
+        if operation.kind == "annualize_periodic_amounts"
+    )
+    parameters = dict(operation.parameters)
+
+    assert parameters["weeks_in_year"] == WEEKS_IN_YEAR
+    exceptions = parameters["weeks_in_year_exceptions"]
+    assert set(exceptions) == {"state_pension_reported"}
+    assert (
+        exceptions["state_pension_reported"]["weeks_in_year"]
+        == STATE_PENSION_WEEKS_IN_YEAR
     )
 
 

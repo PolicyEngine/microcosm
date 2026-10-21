@@ -28,6 +28,9 @@ import pandas as pd
 from microcosm.build.country_spec import country_stage_plan, load_country_spec
 from microcosm.build.source_manifest import SourceManifest, SourceStageSpec
 from microcosm.build.uk_runtime.age_tail import UKAgeTailStageTransform
+from microcosm.build.uk_runtime.carers_allowance_take_up import (
+    UKCarersAllowanceTakeUpStageTransform,
+)
 from microcosm.build.uk_runtime.cgt_asset_type import (
     CGT_ASSET_TYPE_NON_RESIDENTIAL_TYPES,
     CGT_ASSET_TYPE_RESIDENTIAL,
@@ -195,7 +198,7 @@ _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 45
+UK_FIXTURE_STAGE_COUNT = 46
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
@@ -373,7 +376,11 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "PTENTYP2": 5 + household_id % 2,
                 "TYPEACC": 1 + household_id % 4,
                 "BEDROOM6": 1 + household_id % 4,
-                "CTANNUAL": 900.0 + household_id * 10.0,
+                # Household 12 pays council tax (CTPAID 1) and reports no
+                # reduction, but its derived bill is zero, so it takes its
+                # cell's mean (microcosm#1278).
+                "CTANNUAL": 0.0 if household_id == 12 else 900.0 + household_id * 10.0,
+                "CTPAID": 1,
                 "CTBAND": 1 + household_id % 7,
                 "CTDISC": 1 if household_id % 3 == 0 else 2,
                 "CT25D50D": (
@@ -413,6 +420,12 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "HBOTHAMT": 0.0,
             }
         )
+        # HOURTOT care bands: every fifth adult cares 35-49 hours a week (code
+        # 5) and every seventh other 20-34 (code 4, below the Carer's Allowance
+        # line). Pay (INEARNS) rises with the household, so the carers fall on
+        # both sides of the earnings limit, in Scotland and outside it
+        # (microcosm#1319).
+        care_band = 5 if household_id % 5 == 1 else 4 if household_id % 7 == 0 else 0
         adult = {
             "SERNUM": household_id,
             "BENUNIT": 1,
@@ -486,6 +499,7 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
             "GRTDIR1": 2.0,
             "GRTDIR2": 3.0,
             "HEARTVAL": 5.0,
+            "HOURTOT": care_band,
         }
         adults.append(adult)
         if has_child:
@@ -563,6 +577,22 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 (3, 0, 7.0),
             )
         )
+        if household_id % 15 == 1:
+            # Carer's Allowance (BENEFIT 13) on every third 35-hour carer, at
+            # the 2024-25 weekly rate (microcosm#1319).
+            benefits.append(
+                {
+                    "SERNUM": household_id,
+                    "BENUNIT": 1,
+                    "PERSON": 1,
+                    "BENEFIT": 13,
+                    "VAR2": 0,
+                    "VAR3": 0,
+                    "BENAMT": 81.9,
+                    "UCSTART": "",
+                    "UCHOUSEL": "",
+                }
+            )
         if household_id % 3 == 0:
             # Universal Credit on every third household: a claim linked to a
             # recent start, one linked to an old start, and one unlinked.
@@ -2036,6 +2066,11 @@ def _build_implementations(
         ),
         "child_benefit_take_up": UKChildBenefitTakeUpStageTransform(
             stage=stages["child_benefit_take_up"], engine=engine
+        ),
+        "carers_allowance_take_up": UKCarersAllowanceTakeUpStageTransform(
+            stage=stages["carers_allowance_take_up"],
+            engine=engine,
+            contract=contract,
         ),
         "uc_deduction_attributes": UKUCDeductionAttributesStageTransform(
             stage=stages["uc_deduction_attributes"]
