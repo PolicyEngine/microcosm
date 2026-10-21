@@ -46,9 +46,10 @@ def _withhold_summary_rows(data: dict, result, ordered) -> None:
 
     María's ruling of 2026-10-17: a BRMA row's model figures leave a build
     only when ten distinct source households carry them, here counted on this
-    result's own weights; her rule of 2026-10-21 extends it to every row. A
-    withheld row keeps its target and its place, and the final loss covers the
-    published rows (her ruling of 2026-10-18).
+    result's own weights; her rule of 2026-10-21 extends it to national and
+    regional rows (local rows keep the area-support rule). A withheld row
+    keeps its target and its place, and the final loss covers the published
+    rows (her ruling of 2026-10-18).
     """
 
     from .diagnostics import _restate_totals_over_published_rows, uk_withheld_rows

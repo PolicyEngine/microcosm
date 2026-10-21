@@ -1311,7 +1311,7 @@ def test_a_thin_brma_row_keeps_its_place_but_not_its_model_figures() -> None:
 def test_a_thin_national_row_keeps_its_place_but_not_its_model_figures() -> None:
     """María's rule of 2026-10-21: a national row is bound however thin it is.
 
-    The BRMA rule now covers every row. One national row rests on three source
+    The BRMA rule now covers national rows. One national row rests on three source
     households and stays bound, its model figures null and noted; the other,
     on eleven, publishes. The withheld block restates the totals over the
     published row, and no row is told it met a BRMA floor.

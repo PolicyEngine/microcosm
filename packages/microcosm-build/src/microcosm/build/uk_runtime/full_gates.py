@@ -238,10 +238,11 @@ def build_full_gate_context(
             national_errors[target.row_name] = float(solved_rows[index].relative_error)
     # A row's model figures leave the build only when ten distinct source
     # households carry them: María's ruling of 2026-10-17 for BRMA rows
-    # (microcosm#1262), extended to every row by her rule of 2026-10-21, which
-    # binds a thin row rather than leave it out. The fit gates decide on the
-    # published rows and count the withheld ones (her ruling of 2026-10-19);
-    # the flag tells the bindings and the writers which rows those are.
+    # (microcosm#1262), extended to national and regional rows by her rule of
+    # 2026-10-21, which binds a thin row rather than leave it out (local rows
+    # keep the area-support rule). The fit gates decide on the published rows
+    # and count the withheld ones (her ruling of 2026-10-19); the flag tells
+    # the bindings and the writers which rows those are.
     withheld = uk_withheld_rows(
         problem,
         solution.weights,

@@ -73,8 +73,9 @@ _TARGET_PASS_RELATIVE_ERROR = 0.10
 _AREA_FIT_LIMIT = 15
 #: A target row's model figures leave the build only when at least this many
 #: distinct source households carry them (UKDS CD137 clause 8): María's ruling
-#: of 2026-10-17 on the #1305 review for BRMA rows, extended to every row by
-#: her rule of 2026-10-21, which binds a thin row rather than leave it out.
+#: of 2026-10-17 on the #1305 review for BRMA rows, extended to national and
+#: regional rows by her rule of 2026-10-21, which binds a thin row rather
+#: than leave it out (local rows keep the area-support rule).
 UK_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS = 10
 #: The BRMA rows' floor, the same ten under its own ruling of 2026-10-17 (the
 #: support gate covers constituencies and authorities, not the partial BRMA
