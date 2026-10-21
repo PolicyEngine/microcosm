@@ -68,7 +68,14 @@ Built at `9b91e8b` from the same 637 scope pairs (only the scope's
   `3fad14f85468` to `3aa2a0830e7d`, because the version hashes the
   hierarchy labels;
 - no dimension value in the compiled targets carries two labels any more;
-- the parity resources change only in the feed name and digest;
+- the parity resources change in the feed name and digest, and the
+  feed-family inventory gains `dimension_value_label_variants`: every
+  dimension value the feed labels more than one way, with its labels. On
+  this feed that is only `age` = `age_20` and `age_21`. The generator writes
+  it from the feed, and `test_us_chronicle_feed.py` checks the committed
+  listing in CI, where the label test above skips for want of the feed. A
+  later re-pin built on a Chronicle commit without the three label commits
+  lists those values again and fails there;
 - a rebuild at `51aa40f` reproduced `965a29ac…`, and builds at `9b91e8b`
   and at an earlier commit of the branch that differed only in Chronicle
   test files gave the same bytes.

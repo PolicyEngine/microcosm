@@ -83,5 +83,17 @@
   "usda_snap.state_average_monthly_households": 53,
   "usda_snap.state_average_monthly_persons": 106,
   "usda_snap.state_benefits": 53
+ },
+ "dimension_value_label_variants": {
+  "age": {
+   "age_20": [
+    "Age 20",
+    "Female 20 years"
+   ],
+   "age_21": [
+    "Age 21",
+    "Female 21 years"
+   ]
+  }
  }
 }
