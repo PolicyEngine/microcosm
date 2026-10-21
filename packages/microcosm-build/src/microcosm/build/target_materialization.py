@@ -103,6 +103,51 @@ def counterfactual_column(binding: Mapping[str, Any]) -> str:
     return COUNTERFACTUAL_DELTA_COLUMN_PREFIX + re.sub(r"[^0-9A-Za-z_]", "_", metric)
 
 
+#: Prefix of the measure-input column a resolved value lands in when the frame
+#: already stores the variable (microcosm#1324). A stored column holds the
+#: frame's own period; the provider computes the value at the binding's
+#: measurement period, and writing it under the bare name would overwrite the
+#: stored column that filters, conditions and later stages still read.
+ENGINE_PERIOD_COLUMN_PREFIX = "engine_period__"
+
+
+def measure_input_column(adapter: Any, entity: str, variable: str) -> str:
+    """The column a resolved measure input is injected under.
+
+    A variable the adapter's frame stores goes under the reserved
+    ``engine_period__`` name; any other variable keeps its own name, as
+    before. An adapter that declares no ``stored_columns`` keeps every
+    variable's own name.
+    """
+
+    stored = getattr(adapter, "stored_columns", None)
+    if stored is not None and variable in stored.get(entity, ()):
+        return ENGINE_PERIOD_COLUMN_PREFIX + variable
+    return variable
+
+
+def inject_measure_inputs(
+    adapter: Any, measure_inputs: Mapping[tuple[str, str], np.ndarray]
+) -> None:
+    """Write resolved measure inputs into an adapter's table copies."""
+
+    for (entity, variable), values in measure_inputs.items():
+        adapter.tables[entity][measure_input_column(adapter, entity, variable)] = values
+
+
+def drop_injected_measure_inputs(
+    adapter: Any,
+    measure_inputs: Mapping[tuple[str, str], np.ndarray],
+    original_columns: Mapping[str, set[str]],
+) -> None:
+    """Drop the columns :func:`inject_measure_inputs` added to an adapter."""
+
+    for entity, variable in measure_inputs:
+        column = measure_input_column(adapter, entity, variable)
+        if column not in original_columns[entity]:
+            adapter.tables[entity].drop(columns=[column], inplace=True)
+
+
 @dataclass(frozen=True)
 class MaterializationSkip:
     """One target measure the interpreter could not prepare."""
@@ -217,12 +262,15 @@ def resolve_target_measures(
     for round_index in range(max_rounds):
         probe = adapter_factory()
         _inject_measure_inputs(probe, measure_inputs)
+        # With a provider at hand, a stored value column read at a period the
+        # frame does not hold is routed to the provider (microcosm#1324).
         result = materialize_target_bindings(
             probe,
             registry,
             contract,
             period=period,
             band_edge_registry=band_edge_registry,
+            route_stored_values=True,
         )
         skipped = tuple(result.skipped)
         round_receipt = {
@@ -412,8 +460,7 @@ def _provider_entity_for(provider: MeasureProvider, variable: str) -> str | None
 def _inject_measure_inputs(
     adapter: Any, measure_inputs: Mapping[tuple[str, str], np.ndarray]
 ) -> None:
-    for (entity, variable), values in measure_inputs.items():
-        adapter.tables[entity][variable] = values
+    inject_measure_inputs(adapter, measure_inputs)
 
 
 def _raise_measure_resolution(
@@ -651,8 +698,19 @@ def materialize_target_bindings(
     period: int | str,
     providers: Mapping[str, Provider] | None = None,
     band_edge_registry: TargetRegistry | None = None,
+    route_stored_values: bool = False,
 ) -> TargetMaterializationResult:
-    """Prepare measure columns declared by compiled Ledger target specs."""
+    """Prepare measure columns declared by compiled Ledger target specs.
+
+    A plain-column binding's value is read at its measurement period: the
+    binding's ``measurement_period``, else ``period`` (microcosm#1324). An
+    adapter with ``column_at`` reads an injected engine-period value first;
+    with ``route_stored_values`` (the measure resolver's probes) a stored
+    column that holds another period is reported missing, so the resolver
+    computes it at the measurement period. Without it (frame-only routes, no
+    provider) the stored column is read as it is. Filters, conditions and
+    bands keep their stored reads: who a row counts is fixed at the frame.
+    """
 
     provider_registry = {**default_provider_registry(), **(providers or {})}
     band_edges = _band_edges_by_group(
@@ -714,8 +772,14 @@ def materialize_target_bindings(
                         0.0,
                     )
             else:
+                _refuse_ignored_measurement_period(spec, binding, adapter, period)
                 values = _prepared_column_values(
-                    adapter, spec.entity, binding, band=band
+                    adapter,
+                    spec.entity,
+                    binding,
+                    band=band,
+                    period=measurement_period,
+                    route_stored=route_stored_values,
                 )
             adapter.set_column(spec.entity, spec.measure, values)
         except (KeyError, TypeError, ValueError) as error:
@@ -870,15 +934,89 @@ def _prepared_column_values(
     binding: Mapping[str, Any],
     *,
     band: tuple[float, float] | None = None,
+    period: int | str | None = None,
+    route_stored: bool = False,
 ) -> np.ndarray:
     entity = str(binding.get("from_entity") or entity)
     if "value_expression" in binding:
-        values = _expression(adapter, entity, str(binding["value_expression"]))
+        values = _expression(
+            adapter,
+            entity,
+            str(binding["value_expression"]),
+            period=period,
+            route_stored=route_stored,
+        )
     else:
-        values = _column(adapter, entity, binding["value_variable"])
+        values = _value_column(
+            adapter,
+            entity,
+            binding["value_variable"],
+            period=period,
+            route_stored=route_stored,
+        )
     return np.where(
         _binding_mask(adapter, entity, binding, values, band=band), values, 0.0
     )
+
+
+class MeasurementPeriodError(RuntimeError):
+    """A binding declares a measurement period its read route cannot honour.
+
+    Deliberately not a :class:`ValueError`, which the per-spec loop turns into
+    a skip: a declared period that is quietly ignored would measure the row
+    at another year, so the whole run refuses (microcosm#1324).
+    """
+
+
+def _refuse_ignored_measurement_period(
+    spec: Any,
+    binding: Mapping[str, Any],
+    adapter: Any,
+    period: int | str,
+) -> None:
+    """Refuse a plain-column period the route would not honour.
+
+    A plain-column value is read at the calibration period (through the
+    provider, for a stored column) or, by declaration, at the frame's own
+    period (the stored column as it is). Any other declared period would be
+    read at one of those two and is refused. So is the frame's period on a
+    value the frame does not hold at that period: the engine computes it at
+    the calibration period, so the row would be measured there under the
+    declared period.
+    """
+
+    declared = binding.get("measurement_period")
+    frame_period = getattr(adapter, "frame_period", None)
+    if declared is None or frame_period is None or str(declared) == str(period):
+        return
+    name = getattr(spec, "name", "?")
+    if str(declared) != str(frame_period):
+        raise MeasurementPeriodError(
+            f"target {name!r} declares measurement period "
+            f"{declared!r}; a plain-column read honours only the calibration "
+            f"period {period!r} or the frame's period {frame_period!r}"
+        )
+    value_period = getattr(adapter, "value_period", None)
+    if not callable(value_period):
+        return
+    entity = str(binding.get("from_entity") or spec.entity)
+    for variable in _value_variables(binding):
+        if value_period(entity, variable) != str(declared):
+            raise MeasurementPeriodError(
+                f"target {name!r} declares the frame's period {declared!r}, "
+                f"but {entity}.{variable} is not held at that period on the "
+                f"frame, so the engine would compute it at the calibration "
+                f"period {period!r}"
+            )
+
+
+def _value_variables(binding: Mapping[str, Any]) -> tuple[str, ...]:
+    """The value variables a plain-column binding reads."""
+
+    if "value_expression" in binding:
+        parts = str(binding["value_expression"]).split("+")
+        return tuple(part.strip() for part in parts if part.strip())
+    return (str(binding["value_variable"]),)
 
 
 def _binding_mask(
@@ -985,17 +1123,48 @@ def _compare(values: np.ndarray, operator: str, expected: object) -> np.ndarray:
     raise ValueError(f"unsupported predicate operator {operator!r}")
 
 
-def _expression(adapter: Any, entity: str, expression: str) -> np.ndarray:
+def _expression(
+    adapter: Any,
+    entity: str,
+    expression: str,
+    *,
+    period: int | str | None = None,
+    route_stored: bool = False,
+) -> np.ndarray:
     parts = [part.strip() for part in expression.split("+")]
     if not parts or any(not part for part in parts):
         raise ValueError(f"unsupported value_expression {expression!r}")
     total: np.ndarray | None = None
     for part in parts:
-        values = _column(adapter, entity, part)
+        values = _value_column(
+            adapter, entity, part, period=period, route_stored=route_stored
+        )
         total = values.copy() if total is None else total + values
     if total is None:
         raise ValueError(f"unsupported value_expression {expression!r}")
     return total
+
+
+def _value_column(
+    adapter: Any,
+    entity: str,
+    variable: object,
+    *,
+    period: int | str | None,
+    route_stored: bool,
+) -> np.ndarray:
+    """A binding's value variable at its measurement period (microcosm#1324).
+
+    An adapter with ``column_at`` knows its frame's period and which columns
+    the frame stores; any other adapter reads the column as it is.
+    """
+
+    column_at = getattr(adapter, "column_at", None)
+    if callable(column_at) and period is not None:
+        return np.asarray(
+            column_at(entity, str(variable), period=period, route_stored=route_stored)
+        )
+    return _column(adapter, entity, variable)
 
 
 def _column(adapter: Any, entity: str, variable: object) -> np.ndarray:

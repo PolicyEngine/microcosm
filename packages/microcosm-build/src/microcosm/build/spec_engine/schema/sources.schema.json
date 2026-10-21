@@ -6208,6 +6208,26 @@
       },
       "weeks_in_year": {
        "type": "number"
+      },
+      "weeks_in_year_exceptions": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "weeks_in_year",
+         "reason"
+        ],
+        "properties": {
+         "weeks_in_year": {
+          "type": "number"
+         },
+         "reason": {
+          "type": "string"
+         }
+        }
+       }
       }
      }
     },

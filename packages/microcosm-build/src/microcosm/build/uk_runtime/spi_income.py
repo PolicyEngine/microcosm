@@ -1305,6 +1305,26 @@ def _spi_agerange_codes(ages: np.ndarray) -> np.ndarray:
     return codes
 
 
+def _band_mean_total_income(
+    realized: np.ndarray, drawn: np.ndarray
+) -> float | str | None:
+    """A reserved band's mean realised total income, for its receipt row.
+
+    A carrier's realised total income is its drawn tape record's own, so a
+    band whose carriers drew fewer than ten distinct records, as any band with
+    fewer than ten carriers does, would give back one record's value or come
+    close to it. Its mean is "<10" (UKDS disclosure control; see
+    ``receipt_counts``), and a band without carriers has none. No single
+    record's value, such as the band's lowest or highest, is recorded.
+    """
+
+    if not realized.size:
+        return None
+    if np.unique(drawn).size < 10:
+        return "<10"
+    return float(realized.mean())
+
+
 def _resample_band_donor_leaves(
     person: pd.DataFrame,
     donor: pd.DataFrame,
@@ -1554,14 +1574,8 @@ def _resample_band_donor_leaves(
                 "regional_matched_carriers": int(matched[mask].sum()),
                 "age_matched_carriers": int(age_matched[mask].sum()),
                 "state_pension_age_matched_carriers": int(side_matched[mask].sum()),
-                "realized_min_total_income": (
-                    float(realized.min()) if realized.size else None
-                ),
-                "realized_mean_total_income": (
-                    float(realized.mean()) if realized.size else None
-                ),
-                "realized_max_total_income": (
-                    float(realized.max()) if realized.size else None
+                "realized_mean_total_income": _band_mean_total_income(
+                    realized, drawn[mask]
                 ),
             }
         )
@@ -2593,7 +2607,11 @@ def _refresh_carer_take_up_input(
     fill re-imputes that receipt on the redrawn rows, so the flag is
     re-derived here from the refilled amount. A stale flag would pay the
     allowance to a redrawn 35-hour carer whose refilled receipt is zero, or
-    withhold it from one whose refilled receipt is positive (#882).
+    withhold it from one whose refilled receipt is positive (#882). This is
+    the anchor ``carers_allowance_take_up`` reads after the SPI income chain:
+    it refuses a flag that no longer follows reported receipt, and opens it
+    to the carers the earnings limit alone keeps from the allowance
+    (microcosm#1319).
     """
 
     if "would_claim_carers_allowance" not in person.columns:

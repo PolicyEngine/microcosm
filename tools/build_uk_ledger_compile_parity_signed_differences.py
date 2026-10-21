@@ -331,6 +331,14 @@ _ONS_15_19_BAND_SPLIT_ROWS = frozenset(
     for sex in ("female", "male")
     for ages in ("15", "16_17", "18_19")
 )
+_ONS_SINGLE_YEAR_AGE_LEDGER_ONLY_RATIONALE = (
+    "microcosm#1278 (the pre-Budget PR's plan, approved by María on 2026-10-20; "
+    "microcosm#1095): one of the three all-persons rows for ages 0, 1 and 2, bound "
+    "so the fit holds the single years inside the 0_4 sex bands, which stay bound "
+    "beside them. The incumbent binds only the five-year bands, so this row has no "
+    "fixture counterpart."
+)
+_ONS_SINGLE_YEAR_AGE_ROWS = frozenset(f"ons.population.age_{age}" for age in (0, 1, 2))
 
 _DEVOLVED_RENT_FIXTURE_ONLY_RATIONALE = (
     "Ruled signed exclusion: the incumbent y-values for devolved private rent "
@@ -806,6 +814,8 @@ def _add_signed_rationale_notes(
             row["reason"] = _ONS_15_19_BAND_SPLIT_FIXTURE_ONLY_RATIONALE
         elif name in _ONS_15_19_BAND_SPLIT_ROWS and row.get("kind") == "ledger_only":
             row["reason"] = _ONS_15_19_BAND_SPLIT_LEDGER_ONLY_RATIONALE
+        elif name in _ONS_SINGLE_YEAR_AGE_ROWS and row.get("kind") == "ledger_only":
+            row["reason"] = _ONS_SINGLE_YEAR_AGE_LEDGER_ONLY_RATIONALE
 
 
 #: microcosm#1240: the high_value_homes family binds a Microcosm-derived
