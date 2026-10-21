@@ -2,7 +2,7 @@
 
 `microcosm.build.us_annual_static_aging.build_annual_static_aging` creates a local
 candidate containing one native single-year H5 for each year from the source year
-through the requested end year (2035 by default). It reuses `static_aging` and
+through the requested end year (2036 by default). It reuses `static_aging` and
 `multi_year_dataset`; it does not run the base calibration graph or publish data.
 
 The inputs are an exact base H5 SHA256 and parent release identifier, an exact SSA
@@ -20,7 +20,7 @@ uv run --no-sync python -m microcosm.build.us_annual_static_aging \
   --ssa-csv "$SSA_CSV" --ssa-sha256 "$SSA_SHA256" \
   --model-source "$MODEL_SOURCE" --model-commit "$MODEL_COMMIT" \
   --model-version "$MODEL_VERSION" --output-dir "$NEW_OUTPUT_DIR" \
-  --base-year 2024 --end-year 2035
+  --base-year 2024 --end-year 2036
 ```
 
 The builder uses the frame-anchored demographic targets, SSA ages 80–84 pooled at
