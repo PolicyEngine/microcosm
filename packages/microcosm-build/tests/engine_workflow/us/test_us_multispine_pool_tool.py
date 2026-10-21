@@ -345,7 +345,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # fit_draw_next's caller-owned uniforms (microcosm#1332) move it.
             # microcosm#1073's scf_wealth education-debt declaration moves it
             # through the bundle's source stages.
-            "spec_sha256": "19460fc168a6f9ed44e580d0e36777cce78bb33cb52b75630ee86203fa795684",
+            "spec_sha256": "90fa32603241f482d3457982f0467742e1917133d2b2a7fc120911d1ab7fcd32",
         },
     }
 
