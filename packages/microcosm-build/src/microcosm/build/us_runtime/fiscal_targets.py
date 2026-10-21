@@ -14,6 +14,7 @@ import json
 import math
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
+from fractions import Fraction
 from functools import cache
 from importlib.resources import files
 from typing import Any, Literal, NamedTuple
@@ -2686,6 +2687,14 @@ def _rake_eitc_child_splits(
         for index, held in plan.sums:
             spec = specs[index]
             source = sources[(spec.name, str(spec.period))]
+            if not source.value and any(
+                sources[(specs[leaf].name, str(specs[leaf].period))].value
+                for leaf in held
+            ):
+                raise ValueError(
+                    f"{label}: the published row {spec.name} is zero, but bins "
+                    "inside it are not; no factor for it would be true."
+                )
             value = sum(raked[leaf].value for leaf in held)
             metadata = {
                 **dict(spec.metadata),
@@ -2857,13 +2866,11 @@ def _rake_two_margins(
         return row_factors, column_factors
     _require_scalable(reach, row_totals, column_totals, label=label)
 
-    # Work in shares, so that the dual is well scaled; divide by the largest
-    # cell first so that summing cannot overflow.
-    largest = max(seed[i][j] for i in rows for j in reach[i])
-    normalized_total = sum(seed[i][j] / largest for i in rows for j in reach[i])
-    cells = {
-        (i, j): seed[i][j] / largest / normalized_total for i in rows for j in reach[i]
-    }
+    # Work in log shares, so that no positive cell underflows to zero or
+    # overflows when summed.
+    log_seed = {(i, j): math.log(seed[i][j]) for i in rows for j in reach[i]}
+    log_total = _log_sum_exp(log_seed.values())
+    log_cells = {cell: value - log_total for cell, value in log_seed.items()}
     row_share = {i: row_totals[i] / grand_total for i in rows}
     column_share = {j: column_totals[j] / grand_total for j in columns}
     # Each connected block of the support has one free scale; pin the dual
@@ -2874,14 +2881,20 @@ def _rake_two_margins(
         ("column", j) for j in columns if j not in pinned
     ]
     position = {variable: k for k, variable in enumerate(free)}
-    u = {i: math.log(row_share[i] / sum(cells[(i, j)] for j in reach[i])) for i in rows}
+    u = {
+        i: math.log(row_share[i]) - _log_sum_exp(log_cells[(i, j)] for j in reach[i])
+        for i in rows
+    }
     v = dict.fromkeys(columns, 0.0)
 
     def fitted(
         u: dict[int, float], v: dict[int, float]
     ) -> dict[tuple[int, int], float] | None:
         try:
-            return {(i, j): x * math.exp(u[i] + v[j]) for (i, j), x in cells.items()}
+            return {
+                (i, j): math.exp(log_cell + u[i] + v[j])
+                for (i, j), log_cell in log_cells.items()
+            }
         except OverflowError:
             return None
 
@@ -2894,6 +2907,17 @@ def _rake_two_margins(
             - sum(row_share[i] * u[i] for i in rows)
             - sum(column_share[j] * v[j] for j in columns)
         )
+
+    row_peaks = {i: max(seed[i][j] for j in reach[i]) for i in rows}
+
+    def fit_row(i: int) -> float | None:
+        """The factor that makes row i hold, summing in units of its largest
+        cell so that huge cells cannot overflow; None if it cannot."""
+
+        base = sum(seed[i][j] / row_peaks[i] * column_factors[j] for j in reach[i])
+        if not 0 < base < math.inf:
+            return None
+        return row_totals[i] / row_peaks[i] / base
 
     def column_miss() -> float:
         return max(
@@ -2927,16 +2951,18 @@ def _rake_two_margins(
         for (i, j), value in fit.items():
             row_sums[i] += value
             column_sums[j] += value
-        # Scale rows to hold exactly, then check the columns.
-        for i in rows:
-            row_factors[i] = (
-                grand_total
-                / normalized_total
-                * (math.exp(u[i]) * row_share[i] / row_sums[i])
-                / largest
-            )
-        for j in columns:
-            column_factors[j] = math.exp(v[j])
+        # Take the columns from the duals, scale the rows to hold exactly
+        # against the seed itself, then check the columns.
+        try:
+            for j in columns:
+                column_factors[j] = math.exp(v[j])
+        except OverflowError:
+            break
+        fitted_rows = {i: fit_row(i) for i in rows}
+        if None in fitted_rows.values():
+            break
+        for i, factor in fitted_rows.items():
+            row_factors[i] = factor
         worst = column_miss()
         if worst <= _EITC_RAKE_TOLERANCE:
             return row_factors, column_factors
@@ -2948,10 +2974,11 @@ def _rake_two_margins(
                     column_factors[j] = column_totals[j] / sum(
                         row_factors[i] * seed[i][j] for i in rows if j in reach[i]
                     )
-                for i in rows:
-                    row_factors[i] = row_totals[i] / sum(
-                        column_factors[j] * seed[i][j] for j in reach[i]
-                    )
+                fitted_rows = {i: fit_row(i) for i in rows}
+                if None in fitted_rows.values():
+                    break
+                for i, factor in fitted_rows.items():
+                    row_factors[i] = factor
                 if column_miss() <= _EITC_RAKE_TOLERANCE:
                     return row_factors, column_factors
 
@@ -3020,6 +3047,14 @@ def _rake_two_margins(
     )
 
 
+def _log_sum_exp(values: Iterable[float]) -> float:
+    """log(sum(exp(value))), without overflow or underflow."""
+
+    values = list(values)
+    peak = max(values)
+    return peak + math.log(sum(math.exp(value - peak) for value in values))
+
+
 def _require_scalable(
     reach: Mapping[int, frozenset[int]],
     row_totals: list[float],
@@ -3037,10 +3072,10 @@ def _require_scalable(
     so it is checked over every subset of the shorter side, which must have
     at most :data:`_EITC_RAKE_MAX_CHECKED_SIDE` members.
 
-    It refuses only what is certain for the margins as given: totals beyond
-    the room by more than rounding, or exactly equal to it. Margins within
-    rounding of the boundary go to the solver, which reports if it cannot
-    meet them.
+    It refuses only what is certain for the margins as given, summed exactly:
+    totals beyond the room by more than rounding, or exactly equal to it.
+    Margins within rounding of the boundary go to the solver, which reports
+    if it cannot meet them.
     """
 
     column_reach: dict[int, frozenset[int]] = {}
@@ -3082,21 +3117,25 @@ def _require_side_scalable(
     side: str,
     other: str,
 ) -> None:
+    # Exact sums of the margins as given: a float sum can round strict
+    # slack to an exact-looking fill.
+    exact = {k: Fraction(value) for k, value in enumerate(totals)}
+    other_exact = {k: Fraction(value) for k, value in enumerate(other_totals)}
     members = sorted(reach)
-    tolerance = 1e-12 * sum(other_totals)
+    tolerance = Fraction(1, 10**12) * sum(other_exact.values())
     for size in range(1, len(members)):
         for subset in itertools.combinations(members, size):
             reached = frozenset().union(*(reach[k] for k in subset))
-            held = sum(totals[k] for k in subset)
-            room = sum(other_totals[k] for k in reached)
+            held = sum(exact[k] for k in subset)
+            room = sum(other_exact[k] for k in reached)
             if held > room + tolerance or (
                 held == room
                 and any(reach[k] & reached for k in members if k not in subset)
             ):
                 raise ValueError(
                     f"{label}: no scaling of the source bins meets both "
-                    f"margins: {side} {list(subset)} total {held!r}, and "
-                    f"{other} total {room!r}."
+                    f"margins: {side} {list(subset)} total {float(held)!r}, and "
+                    f"{other} total {float(room)!r}."
                 )
 
 

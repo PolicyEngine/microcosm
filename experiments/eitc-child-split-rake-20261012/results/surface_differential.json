@@ -207,14 +207,14 @@
     },
     "eitc_total|two_qualifying_children": {
      "total_row": 25944067817.66286,
-     "bins_sum": 25944067817.662865,
-     "total_over_bins": 0.9999999999999999,
+     "bins_sum": 25944067817.66286,
+     "total_over_bins": 1.0,
      "n_bins": 28
     },
     "eitc_total|three_or_more_qualifying_children": {
      "total_row": 16128849583.488752,
-     "bins_sum": 16128849583.488752,
-     "total_over_bins": 1.0,
+     "bins_sum": 16128849583.48875,
+     "total_over_bins": 1.0000000000000002,
      "n_bins": 28
     },
     "eitc_returns|no_qualifying_children": {
@@ -225,26 +225,26 @@
     },
     "eitc_returns|one_qualifying_child": {
      "total_row": 8469759.155140996,
-     "bins_sum": 8469759.155140996,
-     "total_over_bins": 1.0,
+     "bins_sum": 8469759.155140998,
+     "total_over_bins": 0.9999999999999998,
      "n_bins": 28
     },
     "eitc_returns|two_qualifying_children": {
      "total_row": 5642885.331146898,
-     "bins_sum": 5642885.331146898,
-     "total_over_bins": 1.0,
+     "bins_sum": 5642885.331146897,
+     "total_over_bins": 1.0000000000000002,
      "n_bins": 28
     },
     "eitc_returns|three_or_more_qualifying_children": {
      "total_row": 3114284.8560921764,
-     "bins_sum": 3114284.8560921764,
-     "total_over_bins": 1.0,
+     "bins_sum": 3114284.856092177,
+     "total_over_bins": 0.9999999999999999,
      "n_bins": 28
     }
    },
    "surfaces": {
     "national_state": {
-     "version": "f96aac657fa6",
+     "version": "45adaa24b243",
      "count": 6102,
      "receipt": {
       "mode": "national_state",
@@ -253,16 +253,16 @@
       "dropped_congressional_district_targets": 27148
      },
      "t25_rows": 232,
-     "t25_weight_share": 0.015479664832462674,
+     "t25_weight_share": 0.015479664832462678,
      "t25_total_rows_weight_share": 0.002873670369712156,
      "max_abs_weight_ratio_minus_1_outside_t25": 0.00014885262632868823,
      "t25_weight_ratio_range_vs_a": [
       0.9256659013500859,
-      1.1014828264306362
+      1.1014828264306364
      ]
     },
     "full": {
-     "version": "cb0eaa0418f2",
+     "version": "60a52e2f204d",
      "count": 33250,
      "receipt": {
       "mode": "full",
@@ -276,7 +276,7 @@
      "max_abs_weight_ratio_minus_1_outside_t25": 5.845703928453183e-05,
      "t25_weight_ratio_range_vs_a": [
       0.925582237691082,
-      1.1014910229631838
+      1.101491022963184
      ]
     }
    }
@@ -414,7 +414,7 @@
    "a_over_total": 0.9719473540169348,
    "b_over_bins": 0.9725490998719831,
    "b_over_total": 0.9725490998719831,
-   "c_over_bins": 0.9719473540169348,
+   "c_over_bins": 0.9719473540169346,
    "c_over_total": 0.9719473540169348,
    "d_over_bins": 0.9725490998719831
   },
@@ -434,7 +434,7 @@
    "a_over_total": 0.9595924216484912,
    "b_over_bins": 0.9222584968074418,
    "b_over_total": 0.9222584968074417,
-   "c_over_bins": 0.9595924216484912,
+   "c_over_bins": 0.9595924216484913,
    "c_over_total": 0.9595924216484912,
    "d_over_bins": 0.9222584968074418
   },
@@ -444,7 +444,7 @@
    "a_over_total": 0.9017826307766967,
    "b_over_bins": 0.8792615696791217,
    "b_over_total": 0.8792615696791216,
-   "c_over_bins": 0.9017826307766966,
+   "c_over_bins": 0.9017826307766967,
    "c_over_total": 0.9017826307766967,
    "d_over_bins": 0.8792615696791217
   },
@@ -454,7 +454,7 @@
    "a_over_total": 0.9713305428957415,
    "b_over_bins": 0.92328226294927,
    "b_over_total": 0.9232822629492701,
-   "c_over_bins": 0.9713305428957415,
+   "c_over_bins": 0.9713305428957414,
    "c_over_total": 0.9713305428957415,
    "d_over_bins": 0.92328226294927
   },
@@ -464,7 +464,7 @@
    "a_over_total": 0.9168131214551734,
    "b_over_bins": 0.9106625238330983,
    "b_over_total": 0.9106625238330984,
-   "c_over_bins": 0.9168131214551734,
+   "c_over_bins": 0.9168131214551735,
    "c_over_total": 0.9168131214551734,
    "d_over_bins": 0.9106625238330983
   }

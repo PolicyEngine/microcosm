@@ -388,6 +388,56 @@ def test_a_zero_subtotal_over_positive_bins_is_refused() -> None:
         _compile(facts)
 
 
+def test_rounded_equality_with_strict_slack_is_raked() -> None:
+    """microcosm#1235 review round 3: the one- and two-child splits hold
+    2**-24 less than the low group, but a float sum of their totals rounds
+    to the group's total exactly; summed exactly, it is slack, which the
+    three-or-more split's $1 bin there fills."""
+
+    measure, _, _ = _KINDS["amount"]
+    source = {
+        "one_qualifying_child": {_LOW: 1_056_964_608, _HIGH: 0},
+        "two_qualifying_children": {_LOW: 16_777_215, _HIGH: 0},
+        "three_or_more_qualifying_children": {_LOW: 1, _HIGH: 16_777_216},
+    }
+    active = {_LOW: 1_073_741_887, _HIGH: 16_777_218}
+    by_name = _compile(
+        _decomposition_facts(kind="amount", source=source, active=active)
+    )
+
+    for split, rows in source.items():
+        total = by_name[_total_name(split, measure)].value
+        assert sum(
+            by_name[_bin_name(split, measure, bounds)].value for bounds in rows
+        ) == pytest.approx(total, rel=1e-12)
+    for bounds, value in active.items():
+        assert sum(
+            by_name[_bin_name(split, measure, bounds)].value for split in source
+        ) == pytest.approx(value, rel=1e-11)
+
+
+def test_a_zero_subtotal_inside_a_group_is_refused() -> None:
+    """microcosm#1235 review round 3: a published zero over the
+    $25,000-$40,000 bins ($1 and $1) sits inside the $25,000-and-over
+    group, whose own source is not zero. The subtotal would become $3.33 on a
+    zero source, so no factor for it would be true."""
+
+    measure, _, _ = _KINDS["amount"]
+    first, second, top = (25_000.0, 30_000.0), (30_000.0, 40_000.0), (40_000.0, None)
+    source = {
+        split: {_LOW: 100, first: 1, second: 1, top: 1}
+        for split in ("one_qualifying_child", "two_qualifying_children")
+    }
+    facts = _decomposition_facts(
+        kind="amount", source=source, active={_LOW: 500, _HIGH: 10}
+    )
+    for split in source:
+        facts.append(_child_fact(measure, split, (25_000.0, 40_000.0), 0))
+
+    with pytest.raises(ValueError, match="is zero, but bins inside it are not"):
+        _compile(facts)
+
+
 def test_the_adjustment_is_relative_to_the_recorded_group_factor() -> None:
     """microcosm#1235 review: a published subtotal ($301) can differ from its
     bins ($200 + $100) by rounding. The per-row factor of the $25,000-and-over
@@ -580,6 +630,19 @@ def test_rake_refuses_margins_it_cannot_meet(seed, rows, columns, message) -> No
         ([[1e308, 1e308], [1e308, 1e308]], [1.0, 1.0], [1.0, 1.0]),
         # Seventeen splits, checked over the two groups.
         ([[1.0, 1.0]] * 17, [1.0] * 17, [10.0, 7.0]),
+        # Review round 3: splits one and two hold 2**-24 less than group one,
+        # but their float sum rounds to the group's total exactly.
+        (
+            [[1_056_964_608.0, 0.0], [16_777_215.0, 0.0], [1.0, 16_777_216.0]],
+            [
+                1_056_964_608.0 * (1 + 2**-24),
+                16_777_215.0 * (1 + 2**-24),
+                16_777_217.0 * (1 + 2**-24),
+            ],
+            [1_073_741_887.0, 16_777_218.0],
+        ),
+        # Review round 3: dividing 1e-308 by the largest cell underflowed.
+        ([[1e-308, 0.0], [0.0, 1e308]], [1.0, 1.0], [1.0, 1.0]),
     ],
 )
 def test_rake_meets_feasible_ill_conditioned_margins(seed, rows, columns) -> None:
