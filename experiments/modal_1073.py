@@ -23,9 +23,10 @@ fails):
   ``tools/generate_us_bundle_from_constants.py`` after a hand edit of
   ``source_stages.json``;
 - ``tests``: the stage's unit tests;
-- ``spec``: the engine-free and engine-contract tests that read the spec
-  bundle, the stored-input register and the SCF stages, plus the release
-  tool's education-debt tests;
+- ``spec``: the bundle generator and the spec-engine coverage attestation in
+  ``--check`` mode, then the engine-free and engine-contract tests that read
+  the spec bundle, the stored-input register and the SCF stages, plus the
+  release tool's education-debt tests;
 - ``hostfit``, ``shift``, ``explore``: the #1073 diagnostics;
 - ``receipt``: the fit receipt, labelled with the run id.
 
@@ -93,6 +94,8 @@ STEPS: dict[str, list[list[str]]] = {
         ]
     ],
     "spec": [
+        ["{python}", "tools/generate_us_bundle_from_constants.py", "--check"],
+        ["{python}", "tools/spec_engine_coverage.py", "--check"],
         [
             "{python}",
             "-m",
