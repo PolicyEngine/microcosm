@@ -23,7 +23,10 @@ from microcosm.build.stochastic_assignment import (
     clipped_normal_from_uniforms,
     stable_identity_uniforms,
 )
-from microcosm.build.uk_runtime.frs_take_up import UK_TAKE_UP_DECLARED_SEEDS
+from microcosm.build.uk_runtime.frs_take_up import (
+    UK_TAKE_UP_DECLARED_SEEDS,
+    nest_universal_childcare,
+)
 from microcosm.build.uk_runtime.ledger_targets import _candidate_facts_for_reference
 from microcosm.build.uk_runtime.take_up_contract import (
     UKTakeUpContract,
@@ -31,7 +34,7 @@ from microcosm.build.uk_runtime.take_up_contract import (
 )
 from microcosm.calibrate import TargetRegistry
 
-TOOL_VERSION = 4
+TOOL_VERSION = 5
 TARGET_IDS = (
     "hmrc.tfc.government_top_up",
     "hmrc.tfc.children_with_used_accounts",
@@ -72,9 +75,15 @@ def draw_childcare_inputs(
         "would_claim_universal_childcare",
     )
     for output, rate in zip(names, params, strict=True):
-        outputs[output] = stable_identity_uniforms(ids, seed=seed, salt=output) < float(
-            rate
-        )
+        draws = stable_identity_uniforms(ids, seed=seed, salt=output)
+        if output == "would_claim_universal_childcare":
+            # Nested under the extended flag, as frs_take_up draws it: the
+            # universal rate is conditional on not claiming the extended hours.
+            outputs[output] = nest_universal_childcare(
+                outputs["would_claim_extended_childcare"], draws, float(rate)
+            )
+        else:
+            outputs[output] = draws < float(rate)
     hours = contract.continuous_entry("maximum_extended_childcare_hours_usage")
     outputs["maximum_extended_childcare_hours_usage"] = clipped_normal_from_uniforms(
         stable_identity_uniforms(
@@ -276,13 +285,18 @@ class ChildcareExpectationBasis:
 
     ``with_extended`` holds each target's weighted per-row values when every
     flag is True; ``without_extended`` the same with the extended flag False.
+    The universal flag is nested under the extended one (frs_take_up), so a
+    family that claims the extended hours claims the universal hours, and the
+    universal rate is the rate among families that do not: the universal row's
+    expected value is ``r_e * sum(with_ext) + (1 - r_e) * r_u * sum(without_ext)``
+    and needs no allocated term (tool version 5).
     Since policyengine-uk 2.131 (pe-uk#2177) universal and targeted hours stay
     beside the working-parent hours, and a family that does not claim them on
     their own still receives them, allocated first from a participating
     child's working-parent hours (DfE guidance A1.11).
     ``allocated_from_extended`` holds those rows: the targeted and universal
-    flags False and the extended flag True. So at rates ``r`` a targeted or
-    universal target's expected value is
+    flags False and the extended flag True. So at rates ``r`` the targeted
+    target's expected value is
     ``r_own * sum(with_ext * r_e + without_ext * (1 - r_e))
     + (1 - r_own) * r_e * sum(allocated)``, linear in the own rate and
     bilinear with the extended rate, and the extended row is
@@ -331,6 +345,13 @@ def expected_childcare_counts(
             expected[target] = extended * float(with_ext.sum())
             continue
         without_ext = basis.without_extended[target]
+        if own == "universal_childcare":
+            # Nested: an extended claimant claims the universal hours, any
+            # other family at the conditional universal rate.
+            expected[target] = extended * float(with_ext.sum()) + (
+                1.0 - extended
+            ) * rates[own] * float(without_ext.sum())
+            continue
         expected[target] = rates[own] * float(
             (with_ext * extended + without_ext * (1.0 - extended)).sum()
         )
@@ -420,13 +441,18 @@ def _basis_side(
     extended_receiving = np.asarray(
         sim.calculate("is_child_receiving_extended_childcare", target_period)
     )
+    # DfE's January registrations leave out children in reception, so neither
+    # the working-parent nor the universal-only row counts a child in primary
+    # education (the calibration bindings carry the same filter).
+    not_in_reception = _current_education(sim, target_period) != "PRIMARY"
     return {
         "hmrc.tfc.government_top_up": rows("tax_free_childcare"),
         "hmrc.tfc.children_with_used_accounts": rows(
             "is_child_receiving_tax_free_childcare"
         ),
         "dfe.funded_childcare.working_parent_children_2_to_4": rows(
-            "is_child_receiving_extended_childcare", extended_receiving & (age >= 2)
+            "is_child_receiving_extended_childcare",
+            extended_receiving & (age >= 2) & not_in_reception,
         ),
         "dfe.funded_childcare.early_learning_2_year_olds": rows(
             "is_child_receiving_targeted_childcare"
@@ -439,16 +465,28 @@ def _basis_side(
             np.asarray(
                 sim.calculate("is_child_receiving_universal_childcare", target_period)
             )
-            & ~extended_receiving,
+            & ~extended_receiving
+            & not_in_reception,
         ),
     }
+
+
+def _current_education(sim: Any, period: int) -> np.ndarray:
+    """Each person's ``current_education`` as enum names."""
+
+    values = sim.calculate("current_education", period)
+    for candidate in (values, getattr(values, "values", None)):
+        if hasattr(candidate, "decode_to_str"):
+            return np.asarray(candidate.decode_to_str()).astype(str)
+    return np.asarray(values).astype(str)
 
 
 def compute_childcare_basis(
     input_h5: Path, target_period: int, contract: UKTakeUpContract
 ) -> ChildcareExpectationBasis:
     """Three engine runs: extended on and off with every other flag on, and
-    extended on with the targeted and universal flags off."""
+    extended on with the targeted and universal flags off (the targeted row's
+    allocation side; the nested universal row needs none)."""
 
     with_extended = _basis_side(input_h5, target_period, contract, extended=True)
     without_extended = _basis_side(input_h5, target_period, contract, extended=False)
@@ -461,7 +499,7 @@ def compute_childcare_basis(
         allocated_from_extended={
             target: allocation[target]
             for target, own in OWN_RATE_BY_TARGET.items()
-            if own in ("targeted_childcare", "universal_childcare")
+            if own == "targeted_childcare"
         },
         rows=int(with_extended["hmrc.tfc.children_with_used_accounts"].shape[0]),
     )
