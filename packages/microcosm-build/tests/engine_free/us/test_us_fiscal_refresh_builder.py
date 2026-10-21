@@ -5984,25 +5984,22 @@ def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
     written = _write_release_diagnostics_with_nan_final_loss(small_frame, tmp_path)
 
     diagnostics = json.loads(written.read_text())
-    assert diagnostics["schema_version"] == 8
+    # Published as schema 9: the labels sit in catalogs, the row refers to them.
+    assert diagnostics["schema_version"] == 9
     assert diagnostics["targets"][0]["source"] == "fixture"
     assert diagnostics["targets"][0]["hierarchy"] == {
-        "provider": {
-            "id": "irs_soi",
-            "label": "IRS Statistics of Income",
-        },
-        "category": {
-            "id": "irs_soi.income",
-            "label": "Income",
-            "provider_id": "irs_soi",
-        },
-        "geography": {
-            "id": "0400000US06",
-            "label": "California",
-            "level": "state",
-        },
+        "category_id": "irs_soi.income",
+        "geography_id": "0400000US06",
         "dimensions": [],
         "target": {"id": "income", "label": "Income"},
+    }
+    assert diagnostics["hierarchy_catalogs"] == {
+        "providers": [{"id": "irs_soi", "label": "IRS Statistics of Income"}],
+        "categories": [
+            {"id": "irs_soi.income", "label": "Income", "provider_id": "irs_soi"}
+        ],
+        "geographies": [{"id": "0400000US06", "label": "California", "level": "state"}],
+        "dimensions": [],
     }
     assert diagnostics["final_loss"] is None
     assert diagnostics["build"]["default_dataset"]["final_loss"] is None
