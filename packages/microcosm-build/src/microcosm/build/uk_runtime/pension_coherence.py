@@ -10,19 +10,21 @@ of the spine broke that link:
   adult's usual earnings (ADULT.INEARNS), so a deduction can exceed the pay
   recorded beside it;
 - an SPI-channel row redraws its pay from the tape, while a forest trained on
-  FRS rows draws its contributions. The forest reads the drawn pay, but it
-  decides whether the row has an employer contribution apart from the twin's
-  scheme record, and it can only draw amounts that FRS rows in the same leaf
-  received, so it cannot scale them to pay above the FRS's range.
+  FRS rows draws its contributions. The forest reads the drawn pay, so it
+  draws whether the row has an employer contribution in line with that pay,
+  but it can only draw amounts that FRS rows in the same leaf received, so it
+  cannot scale them to pay above the FRS's range.
 
-So employee contributions are capped at pay, and an SPI-channel row takes its
-employer contribution as microcosm#1069 sets an FRS row's: its FRS twin's
-scheme record times its own pay. A twin in an employer scheme carries the rate
-its ASHE draw gave it, and a twin with pay outside any employer scheme carries
-a rate of zero (María's ruling of 2026-10-20). A twin without pay records no
-scheme, so the row keeps the forest's draw, bounded by ASHE's top employer rate
-times its own pay. Personal (relief-at-source) contributions are left as
-recorded: the engine itself limits their relief.
+So employee contributions are capped at pay. An SPI-channel row keeps the
+forest's decision on whether it has an employer contribution, and a row that
+has one takes its FRS twin's rate, which the ASHE draw of microcosm#1069 set,
+times its own pay. The twin's scheme record is not carried over: it describes
+the twin's job at the twin's pay, and the row's pay is redrawn, so carrying it
+put members at pay where few people are members (María's ruling of 2026-10-21,
+after Vahid's review of microcosm#1332). Where the twin has no rate to read,
+the forest's amount stays, bounded by ASHE's top employer rate times the row's
+pay. Personal (relief-at-source) contributions are left as recorded: the
+engine itself limits their relief.
 """
 
 from __future__ import annotations
@@ -63,10 +65,10 @@ def twin_rate_employer_contributions(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Employer contributions at the FRS twin's rate times the row's own pay.
 
-    Every row whose twin has pay takes the twin's rate, which is zero for a
-    twin outside any employer scheme, so the row's membership is the twin's
-    both ways. A row whose twin has no pay keeps its drawn contribution,
-    bounded by ASHE's top rate times its pay.
+    The drawn contribution decides membership: a row the forest gave none
+    keeps none. A member whose twin has pay and an employer contribution
+    takes the twin's rate times its own pay; any other member keeps its drawn
+    contribution, bounded by ASHE's top rate times its pay.
 
     Returns the contributions, the rows that took their twin's rate, and the
     rows whose drawn contribution the ASHE ceiling bounded.
@@ -78,10 +80,11 @@ def twin_rate_employer_contributions(
     twin_employer = np.maximum(np.asarray(twin_employer, dtype=np.float64), 0.0)
     if not drawn.shape == pay.shape == twin_pay.shape == twin_employer.shape:
         raise ValueError("employer inputs must have one value per person.")
-    from_twin = twin_pay > 0.0
+    has_rate = (twin_pay > 0.0) & (twin_employer > 0.0)
     rate = np.divide(
-        twin_employer, twin_pay, out=np.zeros_like(twin_pay), where=from_twin
+        twin_employer, twin_pay, out=np.zeros_like(twin_pay), where=has_rate
     )
+    from_twin = (drawn > 0.0) & has_rate
     bounded = np.minimum(drawn, ASHE_EMPLOYER_RATE_CEILING * pay)
     employer = np.where(from_twin, rate * pay, bounded)
     return employer, from_twin, ~from_twin & (bounded < drawn)

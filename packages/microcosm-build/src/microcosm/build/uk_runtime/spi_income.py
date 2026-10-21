@@ -2517,11 +2517,11 @@ def _spi_pension_coherence(
     """Tie an SPI row's contributions to the pay the tape drew for it.
 
     Stage 2 draws the contributions from a forest trained on FRS rows. It reads
-    the drawn pay, but it draws whether the row has an employer contribution
-    apart from the twin's scheme record, and it cannot scale amounts beyond the
-    FRS's pay. So the employee (net-pay) contribution is capped at the row's
-    pay, and the employer contribution is the FRS twin's rate, zero outside an
-    employer scheme, times the row's pay (``uk_runtime.pension_coherence``).
+    the drawn pay, so whether the row has an employer contribution follows that
+    pay, but it cannot scale amounts beyond the FRS's pay. So the employee
+    (net-pay) contribution is capped at the row's pay, and a row the forest
+    gave an employer contribution takes the FRS twin's rate times its own pay
+    where the twin has one (``uk_runtime.pension_coherence``).
     """
 
     rows = spi_people.to_numpy(dtype=bool)
@@ -2556,14 +2556,7 @@ def _spi_pension_coherence(
             source_ids=sources,
         ),
         "employer_at_twin_rate": coherence_receipt(
-            changed=from_twin & (twin_employer > 0.0),
-            before=employer_before,
-            after=employer,
-            weights=weights,
-            source_ids=sources,
-        ),
-        "employer_none_outside_twin_scheme": coherence_receipt(
-            changed=from_twin & (twin_employer <= 0.0) & (employer_before > 0.0),
+            changed=from_twin,
             before=employer_before,
             after=employer,
             weights=weights,
