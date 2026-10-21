@@ -10386,6 +10386,7 @@
       "kind",
       "lowercase_columns",
       "survey_years",
+      "fare_cap_regime",
       "cars_clip",
       "age_band_edges",
       "trip_weight_basis",
@@ -10404,6 +10405,36 @@
        "type": "array",
        "items": {
         "type": "integer"
+       }
+      },
+      "fare_cap_regime": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "cap_fare",
+        "cap_years",
+        "pre_cap_years",
+        "cap_tolerance"
+       ],
+       "properties": {
+        "cap_fare": {
+         "type": "number"
+        },
+        "cap_years": {
+         "type": "array",
+         "items": {
+          "type": "integer"
+         }
+        },
+        "pre_cap_years": {
+         "type": "array",
+         "items": {
+          "type": "integer"
+         }
+        },
+        "cap_tolerance": {
+         "type": "number"
+        }
        }
       },
       "cars_clip": {

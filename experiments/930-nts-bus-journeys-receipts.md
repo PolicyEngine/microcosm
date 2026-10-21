@@ -570,3 +570,47 @@ and #979's own CGT files): 1,118 tests, 0 failures.
 The incidence anchor runs after `hmrc_cgt_asset_type_spine`, downstream of the three bus stages,
 so every stage receipt in Parts E–K stands as written; only the terminal weights and a calibration
 on the rebased tree would move, and neither is re-run here.
+
+## Part M — the single-ticket share from the cap years, and fare-mix lines (microcosm#1331, 2026-10-21)
+
+microcosm#1331 items 3 and 4, folded into #1333 ahead of policyengine-uk's index-based fares
+(PolicyEngine/policyengine-uk#2546).
+
+**The share from the cap years (item 3).** The `clean_nts_travel_tables` operation declares
+`fare_cap_regime`: England's £2 single-fare cap outside London (`cap_fare` 2.0) covers the whole of
+the 2023 and 2024 survey years (`cap_years`; an NTS survey year is a calendar year, and the cap ran
+from 1 January 2023 to 31 December 2024) and none of 2022 (`pre_cap_years`), with a penny's
+tolerance. The stage reads the single-ticket share on the cap years only, because the FRS 2024-25
+base year sits under the same cap; the band and trip fit keep all three years. An engine-free run
+on the pinned tabs reads, for the other-local-bus series outside London, a share of fare-paying
+boardings paid at the point of use of 0.70 pooled over 2022–24, 0.57 in 2022 alone and 0.73 on
+2023–24. The bus-in-London share in London stays at 0.90. One band cell has no fare-paying
+boardings in the cap years and takes its group's share (receipted). Once the engine prices fares
+from the index, the share scales the reform's cap term only. The share under the £3 cap (from
+January 2025) or with no cap is not observed: the extract ends in 2024.
+
+**The receipt's weight.** The ticket receipt weighted each boarding by its trip factor with the
+household weight W2 divided out, the form the person-level sums need before the W2-weighted shares
+multiply it back. So every diary household counted alike in the receipt's shares and fares. The
+receipt now multiplies W2 back, which gives the full trip weight (W5 x JJXSC) that the stage's
+share uses; no stage output read the receipt. Rest of England, single share of fare-paying
+boardings: 0.58 in 2022, 0.73 in 2023 and 0.74 in 2024 (Part J, on the old weight: 0.60, 0.74,
+0.74); fare paid per boarding £1.91, £1.78 and £1.83 (Part J: £1.97, £1.76, £1.82). London: 0.92,
+0.89 and 0.90; £1.46, £1.64 and £1.63. Parts I and J read the old weight.
+
+**Fare-mix lines (item 4, report only).** For residents of England outside London, over
+point-of-use boardings (singles, returns and day tickets bought for the journey), on the full trip
+weight:
+
+- 2022, before the cap: 0.35 of boardings paid more than £2, at a mean fare of £2.83 (2022 prices).
+- 2023 and 2024, under the cap: 0.46 and 0.53 paid £2, within a penny.
+
+A line reads `<10` unless it and its complement each rest on at least 10 unweighted boardings and
+10 distinct households (one respondent makes many boardings); none is withheld here. Shares are
+rounded to two decimals and fares to the penny, and no minimum, maximum or percentile is reported.
+For comparison, DfT's evaluation of the cap (Frontier Economics and SYSTRA, Table 6) reports
+single tickets above £2 averaging £2.73 before the cap and under half of pre-cap trips. The fitted
+table of PolicyEngine/policyengine-uk#2546 puts 0.45 of single tickets above £2 at a mean of £2.76,
+at FY2024-25 prices. The NTS lines agree in shape. They cover returns and day tickets as well as
+singles and are at 2022 prices, so uprate them by the BUS0415a index before a closer comparison.
+The frame's share moves on #1333's next arm.
