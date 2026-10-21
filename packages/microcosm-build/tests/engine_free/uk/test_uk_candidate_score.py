@@ -123,12 +123,21 @@ def _intercept(monkeypatch, *, failing_h5: Path, message: str, receipt: dict):
     original = candidate_score._scored_frame
     calls: list[dict] = []
 
-    def fake(h5_path, registry, calibration_year, factory, *, band_edge_registry=None):
+    def fake(
+        h5_path,
+        registry,
+        calibration_year,
+        factory,
+        *,
+        band_edge_registry=None,
+        incumbent=False,
+    ):
         calls.append(
             {
                 "h5": Path(h5_path),
                 "targets": [spec.name for spec in registry.specs],
                 "band_edge_registry": band_edge_registry,
+                "incumbent": incumbent,
             }
         )
         if Path(h5_path) == failing_h5 and any(
@@ -223,6 +232,10 @@ def test_prunes_the_target_the_incumbent_cannot_materialize_and_scores_the_rest(
     scoring_calls = [call for call in calls if call["targets"] == ["target_a"]]
     assert scoring_calls and all(
         call["band_edge_registry"] is full for call in scoring_calls
+    )
+    # Only the incumbent may read its current income for the annual measures.
+    assert calls and all(
+        call["incumbent"] == (call["h5"] == incumbent) for call in calls
     )
     warning = pruned_warning(score)
     assert warning is not None
@@ -513,7 +526,15 @@ def test_a_gap_shared_by_both_artifacts_still_refuses_on_the_candidate(
     original = candidate_score._scored_frame
     calls: list[tuple[Path, list[str]]] = []
 
-    def fake(h5_path, registry, calibration_year, factory, *, band_edge_registry=None):
+    def fake(
+        h5_path,
+        registry,
+        calibration_year,
+        factory,
+        *,
+        band_edge_registry=None,
+        incumbent=False,
+    ):
         calls.append((Path(h5_path), [spec.name for spec in registry.specs]))
         if any(spec.name == "target_b" for spec in registry.specs):
             raise MeasureResolutionError(

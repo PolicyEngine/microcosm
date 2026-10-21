@@ -2022,3 +2022,246 @@ def test_a_persisted_dfe_spring_term_column_is_refused(monkeypatch, tmp_path: Pa
             year=2025,
             frame=frame,
         )
+
+
+# The annual income measures: each current measure on a simulation of each
+# person's year, built from the frs_annual_income_spells descriptors.
+_ANNUAL_DESCRIPTORS = {
+    # Person 1 is paid all year; person 2 left a job and retired in the year,
+    # on a State Pension that started two months before its middle; person 3
+    # started a job half way through and ran a business for half of it.
+    "employment_income_annual_share": [1.0, 1.0, 0.5],
+    "employment_income_other_spells": [0.0, 9_000.0, 0.0],
+    "self_employment_income_annual_share": [1.0, 1.0, 0.5],
+    "self_employment_income_other_spells": [0.0, 0.0, 1_000.0],
+    "private_pension_income_annual_share": [1.0, 0.25, 1.0],
+    "contributory_benefits_annual_share": [1.0, 0.25, 1.0],
+}
+
+
+class _AnnualFrameStub(FrameStub):
+    metadata = {"time_period": "2024"}
+
+    def __init__(self, descriptors=_ANNUAL_DESCRIPTORS):
+        super().__init__()
+        for column, values in descriptors.items():
+            self._tables["person"][column] = values
+
+
+class _AnnualSimulation:
+    """A stub engine that uprates stored inputs and taxes total income."""
+
+    created = 0
+    uprating = {
+        "employment_income_before_lsr": 1.05,
+        "self_employment_income": 1.03,
+        "private_pension_income": 1.02,
+        "jsa_contrib_reported": 1.02,
+        "esa_contrib_reported": 1.02,
+        "incapacity_benefit_reported": 1.02,
+    }
+    extra_inputs: dict = {}
+
+    def __init__(self, *, dataset):
+        type(self).created += 1
+        self.stored = {
+            ("employment_income_before_lsr", 2024): np.array([30_000.0, 0.0, 20_000.0]),
+            ("self_employment_income", 2024): np.array([0.0, 0.0, 6_000.0]),
+            ("private_pension_income", 2024): np.array([0.0, 8_000.0, 0.0]),
+            ("jsa_contrib_reported", 2024): np.zeros(3),
+            ("esa_contrib_reported", 2024): np.array([0.0, 2_000.0, 0.0]),
+            ("incapacity_benefit_reported", 2024): np.zeros(3),
+            ("loss_relief", 2024): np.zeros(3),
+            **type(self).extra_inputs,
+        }
+        names = (
+            *self.uprating,
+            "employment_income",
+            "loss_relief",
+            "state_pension",
+            "months_since_state_pension_age",
+            "carers_allowance",
+            "carer_support_payment",
+            "scottish_carer_supplement",
+            "total_income",
+            "income_tax",
+        )
+        variables = {
+            name: SimpleNamespace(
+                entity=SimpleNamespace(key="person"), value_type=float
+            )
+            for name in names
+        }
+        variables["tax_band"] = SimpleNamespace(
+            entity=SimpleNamespace(key="person"), value_type=str
+        )
+        self.tax_benefit_system = SimpleNamespace(variables=variables)
+
+    def set_input(self, variable, year, values):
+        self.stored[(variable, int(year))] = np.asarray(values, dtype=float)
+
+    def calculate(self, variable, year, map_to=None):
+        year = int(year)
+        if (variable, year) in self.stored:
+            return self.stored[(variable, year)]
+        if variable in self.uprating or variable == "loss_relief":
+            source = max(y for v, y in self.stored if v == variable and y <= year)
+            factor = self.uprating.get(variable, 1.0) ** (year - source)
+            return self.stored[(variable, source)] * factor
+        pay = self.calculate("employment_income_before_lsr", year)
+        if variable == "employment_income":
+            return pay
+        if variable == "months_since_state_pension_age":
+            return np.array([-200.0, 2.0, -100.0])
+        if variable == "state_pension":
+            return np.array([0.0, 11_000.0, 0.0])
+        if variable == "carers_allowance":
+            # Earnings-tested: the year's pay must not take it away.
+            return np.where(pay < 5_000.0, 4_000.0, 0.0)
+        if variable in ("carer_support_payment", "scottish_carer_supplement"):
+            return np.zeros(3)
+        total = sum(
+            self.calculate(name, year)
+            for name in (
+                "employment_income",
+                "self_employment_income",
+                "private_pension_income",
+                "state_pension",
+                "jsa_contrib_reported",
+                "esa_contrib_reported",
+                "incapacity_benefit_reported",
+                "carers_allowance",
+            )
+        )
+        if variable == "total_income":
+            return total
+        if variable == "income_tax":
+            return 0.2 * np.maximum(total - 12_570.0, 0.0)
+        if variable == "tax_band":
+            return np.where(
+                total > 50_270.0, "HIGHER", np.where(total > 12_570.0, "BASIC", "NONE")
+            )
+        raise KeyError(variable)
+
+
+def _annual_resolver(monkeypatch, tmp_path, frame=None):
+    _AnnualSimulation.created = 0
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_uk",
+        SimpleNamespace(__version__="9.9.9", Microsimulation=_AnnualSimulation),
+    )
+    return UKMeasureResolver(
+        simulation_source=tmp_path / "input.h5",
+        scratch_dir=tmp_path,
+        year=2025,
+        frame=_AnnualFrameStub() if frame is None else frame,
+    )
+
+
+def test_state_pension_annual_share_counts_the_months_paid_in_the_year():
+    share = measure_simulation.state_pension_annual_share(
+        [-12.0, -6.0, -5.5, 0.0, 2.0, 6.0, 30.0, np.nan]
+    )
+    np.testing.assert_allclose(share, [1.0, 1.0, 0.5 / 12, 0.5, 8 / 12, 1.0, 1.0, 1.0])
+
+
+def test_annual_measures_read_each_persons_year(monkeypatch, tmp_path):
+    resolver = _annual_resolver(monkeypatch, tmp_path)
+
+    pay, route = resolver.compute("person", "employment_income_annual")
+    # The engine carries the year's pay from 2024 at its own index.
+    np.testing.assert_allclose(pay, [31_500.0, 9_450.0, 10_500.0])
+    assert route == "annual_income_simulation:native"
+    profit, route = resolver.compute(
+        "person", "self_employment_income_after_loss_relief_annual"
+    )
+    np.testing.assert_allclose(profit, [0.0, 0.0, 4_120.0])
+    assert route.startswith("annual_income_simulation:engine_components")
+    pension, _ = resolver.compute("person", "private_pension_income_annual")
+    np.testing.assert_allclose(pension, [0.0, 2_040.0, 0.0])
+    state_pension, _ = resolver.compute("person", "state_pension_annual")
+    np.testing.assert_allclose(state_pension, [0.0, 11_000.0 * 8 / 12, 0.0])
+    total, _ = resolver.compute("person", "total_income_after_loss_relief_annual")
+    # Person 2 keeps the Carer's Allowance paid at the earnings of the time.
+    annual_total = np.array(
+        [31_500.0, 9_450.0 + 2_040.0 + 11_000.0 * 8 / 12 + 510.0 + 4_000.0, 14_620.0]
+    )
+    np.testing.assert_allclose(total, annual_total)
+    tax, _ = resolver.compute("person", "income_tax_annual")
+    np.testing.assert_allclose(tax, 0.2 * np.maximum(annual_total - 12_570.0, 0.0))
+    band, _ = resolver.compute("person", "tax_band_annual")
+    assert list(band) == ["BASIC", "BASIC", "BASIC"]
+    # The current measures are untouched, and one annual simulation serves all.
+    current_tax, _ = resolver.compute("person", "income_tax")
+    assert current_tax[1] == pytest.approx(
+        0.2 * (8_160.0 + 11_000.0 + 2_040.0 + 4_000.0 - 12_570.0)
+    )
+    assert _AnnualSimulation.created == 2
+    receipt = resolver.receipt()["annual_income_measures"]
+    assert receipt["route"] == "annual_income_simulation"
+    assert receipt["dataset_year"] == 2024
+    assert receipt["computed_measures"]["income_tax_annual"] == "income_tax"
+    assert receipt["held_at_baseline"] == [
+        "carers_allowance",
+        "carer_support_payment",
+        "scottish_carer_supplement",
+    ]
+    for name in measure_simulation.UK_ANNUAL_INCOME_MEASURES:
+        assert resolver.knows("person", name)
+        assert resolver.entity_for(name) == "person"
+
+
+def test_annual_measures_refuse_a_frame_without_descriptors(monkeypatch, tmp_path):
+    frame = _AnnualFrameStub(descriptors={})
+    resolver = _annual_resolver(monkeypatch, tmp_path, frame=frame)
+    assert not resolver.knows("person", "income_tax_annual")
+    with pytest.raises(KeyError, match="annual income descriptors"):
+        resolver.compute("person", "income_tax_annual")
+    # The incumbent alone reads its current values.
+    resolver.use_current_income_for_annual_measures(reason="incumbent")
+    assert resolver.knows("person", "income_tax_annual")
+    tax, route = resolver.compute("person", "income_tax_annual")
+    current, _ = resolver.compute("person", "income_tax")
+    np.testing.assert_allclose(tax, current)
+    assert route.startswith("current_values_without_annual_income_descriptors:")
+    assert _AnnualSimulation.created == 1
+    receipt = resolver.receipt()["annual_income_measures"]
+    assert receipt["route"] == "current_values_without_annual_income_descriptors"
+    assert receipt["reason"] == "incumbent"
+
+
+def test_the_incumbent_fallback_never_hides_descriptors(monkeypatch, tmp_path):
+    resolver = _annual_resolver(monkeypatch, tmp_path)
+    resolver.use_current_income_for_annual_measures(reason="incumbent")
+    pay, route = resolver.compute("person", "employment_income_annual")
+    np.testing.assert_allclose(pay, [31_500.0, 9_450.0, 10_500.0])
+    assert route.startswith("annual_income_simulation:")
+    partial = dict(_ANNUAL_DESCRIPTORS)
+    partial.pop("contributory_benefits_annual_share")
+    resolver = _annual_resolver(
+        monkeypatch, tmp_path, frame=_AnnualFrameStub(descriptors=partial)
+    )
+    with pytest.raises(ValueError, match="only some annual income descriptors"):
+        resolver.knows("person", "income_tax_annual")
+
+
+def test_other_spells_follow_one_engine_factor(monkeypatch, tmp_path):
+    # A projection that is not one factor for every row cannot carry the
+    # other spells as it carries pay.
+    _AnnualSimulation.extra_inputs = {
+        ("employment_income_before_lsr", 2025): np.array([31_500.0, 0.0, 22_000.0])
+    }
+    try:
+        resolver = _annual_resolver(monkeypatch, tmp_path)
+        with pytest.raises(ValueError, match="by one factor"):
+            resolver.compute("person", "income_tax_annual")
+    finally:
+        _AnnualSimulation.extra_inputs = {}
+    factors = _annual_resolver(monkeypatch, tmp_path)
+    factors.compute("person", "employment_income_annual")
+    receipt = factors.receipt()["annual_income_measures"]
+    assert receipt["other_spells_engine_factors"] == {
+        "employment_income_before_lsr": pytest.approx(1.05),
+        "self_employment_income": pytest.approx(1.03),
+    }
