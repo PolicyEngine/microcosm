@@ -1217,16 +1217,19 @@ def _prior_shape_receipt(
     receipt follows UKDS disclosure control (microcosm#1164): the adjustment's
     10th, 50th and 90th percentiles, never a minimum or a maximum, shares
     floored, and counts of copies at a bound or far from an equal weight
-    banded.
+    banded. A channel of one to nine copies (a small scale-ladder rung) gives
+    "<10" in place of its percentiles and shares, which would rest on fewer
+    than ten source households.
     """
 
     lower, upper = _SPI_PRIOR_SHAPE_RECEIPT_FACTORS
+    small = len(equal_weight_factor) < 10
     receipt: dict[str, object] = {
         **shape.to_evidence(),
         "design_weight": "source household's incoming spine weight",
         "copies": rounded_count(len(equal_weight_factor)),
-        "copy_weight_over_equal_weight_p10_p50_p90": _percentiles_10_50_90(
-            equal_weight_factor
+        "copy_weight_over_equal_weight_p10_p50_p90": (
+            "<10" if small else _percentiles_10_50_90(equal_weight_factor)
         ),
         f"copies_below_{lower:g}_of_equal_weight": extreme_count(
             int((equal_weight_factor < lower).sum())
@@ -1239,8 +1242,12 @@ def _prior_shape_receipt(
         low, high = shape.bounds
         clipped_low = relative_design_weight < low
         clipped_high = relative_design_weight > high
-        receipt["clipped_low_share"] = floored_share(float(clipped_low.mean()))
-        receipt["clipped_high_share"] = floored_share(float(clipped_high.mean()))
+        receipt["clipped_low_share"] = (
+            "<10" if small else floored_share(float(clipped_low.mean()))
+        )
+        receipt["clipped_high_share"] = (
+            "<10" if small else floored_share(float(clipped_high.mean()))
+        )
         receipt["clipped_low_copies"] = extreme_count(int(clipped_low.sum()))
         receipt["clipped_high_copies"] = extreme_count(int(clipped_high.sum()))
     return receipt

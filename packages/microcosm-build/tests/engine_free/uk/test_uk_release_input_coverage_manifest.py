@@ -185,12 +185,14 @@ def test_hmrc_stage_is_required_while_the_208_fact_replay_remains_fenced() -> No
         "spi_income_band_donors",
     ]
     # The declared allocation's own sentence: a pension-age share is declared
-    # since microcosm#1069 c6.
+    # since microcosm#1069 c6, and the copies' design-weight shape since the
+    # SPI-channel design prior.
     assert family["required_mass_change_reason"] == (
         "Allocate 0.5 of certified UK national household prior mass in "
         "households without, and 0.2 in households with, a member at or over "
-        "State Pension age to the rebuilt 2022-23 SPI support channel; total "
-        "national mass is conserved."
+        "State Pension age to the rebuilt 2022-23 SPI support channel, shared "
+        "among each stratum's copies in proportion to their source households' "
+        "design weights to the power 0.5; total national mass is conserved."
     )
     assert family["input_weight_kind"] == "importance"
     assert family["output_weight_kind"] == "importance"

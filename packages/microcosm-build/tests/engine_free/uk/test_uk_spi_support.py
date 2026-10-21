@@ -936,20 +936,41 @@ def test_spi_prior_shape_receipt_gives_aggregates_only() -> None:
 
     assert equal.prior_shape_allocation is None
     assert equal.mass_log[-1].reason == SPI_PRIOR_MASS_CHANGE_REASON
-    receipt = bounded.prior_shape_allocation
-    assert receipt["shape"] == "design_bounded"
-    assert receipt["bounds"] == [0.5, 2.0]
-    assert receipt["copies"] == "<10"
-    # Equal weight is 10: four copies at 6.25 and one at 25. Only the
+    # Five copies: the percentiles and shares would rest on fewer than ten
+    # source households, so the receipt withholds them.
+    small = bounded.prior_shape_allocation
+    assert small["shape"] == "design_bounded"
+    assert small["bounds"] == [0.5, 2.0]
+    assert small["copies"] == "<10"
+    assert small["copy_weight_over_equal_weight_p10_p50_p90"] == "<10"
+    assert small["clipped_low_share"] == "<10"
+    assert small["clipped_high_share"] == "<10"
+    assert small["clipped_low_copies"] == "<10"
+    assert small["clipped_high_copies"] == "<10"
+
+    person, benunit, household = _shaped_frames([1.0, 10.0, 10.0, 10.0, 69.0] * 2)
+    receipt = build_uk_spi_support_channel(
+        person=person,
+        benunit=benunit,
+        household=household,
+        spi_household_count=10,
+        seed=42,
+        source_year=2023,
+        strata_columns=("region",),
+        prior_shape=spi_support.UKSPIPriorShape("design_bounded", bounds=(0.5, 2.0)),
+    ).prior_shape_allocation
+    assert receipt["copies"] == 10
+    # Equal weight is 5: eight copies at 3.125 and two at 12.5. Only the
     # relative weights 0.05 and 3.45 lie outside the bounds.
-    assert receipt["copy_weight_over_equal_weight_p10_p50_p90"] == [0.62, 0.62, 1.75]
+    assert receipt["copy_weight_over_equal_weight_p10_p50_p90"] == [0.62, 0.62, 2.5]
     assert receipt["clipped_low_share"] == 0.2
     assert receipt["clipped_high_share"] == 0.2
     assert receipt["clipped_low_copies"] == "<10"
     assert receipt["clipped_high_copies"] == "<10"
     assert receipt["copies_above_2_of_equal_weight"] == "<10"
     assert receipt["copies_below_0.5_of_equal_weight"] == 0
-    assert not any("min" in key or "max" in key for key in receipt)
+    for allocation in (small, receipt):
+        assert not any("min" in key or "max" in key for key in allocation)
 
 
 def test_spi_prior_refuses_a_copy_of_a_zero_weight_source() -> None:

@@ -938,8 +938,8 @@ def test_support_transform_records_the_declared_prior_shape() -> None:
     assert receipt["shape"] == "design_damped"
     assert receipt["exponent"] == 0.5
     assert receipt["copies"] == "<10"
-    # One copy per region stratum: each takes its stratum's whole share.
-    assert receipt["copy_weight_over_equal_weight_p10_p50_p90"] == [1.0, 1.0, 1.0]
+    # Fewer than ten copies: the receipt withholds the spread.
+    assert receipt["copy_weight_over_equal_weight_p10_p50_p90"] == "<10"
     assert "design weights to the power 0.5" in frame.mass_log[-1].reason
 
 
