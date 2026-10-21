@@ -96,6 +96,9 @@ from microcosm.build.uk_runtime.childcare_copy_take_up import (
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.etb_services import UKETBServicesStageTransform
 from microcosm.build.uk_runtime.etb_vat import UKETBVATStageTransform
+from microcosm.build.uk_runtime.frs_annual_income import (
+    UKFRSAnnualIncomeStageTransform,
+)
 from microcosm.build.uk_runtime.frs_brma import UKFRSBRMAStageTransform
 from microcosm.build.uk_runtime.frs_council_tax import UKFRSCouncilTaxStageTransform
 from microcosm.build.uk_runtime.frs_disability import UKFRSDisabilityStageTransform
@@ -103,9 +106,6 @@ from microcosm.build.uk_runtime.frs_education import UKFRSEducationStageTransfor
 from microcosm.build.uk_runtime.frs_education_grants import (
     FRS_EDUCATION_GRANT_REWRITES,
     UKFRSEducationGrantSplitStageTransform,
-)
-from microcosm.build.uk_runtime.frs_annual_income import (
-    UKFRSAnnualIncomeStageTransform,
 )
 from microcosm.build.uk_runtime.frs_employment import UKFRSEmploymentStageTransform
 from microcosm.build.uk_runtime.frs_household_draws import (
