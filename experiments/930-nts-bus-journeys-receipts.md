@@ -614,3 +614,23 @@ table of PolicyEngine/policyengine-uk#2546 puts 0.45 of single tickets above £2
 at FY2024-25 prices. The NTS lines agree in shape. They cover returns and day tickets as well as
 singles and are at 2022 prices, so uprate them by the BUS0415a index before a closer comparison.
 The frame's share moves on #1333's next arm.
+
+## Part N — the fare receipts on the engine's window (microcosm#1331 items 1 and 2, 2026-10-21)
+
+policyengine-uk 2.145.0 (PolicyEngine/policyengine-uk#2546) moves each area's benchmark yield by
+its BUS0415a index, blended over the engine's model year: 6 April to 5 April, each quarter-end
+value in force from the start of the quarter it closes. María's ruling of 2026-10-21 (option (b)
+of #1331) aligns the 2025 England and London fare-receipt rows the same way, London and England
+outside London apart, in place of the calendar-year basis of 2026-09-10. On DfT's June 2026
+release:
+
+- England outside London: 2024-25 blend 190.2, 2025-26 blend 214.2, factor 1.1259 (1.112 on the
+  calendar basis).
+- London: factor 1.0000086. Fares were held; DfT's unrounded March 2026 value lifts the blend.
+- England: London's £1,347.4m and England outside London's £2,070.0m of 2024-25 receipts move
+  by their own factors, £3,678.0m in all, a factor of 1.0763 (1.0570 on the calendar basis).
+
+At policyengine-uk 2.145.0 the engine's index ratio for each area equals these factors to
+machine precision. The bus parity receipt records the tie, and the engine test holds it within
+0.1%. The membership and the national compile-parity receipts re-derive from the pinned feed,
+and only the two fare rows move.

@@ -707,32 +707,51 @@ def _engine_scratch_frame(
     return engine_frame, dropped
 
 
-def engine_bus_pricing_parameters(
-    tax_benefit_system: Any, year: int
-) -> dict[str, dict[str, float]]:
+def engine_bus_pricing_parameters(tax_benefit_system: Any, year: int) -> dict[str, Any]:
     """policyengine-uk's bus boardings per trip and yield per boarding by area.
 
     Read at ``year`` in the resolver's own period form (the engine resolves
     a year to its 1 January instant) for every area the stage prices
     (``UK_ENGINE_BUS_AREA_BY_STAGE_AREA``); raises AttributeError when the
-    engine carries no such parameters.
+    engine carries no such parameters. An engine that moves the benchmark
+    yield by the published fares index adds its ``benchmark_year`` and
+    ``local_bus_fares_index_ratio``, the index in ``year`` over the benchmark
+    year's, by the areas the fare receipts move by.
     """
 
     from microcosm.build.uk_runtime.bus_fare_pricing import (
         UK_ENGINE_BUS_AREA_BY_STAGE_AREA,
+    )
+    from microcosm.build.uk_runtime.ledger_targets import (
+        UK_ENGINE_BUS_INDEX_AREA_BY_SERIES,
     )
 
     parameters = getattr(tax_benefit_system, "parameters", None)
     if parameters is None:
         raise AttributeError("the engine exposes no parameters")
     bus = parameters(str(int(year))).gov.dft.bus
-    return {
+    engine: dict[str, Any] = {
         name: {
             area: float(getattr(getattr(bus, name), area))
             for area in UK_ENGINE_BUS_AREA_BY_STAGE_AREA.values()
         }
         for name in ("boardings_per_trip", "yield_per_boarding")
     }
+    # From policyengine-uk 2.145.0 (PolicyEngine/policyengine-uk#2546) the
+    # benchmark yield moves with each area's fares index, read as the engine
+    # reads it: the model year's blend over the benchmark year's.
+    index = getattr(bus, "local_bus_fares_index", None)
+    benchmark_year = getattr(bus, "benchmark_year", None)
+    if index is not None and benchmark_year is not None:
+        benchmark = parameters(
+            f"{int(benchmark_year)}-01-01"
+        ).gov.dft.bus.local_bus_fares_index
+        engine["benchmark_year"] = int(benchmark_year)
+        engine["local_bus_fares_index_ratio"] = {
+            area: float(getattr(index, area)) / float(getattr(benchmark, area))
+            for area in UK_ENGINE_BUS_INDEX_AREA_BY_SERIES.values()
+        }
+    return engine
 
 
 class UKMeasureResolver:
@@ -1222,9 +1241,20 @@ class UKMeasureResolver:
                 "reason": str(error),
             }
         else:
+            from microcosm.build.uk_runtime.ledger_targets import (
+                uk_bus_fare_alignment_factors,
+            )
+
             parity = bus_engine_parity(
                 bus_fare_prices(declared, allowed_resources=UK_LCFS_VENDORED_RESOURCES),
                 engine,
+                alignment_factors=(
+                    uk_bus_fare_alignment_factors(
+                        int(engine["benchmark_year"]), int(self.year)
+                    )
+                    if "benchmark_year" in engine
+                    else None
+                ),
             )
         self._bus_parity = parity
         return parity

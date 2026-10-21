@@ -7003,7 +7003,7 @@
       "from": "2024",
       "to": "2025",
       "index": "dft.local_bus_fares_index",
-      "factor": "1.05695792880259",
+      "factor": "1.07626812349731",
       "value_before_uprating": "3417388656.43538"
     },
     {
@@ -7016,7 +7016,7 @@
       "from": "2024",
       "to": "2025",
       "index": "dft.local_bus_fares_index",
-      "factor": "1",
+      "factor": "1.0000086198886",
       "value_before_uprating": "1347434943.01459"
     },
     {
@@ -19310,12 +19310,12 @@
           "matched_fact_count_overall": 3,
           "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
-          "resolved_value": 3612036036.2194014,
+          "resolved_value": 3678026476.522709,
           "resolved_fact_period": "2024",
           "resolved_fact_key": "ledger_aggregate_fact_v2_2ece7c3d283b6de43b30389f",
           "uprating": {
             "index": "dft.local_bus_fares_index",
-            "factor": "1.05695792880259",
+            "factor": "1.07626812349731",
             "value_before_uprating": "3417388656.43538"
           }
         }
@@ -19345,12 +19345,12 @@
           "matched_fact_count_overall": 3,
           "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
-          "resolved_value": 1347434943.01459,
+          "resolved_value": 1347446557.7536979,
           "resolved_fact_period": "2024",
           "resolved_fact_key": "ledger_aggregate_fact_v2_33611c64d2048fe660501802",
           "uprating": {
             "index": "dft.local_bus_fares_index",
-            "factor": "1",
+            "factor": "1.0000086198886",
             "value_before_uprating": "1347434943.01459"
           }
         }
