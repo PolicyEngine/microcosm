@@ -33,11 +33,14 @@ from microcosm.calibrate._target_loss_attribution import (
     TargetLossAttributionError,
     assemble_target_loss_attribution,
 )
+from microcosm.calibrate.hierarchy_labels import hierarchy_label_choices
 from microcosm.calibrate.solve import CalibrationResult
 from microcosm.diagnostics import (
+    CALIBRATION_DIAGNOSTICS_ASSEMBLY_SCHEMA_VERSION,
     CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
     CalibrationDiagnosticsV8,
     DiagnosticsWriteOutcome,
+    HierarchyLabelChoices,
     failed_diagnostics_outcome,
 )
 from microcosm.diagnostics import (
@@ -45,6 +48,7 @@ from microcosm.diagnostics import (
 )
 
 __all__ = [
+    "CALIBRATION_DIAGNOSTICS_ASSEMBLY_SCHEMA_VERSION",
     "CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION",
     "diagnostics_payload",
     "past_cap_census",
@@ -68,6 +72,9 @@ __all__ = [
 #: v8 replaces those parallel inferred fields with one complete, ordered
 #: hierarchy carried by each registry target: provider, category, geography,
 #: zero or more dimensions, and target.
+#: v9 declares the provider, category, geography and dimension labels once,
+#: in ``hierarchy_catalogs``, and the rows refer to them by ID. Payloads here
+#: are still assembled as v8; the writer publishes v9.
 _HIERARCHY_FREE_DIAGNOSTICS_SCHEMA_VERSION = 6
 
 _LOGGER = logging.getLogger(__name__)
@@ -416,8 +423,10 @@ def diagnostics_payload(
             "A diagnostics payload cannot mix targets with and without calibration "
             f"hierarchies; missing {missing_hierarchy_names[:5]!r}."
         )
+    # The in-memory document is schema 8, labels on every row; the writer
+    # publishes it as schema 9 with the labels in catalogs.
     schema_version = (
-        CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+        CALIBRATION_DIAGNOSTICS_ASSEMBLY_SCHEMA_VERSION
         if target_registry is not None or hierarchy_count
         else _HIERARCHY_FREE_DIAGNOSTICS_SCHEMA_VERSION
     )
@@ -498,8 +507,9 @@ def write_calibration_diagnostics(
     target_registry: object | None = None,
     build: dict[str, Any] | None = None,
     target_surface: Mapping[str, object] | None = None,
+    label_choices: HierarchyLabelChoices | None = None,
 ) -> DiagnosticsWriteOutcome:
-    """Construct, validate, and atomically write schema-8 diagnostics.
+    """Construct, validate, and atomically write schema-9 diagnostics.
 
     The conventional filename is ``calibration_diagnostics.json`` inside a
     release directory, alongside ``build_manifest.json``.
@@ -507,6 +517,9 @@ def write_calibration_diagnostics(
     Args:
         result: The :func:`~microcosm.calibrate.solve.calibrate` output.
         path: Destination file path; parent directories must exist.
+        label_choices: Labels for identifiers the rows spell more than one
+            way; defaults to the registry country's
+            (:func:`~microcosm.calibrate.hierarchy_labels.hierarchy_label_choices`).
 
     A diagnostics failure is recorded in the returned outcome and logged, but
     does not raise through the dataset build. Current release artifacts require
@@ -531,4 +544,10 @@ def write_calibration_diagnostics(
         )
     except Exception as error:  # diagnostics must never abort the dataset build
         return failed_diagnostics_outcome(error, path=path)
-    return write_typed_calibration_diagnostics(diagnostics, path)
+    if label_choices is None:
+        label_choices = hierarchy_label_choices(
+            getattr(target_registry, "country", None)
+        )
+    return write_typed_calibration_diagnostics(
+        diagnostics, path, label_choices=label_choices
+    )

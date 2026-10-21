@@ -1,7 +1,8 @@
 # Calibration target hierarchy
 
-Microcosm diagnostics schema 8 publishes a fixed sequence of hierarchy tier
-types for every registry-backed calibration target:
+Microcosm calibration diagnostics (schema 8, and schema 9 which current
+builds publish) carry a fixed sequence of hierarchy tier types for every
+registry-backed calibration target:
 
 1. provider
 2. category
@@ -127,6 +128,94 @@ that labels the IRS SOI district rows translated to the 119th Congress plan.
 That release's materialize stage assembles its admin and population targets
 into one registry before the engine pass, so a conflict stops it at the start.
 
+## Diagnostics schema 9: labels declared once
+
+Schema 8 copies every provider, category, geography and dimension label onto
+every target row. The registry check above covers geography ids only, and
+Chronicle reports a value two packages word differently only as a warning, so
+a schema 8 file could still label one identifier two ways. Published examples:
+the US national release `populace-us-2024-0fb05b6-4b57d15a287c-20260930T150401Z`
+labels the AGI band `under_1` "No adjusted gross income" (106 targets) and "No
+adjusted gross income and deficit" (2), and the October 2026 UK dense release
+gives 88 areas two names, because Chronicle's local facts carry the area as a
+dimension named `geography` whose value is the lower-case GSS code and each
+publisher names it its own way (HMRC "Hartlepool UA", ONS "Hartlepool").
+
+Schema 9 (`CalibrationDiagnosticsV9`) declares each of those labels once, in a
+top-level `hierarchy_catalogs` object, and each row's `hierarchy` refers to
+them by id:
+
+```json
+{
+  "schema_version": 9,
+  "hierarchy_catalogs": {
+    "providers": [{"id": "obr", "label": "Office for Budget Responsibility"}],
+    "categories": [
+      {"id": "obr.efo_receipts", "label": "Economic and fiscal outlook receipts",
+       "provider_id": "obr"}
+    ],
+    "geographies": [
+      {"id": "K02000001", "label": "United Kingdom", "level": "country"}
+    ],
+    "dimensions": [
+      {"id": "obr.efo_line", "label": "Economic and fiscal outlook line",
+       "values": [{"id": "income_tax", "label": "Income tax"}]}
+    ]
+  },
+  "targets": [
+    {
+      "name": "obr.income_tax@2025",
+      "target_name": "obr.income_tax",
+      "hierarchy": {
+        "category_id": "obr.efo_receipts",
+        "geography_id": "K02000001",
+        "dimensions": [{"id": "obr.efo_line", "value_id": "income_tax"}],
+        "target": {"id": "obr.income_tax", "label": "Income tax receipts"}
+      }
+    }
+  ]
+}
+```
+
+The provider is the category's; providers and categories move into catalogs
+with geographies and dimensions, mirroring the authoring contract's catalogs,
+so a category cannot appear under two providers either. Each value is listed
+under its own dimension. A geography id has one label and one level. The
+target's own label stays on the row, and every other field is schema 8's.
+
+Producers still assemble schema 8 (`CALIBRATION_DIAGNOSTICS_ASSEMBLY_SCHEMA_VERSION`);
+the writer publishes schema 9 (`catalog_calibration_diagnostics`). It refuses,
+with the failure code `label_conflict` and no file, rows that give one id more
+than one label (or one geography more than one level) unless a reviewed label
+choice resolves it (`microcosm.calibrate.hierarchy_labels`):
+
+- UK: a `geography` dimension value takes its area's label: the payload's own
+  geography label for that code, else `UK_GEOGRAPHY_ID_TO_LABEL`, else the ONS
+  April 2023 local-authority names in `local_authority_names.json` (the UK
+  build's writer adds those). This resolves all 88 dense-release areas, two of
+  them constituencies that only the payload's geography names, and the
+  national releases' "Yorkshire And The Humber".
+- US: `under_1` is "No adjusted gross income", `all` is "All returns, total",
+  and `age` `85_plus` is "Age 85 plus", the labels chosen in review on
+  2026-10-21. A US feed re-pin brings the same labels from Chronicle
+  (chronicle#377 for `under_1`), so these choices matter only for feeds and
+  releases built before it. Each choice covers only the two spellings
+  Chronicle registers as reviewed variants; a third spelling is refused.
+
+Every disagreement a choice settles is logged as a warning naming the id, each
+spelling with its first target, and the label written, so a choice never hides
+a variant.
+
+A choice applies only where the rows disagree, so an id every row labels one
+way keeps its label. Any other disagreement stops the writer until the source
+is corrected or a reviewed choice is added. The same catalogs are written by
+the transport diagnostics kernel and the UK graph's final validation kernel,
+which raise instead of writing.
+
+Releases published before schema 9 keep their schema-8 files;
+`parse_calibration_diagnostics` reads both, and
+`expand_calibration_diagnostics` rebuilds schema 8 from schema 9.
+
 ## Propagation stages
 
 The expected data flow is:
@@ -143,9 +232,11 @@ The expected data flow is:
    readable for historical artifacts.
 7. Solver compilation carries the hierarchy unchanged from `TargetSpec` to
    `Target`.
-8. Diagnostics schema 8 serializes `targets[].hierarchy` without constructing
-   provider, category, geography, dimension, or target labels.
-9. Release validation requires every schema-8 tier and label.
+8. Diagnostics assembly (schema 8) serializes `targets[].hierarchy` without
+   constructing provider, category, geography, dimension, or target labels;
+   the writer publishes schema 9, declaring each label once in
+   `hierarchy_catalogs`.
+9. Release validation requires every tier and label, in schema 8 or 9.
 10. The calibration dashboard selects its parser from top-level
     `schema_version` and builds navigation from the ordered hierarchy.
 

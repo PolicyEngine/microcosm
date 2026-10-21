@@ -106,7 +106,9 @@ that rejects; if it lowers them, the solver's clamp is the tighter bound.
 
 `diagnostics.calibration@1` rebuilds the completed calibration from the
 `problem`, `solution` and `result` artifacts without solving, and emits the
-schema-8 model. Each row describes its target as compiled (its own entity,
+schema-9 document (the schema-8 model with its hierarchy labels in
+`hierarchy_catalogs`; a second label for one identifier without a chosen label
+fails the node). Each row describes its target as compiled (its own entity,
 measure and filter), with its hierarchy from the surface's registry. The
 kernel refuses a population whose installed weights are not the solution's,
 a result from another solve, and a surface other than the one the problem

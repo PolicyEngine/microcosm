@@ -65,7 +65,11 @@ from microcosm.calibrate.artifacts import (
     decode_problem,
     decode_solution,
 )
-from microcosm.diagnostics import CalibrationDiagnosticsV8
+from microcosm.calibrate.hierarchy_labels import hierarchy_label_choices
+from microcosm.diagnostics import (
+    CalibrationDiagnosticsV8,
+    catalog_calibration_diagnostics,
+)
 from microcosm.frame import EntitySchema, Frame, engine_tables
 from microcosm.frame.adapters.axiom import AxiomEntityTableDataset
 from microcosm.graph import (
@@ -278,7 +282,13 @@ class DiagnosticsCalibrationKernel(KernelBase):
                 "surface_sha256": surface.sha256,
             },
         )
-        model = CalibrationDiagnosticsV8.model_validate(payload)
+        # Published as schema 9: the hierarchy labels go into catalogs, and a
+        # row set that labels one identifier two ways without a chosen label
+        # is refused (HierarchyLabelConflictError).
+        model = catalog_calibration_diagnostics(
+            CalibrationDiagnosticsV8.model_validate(payload),
+            label_choices=hierarchy_label_choices(surface.registry.country),
+        )
         diagnostics = canonical_json(
             model.model_dump(mode="python", exclude_defaults=True)
         )

@@ -415,14 +415,15 @@ module instead of copying it or reconstructing alternate views in consumers.
 
 ## Calibration diagnostics JSON Schema
 
-`packages/microcosm-diagnostics/src/microcosm/diagnostics/schemas/calibration_diagnostics.v8.schema.json`
-is generated from the schema-8 models in `microcosm.diagnostics.schema`. After
-changing one, regenerate it with
+`packages/microcosm-diagnostics/src/microcosm/diagnostics/schemas/calibration_diagnostics.v9.schema.json`
+(what builds publish) and `calibration_diagnostics.v8.schema.json` beside it
+(documents published before schema 9) are generated from the models in
+`microcosm.diagnostics.schema`. After changing one, regenerate both with
 `uv run --no-sync python tools/generate_calibration_diagnostics_json_schema.py`.
 A new model validator also needs an entry in
-`CALIBRATION_DIAGNOSTICS_V8_JSON_SCHEMA_GAPS` and a document in
-`test_json_schema.py` that the schema accepts and the models refuse; the
-diagnostics tests fail until both exist.
+`CALIBRATION_DIAGNOSTICS_V9_JSON_SCHEMA_GAPS` (or the schema-8 list) and a
+document in `test_json_schema_v9.py` (or `test_json_schema.py`) that the schema
+accepts and the models refuse; the diagnostics tests fail until both exist.
 
 ## Review this guide
 

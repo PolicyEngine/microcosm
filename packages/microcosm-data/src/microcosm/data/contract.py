@@ -61,6 +61,7 @@ from microcosm.data.us_critical_targets import (
 )
 from microcosm.diagnostics import (
     CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
+    HIERARCHY_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS,
     SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS,
     UK_DIAGNOSTICS_SCHEMA_VERSION,
     UK_MODEL_FIGURE_FIELDS,
@@ -226,6 +227,29 @@ US_SPM_UNIVERSE_SCOPING_MODEL_VERSIONS: frozenset[str] = frozenset()
 _SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS = (
     SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS
 )
+#: Schema 8 (labels on every row; releases published before schema 9) and
+#: schema 9 (labels in ``hierarchy_catalogs``; what the writer publishes).
+#: Both carry the calibration hierarchy and are validated by the shared
+#: models, so every check of a current document accepts either.
+_HIERARCHY_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS = (
+    HIERARCHY_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS
+)
+_HIERARCHY_SCHEMA_VERSIONS_TEXT = " or ".join(
+    str(version)
+    for version in sorted(_HIERARCHY_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS)
+)
+
+
+def _is_hierarchy_diagnostics_version(value: object) -> bool:
+    """Whether a declared diagnostics version is schema 8 or 9 (exact integers)."""
+
+    return (
+        isinstance(value, int)
+        and not isinstance(value, bool)
+        and value in _HIERARCHY_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS
+    )
+
+
 US_SOURCE_COVERAGE_DIAGNOSTICS_FILE = "us_source_coverage.json"
 SOURCE_COVERAGE_DIAGNOSTICS_SCHEMA_VERSION = 1
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -1583,10 +1607,10 @@ def _check_calibration_diagnostics_declaration(
         return
     status = declaration.get("status")
     if status == "available":
-        if declaration.get("schema_version") != CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION:
+        if not _is_hierarchy_diagnostics_version(declaration.get("schema_version")):
             failures.append(
                 "release_manifest.json available calibration diagnostics must "
-                f"declare schema_version {CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION}."
+                f"declare schema_version {_HIERARCHY_SCHEMA_VERSIONS_TEXT}."
             )
         _check_sha256_field(
             filename="release_manifest.json",
@@ -1612,12 +1636,13 @@ def _check_calibration_diagnostics_declaration(
                 )
         return
     if status == "failed":
-        if declaration.get("expected_schema_version") != (
-            CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+        if not _is_hierarchy_diagnostics_version(
+            declaration.get("expected_schema_version")
         ):
             failures.append(
                 "release_manifest.json failed calibration diagnostics must "
-                "declare the current expected_schema_version."
+                "declare the current expected_schema_version "
+                f"({_HIERARCHY_SCHEMA_VERSIONS_TEXT})."
             )
         for field in ("error_code", "message"):
             if not isinstance(declaration.get(field), str) or not declaration[field]:
@@ -3363,9 +3388,7 @@ def _check_calibration_diagnostics(
     """
 
     schema_version = diagnostics.get("schema_version")
-    if not grandfathered_uk_june and schema_version == (
-        CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
-    ):
+    if not grandfathered_uk_june and _is_hierarchy_diagnostics_version(schema_version):
         try:
             parse_calibration_diagnostics(diagnostics)
         except ValidationError as error:
@@ -4465,10 +4488,10 @@ def _validate_local_area_release_dir(release_dir: Path, release_id: str) -> None
                 )
             else:
                 _check_local_area_calibration_diagnostics(diagnostics, failures)
-            if (
-                _is_uk_exact_k_release_id(release_id)
-                and diagnostics.get("schema_version")
-                != CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+            if _is_uk_exact_k_release_id(
+                release_id
+            ) and not _is_hierarchy_diagnostics_version(
+                diagnostics.get("schema_version")
             ):
                 _check_legacy_uk_calibration_diagnostics(diagnostics, failures)
             if _is_uk_exact_k_release_id(release_id):
@@ -4595,9 +4618,7 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> list[s
     if diagnostics_path.is_file():
         diagnostics = _load_json(diagnostics_path, failures)
         if diagnostics is not None:
-            if diagnostics.get("schema_version") == (
-                CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
-            ):
+            if _is_hierarchy_diagnostics_version(diagnostics.get("schema_version")):
                 _check_calibration_diagnostics(diagnostics, failures)
             _check_local_area_calibration_diagnostics(diagnostics, failures)
             floor_warnings = _uk_brma_floor_verdict_warnings(diagnostics)
@@ -6516,7 +6537,7 @@ def _check_uk_candidate_restated_losses(
 def _check_local_area_calibration_diagnostics(
     diagnostics: Mapping, failures: list[str]
 ) -> None:
-    if diagnostics.get("schema_version") == CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION:
+    if _is_hierarchy_diagnostics_version(diagnostics.get("schema_version")):
         target_surface = diagnostics.get("target_surface")
         n_targets = (
             target_surface.get("n_targets")
@@ -6846,9 +6867,9 @@ def validate_release_dir(
             if (
                 _is_uk_exact_k_release_id(release_id)
                 or release_id == _UK_NATIONAL_RELEASE_ID
-            ) and diagnostics.get(
-                "schema_version"
-            ) != CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION:
+            ) and not _is_hierarchy_diagnostics_version(
+                diagnostics.get("schema_version")
+            ):
                 _check_legacy_uk_calibration_diagnostics(diagnostics, failures)
             if _is_uk_exact_k_release_id(release_id):
                 _check_uk_exact_k_diagnostics_identity(
@@ -7967,8 +7988,8 @@ def _check_uk_dense_surface_files(
         )
         original_diagnostics = loaded["source_calibration_diagnostics.json"]
         if shipped_diagnostics:
-            if original_diagnostics.get("schema_version") == (
-                CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+            if _is_hierarchy_diagnostics_version(
+                original_diagnostics.get("schema_version")
             ):
                 shipped_sha256 = _sha256(release_dir / "calibration_diagnostics.json")
                 if shipped_sha256 != identity["candidate_diagnostics_sha256"]:
