@@ -26,10 +26,16 @@ UK_TARGET_COMPILE_MODULE_NAMES: tuple[str, ...] = (
     "microcosm.build.ledger_targets",
     "microcosm.build.target_materialization",
     "microcosm.build.target_reference_authoring",
+    "microcosm.build.uk_runtime.bus_fare_pricing",
     "microcosm.build.uk_runtime.cgt_calibration",
     "microcosm.build.uk_runtime.chronicle_feed",
+    "microcosm.build.uk_runtime.council_tax_constants",
     "microcosm.build.uk_runtime.cross_grain_declarations",
+    "microcosm.build.uk_runtime.domestic_energy_targets",
+    "microcosm.build.uk_runtime.energy_pricing",
+    "microcosm.build.uk_runtime.frs_release",
     "microcosm.build.uk_runtime.geography_ladder",
+    "microcosm.build.uk_runtime.high_value_homes",
     "microcosm.build.uk_runtime.hmrc_uprating",
     "microcosm.build.uk_runtime.ledger_fact_vendoring",
     "microcosm.build.uk_runtime.ledger_targets",
@@ -37,6 +43,7 @@ UK_TARGET_COMPILE_MODULE_NAMES: tuple[str, ...] = (
     "microcosm.build.uk_runtime.local_targets",
     "microcosm.build.uk_runtime.national_reconciliation",
     "microcosm.build.uk_runtime.off_surface_cells",
+    "microcosm.build.uk_runtime.scotland_brma_la_overlap",
     "microcosm.build.uk_runtime.tenure_constants",
     "microcosm.build.uk_runtime.uc_relationships",
     "microcosm.build.uk_runtime.uc_source_periods",
@@ -47,8 +54,10 @@ UK_TARGET_COMPILE_MODULE_NAMES: tuple[str, ...] = (
 EXCLUDED_DIRECT_IMPORTS: Mapping[str, str] = MappingProxyType(
     {
         "microcosm.build.country_spec": (
-            "the kernels hash the UK country-spec fingerprint, which covers "
-            "every packaged resource the spec loads"
+            "the full graph's kernels hash the UK solve fingerprint, every "
+            "packaged resource but the gate-only registers, which "
+            "test_uk_solve_scope pins that no compile module reads "
+            "(microcosm#1301); the national graph's hash the full fingerprint"
         ),
         "microcosm.build.uk_runtime.frs_relationships": (
             "imported only for the ons_household_type value domain, which "
@@ -74,8 +83,8 @@ EXCLUDED_DIRECT_IMPORTS: Mapping[str, str] = MappingProxyType(
             "the engine-key resolver for the ladder gate and the engine column"
         ),
         "microcosm.build.uk_runtime.rowwise_geography": (
-            "geography_ladder imports the fixed FRS-region code map "
-            "FRS_REGION_TO_REGION_CODE, pinned by its own tests"
+            "geography_ladder and bus_fare_pricing import the fixed FRS-region "
+            "code map FRS_REGION_TO_REGION_CODE, pinned by its own tests"
         ),
         "microcosm.build.uk_runtime.hmrc_income": (
             "local_target_census imports HMRC_SPI_TARGET_RECORD_COUNT for the "
@@ -84,6 +93,18 @@ EXCLUDED_DIRECT_IMPORTS: Mapping[str, str] = MappingProxyType(
         "microcosm.build.uk_runtime.hmrc_replay": (
             "local_target_census imports FULL_FRS_TI_BAND_FENCE_ID for the "
             "census text only"
+        ),
+        "microcosm.build.raking": (
+            "energy_pricing imports the proportional fit for the spine's NEED "
+            "rake; the compile reads only its published level and shares"
+        ),
+        "microcosm.build.source_manifest": (
+            "energy_pricing imports SourceStageSpec as a type; the declared "
+            "stage is part of the country-spec fingerprint"
+        ),
+        "microcosm.build.stochastic_assignment": (
+            "energy_pricing imports the identity-keyed uniforms for the "
+            "spine's gas connection walk, which no target value reads"
         ),
     }
 )

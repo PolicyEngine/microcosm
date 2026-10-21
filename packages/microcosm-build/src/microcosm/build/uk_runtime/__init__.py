@@ -310,10 +310,12 @@ from microcosm.build.uk_runtime.local_authority_input import (
 from microcosm.build.uk_runtime.local_doctrine import (
     UK_LOCAL_CLONE_COUNT,
     UK_LOCAL_MAX_WEIGHT_RATIO,
+    UK_LOCAL_ROW_METADATA_RULES,
     UK_LOCAL_SOLVE_DOCTRINE,
     UK_LOCAL_SOLVE_EPOCHS,
     UK_LOCAL_TARGET_LOSS_CAP,
     UK_LOCAL_TARGET_WEIGHT_RULE,
+    UK_LOCAL_TARGET_WEIGHT_RULES,
     UKLocalSolveDoctrine,
     uk_local_doctrine_with_overrides,
     uk_local_target_loss_weights,
@@ -575,14 +577,12 @@ from microcosm.build.uk_runtime.terminal_gates import (
 from microcosm.build.uk_runtime.weighted_integrity import (
     UKInputMassParityPolicy,
     UKInputMassReference,
-    UKQRFTailConcentrationPolicy,
     load_uk_input_mass_reference,
     load_uk_local_area_support_exclusion_register,
     load_uk_reviewed_exclusion_register,
     uk_input_mass_parity_gate,
     uk_input_mass_totals,
     uk_qrf_tail_concentration_columns,
-    uk_qrf_tail_concentration_gate,
 )
 
 __all__ = [
@@ -607,6 +607,8 @@ __all__ = [
     "UK_LOCAL_MAX_WEIGHT_RATIO",
     "UK_LOCAL_SOLVE_EPOCHS",
     "UK_LOCAL_TARGET_WEIGHT_RULE",
+    "UK_LOCAL_TARGET_WEIGHT_RULES",
+    "UK_LOCAL_ROW_METADATA_RULES",
     "UK_LOCAL_BINDING_ADJUDICATION_REGISTER_RESOURCE",
     "UK_LOCAL_HOLDOUT_FOLDS",
     "UK_LOCAL_HOLDOUT_SEED",
@@ -1021,7 +1023,6 @@ __all__ = [
     "UK_EDUCATION_GRANT_CAPACITY_PREDICTORS",
     "UK_LEGACY_PROXY_PREDICTORS",
     "UK_YEAR_RULES",
-    "UKQRFTailConcentrationPolicy",
     "UKZeroWeightStratumDeclaration",
     "load_uk_frs_release",
     "load_uk_input_mass_reference",
@@ -1032,7 +1033,6 @@ __all__ = [
     "uk_input_mass_parity_gate",
     "uk_input_mass_totals",
     "uk_qrf_tail_concentration_columns",
-    "uk_qrf_tail_concentration_gate",
     "uk_target_fit_gate",
     "uk_target_surface_gate",
     "uk_weight_ess_gate",

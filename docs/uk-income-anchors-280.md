@@ -62,11 +62,15 @@ membership carries the uprated value with its receipt.
   others take `policyengine_uk_parameter:<path>`, the ratio of the pinned
   engine's parameter between 1 January of the fact's opening year and 1
   January of the calibration year, the instants the SPI donor rebasing already
-  uses: dividends `obr.per_capita.gdp`, savings interest
-  `ons.household_interest_income`; the state pension follows
+  uses: dividends `obr.per_capita.gdp`. Savings interest takes two legs
+  (microcosm#1095): `ons.household_interest_income`, the index of its
+  history, to the dataset's year, then `obr.per_capita.gdp`, the index the
+  engine's dataset projection applies, to the calibration year (1.1420 x
+  1.0438 = 1.1920 on the pinned engine values). The state pension follows
   `gov.dwp.state_pension.new_state_pension.amount`, the rate the engine pays
   (203.85 to 230.25 a week, 1.1295). On policyengine-uk 2.98.0 and 2.100.0 the
-  2023 to 2025 factors are 1.1067, 1.0344, 1.0826, 1.0877 and 1.1819. The compile
+  2023 to 2025 factors are 1.1067, 1.0344, 1.0826, 1.0877 and, for household
+  interest alone, 1.1819. The compile
   reads the values from the vendored `hmrc_uprating_engine_pins.json` (the six
   parameters at every 1 January 2019 to 2026, written from the installed engine
   by `tools/pin_uk_uprating_engine_values.py`, whose `--check` refuses drift), so
@@ -197,8 +201,9 @@ before this stage the spine, like the enhanced FRS, carried no record above
 
 Two uprating conventions sit side by side by design. The national SPI amount
 rows move by the engine's own component indices (earnings, mixed income, GDP
-per head, the private-pension index, household interest, the new State
-Pension rate), because each row is one income component and the engine uprates
+per head, the private-pension index, the new State Pension rate, and for
+savings interest household interest to the dataset's year and GDP per head
+after it), because each row is one income component and the engine uprates
 that component by that index: the target and the model then agree on what
 "2025 employment income" means. The regional Table 3.11 rows are totals and
 tax by band with no component split, so no engine index applies; they move by
@@ -325,6 +330,98 @@ against 0.855 observed; matching 0.787), detached share (0.396 against 0.446;
 matching 0.328) and four or more bedrooms (0.456 against 0.557; matching
 0.355), with the most distinct bundles. All three under-draw council tax band
 F and above at the top (about 0.19 against 0.35).
+
+## The SPI draw follows the twin (microcosm#840)
+
+Until microcosm#840 the stage-1 tape forest conditioned on age, gender and
+region alone and drew each recipient's quantile from the model's random
+stream, so a copied lone parent on a low wage drew the pay of a random
+taxpayer of her age, gender and region, and a copied adult out of work drew
+pay at all. The SPI copies then passed the Universal Credit award screen at
+about half the rate of the FRS rows they were copied from, and their
+employment status disagreed with their drawn incomes (uk-data#529).
+
+The stage now does two things with the twin's own leaves. First, four bridge
+predictors join age, gender and region: `main_source` (the largest of pay,
+pension and trade) and `has_pay`, which the tape and the twin derive by the
+same formula from their own leaves, and `has_trade` and `at_or_over_spa`,
+which the tape takes from its published indicator codes (SEINC_NUM, the
+self-employment pages filed, and SPA; the leaf formulas serve only a
+composite record without codes) and the twin from its trade leaf or
+self-employed status and its age against State Pension age. The published
+MAINSRCE code validates the leaf-defined main source (0.969 of the classified
+weight on the full 2022-23 tape with the stage's preparation: pay 0.983,
+occupational pension 0.987, sole trader 0.851, partnership 0.744, other 0.916;
+the floor is 0.95) and the receipt reports each indicator code against its
+leaf both ways. An employee therefore draws from earners and a pensioner from
+pensioners.
+
+Second, the quantile is the twin's. Reference forests fitted on the FRS base
+claimants and partners, with the same predictors and chain order and the FRS
+analogue of every tape leaf as their targets, locate each twin's observed
+leaves on the FRS conditional (`conditional_uniforms`, a Rosenblatt
+transform: the sign uniform is the twin's position in the gate's cumulative
+class probabilities, the quantile its position on the sign's magnitude forest,
+each leaf chained on the twin's observed earlier leaves), and the tape forest
+draws at those uniforms. The copy receives the SPI income of someone in the
+same position among SPI people like it as the twin holds among FRS people
+like it: the FRS relation between composition and income rank is kept, the
+SPI levels and tail are imported. Leaves without an FRS analogue, and the
+placements inside a class or a flat stretch of a conditional, take uniforms
+keyed on the recipient's identity, so no model random stream is consumed and
+a draw depends on the twin and the identity alone. The reference forests are
+cross-fitted in five folds keyed on the predictor cell (gender, region,
+whole-year age and the four bridge predictors): a forest's conditional at a
+row it was trained on holds that row's own value as an atom, and under the
+weighted bootstrap a twin's own value took a median 0.23 (pay) to 0.74
+(dividends) of its conditional's mass on the 2024-25 spine, so an in-sample
+location was mostly the random placement inside that atom; with a copy
+sharing its twin's cell, the forest that locates it never saw the twin, and
+every row of a cell is located by one forest, so the located quantiles stay
+monotone in the twin's value within the cell. A full build refuses a
+reference the cells cannot cross-fit (only a sampled rung or a synthetic
+fixture may locate in-sample, and its receipt says so), a recipient whose
+fold differs from its twin's, and a reference whose sign classes differ from
+the tape forest's on any located target. One difference between the two
+forests remains: the reference locates a leaf given the twin's observed
+earlier analogue leaves, while the tape forest draws it given every earlier
+output, the three identity-uniform leaves (`other_investment_income`,
+`gift_aid`, `charitable_investment_gifts`) included, so a located quantile is
+read off a conditional those identity draws also shape; pay, which follows
+them in the chain, has the weakest rank fidelity, and moving the analogue
+targets ahead of the identity leaves is the follow-up to measure. Because the
+located quantile is deterministic given the twin, copies of one twin that the
+band-donor stage stacks now share every stage-1 draw, not only the
+identity-keyed ones. The manifest declares the bridge, the analogue map and
+the reference model (seed 45, the stage seed plus three; five folds), and the
+stage evidence carries the per-target transport receipt: the analogue, the
+FRS regime and sign classes, the uniform source and the Kolmogorov distance
+of the uniforms from U[0,1), overall and by main source. The counts in the
+stage evidence stay with the build; the published receipts carry shares.
+
+A twin with no taxable income (no pay, trade or pension, and at most £1,000 of
+taxable interest, dividends, property and miscellaneous income together) has
+no income tax record, so the tape holds no population to condition on; its
+copy keeps the twin's values at stage 1 and stage 2, and the recipient-domain
+receipt counts the rows and weight so kept. Reserved band carriers are always
+drawn, since their leaves come from the band pools. A twin whose only record
+is the State Pension counts as having one and is drawn against a tape that
+mostly holds taxpayers, which can lift its pension leaves. FRS rows are
+byte-unchanged.
+
+**After the rebase onto #1145 and #1200.** The restricted finance costs
+(`property_finance_costs`, the last stage-1 target) reach the FRS rows only
+at `property_components`, after this stage, so the twin has no analogue and
+the leaf takes identity-keyed uniforms. The stage now flags the rows it drew
+(`person_is_spi_income_recipient`: the claimants and partners aged 16 and over
+with taxable income, and the reserved band carriers), and `property_components`
+reads the flag to tell tape-concept rows from FRS-concept ones: an undrawn copy
+keeps its twin's property income on the FRS concept, with the sublet split and
+the imputed finance costs its twin gets, instead of being read as a tape draw.
+The UC gainful self-employment refresh on drawn rows takes the root's whole
+rule, the self-employed main job as well as the earnings route, since
+`has_trade` now conditions the draw; undrawn copies keep their twin's flag.
+The stage evidence counts the rows each route flags.
 
 ## The gas connection
 

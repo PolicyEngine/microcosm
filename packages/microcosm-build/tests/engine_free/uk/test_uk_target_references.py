@@ -51,9 +51,17 @@ from tools.build_uk_ledger_compile_parity_signed_differences import (
     _compile_for_receipt,
     _fixture_for_receipt,
 )
-from tools.generate_uk_local_target_references import _support_floor_register_scope
+from tools.generate_uk_local_target_references import (
+    LOCAL_GEOGRAPHY_LEVELS,
+    SUPPORT_FLOOR_BOUND_FAMILIES,
+    SUPPORT_FLOOR_DEFERRED_AREA_IDS,
+    _area_signed_deferrals,
+    _filter_contract_by_geography_levels,
+    _support_floor_register_scope,
+)
 from tools.generate_uk_target_references import (
     POLICYENGINE_BINDING_KEYS,
+    TARGET_ID_GEOGRAPHY_PINS,
     _annual_uc_award_band_token,
     _fanout_name,
     _geography_pins,
@@ -64,14 +72,99 @@ from tools.generate_uk_target_references import (
 
 _TEST_PATHS = paths_for("microcosm-build")
 
-ACTIVE_REFERENCE_COUNT = 1281
+ACTIVE_REFERENCE_COUNT = 1322
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 
 
-def test_local_generator_support_floor_scope_comes_from_signed_register() -> None:
+def test_local_generator_support_floor_scope_is_its_own_constants() -> None:
     area_ids, binding_families = _support_floor_register_scope()
-    assert area_ids == ("E06000053", "E09000001")
+    assert area_ids == SUPPORT_FLOOR_DEFERRED_AREA_IDS == ("E06000053", "E09000001")
+    assert binding_families == SUPPORT_FLOOR_BOUND_FAMILIES
     assert binding_families == frozenset({"census_households"})
+
+
+def test_local_generator_support_floor_constants_track_the_gate_register() -> None:
+    # Option C (microcosm#1301): the generator's cell deferrals and the gate's
+    # area exclusions live apart and are held in lockstep here. Every area
+    # whose cells the generator defers must stay excused at the gate, or the
+    # gate would fail an area the solve never fits; the bound families must
+    # match the approvals the gate window-checks, so a register edit there
+    # fails CI until the generator constant moves with it.
+    from microcosm.build.uk_runtime.weighted_integrity import (
+        load_uk_local_area_support_exclusion_register,
+    )
+
+    register = load_uk_local_area_support_exclusion_register(None)
+    excused = {
+        key.partition("/")[2]
+        for key in register["exclusions"]
+        if key.startswith("local_authority/")
+    }
+    assert set(SUPPORT_FLOOR_DEFERRED_AREA_IDS) <= excused
+    assert SUPPORT_FLOOR_DEFERRED_AREA_IDS == tuple(
+        sorted(set(SUPPORT_FLOOR_DEFERRED_AREA_IDS))
+    )
+    assert SUPPORT_FLOOR_BOUND_FAMILIES == frozenset(
+        register["bound_despite_support_floor"]
+    )
+
+
+def test_local_generator_support_floor_deferrals_are_solve_scoped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The area-support register is gate-only (microcosm#1301): signing an area
+    # there, at either grain, or editing its other block must leave the
+    # generator's signed deferrals, and so the local references, unchanged.
+    import microcosm.build.uk_runtime.weighted_integrity as weighted_integrity
+    import tools.generate_uk_local_target_references as generator
+
+    contract = _filter_contract_by_geography_levels(
+        _load_uk_resource("uk_population_targets.json"),
+        allowed_levels=LOCAL_GEOGRAPHY_LEVELS,
+    )
+    crosswalk = _load_uk_resource("local_area_crosswalk.json")
+    before = (
+        _support_floor_register_scope(),
+        _area_signed_deferrals(contract, crosswalk),
+    )
+    receipt = {
+        "reason": "synthetic gate-only sign-off",
+        "approved_by": "reviewer",
+        "adjudication": "microcosm#1301",
+        "approved_on": "2026-10-01",
+        "expires_on": "2027-01-01",
+        "release_lines": ["local"],
+    }
+    perturbed = {
+        "schema_version": 3,
+        "description": "synthetic perturbation",
+        "exclusions": {
+            "local_authority/S12000023": receipt,
+            "local_authority/S12000027": receipt,
+            "constituency/S14000051": receipt,
+        },
+        "bound_despite_support_floor": {},
+    }
+    real_reader = weighted_integrity._read_register_payload
+
+    def _reader(source, *, resource):
+        if source is None and resource == "local_area_support_exclusions.json":
+            return perturbed, resource
+        return real_reader(source, resource=resource)
+
+    monkeypatch.setattr(weighted_integrity, "_read_register_payload", _reader)
+    assert set(
+        weighted_integrity.load_uk_local_area_support_exclusion_register(None)[
+            "exclusions"
+        ]
+    ) == set(perturbed["exclusions"])
+    after = (
+        _support_floor_register_scope(),
+        _area_signed_deferrals(contract, crosswalk),
+    )
+    assert after == before
+    source = Path(generator.__file__).read_text(encoding="utf-8")
+    assert "load_uk_local_area_support_exclusion_register" not in source
 
 
 FIXTURE_REFERENCE_NAMES = {
@@ -226,6 +319,7 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
         "latest_plateau",
         "count_x_mean",
         "calendar_year_window",
+        "calendar_year_window_scaled_by_ratio",
         "linear_combination",
         "monthly_window_average",
         "monthly_window_count_x_mean",
@@ -452,7 +546,7 @@ def test_childcare_and_bus_references_compile_with_declared_provenance() -> None
         "scotgov.bus.passenger_revenue": 391_000_000.0,
         "scotgov.bus.government_support": 499_000_000.0,
         "welshgov.bus.public_support": 131_489_970.0,
-        "dfi_ni.bus.passenger_receipts": 150_082_817.48999995,
+        "dfi_ni.bus.passenger_receipts": 152_500_000.0,
         "nithc.public_transport_support": 111_700_000.0,
     }
     assert {
@@ -701,9 +795,10 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
     England-scoped too — the borrower bindings filter country == ENGLAND
     explicitly and the support model variables are England-gated by
     construction — while the GB default pin could never match.
-    slc.repayments.devolved_total and the dwp.pip claimant counts keep the GB
-    pin and stay held: activating them needs contract redesign (per-nation
-    repayment rows; an England-and-Wales PIP binding), not a pin change.
+    slc.repayments.devolved_total keeps the GB pin and stays held: activating
+    it needs per-nation repayment rows, not a pin change. The dwp.pip
+    claimant counts are no targets now: they are England-and-Wales diagnostics
+    on obr.pip, pinned K04000001 in their own declarations (microcosm#1095).
     """
     contract = _load_uk_resource("uk_population_targets.json")
     pins = _geography_pins(contract)
@@ -742,12 +837,7 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
         "E92000001"
     }
     assert pins["slc.repayments.devolved_total"]["geography_id"] == "K03000001"
-    assert (
-        pins["dwp.pip.daily_living_standard_claimants"]["geography_id"] == "K03000001"
-    )
-    assert (
-        pins["dwp.pip.daily_living_enhanced_claimants"]["geography_id"] == "K03000001"
-    )
+    assert not [target_id for target_id in pins if target_id.startswith("dwp.pip.")]
 
     def haystack(target: dict) -> str:
         selector = target.get("ledger_selector") or {}
@@ -759,12 +849,16 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
             )
         )
 
+    # An exact-id pin overrides the substring rule: OBR's council tax row
+    # sums England, Scotland and Wales and carries Chronicle's UK stamp
+    # (microcosm#1095).
     substring_scotland = {
         str(target["target_id"])
         for target in contract["targets"]
         if "scotland" in haystack(target)
         and "northern" not in haystack(target)
         and "domestic_rates" not in haystack(target)
+        and str(target["target_id"]) not in TARGET_ID_GEOGRAPHY_PINS
     }
     # The by_area council-tax cells carry the same prefix pin, but they sit on
     # the local surface, where the roster (not the pin) fixes the geography.
@@ -787,14 +881,15 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
     for target_id in sorted(england_slc_ids):
         assert membership["geography_pins"][target_id]["geography_id"] == "E92000001"
         assert membership["targets"][target_id]["status"] == "active"
-    for target_id in (
-        "slc.repayments.devolved_total",
-        "dwp.pip.daily_living_standard_claimants",
-        "dwp.pip.daily_living_enhanced_claimants",
-    ):
-        assert (
-            membership["targets"][target_id]["status"] == "no_fact_at_or_before_period"
-        )
+    assert (
+        membership["targets"]["slc.repayments.devolved_total"]["status"]
+        == "no_fact_at_or_before_period"
+    )
+    assert not [
+        target_id
+        for target_id in membership["targets"]
+        if target_id.startswith("dwp.pip.")
+    ]
 
 
 def test_uk_target_reference_membership_report_is_packaged() -> None:
@@ -803,9 +898,9 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
     assert membership["status_counts"] == {
-        "active": 1281,
-        "no_fact_at_or_before_period": 7,
-        "signed_excluded": 15,
+        "active": 1322,
+        "no_fact_at_or_before_period": 5,
+        "signed_excluded": 17,
     }
     assert membership["genuine_sum_residue"]
     assert membership["uprating_holds"]
@@ -889,14 +984,14 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
             "family": "dwp_universal_credit",
             "status": "active_with_unmapped_vintage_residue_skipped",
             "active_reference_count": 100,
-            "skipped_unmapped_fact_count": 12,
+            "skipped_unmapped_fact_count": 8,
             "signed_rationale": (
                 "UC payment-distribution targets fan out over family_type and "
                 "monthly_award_amount_bands into incumbent-compatible "
-                "annual-payment rows. The four source-only 'No payment' facts "
-                "and eight overlapping source-only 'or over' facts are left "
-                "out; no active reference may use the legacy nan_to_nan band "
-                "name."
+                "annual-payment rows. The source-only 'No payment' and "
+                "top-coded 'or over' facts are left out, and the skipped count "
+                "is the generator's own (microcosm#1095); no active reference "
+                "may use the legacy nan_to_nan band name."
             ),
         },
         {
@@ -929,6 +1024,33 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
                 "of the cross-grain rule (microcosm#905). The former single "
                 "UK-wide row per band is retired: the tier sums to it within "
                 "the same publication."
+            ),
+        },
+        {
+            "family": "high_value_homes",
+            "status": "active_england_and_wales_region_tier_local_line_only",
+            # Three thresholds over the nine English regions and Wales, less
+            # the North East and Wales rows over £2m, signed out below the
+            # small-cell floor (microcosm#1301).
+            "active_reference_count": 28,
+            "signed_rationale": (
+                "The three high-value homes region targets (owner-occupied "
+                "homes over £1m, £1.5m and £2m at April-2026 prices) fan out "
+                "over the England-and-Wales part of the region tier, the nine "
+                "English regions and Wales (area_scope: Price Paid covers "
+                "neither Scotland nor Northern Ireland), and select the "
+                "Microcosm-derived stock the constituency and local-authority "
+                "cells bind, merged beside the feed from "
+                "uk/high_value_home_stock_facts.json (microcosm#1240). Each row "
+                "is the cross-grain control for its area cells. They bind on "
+                "the local line only (calibration_lines): the national line "
+                "and the release-cut certifier drop them after the compile "
+                "(microcosm#1301). Since microcosm#1095 the national spine "
+                "reads main_residence_value off the regions' Land Registry "
+                "knots too, but binding the rows there would move the "
+                "national registry and solve while the knots' tails still "
+                "place more homes in the top bands than the derived stock "
+                "(microcosm#1112)."
             ),
         },
         {
@@ -1022,6 +1144,22 @@ def test_uk_fixture_b_signed_differences_carry_ruled_rationales() -> None:
         "historical forecast/uprated" in differences["hmrc.cgt.gains_total"]["reason"]
     )
     assert differences["obr.capital_gains_tax"]["fixture_value"] == 21_801_546_197.09165
+    council_tax = differences["obr.council_tax"]
+    assert council_tax["kind"] == "calibration_drift"
+    assert "row 15" in council_tax["reason"] and "row 19" in council_tax["reason"]
+    national_insurance = differences["obr.ni"]
+    assert national_insurance["kind"] == "fixture_only"
+    assert "diagnostic provenance on obr.ni_employee" in national_insurance["reason"]
+    for rate in ("standard", "enhanced"):
+        caseload = differences[f"dwp.pip.daily_living_{rate}_claimants"]
+        assert caseload["kind"] == "fixture_only"
+        assert "diagnostic provenance on obr.pip" in caseload["reason"]
+    five_or_more = differences["dwp.uc.households_children_5_or_more"]
+    assert five_or_more["kind"] == "fixture_only"
+    assert (
+        "diagnostic provenance on dwp.uc.two_child_limit.households_5_children"
+        in five_or_more["reason"]
+    )
     assert "single-age-90 share" in differences["ons.population.female_85_89"]["reason"]
     assert "single-age-90 share" in differences["ons.population.male_85_89"]["reason"]
     assert (
@@ -1111,7 +1249,9 @@ def test_paid_child_count_windows_remove_only_their_uprating_holds() -> None:
     """A complete 2025 mean needs no December-to-annual hold (#891 review)."""
     membership = _load_uk_resource("target_reference_membership.json")
     holds = {row["name"]: row for row in membership["uprating_holds"]}
-    for children in ("1", "2", "3", "4", "5_or_more"):
+    # The five-or-more count is a diagnostic since microcosm#1095.
+    assert "dwp.uc.households_children_5_or_more" not in membership["targets"]
+    for children in ("1", "2", "3", "4"):
         name = f"dwp.uc.households_children_{children}"
         assert name not in holds
         candidates = membership["targets"][name]["candidates"]
@@ -1140,8 +1280,7 @@ def test_uk_generator_averages_paid_monthly_sums_and_preserves_other_uc_operatio
         "dwp.uc.households_couple_with_children",
     }
     monthly_average_ids = {
-        f"dwp.uc.households_children_{children}"
-        for children in ("1", "2", "3", "4", "5_or_more")
+        f"dwp.uc.households_children_{children}" for children in ("1", "2", "3", "4")
     } | {
         # #882 element rows: paid-claim crosses on declared month windows.
         "dwp.uc.households_lcwra_element",
@@ -1496,29 +1635,14 @@ def test_current_national_compile_parity_regenerates_and_passes_with_pinned_feed
         _add_signed_rationale_notes(report, fixture_resource=spec.fixture_resource)
         expected = _load_uk_resource(spec.output_resource)
         assert report == expected
-        if spec.target_period == 2023:
-            inherited_uc = [
-                r
-                for r in report["differences"]
-                if r["name"]
-                in {
-                    "dwp.uc.households",
-                    "dwp.uc.households_couple_no_children",
-                    "dwp.uc.households_couple_with_children",
-                    "dwp.uc.households_single_no_children",
-                    "dwp.uc.households_single_with_children",
-                }
-            ]
-            assert len(inherited_uc) == 5
-            assert all(
-                "frozen 2023 production" in r["reason"]
-                and "2025 source windows" in r["reason"]
-                for r in inherited_uc
-            )
         gate = ledger_compile_parity_gate(
             compilation.registry,
             _load_ledger_compile_parity_fixture(spec.fixture_resource),
             signed_differences=expected["differences"],
+            # As the release-cut producer calls it: a reference the feed no
+            # longer resolves is signed as ledger_absent, and the gate tells
+            # it from a fixture-only row by the compile's own report.
+            unsupported=compilation.unsupported,
         )
         assert gate.passed, gate.failures
 
@@ -1577,8 +1701,9 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
         if sorted(target.get("geography_levels") or ()) == ["country", "region"]
     ]
     # microcosm#1123 adds the LFS household estimates for England's regions
-    # and ITL Table 2.2's higher and additional rate taxpayers.
-    assert len(two_level) == 55
+    # and ITL Table 2.2's higher and additional rate taxpayers; microcosm#1301
+    # adds the three high-value homes region rows.
+    assert len(two_level) == 58
     ons = [target_id for target_id in two_level if target_id.startswith("ons.")]
     mhclg = [target_id for target_id in two_level if target_id.startswith("mhclg.")]
     hmrc = [target_id for target_id in two_level if target_id.startswith("hmrc.cgt.")]
@@ -1593,6 +1718,12 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
         target_id for target_id in two_level if target_id.startswith("hmrc.itl.")
     ]
     assert len(itl_rate) == 2
+    high_value_homes = [
+        target_id
+        for target_id in two_level
+        if target_id.startswith("microcosm.high_value_homes.")
+    ]
+    assert len(high_value_homes) == 3
     by_contract: dict[str, list[dict]] = {}
     for reference in resource["target_references"]:
         by_contract.setdefault(reference["metadata"]["contract_target_id"], []).append(
@@ -1603,6 +1734,14 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
     for target_id in two_level:
         rows = by_contract[target_id]
         cells = [row["metadata"]["geography_id"] for row in rows]
+        # The North East and Wales rows over £2m sit below the local
+        # small-cell floor and are signed out of the fan-out (microcosm#1301):
+        # they stay in its roster and leave the references.
+        signed_out = (
+            {"E12000001", "W92000004"}
+            if target_id == "microcosm.high_value_homes.over_2m_by_region"
+            else set()
+        )
         # The retired single country row is gone: every row is a tier cell.
         assert all("@" in row["name"] for row in rows), target_id
         # LFS household estimates cover England's regions only: their binding
@@ -1613,7 +1752,14 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
             or target_id in spi_region
             or target_id in itl_rate
         ) and target_id != "ons.households.english_regions"
-        assert cells == (tier_codes if uk_wide else english), target_id
+        if target_id in high_value_homes:
+            # Price Paid covers England and Wales only: area_scope keeps the
+            # English regions and Wales at country level (microcosm#1301).
+            assert cells == [
+                code for code in [*english, "W92000004"] if code not in signed_out
+            ], target_id
+        else:
+            assert cells == (tier_codes if uk_wide else english), target_id
         assert [row["measure"] for row in rows] == [row["name"] for row in rows]
         assert {row["metadata"]["cross_grain_grain"] for row in rows} == {"region"}
         for row in rows:
@@ -1651,7 +1797,11 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
                     for operand in row["value_operands"]
                 } == {members}
         pins = membership["geography_pins"][target_id]
-        assert [cell["geography_id"] for cell in pins["geography_fanout"]] == cells
+        assert [
+            cell["geography_id"]
+            for cell in pins["geography_fanout"]
+            if cell["geography_id"] not in signed_out
+        ] == cells
         if target_id in mhclg:
             assert (
                 sum(
@@ -1661,13 +1811,24 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
                 == 296
             )
         candidates = membership["targets"][target_id]["candidates"]
-        assert [entry["geography_id"] for entry in candidates] == cells
-        assert {entry["status"] for entry in candidates} == {"active"}
+        assert [
+            entry["geography_id"] for entry in candidates if entry["status"] == "active"
+        ] == cells
+        assert {
+            entry["signed_row"]["value"]
+            for entry in candidates
+            if entry["status"] == "signed_excluded"
+        } == signed_out
+        assert {entry["status"] for entry in candidates} == (
+            {"active", "signed_excluded"} if signed_out else {"active"}
+        )
     # 108 ONS + 81 MHCLG + 24 CGT + 360 SPI Table 3.11 region-tier rows,
     # 18 English-region State Pension cells (microcosm#1069), the 9 LFS
     # English-region household cells and 24 ITL Table 2.2 marginal-rate
-    # cells (microcosm#1123).
-    assert sum(len(by_contract[target_id]) for target_id in two_level) == 624
+    # cells (microcosm#1123), and 28 high-value homes cells, three thresholds
+    # over England's regions and Wales less the two signed out below the
+    # small-cell floor (microcosm#1301).
+    assert sum(len(by_contract[target_id]) for target_id in two_level) == 652
     # The twelve ONS cells of a band sum to the UK row of the same
     # publication (the 0-9 band: 7,364,365 at mid-2025, microcosm#1123).
     zero_to_nine = membership["targets"]["ons.population.age_0_9_by_region"]

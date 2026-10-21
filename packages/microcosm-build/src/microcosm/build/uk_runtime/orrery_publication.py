@@ -15,28 +15,28 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypedDict
 
-from microcosm.build.artifact_files import file_artifact, materialize_bytes
-from microcosm.build.graph_publication_types import (
+from microcosm_emitter.orrery.client import publication_inventory, publish_graph
+from microcosm_emitter.orrery.contracts import (
     PublicationFileRole,
     PublicationReceipt,
 )
+
+from microcosm.build.artifact_files import file_artifact, materialize_bytes
 from microcosm.build.staging_dataset import StagedDatasetDelivery
-from microcosm.build.telemetry_emitter import default_spool_path
-from microcosm.build.telemetry_emitter_service.graph_publication import (
-    GRAPH_PUBLICATION_WAIT_SECONDS,
-    GraphPublicationQueue,
-    publication_inventory,
-)
 from microcosm.graph import ContentStore
 from microcosm.graph.canonical import canonical_json
 from microcosm.graph.evidence import collect_execution_evidence, load_run_evidence
+from microcosm.graph.execution_overlay import execution_overlay_bytes
 from microcosm.graph.orrery import orrery_json_from_schema
 
 RECEIPT_NAME = "orrery.publication.json"
 INVENTORY_NAME = "orrery.upload.json"
 EVIDENCE_MANIFEST_NAME = "orrery.evidence-manifest.json"
+EXECUTION_OVERLAY_NAME = "graph.execution.json"
 FAILURE_MARKER_NAME = "orrery.failure.json"
 FAILURE_BUNDLE_DIRECTORY = "orrery-failure"
+# How long a build waits for a first upload result after the durable enqueue.
+GRAPH_PUBLICATION_WAIT_SECONDS = 30.0
 
 
 class GraphEvidenceOutput(TypedDict):
@@ -143,6 +143,18 @@ def finalize_graph(
                         roles[run[field]["path"]] = role
             payload = orrery_json_from_schema(schema, execution=execution).encode()
             materialize_bytes(payload, output / "graph.orrery.json")
+            # The overlay is the projection's only input besides the schema,
+            # so a later projection can start from these two files. It is a
+            # registered build output but not part of the Orrery publication:
+            # the emitter's file roles and the runs service's contract do not
+            # admit it yet.
+            unpublished: list[str] = []
+            if execution is not None:
+                materialize_bytes(
+                    execution_overlay_bytes(execution),
+                    output / EXECUTION_OVERLAY_NAME,
+                )
+                unpublished.append(EXECUTION_OVERLAY_NAME)
             for url in _urls(json.loads(payload)):
                 name = url.split("#", 1)[0]
                 if re.fullmatch(r"upstream-[a-f0-9]{64}\.json", name):
@@ -151,14 +163,27 @@ def finalize_graph(
                     roles[name] = "upstream"
             # Keep exact sources outside the build's temporary directory and
             # outside HF's immutable receipt snapshot, including when offline.
-            names = list(roles)
+            names = [*roles, *unpublished]
             preserved = Path(args.attempt_evidence) / "orrery-publication"
             for name in roles:
                 materialize_bytes((output / name).read_bytes(), preserved / name)
-            inventory = publication_inventory(preserved, roles)
+            emitter = rowwise_staging.active_telemetry_emitter()
+            inventory = (
+                publication_inventory(preserved, roles)
+                if emitter is None
+                else emitter.publication_inventory(preserved, roles)
+            )
+            if inventory is None:
+                receipt.update(
+                    status="failed",
+                    error_code="local_service_unavailable",
+                    preserved_directory=str(preserved),
+                    recorded_execution=execution is not None,
+                )
+                raise RuntimeError("Local graph inventory service is unavailable.")
             materialize_bytes(canonical_json(inventory), preserved / INVENTORY_NAME)
             materialize_bytes(canonical_json(inventory), output / INVENTORY_NAME)
-            names = [*roles, INVENTORY_NAME]
+            names = [*roles, *unpublished, INVENTORY_NAME]
             receipt = {
                 "version": 1,
                 "publication_id": inventory["publication_id"],
@@ -169,17 +194,10 @@ def finalize_graph(
                 "recorded_execution": execution is not None,
             }
             if publication_enabled(args):
-                emitter = rowwise_staging.active_telemetry_emitter()
                 if emitter is None:
                     # Durable enqueue is still possible without a running
                     # emitter; the retry command requires no telemetry run.
-                    queue = GraphPublicationQueue(default_spool_path())
-                    queue.enqueue(preserved, inventory)
-                    queued_receipt = queue.receipt(inventory["publication_id"])
-                    assert queued_receipt is not None, (
-                        "A queued graph publication must have a receipt."
-                    )
-                    receipt.update(queued_receipt)
+                    receipt.update(publish_graph(preserved, inventory, wait_seconds=0))
                 else:
                     receipt.update(
                         emitter.publish_graph(
@@ -189,8 +207,9 @@ def finalize_graph(
     except Exception:
         # No credential, exception text, paths to raw input data, or signed URL
         # is copied from an exception into public evidence or telemetry.
+        if receipt["status"] != "failed":
+            receipt["error_code"] = "graph_export_or_enqueue_failed"
         receipt["status"] = "failed"
-        receipt["error_code"] = "graph_export_or_enqueue_failed"
     materialize_bytes(canonical_json(receipt), output / RECEIPT_NAME)
     names.append(RECEIPT_NAME)
     if manifest is not None:

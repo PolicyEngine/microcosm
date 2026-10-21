@@ -11,7 +11,8 @@ from microcosm.build.country_spec import CountrySpec, load_country_spec
 from microcosm.calibrate.artifacts import RESULT_TYPE, decode_problem
 from microcosm.calibrate.graph_evidence import (
     CALIBRATION_SUMMARY_PROVIDERS,
-    result_summary,
+    result_summary_data,
+    summary_result,
 )
 from microcosm.graph import (
     compile_graph,
@@ -31,8 +32,70 @@ from .graph_targets import TARGET_SELECTION_TYPE, registry_from_payload
 from .graph_terminal import FULL_GATE_REPORT_TYPE
 
 
+def _summary_level(metadata) -> str:
+    """A target's geography level as the diagnostics read it: ``la`` and
+    ``statistical_scope`` are the local-authority and BRMA levels."""
+
+    from .diagnostics import _GEOGRAPHY_LEVEL_ALIASES
+
+    level = str(metadata.get("geography_level", "")).strip().lower()
+    return _GEOGRAPHY_LEVEL_ALIASES.get(level, level)
+
+
+#: A summary row's fields that the result's weights produce.
+_SUMMARY_MODEL_FIELDS = (
+    "initial",
+    "achieved",
+    "residual",
+    "relative_error",
+    "within_tolerance",
+)
+
+
+def _withhold_summary_rows(data: dict, result, ordered) -> None:
+    """Keep a thin BRMA row's figures out of the published summary (#1262).
+
+    María's ruling of 2026-10-17: a BRMA row's model figures leave a build
+    only when ten distinct source households carry them, here counted on this
+    result's own weights. A withheld row keeps its target and its place, and
+    the final loss covers the published rows (her ruling of 2026-10-18).
+    """
+
+    from .diagnostics import _restate_totals_over_published_rows, uk_withheld_brma_rows
+
+    rows = data["tables"]["targets"]
+    withheld = uk_withheld_brma_rows(
+        ordered.problem,
+        result.weights,
+        result.frame,
+        rows,
+        {
+            target.row_name: _summary_level(metadata)
+            for target, metadata in zip(
+                ordered.problem.targets, ordered.target_metadata, strict=True
+            )
+        },
+    )
+    if not withheld:
+        return
+    for row in rows:
+        if row["name"] in withheld:
+            for field in _SUMMARY_MODEL_FIELDS:
+                row[field] = None
+            row["model_figures_withheld"] = True
+    totals: dict = {}
+    _restate_totals_over_published_rows(totals, result, frozenset(withheld))
+    data["overview"]["final_loss"] = totals["final_loss"]
+    data["overview"]["model_figures_withheld"] = {
+        "targets": len(withheld),
+        "totals_basis": "published_rows",
+    }
+
+
 def _uk_result_summary(context: ArtifactSummaryContext) -> dict:
-    data = result_summary(context)
+    result, ordered = summary_result(context)
+    data = result_summary_data(result, ordered)
+    _withhold_summary_rows(data, result, ordered)
     ancestors, pending = set(), [context.node_id]
     while pending:
         current = pending.pop()
@@ -130,6 +193,13 @@ def _size_summary(context: ArtifactSummaryContext) -> dict:
         "pi_hi",
     )
     summary = {key: value[key] for key in fields if key in value}
+    # Totals over every row: with a BRMA row withheld they would give it back
+    # by difference (microcosm#1262). Without the weights behind them this
+    # summary cannot tell, so a problem that binds BRMA rows publishes none.
+    if any(_summary_level(metadata) == "brma" for metadata in problem.target_metadata):
+        for key in ("dense_loss", "compact_loss", "max_target_scaled_change"):
+            if key in summary:
+                summary[key] = None
     summary["problem_sha256"] = problem.sha256
     for key in ("support", "protected", "household_ids", "pool_row_indices"):
         if key in value:
@@ -332,6 +402,10 @@ _FULL_BUILD_GROUPS = {
         "uk.full.geography.assign",
         "uk.full.geography.derive",
         "uk.full.geography.local_authority",
+        "uk.full.geography.brma",
+        "uk.full.private_rent",
+        "uk.full.property.value",
+        "uk.full.property.band",
         "uk.full.geography.gate",
     ),
     "targets": (

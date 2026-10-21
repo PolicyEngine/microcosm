@@ -12,6 +12,20 @@ _TEST_PATHS = paths_for("microcosm-build")
 
 FIXTURE = _TEST_PATHS.tests / "fixtures" / "uk_bus05i_fy2025.json"
 BUS_PREFIX = "dft.bus_"
+#: The BUS05 finance rows; microcosm#1207's BUS01a journeys share the prefix.
+BUS_FINANCE_FAMILY = "dft_local_bus"
+BUS_JOURNEYS_FAMILY = "dft_bus_journeys"
+BUS_JOURNEY_AREAS = {
+    "london",
+    "north_east",
+    "north_west",
+    "yorkshire_and_the_humber",
+    "east_midlands",
+    "west_midlands",
+    "east_of_england",
+    "south_east",
+    "south_west",
+}
 
 
 def _resource(name: str) -> dict:
@@ -58,6 +72,7 @@ def test_bus_targets_are_active_or_signed_excluded_as_declared() -> None:
         row["target_id"]: row
         for row in contract["targets"]
         if row["target_id"].startswith(BUS_PREFIX)
+        and row["family"] == BUS_FINANCE_FAMILY
     }
 
     active = {
@@ -136,6 +151,7 @@ def test_bus_selectors_do_not_consume_nts_or_bus0415() -> None:
         row
         for row in _resource("uk_population_targets.json")["targets"]
         if row["target_id"].startswith(BUS_PREFIX)
+        and row["family"] == BUS_FINANCE_FAMILY
     ]
     selected_concepts = {
         row["ledger_selector"].get("source_concept", "") for row in targets
@@ -528,3 +544,48 @@ def test_bus0415_alignment_on_the_pinned_feed() -> None:
     assert london.value == pytest.approx(1_347_434_943.01459)
     assert "uprating_factor" not in specs["dft.bus_net_support.england"].metadata
     assert "uprating_factor" not in specs["dft.bus_net_support.london"].metadata
+
+
+def _journey_rows() -> dict[str, dict]:
+    return {
+        row["target_id"]: row
+        for row in _resource("uk_population_targets.json")["targets"]
+        if row["family"] == BUS_JOURNEYS_FAMILY
+    }
+
+
+def test_bus_journey_rows_select_bus01a_by_english_region() -> None:
+    """BUS01a journeys for London and the eight other regions (#1207)."""
+
+    journeys = _journey_rows()
+    assert set(journeys) == {f"dft.bus_journeys.{area}" for area in BUS_JOURNEY_AREAS}
+    for row in journeys.values():
+        selector = row["ledger_selector"]
+        assert selector["source_concept"] == "dft.local_bus_passenger_journeys"
+        assert selector["source_measure_id"] == "passenger_journeys"
+        # BUS01c's concessionary rows share the concept and carry a journey
+        # category; BUS01a's carry none.
+        assert selector["dimensions"] == []
+        # No year is pinned in the selector: the row's uprating_index holds
+        # it at the year the stage prices from and refuses another
+        # (microcosm#1207 review round 1).
+        assert "period_value" not in selector
+        assert row["uprating_index"] == "dft.bus01.stage_pricing_year"
+        assert selector["layout_groupby_value_id"] in BUS_JOURNEY_AREAS
+    london = journeys["dft.bus_journeys.london"]["bindings"]["policyengine"]
+    assert london["value_variable"] == "bus_in_london_boardings"
+    # London's buses carry every resident's bus-in-London trips.
+    assert "filters" not in london
+    for target_id, row in journeys.items():
+        if target_id == "dft.bus_journeys.london":
+            continue
+        binding = row["bindings"]["policyengine"]
+        assert binding["value_variable"] == "other_local_bus_boardings"
+        assert [f["variable"] for f in binding["filters"]] == ["region"]
+
+
+def test_bus_journey_rows_are_active_references() -> None:
+    references = {
+        row["name"] for row in _resource("target_references.json")["target_references"]
+    }
+    assert set(_journey_rows()) <= references

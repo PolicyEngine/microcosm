@@ -21,6 +21,9 @@ from scipy import sparse
 
 import microcosm.calibrate as calibrate_package
 from microcosm.build.us_runtime import target_loss_weights as lw
+from microcosm.build.us_runtime.congressional_district_vintage import (
+    congressional_district_label,
+)
 from microcosm.calibrate import (
     CalibrationHierarchy,
     HierarchyCategory,
@@ -29,8 +32,13 @@ from microcosm.calibrate import (
     TargetRegistry,
     TargetSpec,
 )
+from microcosm.calibrate.geography_constants import US_STATE_FIPS_TO_NAME
 from test_support.microcosm_build.us_batched_target_materialization import (
     _nested_frame,
+)
+from test_support.microcosm_diagnostics.json_schema import (
+    load_strict_json,
+    published_json_schema_errors,
 )
 from test_support.paths import paths_for
 
@@ -51,13 +59,26 @@ def _load_tool_module():
     return module
 
 
+def _geography_label(geography_id: str) -> str:
+    """The label every source gives the id, as the population targets do.
+
+    A US registry refuses one geography id with two labels (microcosm#1335).
+    """
+
+    if geography_id.startswith("0400000US"):
+        return US_STATE_FIPS_TO_NAME[geography_id.removeprefix("0400000US")]
+    return congressional_district_label(geography_id)
+
+
 def _hierarchy(name: str, provider: str, level: str, geography_id: str):
     return CalibrationHierarchy(
         provider=HierarchyNode(id=provider, label=provider),
         category=HierarchyCategory(
             id=f"{provider}.fixture", label="Fixture", provider_id=provider
         ),
-        geography=HierarchyGeography(id=geography_id, label=geography_id, level=level),
+        geography=HierarchyGeography(
+            id=geography_id, label=_geography_label(geography_id), level=level
+        ),
         dimensions=(),
         target=HierarchyNode(id=name, label=name),
     )
@@ -382,6 +403,13 @@ def test_every_calibrate_output_records_the_weights(calibrate_run) -> None:
     assert [by_name[spec.name] for spec in train] == pytest.approx(
         weights.tolist(), rel=1e-15
     )
+
+
+def test_calibrate_diagnostics_match_the_published_json_schema(calibrate_run) -> None:
+    calibrate_run.run()
+    written = calibrate_run.path / "calibration_diagnostics.json"
+
+    assert published_json_schema_errors(load_strict_json(written.read_bytes())) == []
 
 
 def test_a_family_multiplier_reaches_calibrate_and_the_stamp(calibrate_run) -> None:

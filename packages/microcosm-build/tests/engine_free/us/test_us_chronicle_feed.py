@@ -26,6 +26,7 @@ from microcosm.build.us_runtime.chronicle_feed import (
     load_us_chronicle_feed,
     us_chronicle_feed_scope_sha256,
 )
+from test_support.git_repositories import NO_BACKGROUND_MAINTENANCE
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -257,7 +258,10 @@ def _row(key: str, record_set: str, period_type: str, period_value, value) -> di
 
 def _git(root: Path, *args: str) -> str:
     return subprocess.run(
-        ["git", "-C", str(root), *args], check=True, capture_output=True, text=True
+        ["git", *NO_BACKGROUND_MAINTENANCE, "-C", str(root), *args],
+        check=True,
+        capture_output=True,
+        text=True,
     ).stdout.strip()
 
 

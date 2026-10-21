@@ -34,6 +34,7 @@ from microcosm.calibrate import (
     calibrate,
     calibrate_l0_refit,
     diagnostics_payload,
+    geography_constants,
     past_cap_census,
     score_targets,
     write_calibration_diagnostics,
@@ -41,6 +42,7 @@ from microcosm.calibrate import (
 from microcosm.calibrate._target_loss_attribution import target_loss_basis_hash
 from microcosm.calibrate.geography_constants import (
     UK_GEOGRAPHY_ID_TO_LABEL,
+    UK_WIDE_GEOGRAPHY_IDS,
     US_STATE_FIPS_TO_POSTAL,
     US_STATE_NUMERIC_FIPS_TO_POSTAL,
     US_STATE_POSTAL_TO_NUMERIC_FIPS,
@@ -79,6 +81,8 @@ def test_shared_geography_constant_views_are_consistent() -> None:
         "E12000008": "South East",
         "E12000009": "South West",
     }
+    assert UK_WIDE_GEOGRAPHY_IDS == {"K02000001", "K03000001", "K04000001"}
+    assert UK_WIDE_GEOGRAPHY_IDS <= set(UK_GEOGRAPHY_ID_TO_LABEL)
     assert len(US_STATE_FIPS_TO_POSTAL) == 51
     assert US_STATE_FIPS_TO_POSTAL["01"] == "AL"
     assert US_STATE_FIPS_TO_POSTAL["11"] == "DC"
@@ -88,6 +92,67 @@ def test_shared_geography_constant_views_are_consistent() -> None:
     }
     assert dict(US_STATE_POSTAL_TO_NUMERIC_FIPS) == {
         postal: int(fips) for fips, postal in US_STATE_FIPS_TO_POSTAL.items()
+    }
+
+
+def test_us_state_names_are_the_names_the_state_facts_carry() -> None:
+    # Every state label the ledger targets of the US release
+    # populace-us-2024-buildo-acs-local-766b7c7 carry, for the 50 states and
+    # DC: the Census names Chronicle's state facts use (microcosm#1335).
+    names = geography_constants.US_STATE_FIPS_TO_NAME
+    assert list(names) == list(US_STATE_FIPS_TO_POSTAL)
+    assert dict(names) == {
+        "01": "Alabama",
+        "02": "Alaska",
+        "04": "Arizona",
+        "05": "Arkansas",
+        "06": "California",
+        "08": "Colorado",
+        "09": "Connecticut",
+        "10": "Delaware",
+        "11": "District of Columbia",
+        "12": "Florida",
+        "13": "Georgia",
+        "15": "Hawaii",
+        "16": "Idaho",
+        "17": "Illinois",
+        "18": "Indiana",
+        "19": "Iowa",
+        "20": "Kansas",
+        "21": "Kentucky",
+        "22": "Louisiana",
+        "23": "Maine",
+        "24": "Maryland",
+        "25": "Massachusetts",
+        "26": "Michigan",
+        "27": "Minnesota",
+        "28": "Mississippi",
+        "29": "Missouri",
+        "30": "Montana",
+        "31": "Nebraska",
+        "32": "Nevada",
+        "33": "New Hampshire",
+        "34": "New Jersey",
+        "35": "New Mexico",
+        "36": "New York",
+        "37": "North Carolina",
+        "38": "North Dakota",
+        "39": "Ohio",
+        "40": "Oklahoma",
+        "41": "Oregon",
+        "42": "Pennsylvania",
+        "44": "Rhode Island",
+        "45": "South Carolina",
+        "46": "South Dakota",
+        "47": "Tennessee",
+        "48": "Texas",
+        "49": "Utah",
+        "50": "Vermont",
+        "51": "Virginia",
+        "53": "Washington",
+        "54": "West Virginia",
+        "55": "Wisconsin",
+        "56": "Wyoming",
     }
 
 

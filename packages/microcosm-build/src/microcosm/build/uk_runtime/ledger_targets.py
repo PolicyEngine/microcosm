@@ -30,10 +30,15 @@ from microcosm.build.ledger_targets import (
     reference_fact_selectors,
 )
 from microcosm.build.target_materialization import (
+    ENGINE_PERIOD_COLUMN_PREFIX,
     TargetMaterializationResult,
     materialize_target_bindings,
 )
-from microcosm.build.uk_runtime.cgt_calibration import uk_cgt_annual_exempt_amount
+from microcosm.build.uk_runtime.bus_fare_pricing import bus_journey_appliers
+from microcosm.build.uk_runtime.cgt_calibration import (
+    uk_cgt_annual_exempt_amount,
+    uk_cgt_dated_measure_year,
+)
 from microcosm.build.uk_runtime.cross_grain_declarations import (
     assert_uk_cross_grain_coverage,
     load_uk_cross_grain_declarations,
@@ -41,6 +46,9 @@ from microcosm.build.uk_runtime.cross_grain_declarations import (
     uk_cross_grain_grain,
     uk_cross_grain_partitions,
     uk_fanout_sum_bridges,
+)
+from microcosm.build.uk_runtime.domestic_energy_targets import (
+    domestic_energy_appliers,
 )
 from microcosm.build.uk_runtime.geography_ladder import UK_ENGLAND_WALES_REGION_CODES
 from microcosm.build.uk_runtime.hmrc_uprating import hmrc_uprating_appliers
@@ -51,9 +59,15 @@ from microcosm.build.uk_runtime.local_targets import (
     load_uk_local_geography_contract,
     metric_names,
 )
+from microcosm.build.uk_runtime.national_frame import UK_TIME_PERIOD_METADATA_KEY
 from microcosm.build.uk_runtime.off_surface_cells import (
+    uk_membership_bound_areas,
     uk_off_surface_frame_rows,
     uk_signed_cells_off_the_surface,
+)
+from microcosm.build.uk_runtime.scotland_brma_la_overlap import (
+    load_uk_scotland_brma_la_overlap,
+    scotland_brma_council_overlaps,
 )
 from microcosm.build.uk_runtime.tenure_drift import tenure_drift_appliers
 from microcosm.build.uk_runtime.uc_source_periods import (
@@ -87,6 +101,9 @@ _UK_LOCAL_FIXTURE_METRIC_ALIASES = {
     f"voa/council_tax/{band}": f"council_tax/band_{band.lower()}" for band in "ABCDEFGH"
 }
 UK_CENSUS_HOUSEHOLDS_TARGET_ID = "ons.census.households"
+#: The census household partition member the meter share divides
+#: (microcosm#1207): it takes the grain's census uprating as tenure does.
+UK_GAS_CONNECTED_HOUSEHOLDS_TARGET_ID = "desnz.subnational.gas_connected_households"
 
 
 #: Every region-tier code is a leg of its own; the national parents cover the
@@ -324,6 +341,9 @@ def align_uk_local_registry_parity_fixture(
     exclusions.
     """
 
+    # The contract is read and checked once for the whole fixture, not once
+    # per row: the local fixture has tens of thousands of rows.
+    metric_targets = _uk_local_metric_targets()
     rows: list[dict[str, Any]] = []
     for row in fixture.get("rows", ()):
         if not isinstance(row, Mapping):
@@ -339,7 +359,9 @@ def align_uk_local_registry_parity_fixture(
             updated.get("geography_id")
             or (name.split("@", 1)[1] if "@" in name else "")
         )
-        target_id = _uk_local_metric_target_id(contract_metric, geography_id)
+        target_id = _uk_local_metric_target_id(
+            contract_metric, geography_id, metric_targets=metric_targets
+        )
         if target_id is not None:
             updated["name"] = f"{target_id}@{geography_id}"
             updated["contract_target_id"] = updated["name"]
@@ -412,10 +434,21 @@ def _uk_local_metric_targets() -> dict[str, tuple[tuple[str, tuple[str, ...]], .
     return {metric: tuple(sharers) for metric, sharers in entries.items()}
 
 
-def _uk_local_metric_target_id(metric_name: str, area_id: str) -> str | None:
-    """The contract target measuring ``metric_name`` for ``area_id``."""
+def _uk_local_metric_target_id(
+    metric_name: str,
+    area_id: str,
+    *,
+    metric_targets: Mapping[str, tuple[tuple[str, tuple[str, ...]], ...]] | None = None,
+) -> str | None:
+    """The contract target measuring ``metric_name`` for ``area_id``.
 
-    sharers = _uk_local_metric_targets().get(metric_name)
+    ``metric_targets`` is :func:`_uk_local_metric_targets`, passed in by a
+    caller that looks up many rows, since building it reads the contract.
+    """
+
+    if metric_targets is None:
+        metric_targets = _uk_local_metric_targets()
+    sharers = metric_targets.get(metric_name)
     if not sharers:
         return None
     if len(sharers) == 1 and not sharers[0][1]:
@@ -669,6 +702,8 @@ UK_UPRATING_APPLIERS: Mapping[str, Any] = {
     UK_DFT_BUS_FARES_INDEX_CONCEPT: align_dft_bus_fare_receipts_to_period,
     **hmrc_uprating_appliers(),
     **tenure_drift_appliers(),
+    **domestic_energy_appliers(),
+    **bus_journey_appliers(),
 }
 
 
@@ -754,9 +789,35 @@ UK_REQUIRED_TARGET_DIAGNOSTICS: Mapping[str, tuple[str, ...]] = MappingProxyType
         # it above GBP 35,000, where the engine withholds it; the recipient count
         # sits beside the bound OBR line until payment and recovery separate.
         "obr.winter_fuel_allowance": ("dwp.winter_fuel_payment.recipients",),
+        # microcosm#1095 (María, 2026-10-09): OBR's cash NICs total sits beside
+        # the accrued class rows it does not equal; the class rows are bound.
+        "obr.ni_employee": ("obr.ni",),
+        # microcosm#1095 (María, 2026-10-09): the three Table 6.1 rate bands
+        # bind, and the Table 6.2 total sits beside the higher-rate band.
+        "hmrc.salary_sacrifice.it_relief_higher_rate": (
+            "hmrc.salary_sacrifice.it_relief_total",
+        ),
+        # microcosm#1095 (María, 2026-10-10): DWP's England-and-Wales daily
+        # living caseload sits beside the bound spending line; fitting the two
+        # rows breaks the weight-ratio fence.
+        "obr.pip": (
+            "dwp.pip.daily_living_standard_claimants",
+            "dwp.pip.daily_living_enhanced_claimants",
+        ),
+        # microcosm#1095 (María, 2026-10-16): DWP's count of UC households
+        # with five or more children carries the families outside the
+        # two-child limit, which the frame cannot hold; it sits beside the
+        # bound limit row of the same month.
+        "dwp.uc.two_child_limit.households_5_children": (
+            "dwp.uc.households_children_5_or_more",
+        ),
     }
 )
-_DIAGNOSTIC_PERIOD_TYPES = frozenset(("fiscal_year", "tax_year", "calendar_year"))
+#: A diagnostic is one exactly dated publisher figure; a caseload snapshot is
+#: dated by its month (microcosm#1095).
+_DIAGNOSTIC_PERIOD_TYPES = frozenset(
+    ("fiscal_year", "tax_year", "calendar_year", "month")
+)
 _DIAGNOSTIC_ASSERTION_POLICIES = MappingProxyType(
     {"source_projection": "allow_source_projection", "observation": "observed_only"}
 )
@@ -915,9 +976,12 @@ def uk_small_cell_deferred_cells(
     The joint surface adds them to the reconciliation frame only: they take
     their share of their leg's control and never reach the solve, so deferring
     a cell does not inflate its neighbours (microcosm#1123 item 7).
+    ``area_has_bound_cells`` says whether the membership binds any cell for
+    the area at that level (``uk_membership_bound_areas``).
     """
 
     rule_ids = {str(rule["rule_id"]) for rule in _uk_small_cell_rules()}
+    bound_areas = uk_membership_bound_areas(membership)
     cells = []
     for target_id, target in sorted(membership.get("targets", {}).items()):
         for level, payload in sorted(target["geography_levels"].items()):
@@ -933,6 +997,11 @@ def uk_small_cell_deferred_cells(
                             "geography_level": level,
                             "geography_id": str(candidate["geography_id"]),
                             "value": float(candidate["deferred_value"]),
+                            "area_has_bound_cells": (
+                                str(level),
+                                str(candidate["geography_id"]),
+                            )
+                            in bound_areas,
                         }
                     )
     return tuple(cells)
@@ -1550,9 +1619,62 @@ class UKFrameTargetAdapter:
         self.frame = frame
         self.tables = {entity: frame.table(entity).copy() for entity in frame.entities}
         self.link_tables = {name: frame.link(name).copy() for name in frame.links}
+        # The columns the frame itself stores, and the period they hold
+        # (microcosm#1324): a stored column is the frame's own year, so a
+        # value read at another period goes to the measure provider.
+        self.stored_columns = {
+            entity: frozenset(table.columns) for entity, table in self.tables.items()
+        }
+        period = frame.metadata.get(UK_TIME_PERIOD_METADATA_KEY)
+        self.frame_period = (
+            str(period) if isinstance(period, str) and period.strip() else None
+        )
 
     def has_column(self, entity: str, variable: str) -> bool:
         return variable in self.tables[entity]
+
+    def value_period(self, entity: str, variable: str) -> str | None:
+        """The period a value variable holds without the engine (microcosm#1324).
+
+        A stored column holds the frame's own period, and a CGT calibration
+        measure dated by its name (``cgt_2024_gains``) is computed at that
+        year. Any other value comes from the engine at the run's calibration
+        period, so it holds no period of its own: None.
+        """
+
+        if variable in self.stored_columns.get(entity, ()):
+            return self.frame_period
+        year = uk_cgt_dated_measure_year(variable)
+        return None if year is None else str(year)
+
+    def column_at(
+        self,
+        entity: str,
+        variable: str,
+        *,
+        period: int | str,
+        route_stored: bool,
+    ) -> np.ndarray:
+        """A value variable at ``period`` (microcosm#1324).
+
+        The frame's own period reads the stored column. At any other period
+        a stored column's injected engine-period value is read; before it is
+        injected, ``route_stored`` reports the column missing, so the
+        measure resolver computes it at that period. Without a provider
+        (``route_stored`` false and nothing injected) the stored column is
+        read as it is.
+        """
+
+        stored = variable in self.stored_columns.get(entity, ())
+        if not stored or self.frame_period is None or str(period) == self.frame_period:
+            return self.column(entity, variable)
+        table = self.tables[entity]
+        engine_period = ENGINE_PERIOD_COLUMN_PREFIX + variable
+        if engine_period in table:
+            return np.asarray(table[engine_period])
+        if route_stored:
+            raise KeyError(f"{entity}.{variable}")
+        return self.column(entity, variable)
 
     def column(self, entity: str, variable: str) -> np.ndarray:
         table = self.tables[entity]
@@ -1738,6 +1860,97 @@ def _uk_contract_targets(
     }
 
 
+#: The lines a UK contract target can bind on (microcosm#1301): the national
+#: line (``load_uk_national_target_inputs``, the release-cut certifier) and the
+#: local line (the full dense build, whose solve binds the national rows beside
+#: the local surface).
+UK_CALIBRATION_LINES: tuple[str, ...] = ("national", "local")
+
+
+def uk_contract_target_calibration_lines(target: Mapping[str, Any]) -> frozenset[str]:
+    """The lines a contract target binds on.
+
+    A target binds on every line unless it declares ``calibration_lines``: a
+    non-empty list of distinct lines from :data:`UK_CALIBRATION_LINES`. The
+    high-value homes region rows declare ``["local"]`` (microcosm#1301). Since
+    microcosm#1095 the national spine reads ``main_residence_value`` off the
+    regions' Land Registry knots too, but binding the rows there would move
+    the national registry and solve while the knots' tails still place more
+    homes in the top bands than the derived stock (microcosm#1112).
+    """
+
+    declared = target.get("calibration_lines")
+    if declared is None:
+        return frozenset(UK_CALIBRATION_LINES)
+    target_id = target.get("target_id", "<unknown>")
+    if isinstance(declared, (str, bytes)) or not isinstance(declared, Sequence):
+        raise ValueError(
+            f"UK target {target_id!r} calibration_lines must be a list of lines, "
+            f"got {declared!r}."
+        )
+    lines = [str(line) for line in declared]
+    if not lines or len(set(lines)) != len(lines):
+        raise ValueError(
+            f"UK target {target_id!r} calibration_lines must name at least one "
+            f"line, each once; got {lines!r}."
+        )
+    unknown = sorted(set(lines) - set(UK_CALIBRATION_LINES))
+    if unknown:
+        raise ValueError(
+            f"UK target {target_id!r} calibration_lines names unknown line(s) "
+            f"{unknown!r}; the lines are {list(UK_CALIBRATION_LINES)!r}."
+        )
+    return frozenset(lines)
+
+
+def uk_registry_on_calibration_line(
+    registry: TargetRegistry, *, line: str
+) -> tuple[TargetRegistry, dict[str, Any]]:
+    """The compiled registry less the references ``line`` does not bind.
+
+    Every committed reference compiles on every line, so the compile-parity
+    registries stay complete; a line's solve surface drops the references
+    whose contract target's ``calibration_lines`` leave ``line`` out, right
+    after the compile and before reconciliation, the measure exclusions and the
+    frozen-register check. A line no declaration narrows keeps its registry
+    (the same object, so the same version). The receipt names the line, the
+    all-lines registry version and count, and the dropped contract targets.
+    """
+
+    if line not in UK_CALIBRATION_LINES:
+        raise ValueError(
+            f"unknown UK calibration line {line!r}; the lines are "
+            f"{list(UK_CALIBRATION_LINES)!r}."
+        )
+    off_line = frozenset(
+        target_id
+        for target_id, target in _uk_contract_targets(national_only=False).items()
+        if line not in uk_contract_target_calibration_lines(target)
+    )
+    kept: list[TargetSpec] = []
+    dropped: list[TargetSpec] = []
+    dropped_target_ids: set[str] = set()
+    for spec in registry.specs:
+        target_id = str(
+            spec.metadata.get("contract_target_id") or spec.name.split("@", 1)[0]
+        )
+        if target_id in off_line:
+            dropped.append(spec)
+            dropped_target_ids.add(target_id)
+        else:
+            kept.append(spec)
+    receipt: dict[str, Any] = {
+        "line": line,
+        "all_lines_registry_version": registry.version,
+        "all_lines_reference_count": len(registry.specs),
+        "dropped_reference_count": len(dropped),
+        "dropped_target_ids": sorted(dropped_target_ids),
+    }
+    if not dropped:
+        return registry, receipt
+    return TargetRegistry(kept, country=registry.country), receipt
+
+
 def _spec_geography(spec: TargetSpec) -> tuple[str, str]:
     """Resolve one compiled target's local or Ledger geography spelling."""
 
@@ -1846,11 +2059,18 @@ def apply_uk_cross_grain_reconciliation(
     area_region_codes: Mapping[str, str] | None = None,
     extra_bridges: Sequence[CrossGrainBridge] = (),
     extra_signatures: Mapping[str, Mapping[str, Any]] | None = None,
+    check_factor_bounds: bool = True,
+    frame_only_positions: Iterable[int] = (),
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Apply the standing UK rule to a bound mixed-grain target surface.
 
     ``extra_bridges`` and ``extra_signatures`` carry the summed fan-out
     controls the joint surface adds for its declared fan-out sum bridges.
+    ``check_factor_bounds=False`` records the bridges' factor bounds without
+    refusing, for a pass the caller reruns with more rows.
+    ``frame_only_positions`` names the rows that bind nothing (the small-cell
+    rule's deferred cells), so a wholly deferred leg with no control above it
+    is receipted rather than refused (microcosm#1301).
 
     Increment #762 may extend the grains in the UK rowwise solve only through
     this front door, so detection, reconciliation, and the manifest receipt
@@ -1886,6 +2106,8 @@ def apply_uk_cross_grain_reconciliation(
         rule,
         reviewed_unbound_higher_targets=reviewed_unbound_higher_targets,
         licensed_empty_legs=licences,
+        check_factor_bounds=check_factor_bounds,
+        frame_only_positions=frame_only_positions,
     )
 
 
@@ -2205,10 +2427,157 @@ def uk_private_rent_mean_to_total(
         "reason": (
             "PIPR supplies monthly private-rent price levels while the bound "
             "metric is an annual weighted total; compose each mean with the "
-            "same authority's A17-uprated private-renter household count."
+            "same authority's private-renter household count, SPREE-drifted in "
+            "England and reconciled to the nation household controls."
         ),
         "price_level_source": ("ons_pipr_private_rents calendar_year_average 2025"),
-        "renter_count_source": "ons.tenure.private_rent (A17-uprated)",
+        "renter_count_source": (
+            "ons.tenure.private_rent (SPREE-drifted in England, reconciled to "
+            "the nation household controls)"
+        ),
+        "cells_detail": cells_detail,
+    }
+
+
+#: Scotland's PIPR rents: means over its 18 BRMAs (microcosm#1090, #1262).
+UK_PRIVATE_RENT_BRMA_METRIC = "rent/private_rent_brma"
+
+
+def uk_private_rent_brma_mean_to_total(
+    target_frame: pd.DataFrame,
+    *,
+    months: int | float = 12,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Compose Scotland's PIPR BRMA rent means into annual totals.
+
+    A BRMA's private renters are no bound cell: the BRMAs overlap the
+    councils. Each BRMA's count is the sum over councils of the council's
+    share of the BRMA's private renters in Census 2022 (UV404 by output area,
+    ``scotland_brma_la_overlap.json``) times the council's reconciled
+    ``tenure/private_rent`` cell, so the counts add up to Scotland's
+    reconciled private renters, and the row is ``months`` x the BRMA's mean
+    x its count (microcosm#1090, #1262). A council without its tenure cell
+    refuses: its renters would drop out of every BRMA it touches.
+    """
+
+    if target_frame.empty or "metric" not in target_frame.columns:
+        return target_frame.copy(deep=True), {
+            "applied": False,
+            "reason": "no Scottish BRMA private-rent rows on the surface",
+        }
+    metrics = target_frame["metric"].astype(str).to_numpy()
+    rent_positions = np.flatnonzero(metrics == UK_PRIVATE_RENT_BRMA_METRIC)
+    if not len(rent_positions):
+        return target_frame.copy(deep=True), {
+            "applied": False,
+            "reason": "no Scottish BRMA private-rent rows on the surface",
+        }
+
+    overlap = load_uk_scotland_brma_la_overlap()
+    brma_by_code = {
+        str(entry["pipr_area_code"]): str(brma)
+        for brma, entry in overlap["brmas"].items()
+    }
+    tenure_by_council: dict[str, float] = {}
+    for position in np.flatnonzero(metrics == "tenure/private_rent"):
+        row = target_frame.iloc[position]
+        if "area_type" in target_frame.columns and str(row["area_type"]) != "la":
+            continue
+        tenure_by_council[str(row["area_code"])] = float(row["value"])
+    shares: dict[str, list[tuple[str, float]]] = {}
+    for item in scotland_brma_council_overlaps("private_rented_households"):
+        shares.setdefault(item.brma, []).append(
+            (item.local_authority, item.share_of_council)
+        )
+    councils = sorted({council for pairs in shares.values() for council, _ in pairs})
+    missing = [council for council in councils if council not in tenure_by_council]
+    if missing:
+        raise ValueError(
+            "Scottish BRMA private-rent rows need every Scottish council's "
+            f"tenure/private_rent row; missing {missing}."
+        )
+    invalid = [
+        council
+        for council in councils
+        if not np.isfinite(tenure_by_council[council])
+        or tenure_by_council[council] <= 0
+    ]
+    if invalid:
+        raise ValueError(
+            "tenure/private_rent value must be positive and finite for "
+            f"council(s) {invalid}."
+        )
+
+    composed = target_frame.copy(deep=True)
+    if "metadata" not in composed.columns:
+        composed["metadata"] = None
+    cells_detail: list[dict[str, Any]] = []
+    for position in rent_positions:
+        row = target_frame.iloc[position]
+        area_code = str(row["area_code"])
+        brma = brma_by_code.get(area_code)
+        if brma is None:
+            raise ValueError(
+                f"Scottish BRMA private-rent row {area_code!r} is not one of the "
+                "overlap's 18 BRMAs."
+            )
+        mean = float(row["value"])
+        if not np.isfinite(mean) or mean <= 0:
+            raise ValueError(
+                "private-rent monthly mean must be positive and finite for "
+                f"BRMA {area_code!r}."
+            )
+        renter_households = math.fsum(
+            share * tenure_by_council[council] for council, share in shares[brma]
+        )
+        total = float(months) * mean * renter_households
+        existing_metadata = row.get("metadata")
+        metadata = (
+            dict(existing_metadata) if isinstance(existing_metadata, Mapping) else {}
+        )
+        metadata.update(
+            {
+                "price_level_mean_monthly": mean,
+                "renter_households": renter_households,
+                "renter_households_councils": len(shares[brma]),
+                "renter_households_basis": (
+                    "Census 2022 council shares of the BRMA's private renters "
+                    "(scotland_brma_la_overlap.json) x the councils' reconciled "
+                    "tenure/private_rent cells"
+                ),
+            }
+        )
+        composed.iat[int(position), composed.columns.get_loc("value")] = total
+        composed.iat[int(position), composed.columns.get_loc("metadata")] = metadata
+        cells_detail.append(
+            {
+                "area_code": area_code,
+                "brma": brma,
+                "mean_monthly_rent": mean,
+                "renter_households": renter_households,
+                "councils": len(shares[brma]),
+                "total": total,
+            }
+        )
+    return composed, {
+        "applied": True,
+        "months": months,
+        "cells": len(cells_detail),
+        "adjudication": "microcosm#1262 plan (María, 2026-10-16)",
+        "reason": (
+            "PIPR publishes Scotland's rents as monthly means over its 18 BRMAs, "
+            "which overlap the councils; each BRMA's private renters are the "
+            "councils' reconciled renters in the shares Census 2022 places them "
+            "in the BRMA, and the bound metric is the annual total."
+        ),
+        "price_level_source": "ons_pipr_private_rents calendar_year_average 2025",
+        "renter_count_source": (
+            "ons.tenure.private_rent (councils) x scotland_brma_la_overlap.json"
+        ),
+        "councils": len(councils),
+        "renter_households_total": math.fsum(
+            tenure_by_council[council] for council in councils
+        ),
         "cells_detail": cells_detail,
     }
 
@@ -2252,10 +2621,15 @@ def uk_local_target_surface(
     ``fanout_sum_controls`` is the national reconciliation's receipt of each
     declared fan-out's total over the full register (#1123): a surface that
     binds a fan-out sum bridge's area cells must carry it.
-    ``off_surface_cells`` are the membership's signed cells that are not
-    bound (``uk_off_surface_cells``): where a control moves their leg they
-    join the reconciliation frame, so the leg's bound cells do not take
-    their share (``uk_runtime.off_surface_cells``).
+    ``deferred_cells`` are the small-cell rule's deferrals
+    (``uk_small_cell_deferred_cells``): they always join the reconciliation
+    frame. ``off_surface_cells`` are the membership's other signed cells
+    that are not bound (``uk_off_surface_cells``): where a control moves
+    their leg they join the frame, so the leg's bound cells do not take
+    their share (``uk_runtime.off_surface_cells``). Under a run's own ladder
+    (``area_region_codes``), a cell of either kind whose English area the
+    ladder cannot place is left out and named in the receipt when the
+    membership binds some cell for the area; otherwise it refuses.
     """
 
     if census_household_uprating is None:
@@ -2286,6 +2660,8 @@ def uk_local_target_surface(
     # calibration period carries no hold and is never touched.
     tenure_uprated: dict[str, int] = {}
     tenure_holds: list[dict[str, Any]] = []
+    gas_connected_uprated: dict[str, int] = {}
+    gas_connected_holds: list[dict[str, Any]] = []
     household_uprated: dict[str, int] = {}
     household_holds: list[dict[str, Any]] = []
 
@@ -2326,7 +2702,12 @@ def uk_local_target_surface(
             value = float(spec.value)
             is_households = contract_target_id == UK_CENSUS_HOUSEHOLDS_TARGET_ID
             is_tenure = contract_target_id.startswith("ons.tenure.")
-            if is_households or is_tenure:
+            # microcosm#1207: the gas-connected cells are census households
+            # times a meter share, so they share the grain's factor.
+            is_gas_connected = (
+                contract_target_id == UK_GAS_CONNECTED_HOUSEHOLDS_TARGET_ID
+            )
+            if is_households or is_tenure or is_gas_connected:
                 from_period = spec.metadata.get("uprating_from_period")
                 to_period = spec.metadata.get("uprating_to_period")
                 grain = uprating_receipt.get("grains", {}).get(geography_level)
@@ -2349,7 +2730,11 @@ def uk_local_target_surface(
                 if applied:
                     value *= factor
                     applied_by_vintage = (
-                        household_uprated if is_households else tenure_uprated
+                        household_uprated
+                        if is_households
+                        else gas_connected_uprated
+                        if is_gas_connected
+                        else tenure_uprated
                     )
                     applied_by_vintage[str(from_period)] = (
                         applied_by_vintage.get(str(from_period), 0) + 1
@@ -2363,7 +2748,13 @@ def uk_local_target_surface(
                     reason = "hold_not_from_grain_census_vintage_or_wrong_period"
                 else:
                     reason = "census_household_uprating_not_applied"
-                hold_rows = household_holds if is_households else tenure_holds
+                hold_rows = (
+                    household_holds
+                    if is_households
+                    else gas_connected_holds
+                    if is_gas_connected
+                    else tenure_holds
+                )
                 hold_rows.append(
                     {
                         "target_name": spec.name,
@@ -2519,7 +2910,27 @@ def uk_local_target_surface(
     )
     reconciliation_rows.extend(fanout_rows)
     # Small-cell deferrals (#1123 item 7) take their share of their leg's
-    # control in the reconciliation and are dropped from the output.
+    # control in the reconciliation and are dropped from the output. Under a
+    # run's own ladder a deferral is placed as an off-surface cell is below
+    # (microcosm#1278): an area the ladder lacks but the membership binds
+    # cells for marks a narrowed run, so the deferral is left out and named.
+    run_leg_of_area = (
+        None
+        if area_region_codes is None
+        else uk_cross_grain_leg_of_area(area_region_codes)
+    )
+    placed_deferrals = []
+    deferrals_outside_the_ladder: set[str] = set()
+    for cell in deferred_cells:
+        if run_leg_of_area is not None:
+            try:
+                run_leg_of_area(str(cell["geography_id"]))
+            except ValueError:
+                if not cell.get("area_has_bound_cells"):
+                    raise
+                deferrals_outside_the_ladder.add(str(cell["geography_id"]))
+                continue
+        placed_deferrals.append(cell)
     reconciliation_rows.extend(
         {
             "grain": "la"
@@ -2530,19 +2941,29 @@ def uk_local_target_surface(
             "value": float(cell["value"]),
             "_output_position": None,
         }
-        for cell in deferred_cells
+        for cell in placed_deferrals
     )
     bound_control_ids = (
         *bound_control_ids,
         *(bridge.higher_target_ids[0] for bridge in fanout_bridges),
     )
 
-    def reconcile() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[str, Any]]:
+    def reconcile(
+        *, check_factor_bounds: bool = True
+    ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[str, Any]]:
         frame = pd.DataFrame(
             reconciliation_rows,
             columns=["grain", "geography_id", "target_id", "value", "_output_position"],
         )
         raw = frame[["grain", "geography_id", "target_id", "value"]]
+        # The area rows that bind nothing (deferred and off-surface cells): a
+        # leg holding only deferred ones needs no control (microcosm#1301).
+        frame_only = [
+            position
+            for position, row in enumerate(reconciliation_rows)
+            if row["_output_position"] is None
+            and row["grain"] in level_to_area_type.values()
+        ]
         result, pass_receipt = apply_uk_cross_grain_reconciliation(
             raw,
             bound_control_ids,
@@ -2551,11 +2972,18 @@ def uk_local_target_surface(
             area_region_codes=area_region_codes,
             extra_bridges=fanout_bridges,
             extra_signatures=fanout_signatures,
+            check_factor_bounds=check_factor_bounds,
+            frame_only_positions=frame_only,
         )
         return frame, raw, result, pass_receipt
 
     coverage = uk_cross_grain_coverage_receipt()
-    reconciliation, raw_surface, reconciled, receipt = reconcile()
+    # A bridge's factor bound is a property of the whole frame, off-surface
+    # cells included, so a surface that has them is bounded on its last pass
+    # only (microcosm#1302 review).
+    reconciliation, raw_surface, reconciled, receipt = reconcile(
+        check_factor_bounds=not off_surface_cells
+    )
     off_surface_rows: list[dict[str, Any]] = []
     off_surface_receipt: dict[str, Any] = {
         "deferred_with_value": [],
@@ -2636,12 +3064,15 @@ def uk_local_target_surface(
             frame_only_rows=frame_only_rows,
             share_reference=households or None,
         )
-        if off_surface_rows:
-            reconciliation_rows.extend(off_surface_rows)
-            reconciliation, raw_surface, reconciled, receipt = reconcile()
+        reconciliation_rows.extend(off_surface_rows)
+        reconciliation, raw_surface, reconciled, receipt = reconcile()
     receipt["off_surface_cells"] = {
         **off_surface_receipt,
         "areas_outside_the_ladder": sorted(areas_outside_the_ladder),
+    }
+    receipt["small_cell_deferrals"] = {
+        "rows_added": len(placed_deferrals),
+        "areas_outside_the_ladder": sorted(deferrals_outside_the_ladder),
     }
     receipt["fanout_sum_bridges"] = _assert_uk_fanout_sum_agreement(
         local_registry, fanout_sum_controls, off_surface_rows=off_surface_rows
@@ -2680,6 +3111,15 @@ def uk_local_target_surface(
             "published shares remain unchanged."
         ),
     }
+    uprating_receipt["gas_connected_cells"] = {
+        **cell_receipt(gas_connected_holds, gas_connected_uprated),
+        "adjudication": "microcosm#1207 (plan approved 2026-10-14)",
+        "reason": (
+            "Gas-connected households are census households times a DESNZ "
+            "meter share; held to the calibration period, they take the "
+            "census-household grain factor so the share is unchanged."
+        ),
+    }
     receipt["census_household_uprating"] = uprating_receipt
     for position, value in enumerate(reconciled["value"].to_numpy(dtype=np.float64)):
         output_position = reconciliation.iloc[position]["_output_position"]
@@ -2689,6 +3129,8 @@ def uk_local_target_surface(
         pd.DataFrame(output_rows)
     )
     receipt["private_rent_mean_to_total"] = private_rent_receipt
+    surface, brma_receipt = uk_private_rent_brma_mean_to_total(surface)
+    receipt["private_rent_brma_mean_to_total"] = brma_receipt
     return surface, receipt
 
 

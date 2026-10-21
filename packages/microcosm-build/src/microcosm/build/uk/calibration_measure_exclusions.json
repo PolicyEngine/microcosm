@@ -1,36 +1,27 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
+  "support_floor": {
+    "contract_target_ids": [
+      "dwp.uc.payment_distribution_single",
+      "dwp.uc.payment_distribution_lone_parent",
+      "dwp.uc.payment_distribution_couple_no_children",
+      "dwp.uc.payment_distribution_couple_with_children"
+    ],
+    "metric": "distinct_source_households_with_positive_prior_weight",
+    "floor": 10,
+    "max_dropped_rows": 24,
+    "max_dropped_published_share": 0.05,
+    "reason": "Sparse-band support floor: a UC payment-distribution band whose compiled matrix row reaches fewer than 10 distinct source households (household_source_id) with a positive prior weight is fitted only by stretching those few weights, and a fit that rests on fewer than 10 source households is a cell the release must not report (the UK Data Service working floor of 10, CD171 section 5.2.1). Such rows are dropped from the solve, not pooled; the floor's receipt reports each family's dropped published total, and the run refuses when the drops pass either ceiling or when a per-row exclusion names a row the floor drops.",
+    "tracking": "microcosm#1095",
+    "approved_by": "juaristi22",
+    "adjudication": "microcosm#1095 U3, ruled 2026-10-16 with the fifth ports PR: floor 10 distinct source households with a positive prior weight, rows dropped not pooled, dropped published totals reported; the per-row payment-band entries the floor covers retire",
+    "approved_on": "2026-10-16",
+    "expires_on": "2027-01-08"
+  },
   "exclusions": [
     {
-      "name": "hmrc.salary_sacrifice.it_relief_basic_rate",
-      "reason": "Deferred inside microcosm#1069 c11 (R7): the counterfactual route now resolves the salary-sacrifice relief, but the rate-band test compares adjusted net income with the after-allowance thresholds (0 / 37,700 / 125,140) and ignores the Scottish bands, so the three bands wait for a band-test fix; the all-rates total binds.",
-      "tracking": "microcosm#1069",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#1069 plan R7, approved 2026-09-30: the relief rows bind through the counterfactual route, the rate bands after the band-test fix",
-      "approved_on": "2026-09-30",
-      "expires_on": "2026-11-25"
-    },
-    {
-      "name": "hmrc.salary_sacrifice.it_relief_higher_rate",
-      "reason": "Deferred inside microcosm#1069 c11 (R7): the counterfactual route now resolves the salary-sacrifice relief, but the rate-band test compares adjusted net income with the after-allowance thresholds (0 / 37,700 / 125,140) and ignores the Scottish bands, so the three bands wait for a band-test fix; the all-rates total binds.",
-      "tracking": "microcosm#1069",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#1069 plan R7, approved 2026-09-30: the relief rows bind through the counterfactual route, the rate bands after the band-test fix",
-      "approved_on": "2026-09-30",
-      "expires_on": "2026-11-25"
-    },
-    {
-      "name": "hmrc.salary_sacrifice.it_relief_additional_rate",
-      "reason": "Deferred inside microcosm#1069 c11 (R7): the counterfactual route now resolves the salary-sacrifice relief, but the rate-band test compares adjusted net income with the after-allowance thresholds (0 / 37,700 / 125,140) and ignores the Scottish bands, so the three bands wait for a band-test fix; the all-rates total binds.",
-      "tracking": "microcosm#1069",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#1069 plan R7, approved 2026-09-30: the relief rows bind through the counterfactual route, the rate bands after the band-test fix",
-      "approved_on": "2026-09-30",
-      "expires_on": "2026-11-25"
-    },
-    {
       "name": "hmrc/employment_income_income_band_1_000_000_to_inf",
-      "reason": "Zero-support channel on total income (ITA 2007 s.23, which excludes capital gains): zero in-band carrier records with total income above 1m, under both the SPI assessable-income concept and the component-sum proxy, measured identically on spine-i and spine-j (microcosm#807, receipts uk-candidate-eval out/excluded_cell_support_spine_{i,j}.json). The spine carries capital gains to 20.4m and thousands of records above 1m wealth; the premise is total-income support, never a wealth or gains cap, and a zero-support cell cannot be reached by reweighting.",
+      "reason": "Zero-support channel on total income (ITA 2007 s.23, which excludes capital gains): zero in-band carrier records with total income above 1m, under both the SPI assessable-income concept and the component-sum proxy, measured identically on spine-i and spine-j (microcosm#807, receipts uk-candidate-eval out/excluded_cell_support_spine_{i,j}.json). The spine carries large capital gains and thousands of records above 1m wealth; the premise is total-income support, never a wealth or gains cap, and a zero-support cell cannot be reached by reweighting.",
       "tracking": "microcosm#757",
       "approved_by": "juaristi22",
       "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411); reason revised 2026-08-28 per microcosm#807 (the spine-i/j excluded-cell support re-measurement)",
@@ -39,7 +30,7 @@
     },
     {
       "name": "hmrc/dividend_income_income_band_1_000_000_to_inf",
-      "reason": "Zero-support channel on total income (ITA 2007 s.23, which excludes capital gains): zero in-band carrier records with total income above 1m, under both the SPI assessable-income concept and the component-sum proxy, measured identically on spine-i and spine-j (microcosm#807, receipts uk-candidate-eval out/excluded_cell_support_spine_{i,j}.json). The spine carries capital gains to 20.4m and thousands of records above 1m wealth; the premise is total-income support, never a wealth or gains cap, and a zero-support cell cannot be reached by reweighting.",
+      "reason": "Zero-support channel on total income (ITA 2007 s.23, which excludes capital gains): zero in-band carrier records with total income above 1m, under both the SPI assessable-income concept and the component-sum proxy, measured identically on spine-i and spine-j (microcosm#807, receipts uk-candidate-eval out/excluded_cell_support_spine_{i,j}.json). The spine carries large capital gains and thousands of records above 1m wealth; the premise is total-income support, never a wealth or gains cap, and a zero-support cell cannot be reached by reweighting.",
       "tracking": "microcosm#757",
       "approved_by": "juaristi22",
       "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411); reason revised 2026-08-28 per microcosm#807 (the spine-i/j excluded-cell support re-measurement)",
@@ -48,7 +39,7 @@
     },
     {
       "name": "hmrc/dividend_income_count_income_band_1_000_000_to_inf",
-      "reason": "Zero-support channel on total income (ITA 2007 s.23, which excludes capital gains): zero in-band carrier records with total income above 1m, under both the SPI assessable-income concept and the component-sum proxy, measured identically on spine-i and spine-j (microcosm#807, receipts uk-candidate-eval out/excluded_cell_support_spine_{i,j}.json). The spine carries capital gains to 20.4m and thousands of records above 1m wealth; the premise is total-income support, never a wealth or gains cap, and a zero-support cell cannot be reached by reweighting.",
+      "reason": "Zero-support channel on total income (ITA 2007 s.23, which excludes capital gains): zero in-band carrier records with total income above 1m, under both the SPI assessable-income concept and the component-sum proxy, measured identically on spine-i and spine-j (microcosm#807, receipts uk-candidate-eval out/excluded_cell_support_spine_{i,j}.json). The spine carries large capital gains and thousands of records above 1m wealth; the premise is total-income support, never a wealth or gains cap, and a zero-support cell cannot be reached by reweighting.",
       "tracking": "microcosm#757",
       "approved_by": "juaristi22",
       "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411); reason revised 2026-08-28 per microcosm#807 (the spine-i/j excluded-cell support re-measurement)",
@@ -57,7 +48,7 @@
     },
     {
       "name": "hmrc/property_income_count_income_band_1_000_000_to_inf",
-      "reason": "Zero-support channel on total income (ITA 2007 s.23, which excludes capital gains): zero in-band carrier records with total income above 1m, under both the SPI assessable-income concept and the component-sum proxy, measured identically on spine-i and spine-j (microcosm#807, receipts uk-candidate-eval out/excluded_cell_support_spine_{i,j}.json). The spine carries capital gains to 20.4m and thousands of records above 1m wealth; the premise is total-income support, never a wealth or gains cap, and a zero-support cell cannot be reached by reweighting.",
+      "reason": "Zero-support channel on total income (ITA 2007 s.23, which excludes capital gains): zero in-band carrier records with total income above 1m, under both the SPI assessable-income concept and the component-sum proxy, measured identically on spine-i and spine-j (microcosm#807, receipts uk-candidate-eval out/excluded_cell_support_spine_{i,j}.json). The spine carries large capital gains and thousands of records above 1m wealth; the premise is total-income support, never a wealth or gains cap, and a zero-support cell cannot be reached by reweighting.",
       "tracking": "microcosm#757",
       "approved_by": "juaristi22",
       "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411); reason revised 2026-08-28 per microcosm#807 (the spine-i/j excluded-cell support re-measurement)",
@@ -66,7 +57,7 @@
     },
     {
       "name": "hmrc/private_pension_income_income_band_1_000_000_to_inf",
-      "reason": "Zero-support channel on total income (ITA 2007 s.23, which excludes capital gains): zero in-band carrier records with total income above 1m, under both the SPI assessable-income concept and the component-sum proxy, measured identically on spine-i and spine-j (microcosm#807, receipts uk-candidate-eval out/excluded_cell_support_spine_{i,j}.json). The spine carries capital gains to 20.4m and thousands of records above 1m wealth; the premise is total-income support, never a wealth or gains cap, and a zero-support cell cannot be reached by reweighting.",
+      "reason": "Zero-support channel on total income (ITA 2007 s.23, which excludes capital gains): zero in-band carrier records with total income above 1m, under both the SPI assessable-income concept and the component-sum proxy, measured identically on spine-i and spine-j (microcosm#807, receipts uk-candidate-eval out/excluded_cell_support_spine_{i,j}.json). The spine carries large capital gains and thousands of records above 1m wealth; the premise is total-income support, never a wealth or gains cap, and a zero-support cell cannot be reached by reweighting.",
       "tracking": "microcosm#757",
       "approved_by": "juaristi22",
       "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411); reason revised 2026-08-28 per microcosm#807 (the spine-i/j excluded-cell support re-measurement)",
@@ -75,7 +66,7 @@
     },
     {
       "name": "hmrc/private_pension_income_count_income_band_1_000_000_to_inf",
-      "reason": "Zero-support channel on total income (ITA 2007 s.23, which excludes capital gains): zero in-band carrier records with total income above 1m, under both the SPI assessable-income concept and the component-sum proxy, measured identically on spine-i and spine-j (microcosm#807, receipts uk-candidate-eval out/excluded_cell_support_spine_{i,j}.json). The spine carries capital gains to 20.4m and thousands of records above 1m wealth; the premise is total-income support, never a wealth or gains cap, and a zero-support cell cannot be reached by reweighting.",
+      "reason": "Zero-support channel on total income (ITA 2007 s.23, which excludes capital gains): zero in-band carrier records with total income above 1m, under both the SPI assessable-income concept and the component-sum proxy, measured identically on spine-i and spine-j (microcosm#807, receipts uk-candidate-eval out/excluded_cell_support_spine_{i,j}.json). The spine carries large capital gains and thousands of records above 1m wealth; the premise is total-income support, never a wealth or gains cap, and a zero-support cell cannot be reached by reweighting.",
       "tracking": "microcosm#757",
       "approved_by": "juaristi22",
       "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411); reason revised 2026-08-28 per microcosm#807 (the spine-i/j excluded-cell support re-measurement)",
@@ -84,7 +75,7 @@
     },
     {
       "name": "hmrc/state_pension_income_band_1_000_000_to_inf",
-      "reason": "Zero-support channel on total income (ITA 2007 s.23, which excludes capital gains): zero in-band carrier records with total income above 1m, under both the SPI assessable-income concept and the component-sum proxy, measured identically on spine-i and spine-j (microcosm#807, receipts uk-candidate-eval out/excluded_cell_support_spine_{i,j}.json). The spine carries capital gains to 20.4m and thousands of records above 1m wealth; the premise is total-income support, never a wealth or gains cap, and a zero-support cell cannot be reached by reweighting.",
+      "reason": "Zero-support channel on total income (ITA 2007 s.23, which excludes capital gains): zero in-band carrier records with total income above 1m, under both the SPI assessable-income concept and the component-sum proxy, measured identically on spine-i and spine-j (microcosm#807, receipts uk-candidate-eval out/excluded_cell_support_spine_{i,j}.json). The spine carries large capital gains and thousands of records above 1m wealth; the premise is total-income support, never a wealth or gains cap, and a zero-support cell cannot be reached by reweighting.",
       "tracking": "microcosm#757",
       "approved_by": "juaristi22",
       "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411); reason revised 2026-08-28 per microcosm#807 (the spine-i/j excluded-cell support re-measurement)",
@@ -93,7 +84,7 @@
     },
     {
       "name": "hmrc/state_pension_count_income_band_1_000_000_to_inf",
-      "reason": "Zero-support channel on total income (ITA 2007 s.23, which excludes capital gains): zero in-band carrier records with total income above 1m, under both the SPI assessable-income concept and the component-sum proxy, measured identically on spine-i and spine-j (microcosm#807, receipts uk-candidate-eval out/excluded_cell_support_spine_{i,j}.json). The spine carries capital gains to 20.4m and thousands of records above 1m wealth; the premise is total-income support, never a wealth or gains cap, and a zero-support cell cannot be reached by reweighting.",
+      "reason": "Zero-support channel on total income (ITA 2007 s.23, which excludes capital gains): zero in-band carrier records with total income above 1m, under both the SPI assessable-income concept and the component-sum proxy, measured identically on spine-i and spine-j (microcosm#807, receipts uk-candidate-eval out/excluded_cell_support_spine_{i,j}.json). The spine carries large capital gains and thousands of records above 1m wealth; the premise is total-income support, never a wealth or gains cap, and a zero-support cell cannot be reached by reweighting.",
       "tracking": "microcosm#757",
       "approved_by": "juaristi22",
       "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411); reason revised 2026-08-28 per microcosm#807 (the spine-i/j excluded-cell support re-measurement)",
@@ -102,7 +93,7 @@
     },
     {
       "name": "hmrc/self_employment_income_income_band_1_000_000_to_inf",
-      "reason": "Zero-support channel on total income (ITA 2007 s.23, which excludes capital gains): 0 in-band carrier records with total income above 1m under the SPI assessable-income concept and 2 under the component-sum proxy, measured identically on spine-i and spine-j (microcosm#807, receipts uk-candidate-eval out/excluded_cell_support_spine_{i,j}.json). The spine carries capital gains to 20.4m and thousands of records above 1m wealth; the premise is total-income support, never a wealth or gains cap, and a zero-support cell cannot be reached by reweighting.",
+      "reason": "Zero-support channel on total income (ITA 2007 s.23, which excludes capital gains): zero in-band carrier records with total income above 1m under the SPI assessable-income concept and fewer than ten under the component-sum proxy, measured identically on spine-i and spine-j (microcosm#807, receipts uk-candidate-eval out/excluded_cell_support_spine_{i,j}.json). The spine carries large capital gains and thousands of records above 1m wealth; the premise is total-income support, never a wealth or gains cap, and a zero-support cell cannot be reached by reweighting.",
       "tracking": "microcosm#757",
       "approved_by": "juaristi22",
       "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411); reason revised 2026-08-28 per microcosm#807 (the spine-i/j excluded-cell support re-measurement)",
@@ -111,7 +102,7 @@
     },
     {
       "name": "hmrc/self_employment_income_count_income_band_1_000_000_to_inf",
-      "reason": "Zero-support channel on total income (ITA 2007 s.23, which excludes capital gains): 0 in-band carrier records with total income above 1m under the SPI assessable-income concept and 2 under the component-sum proxy, measured identically on spine-i and spine-j (microcosm#807, receipts uk-candidate-eval out/excluded_cell_support_spine_{i,j}.json). The spine carries capital gains to 20.4m and thousands of records above 1m wealth; the premise is total-income support, never a wealth or gains cap, and a zero-support cell cannot be reached by reweighting.",
+      "reason": "Zero-support channel on total income (ITA 2007 s.23, which excludes capital gains): zero in-band carrier records with total income above 1m under the SPI assessable-income concept and fewer than ten under the component-sum proxy, measured identically on spine-i and spine-j (microcosm#807, receipts uk-candidate-eval out/excluded_cell_support_spine_{i,j}.json). The spine carries large capital gains and thousands of records above 1m wealth; the premise is total-income support, never a wealth or gains cap, and a zero-support cell cannot be reached by reweighting.",
       "tracking": "microcosm#757",
       "approved_by": "juaristi22",
       "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411); reason revised 2026-08-28 per microcosm#807 (the spine-i/j excluded-cell support re-measurement)",
@@ -140,60 +131,6 @@
       "name": "slc.borrowers.plan_5_liable",
       "reason": "Structural under-support: the E8 PLAN_5 top-up saturates the eligible pool (rate 1.0, final England 43,055 vs 230,000 stock); the liable count is bound by frame composition, not by weighting (-81.3% on the rebind packet).",
       "tracking": "microcosm#757",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
-      "approved_on": "2026-08-26",
-      "expires_on": "2026-11-26"
-    },
-    {
-      "name": "dwp/uc_payment_dist/SINGLE_annual_payment_27_600_to_28_800",
-      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support (the #623-carried catalogue); every cell in this class undershoots on the rebind packet and two sit at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
-      "tracking": "uk-data#452",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
-      "approved_on": "2026-08-26",
-      "expires_on": "2026-11-26"
-    },
-    {
-      "name": "dwp/uc_payment_dist/SINGLE_annual_payment_28_800_to_30_000",
-      "reason": "Single-row support: one FRS household (a disabled single council tenant, design weight 760 against the published 1,654) is the only row whose UC award falls in this band on every main-based spine, so the cell is a scaling of one row rather than a composition the spine carries. On the #1063 stack its award moved GBP 678 lower, out of the band and into the 27,600-28,800 band that is already excluded for the same class (uk-data#452), when the stages drawn after the SPI income band donors read their rows in a new order; the cell then sits at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever, as the sibling entries say.",
-      "tracking": "uk-data#452",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#1063 (the stack arm of 2026-10-02 on the review of #1089; same class as the 2026-08-26 microcosm#757 dispositions)",
-      "approved_on": "2026-10-02",
-      "expires_on": "2026-11-26"
-    },
-    {
-      "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_22_800_to_24_000",
-      "reason": "Two-household support: two FRS households (design weights 1,025 and 1,999 against the published 2,761, with their incidence clones) are the only rows whose UC award falls in this band on every main-based spine. On the #1063 stack both awards moved out of the band when the stages drawn after the WAS wealth chain read their rows in a new order, and the cell sits at -100% with final estimate 0.0; the same class as its 2026-08-26 siblings (uk-data#452): the payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
-      "tracking": "uk-data#452",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#1063 (the stack arm of 2026-10-02 on the review of #1089; same class as the 2026-08-26 microcosm#757 dispositions)",
-      "approved_on": "2026-10-02",
-      "expires_on": "2026-11-26"
-    },
-    {
-      "name": "dwp/uc_payment_dist/SINGLE_annual_payment_26_400_to_27_600",
-      "reason": "Engine-moved support: fewer than 10 FRS households support this band, and under policyengine-uk 2.122.2 none of them stays in it (the same spine under 2.100.0 keeps them, and the band sits at -100% with final estimate 0.0 on arms B0, B2 and head). 2.122.2 reads the published LHA rates, which lower the supporting households' housing element and move their awards to the band below. The same class as its 2026-08-26 siblings (uk-data#452): the payment distribution needs support for high awards beyond the would_claim_uc take-up lever.",
-      "tracking": "uk-data#452",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#1095 (the B0, B2 and head arms of 2026-10-06 on the second ports PR; same class as the 2026-08-26 microcosm#757 dispositions)",
-      "approved_on": "2026-10-07",
-      "expires_on": "2026-11-26"
-    },
-    {
-      "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_24_000_to_25_200",
-      "reason": "Engine-moved support: fewer than 10 FRS households support this band, and under policyengine-uk 2.122.2 none of them stays in it (the same spine under 2.100.0 keeps them, and the band sits at -100% with final estimate 0.0 on arms B0, B2 and head). 2.122.2 corrects the supporting awards three ways: the 2019 mixed-age couple saving keeps couples who report Pension Credit on it and off UC, the published LHA rates move awards to neighbouring bands, and Carer Support Payment counts as unearned income as Carer's Allowance does. The same class as its 2026-08-26 siblings (uk-data#452): the payment distribution needs support for high awards beyond the would_claim_uc take-up lever.",
-      "tracking": "uk-data#452",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#1095 (the B0, B2 and head arms of 2026-10-06 on the second ports PR; same class as the 2026-08-26 microcosm#757 dispositions)",
-      "approved_on": "2026-10-07",
-      "expires_on": "2026-11-26"
-    },
-    {
-      "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_26_400_to_27_600",
-      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support (the #623-carried catalogue); every cell in this class undershoots on the rebind packet and two sit at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
-      "tracking": "uk-data#452",
       "approved_by": "juaristi22",
       "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
       "approved_on": "2026-08-26",
@@ -290,15 +227,6 @@
       "expires_on": "2026-11-26"
     },
     {
-      "name": "dwp/uc_payment_dist/SINGLE_annual_payment_21_600_to_22_800",
-      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support (the #623-carried catalogue); every cell in this class undershoots on the rebind packet and two sit at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
-      "tracking": "uk-data#452",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
-      "approved_on": "2026-08-26",
-      "expires_on": "2026-11-26"
-    },
-    {
       "name": "dwp/uc_payment_dist/SINGLE_annual_payment_8_400_to_9_600",
       "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support (the #623-carried catalogue); every cell in this class undershoots on the rebind packet and two sit at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
       "tracking": "uk-data#452",
@@ -336,7 +264,7 @@
     },
     {
       "name": "hmrc/dividend_income_income_band_500_000_to_1_000_000",
-      "reason": "Sparse cell support: 6 in-band carrier records under the SPI assessable-income concept and 10 under the component-sum proxy (6,914 weighted carriers), measured identically on spine-i and spine-j (microcosm#807) - too few for the solver to hit the published value without distorting neighbouring cells. One of the three thin 500k-1m cells retained when the microcosm#807 revision lifted the three mid-band cells whose measured support was in the hundreds; re-measure on the next spine build before renewal.",
+      "reason": "Sparse cell support: fewer than ten in-band carrier records under the SPI assessable-income concept and a similarly thin count under the component-sum proxy, measured identically on spine-i and spine-j (microcosm#807) - too few for the solver to hit the published value without distorting neighbouring cells. One of the three thin 500k-1m cells retained when the microcosm#807 revision lifted the three mid-band cells whose measured support was in the hundreds; re-measure on the next spine build before renewal.",
       "tracking": "microcosm#757",
       "approved_by": "juaristi22",
       "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411); reason revised 2026-08-28 per microcosm#807 (the spine-i/j excluded-cell support re-measurement)",
@@ -345,7 +273,7 @@
     },
     {
       "name": "hmrc/property_income_count_income_band_500_000_to_1_000_000",
-      "reason": "Sparse cell support: 2 in-band carrier records under the SPI assessable-income concept and 8 under the component-sum proxy (3,430 weighted carriers), measured identically on spine-i and spine-j (microcosm#807) - too few for the solver to hit the published value without distorting neighbouring cells. One of the three thin 500k-1m cells retained when the microcosm#807 revision lifted the three mid-band cells whose measured support was in the hundreds; re-measure on the next spine build before renewal.",
+      "reason": "Sparse cell support: fewer than ten in-band carrier records under the SPI assessable-income concept and under the component-sum proxy, measured identically on spine-i and spine-j (microcosm#807) - too few for the solver to hit the published value without distorting neighbouring cells. One of the three thin 500k-1m cells retained when the microcosm#807 revision lifted the three mid-band cells whose measured support was in the hundreds; re-measure on the next spine build before renewal.",
       "tracking": "microcosm#757",
       "approved_by": "juaristi22",
       "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411); reason revised 2026-08-28 per microcosm#807 (the spine-i/j excluded-cell support re-measurement)",
@@ -357,9 +285,9 @@
       "reason": "Concept, not a weight question: the ONS UKEA HAXV row is households' (S.14) D.41 interest resources in the national accounts (FISIM-adjusted, including the unincorporated-business part of the sector; GBP 95.5bn at 2025) while the model's savings_interest_income is cash interest, so the row is unreachable by design (-82 percent on the v20 national candidate). From 2026-09-22 the fitting anchor for interest is the SPI 2023-24 Table 3.7 interest rows by total-income band, uprated to the calibration year (hmrc.spi.savings_interest_income.*, PolicyEngine/chronicle#280 lane); this row is measured on every evaluation as the D.41 diagnostic and never fitted. Retire only with a declared D.41-to-cash bridge.",
       "tracking": "microcosm#866",
       "approved_by": "juaristi22",
-      "adjudication": "PolicyEngine/microcosm#1006 (issue comment 5812206367, the register rulings María gave in session: ruling R3 of 2026-09-22, the SPI interest rows bound and the ONS row a measured diagnostic; income-anchor lane, PolicyEngine/chronicle#280); previously microcosm#762 A16 (2026-09-03).",
-      "approved_on": "2026-09-22",
-      "expires_on": "2026-10-22"
+      "adjudication": "PolicyEngine/microcosm#1006 (issue comment 5812206367, the register rulings María gave in session: ruling R3 of 2026-09-22, the SPI interest rows bound and the ONS row a measured diagnostic; income-anchor lane, PolicyEngine/chronicle#280); previously microcosm#762 A16 (2026-09-03); renewed on 2026-10-16 to 2027-01-08 by juaristi22 in session (folded into the sixth microcosm#1095 ports PR): the gap is one of concept, not of weights, so the row stays a measured diagnostic until a D.41-to-cash bridge is declared.",
+      "approved_on": "2026-10-16",
+      "expires_on": "2027-01-08"
     },
     {
       "name": "obr.housing_benefit",
@@ -372,21 +300,21 @@
     },
     {
       "name": "slc.borrowers.plan_2_liable",
-      "reason": "The spine carries 3.4M plan-2 borrowers liable against the SLC 9.7M (-65% at initialization on spine-m; -52% after the solve): student-loan borrower coverage in the frame. Unreachable by reweighting within the stretch bound: a frame-side gap, not a weight question; while bound it pulls the joint solve toward weight concentration (housing benefit alone triples the max/median ratio under grain_equal). One-month window: correct the spine or re-adjudicate.",
-      "tracking": "microcosm#868",
+      "reason": "The row binds SLC's forecast stock of plan-2 borrowers in England liable to repay in academic year 2024/25 (AY2024/25; Student loan forecasts for England, Table 6a: 8.94M), the stock the student_loans stage tops up to (microcosm#868). The stage exhausts its top-up pool at 41 percent of that stock: the 18 October spine at d0f0fafec carries 3.70M at design weights (-59 percent), and the 19 October national file (810315ac2), with the row held out, 3.54M at calibrated weights (-60 percent). Unreachable by reweighting within the stretch bound: student-loan borrower coverage in the frame, a frame-side gap, not a weight question; while bound it pulls the joint solve toward weight concentration (housing benefit alone triples the max/median ratio under grain_equal). Window to the November PR's renewals: correct the spine or re-adjudicate.",
+      "tracking": "microcosm#1278",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#762 (A16, ruling 2026-09-03; receipts R8-R10 in experiments/762-uk-rowwise-candidate-receipts.md); renewed one month on 2026-10-02 by juaristi22 in session (microcosm#1063 stack): the plan-2 borrower coverage gap stays with microcosm#868 and is not corrected by the spine follow-ups",
-      "approved_on": "2026-10-02",
-      "expires_on": "2026-11-03"
+      "adjudication": "microcosm#762 (A16, ruling 2026-09-03; receipts R8-R10 in experiments/762-uk-rowwise-candidate-receipts.md); renewed one month on 2026-10-02 by juaristi22 in session (microcosm#1063 stack): the plan-2 borrower coverage gap stays with microcosm#868 and is not corrected by the spine follow-ups; tracking moved to microcosm#1278 on 2026-10-17 by juaristi22 after microcosm#868 closed; renewed on 2026-10-20 to 2026-11-26 by juaristi22 (María's ruling of 2026-10-20 on the pre-Budget PR, microcosm#1278: renew rather than make the row a diagnostic, to the November PR's renewal date). The reason is restated on the AY2024/25 SLC figure the row has bound since microcosm#868 (it quoted AY2025/26), with the 18 October spine's student_loans stage receipt and the 19 October national file.",
+      "approved_on": "2026-10-20",
+      "expires_on": "2026-11-26"
     },
     {
       "name": "slc.borrowers.plan_2_above_threshold",
-      "reason": "The spine carries 1.4M plan-2 borrowers above threshold against the SLC 4.5M (-69% at initialization on spine-m; -43% after the solve): student-loan borrower coverage in the frame. Unreachable by reweighting within the stretch bound: a frame-side gap, not a weight question; while bound it pulls the joint solve toward weight concentration (housing benefit alone triples the max/median ratio under grain_equal). One-month window: correct the spine or re-adjudicate.",
-      "tracking": "microcosm#868",
+      "reason": "The row binds SLC's forecast of plan-2 borrowers in England earning above the repayment threshold in academic year 2024/25 (AY2024/25; Student loan forecasts for England, Table 6a: 3.985M), counted as England plan-2 borrowers with positive repayments. The 18 October spine at d0f0fafec carries 1.56M at design weights (-61 percent), and the 19 October national file (810315ac2), with the row held out, 1.51M at calibrated weights (-62 percent). Unreachable by reweighting within the stretch bound: student-loan borrower coverage in the frame, a frame-side gap, not a weight question; while bound it pulls the joint solve toward weight concentration (housing benefit alone triples the max/median ratio under grain_equal). Window to the November PR's renewals: correct the spine or re-adjudicate.",
+      "tracking": "microcosm#1278",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#762 (A16, ruling 2026-09-03; receipts R8-R10 in experiments/762-uk-rowwise-candidate-receipts.md); renewed one month on 2026-10-02 by juaristi22 in session (microcosm#1063 stack): the plan-2 borrower coverage gap stays with microcosm#868 and is not corrected by the spine follow-ups",
-      "approved_on": "2026-10-02",
-      "expires_on": "2026-11-03"
+      "adjudication": "microcosm#762 (A16, ruling 2026-09-03; receipts R8-R10 in experiments/762-uk-rowwise-candidate-receipts.md); renewed one month on 2026-10-02 by juaristi22 in session (microcosm#1063 stack): the plan-2 borrower coverage gap stays with microcosm#868 and is not corrected by the spine follow-ups; tracking moved to microcosm#1278 on 2026-10-17 by juaristi22 after microcosm#868 closed; renewed on 2026-10-20 to 2026-11-26 by juaristi22 (María's ruling of 2026-10-20 on the pre-Budget PR, microcosm#1278: renew rather than make the row a diagnostic, to the November PR's renewal date). The reason is restated on the AY2024/25 SLC figure the row has bound since microcosm#868 (it quoted AY2025/26), with the 18 October spine's student_loans stage receipt and the 19 October national file.",
+      "approved_on": "2026-10-20",
+      "expires_on": "2026-11-26"
     },
     {
       "name": "dwp.jsa_claimants",
@@ -395,24 +323,6 @@
       "approved_by": "juaristi22",
       "adjudication": "microcosm#882 (the 2026-09-16 status comment, issuecomment-5694598278, whose next-steps list this repair works, and the repairs plan María approved on 2026-09-16 with her population ruling on the U8 take-up entry; approver as author per the register convention). Expiry 2026-12-08 aligns the whole UC-repair tranche with the zero-band clock already on the register (microcosm#877), so the next spine re-adjudicates them together. Receipts: experiments/882-uc-repairs-receipts.md (R1 and R5, tools/diagnose_uk_legacy_benefits.py on spine-q, the Q50f candidate, FRS 2024-25 and the twins).",
       "approved_on": "2026-09-16",
-      "expires_on": "2026-12-08"
-    },
-    {
-      "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_27_600_to_28_800",
-      "reason": "Zero-support channel under the corrected UC composition proxy: since #879 the payment-distribution rows are measured on the relationship-based uc_calibration_family_type, and no benefit unit in the spine is a couple without children with an annual UC award in this band (final estimate 0.0, -100% on #879's corrected comparison; no pool carrier on the K=15 rowwise clone of spine-p either, where the #355 size selection refuses the row by name). The dense seam carries the row as a capped miss; a size selection cannot carry it. The band catalogue and the unbounded top band are tracked in microcosm#736; the sibling 26,400-27,600 band already sits in this register.",
-      "tracking": "microcosm#736",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#355 (dataset-size experiment; ruling by María 2026-09-08 after the 45,800 smoke's by-name refusal)",
-      "approved_on": "2026-09-08",
-      "expires_on": "2026-12-08"
-    },
-    {
-      "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_28_800_to_30_000",
-      "reason": "Zero-support channel under the corrected UC composition proxy: since #879 the payment-distribution rows are measured on the relationship-based uc_calibration_family_type, and no benefit unit in the spine is a couple without children with an annual UC award in this band (final estimate 0.0, -100% on #879's corrected comparison; no pool carrier on the K=15 rowwise clone of spine-p either, where the #355 size selection refuses the row by name). The dense seam carries the row as a capped miss; a size selection cannot carry it. The band catalogue and the unbounded top band are tracked in microcosm#736; the sibling 26,400-27,600 band already sits in this register.",
-      "tracking": "microcosm#736",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#355 (dataset-size experiment; ruling by María 2026-09-08 after the 45,800 smoke's by-name refusal)",
-      "approved_on": "2026-09-08",
       "expires_on": "2026-12-08"
     },
     {
@@ -447,9 +357,9 @@
       "reason": "Structural bias, not a weight question: DWP's any-tenure housing-entitlement count is social plus private plus 'Other or unknown' tenure, and the model has no other/unknown tenure (uc_housing_costs_element pays only council, housing-association and private renters), so the model's any-tenure count is identically the social plus private rows, which are bound and fit; the row overstates the reachable total by the other/unknown cell, 112,518 of 4,037,650 in calendar 2025 (2.8 percent; the published any-tenure mean, which the three tenure cells reproduce to the unit). Fitting all three housing rows would ask the solver to over-fill the tenure rows by that amount. Measured on every evaluation as the housing-element caseload diagnostic (Q50f -0.8 percent, D2 +0.6 percent at the baseline; v20 -2.8 percent unbound, the structural gap itself, docs/evidence/uk-a16-v20/).",
       "tracking": "microcosm#882",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#882 (element sizing at the 10 September 2026 baseline, docs/uk-uc-baseline-2026-09-10.md; María's sign-off in review of microcosm#921 on 2026-09-15, setting the one-month window)",
-      "approved_on": "2026-09-15",
-      "expires_on": "2026-10-15"
+      "adjudication": "microcosm#882 (element sizing at the 10 September 2026 baseline, docs/uk-uc-baseline-2026-09-10.md; María's sign-off in review of microcosm#921 on 2026-09-15, setting the one-month window); renewed one month on 2026-10-14 by juaristi22 in session (microcosm#1124 local release): the model still has no other/unknown tenure, so the any-tenure count stays structurally above the bound tenure rows",
+      "approved_on": "2026-10-14",
+      "expires_on": "2026-11-14"
     },
     {
       "name": "dwp.hb.households",
@@ -480,7 +390,7 @@
     },
     {
       "name": "dwp.benefit_cap.capped_households_100_01_to_200",
-      "reason": "Support, not a weight question (#882): the benefit-cap amount band 100 .01 to 200 measures 6,689 against 24,274 (-72 percent) on the Q50f candidate at calibrated weights (November 2025 DWP Table 4, GB). The capped population rests on a handful of source households cloned many times: four of the fourteen bands are empty and 14.2 percent of capped units sit above GBP 1,300 a month against 0.6 percent published, a tail of large families outside London (4.45 children on average, full child elements, housing element near GBP 1,350 a month). The bound total (dwp.benefit_cap.capped_households) and the up-to-GBP-100 band, the one band inside the 25 percent bound, stay in the objective; fitting this band would move weight onto those clones (the #762 zero-band lesson). Measured on every evaluation with tools/diagnose_uk_benefit_cap.py; retire when support exists and the band sits inside the bound.",
+      "reason": "Support, not a weight question (#882): the benefit-cap amount band 100 .01 to 200 measures far below its published count, outside the 25 percent bound on the Q50f candidate at calibrated weights (November 2025 DWP Table 4, GB). The capped population rests on a handful of source households cloned many times: four of the fourteen bands are empty, and the share of capped units above GBP 1,300 a month is many times the published 0.6 percent, a tail of large families outside London on full child elements and large housing elements. The bound total (dwp.benefit_cap.capped_households) and the up-to-GBP-100 band, the one band inside the 25 percent bound, stay in the objective; fitting this band would move weight onto those clones (the #762 zero-band lesson). Measured on every evaluation with tools/diagnose_uk_benefit_cap.py; retire when support exists and the band sits inside the bound.",
       "tracking": "microcosm#882",
       "approved_by": "juaristi22",
       "adjudication": "microcosm#882 (the 2026-09-16 status comment, issuecomment-5694598278, whose next-steps list this repair works, and the repairs plan María approved on 2026-09-16 with her population ruling on the U8 take-up entry; approver as author per the register convention). Expiry 2026-12-08 aligns the whole UC-repair tranche with the zero-band clock already on the register (microcosm#877), so the next spine re-adjudicates them together. Receipts: experiments/882-uc-repairs-receipts.md (R2 and R5, tools/diagnose_uk_benefit_cap.py on the Q50f candidate and the twins).",
@@ -489,7 +399,7 @@
     },
     {
       "name": "dwp.benefit_cap.capped_households_300_01_to_400",
-      "reason": "Support, not a weight question (#882): the benefit-cap amount band 300 .01 to 400 measures 3,118 against 10,562 (-70 percent) on the Q50f candidate at calibrated weights (November 2025 DWP Table 4, GB). The capped population rests on a handful of source households cloned many times: four of the fourteen bands are empty and 14.2 percent of capped units sit above GBP 1,300 a month against 0.6 percent published, a tail of large families outside London (4.45 children on average, full child elements, housing element near GBP 1,350 a month). The bound total (dwp.benefit_cap.capped_households) and the up-to-GBP-100 band, the one band inside the 25 percent bound, stay in the objective; fitting this band would move weight onto those clones (the #762 zero-band lesson). Measured on every evaluation with tools/diagnose_uk_benefit_cap.py; retire when support exists and the band sits inside the bound.",
+      "reason": "Support, not a weight question (#882): the benefit-cap amount band 300 .01 to 400 measures far below its published count, outside the 25 percent bound on the Q50f candidate at calibrated weights (November 2025 DWP Table 4, GB). The capped population rests on a handful of source households cloned many times: four of the fourteen bands are empty, and the share of capped units above GBP 1,300 a month is many times the published 0.6 percent, a tail of large families outside London on full child elements and large housing elements. The bound total (dwp.benefit_cap.capped_households) and the up-to-GBP-100 band, the one band inside the 25 percent bound, stay in the objective; fitting this band would move weight onto those clones (the #762 zero-band lesson). Measured on every evaluation with tools/diagnose_uk_benefit_cap.py; retire when support exists and the band sits inside the bound.",
       "tracking": "microcosm#882",
       "approved_by": "juaristi22",
       "adjudication": "microcosm#882 (the 2026-09-16 status comment, issuecomment-5694598278, whose next-steps list this repair works, and the repairs plan María approved on 2026-09-16 with her population ruling on the U8 take-up entry; approver as author per the register convention). Expiry 2026-12-08 aligns the whole UC-repair tranche with the zero-band clock already on the register (microcosm#877), so the next spine re-adjudicates them together. Receipts: experiments/882-uc-repairs-receipts.md (R2 and R5, tools/diagnose_uk_benefit_cap.py on the Q50f candidate and the twins).",
@@ -498,7 +408,7 @@
     },
     {
       "name": "dwp.benefit_cap.capped_households_500_01_to_600",
-      "reason": "Support, not a weight question (#882): the benefit-cap amount band 500 .01 to 600 measures 8,267 against 4,431 (+87 percent) on the Q50f candidate at calibrated weights (November 2025 DWP Table 4, GB). The capped population rests on a handful of source households cloned many times: four of the fourteen bands are empty and 14.2 percent of capped units sit above GBP 1,300 a month against 0.6 percent published, a tail of large families outside London (4.45 children on average, full child elements, housing element near GBP 1,350 a month). The bound total (dwp.benefit_cap.capped_households) and the up-to-GBP-100 band, the one band inside the 25 percent bound, stay in the objective; fitting this band would move weight onto those clones (the #762 zero-band lesson). Measured on every evaluation with tools/diagnose_uk_benefit_cap.py; retire when support exists and the band sits inside the bound.",
+      "reason": "Support, not a weight question (#882): the benefit-cap amount band 500 .01 to 600 measures far above its published count, outside the 25 percent bound on the Q50f candidate at calibrated weights (November 2025 DWP Table 4, GB). The capped population rests on a handful of source households cloned many times: four of the fourteen bands are empty, and the share of capped units above GBP 1,300 a month is many times the published 0.6 percent, a tail of large families outside London on full child elements and large housing elements. The bound total (dwp.benefit_cap.capped_households) and the up-to-GBP-100 band, the one band inside the 25 percent bound, stay in the objective; fitting this band would move weight onto those clones (the #762 zero-band lesson). Measured on every evaluation with tools/diagnose_uk_benefit_cap.py; retire when support exists and the band sits inside the bound.",
       "tracking": "microcosm#882",
       "approved_by": "juaristi22",
       "adjudication": "microcosm#882 (the 2026-09-16 status comment, issuecomment-5694598278, whose next-steps list this repair works, and the repairs plan María approved on 2026-09-16 with her population ruling on the U8 take-up entry; approver as author per the register convention). Expiry 2026-12-08 aligns the whole UC-repair tranche with the zero-band clock already on the register (microcosm#877), so the next spine re-adjudicates them together. Receipts: experiments/882-uc-repairs-receipts.md (R2 and R5, tools/diagnose_uk_benefit_cap.py on the Q50f candidate and the twins).",
@@ -507,7 +417,7 @@
     },
     {
       "name": "dwp.benefit_cap.capped_households_600_01_to_700",
-      "reason": "Support, not a weight question (#882): the benefit-cap amount band 600 .01 to 700 measures no model unit in the band on the Q50f candidate at calibrated weights (November 2025 DWP Table 4, GB). The capped population rests on a handful of source households cloned many times: four of the fourteen bands are empty and 14.2 percent of capped units sit above GBP 1,300 a month against 0.6 percent published, a tail of large families outside London (4.45 children on average, full child elements, housing element near GBP 1,350 a month). The bound total (dwp.benefit_cap.capped_households) and the up-to-GBP-100 band, the one band inside the 25 percent bound, stay in the objective; fitting this band would move weight onto those clones (the #762 zero-band lesson). Measured on every evaluation with tools/diagnose_uk_benefit_cap.py; retire when support exists and the band sits inside the bound.",
+      "reason": "Support, not a weight question (#882): the benefit-cap amount band 600 .01 to 700 measures no model unit in the band on the Q50f candidate at calibrated weights (November 2025 DWP Table 4, GB). The capped population rests on a handful of source households cloned many times: four of the fourteen bands are empty, and the share of capped units above GBP 1,300 a month is many times the published 0.6 percent, a tail of large families outside London on full child elements and large housing elements. The bound total (dwp.benefit_cap.capped_households) and the up-to-GBP-100 band, the one band inside the 25 percent bound, stay in the objective; fitting this band would move weight onto those clones (the #762 zero-band lesson). Measured on every evaluation with tools/diagnose_uk_benefit_cap.py; retire when support exists and the band sits inside the bound.",
       "tracking": "microcosm#882",
       "approved_by": "juaristi22",
       "adjudication": "microcosm#882 (the 2026-09-16 status comment, issuecomment-5694598278, whose next-steps list this repair works, and the repairs plan María approved on 2026-09-16 with her population ruling on the U8 take-up entry; approver as author per the register convention). Expiry 2026-12-08 aligns the whole UC-repair tranche with the zero-band clock already on the register (microcosm#877), so the next spine re-adjudicates them together. Receipts: experiments/882-uc-repairs-receipts.md (R2 and R5, tools/diagnose_uk_benefit_cap.py on the Q50f candidate and the twins).",
@@ -516,7 +426,7 @@
     },
     {
       "name": "dwp.benefit_cap.capped_households_700_01_to_800",
-      "reason": "Support, not a weight question (#882): the benefit-cap amount band 700 .01 to 800 measures 6,977 against 1,902 (+267 percent) on the Q50f candidate at calibrated weights (November 2025 DWP Table 4, GB). The capped population rests on a handful of source households cloned many times: four of the fourteen bands are empty and 14.2 percent of capped units sit above GBP 1,300 a month against 0.6 percent published, a tail of large families outside London (4.45 children on average, full child elements, housing element near GBP 1,350 a month). The bound total (dwp.benefit_cap.capped_households) and the up-to-GBP-100 band, the one band inside the 25 percent bound, stay in the objective; fitting this band would move weight onto those clones (the #762 zero-band lesson). Measured on every evaluation with tools/diagnose_uk_benefit_cap.py; retire when support exists and the band sits inside the bound.",
+      "reason": "Support, not a weight question (#882): the benefit-cap amount band 700 .01 to 800 measures far above its published count, outside the 25 percent bound on the Q50f candidate at calibrated weights (November 2025 DWP Table 4, GB). The capped population rests on a handful of source households cloned many times: four of the fourteen bands are empty, and the share of capped units above GBP 1,300 a month is many times the published 0.6 percent, a tail of large families outside London on full child elements and large housing elements. The bound total (dwp.benefit_cap.capped_households) and the up-to-GBP-100 band, the one band inside the 25 percent bound, stay in the objective; fitting this band would move weight onto those clones (the #762 zero-band lesson). Measured on every evaluation with tools/diagnose_uk_benefit_cap.py; retire when support exists and the band sits inside the bound.",
       "tracking": "microcosm#882",
       "approved_by": "juaristi22",
       "adjudication": "microcosm#882 (the 2026-09-16 status comment, issuecomment-5694598278, whose next-steps list this repair works, and the repairs plan María approved on 2026-09-16 with her population ruling on the U8 take-up entry; approver as author per the register convention). Expiry 2026-12-08 aligns the whole UC-repair tranche with the zero-band clock already on the register (microcosm#877), so the next spine re-adjudicates them together. Receipts: experiments/882-uc-repairs-receipts.md (R2 and R5, tools/diagnose_uk_benefit_cap.py on the Q50f candidate and the twins).",
@@ -525,7 +435,7 @@
     },
     {
       "name": "dwp.benefit_cap.capped_households_800_01_to_900",
-      "reason": "Support, not a weight question (#882): the benefit-cap amount band 800 .01 to 900 measures 3,041 against 1,328 (+129 percent) on the Q50f candidate at calibrated weights (November 2025 DWP Table 4, GB). The capped population rests on a handful of source households cloned many times: four of the fourteen bands are empty and 14.2 percent of capped units sit above GBP 1,300 a month against 0.6 percent published, a tail of large families outside London (4.45 children on average, full child elements, housing element near GBP 1,350 a month). The bound total (dwp.benefit_cap.capped_households) and the up-to-GBP-100 band, the one band inside the 25 percent bound, stay in the objective; fitting this band would move weight onto those clones (the #762 zero-band lesson). Measured on every evaluation with tools/diagnose_uk_benefit_cap.py; retire when support exists and the band sits inside the bound.",
+      "reason": "Support, not a weight question (#882): the benefit-cap amount band 800 .01 to 900 measures far above its published count, outside the 25 percent bound on the Q50f candidate at calibrated weights (November 2025 DWP Table 4, GB). The capped population rests on a handful of source households cloned many times: four of the fourteen bands are empty, and the share of capped units above GBP 1,300 a month is many times the published 0.6 percent, a tail of large families outside London on full child elements and large housing elements. The bound total (dwp.benefit_cap.capped_households) and the up-to-GBP-100 band, the one band inside the 25 percent bound, stay in the objective; fitting this band would move weight onto those clones (the #762 zero-band lesson). Measured on every evaluation with tools/diagnose_uk_benefit_cap.py; retire when support exists and the band sits inside the bound.",
       "tracking": "microcosm#882",
       "approved_by": "juaristi22",
       "adjudication": "microcosm#882 (the 2026-09-16 status comment, issuecomment-5694598278, whose next-steps list this repair works, and the repairs plan María approved on 2026-09-16 with her population ruling on the U8 take-up entry; approver as author per the register convention). Expiry 2026-12-08 aligns the whole UC-repair tranche with the zero-band clock already on the register (microcosm#877), so the next spine re-adjudicates them together. Receipts: experiments/882-uc-repairs-receipts.md (R2 and R5, tools/diagnose_uk_benefit_cap.py on the Q50f candidate and the twins).",
@@ -534,7 +444,7 @@
     },
     {
       "name": "dwp.benefit_cap.capped_households_900_01_to_1000",
-      "reason": "Support, not a weight question (#882): the benefit-cap amount band 900 .01 to 1000 measures no model unit in the band on the Q50f candidate at calibrated weights (November 2025 DWP Table 4, GB). The capped population rests on a handful of source households cloned many times: four of the fourteen bands are empty and 14.2 percent of capped units sit above GBP 1,300 a month against 0.6 percent published, a tail of large families outside London (4.45 children on average, full child elements, housing element near GBP 1,350 a month). The bound total (dwp.benefit_cap.capped_households) and the up-to-GBP-100 band, the one band inside the 25 percent bound, stay in the objective; fitting this band would move weight onto those clones (the #762 zero-band lesson). Measured on every evaluation with tools/diagnose_uk_benefit_cap.py; retire when support exists and the band sits inside the bound.",
+      "reason": "Support, not a weight question (#882): the benefit-cap amount band 900 .01 to 1000 measures no model unit in the band on the Q50f candidate at calibrated weights (November 2025 DWP Table 4, GB). The capped population rests on a handful of source households cloned many times: four of the fourteen bands are empty, and the share of capped units above GBP 1,300 a month is many times the published 0.6 percent, a tail of large families outside London on full child elements and large housing elements. The bound total (dwp.benefit_cap.capped_households) and the up-to-GBP-100 band, the one band inside the 25 percent bound, stay in the objective; fitting this band would move weight onto those clones (the #762 zero-band lesson). Measured on every evaluation with tools/diagnose_uk_benefit_cap.py; retire when support exists and the band sits inside the bound.",
       "tracking": "microcosm#882",
       "approved_by": "juaristi22",
       "adjudication": "microcosm#882 (the 2026-09-16 status comment, issuecomment-5694598278, whose next-steps list this repair works, and the repairs plan María approved on 2026-09-16 with her population ruling on the U8 take-up entry; approver as author per the register convention). Expiry 2026-12-08 aligns the whole UC-repair tranche with the zero-band clock already on the register (microcosm#877), so the next spine re-adjudicates them together. Receipts: experiments/882-uc-repairs-receipts.md (R2 and R5, tools/diagnose_uk_benefit_cap.py on the Q50f candidate and the twins).",
@@ -543,7 +453,7 @@
     },
     {
       "name": "dwp.benefit_cap.capped_households_1000_01_to_1100",
-      "reason": "Support, not a weight question (#882): the benefit-cap amount band 1000 .01 to 1100 measures no model unit in the band on the Q50f candidate at calibrated weights (November 2025 DWP Table 4, GB). The capped population rests on a handful of source households cloned many times: four of the fourteen bands are empty and 14.2 percent of capped units sit above GBP 1,300 a month against 0.6 percent published, a tail of large families outside London (4.45 children on average, full child elements, housing element near GBP 1,350 a month). The bound total (dwp.benefit_cap.capped_households) and the up-to-GBP-100 band, the one band inside the 25 percent bound, stay in the objective; fitting this band would move weight onto those clones (the #762 zero-band lesson). Measured on every evaluation with tools/diagnose_uk_benefit_cap.py; retire when support exists and the band sits inside the bound.",
+      "reason": "Support, not a weight question (#882): the benefit-cap amount band 1000 .01 to 1100 measures no model unit in the band on the Q50f candidate at calibrated weights (November 2025 DWP Table 4, GB). The capped population rests on a handful of source households cloned many times: four of the fourteen bands are empty, and the share of capped units above GBP 1,300 a month is many times the published 0.6 percent, a tail of large families outside London on full child elements and large housing elements. The bound total (dwp.benefit_cap.capped_households) and the up-to-GBP-100 band, the one band inside the 25 percent bound, stay in the objective; fitting this band would move weight onto those clones (the #762 zero-band lesson). Measured on every evaluation with tools/diagnose_uk_benefit_cap.py; retire when support exists and the band sits inside the bound.",
       "tracking": "microcosm#882",
       "approved_by": "juaristi22",
       "adjudication": "microcosm#882 (the 2026-09-16 status comment, issuecomment-5694598278, whose next-steps list this repair works, and the repairs plan María approved on 2026-09-16 with her population ruling on the U8 take-up entry; approver as author per the register convention). Expiry 2026-12-08 aligns the whole UC-repair tranche with the zero-band clock already on the register (microcosm#877), so the next spine re-adjudicates them together. Receipts: experiments/882-uc-repairs-receipts.md (R2 and R5, tools/diagnose_uk_benefit_cap.py on the Q50f candidate and the twins).",
@@ -552,7 +462,7 @@
     },
     {
       "name": "dwp.benefit_cap.capped_households_1100_01_to_1200",
-      "reason": "Support, not a weight question (#882): the benefit-cap amount band 1100 .01 to 1200 measures 2,991 against 380 (+687 percent) on the Q50f candidate at calibrated weights (November 2025 DWP Table 4, GB). The capped population rests on a handful of source households cloned many times: four of the fourteen bands are empty and 14.2 percent of capped units sit above GBP 1,300 a month against 0.6 percent published, a tail of large families outside London (4.45 children on average, full child elements, housing element near GBP 1,350 a month). The bound total (dwp.benefit_cap.capped_households) and the up-to-GBP-100 band, the one band inside the 25 percent bound, stay in the objective; fitting this band would move weight onto those clones (the #762 zero-band lesson). Measured on every evaluation with tools/diagnose_uk_benefit_cap.py; retire when support exists and the band sits inside the bound.",
+      "reason": "Support, not a weight question (#882): the benefit-cap amount band 1100 .01 to 1200 measures far above its published count, outside the 25 percent bound on the Q50f candidate at calibrated weights (November 2025 DWP Table 4, GB). The capped population rests on a handful of source households cloned many times: four of the fourteen bands are empty, and the share of capped units above GBP 1,300 a month is many times the published 0.6 percent, a tail of large families outside London on full child elements and large housing elements. The bound total (dwp.benefit_cap.capped_households) and the up-to-GBP-100 band, the one band inside the 25 percent bound, stay in the objective; fitting this band would move weight onto those clones (the #762 zero-band lesson). Measured on every evaluation with tools/diagnose_uk_benefit_cap.py; retire when support exists and the band sits inside the bound.",
       "tracking": "microcosm#882",
       "approved_by": "juaristi22",
       "adjudication": "microcosm#882 (the 2026-09-16 status comment, issuecomment-5694598278, whose next-steps list this repair works, and the repairs plan María approved on 2026-09-16 with her population ruling on the U8 take-up entry; approver as author per the register convention). Expiry 2026-12-08 aligns the whole UC-repair tranche with the zero-band clock already on the register (microcosm#877), so the next spine re-adjudicates them together. Receipts: experiments/882-uc-repairs-receipts.md (R2 and R5, tools/diagnose_uk_benefit_cap.py on the Q50f candidate and the twins).",
@@ -561,7 +471,7 @@
     },
     {
       "name": "dwp.benefit_cap.capped_households_1200_01_to_1300",
-      "reason": "Support, not a weight question (#882): the benefit-cap amount band 1200 .01 to 1300 measures no model unit in the band on the Q50f candidate at calibrated weights (November 2025 DWP Table 4, GB). The capped population rests on a handful of source households cloned many times: four of the fourteen bands are empty and 14.2 percent of capped units sit above GBP 1,300 a month against 0.6 percent published, a tail of large families outside London (4.45 children on average, full child elements, housing element near GBP 1,350 a month). The bound total (dwp.benefit_cap.capped_households) and the up-to-GBP-100 band, the one band inside the 25 percent bound, stay in the objective; fitting this band would move weight onto those clones (the #762 zero-band lesson). Measured on every evaluation with tools/diagnose_uk_benefit_cap.py; retire when support exists and the band sits inside the bound.",
+      "reason": "Support, not a weight question (#882): the benefit-cap amount band 1200 .01 to 1300 measures no model unit in the band on the Q50f candidate at calibrated weights (November 2025 DWP Table 4, GB). The capped population rests on a handful of source households cloned many times: four of the fourteen bands are empty, and the share of capped units above GBP 1,300 a month is many times the published 0.6 percent, a tail of large families outside London on full child elements and large housing elements. The bound total (dwp.benefit_cap.capped_households) and the up-to-GBP-100 band, the one band inside the 25 percent bound, stay in the objective; fitting this band would move weight onto those clones (the #762 zero-band lesson). Measured on every evaluation with tools/diagnose_uk_benefit_cap.py; retire when support exists and the band sits inside the bound.",
       "tracking": "microcosm#882",
       "approved_by": "juaristi22",
       "adjudication": "microcosm#882 (the 2026-09-16 status comment, issuecomment-5694598278, whose next-steps list this repair works, and the repairs plan María approved on 2026-09-16 with her population ruling on the U8 take-up entry; approver as author per the register convention). Expiry 2026-12-08 aligns the whole UC-repair tranche with the zero-band clock already on the register (microcosm#877), so the next spine re-adjudicates them together. Receipts: experiments/882-uc-repairs-receipts.md (R2 and R5, tools/diagnose_uk_benefit_cap.py on the Q50f candidate and the twins).",
@@ -570,7 +480,7 @@
     },
     {
       "name": "dwp.benefit_cap.capped_households_1300_01_and_above",
-      "reason": "Support, not a weight question (#882): the benefit-cap amount band 1300 .01 and above measures 15,774 against 627 (+2416 percent) on the Q50f candidate at calibrated weights (November 2025 DWP Table 4, GB). The capped population rests on a handful of source households cloned many times: four of the fourteen bands are empty and 14.2 percent of capped units sit above GBP 1,300 a month against 0.6 percent published, a tail of large families outside London (4.45 children on average, full child elements, housing element near GBP 1,350 a month). The bound total (dwp.benefit_cap.capped_households) and the up-to-GBP-100 band, the one band inside the 25 percent bound, stay in the objective; fitting this band would move weight onto those clones (the #762 zero-band lesson). Measured on every evaluation with tools/diagnose_uk_benefit_cap.py; retire when support exists and the band sits inside the bound.",
+      "reason": "Support, not a weight question (#882): the benefit-cap amount band 1300 .01 and above measures far above its published count, outside the 25 percent bound on the Q50f candidate at calibrated weights (November 2025 DWP Table 4, GB). The capped population rests on a handful of source households cloned many times: four of the fourteen bands are empty, and the share of capped units above GBP 1,300 a month is many times the published 0.6 percent, a tail of large families outside London on full child elements and large housing elements. The bound total (dwp.benefit_cap.capped_households) and the up-to-GBP-100 band, the one band inside the 25 percent bound, stay in the objective; fitting this band would move weight onto those clones (the #762 zero-band lesson). Measured on every evaluation with tools/diagnose_uk_benefit_cap.py; retire when support exists and the band sits inside the bound.",
       "tracking": "microcosm#882",
       "approved_by": "juaristi22",
       "adjudication": "microcosm#882 (the 2026-09-16 status comment, issuecomment-5694598278, whose next-steps list this repair works, and the repairs plan María approved on 2026-09-16 with her population ruling on the U8 take-up entry; approver as author per the register convention). Expiry 2026-12-08 aligns the whole UC-repair tranche with the zero-band clock already on the register (microcosm#877), so the next spine re-adjudicates them together. Receipts: experiments/882-uc-repairs-receipts.md (R2 and R5, tools/diagnose_uk_benefit_cap.py on the Q50f candidate and the twins).",
@@ -580,16 +490,16 @@
     {
       "name": "obr.vat",
       "reason": "Level set by an engine factor, not the weights: policyengine-uk's vat divides household VAT by gov.simulation.microdata_vat_coverage (0.38, a constant since January 2023 with no recorded derivation; policyengine-uk#1996), which folds the household share of VAT receipts (about 70 percent per OBR and the HMRC VAT gap estimates) together with the survey's capture of household spending. The frame's raw household VAT is about 46 percent of the OBR receipts, so the row reads +24.7 percent at design weights and +24.1 percent calibrated on microcosm#1121's head calibration (policyengine-uk 2.122.2), against the 25 percent bound. On the 2026-09-30 national problem (1,090 rows, before this stage set any level) the calibration with the four consumption-tax rows bound left total consumption GBP 55bn (5 percent) below a re-solve with the four consumption-tax rows masked together (GBP 982bn against GBP 1,037bn). In that re-solve the other 1,086 rows fitted no worse (98.5 against 98.4 percent within 10 percent, none past 25 percent against one). Measured on every evaluation with tools/diagnose_uk_consumption_taxes.py; rebind when a locked policyengine-uk splits the factor into the published household share and a declared survey capture and the row fits.",
-      "tracking": "policyengine-uk#1996",
+      "tracking": "microcosm#1278",
       "approved_by": "juaristi22",
-      "adjudication": "María's ruling of 2026-10-08 on the VAT, road fuel and domestic energy plan (microcosm#1113, microcosm#1123 item 3), decision D3: hold the row out until the engine factor is split. The reason's figures were restated on 2026-10-11 after her review of PolicyEngine/microcosm#1167, which found bases mixed. Receipts: experiments/1113-consumption-tax-levels-receipts.md (the masked re-solve of the 2026-09-30 problem and microcosm#1121's head calibration).",
+      "adjudication": "María's ruling of 2026-10-08 on the VAT, road fuel and domestic energy plan (microcosm#1113, microcosm#1123 item 3), decision D3: hold the row out until the engine factor is split. The reason's figures were restated on 2026-10-11 after her review of PolicyEngine/microcosm#1167, which found bases mixed. Receipts: experiments/1113-consumption-tax-levels-receipts.md (the masked re-solve of the 2026-09-30 problem and microcosm#1121's head calibration). Tracking moved from policyengine-uk#1996 to microcosm#1278 on 2026-10-20: policyengine-uk#2187, released in 2.135.7, closed #1996, and main locks 2.134.4, so the rebind waits on a lock bump past 2.135.7, after the Budget.",
       "approved_on": "2026-10-08",
       "expires_on": "2027-01-08"
     },
     {
       "name": "ons.household_electricity_expenditure",
-      "reason": "Published-source residual, not a weight question: the lcfs_consumption stage sets electricity spend from the DESNZ Energy Trends domestic volume over the four quarters of calendar 2024 at QEP calendar-2024 average prices paid (the level the energy_rake gate checks), and ONS Consumer Trends 04.5.1 sits below it on every aligned basis. For calendar 2024 it is GBP 26.10bn against the stage's GBP 29.52bn on microcosm#1121's head spine (0.88). For calendar 2025 it is GBP 26.52bn against GBP 29.60bn for Energy Trends volume times QEP unit and fixed costs (0.90), and 1.11 times unit cost alone; meters against households explains about 2 percent. On the 2026-09-30 national problem the calibration took electricity from GBP 29.11bn at design weights to GBP 26.54bn (8.8 percent; 93.0 to 82.9 TWh, 10.9 percent). In a re-solve with the four consumption-tax rows masked together it stayed at GBP 28.70bn, and the other 1,086 rows fitted no worse. Measured on every evaluation with tools/diagnose_uk_consumption_taxes.py; retire if the reconciliation microcosm#1207 tracks finds a concept difference to bridge.",
-      "tracking": "microcosm#1207",
+      "reason": "Published-source residual, not a weight question: the lcfs_consumption stage sets electricity spend from the DESNZ Energy Trends domestic volume over the four quarters of calendar 2024 at QEP calendar-2024 average prices paid (the level the energy_rake gate checks), and ONS Consumer Trends 04.5.1 sits below it on every aligned basis. For calendar 2024 it is GBP 26.10bn against the stage's GBP 29.52bn on microcosm#1121's head spine (0.88). For calendar 2025 it is GBP 26.52bn against GBP 29.60bn for Energy Trends volume times QEP unit and fixed costs (0.90), and 1.11 times unit cost alone; meters against households explains about 2 percent. On the 2026-09-30 national problem the calibration took electricity from GBP 29.11bn at design weights to GBP 26.54bn (8.8 percent; 93.0 to 82.9 TWh, 10.9 percent). In a re-solve with the four consumption-tax rows masked together it stayed at GBP 28.70bn, and the other 1,086 rows fitted no worse. Measured on every evaluation with tools/diagnose_uk_consumption_taxes.py; retire if the reconciliation microcosm#1278 tracks finds a concept difference to bridge.",
+      "tracking": "microcosm#1278",
       "approved_by": "juaristi22",
       "adjudication": "María's ruling of 2026-10-08 on the VAT, road fuel and domestic energy plan (microcosm#1113, microcosm#1123 item 3), decision D1: DESNZ volume at QEP prices stays the level and the ONS rows become diagnostics. The reason was restated on the calendar-2024 basis on 2026-10-10 with her approval, after her ruling of 2026-10-09 put every LCFS spend column at calendar-2024 prices. Its figures were restated on 2026-10-11 after her review of PolicyEngine/microcosm#1167, which found bases mixed. Receipts: experiments/1113-consumption-tax-levels-receipts.md.",
       "approved_on": "2026-10-08",
@@ -597,8 +507,8 @@
     },
     {
       "name": "ons.household_gas_expenditure",
-      "reason": "Published-source residual, not a weight question: the lcfs_consumption stage sets gas spend from the DESNZ Energy Trends domestic volume over the four quarters of calendar 2024 at QEP calendar-2024 average prices paid over the published gas-connected share, and ONS Consumer Trends 04.5.2 sits below it on every aligned basis. For calendar 2024 it is GBP 14.64bn against the stage's GBP 19.23bn on microcosm#1121's head spine (0.76). For calendar 2025 it is GBP 15.34bn against GBP 18.94bn for Energy Trends volume times QEP unit and fixed costs (0.81), and below unit cost alone (0.955). On the 2026-09-30 national problem the calibration took gas from GBP 18.97bn at design weights to GBP 15.35bn (19.1 percent; 260.1 to 205.2 TWh, 21.1 percent) and the gas-connected share from 84.5 to 78.9 percent, against the DESNZ meter share the stage imposes. In a re-solve with the four consumption-tax rows masked together gas stayed at GBP 18.97bn and the share at 84.6 percent, and the other 1,086 rows fitted no worse. Measured on every evaluation with tools/diagnose_uk_consumption_taxes.py; retire if the reconciliation microcosm#1207 tracks finds a concept difference to bridge.",
-      "tracking": "microcosm#1207",
+      "reason": "Published-source residual, not a weight question: the lcfs_consumption stage sets gas spend from the DESNZ Energy Trends domestic volume over the four quarters of calendar 2024 at QEP calendar-2024 average prices paid over the published gas-connected share, and ONS Consumer Trends 04.5.2 sits below it on every aligned basis. For calendar 2024 it is GBP 14.64bn against the stage's GBP 19.23bn on microcosm#1121's head spine (0.76). For calendar 2025 it is GBP 15.34bn against GBP 18.94bn for Energy Trends volume times QEP unit and fixed costs (0.81), and below unit cost alone (0.955). On the 2026-09-30 national problem the calibration took gas from GBP 18.97bn at design weights to GBP 15.35bn (19.1 percent; 260.1 to 205.2 TWh, 21.1 percent) and the gas-connected share from 84.5 to 78.9 percent, against the DESNZ meter share the stage imposes. In a re-solve with the four consumption-tax rows masked together gas stayed at GBP 18.97bn and the share at 84.6 percent, and the other 1,086 rows fitted no worse. Measured on every evaluation with tools/diagnose_uk_consumption_taxes.py; retire if the reconciliation microcosm#1278 tracks finds a concept difference to bridge.",
+      "tracking": "microcosm#1278",
       "approved_by": "juaristi22",
       "adjudication": "María's ruling of 2026-10-08 on the VAT, road fuel and domestic energy plan (microcosm#1113, microcosm#1123 item 3), decision D1: DESNZ volume at QEP prices stays the level and the ONS rows become diagnostics. The reason was restated on the calendar-2024 basis on 2026-10-10 with her approval, after her ruling of 2026-10-09 put every LCFS spend column at calendar-2024 prices. Its figures were restated on 2026-10-11 after her review of PolicyEngine/microcosm#1167, which found bases mixed. Receipts: experiments/1113-consumption-tax-levels-receipts.md.",
       "approved_on": "2026-10-08",
@@ -606,12 +516,30 @@
     },
     {
       "name": "obr.fuel_duties_cars",
-      "reason": "Scope and conversion residual once the stage sets household road fuel: OBR's cars receipts (GBP 14.4bn for FY2024-25, the April 2024 vehicle-type split) include car fuel paid by businesses, and ONS Consumer Trends 07.2.2 for CY2025 at DESNZ 2025 pump prices converts to about GBP 13.5bn of duty, 7 percent below the OBR cars line. With petrol plus diesel levelled to ONS 07.2.2 by the lcfs_consumption stage, the engine's 2025 fuel_duty reads -9.9 percent against the row on its RAC price divisors (-8.1 percent on DESNZ's; policyengine-uk#2169 A), so binding it would pull weight toward fuel buyers to cover business use the household frame does not hold. Before the level step it read -34.5 percent at design weights and -17.7 percent calibrated on microcosm#1121's head, where the weights raised petrol 21 and diesel 34 percent from design to final. On the 2026-09-30 national problem the calibration with the four consumption-tax rows bound left petrol 18 and diesel 36 percent above a re-solve with the four consumption-tax rows masked together, in which the other 1,086 rows fitted no worse. Household road fuel is bound as ons.household_road_fuel_expenditure. Measured on every evaluation with tools/diagnose_uk_consumption_taxes.py; rebind if Microcosm comes to model business use of cars, which microcosm#1207 tracks.",
-      "tracking": "microcosm#1207",
+      "reason": "Scope and conversion residual once the stage sets household road fuel: OBR's cars receipts (GBP 14.4bn for FY2024-25, the April 2024 vehicle-type split) include car fuel paid by businesses, and ONS Consumer Trends 07.2.2 for CY2025 at DESNZ 2025 pump prices converts to about GBP 13.5bn of duty, 7 percent below the OBR cars line. With petrol plus diesel levelled to ONS 07.2.2 by the lcfs_consumption stage, the engine's 2025 fuel_duty reads -9.9 percent against the row on its RAC price divisors (-8.1 percent on DESNZ's; policyengine-uk#2169 A), so binding it would pull weight toward fuel buyers to cover business use the household frame does not hold. Before the level step it read -34.5 percent at design weights and -17.7 percent calibrated on microcosm#1121's head, where the weights raised petrol 21 and diesel 34 percent from design to final. On the 2026-09-30 national problem the calibration with the four consumption-tax rows bound left petrol 18 and diesel 36 percent above a re-solve with the four consumption-tax rows masked together, in which the other 1,086 rows fitted no worse. Household road fuel is bound as ons.household_road_fuel_expenditure. Measured on every evaluation with tools/diagnose_uk_consumption_taxes.py; rebind if Microcosm comes to model business use of cars, which microcosm#1278 tracks.",
+      "tracking": "microcosm#1278",
       "approved_by": "juaristi22",
       "adjudication": "María's approval of 2026-10-08 of the VAT, road fuel and domestic energy plan (microcosm#1113, microcosm#1123 item 3), decision D2, with the binding confirmed on 2026-10-09: the stage sets the household road-fuel level and incidence, and the household-scope ONS 07.2.2 row is bound in place of the OBR cars receipts, which include business fuel. The reason's figures were restated on 2026-10-11 after her review of PolicyEngine/microcosm#1167, which found bases mixed. Receipts: experiments/1113-consumption-tax-levels-receipts.md.",
       "approved_on": "2026-10-08",
       "expires_on": "2027-01-08"
+    },
+    {
+      "name": "obr.ni_employer",
+      "reason": "Engine and period basis for roughly half of the gap; the rest is under investigation. policyengine-uk's ni_employer is the secondary Class 1 charge on each earner's pay above the secondary threshold, gross of the Employment Allowance, which employers offset against their secondary Class 1 liability through payroll, so OBR's receipts are net of it: HMRC's tax relief statistics (January 2026) put its cost at GBP 7.4bn for 2025-26 (a forecast), after the allowance rose to GBP 10,500 per employer and the GBP 100,000 eligibility restriction was removed from 6 April 2025. The row also binds the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26), while the engine's 2025 period applies the FY2025-26 rules (the 15 percent rate and the GBP 5,000 secondary threshold) to the whole window, so its first quarter is overstated. On the K=15 local candidates measured for microcosm#1301 the row read about 20 percent above its target: the allowance accounts for about a quarter of that excess, the window for about a fifth and the under-21 zero rate, which the engine also omits, for under a tenth, so the stated parts explain roughly half of it. The rest sits in the pay level and may be a conflict between the bound pay targets and OBR's NICs base rather than a weighting defect. Bound, the row pulls pay down against those pay targets to close a gap at least half of which the weights did not open. Held out of the objective as a diagnostic and never fitted; rebind when a locked policyengine-uk nets the allowance out of ni_employer and the window takes each fiscal year's own rules.",
+      "tracking": "policyengine-uk#2459",
+      "approved_by": "juaristi22",
+      "adjudication": "María's ruling of 2026-10-16 on the microcosm#1301 local release plan: unbind the row as a measured diagnostic, rather than bind the FY2025-26 value or sign it gate-only, because modelling the allowance alone would close only part of the gap. The exclusion applies on both lines, since this register has no line scoping: the national objective drops the row too, and a national run given a frozen scoring register derived before this entry fails closed (the re-derived register differs from the frozen one), so the national build's frozen register is derived from a head that carries this entry. policyengine-uk#2459, split from policyengine-uk#1918 (which keeps the under-21 and apprentice zero rates), asks the engine to net the allowance out of ni_employer. The expiry gives the three-month window of the 2026-10-08 engine-factor diagnostic (obr.vat).",
+      "approved_on": "2026-10-16",
+      "expires_on": "2027-01-16"
+    },
+    {
+      "name": "orr.rail_government_support",
+      "reason": "Basis, not a weight question: the row binds ORR table 7270's broad total of government support to the Great Britain railway, and the frame's household rail subsidy (rail_subsidy_spending, the engine's rail_usage times gov.dft.rail.fare_index) sits far below it at design weights. Bound, the solve closes the gap by moving weight onto rail-using households, which also moves untargeted columns that correlate with rail use. Whether the household subsidy is measured against table 7270's broad total or table 7271's narrower by-source series is an open ruling (microcosm#890 G, microcosm#736). Held out of the objective as a measured diagnostic and never fitted; rebind on that ruling, against the narrower series in the feed or a column scaled as uk-data scales it.",
+      "tracking": "microcosm#1278",
+      "approved_by": "juaristi22",
+      "adjudication": "María's ruling of 2026-10-20 on the pre-Budget PR (microcosm#1278): hold the row out only if a national arm with it held out, run beside the calibration-period fix's arm (microcosm#1324), passes the gates and keeps the share of rows within 10 percent; otherwise keep it bound and label the distributional tables. The 7270-versus-7271 basis ruling stays open (microcosm#890 G). The expiry, 2026-12-11, matches the uprating holds' renewal, after the Budget.",
+      "approved_on": "2026-10-20",
+      "expires_on": "2026-12-11"
     }
   ]
 }

@@ -29,6 +29,9 @@ import pandas as pd
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
 from microcosm.build.uk_runtime.full_measure import resolve_uk_full_measures
+from microcosm.build.uk_runtime.high_value_homes import (
+    load_uk_high_value_home_stock_facts,
+)
 from microcosm.build.uk_runtime.incumbent_surface_evaluation import (
     GSS_REGION_CODES,
     classify_local_rows,
@@ -51,9 +54,26 @@ from microcosm.build.uk_runtime.measure_simulation import (
     load_uk_calibration_measure_exclusions,
 )
 from microcosm.build.uk_runtime.rowwise_dataset import load_uk_rowwise_dataset
+from microcosm.build.uk_runtime.weight_year import uk_engine_year_frame
 from microcosm.calibrate import TargetRegistry
 from microcosm.calibrate.matrix import build_constraint_matrix
-from microcosm.data.contract import uk_incumbent_surface_assessment
+from microcosm.data.contract import (
+    _uk_incumbent_surface_inventory_failures,
+    uk_incumbent_surface_assessment,
+)
+
+
+def _assess(payload: dict) -> None:
+    """Record the release assessment and, separately, the row-inventory check.
+
+    The contract checks the pinned incumbent inventory apart from the measured
+    limits (microcosm#1301), so the summary no longer carries it; the evidence
+    file records any inventory drift beside the summary and the tool warns.
+    """
+    payload["summary"] = uk_incumbent_surface_assessment(payload)
+    payload["inventory_failures"] = _uk_incumbent_surface_inventory_failures(payload)
+    for failure in payload["inventory_failures"]:
+        print(f"warning: incumbent inventory: {failure}", file=sys.stderr)
 
 
 def _parse_args(argv):
@@ -123,7 +143,12 @@ def main(argv=None) -> int:
         expected_manifest_sha256=args.ledger_manifest_sha256,
     )
     period = int(load_uk_frs_release().calibration_year)
-    compilation = compile_uk_target_registry(artifact.facts, target_period=period)
+    # The dense candidate's own line binds the high-value homes region rows,
+    # which select the Microcosm-derived facts beside the feed (microcosm#1301).
+    compilation = compile_uk_target_registry(
+        (*artifact.facts, *load_uk_high_value_home_stock_facts().rows),
+        target_period=period,
+    )
     if compilation.unsupported:
         raise SystemExit(
             f"{len(compilation.unsupported)} national references failed to compile"
@@ -214,6 +239,10 @@ def main(argv=None) -> int:
 
     print("loading the candidate frame ...", file=sys.stderr, flush=True)
     frame, _ = load_uk_rowwise_dataset(args.candidate_h5)
+    # The candidate is read as policyengine-uk gives it at the calibration
+    # year: its stored household weights times the engine's own projection
+    # from the file's year (microcosm#796 A19).
+    frame = uk_engine_year_frame(frame, simulation_year=period)
     weights = np.asarray(frame.resolve_weights("household").values, dtype=np.float64)
 
     print("resolving the engine over the frame ...", file=sys.stderr, flush=True)
@@ -445,7 +474,7 @@ def main(argv=None) -> int:
         "national_rows": national.replace({np.nan: None}).to_dict(orient="records"),
         "local_rows": local.replace({np.nan: None}).to_dict(orient="records"),
     }
-    payload["summary"] = uk_incumbent_surface_assessment(payload)
+    _assess(payload)
     args.out_json.write_text(
         json.dumps(payload, indent=1, default=str, allow_nan=False)
     )

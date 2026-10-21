@@ -12,6 +12,10 @@ and one of the two appliers below transports its value:
 * amount rows: the ratio of a policyengine-uk parameter between the fact's
   opening-year instant and the calibration year's, the same calendar-year
   instants the SPI donor rebasing uses (``spi_income._spi_income_uprating_factors``).
+  Savings interest takes two legs, since the index of its history is not the
+  one policyengine-uk's dataset projection applies: ONS household interest
+  income to the frame's survey year, then GDP per head to the calibration year
+  (``UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT``).
   The OBR indices are calendar-year series keyed at 1 January, so the engine's
   period 2025 is calendar 2025 for incomes; the state pension rate is the
   tax-year rate the engine pays for the whole year, so its rows move by that
@@ -28,13 +32,17 @@ published by fiscal or tax year use the months to the end of that year.
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import importlib.metadata
+import importlib.util
 import json
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import replace
 from functools import cache, partial
 from importlib.resources import files
+from pathlib import Path
 from typing import Any
 
 from microcosm.build.ledger_targets import (
@@ -43,6 +51,7 @@ from microcosm.build.ledger_targets import (
     LedgerTargetReference,
     TargetRegistry,
 )
+from microcosm.build.uk_runtime.frs_release import resolve_uk_year_rule
 from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
 
 UK_ENGINE_PARAMETER_INDEX_PREFIX = "policyengine_uk_parameter:"
@@ -154,6 +163,30 @@ UK_HMRC_ITL_ALL_BAND_GROWTH_BASIS = (
 #: described different populations.
 UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT = "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band"
 UK_SPI_STATE_PENSION_RATE_PARAMETER = "gov.dwp.state_pension.new_state_pension.amount"
+#: The SPI savings interest amount by band (microcosm#1095, uk-data#541).
+#: policyengine-uk's dataset projection grows ``savings_interest_income`` by
+#: GDP per head, but the variable's own index, ONS household interest income,
+#: is what records its history: x1.99 from 2022 to 2023 as rates rose, against
+#: GDP per head's x1.05. The frame holds survey-year values (the SPI donors are
+#: rebased to that year by the history index) and the engine projects them to
+#: the calibration year. So a fact moves to the survey year by the history
+#: index and from there by the projection's, the path the data takes.
+UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT = (
+    "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp"
+)
+UK_SPI_SAVINGS_INTEREST_HISTORY_PARAMETER = (
+    "gov.economic_assumptions.indices.ons.household_interest_income"
+)
+UK_SPI_SAVINGS_INTEREST_PROJECTION_PARAMETER = (
+    "gov.economic_assumptions.indices.obr.per_capita.gdp"
+)
+UK_DATASET_YEAR_RULE = "survey_year"
+UK_HISTORY_THEN_PROJECTION_BASIS = (
+    "policyengine-uk parameter ratios in two legs: {history} between 1 January of "
+    "the fact's opening year and 1 January of the dataset's year, the index of "
+    "the variable's history, then {projection} from there to 1 January of the "
+    "calibration year, the index the engine's dataset projection applies"
+)
 UK_RECIPIENT_AMOUNT_GROWTH_BASIS = (
     "recipients times the amount per recipient: the band's recipients grow like its "
     "taxpayers (the count row's index, {count_basis}) and the amount per recipient by "
@@ -332,6 +365,122 @@ def _engine_version() -> str:
     return str(engine_parameter_pins()["engine"]["version"])
 
 
+def pinned_engine_version() -> str:
+    """The policyengine-uk version the vendored engine pins were taken from."""
+
+    return _engine_version()
+
+
+_ENGINE_MODULE = "policyengine_uk"
+_ENGINE_MODULE_FILE = "policyengine_uk/__init__.py"
+
+
+def _engine_origin() -> str | None:
+    """The file ``policyengine_uk`` imports from, or None if it does not import.
+
+    A module object in ``sys.modules`` without a spec leaves nothing to check,
+    so it is refused here, not by ``find_spec``'s ``ValueError``.
+    """
+
+    try:
+        spec = importlib.util.find_spec(_ENGINE_MODULE)
+    except ValueError as exc:
+        raise RuntimeError(
+            f"{_ENGINE_MODULE} is loaded without a module spec, so the UK build "
+            "cannot check which policyengine-uk it imports."
+        ) from exc
+    return None if spec is None else spec.origin
+
+
+def _engine_distribution_file() -> tuple[str, str | None] | None:
+    """The policyengine-uk distribution's own ``__init__.py`` and its RECORD hash.
+
+    None without a distribution; the hash is None where its RECORD carries no
+    sha256 for the file.
+    """
+
+    try:
+        distribution = importlib.metadata.distribution("policyengine-uk")
+    except importlib.metadata.PackageNotFoundError:
+        return None
+    for path in distribution.files or ():
+        if path.as_posix() == _ENGINE_MODULE_FILE:
+            recorded = (
+                path.hash.value
+                if path.hash is not None and path.hash.mode == "sha256"
+                else None
+            )
+            return str(distribution.locate_file(path)), recorded
+    return str(distribution.locate_file(_ENGINE_MODULE_FILE)), None
+
+
+def _record_sha256(path: str) -> str:
+    """A file's sha256 as a wheel's RECORD writes it: urlsafe base64, unpadded."""
+
+    digest = hashlib.sha256(Path(path).read_bytes()).digest()
+    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+
+
+def assert_installed_engine_is_pinned() -> str:
+    """Refuse a UK build on a policyengine-uk other than the pinned one.
+
+    The release freezes its engine (María's ruling of 2026-10-16): uv.lock pins
+    it for CI, but the UK extras accept any later release, so a build checks
+    the engine it imports against the one its pins were taken from. The check
+    runs at the start of ``full_build_cli.prepare_full_build`` and
+    ``prepare_national_build``, before they read an input, again in
+    ``spine_build._rules_engine``, which gives the spine build its engine, and
+    at the start of the release-cut battery and of the certifier tool. The
+    HMRC calibration helpers' default simulation factory, which no build path
+    calls, checks too. The tools that regenerate committed surfaces (the
+    coverage manifest, the H2 fixture, the reports) do not: CI's ``--check``
+    jobs and the H2 parity run them on the lock.
+
+    Three things must hold. The distribution's version is the pinned one,
+    exactly, so a post-release or a local build of it (``2.134.4.post1``,
+    ``2.134.4+local``) is refused. ``policyengine_uk`` imports from that
+    distribution's own files, so a copy earlier on ``sys.path`` or an editable
+    install is refused. And its ``__init__.py`` matches the distribution's
+    RECORD, so a stale record beside other files is refused where the files
+    differ there. An importable policyengine-uk without distribution metadata
+    is refused, since its version cannot be read. An environment without
+    policyengine-uk is left to the caller's own import.
+    """
+
+    installed = installed_engine_version()
+    pinned = _engine_version()
+    if installed not in ("absent", pinned):
+        raise RuntimeError(
+            f"policyengine-uk {installed} is installed, but the UK build is pinned "
+            f"to {pinned} ({UK_ENGINE_PINS_RESOURCE}); sync the lock, or move the "
+            f"lock and re-pin with {UK_ENGINE_PINS_TOOL} together."
+        )
+    origin = _engine_origin()
+    if origin is None:
+        return installed
+    if installed == "absent":
+        raise RuntimeError(
+            "policyengine-uk imports but carries no distribution metadata, so "
+            f"its version cannot be checked against the pinned {pinned} "
+            f"({UK_ENGINE_PINS_RESOURCE}); install it from the lock."
+        )
+    own = _engine_distribution_file()
+    if own is None or Path(origin).resolve() != Path(own[0]).resolve():
+        raise RuntimeError(
+            f"{_ENGINE_MODULE} imports from {origin}, not from the policyengine-uk "
+            f"{installed} distribution's own files "
+            f"({own[0] if own is not None else 'none found'}): a shadowing copy or "
+            "an editable install; install it from the lock."
+        )
+    if own[1] is not None and _record_sha256(origin) != own[1]:
+        raise RuntimeError(
+            f"{origin} does not match the policyengine-uk {installed} "
+            "distribution's RECORD, so its files are not the pinned release's; "
+            "reinstall it from the lock."
+        )
+    return installed
+
+
 def _opening_year(spec: Any, reference: LedgerTargetReference) -> int:
     period_type = str(spec.metadata.get("ledger_period_type") or "")
     if period_type not in _ANNUAL_PERIOD_TYPES:
@@ -373,9 +522,9 @@ def _identity_aligned(
 ) -> Any:
     """A fact that opens in the calibration year binds as published, receipted.
 
-    The production-2023 parity surface compiles the same references at their
-    own period; the declared index then reads as an identity, so the row stays
-    on the surface with its factor written rather than dropping out.
+    A compile at the fact's own period (a tool or a test at an earlier target
+    period) reads the declared index as an identity, so the row stays on the
+    surface with its factor written rather than dropping out.
     """
 
     metadata = {
@@ -441,6 +590,79 @@ def align_hmrc_row_by_engine_index(
             "uprating_index_to_instant": to_instant,
             "uprating_index_from_value": f"{from_value:.15g}",
             "uprating_index_to_value": f"{to_value:.15g}",
+            "uprating_factor": f"{factor:.15g}",
+            "ledger_value_before_alignment": f"{spec.value:.15g}",
+            "uprating_adjudication": UK_INCOME_UPRATING_ADJUDICATION,
+        }
+        aligned.append(replace(spec, value=spec.value * factor, metadata=metadata))
+    return TargetRegistry(aligned, country="uk")
+
+
+def align_hmrc_row_by_history_then_projection(
+    reference: LedgerTargetReference,
+    registry: TargetRegistry,
+    *,
+    index_concept: str,
+    history_path: str,
+    projection_path: str,
+    dataset_year: int | None = None,
+    parameter_value: ParameterValue = engine_parameter_value,
+) -> TargetRegistry:
+    """Move an amount row by its history index, then the dataset projection's.
+
+    factor = ``history(pivot) / history(opening)`` x ``projection(target) /
+    projection(pivot)``, the pivot being the dataset's year held between the
+    fact's opening year and the calibration year. Both legs' values and
+    instants are written on the spec.
+    """
+
+    if reference.uprating_index != index_concept:
+        return registry
+    if dataset_year is None:
+        dataset_year = resolve_uk_year_rule(UK_DATASET_YEAR_RULE)
+    target_year = _target_year(reference)
+    aligned = []
+    for spec in registry.specs:
+        opening_year = _opening_year(spec, reference)
+        _refuse_fact_after_target(spec, opening_year, target_year)
+        if opening_year == target_year:
+            aligned.append(_identity_aligned(spec, reference, opening_year))
+            continue
+        pivot_year = min(max(int(dataset_year), opening_year), target_year)
+        instants = {
+            "from": f"{opening_year}-01-01",
+            "pivot": f"{pivot_year}-01-01",
+            "to": f"{target_year}-01-01",
+        }
+        history = {
+            key: parameter_value(history_path, instants[key])
+            for key in ("from", "pivot")
+        }
+        projection = {
+            key: parameter_value(projection_path, instants[key])
+            for key in ("pivot", "to")
+        }
+        history_factor = history["pivot"] / history["from"]
+        projection_factor = projection["to"] / projection["pivot"]
+        factor = history_factor * projection_factor
+        metadata = {
+            **spec.metadata,
+            "uprating_index": index_concept,
+            "uprating_index_basis": UK_HISTORY_THEN_PROJECTION_BASIS.format(
+                history=history_path, projection=projection_path
+            ),
+            "uprating_index_engine": f"policyengine-uk {_engine_version()}",
+            "uprating_index_from_instant": instants["from"],
+            "uprating_index_pivot_instant": instants["pivot"],
+            "uprating_index_to_instant": instants["to"],
+            "uprating_history_parameter": history_path,
+            "uprating_history_from_value": f"{history['from']:.15g}",
+            "uprating_history_to_value": f"{history['pivot']:.15g}",
+            "uprating_history_factor": f"{history_factor:.15g}",
+            "uprating_projection_parameter": projection_path,
+            "uprating_projection_from_value": f"{projection['pivot']:.15g}",
+            "uprating_projection_to_value": f"{projection['to']:.15g}",
+            "uprating_projection_factor": f"{projection_factor:.15g}",
             "uprating_factor": f"{factor:.15g}",
             "ledger_value_before_alignment": f"{spec.value:.15g}",
             "uprating_adjudication": UK_INCOME_UPRATING_ADJUDICATION,
@@ -726,8 +948,8 @@ def align_hmrc_amount_by_recipient_growth_and_rate(
         rate_factor = float(rate_spec.metadata["uprating_factor"])
         factor = count_factor * rate_factor
         count_basis = str(count_spec.metadata["uprating_index_basis"])
-        # A fact compiled at its own year (the production-2023 parity surface)
-        # reads both halves as identities, which write the instants only.
+        # A fact compiled at its own year reads both halves as identities,
+        # which write the instants only.
         rate_receipt = {
             f"uprating_rate_{key}": str(rate_spec.metadata[f"uprating_index_{key}"])
             for key in ("from_instant", "to_instant", "from_value", "to_value")
@@ -869,6 +1091,12 @@ def hmrc_uprating_appliers() -> dict[str, Any]:
         index_concept=UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT,
         parameter_path=UK_SPI_STATE_PENSION_RATE_PARAMETER,
     )
+    appliers[UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT] = partial(
+        align_hmrc_row_by_history_then_projection,
+        index_concept=UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT,
+        history_path=UK_SPI_SAVINGS_INTEREST_HISTORY_PARAMETER,
+        projection_path=UK_SPI_SAVINGS_INTEREST_PROJECTION_PARAMETER,
+    )
     return appliers
 
 
@@ -892,7 +1120,11 @@ __all__ = [
     "SPI_BAND_TO_ITL_BANDS",
     "UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT",
     "UK_SPI_STATE_PENSION_RATE_PARAMETER",
+    "UK_SPI_SAVINGS_INTEREST_HISTORY_PARAMETER",
+    "UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT",
+    "UK_SPI_SAVINGS_INTEREST_PROJECTION_PARAMETER",
     "align_hmrc_amount_by_recipient_growth_and_rate",
+    "align_hmrc_row_by_history_then_projection",
     "UK_ENGINE_INDEX_CONCEPTS",
     "UK_ENGINE_INDEX_PARAMETERS",
     "UK_ENGINE_PARAMETER_INDEX_PREFIX",

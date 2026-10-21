@@ -6,13 +6,27 @@ public-safe file inventory in the attempt directory, attempt publication before
 Hugging Face artifact staging, and register graph/evidence files and an
 `orrery.publication.json` receipt snapshot in the artifact manifest.
 
-The existing local service has two independent workers: live telemetry and
-completed graph publication. Slow uploads cannot delay socket acknowledgement
-or telemetry delivery. This change does not introduce another generic runtime,
-rename the telemetry package, or add compatibility wrappers.
+When execution was recorded, they also write the execution overlay that
+`graph.orrery.json` embeds as `graph.execution.json` and register it in the
+same manifest. A failed build's bundle carries it too. It is not copied to the
+preserved `orrery-publication/` directory or listed in `orrery.upload.json`:
+the emitter's file roles and the runs service's contract do not admit it yet.
+Its content is already inside `graph.orrery.json`, so registering it discloses
+nothing new.
 
-Publication IDs do not depend on telemetry run IDs. Jobs use SQLAlchemy and
-Alembic in the existing local SQLite database. Pending jobs survive missing or
+Microcosm's metadata adapter starts one local emitter service with two independent
+workers: live telemetry and completed graph publication. The `microcosm-emitter` package
+owns sockets, authentication, persistence, retries and resource sampling.
+Microcosm retains graph generation, public-file selection and HF staging.
+Slow uploads cannot delay socket acknowledgement or telemetry delivery.
+
+UK full-build commands explicitly defer process shutdown when recording a completed,
+validation-refused or failed telemetry outcome. Their final cleanup closes the combined
+process after graph inventory and enqueue requests, so failure evidence uses the same
+graph socket. Other callers close the process automatically when reporting their outcome.
+
+Publication IDs do not depend on telemetry run IDs. Jobs use SQLAlchemy ORM and
+Alembic inside the emitter service's existing local SQLite database. Pending jobs survive missing or
 rejected credentials, process restarts and telemetry event pruning. Retry
 leases prevent a stale worker from replacing another worker's result.
 The exact source bytes must remain available until delivery completes.
@@ -29,7 +43,7 @@ aggregate summaries can be published publicly.
 | Setting | Source and consumer | Provisioning |
 | --- | --- | --- |
 | `HF_TOKEN` / `HUGGINGFACE_TOKEN` | Existing operator credential, exchanged by the service for a short-lived collector session | Existing environment or Hugging Face login; never committed |
-| Collector origin | Tracked `PRODUCTION_COLLECTOR_URL` in the existing service | No producer variable or destination override |
+| Collector origin | Tracked `PRODUCTION_COLLECTOR_URL` in the emitter's internal core library | No producer variable or destination override |
 | Runs origin | Tracked `DEFAULT_GRAPH_PUBLICATION_ORIGIN` | No new producer variable |
 | `XDG_CACHE_HOME` | Optional existing cache-location setting | Defaults to the user's cache directory |
 
@@ -56,15 +70,32 @@ an upload or stage to Hugging Face.
 ## Retry
 
 ```bash
-microcosm-publish-graph --publication-id PUBLICATION_ID \
+microcosm-emitter-publish-graph --publication-id PUBLICATION_ID \
   --directory /path/to/attempt/orrery-publication
 ```
 
 The preserved directory contains `orrery.upload.json` and the exact files.
 Retries update a separate `publication.status.json`, never the original
 HF receipt snapshot. Pending jobs also resume when a subsequent local service
-starts. A job whose preserved directory has been removed stays pending with
-error code `preserved_files_missing` until its files are restored to the same
-directory; it does not stop delivery of other jobs. Moving this
-service into the `microcosm-emitter` package is a separate, deferred consumer
-change; this implementation does not require that package.
+starts. The retry command comes from the emitter package; Microcosm does not
+retain a second delivery implementation or a compatibility wrapper.
+
+## Emitter dependency
+
+`packages/microcosm-build` depends on one exact `microcosm-emitter` release
+from PyPI, which `uv.lock` records with its wheel and source-archive hashes.
+Microcosm has no Git source override for the emitter. Every merge to the
+emitter's `main` publishes a new version automatically. To adopt one, change the
+exact requirement, regenerate `uv.lock`, update `APPROVED_UV_LOCK_SHA256` in
+`microcosm.build.us_runtime.worker_identity` to the new lockfile digest and
+rerun the tests and wheel checks.
+
+## Migrating an existing workstation
+
+The emitter rejects unversioned databases without modification. Before switching
+an existing workstation, upgrade any old unversioned queue using the preceding
+Microcosm implementation. Versioned telemetry and graph jobs keep their existing
+IDs, eligibility, path and Alembic revision; do not delete a queue to migrate.
+No new runtime variable, credential, hosted service or infrastructure is required
+by this migration. The previously required hosted authorization/API deployments
+remain prerequisites for remote publication.

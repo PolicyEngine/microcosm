@@ -1,20 +1,16 @@
 {
-  "source_fact_feed": "chronicle-uk-942a1fa0-consumer-facts",
+  "source_fact_feed": "chronicle-uk-abf0921-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1303,
-  "contract_target_count": 348,
-  "active_reference_count": 1281,
+  "candidate_count": 1344,
+  "contract_target_count": 362,
+  "active_reference_count": 1322,
   "status_counts": {
-    "active": 1281,
-    "no_fact_at_or_before_period": 7,
-    "signed_excluded": 15
+    "active": 1322,
+    "no_fact_at_or_before_period": 5,
+    "signed_excluded": 17
   },
   "geography_pins": {
     "obr.income_tax": {
-      "geography_level": "country",
-      "geography_id": "K02000001"
-    },
-    "obr.ni": {
       "geography_level": "country",
       "geography_id": "K02000001"
     },
@@ -48,11 +44,11 @@
     },
     "obr.attendance_allowance": {
       "geography_level": "country",
-      "geography_id": "K02000001"
+      "geography_id": "K04000001"
     },
     "obr.carers_allowance": {
       "geography_level": "country",
-      "geography_id": "K02000001"
+      "geography_id": "K04000001"
     },
     "obr.child_benefit": {
       "geography_level": "country",
@@ -80,27 +76,27 @@
     },
     "obr.esa": {
       "geography_level": "country",
-      "geography_id": "K02000001"
+      "geography_id": "K03000001"
     },
     "obr.housing_benefit": {
       "geography_level": "country",
-      "geography_id": "K02000001"
+      "geography_id": "K03000001"
     },
     "obr.jobseekers_allowance": {
       "geography_level": "country",
-      "geography_id": "K02000001"
+      "geography_id": "K03000001"
     },
     "obr.pension_credit": {
       "geography_level": "country",
-      "geography_id": "K02000001"
+      "geography_id": "K03000001"
     },
     "obr.pip": {
       "geography_level": "country",
-      "geography_id": "K02000001"
+      "geography_id": "K04000001"
     },
     "obr.statutory_maternity_pay": {
       "geography_level": "country",
-      "geography_id": "K02000001"
+      "geography_id": "K03000001"
     },
     "obr.tv_licence_fee": {
       "geography_level": "country",
@@ -108,15 +104,15 @@
     },
     "obr.universal_credit_in_cap": {
       "geography_level": "country",
-      "geography_id": "K02000001"
+      "geography_id": "K03000001"
     },
     "obr.universal_credit_outside_cap": {
       "geography_level": "country",
-      "geography_id": "K02000001"
+      "geography_id": "K03000001"
     },
     "obr.winter_fuel_allowance": {
       "geography_level": "country",
-      "geography_id": "K02000001"
+      "geography_id": "K04000001"
     },
     "isc.private_school_students": {
       "geography_level": "country",
@@ -210,14 +206,6 @@
       "geography_level": "country",
       "geography_id": "K03000001"
     },
-    "dwp.pip.daily_living_standard_claimants": {
-      "geography_level": "country",
-      "geography_id": "K03000001"
-    },
-    "dwp.pip.daily_living_enhanced_claimants": {
-      "geography_level": "country",
-      "geography_id": "K03000001"
-    },
     "dwp.esa_claimants": {
       "geography_level": "country",
       "geography_id": "K03000001"
@@ -247,10 +235,6 @@
       "geography_id": "K03000001"
     },
     "dwp.uc.households_children_4": {
-      "geography_level": "country",
-      "geography_id": "K03000001"
-    },
-    "dwp.uc.households_children_5_or_more": {
       "geography_level": "country",
       "geography_id": "K03000001"
     },
@@ -822,6 +806,18 @@
         }
       ]
     },
+    "ons.population.age_0": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.population.age_1": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.population.age_2": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
     "ons.population.female_0_4": {
       "geography_level": "country",
       "geography_id": "K02000001"
@@ -830,7 +826,15 @@
       "geography_level": "country",
       "geography_id": "K02000001"
     },
-    "ons.population.female_15_19": {
+    "ons.population.female_15": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.population.female_16_17": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.population.female_18_19": {
       "geography_level": "country",
       "geography_id": "K02000001"
     },
@@ -906,7 +910,15 @@
       "geography_level": "country",
       "geography_id": "K02000001"
     },
-    "ons.population.male_15_19": {
+    "ons.population.male_15": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.population.male_16_17": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.population.male_18_19": {
       "geography_level": "country",
       "geography_id": "K02000001"
     },
@@ -2000,6 +2012,42 @@
       "geography_level": "country",
       "geography_id": "K02000001"
     },
+    "dft.bus_journeys.london": {
+      "geography_level": "region",
+      "geography_id": "E12000007"
+    },
+    "dft.bus_journeys.north_east": {
+      "geography_level": "region",
+      "geography_id": "E12000001"
+    },
+    "dft.bus_journeys.north_west": {
+      "geography_level": "region",
+      "geography_id": "E12000002"
+    },
+    "dft.bus_journeys.yorkshire_and_the_humber": {
+      "geography_level": "region",
+      "geography_id": "E12000003"
+    },
+    "dft.bus_journeys.east_midlands": {
+      "geography_level": "region",
+      "geography_id": "E12000004"
+    },
+    "dft.bus_journeys.west_midlands": {
+      "geography_level": "region",
+      "geography_id": "E12000005"
+    },
+    "dft.bus_journeys.east_of_england": {
+      "geography_level": "region",
+      "geography_id": "E12000006"
+    },
+    "dft.bus_journeys.south_east": {
+      "geography_level": "region",
+      "geography_id": "E12000008"
+    },
+    "dft.bus_journeys.south_west": {
+      "geography_level": "region",
+      "geography_id": "E12000009"
+    },
     "obr.fuel_duties_cars": {
       "geography_level": "country",
       "geography_id": "K02000001"
@@ -2074,7 +2122,7 @@
     },
     "obr.universal_credit": {
       "geography_level": "country",
-      "geography_id": "K02000001"
+      "geography_id": "K03000001"
     },
     "dwp.hb.households": {
       "geography_level": "country",
@@ -4236,9 +4284,137 @@
       "geography_level": "country",
       "geography_id": "K03000001"
     },
-    "hmrc.salary_sacrifice.it_relief_total": {
-      "geography_level": "country",
-      "geography_id": "K02000001"
+    "microcosm.high_value_homes.over_1m_by_region": {
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "W92000004"
+        }
+      ]
+    },
+    "microcosm.high_value_homes.over_1_5m_by_region": {
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "W92000004"
+        }
+      ]
+    },
+    "microcosm.high_value_homes.over_2m_by_region": {
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "W92000004"
+        }
+      ]
     }
   },
   "genuine_sum_residue": [
@@ -4247,6 +4423,7 @@
     "dwp.workplace_pension.employer_contributions",
     "nithc.public_transport_support",
     "ons.household_road_fuel_expenditure",
+    "ons.population.age_0",
     "ons.population.age_0_9_by_region@E12000001",
     "ons.population.age_0_9_by_region@E12000002",
     "ons.population.age_0_9_by_region@E12000003",
@@ -4259,6 +4436,7 @@
     "ons.population.age_0_9_by_region@N92000002",
     "ons.population.age_0_9_by_region@S92000003",
     "ons.population.age_0_9_by_region@W92000004",
+    "ons.population.age_1",
     "ons.population.age_10_19_by_region@E12000001",
     "ons.population.age_10_19_by_region@E12000002",
     "ons.population.age_10_19_by_region@E12000003",
@@ -4271,6 +4449,7 @@
     "ons.population.age_10_19_by_region@N92000002",
     "ons.population.age_10_19_by_region@S92000003",
     "ons.population.age_10_19_by_region@W92000004",
+    "ons.population.age_2",
     "ons.population.age_20_29_by_region@E12000001",
     "ons.population.age_20_29_by_region@E12000002",
     "ons.population.age_20_29_by_region@E12000003",
@@ -4357,7 +4536,9 @@
     "ons.population.age_80_89_by_region@W92000004",
     "ons.population.female_0_4",
     "ons.population.female_10_14",
-    "ons.population.female_15_19",
+    "ons.population.female_15",
+    "ons.population.female_16_17",
+    "ons.population.female_18_19",
     "ons.population.female_20_24",
     "ons.population.female_25_29",
     "ons.population.female_30_34",
@@ -4376,7 +4557,9 @@
     "ons.population.female_90_plus",
     "ons.population.male_0_4",
     "ons.population.male_10_14",
-    "ons.population.male_15_19",
+    "ons.population.male_15",
+    "ons.population.male_16_17",
+    "ons.population.male_18_19",
     "ons.population.male_20_24",
     "ons.population.male_25_29",
     "ons.population.male_30_34",
@@ -6751,6 +6934,26 @@
       "to": "2025"
     },
     {
+      "name": "slc.borrowers.plan_2_above_threshold",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "slc.borrowers.plan_2_liable",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "slc.borrowers.plan_5_above_threshold",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "slc.borrowers.plan_5_liable",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
       "name": "slc.support.maintenance_loan_recipients",
       "from": "2024",
       "to": "2025"
@@ -6822,12 +7025,89 @@
       "to": "2025"
     },
     {
+      "name": "dft.bus_journeys.london",
+      "from": "2024",
+      "to": "2025",
+      "index": "dft.bus01.stage_pricing_year",
+      "factor": "1",
+      "value_before_uprating": "1821485000.0"
+    },
+    {
+      "name": "dft.bus_journeys.north_east",
+      "from": "2024",
+      "to": "2025",
+      "index": "dft.bus01.stage_pricing_year",
+      "factor": "1",
+      "value_before_uprating": "139215323.89253"
+    },
+    {
+      "name": "dft.bus_journeys.north_west",
+      "from": "2024",
+      "to": "2025",
+      "index": "dft.bus01.stage_pricing_year",
+      "factor": "1",
+      "value_before_uprating": "339352717.50098"
+    },
+    {
+      "name": "dft.bus_journeys.yorkshire_and_the_humber",
+      "from": "2024",
+      "to": "2025",
+      "index": "dft.bus01.stage_pricing_year",
+      "factor": "1",
+      "value_before_uprating": "236203795.62029"
+    },
+    {
+      "name": "dft.bus_journeys.east_midlands",
+      "from": "2024",
+      "to": "2025",
+      "index": "dft.bus01.stage_pricing_year",
+      "factor": "1",
+      "value_before_uprating": "163902020.46597"
+    },
+    {
+      "name": "dft.bus_journeys.west_midlands",
+      "from": "2024",
+      "to": "2025",
+      "index": "dft.bus01.stage_pricing_year",
+      "factor": "1",
+      "value_before_uprating": "295332910.62634"
+    },
+    {
+      "name": "dft.bus_journeys.east_of_england",
+      "from": "2024",
+      "to": "2025",
+      "index": "dft.bus01.stage_pricing_year",
+      "factor": "1",
+      "value_before_uprating": "161939341.50538"
+    },
+    {
+      "name": "dft.bus_journeys.south_east",
+      "from": "2024",
+      "to": "2025",
+      "index": "dft.bus01.stage_pricing_year",
+      "factor": "1",
+      "value_before_uprating": "322147459.66648"
+    },
+    {
+      "name": "dft.bus_journeys.south_west",
+      "from": "2024",
+      "to": "2025",
+      "index": "dft.bus01.stage_pricing_year",
+      "factor": "1",
+      "value_before_uprating": "192416317.98334"
+    },
+    {
       "name": "obr.fuel_duties_cars",
       "from": "2024",
       "to": "2025"
     },
     {
       "name": "orr.rail_government_support",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.household_road_fuel_expenditure",
       "from": "2024",
       "to": "2025"
     },
@@ -7435,104 +7715,104 @@
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_100000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
-      "factor": "1.18185603729846",
+      "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
+      "factor": "1.19201766916889",
       "value_before_uprating": "1260000000.0"
     },
     {
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_1000000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
-      "factor": "1.18185603729846",
+      "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
+      "factor": "1.19201766916889",
       "value_before_uprating": "1240000000.0"
     },
     {
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_12570",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
-      "factor": "1.18185603729846",
+      "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
+      "factor": "1.19201766916889",
       "value_before_uprating": "274000000.0"
     },
     {
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_15000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
-      "factor": "1.18185603729846",
+      "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
+      "factor": "1.19201766916889",
       "value_before_uprating": "1370000000.0"
     },
     {
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_150000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
-      "factor": "1.18185603729846",
+      "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
+      "factor": "1.19201766916889",
       "value_before_uprating": "650000000.0"
     },
     {
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_20000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
-      "factor": "1.18185603729846",
+      "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
+      "factor": "1.19201766916889",
       "value_before_uprating": "3130000000.0"
     },
     {
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_200000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
-      "factor": "1.18185603729846",
+      "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
+      "factor": "1.19201766916889",
       "value_before_uprating": "733000000.0"
     },
     {
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_30000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
-      "factor": "1.18185603729846",
+      "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
+      "factor": "1.19201766916889",
       "value_before_uprating": "2530000000.0"
     },
     {
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_300000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
-      "factor": "1.18185603729846",
+      "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
+      "factor": "1.19201766916889",
       "value_before_uprating": "673000000.0"
     },
     {
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_40000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
-      "factor": "1.18185603729846",
+      "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
+      "factor": "1.19201766916889",
       "value_before_uprating": "1870000000.0"
     },
     {
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_50000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
-      "factor": "1.18185603729846",
+      "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
+      "factor": "1.19201766916889",
       "value_before_uprating": "2340000000.0"
     },
     {
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_500000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
-      "factor": "1.18185603729846",
+      "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
+      "factor": "1.19201766916889",
       "value_before_uprating": "653000000.0"
     },
     {
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_70000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
-      "factor": "1.18185603729846",
+      "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
+      "factor": "1.19201766916889",
       "value_before_uprating": "1620000000.0"
     },
     {
@@ -10518,11 +10798,6 @@
       "index": "hmrc.itl_2026.total_tax_growth_by_total_income_band",
       "factor": "1.21312442637997",
       "value_before_uprating": "522000000.0"
-    },
-    {
-      "name": "hmrc.salary_sacrifice.it_relief_total",
-      "from": "2024",
-      "to": "2025"
     }
   ],
   "targets": {
@@ -10538,21 +10813,6 @@
           "resolved_value": 325054437305.83215,
           "resolved_fact_period": "2025",
           "resolved_fact_key": "ledger_aggregate_fact_v2_d928e7da0fbfe088ca1a30d7"
-        }
-      ]
-    },
-    "obr.ni": {
-      "status": "active",
-      "candidates": [
-        {
-          "name": "obr.ni",
-          "status": "active",
-          "matched_fact_count_overall": 7,
-          "matched_fact_count_at_or_before_period": 2,
-          "resolved_period": 2025,
-          "resolved_value": 193190546312.03436,
-          "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_eccab3ee763d68bb782276a7"
         }
       ]
     },
@@ -10652,7 +10912,7 @@
           "matched_fact_count_overall": 7,
           "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
-          "resolved_value": 15026137524.089184,
+          "resolved_value": 10161716337.860817,
           "resolved_fact_period": "2025",
           "resolved_fact_key": "ledger_aggregate_fact_v2_1b6d55fc4ccd78bd0ae457e9"
         }
@@ -10669,7 +10929,7 @@
           "resolved_period": 2025,
           "resolved_value": 8309942303.358463,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_4fe1b1966eeb22c0c5ca464c"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b622452dc3ca65969deac2d1"
         }
       ]
     },
@@ -10684,7 +10944,7 @@
           "resolved_period": 2025,
           "resolved_value": 4487029829.347929,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_ca7be49d51152bcc4c6662f2"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_00d91dd3a0d7320a6ef255c1"
         }
       ]
     },
@@ -10712,9 +10972,9 @@
           "matched_fact_count_overall": 7,
           "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
-          "resolved_value": 50116358662.27284,
+          "resolved_value": 48774253146.51462,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_16bcd3e2a16bfa44c0b1ea74"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_bd6caaecbca3ab1bebe5d2d8"
         }
       ]
     },
@@ -10777,7 +11037,7 @@
           "resolved_period": 2025,
           "resolved_value": 8507979735.87899,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_632a67850494984d9b35e639"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_9b072645b7180464a89c16b2"
         }
       ]
     },
@@ -10792,7 +11052,7 @@
           "resolved_period": 2025,
           "resolved_value": 12725786027.543839,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_984cc88cfc4242bd80c679f3"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_17a2d10ed4cfb593abb0606b"
         }
       ]
     },
@@ -10807,7 +11067,7 @@
           "resolved_period": 2025,
           "resolved_value": 288407204.431046,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_d505f8a08a29411dcf69287b"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_664509c14c0b07412b459feb"
         }
       ]
     },
@@ -10822,7 +11082,7 @@
           "resolved_period": 2025,
           "resolved_value": 6112217133.109846,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_95ea9bc008361c26f90591d4"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_91dc7a037068ea9bda5a80ae"
         }
       ]
     },
@@ -10837,7 +11097,7 @@
           "resolved_period": 2025,
           "resolved_value": 36103194307.639694,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_548ebadeb7d774b32fa6f4ff"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fe30dc4ae7072c5cdf5b50a7"
         }
       ]
     },
@@ -10852,7 +11112,7 @@
           "resolved_period": 2025,
           "resolved_value": 3179100661.1404104,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_0c45b526e2b233b22d955cc6"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_2d1bd4e271d567f688e954e1"
         }
       ]
     },
@@ -10882,7 +11142,7 @@
           "resolved_period": 2025,
           "resolved_value": 63016849758.31539,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_e680fe36115d1372d12072e1"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_0e10f670e44a5d30d75c358f"
         }
       ]
     },
@@ -10897,7 +11157,7 @@
           "resolved_period": 2025,
           "resolved_value": 13037904629.457691,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_4c927d7b33d1eee2455bdbd0"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d7377a28ca45388650d961e0"
         }
       ]
     },
@@ -10912,7 +11172,7 @@
           "resolved_period": 2025,
           "resolved_value": 1508660934.2839375,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_575778670363b5890c8de847"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_86dba41b4681fa0d9c11b3a6"
         }
       ]
     },
@@ -13486,30 +13746,6 @@
         }
       ]
     },
-    "dwp.pip.daily_living_standard_claimants": {
-      "status": "no_fact_at_or_before_period",
-      "candidates": [
-        {
-          "name": "dwp.pip.daily_living_standard_claimants",
-          "status": "no_fact_at_or_before_period",
-          "matched_fact_count_overall": 0,
-          "matched_fact_count_at_or_before_period": 0,
-          "error": "ledger_reference_compile_status_no_fact_at_or_before_period"
-        }
-      ]
-    },
-    "dwp.pip.daily_living_enhanced_claimants": {
-      "status": "no_fact_at_or_before_period",
-      "candidates": [
-        {
-          "name": "dwp.pip.daily_living_enhanced_claimants",
-          "status": "no_fact_at_or_before_period",
-          "matched_fact_count_overall": 0,
-          "matched_fact_count_at_or_before_period": 0,
-          "error": "ledger_reference_compile_status_no_fact_at_or_before_period"
-        }
-      ]
-    },
     "dwp.esa_claimants": {
       "status": "active",
       "candidates": [
@@ -13634,22 +13870,6 @@
           "resolved_value": 170713.66666666666,
           "resolved_fact_period": "2025-12",
           "resolved_fact_key": "ledger_aggregate_fact_v2_33541aafa05a63dcae4fc144"
-        }
-      ]
-    },
-    "dwp.uc.households_children_5_or_more": {
-      "status": "active",
-      "candidates": [
-        {
-          "name": "dwp.uc.households_children_5_or_more",
-          "status": "active",
-          "matched_fact_count_overall": 12,
-          "matched_fact_count_at_or_before_period": 12,
-          "matched_fact_count_in_source_window": 12,
-          "resolved_period": 2025,
-          "resolved_value": 76320.08333333333,
-          "resolved_fact_period": "2025-12",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_33d99593d166153ca2d0adec"
         }
       ]
     },
@@ -16333,6 +16553,51 @@
         }
       ]
     },
+    "ons.population.age_0": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.population.age_0",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "resolved_period": 2025,
+          "resolved_value": 658357.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_0c75c3f83df0cd1090772ac6"
+        }
+      ]
+    },
+    "ons.population.age_1": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.population.age_1",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "resolved_period": 2025,
+          "resolved_value": 679232.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ab4bba642f61ca6bcc2f9722"
+        }
+      ]
+    },
+    "ons.population.age_2": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.population.age_2",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "resolved_period": 2025,
+          "resolved_value": 696010.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c617f5c67e886aa92ddef487"
+        }
+      ]
+    },
     "ons.population.female_0_4": {
       "status": "active",
       "candidates": [
@@ -16363,18 +16628,48 @@
         }
       ]
     },
-    "ons.population.female_15_19": {
+    "ons.population.female_15": {
       "status": "active",
       "candidates": [
         {
-          "name": "ons.population.female_15_19",
+          "name": "ons.population.female_15",
           "status": "active",
-          "matched_fact_count_overall": 15,
-          "matched_fact_count_at_or_before_period": 15,
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
-          "resolved_value": 2002099.0,
+          "resolved_value": 408119.0,
           "resolved_fact_period": "2025",
           "resolved_fact_key": "ledger_aggregate_fact_v2_5adba03177e435af73792b18"
+        }
+      ]
+    },
+    "ons.population.female_16_17": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.population.female_16_17",
+          "status": "active",
+          "matched_fact_count_overall": 6,
+          "matched_fact_count_at_or_before_period": 6,
+          "resolved_period": 2025,
+          "resolved_value": 812522.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_04ff61d39ac01fc622589dbb"
+        }
+      ]
+    },
+    "ons.population.female_18_19": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.population.female_18_19",
+          "status": "active",
+          "matched_fact_count_overall": 6,
+          "matched_fact_count_at_or_before_period": 6,
+          "resolved_period": 2025,
+          "resolved_value": 781458.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_05db7085ea57cab32a14fcf6"
         }
       ]
     },
@@ -16648,16 +16943,46 @@
         }
       ]
     },
-    "ons.population.male_15_19": {
+    "ons.population.male_15": {
       "status": "active",
       "candidates": [
         {
-          "name": "ons.population.male_15_19",
+          "name": "ons.population.male_15",
           "status": "active",
-          "matched_fact_count_overall": 15,
-          "matched_fact_count_at_or_before_period": 15,
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
-          "resolved_value": 2107008.0,
+          "resolved_value": 427529.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_01bde34c40a1237a7f636f81"
+        }
+      ]
+    },
+    "ons.population.male_16_17": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.population.male_16_17",
+          "status": "active",
+          "matched_fact_count_overall": 6,
+          "matched_fact_count_at_or_before_period": 6,
+          "resolved_period": 2025,
+          "resolved_value": 856296.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_888c3c10fc18dfe96e35faa9"
+        }
+      ]
+    },
+    "ons.population.male_18_19": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.population.male_18_19",
+          "status": "active",
+          "matched_fact_count_overall": 6,
+          "matched_fact_count_at_or_before_period": 6,
+          "resolved_period": 2025,
+          "resolved_value": 823183.0,
           "resolved_fact_period": "2025",
           "resolved_fact_key": "ledger_aggregate_fact_v2_d4534116ee44f57db1120c83"
         }
@@ -18741,12 +19066,12 @@
         {
           "name": "slc.borrowers.plan_2_above_threshold",
           "status": "active",
-          "matched_fact_count_overall": 6,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 4460000.0,
-          "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_02288c19caeae900fdaf1e0d"
+          "resolved_value": 3985000.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_822c939c41011339709850be"
         }
       ]
     },
@@ -18756,12 +19081,12 @@
         {
           "name": "slc.borrowers.plan_2_liable",
           "status": "active",
-          "matched_fact_count_overall": 6,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 9710000.0,
-          "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_37387933e73bcc8c1e04cf78"
+          "resolved_value": 8940000.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f1bc8691109e66f0dbaac8d1"
         }
       ]
     },
@@ -18771,12 +19096,12 @@
         {
           "name": "slc.borrowers.plan_5_above_threshold",
           "status": "active",
-          "matched_fact_count_overall": 6,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 35000.0,
-          "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_dd16b085f81ef7708a00511e"
+          "resolved_value": 0.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ce7713585cb33c638ad22a08"
         }
       ]
     },
@@ -18786,12 +19111,12 @@
         {
           "name": "slc.borrowers.plan_5_liable",
           "status": "active",
-          "matched_fact_count_overall": 6,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 230000.0,
-          "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_73ff136d820950ea404ddb6b"
+          "resolved_value": 10000.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_875af7565e64b25a3c6a7219"
         }
       ]
     },
@@ -19094,6 +19419,186 @@
         }
       ]
     },
+    "dft.bus_journeys.london": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dft.bus_journeys.london",
+          "status": "active",
+          "matched_fact_count_overall": 21,
+          "matched_fact_count_at_or_before_period": 21,
+          "resolved_period": 2025,
+          "resolved_value": 1821485000.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_56195cb6235aeccc8b72cb21",
+          "uprating": {
+            "index": "dft.bus01.stage_pricing_year",
+            "factor": "1",
+            "value_before_uprating": "1821485000.0"
+          }
+        }
+      ]
+    },
+    "dft.bus_journeys.north_east": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dft.bus_journeys.north_east",
+          "status": "active",
+          "matched_fact_count_overall": 21,
+          "matched_fact_count_at_or_before_period": 21,
+          "resolved_period": 2025,
+          "resolved_value": 139215323.89253,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f729e9d184fd2b42da69c7e8",
+          "uprating": {
+            "index": "dft.bus01.stage_pricing_year",
+            "factor": "1",
+            "value_before_uprating": "139215323.89253"
+          }
+        }
+      ]
+    },
+    "dft.bus_journeys.north_west": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dft.bus_journeys.north_west",
+          "status": "active",
+          "matched_fact_count_overall": 21,
+          "matched_fact_count_at_or_before_period": 21,
+          "resolved_period": 2025,
+          "resolved_value": 339352717.50098,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_2141b3580d89d6e580c065b9",
+          "uprating": {
+            "index": "dft.bus01.stage_pricing_year",
+            "factor": "1",
+            "value_before_uprating": "339352717.50098"
+          }
+        }
+      ]
+    },
+    "dft.bus_journeys.yorkshire_and_the_humber": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dft.bus_journeys.yorkshire_and_the_humber",
+          "status": "active",
+          "matched_fact_count_overall": 21,
+          "matched_fact_count_at_or_before_period": 21,
+          "resolved_period": 2025,
+          "resolved_value": 236203795.62029,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_914b4aa7a302ca75184bc55f",
+          "uprating": {
+            "index": "dft.bus01.stage_pricing_year",
+            "factor": "1",
+            "value_before_uprating": "236203795.62029"
+          }
+        }
+      ]
+    },
+    "dft.bus_journeys.east_midlands": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dft.bus_journeys.east_midlands",
+          "status": "active",
+          "matched_fact_count_overall": 21,
+          "matched_fact_count_at_or_before_period": 21,
+          "resolved_period": 2025,
+          "resolved_value": 163902020.46597,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_34838f992e9c421d7f612e60",
+          "uprating": {
+            "index": "dft.bus01.stage_pricing_year",
+            "factor": "1",
+            "value_before_uprating": "163902020.46597"
+          }
+        }
+      ]
+    },
+    "dft.bus_journeys.west_midlands": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dft.bus_journeys.west_midlands",
+          "status": "active",
+          "matched_fact_count_overall": 21,
+          "matched_fact_count_at_or_before_period": 21,
+          "resolved_period": 2025,
+          "resolved_value": 295332910.62634,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fd4192304b8225e79d6847cb",
+          "uprating": {
+            "index": "dft.bus01.stage_pricing_year",
+            "factor": "1",
+            "value_before_uprating": "295332910.62634"
+          }
+        }
+      ]
+    },
+    "dft.bus_journeys.east_of_england": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dft.bus_journeys.east_of_england",
+          "status": "active",
+          "matched_fact_count_overall": 21,
+          "matched_fact_count_at_or_before_period": 21,
+          "resolved_period": 2025,
+          "resolved_value": 161939341.50538,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_df157c32fd1f43f1f188a55a",
+          "uprating": {
+            "index": "dft.bus01.stage_pricing_year",
+            "factor": "1",
+            "value_before_uprating": "161939341.50538"
+          }
+        }
+      ]
+    },
+    "dft.bus_journeys.south_east": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dft.bus_journeys.south_east",
+          "status": "active",
+          "matched_fact_count_overall": 21,
+          "matched_fact_count_at_or_before_period": 21,
+          "resolved_period": 2025,
+          "resolved_value": 322147459.66648,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d9406a1b16c75ba1b900d3d0",
+          "uprating": {
+            "index": "dft.bus01.stage_pricing_year",
+            "factor": "1",
+            "value_before_uprating": "322147459.66648"
+          }
+        }
+      ]
+    },
+    "dft.bus_journeys.south_west": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dft.bus_journeys.south_west",
+          "status": "active",
+          "matched_fact_count_overall": 21,
+          "matched_fact_count_at_or_before_period": 21,
+          "resolved_period": 2025,
+          "resolved_value": 192416317.98334,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f01a441c6130ef2fd5e4f0c0",
+          "uprating": {
+            "index": "dft.bus01.stage_pricing_year",
+            "factor": "1",
+            "value_before_uprating": "192416317.98334"
+          }
+        }
+      ]
+    },
     "obr.fuel_duties_cars": {
       "status": "active",
       "candidates": [
@@ -19172,12 +19677,12 @@
         {
           "name": "ons.household_road_fuel_expenditure",
           "status": "active",
-          "matched_fact_count_overall": 6,
-          "matched_fact_count_at_or_before_period": 6,
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 35099000000.0,
-          "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_98696a3d0a85269f7b2445ff"
+          "resolved_value": 37025000000.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d5c11a14d2062955b622275a"
         }
       ]
     },
@@ -19379,7 +19884,7 @@
           "resolved_period": 2025,
           "resolved_value": 76054754387.77309,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_4c927d7b33d1eee2455bdbd0"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d7377a28ca45388650d961e0"
         }
       ]
     },
@@ -21503,12 +22008,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 1489138606.9960644,
+          "resolved_value": 1501942263.1528072,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_0ef4a95b830d9e4e41b15e02",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
-            "factor": "1.18185603729846",
+            "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
+            "factor": "1.19201766916889",
             "value_before_uprating": "1260000000.0"
           }
         },
@@ -21518,12 +22023,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 1465501486.2500951,
+          "resolved_value": 1478101909.7694294,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_4f8e330da2fcd6774dd7ea1a",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
-            "factor": "1.18185603729846",
+            "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
+            "factor": "1.19201766916889",
             "value_before_uprating": "1240000000.0"
           }
         },
@@ -21533,12 +22038,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 323828554.21977913,
+          "resolved_value": 326612841.3522771,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_bd65aa884ad89d9837551b0e",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
-            "factor": "1.18185603729846",
+            "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
+            "factor": "1.19201766916889",
             "value_before_uprating": "274000000.0"
           }
         },
@@ -21548,12 +22053,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 1619142771.0988955,
+          "resolved_value": 1633064206.7613857,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_34ecf84ec234f3525db59f91",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
-            "factor": "1.18185603729846",
+            "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
+            "factor": "1.19201766916889",
             "value_before_uprating": "1370000000.0"
           }
         },
@@ -21563,12 +22068,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 768206424.2440015,
+          "resolved_value": 774811484.9597815,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_89bdbe74eda3cee8844ad898",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
-            "factor": "1.18185603729846",
+            "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
+            "factor": "1.19201766916889",
             "value_before_uprating": "650000000.0"
           }
         },
@@ -21578,12 +22083,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 3699209396.744192,
+          "resolved_value": 3731015304.49864,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_752ea2329d313046c61bf1e2",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
-            "factor": "1.18185603729846",
+            "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
+            "factor": "1.19201766916889",
             "value_before_uprating": "3130000000.0"
           }
         },
@@ -21593,12 +22098,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 866300475.339774,
+          "resolved_value": 873748951.5007998,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_02f3a7f7b7097a3fd455b702",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
-            "factor": "1.18185603729846",
+            "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
+            "factor": "1.19201766916889",
             "value_before_uprating": "733000000.0"
           }
         },
@@ -21608,12 +22113,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 2990095774.3651137,
+          "resolved_value": 3015804702.9973035,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_d341b6820714e38a12ac4b1c",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
-            "factor": "1.18185603729846",
+            "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
+            "factor": "1.19201766916889",
             "value_before_uprating": "2530000000.0"
           }
         },
@@ -21623,12 +22128,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 795389113.1018662,
+          "resolved_value": 802227891.350666,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_8fc8bdb298f62c90d7af57b8",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
-            "factor": "1.18185603729846",
+            "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
+            "factor": "1.19201766916889",
             "value_before_uprating": "673000000.0"
           }
         },
@@ -21638,12 +22143,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 2210070789.7481275,
+          "resolved_value": 2229073041.345833,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_367d1c49bfab3c640463ded8",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
-            "factor": "1.18185603729846",
+            "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
+            "factor": "1.19201766916889",
             "value_before_uprating": "1870000000.0"
           }
         },
@@ -21653,12 +22158,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 2765543127.2784057,
+          "resolved_value": 2789321345.8552136,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_819d2f77e45b3ba5a7907a4a",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
-            "factor": "1.18185603729846",
+            "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
+            "factor": "1.19201766916889",
             "value_before_uprating": "2340000000.0"
           }
         },
@@ -21668,12 +22173,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 771751992.355897,
+          "resolved_value": 778387537.9672881,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_5d68b2314b5c54a09f274733",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
-            "factor": "1.18185603729846",
+            "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
+            "factor": "1.19201766916889",
             "value_before_uprating": "653000000.0"
           }
         },
@@ -21683,12 +22188,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 1914606780.4235115,
+          "resolved_value": 1931068624.0536094,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_ab8a5ac6dd4ba75e194133f1",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
-            "factor": "1.18185603729846",
+            "index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
+            "factor": "1.19201766916889",
             "value_before_uprating": "1620000000.0"
           }
         }
@@ -29334,18 +29839,376 @@
         }
       ]
     },
-    "hmrc.salary_sacrifice.it_relief_total": {
+    "microcosm.high_value_homes.over_1m_by_region": {
       "status": "active",
       "candidates": [
         {
-          "name": "hmrc.salary_sacrifice.it_relief_total",
+          "name": "microcosm.high_value_homes.over_1m_by_region@E12000001",
           "status": "active",
-          "matched_fact_count_overall": 2,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000001",
           "resolved_period": 2025,
-          "resolved_value": 8800000000.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_ab19a7f36038519a7f359742"
+          "resolved_value": 2508.423,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_b03a4ec52ec0c9565edac4b1"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_1m_by_region@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 27590.583,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_9ce69fbe57a958c7261ab7cf"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_1m_by_region@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 13978.44,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_e4d769248444769ade02aa6d"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_1m_by_region@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 14399.878,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_238503be7e78f1e937aef7b4"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_1m_by_region@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 22286.116,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_5f9ed974b2ece753972365ca"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_1m_by_region@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 87553.535,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_5707c15e495e807c1686cb94"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_1m_by_region@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 272832.635,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_156bccd00e9cec62166a9e88"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_1m_by_region@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 213894.568,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_7ef4386e72c69ccf5933a2e5"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_1m_by_region@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 56970.627,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_bdf55c1f40906b6efbccd201"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_1m_by_region@W92000004",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "country",
+          "geography_id": "W92000004",
+          "resolved_period": 2025,
+          "resolved_value": 5536.777,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_d73dfb5397660cf66b81fb30"
+        }
+      ]
+    },
+    "microcosm.high_value_homes.over_1_5m_by_region": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000001",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000001",
+          "resolved_period": 2025,
+          "resolved_value": 561.168,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_2d562db0705dcfd7c711f22c"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 7260.132,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_2afddad22f617acbef35a544"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 2749.871,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_0777959e037d4782d4fa100d"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 2969.626,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_b0d08c1ff159605d18eeeeca"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 4734.944,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_775e7d7af5c3617e40ccba90"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 25742.084,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_c4cbe34b5816c8a000a9495b"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 117626.39,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_0f81618a69c84a40d82ae923"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 70261.709,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_c91b82f5ac56254630cec320"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 15568.651,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_171c7a46883e0e63fb44887c"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_1_5m_by_region@W92000004",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "country",
+          "geography_id": "W92000004",
+          "resolved_period": 2025,
+          "resolved_value": 898.854,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_334d2832ce44aabf02a0145c"
+        }
+      ]
+    },
+    "microcosm.high_value_homes.over_2m_by_region": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "microcosm.high_value_homes.over_2m_by_region@E12000001",
+          "status": "signed_excluded",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "signed_row": {
+            "dimension": "geography_id",
+            "value": "E12000001"
+          },
+          "signed_rationale": "The North East's derived stock of owner-occupied homes over \u00a32m is below the 400-home floor of the local small-cell rule (hvcts_la_household_floor in local_small_cell_rule.json), which already defers every \u00a32m local-authority cell there. That is about one household weight at the ruled 150,000 households, so the row's fit would be noise, and a gate-only sign-off, which is public, would narrow an estimate expected to rest on fewer than 10 records. Signed out of the region fan-out; the same area's \u00a31m and \u00a31.5m rows, which count these homes, stay bound, as do the other regions' \u00a32m rows."
+        },
+        {
+          "name": "microcosm.high_value_homes.over_2m_by_region@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 2887.107,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_7ac98edba2bb6dd8d19f9a03"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_2m_by_region@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 906.521,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_e50454cee6faf4012ed6dc88"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_2m_by_region@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 962.333,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_37db545bad6d46c5d2c0248d"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_2m_by_region@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 1482.074,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_15fa7ed31c8417531483ef28"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_2m_by_region@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 9847.844,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_c903067e3b07e8637b8bd1e1"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_2m_by_region@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 63281.388,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_65c2ba2daeadd9dac0afd229"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_2m_by_region@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 29996.104,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_a5e976127890e285a7a39884"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_2m_by_region@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 6354.494,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_dbbcaaaea62239c39f027c4c"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_2m_by_region@W92000004",
+          "status": "signed_excluded",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "signed_row": {
+            "dimension": "geography_id",
+            "value": "W92000004"
+          },
+          "signed_rationale": "Wales's derived stock of owner-occupied homes over \u00a32m is below the 400-home floor of the local small-cell rule (hvcts_la_household_floor in local_small_cell_rule.json), which already defers every \u00a32m local-authority cell there. That is about one household weight at the ruled 150,000 households, so the row's fit would be noise, and a gate-only sign-off, which is public, would narrow an estimate expected to rest on fewer than 10 records. Signed out of the region fan-out; the same area's \u00a31m and \u00a31.5m rows, which count these homes, stay bound, as do the other regions' \u00a32m rows."
         }
       ]
     }
@@ -29379,8 +30242,8 @@
       "family": "dwp_universal_credit",
       "status": "active_with_unmapped_vintage_residue_skipped",
       "active_reference_count": 100,
-      "skipped_unmapped_fact_count": 12,
-      "signed_rationale": "UC payment-distribution targets fan out over family_type and monthly_award_amount_bands into incumbent-compatible annual-payment rows. The four source-only 'No payment' facts and eight overlapping source-only 'or over' facts are left out; no active reference may use the legacy nan_to_nan band name."
+      "skipped_unmapped_fact_count": 8,
+      "signed_rationale": "UC payment-distribution targets fan out over family_type and monthly_award_amount_bands into incumbent-compatible annual-payment rows. The source-only 'No payment' and top-coded 'or over' facts are left out, and the skipped count is the generator's own (microcosm#1095); no active reference may use the legacy nan_to_nan band name."
     },
     {
       "family": "council_tax_stock",
@@ -29399,6 +30262,12 @@
       "status": "active_region_tier_fanout",
       "active_reference_count": 108,
       "signed_rationale": "The nine ONS population-by-age-band targets fan out over the twelve-area region tier (nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level), one reference per area, each scoped on the spine by a household-region predicate and placed at the region grain of the cross-grain rule (microcosm#905). The former single UK-wide row per band is retired: the tier sums to it within the same publication."
+    },
+    {
+      "family": "high_value_homes",
+      "status": "active_england_and_wales_region_tier_local_line_only",
+      "active_reference_count": 28,
+      "signed_rationale": "The three high-value homes region targets (owner-occupied homes over \u00a31m, \u00a31.5m and \u00a32m at April-2026 prices) fan out over the England-and-Wales part of the region tier, the nine English regions and Wales (area_scope: Price Paid covers neither Scotland nor Northern Ireland), and select the Microcosm-derived stock the constituency and local-authority cells bind, merged beside the feed from uk/high_value_home_stock_facts.json (microcosm#1240). Each row is the cross-grain control for its area cells. They bind on the local line only (calibration_lines): the national line and the release-cut certifier drop them after the compile (microcosm#1301). Since microcosm#1095 the national spine reads main_residence_value off the regions' Land Registry knots too, but binding the rows there would move the national registry and solve while the knots' tails still place more homes in the top bands than the derived stock (microcosm#1112)."
     },
     {
       "family": "dwp_state_pension",
@@ -29471,5 +30340,13 @@
       "signed_rationale": "HMRC Table 2.1a's 0-2,999 row (3,000 taxpayers with a liability on gains at or below the 2024-25 annual exempt amount of GBP 3,000, from attributed gains and prior-year adjustments) lies below the AEA gate the taxpayer proxy measures, so the model cannot place anyone in it. Signed out; the twelve bands from 3,000 stay bound."
     }
   ],
-  "multi_fact_rationales": []
+  "multi_fact_rationales": [],
+  "derived_fact_resources": [
+    {
+      "resource": "high_value_home_stock_facts.json",
+      "rows": 5430,
+      "rows_sha256": "5bffb4044cab1c5c9dca4b7103c3b88b1f5390404786698fd050972e8f420450",
+      "inputs_sha256": "41c4f1595befe47a299aa03c803f8539e2406750ab8a312e469affdc7d4990fa"
+    }
+  ]
 }

@@ -51,6 +51,24 @@ LegKey = tuple[str, str, str]
 UK_IMPLIED_SHARE_MAX_RATIO = 1.5
 
 
+def uk_membership_bound_areas(
+    membership: Mapping[str, Any],
+) -> frozenset[tuple[str, str]]:
+    """The (level, area) pairs for which the membership binds any cell.
+
+    A whole run carries every such area, so a run whose ladder lacks one is
+    a narrowed one (a sample or a fixture).
+    """
+
+    return frozenset(
+        (str(level), str(candidate["geography_id"]))
+        for target in membership.get("targets", {}).values()
+        for level, payload in target["geography_levels"].items()
+        for candidate in payload["candidates"]
+        if candidate.get("status") == "active"
+    )
+
+
 def uk_signed_cells_off_the_surface(
     membership: Mapping[str, Any],
     *,
@@ -63,17 +81,10 @@ def uk_signed_cells_off_the_surface(
     ``value`` is the published value of a deferred cell, and ``None`` where
     the publisher carries no fact for the area. ``area_has_bound_cells`` says
     whether the membership binds any cell, of any target, for the area at
-    that level: a whole run then carries the area, so a run whose ladder
-    lacks it is a narrowed one.
+    that level (``uk_membership_bound_areas``).
     """
 
-    bound_areas = {
-        (str(level), str(candidate["geography_id"]))
-        for target in membership.get("targets", {}).values()
-        for level, payload in target["geography_levels"].items()
-        for candidate in payload["candidates"]
-        if candidate.get("status") == "active"
-    }
+    bound_areas = uk_membership_bound_areas(membership)
     cells = []
     for target_id, target in sorted(membership.get("targets", {}).items()):
         for level, payload in sorted(target["geography_levels"].items()):

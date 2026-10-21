@@ -1,6 +1,8 @@
 """Tests split from packages/microcosm-build/tests/test_uk_take_up_contract.py."""
 
 # ruff: noqa: F403, F405
+import numpy as np
+
 from test_support.microcosm_build.uk_take_up_contract import *
 from test_support.paths import paths_for
 
@@ -18,6 +20,8 @@ def test_uk_contract_loads_and_selects_build_year_rates() -> None:
         "pension_credit",
         "pension_credit_guarantee_credit",
         "pension_credit_savings_credit_only",
+        "pension_credit_newly_entitled",
+        "carers_allowance_newly_entitled",
         "universal_credit",
         "marriage_allowance",
         "tax_free_childcare",
@@ -35,12 +39,16 @@ def test_uk_contract_loads_and_selects_build_year_rates() -> None:
         0.7,
         0.69,
         0.37,
+        0.37,
+        # microcosm#1319: María's ruling of 2026-10-20.
+        0.6,
         0.55,
         0.5,
-        0.88,
-        0.6054,
-        0.4539,
-        0.597,
+        # microcosm#1095 U2c: the v4 refit on the policyengine-uk 2.132.6 spine.
+        0.9797,
+        0.6579,
+        0.4353,
+        0.7769,
         0.441,
         0.2682,
         0.97,
@@ -82,7 +90,7 @@ def test_year_selection_uses_latest_value_at_or_before_build_year() -> None:
 
     assert contract.rate("child_benefit", 2021) == 0.97
     assert contract.rate("child_benefit", 2023) == 0.89
-    assert contract.rate("tax_free_childcare", 2024) == 0.88
+    assert contract.rate("tax_free_childcare", 2024) == 0.9797
     assert contract.rate("tax_free_childcare", 2023) == 0.586
     assert contract.rate("tv_licence_evasion_rate", 2024) == 0.1252
     assert contract.rate("tax_free_childcare_spend_routed_share", 2017) == 0.359
@@ -191,3 +199,31 @@ def test_forbidden_source_dependency_strings_absent_from_uk_resources() -> None:
         text = files("microcosm.build.uk").joinpath(resource).read_text().lower()
         assert "policyengine_" + "uk_data" not in text
         assert "policyengine-" + "uk-data" not in text
+
+
+def test_extended_hours_usage_reproduces_dfe_additional_hours_ptes() -> None:
+    """The clipped draw's mean is the DfE-implied total weekly hours (#1126).
+
+    DfE funds 341,988.09 additional-hours PTEs (15 hours x 38 weeks each) for
+    the 379,000 3- and 4-year-olds registered for the working parent
+    entitlement in January 2025, on top of the universal 15 hours.
+    """
+
+    from microcosm.build.stochastic_assignment import clipped_normal_from_uniforms
+
+    contract = load_uk_take_up_contract()
+    entry = contract.continuous_entry("maximum_extended_childcare_hours_usage")
+    assert entry["source"]["status"] == "sourced_administrative_derived"
+    assert (entry["lower"], entry["upper"]) == (0, 30)
+
+    n = 200_000
+    uniforms = (np.arange(n) + 0.5) / n
+    draws = clipped_normal_from_uniforms(
+        uniforms,
+        mean=float(entry["mean"]),
+        sd=float(entry["sd"]),
+        lower=float(entry["lower"]),
+        upper=float(entry["upper"]),
+    )
+    dfe_mean_hours = 15 + 15 * 341_988.09 / 379_000
+    assert draws.mean() == pytest.approx(dfe_mean_hours, abs=0.01)

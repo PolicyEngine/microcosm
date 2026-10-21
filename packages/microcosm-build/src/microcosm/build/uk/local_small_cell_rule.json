@@ -11,10 +11,10 @@
       ],
       "absolute_floor": 50,
       "reason": "A council-tax band cell of fewer than 50 dwellings (Blaenau Gwent band H 3, Barking and Dagenham band G 49) cannot be met by a sample of households: the capped loss stops paying for it and it sits past the target-fit fence for good (microcosm#1123 item 7). The deferred cell's dwellings still count in its leg's band control through reconciliation.",
-      "tracking": "microcosm#1123",
-      "approved_by": null,
-      "approved_on": null,
-      "status": "proposed",
+      "tracking": "microcosm#1278",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-14",
+      "status": "approved",
       "expires_on": "2027-04-01"
     },
     {
@@ -24,10 +24,23 @@
       ],
       "absolute_floor": 5500,
       "reason": "HMRC publishes the SPI area cells rounded to the thousand, so a published cell can be up to 500 from its true count: up to 10% of a cell of 5,000, and up to 25% of the smallest cell, 2,000. The floor defers the cells where the rounding can reach 10%. 192 of the 919 cells sit there (155 constituencies, 37 local authorities). The deferred cell's taxpayers still count in its region's or nation's control through reconciliation.",
-      "tracking": "microcosm#1198 review (should-fix 7)",
-      "approved_by": null,
-      "approved_on": null,
-      "status": "proposed",
+      "tracking": "microcosm#1278",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-14",
+      "status": "approved",
+      "expires_on": "2027-04-01"
+    },
+    {
+      "rule_id": "hvcts_la_household_floor",
+      "target_id_prefixes": [
+        "microcosm.high_value_homes."
+      ],
+      "absolute_floor": 400,
+      "reason": "A derived high-value homes cell below 400 homes is about two household weights at the ruled 150,000 households, so its fit would be noise and the capped loss stops paying for it (microcosm#1301). The rule reaches the local-authority cells only: the constituency cells are deferred level-wide in tools/generate_uk_local_target_references.py (high_value_homes_constituency_grain_deferred), so the rule finds no active constituency cell, and the region rows (microcosm.high_value_homes.over_*_by_region) are not local targets, though the floor reaches the two below it through signed row exclusions (below). It keeps 192 local-authority cells over £1m (97 percent of their derived stock), 101 over £1.5m (92 percent) and 57 over £2m (85 percent). A deferred cell's homes still count in its region row through reconciliation, and a region with no cell left is controlled by its region row alone. Two region rows sit below the floor: microcosm.high_value_homes.over_2m_by_region@E12000001 (North East) and microcosm.high_value_homes.over_2m_by_region@W92000004 (Wales). Their published stock is about one average household weight each at the ruled 150,000 households (an expectation from the stock, not a count of frame records), so their fit would be noise, and a public gate-only sign-off would narrow an estimate expected to rest on fewer than 10 records, so under María's ruling of 17 October 2026 both are signed out of the region fan-out in target_reference_signed_exclusions.json and neither is bound. The same areas' £1m and £1.5m rows, which count those homes, stay bound.",
+      "tracking": "microcosm#1301",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-16",
+      "status": "approved",
       "expires_on": "2027-04-01"
     }
   ]

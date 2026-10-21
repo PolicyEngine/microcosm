@@ -363,9 +363,16 @@ EXPECTED_HASHES = {
     # passive partnership/S-corp leaf after s_corp_income.
     # #1178: puf_support's source bytes attest CPS Social Security preservation.
     # RNG rules and the ordered QRF targets are unchanged. microcosm#104 moves
-    # both again: the protocol attests microcosm.calibrate.solve.
-    "seed_map": "a07d4a871ae13279fd6034690a763f902c968053d7481df14822824b4a7c9687",
-    "seed_protocol": "bacc551b1d800a941c25d00048193c4c9421260a5d76d26983b603ea83835997",
+    # both again: the protocol attests microcosm.calibrate.solve. microcosm#1124
+    # moves both once more: solve gains the opt-in retain_best_objective, off
+    # by default, so no US solve, RNG rule or QRF target changes. microcosm#1301
+    # moves both again: calibrate gains budget_search_bracket, whose default
+    # keeps the US bracket, and the budget search, which the US solve does
+    # not run, changes its probes, so again no US solve changes. microcosm#1251
+    # (#1239) moves both again: puf_support gains the passive partnership/S-corp
+    # leaf, so the PUF QRF targets change.
+    "seed_map": "fe22955668418f89de91f70d6d773d8fbb8bb69d7be9d8e782cfad72966bb24a",
+    "seed_protocol": "cd73b5450d55184bea799c48f0486d20345980dc2c5fc60da402de28d04f3c27",
     "source_manifest": "22763ed5676fa29876951653368cbbc866cbd2425a2394a9f191ee09e448e413",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "4641e9a919a5c7719dd6e076e1eda06c17ec021d346a2b7f205fd299870a4688",

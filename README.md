@@ -51,8 +51,14 @@ immutable publication before Hugging Face artifact staging, and preserves
 durable retry jobs and receipt snapshots. See
 [graph publication](docs/orrery-publication.md) for configuration and retry.
 
-Supported US and UK build commands always start the local telemetry emitter
-service. It reports live progress to the hosted collector when the operator's
+Supported US and UK build commands start one local emitter service with separate
+telemetry and graph-publication workers. Microcosm supplies build metadata and
+graph files; the required `microcosm-emitter` package owns authentication,
+durable queues and delivery. Telemetry and graph publication are internal
+libraries in that single package, not separate installations.
+This draft migration requires a published emitter release before merge; see the
+[migration prerequisites](docs/orrery-publication.md#deferred-migration-prerequisites).
+The telemetry worker reports live progress to the hosted collector when the operator's
 existing Hugging Face login is accepted; otherwise it retains the events
 locally and the build continues. This live event path is independent of the
 staging run files described below.
@@ -369,6 +375,13 @@ UK release workflows stop when diagnostics are unavailable because their later
 release checks require that evidence; historical schema-6 and schema-7 UK
 artifacts remain readable through isolated compatibility validation.
 
+A Draft 2020-12 JSON Schema for schema 8, generated from those models, is
+committed at
+`packages/microcosm-diagnostics/src/microcosm/diagnostics/schemas/calibration_diagnostics.v8.schema.json`
+for consumers that check the file without importing them, such as the
+collector. Its description lists the model rules a JSON Schema cannot express;
+see the [package README](packages/microcosm-diagnostics/README.md).
+
 Standard publication uploads the locally built `releases/<id>/` artifacts to
 the Hugging Face dataset, tags the release, and updates `latest.json`. It runs
 on the build machine (it needs the freshly built H5), so it isn't a CI step:
@@ -391,11 +404,12 @@ on the June 2023 release. Promotion reuses the immutable cut tag the inspect pub
 The publisher uploads only the contract files, the release manifest's
 artifacts and any `--extra-file`. The US fiscal-refresh tool therefore binds
 its terminal gate verdicts as manifest artifacts: `input_coverage.json`,
-`input_mass_parity.json`, `qrf_tail_concentration.json` and
-`reform_coverage_smoke.json`. Both manifests also record the per-run QRF tail
-register (`qrf_tail_register`) and the export-mass reference, so a waiver
-ships with the release it waives, and a `gate_evidence` block that says of
-each verdict whether it is bound, skipped by flag or never evaluated.
+`input_mass_parity.json`, `qrf_tail_concentration.json`,
+`reform_coverage_smoke.json` and `stored_inputs.json`. Both manifests also
+record the per-run QRF tail register (`qrf_tail_register`), the export-mass
+reference and the stored-input verdict (`stored_inputs`), so a waiver ships
+with the release it waives, and a `gate_evidence` block that says of each
+verdict whether it is bound, skipped by flag or never evaluated.
 
 A US release may not store a column that looks like a policyengine-us variable
 (lowercase snake_case) unless the engine it is certified against defines that
@@ -420,6 +434,46 @@ engine inputs, `would_claim_wic` and `medicare_part_b_premiums` (replaced by
 would now be refused.
 Check local files from HDF metadata alone with
 `uv run python -m microcosm.data.stored_inputs path/to/populace_us_2024.h5`.
+
+The publisher cannot run the check without the engine, so it requires each
+lane's verdict as release evidence instead (microcosm#1034), from JSON alone. A
+US national calibration release must bind `stored_inputs.json` (a
+`gate_evidence` status of `bound` and a manifest artifact) and carry the same
+`stored_inputs` block in both manifests, bound to the H5 they pin. The verdict
+must name the built-with engine; a certified release must have refused nothing,
+and an evidence release must carry each refusal line verbatim in
+`known_failures`. A US local-area release must list the package stage's
+`stored_inputs` gate, naming the built-with engine and the microdata sha256 the
+release ships. No release already on the Hub carries this evidence, and none is
+exempt. Nothing re-validates a published release automatically. The two paths
+that run the contract on one again are re-certifications: a publish retry of
+its local directory, and an annual-projection cut on a national base. Every
+published US national base already fails the unchanged calibration-diagnostics
+schema rule, and local-area releases cannot be annual bases. So publishing one
+again means rebuilding or re-packaging it, which runs the check. An
+evidence-tier run that ships a stored-input refusal needs a per-run
+`--evidence-failure-owners` entry naming its owner; the standing owner register
+covers none.
+
+The ACS local-area package stage also grades the calibrated H5's SPM
+measurement composition (microcosm#1263;
+`microcosm.build.us_runtime.spm_measurement_gate`). spm-calculator refuses a
+whole simulation's SPM measurement when one unit it measures has no classified
+adult (`age >= 18 or (age >= 15 and is_spm_independent_minor_role)`), and an
+engine that does not scope SPM by measurement universe, such as
+policyengine-us 2.2.1, measures every unit. The stage refuses an artifact on
+which any unit the built-with engine measures has no classified adult, or
+whose stored role is missing, null or not Boolean. It records the counts,
+split by source SPM universe, as the `spm_measurement_composition` gate,
+bound to the microdata sha256. The publisher requires that gate of every US
+local-area release. See [the ACS SPM role page](docs/us-acs-spm-role.md#the-release-gate).
+
+Each check grades one engine version, the built-with one. A source-enrichment
+bundle certified with a publisher compatibility range admits versions no check
+measured, later ones and possibly earlier ones; the bundle records the version
+that was measured as `compatibility.claim_measurement`, and the SPM-role
+runbook says how to grade a candidate against another released version before
+declaring a range.
 
 US exact-k ladder candidates use a tag-only lane. Run
 `tools/build_us_exact_k_ladder_release.py`, then execute the `publish_command`

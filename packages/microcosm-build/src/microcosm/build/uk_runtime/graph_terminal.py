@@ -14,6 +14,7 @@ import json
 import sys
 from collections.abc import Mapping
 from dataclasses import asdict, replace
+from functools import cache
 from importlib import metadata
 from pathlib import Path
 from types import SimpleNamespace
@@ -46,19 +47,28 @@ from microcosm.graph.canonical import canonical_json
 from microcosm.graph.codecs import SOURCE_CODECS
 
 from ..artifact_files import file_artifact
-from . import geography_ladder, national_frame
+from . import geography_ladder, national_frame, weight_year
 from .atomic_area_support import uk_area_code_frames, without_uk_native_alias_columns
+from .dataset_size import UK_SIZE_L2_PARAM_KEYS
 from .geography_ladder import (
     UK_EXPORT_AREA_CODE_COLUMNS,
     export_area_code_columns,
     uk_geography_ladder_gate,
 )
 from .graph_population import context_frame, population_columns, population_slices
+from .high_value_home_gates import uk_high_value_home_evidence
+from .high_value_homes import (
+    load_uk_high_value_home_stock_facts,
+    load_vendored_obr_hvcts_facts,
+)
+from .local_doctrine import UK_LOCAL_L0_SEARCH_FLOOR
 from .national_frame import (
     UK_RELEASE_EXPORT_DROPPED_COLUMNS,
     _read_uk_national_tables,
     _write_uk_single_year_tables,
     uk_household_weight_kind,
+    uk_identifier_range_failures,
+    uk_release_identifier_tables,
     uk_time_period,
     validate_uk_national_frame,
 )
@@ -67,6 +77,7 @@ from .rowwise_dataset import (
     ladder_clone_index_column,
     load_uk_rowwise_dataset,
 )
+from .weight_year import uk_dataset_year_frame, uk_weight_projection_factor
 
 EXPORT_DESCRIPTOR_TYPE = ArtifactType("microcosm.uk.full-export-descriptor", 1)
 EXPORT_READBACK_TYPE = ArtifactType("microcosm.uk.full-export-readback", 1)
@@ -100,7 +111,9 @@ def _ladder_tables(frame: Frame) -> dict[str, pd.DataFrame]:
         dropped = [c for c in columns if c in renamed[entity]]
         if dropped:
             renamed[entity] = renamed[entity].drop(columns=dropped)
-    return renamed
+    # The identifiers leave inside the range policyengine-uk stores, with the
+    # build identifiers beside them (microcosm#1194).
+    return uk_release_identifier_tables(renamed)
 
 
 def _tables(frame: Frame) -> dict[str, pd.DataFrame]:
@@ -194,11 +207,17 @@ def _content_descriptor(
 
 
 def describe_uk_export(
-    frame: Frame, *, bindings: Mapping[str, object]
+    frame: Frame, *, bindings: Mapping[str, object], solve_year: int
 ) -> dict[str, object]:
-    """Validate and describe the maintained H5 layout without serializing it."""
+    """Validate and describe the maintained H5 layout without serializing it.
+
+    ``solve_year`` is the year the weights were solved at. The artifact
+    carries them at the dataset's year (``uk_runtime.weight_year``,
+    microcosm#796 A19); the geography gate reads the solved weights.
+    """
     validate_uk_national_frame(frame)
-    ladder = _ladder_tables(frame)
+    release = uk_dataset_year_frame(frame, solve_year=solve_year)
+    ladder = _ladder_tables(release)
     gate = uk_geography_ladder_gate(
         ladder["household"], frame.weights_for("household").values
     )
@@ -207,15 +226,26 @@ def describe_uk_export(
             "UK export geography integrity failed: " + "; ".join(gate.failures)
         )
     tables = {**ladder, "household": export_area_code_columns(ladder["household"])}
+    dataset_year = int(uk_time_period(release))
     return {
         "schema_version": 1,
         "kind": "uk_full_build_export",
         **_content_descriptor(
             tables,
-            time_period=uk_time_period(frame),
-            weight_kind=uk_household_weight_kind(frame),
-            mass_log=frame.mass_log,
+            time_period=uk_time_period(release),
+            weight_kind=uk_household_weight_kind(release),
+            mass_log=release.mass_log,
         ),
+        # The year the weights were solved at, the year the file carries them
+        # at, and the engine's own factor between the two. The division itself
+        # is inside the content identity, as the last record of the mass log.
+        "weight_year": {
+            "solve_year": int(solve_year),
+            "dataset_year": dataset_year,
+            "engine_projection_factor": uk_weight_projection_factor(
+                dataset_year, int(solve_year)
+            ),
+        },
         "bindings": dict(bindings),
         "geography_integrity": {"passed": gate.passed, "failures": list(gate.failures)},
         "area_codes": _area_codes_block(tables["household"]),
@@ -246,6 +276,10 @@ def materialize_uk_export(
 ) -> dict[str, object]:
     """Perform only the declared serialization, recreating files on cache hits."""
     _check_descriptor(descriptor)
+    # The weights leave at the dataset's year, as the descriptor declared.
+    frame = uk_dataset_year_frame(
+        frame, solve_year=int(descriptor["weight_year"]["solve_year"])
+    )
     tables = _tables(frame)
     current = _content_descriptor(
         tables,
@@ -290,6 +324,7 @@ def validate_uk_export(
         if actual[key] != descriptor[key]:
             failures.append(f"Exported {key} differs from its graph descriptor.")
     failures.extend(_area_code_failures(payload["household"], descriptor))
+    failures.extend(uk_identifier_range_failures(payload))
     if file_artifact(path) != dataset:
         raise ValueError("UK exported file changed during graph readback validation.")
     return {
@@ -311,7 +346,9 @@ class UKExportPrepareKernel(KernelBase):
     )
 
     def implementation_hash(self) -> str:
-        return source_hash(sys.modules[__name__], national_frame, geography_ladder)
+        return source_hash(
+            sys.modules[__name__], national_frame, geography_ladder, weight_year
+        )
 
     def run(self, context: KernelContext) -> KernelResult:
         for value in context.artifacts.values():
@@ -325,7 +362,11 @@ class UKExportPrepareKernel(KernelBase):
         bindings["artifacts"] = {
             name: value.key for name, value in context.artifacts.items()
         }
-        descriptor = describe_uk_export(context_frame(context), bindings=bindings)
+        descriptor = describe_uk_export(
+            context_frame(context),
+            bindings=bindings,
+            solve_year=int(context.params["solve_year"]),
+        )
         return KernelResult(artifacts={"export_descriptor": canonical_json(descriptor)})
 
 
@@ -413,6 +454,7 @@ def add_uk_export_preparation(
     *,
     population: str,
     bindings: Mapping[str, object],
+    solve_year: int,
     artifact_inputs: tuple[ArtifactInput, ...] = (),
 ) -> Graph:
     node = Node(
@@ -420,7 +462,10 @@ def add_uk_export_preparation(
         kernel=UKExportPrepareKernel.ref,
         population=population,
         inputs=population_slices(population_columns(graph, population)),
-        params={"bindings": canonical_json(dict(bindings)).decode()},
+        params={
+            "bindings": canonical_json(dict(bindings)).decode(),
+            "solve_year": int(solve_year),
+        },
         artifact_inputs=artifact_inputs,
         artifact_outputs=(ArtifactOutput("export_descriptor", EXPORT_DESCRIPTOR_TYPE),),
         description="Validate and describe exact H5 values, schema, weights and geographic lineage.",
@@ -516,6 +561,9 @@ FULL_GATE_REPORT_TYPE = ArtifactType("microcosm.uk.full-gate-report", 1)
 FULL_DIAGNOSTICS_TYPE = ArtifactType("microcosm.uk.full-calibration-diagnostics", 1)
 FULL_DIAGNOSTICS_CSV_TYPE = ArtifactType("microcosm.uk.full-target-diagnostics-csv", 1)
 FULL_SUPPORT_CSV_TYPE = ArtifactType("microcosm.uk.full-area-support-csv", 1)
+FULL_HIGH_VALUE_SUPPORT_CSV_TYPE = ArtifactType(
+    "microcosm.uk.full-high-value-home-support-csv", 1
+)
 FULL_HOLDOUT_TYPE = ArtifactType("microcosm.uk.full-rotated-holdout", 1)
 
 
@@ -640,14 +688,53 @@ def _source_gate_evidence(context: KernelContext, engine):
                 "uk_ledger_compiled_local_registries"
             ].items()
         },
+        "uk_ledger_compile_unsupported": {
+            int(period): tuple(rows)
+            for period, rows in surface["uk_ledger_compile_unsupported"].items()
+        },
+        "uk_ledger_compile_local_unsupported": {
+            int(period): tuple(rows)
+            for period, rows in surface["uk_ledger_compile_local_unsupported"].items()
+        },
         "exclusions_evaluated_on": date.fromisoformat(
             str(context.params["review_date"])
         ),
     }
 
 
+@cache
+def uk_terminal_only_code_hash() -> str:
+    """The source hash of the high-value homes code the calibrated gates run.
+
+    The high-value homes evidence is computed on the calibrated pool alone.
+    The source preflight runs the gate kernel's code and the dense solve keys
+    on the preflight, so this code keys the calibrated node through its
+    parameters, not the kernel's hash (microcosm#1306 review). An edit to
+    ``high_value_home_gates`` re-keys the calibrated gates and what follows
+    them, never the solve. ``high_value_homes`` also feeds the target
+    kernels, which hash it, so an edit to it still re-solves: a disclosure fix
+    between two builds that must reuse the solve belongs in
+    ``high_value_home_gates`` alone.
+
+    Hashed once per process, as the code was imported: an edit to the files
+    while a build runs cannot fail the calibrated gates after the solve.
+    """
+    from . import high_value_home_gates, high_value_homes
+
+    return source_hash(high_value_home_gates, high_value_homes)
+
+
 class UKFullGateKernel(KernelBase):
+    """The calibrated gate battery: every terminal gate, on the final weights.
+
+    Its terminal gates read the gate-only registers, so it keys on the full
+    country fingerprint and a sign-off re-keys it. The source preflight runs
+    under :class:`UKFullPreflightGateKernel` (microcosm#1301).
+    """
+
     ref = "uk.full-gates@1"
+    #: The battery phases this kernel evaluates; any other is refused.
+    phases: tuple[str, ...] = ("terminal",)
     capabilities = Capabilities(
         Determinism.DETERMINISTIC,
         numeric=Numeric.BITWISE,
@@ -660,14 +747,23 @@ class UKFullGateKernel(KernelBase):
         self.engine = coverage_engine
         self.engine_identity = engine_identity
 
-    def implementation_hash(self) -> str:
-        from .. import gate_battery
+    def _country_resources(self) -> str:
+        """Every packaged UK resource, the gate-only registers included."""
         from ..country_spec import load_country_spec
+
+        return load_country_spec("uk").fingerprint
+
+    def implementation_hash(self) -> str:
+        # The gate evaluators (``gates``) and the register loaders
+        # (``terminal_gates``) decide the report as much as the bindings do,
+        # so an edit to either re-keys the gate nodes (microcosm#1301).
+        from .. import gate_battery, gates
         from . import (
             battery_bindings,
             diagnostics,
             full_gates,
             local_rowwise,
+            terminal_gates,
             weighted_integrity,
         )
 
@@ -677,13 +773,15 @@ class UKFullGateKernel(KernelBase):
                     "code": source_hash(
                         sys.modules[__name__],
                         gate_battery,
+                        gates,
                         battery_bindings,
                         full_gates,
                         local_rowwise,
+                        terminal_gates,
                         weighted_integrity,
                         diagnostics,
                     ),
-                    "country_resources": load_country_spec("uk").fingerprint,
+                    "country_resources": self._country_resources(),
                 }
             )
         ).hexdigest()
@@ -691,13 +789,22 @@ class UKFullGateKernel(KernelBase):
     def run(self, context: KernelContext) -> KernelResult:
         from microcosm.calibrate.artifacts import decode_problem, decode_solution
 
+        phase = str(context.params["phase"])
+        if phase not in self.phases:
+            # Each phase keys on its own country resources (microcosm#1301):
+            # a node bound to the other kernel would be keyed on the wrong set.
+            raise ValueError(
+                f"{type(self).__name__} evaluates the {', '.join(self.phases)} "
+                f"phase only, not {phase!r}."
+            )
+
         from ..gate_battery import (
             EvidenceContext,
             evaluate_phase,
             gate_phase_report_payload,
         )
         from ..stage_evidence import encode_stage_evidence
-        from .battery_bindings import UK_GATE_REGISTRY
+        from .battery_bindings import UK_GATE_REGISTRY, uk_area_support_below_floor
         from .full_gates import (
             build_full_gate_context,
             uk_full_gate_manifest,
@@ -711,6 +818,13 @@ class UKFullGateKernel(KernelBase):
         if context.params["engine_identity"] != self.engine_identity:
             raise ValueError(
                 "UK full gate engine identity differs from its declared binding."
+            )
+        if (
+            context.params["phase"] == "terminal"
+            and context.params.get("terminal_code") != uk_terminal_only_code_hash()
+        ):
+            raise ValueError(
+                "UK full gate terminal-only code differs from its declared binding."
             )
         selection = json.loads(context.artifacts["selection"].payload)["receipt"]
         gates = uk_full_gate_manifest(selection)
@@ -732,10 +846,12 @@ class UKFullGateKernel(KernelBase):
                     MassChangeRecord(**record) for record in state["mass_log"]
                 ),
             )
-        phase = str(context.params["phase"])
         diagnostics = []
         support = []
         output_artifacts = {}
+        # BRMA rows whose model figures leave the build only with ten source
+        # households behind them (María's ruling of 2026-10-17).
+        withheld: frozenset[str] = frozenset()
         upstream_reports = {
             name: json.loads(context.artifacts[name].payload)
             for name in ("spine_assembled", "spine_transferred")
@@ -803,7 +919,23 @@ class UKFullGateKernel(KernelBase):
                 ),
                 ignore_index=True,
             )
+            # Consumers of the local file see which areas sit below the
+            # support floor, under the gate's own floors (microcosm#1278).
+            support_frame["support_below_floor"] = uk_area_support_below_floor(
+                support_frame
+            )
             supporting["uk_area_support_summary"] = support_frame
+            # microcosm#1240 fix 8: the high-value homes evidence, once, on the
+            # calibrated pool; the per-area table is a candidate artifact only.
+            initial = np.asarray(problem.problem.initial_weights.values, dtype=float)
+            hv_evidence = uk_high_value_home_evidence(
+                household,
+                weights=household["household_weight"].to_numpy(dtype=float),
+                facts=load_uk_high_value_home_stock_facts(),
+                initial_weights=initial if len(initial) == len(household) else None,
+                obr_rows=load_vendored_obr_hvcts_facts(),
+            )
+            supporting["uk_high_value_home_evidence"] = hv_evidence.summary
             evidence = build_full_gate_context(
                 frame,
                 ordered_problem=problem,
@@ -814,7 +946,14 @@ class UKFullGateKernel(KernelBase):
             )
             diagnostics = evidence.artifacts["target_diagnostics"]
             support = support_frame.to_dict(orient="records")
-            from .diagnostics import uk_calibration_diagnostics_payload
+            from .diagnostics import (
+                uk_calibration_diagnostics_payload,
+                uk_withhold_brma_figures,
+            )
+
+            # The evidence flags the BRMA rows whose model figures stay in the
+            # build (María's ruling of 2026-10-17, microcosm#1262).
+            withheld = frozenset(evidence.artifacts["model_figures_withheld"])
             from .graph_targets import registry_from_payload
 
             selected_registry = registry_from_payload(
@@ -854,22 +993,41 @@ class UKFullGateKernel(KernelBase):
                     "build_kind": "uk_full_build",
                     "target_scope": selection["selector"],
                 },
+                withheld=withheld,
             )
             output_artifacts.update(
                 {
                     "calibration_diagnostics": encode_stage_evidence(
                         _json_safe(complete_diagnostics)
                     ),
-                    "target_diagnostics_csv": pd.DataFrame(diagnostics)
+                    "target_diagnostics_csv": pd.DataFrame(
+                        uk_withhold_brma_figures(diagnostics, withheld)
+                    )
                     .to_csv(index=False)
                     .encode(),
                     "area_support_csv": support_frame.to_csv(index=False).encode(),
+                    "high_value_home_support_csv": hv_evidence.support.to_csv(
+                        index=False
+                    ).encode(),
                 }
             )
         else:
             raise ValueError(f"Unknown full gate phase {phase!r}.")
         report = evaluate_phase(
             gates, phase=phase, context=evidence, registry=UK_GATE_REGISTRY
+        )
+        from .diagnostics import (
+            uk_refuse_named_withheld_rows,
+            uk_withheld_gate_keys,
+            uk_withhold_brma_figures,
+        )
+
+        report_payload = gate_phase_report_payload(report, gates=gates)
+        # The gates decide on the published rows and count the withheld ones
+        # (María's ruling of 2026-10-19); a report that names one fails the
+        # build rather than leaving it.
+        uk_refuse_named_withheld_rows(
+            report_payload, names=withheld, keys=uk_withheld_gate_keys(diagnostics)
         )
         payload = {
             "schema_version": 1,
@@ -878,9 +1036,11 @@ class UKFullGateKernel(KernelBase):
             "sample_fraction": float(context.params["sample_fraction"]),
             "release_candidate": bool(context.params["release_candidate"]),
             "scope": uk_full_gate_scope_receipt(selection),
-            "report": gate_phase_report_payload(report, gates=gates),
+            "report": report_payload,
             "upstream_phase_reports": upstream_reports,
-            "target_diagnostics": _json_safe(diagnostics),
+            "target_diagnostics": _json_safe(
+                uk_withhold_brma_figures(diagnostics, withheld)
+            ),
             "area_support": _json_safe(support),
             "artifacts": {name: value.key for name, value in context.artifacts.items()},
         }
@@ -897,6 +1057,26 @@ class UKFullGateKernel(KernelBase):
         )
 
 
+class UKFullPreflightGateKernel(UKFullGateKernel):
+    """The source preflight, keyed on the solve's country resources.
+
+    The dense solve takes the preflight report as an input, so the
+    preflight's key is part of the solve's. Its gates read no gate-only
+    register (``solve_scope``), so it keys on the solve fingerprint: a
+    sign-off between the two release builds leaves it, and so the solve, a
+    cache hit (microcosm#1301). The code it runs is the calibrated kernel's.
+    """
+
+    ref = "uk.full-gates.preflight@1"
+    phases = ("preflight",)
+
+    def _country_resources(self) -> str:
+        """Every packaged UK resource but the gate-only registers."""
+        from .solve_scope import uk_solve_fingerprint
+
+        return uk_solve_fingerprint()
+
+
 def append_uk_full_gate_nodes(
     graph: Graph,
     *,
@@ -904,13 +1084,24 @@ def append_uk_full_gate_nodes(
     spine_stage_names: tuple[str, ...],
     engine_identity: str,
     review_date,
+    gate_review_date=None,
     sample_fraction: float = 1.0,
     release_candidate: bool = False,
     spine_provenance: ArtifactInput | None = None,
     input_population: str = "uk.full.pool",
-    skip_holdout: bool = False,
+    skip_holdout: bool = True,
 ) -> Graph:
-    """Own source preflight before solve and final diagnostics after installation."""
+    """Own source preflight before solve and final diagnostics after installation.
+
+    ``review_date`` is the solve clock: target compilation and the source
+    preflight evaluate reviewed entries on it. ``gate_review_date`` (default:
+    the solve clock) is the calibrated gates' clock, the date their reviewed
+    exclusions are evaluated on (microcosm#1301). It may not precede the
+    solve clock, and only the calibrated node carries it, so a later gate
+    clock re-keys the calibrated gates and what follows them, never the solve.
+    """
+    from datetime import date
+
     from microcosm.calibrate.artifacts import PROBLEM_TYPE, RESULT_TYPE, SOLUTION_TYPE
 
     from ..gate_battery import _gates_manifest_payload
@@ -933,6 +1124,19 @@ def append_uk_full_gate_nodes(
             _gates_manifest_payload(uk_full_gate_manifest())
         ).decode(),
     }
+    # The calibrated gates' own clock; absent or equal to the solve clock, the
+    # calibrated node's parameters are the shared ones, byte for byte.
+    gate_params = params
+    if gate_review_date is not None:
+        gate_clock = str(gate_review_date)
+        if date.fromisoformat(gate_clock) < date.fromisoformat(params["review_date"]):
+            raise ValueError(
+                f"The gate review date {gate_clock} precedes the solve review "
+                f"date {params['review_date']}: the calibrated gates may not "
+                "evaluate reviewed exclusions before the solve's own clock."
+            )
+        if gate_clock != params["review_date"]:
+            gate_params = {**params, "review_date": gate_clock}
     provenance = (
         (replace(spine_provenance, name="spine_provenance"),)
         if spine_provenance
@@ -967,7 +1171,7 @@ def append_uk_full_gate_nodes(
     )
     preflight = Node(
         "uk.full.gates.preflight",
-        UKFullGateKernel.ref,
+        UKFullPreflightGateKernel.ref,
         population=input_population,
         params={**params, "phase": "preflight"},
         artifact_inputs=common,
@@ -1014,7 +1218,13 @@ def append_uk_full_gate_nodes(
         population=calibration.population,
         inputs=population_slices(population_columns(graph, calibration.population)),
         sources=sources,
-        params={**params, "phase": "terminal"},
+        # Only the calibrated node keys on the code only it runs, so an edit to
+        # that code never re-keys the preflight and the solve after it.
+        params={
+            **gate_params,
+            "phase": "terminal",
+            "terminal_code": uk_terminal_only_code_hash(),
+        },
         artifact_inputs=(
             *common,
             *build_state,
@@ -1050,6 +1260,9 @@ def append_uk_full_gate_nodes(
             ArtifactOutput("calibration_diagnostics", FULL_DIAGNOSTICS_TYPE),
             ArtifactOutput("target_diagnostics_csv", FULL_DIAGNOSTICS_CSV_TYPE),
             ArtifactOutput("area_support_csv", FULL_SUPPORT_CSV_TYPE),
+            ArtifactOutput(
+                "high_value_home_support_csv", FULL_HIGH_VALUE_SUPPORT_CSV_TYPE
+            ),
         ),
     )
     return replace(graph, nodes=(*nodes, preflight, holdout, final))
@@ -1058,11 +1271,10 @@ def append_uk_full_gate_nodes(
 def register_uk_full_gate_kernels(
     registry: KernelRegistry, *, coverage_engine, engine_identity: str
 ) -> None:
-    registry.register(
-        UKFullGateKernel(
-            coverage_engine=coverage_engine, engine_identity=engine_identity
+    for kernel in (UKFullPreflightGateKernel, UKFullGateKernel):
+        registry.register(
+            kernel(coverage_engine=coverage_engine, engine_identity=engine_identity)
         )
-    )
 
     registry.register(UKFullHoldoutKernel())
 
@@ -1081,8 +1293,15 @@ class UKFullHoldoutKernel(KernelBase):
     )
 
     def implementation_hash(self) -> str:
-        from ..country_spec import load_country_spec
-        from . import dataset_size, graph_targets, local_rowwise
+        from . import (
+            dataset_size,
+            graph_targets,
+            local_doctrine,
+            local_rowwise,
+            national_doctrine,
+            target_weights,
+        )
+        from .solve_scope import uk_solve_fingerprint
 
         return hashlib.sha256(
             canonical_json(
@@ -1092,14 +1311,21 @@ class UKFullHoldoutKernel(KernelBase):
                         graph_targets,
                         local_rowwise,
                         dataset_size,
+                        local_doctrine,
+                        national_doctrine,
+                        target_weights,
                         dependencies=self.capabilities.dependencies,
                     ),
-                    "country_resources": load_country_spec("uk").fingerprint,
+                    # The holdout repeats the solve: it keys on the solve
+                    # fingerprint, as the target kernels do (microcosm#1301).
+                    "country_resources": uk_solve_fingerprint(),
                 }
             )
         ).hexdigest()
 
     def run(self, context: KernelContext) -> KernelResult:
+        from datetime import date
+
         from microcosm.calibrate.artifacts import decode_problem
 
         from ..gate_battery import _json_safe
@@ -1116,9 +1342,19 @@ class UKFullHoldoutKernel(KernelBase):
             report = {
                 "report_only": True,
                 "skipped": True,
-                "reason": "Explicit development request; no holdout claim.",
+                "reason": "Not requested: opt-in diagnostic; no out-of-sample claim.",
             }
         else:
+            # microcosm#1301: each fold's size search runs under the doctrine
+            # floor (select_uk_dataset_size's default); refuse a holdout that
+            # would measure folds under another floor than the build's search.
+            floor = context.params.get("selection_l0_search_floor")
+            if floor is not None and floor != UK_LOCAL_L0_SEARCH_FLOOR:
+                raise ValueError(
+                    f"The size search ran under an L0 floor of {floor!r}; the "
+                    "rotated holdout's fold searches run under the doctrine's "
+                    f"{UK_LOCAL_L0_SEARCH_FLOOR!r}."
+                )
             inputs = reconstruct_uk_full_problem_inputs(context)
             original = decode_problem(context.artifacts["problem"].payload)
             if original.entity_ids != tuple(
@@ -1144,6 +1380,15 @@ class UKFullHoldoutKernel(KernelBase):
                 selection_seed=context.params.get("selection_seed"),
                 selection_pi_hi=float(context.params["selection_pi_hi"]),
                 baseline_pi_floor=float(context.params["baseline_pi_floor"]),
+                selection_initial_lambda=context.params.get("selection_initial_lambda"),
+                # Every fold reviews the binding on the build's review date,
+                # inherited from uk.full.problem (microcosm#1278).
+                now=date.fromisoformat(str(context.params["review_date"])),
+                **{
+                    key: context.params[key]
+                    for key in UK_SIZE_L2_PARAM_KEYS
+                    if key in context.params
+                },
             )
         report = {
             **report,
@@ -1187,6 +1432,25 @@ def uk_full_holdout_node(
             "baseline_pi_floor": (
                 0.0 if size is None else size.params["baseline_pi_floor"]
             ),
+            # microcosm#1124: each fold's budget search starts where the main
+            # search started, so five folds do not each search from zero.
+            "selection_initial_lambda": (
+                None if size is None else size.params.get("initial_lambda")
+            ),
+            # microcosm#1301: and under the same L0 search floor.
+            "selection_l0_search_floor": (
+                None if size is None else size.params.get("l0_search_floor")
+            ),
+            # microcosm#1124: the size stages' L2 penalties, present only when on.
+            **(
+                {}
+                if size is None
+                else {
+                    key: size.params[key]
+                    for key in UK_SIZE_L2_PARAM_KEYS
+                    if key in size.params
+                }
+            ),
         },
         artifact_inputs=(
             *original.artifact_inputs,
@@ -1199,7 +1463,7 @@ def uk_full_holdout_node(
             ),
         ),
         artifact_outputs=(ArtifactOutput("holdout", FULL_HOLDOUT_TYPE),),
-        description="Preserve five rotated local-target holdouts with national constraints fixed in training and unchanged sizing doctrine.",
+        description="Optional (--rotated-holdout): preserve five rotated local-target holdouts with national constraints fixed in training and unchanged sizing doctrine; otherwise record that none was requested.",
     )
 
 
@@ -1246,6 +1510,11 @@ def materialize_uk_terminal_artifacts(
             "uk.full.gates.calibrated",
             "area_support_csv",
             ".area_support.csv",
+        ),
+        "high_value_home_support": (
+            "uk.full.gates.calibrated",
+            "high_value_home_support_csv",
+            ".high_value_home_support.csv",
         ),
         "holdout": ("uk.full.holdout", "holdout", ".holdout.json"),
         "target_registry": (
@@ -1307,6 +1576,100 @@ def _gate_rows(document: Mapping) -> dict[str, dict]:
     return rows
 
 
+def _reviewed_exclusions_stood_on(gate_rows: Mapping[str, Mapping]) -> dict:
+    """The names of the reviewed exclusions each signed-exclusion gate stood on.
+
+    One sorted list per gate a dense release names in its limitations, empty
+    when the gate stood on none or the report lacks it; dormant entries are
+    left out, as the release assembler leaves them out. The full gate report
+    does not ship, so the release contract holds the coverage's names and
+    the manifest's limitations to this record (microcosm#1301).
+    """
+    from microcosm.data.contract import _UK_DENSE_SIGNED_EXCLUSION_GATES
+
+    record: dict[str, list[str]] = {}
+    for gate_id in _UK_DENSE_SIGNED_EXCLUSION_GATES:
+        row = gate_rows.get(gate_id)
+        details = row.get("details") if isinstance(row, Mapping) else None
+        details = details if isinstance(details, Mapping) else {}
+        excluded = details.get("reviewed_exclusions")
+        dormant = set(map(str, details.get("dormant_exclusions") or ()))
+        record[gate_id] = (
+            sorted(set(map(str, excluded)) - dormant)
+            if isinstance(excluded, Mapping)
+            else []
+        )
+    return record
+
+
+#: The size receipt's fields a manifest publishes while any row is withheld:
+#: counts, settings, the draw and its search bracket. Every other field reads
+#: null, the losses over every row, the search's probes and the refit's
+#: distances among them (microcosm#1262, the third review of #1305).
+_SIZE_RECEIPT_PUBLISHED_WHILE_WITHHELD = frozenset(
+    {
+        "baseline_floored_rows",
+        "baseline_mass_share_certainties",
+        "baseline_pi_floor",
+        "boundary_draws",
+        "certainty_share",
+        "certification",
+        "household_ids",
+        "households",
+        "inclusion_probabilities",
+        "method",
+        "pi_hi",
+        "pool_households",
+        "pool_row_indices",
+        "problem_sha256",
+        "protected",
+        "protected_carriers",
+        "realized_households",
+        "refit_baseline",
+        "refit_epochs",
+        "refit_iterate_selection",
+        "requested_households",
+        "seed",
+        "selection_budget_basis",
+        "selection_epochs",
+        "selection_l0_lambda",
+        "selection_pi_hi",
+        "selection_receipt",
+        "selection_reused",
+        "selection_search_bracket",
+        "selection_search_pi_hi",
+        "stretch_reference",
+        "support",
+        "zero_target_rows",
+    }
+)
+
+
+def _published_size_receipt(
+    size_receipt: Mapping[str, object] | None, *, withheld: int
+) -> dict[str, object] | None:
+    """The size receipt as a manifest publishes it.
+
+    While any row's model figures are withheld, only the fields on the
+    allow-list keep their values and a note says why; the stored receipt
+    keeps them all.
+    """
+
+    if size_receipt is None:
+        return None
+    if not withheld:
+        return dict(size_receipt)
+    published = {
+        key: (value if key in _SIZE_RECEIPT_PUBLISHED_WHILE_WITHHELD else None)
+        for key, value in size_receipt.items()
+    }
+    published["withheld_totals_note"] = (
+        "Only counts, settings and the draw are published: "
+        f"{withheld} row(s) have their model figures withheld (microcosm#1262)."
+    )
+    return published
+
+
 def _fit_rows(target_rows: pd.DataFrame, materialization: Mapping[str, str]):
     """Split the terminal target diagnostics into local and national rows."""
     kinds = target_rows["name"].map(materialization)
@@ -1347,6 +1710,7 @@ def rowwise_candidate_manifest_from_graph(
     """
     from microcosm.calibrate.artifacts import decode_problem
 
+    from .battery_bindings import uk_area_support_below_floor
     from .calibration_run import UK_LOCAL_GATE_SCOPE
     from .diagnostics import uk_fit_by_family, uk_support_limited_misses
     from .graph_targets import registry_from_payload
@@ -1356,6 +1720,7 @@ def rowwise_candidate_manifest_from_graph(
         local_vintage_census,
         release_verdict,
         rowwise_parameters,
+        size_doctrine_drift,
     )
 
     nodes = final_manifest.nodes
@@ -1391,6 +1756,11 @@ def rowwise_candidate_manifest_from_graph(
             )
         )
     )
+    # The gate node writes each area's floor flag (microcosm#1278); a table
+    # without one is flagged here under the same floors.
+    if "support_below_floor" not in support.columns:
+        support["support_below_floor"] = uk_area_support_below_floor(support)
+    support["support_below_floor"] = support["support_below_floor"].astype(bool)
     holdout = json.loads(
         _graph_payload(final_manifest, store, "uk.full.holdout", "holdout")
     )
@@ -1441,6 +1811,7 @@ def rowwise_candidate_manifest_from_graph(
     representation = dict(bindings.get("measure_resolution", {})).get(
         "engine_population_representation"
     )
+    size_drift = size_doctrine_drift(args)
     releasable, release_posture = release_verdict(
         sample_fraction=args.sample_fraction,
         engine_blocks=args.engine_blocks,
@@ -1464,8 +1835,19 @@ def rowwise_candidate_manifest_from_graph(
         1 for kind in materialization.values() if kind == _NATIONAL_MATERIALIZATION
     )
     local_rows = len(materialization) - ladder_rows - national_rows
-    local_fit, national_fit = _fit_rows(target_rows, materialization)
-    abs_errors = target_rows["abs_relative_error"].to_numpy(dtype=np.float64)
+    # A row whose model figures stay in the build reads blank (microcosm#1262):
+    # every fit figure below is over the published rows, and the solve block
+    # counts the rest.
+    withheld_rows = (
+        target_rows["model_figures_withheld"].fillna(False).astype(bool)
+        if "model_figures_withheld" in target_rows
+        else pd.Series(False, index=target_rows.index)
+    )
+    published_rows = target_rows.loc[~withheld_rows].reset_index(drop=True)
+    local_fit, national_fit = _fit_rows(published_rows, materialization)
+    abs_errors = published_rows["abs_relative_error"].to_numpy(dtype=np.float64)
+    if not np.isfinite(abs_errors).all():
+        raise ValueError("A published target row has a non-finite relative error.")
     support_by_grain = {
         ("la" if grain == "local_authority" else str(grain)): rows.reset_index(
             drop=True
@@ -1639,7 +2021,19 @@ def rowwise_candidate_manifest_from_graph(
             },
             "n_households": int(frame.n("household")),
             "pool_households": int(len(problem.entity_ids)),
-            "dataset_size": None if size_receipt is None else dict(size_receipt),
+            "dataset_size": _published_size_receipt(
+                size_receipt, withheld=int(withheld_rows.sum())
+            ),
+            **(
+                {
+                    "model_figures_withheld": {
+                        "targets": int(withheld_rows.sum()),
+                        "totals_basis": "published_rows",
+                    }
+                }
+                if withheld_rows.any()
+                else {}
+            ),
             "initial_loss": diagnostics["initial_loss"],
             "final_loss": diagnostics["final_loss"],
             "max_abs_relative_error": float(abs_errors.max())
@@ -1669,6 +2063,15 @@ def rowwise_candidate_manifest_from_graph(
                     }
                 }
             ),
+            **(
+                {}
+                if "target_loss_weight_receipt" not in bindings
+                else {
+                    "target_loss_weight_receipt": dict(
+                        bindings["target_loss_weight_receipt"]
+                    )
+                }
+            ),
             "measure_resolution": dict(bindings.get("measure_resolution", {})),
             "cross_grain": dict(bindings.get("cross_geography", {})),
             "binding_adjudications": dict(bindings.get("binding_adjudications", {})),
@@ -1688,20 +2091,16 @@ def rowwise_candidate_manifest_from_graph(
             ),
             "rotated_holdout": diagnostics["uk_diagnostics"].get("rotated_holdout"),
         },
+        # Area counts only: the manifest ships in a release, and a level's
+        # minima would be one area's support figures (microcosm#1301). The
+        # figures stay in the area-support table.
         "support": {
-            "min_assigned_households": int(support["assigned_households"].min()),
-            "min_nonzero_households": int(support["nonzero_households"].min()),
-            "min_effective_sample_size": float(support["effective_sample_size"].min()),
+            "areas_checked": int(len(support)),
+            "areas_below_floor": int(support["support_below_floor"].sum()),
             "by_geography_level": {
                 str(level): {
-                    "min_assigned_households": int(rows["assigned_households"].min()),
-                    "min_nonzero_households": int(rows["nonzero_households"].min()),
-                    "min_effective_sample_size": float(
-                        rows["effective_sample_size"].min()
-                    ),
-                    "min_nonzero_source_households": int(
-                        rows["nonzero_source_households"].min()
-                    ),
+                    "areas_checked": int(len(rows)),
+                    "areas_below_floor": int(rows["support_below_floor"].sum()),
                 }
                 for level, rows in support.groupby("geography_level", sort=True)
             },
@@ -1736,13 +2135,18 @@ def rowwise_candidate_manifest_from_graph(
             for gate_id, payload in gate_rows.items()
             if not isinstance(payload, Mapping) or payload.get("status") != "passed"
         ),
-        "releasable": bool(releasable and args.dataset_households is None),
+        # microcosm#1124 (2026-10-13): a sized build is releasable only at the
+        # local size doctrine; no matched-size certification is required.
+        "releasable": bool(releasable and not size_drift),
         "release_posture": {
             **release_posture,
             **(
                 {}
                 if args.dataset_households is None
-                else {"size_certification_present": False}
+                else {
+                    "size_certification_present": False,
+                    "size_doctrine": not size_drift,
+                }
             ),
         },
         "census_household_uprating": dict(
@@ -1755,6 +2159,7 @@ def rowwise_candidate_manifest_from_graph(
                 (surface.get("measure_exclusions") or {}).items()
             )
         },
+        "reviewed_exclusions_stood_on": _reviewed_exclusions_stood_on(gate_rows),
         "blocked_at_f100": bool(blocking_failures),
         "blocking_failures": blocking_failures,
         "diagnostic_failures": diagnostic_lines,
