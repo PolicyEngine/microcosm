@@ -591,9 +591,11 @@ Prepared by PolicyEngine from the Microcosm UK national file {file_label}
   HMRC published. The targets are UK property income by range of total income
   (counts and amounts, Table 3.7) and Scotland's taxpayers and total income by
   range (Table 3.11). Each region's household total is held to within
-  {region_miss:.2%}. Because those figures are calibrated, they don't test the
-  data. The split of Scottish property income across NSND bands is not
-  targeted, so that split is what the outturn tests.
+  {max(region_miss, 1e-4):.2%}. Because those figures are calibrated, they
+  don't test the data. The split of Scottish property income across NSND
+  bands is not targeted, so that split is what the outturn tests. It is not
+  untouched, though: the UK property targets move Scottish landlords' weights
+  along with everyone else's.
 - **Law:** 2023-24 income tax.
 
 ## Uncertainty
@@ -614,7 +616,8 @@ are too narrow.
   band limits as the other NSND rates.
 - **Basis:** static, on 2023-24 data and law, with no behavioural response.
 - **Headline and sensitivity:** the headline keeps the finance-cost reduction
-  at the basic rate. The sensitivity raises it by 1p as well.
+  at 20%, as policyengine-uk reads current law for Scottish taxpayers. The
+  sensitivity raises it by 1p as well.
 - **Later years:** a 2027-28 figure, when the power applies, needs a separate
   run.
 
