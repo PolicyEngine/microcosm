@@ -339,6 +339,20 @@ _ONS_SINGLE_YEAR_AGE_LEDGER_ONLY_RATIONALE = (
     "fixture counterpart."
 )
 _ONS_SINGLE_YEAR_AGE_ROWS = frozenset(f"ons.population.age_{age}" for age in (0, 1, 2))
+_ONS_SINGLE_YEAR_AGE_0_6_LEDGER_ONLY_RATIONALE = (
+    "Requested by María on 2026-10-21 for the £100k childcare costing fixes "
+    "(item 6; microcosm#1278, #1095): one of the eleven all-persons rows that "
+    "extend the single years of age, the UK's ages 3 to 6 and England's ages 0 to "
+    "6, bound so the fit holds the single years inside the 0_4 and 5_9 sex bands "
+    "and the region 0_9 cells, which stay bound beside them. The incumbent binds "
+    "only the bands, so this row has no fixture counterpart."
+)
+_ONS_SINGLE_YEAR_AGE_0_6_ROWS = frozenset(
+    (
+        *(f"ons.population.age_{age}" for age in (3, 4, 5, 6)),
+        *(f"ons.population.england_age_{age}" for age in range(7)),
+    )
+)
 
 _DEVOLVED_RENT_FIXTURE_ONLY_RATIONALE = (
     "Ruled signed exclusion: the incumbent y-values for devolved private rent "
@@ -816,6 +830,8 @@ def _add_signed_rationale_notes(
             row["reason"] = _ONS_15_19_BAND_SPLIT_LEDGER_ONLY_RATIONALE
         elif name in _ONS_SINGLE_YEAR_AGE_ROWS and row.get("kind") == "ledger_only":
             row["reason"] = _ONS_SINGLE_YEAR_AGE_LEDGER_ONLY_RATIONALE
+        elif name in _ONS_SINGLE_YEAR_AGE_0_6_ROWS and row.get("kind") == "ledger_only":
+            row["reason"] = _ONS_SINGLE_YEAR_AGE_0_6_LEDGER_ONLY_RATIONALE
 
 
 #: microcosm#1240: the high_value_homes family binds a Microcosm-derived
