@@ -1088,16 +1088,27 @@ def _add_person_expenses(
     )
     pe_person["employee_pension_contributions"] = capped
     if evidence is not None:
-        evidence["net_pay_contributions"] = coherence_receipt(
-            changed=changed,
-            before=np.asarray(deducted, dtype=np.float64),
-            after=capped,
-            weights=person["household_id"]
+        # A deduction beside no recorded pay may stand for pay the adult tab
+        # left blank, not for a contribution above pay, so the two cases are
+        # counted apart.
+        recorded_pay = pe_person["employment_income"].to_numpy(dtype=np.float64) > 0.0
+        receipt = {
+            "before": np.asarray(deducted, dtype=np.float64),
+            "after": capped,
+            "weights": person["household_id"]
             .map(_raw_number(household, "gross4"))
             .fillna(0.0)
             .to_numpy(dtype=np.float64),
-            source_ids=person["household_id"].to_numpy(),
-        )
+            "source_ids": person["household_id"].to_numpy(),
+        }
+        evidence["net_pay_contributions"] = {
+            "above_recorded_pay": coherence_receipt(
+                changed=changed & recorded_pay, **receipt
+            ),
+            "beside_no_recorded_pay": coherence_receipt(
+                changed=changed & ~recorded_pay, **receipt
+            ),
+        }
     pe_person["pension_contributions_via_salary_sacrifice"] = np.maximum(
         0,
         _sum_to_entity(
