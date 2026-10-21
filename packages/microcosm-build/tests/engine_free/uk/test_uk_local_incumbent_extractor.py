@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.uk_runtime import measure_simulation
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -45,8 +46,22 @@ def test_extract_incumbent_surface_from_tiny_h5_and_stub_simulation(
     class StubSimulation:
         pass
 
-    def fake_metrics(simulation, grain, *, period, household_ids):
-        assert isinstance(simulation, StubSimulation)
+    class StubResolver:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    resolvers = []
+
+    def make_resolver(**kwargs):
+        resolvers.append(StubResolver(**kwargs))
+        return resolvers[-1]
+
+    # The metrics are the declarations read through one resolver over the
+    # incumbent file.
+    monkeypatch.setattr(measure_simulation, "UKMeasureResolver", make_resolver)
+
+    def fake_metrics(resolver, grain, *, period, household_ids):
+        assert resolver is resolvers[0]
         assert period == 2025
         assert list(household_ids) == [10, 20]
         common = {"households": [1.0, 1.0]}
@@ -58,6 +73,10 @@ def test_extract_incumbent_surface_from_tiny_h5_and_stub_simulation(
 
     monkeypatch.setattr(tool, "compute_household_metrics", fake_metrics)
     out_dir = tmp_path / "out"
+
+    def factory(**_):
+        return StubSimulation()
+
     manifest = tool.extract_incumbent_surface(
         incumbent_h5=incumbent,
         constituency_weights_h5=constituency_h5,
@@ -66,8 +85,14 @@ def test_extract_incumbent_surface_from_tiny_h5_and_stub_simulation(
         local_authority_codes_csv=la_roster,
         period=2025,
         out_dir=out_dir,
-        microsimulation_factory=lambda **_: StubSimulation(),
+        microsimulation_factory=factory,
     )
+
+    (resolver,) = resolvers
+    assert resolver.kwargs["simulation_source"] == incumbent
+    assert resolver.kwargs["frame"] is None
+    assert resolver.kwargs["year"] == 2025
+    assert resolver.kwargs["microsimulation_factory"] is factory
 
     weights = pd.read_csv(out_dir / tool.WEIGHTS_FILENAME)
     metrics = pd.read_csv(out_dir / tool.METRICS_FILENAME)

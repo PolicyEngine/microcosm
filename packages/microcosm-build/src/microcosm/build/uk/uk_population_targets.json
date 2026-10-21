@@ -30655,7 +30655,21 @@
       "bindings": {
         "policyengine": {
           "metric_name": "uc_hh_0_children",
-          "value_variable": "household_count"
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "universal_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "uc_calibration_child_count",
+              "operator": "==",
+              "value": 0
+            }
+          ]
         },
         "axiom": {
           "metric_name": "uc_hh_0_children",
@@ -30734,7 +30748,21 @@
       "bindings": {
         "policyengine": {
           "metric_name": "uc_hh_1_child",
-          "value_variable": "household_count"
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "universal_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "uc_calibration_child_count",
+              "operator": "==",
+              "value": 1
+            }
+          ]
         },
         "axiom": {
           "metric_name": "uc_hh_1_child",
@@ -30813,7 +30841,21 @@
       "bindings": {
         "policyengine": {
           "metric_name": "uc_hh_2_children",
-          "value_variable": "household_count"
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "universal_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "uc_calibration_child_count",
+              "operator": "==",
+              "value": 2
+            }
+          ]
         },
         "axiom": {
           "metric_name": "uc_hh_2_children",
@@ -30892,7 +30934,21 @@
       "bindings": {
         "policyengine": {
           "metric_name": "uc_hh_3plus_children",
-          "value_variable": "household_count"
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "universal_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "uc_calibration_child_count",
+              "operator": ">=",
+              "value": 3
+            }
+          ]
         },
         "axiom": {
           "metric_name": "uc_hh_3plus_children",
@@ -31243,8 +31299,6 @@
         "policyengine": {
           "metric_name": "rent/private_rent",
           "value_variable": "benunit_rent",
-          "from_entity": "benunit",
-          "map_to": "household",
           "filters": [
             {
               "variable": "tenure_type",
@@ -31282,8 +31336,6 @@
         "policyengine": {
           "metric_name": "rent/private_rent_brma",
           "value_variable": "benunit_rent",
-          "from_entity": "benunit",
-          "map_to": "household",
           "filters": [
             {
               "variable": "tenure_type",
@@ -33169,23 +33221,7 @@
       "bindings": {
         "policyengine": {
           "metric_name": "high_value_homes/over_1m",
-          "value_variable": "household_count",
-          "filters": [
-            {
-              "variable": "tenure_type",
-              "in": [
-                "OWNED_OUTRIGHT",
-                "OWNED_WITH_MORTGAGE"
-              ]
-            },
-            {
-              "variable": "main_residence_value",
-              "operator": ">",
-              "value": 1000000,
-              "price_basis": "2026-04",
-              "input_period": "dataset"
-            }
-          ]
+          "value_variable": "owner_occupied_home_over_gbp_1m"
         },
         "axiom": {
           "metric_name": "high_value_homes/over_1m",
@@ -33245,23 +33281,7 @@
       "bindings": {
         "policyengine": {
           "metric_name": "high_value_homes/over_1_5m",
-          "value_variable": "household_count",
-          "filters": [
-            {
-              "variable": "tenure_type",
-              "in": [
-                "OWNED_OUTRIGHT",
-                "OWNED_WITH_MORTGAGE"
-              ]
-            },
-            {
-              "variable": "main_residence_value",
-              "operator": ">",
-              "value": 1500000,
-              "price_basis": "2026-04",
-              "input_period": "dataset"
-            }
-          ]
+          "value_variable": "owner_occupied_home_over_gbp_1_5m"
         },
         "axiom": {
           "metric_name": "high_value_homes/over_1_5m",
@@ -33321,23 +33341,7 @@
       "bindings": {
         "policyengine": {
           "metric_name": "high_value_homes/over_2m",
-          "value_variable": "household_count",
-          "filters": [
-            {
-              "variable": "tenure_type",
-              "in": [
-                "OWNED_OUTRIGHT",
-                "OWNED_WITH_MORTGAGE"
-              ]
-            },
-            {
-              "variable": "main_residence_value",
-              "operator": ">",
-              "value": 2000000,
-              "price_basis": "2026-04",
-              "input_period": "dataset"
-            }
-          ]
+          "value_variable": "owner_occupied_home_over_gbp_2m"
         },
         "axiom": {
           "metric_name": "high_value_homes/over_2m",
@@ -33465,15 +33469,7 @@
       "bindings": {
         "policyengine": {
           "metric_name": "energy/gas_connected_households",
-          "value_variable": "household_count",
-          "filters": [
-            {
-              "variable": "gas_consumption",
-              "operator": ">",
-              "value": 0,
-              "input_period": "dataset"
-            }
-          ]
+          "value_variable": "domestic_gas_connected"
         },
         "axiom": {
           "metric_name": "energy/gas_connected_households",
