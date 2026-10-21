@@ -289,6 +289,7 @@ UK_GATE_BATTERY_ENTRIES = {
         None,
     ),
     "uk_stage_spi_benefit_coherence": ("stage_health", "transferred", None),
+    "uk_stage_uc_take_up": ("stage_health", "transferred", None),
     "uk_stage_pension_credit_take_up": ("stage_health", "transferred", None),
     "uk_stage_child_benefit_take_up": ("stage_health", "transferred", None),
     "uk_stage_high_value_home_support_mass": ("stage_health", "transferred", None),
@@ -1119,7 +1120,7 @@ def _terminal_gate_details(name: str) -> dict:
     if name == "take_up_signal":
         # Mirrors uk_take_up_signal_gate's per-column detail block.
         return {
-            "benunit.would_claim_uc": {
+            "benunit.would_claim_tfc": {
                 "weighted_share": 0.55,
                 "target": 0.55,
                 "absolute_deviation": 0.0,
@@ -1345,6 +1346,7 @@ def _gate_battery_payload(
         "hmrc_spi_income_spine",
         "spi_benefit_coherence",
         "uc_capital_coherence",
+        "uc_take_up",
         "pension_credit_take_up",
         "child_benefit_take_up",
         "uc_deduction_attributes",
@@ -1378,6 +1380,7 @@ def _gate_battery_payload(
         "uk_stage_spi_support_channel_mass": "spi_support_channel",
         "uk_stage_hmrc_spi_income_spine_identity": "hmrc_spi_income_spine",
         "uk_stage_spi_benefit_coherence": "spi_benefit_coherence",
+        "uk_stage_uc_take_up": "uc_take_up",
         "uk_stage_pension_credit_take_up": "pension_credit_take_up",
         "uk_stage_child_benefit_take_up": "child_benefit_take_up",
         "uk_stage_high_value_home_support_mass": "high_value_home_support",

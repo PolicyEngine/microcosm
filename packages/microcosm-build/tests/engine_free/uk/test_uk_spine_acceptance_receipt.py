@@ -135,6 +135,11 @@ def _apply_pending_roster_transformations(
     roster.insert(
         roster.index("uc_capital_coherence") + 1, "uc_legacy_closure_take_up"
     )
+    # microcosm#1334 re-mint pending: the Universal Credit redraw reads the
+    # post-SPI awards right after UC capital coherence, before the Move to UC
+    # claim draw reads would_claim_uc.
+    assert "uc_take_up" not in roster
+    roster.insert(roster.index("uc_capital_coherence") + 1, "uc_take_up")
     # microcosm#1063 re-mint pending: the Child Benefit redraw reads the same
     # post-SPI incomes, right after the Pension Credit redraw.
     assert "child_benefit_take_up" not in roster

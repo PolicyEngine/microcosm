@@ -45,6 +45,8 @@ def uk_stage_health_gate(
         return _spi_income_spine_gate(stage, evidence, parameters)
     if check == "pension_credit_take_up":
         return _pension_credit_take_up_gate(stage, evidence, parameters)
+    if check == "uc_take_up":
+        return _uc_take_up_gate(stage, evidence, parameters)
     if check == "child_benefit_take_up":
         return _child_benefit_take_up_gate(stage, evidence, parameters)
     if check == "spi_benefit_coherence":
@@ -1199,6 +1201,82 @@ def _spi_benefit_coherence_gate(
         "spi_claiming_after": take_up.get("spi_claiming_after"),
         "own_right_changed": own_right.get("spi_rows_changed"),
     }
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
+
+
+def _uc_take_up_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """Each family type's reachable pools realize DWP's caseload (microcosm#1334).
+
+    Every reporter claims and no unit outside the draw changes. Over a family
+    type's pools whose target the draw can reach, the realized Great Britain
+    caseload is within ``maximum_caseload_deviation`` of DWP's count, and the
+    family type's whole caseload is no further from DWP's than before the
+    redraw, give or take that share of DWP's count.
+    """
+
+    check = "uc_take_up"
+    tolerance = _finite_number(
+        parameters["maximum_caseload_deviation"],
+        label=f"{stage}.maximum_caseload_deviation",
+    )
+    failures: list[str] = []
+    details: dict[str, object] = {}
+    for key in ("reporters_not_claiming", "changed_outside_draw"):
+        value = evidence.get(key)
+        details[key] = value
+        if value != 0:
+            failures.append(f"{stage}: {key} is {value!r}, not 0.")
+    families = evidence.get("families")
+    if not isinstance(families, Mapping) or not families:
+        failures.append(f"{stage}: the receipt carries no family types.")
+        families = {}
+    for name, family in families.items():
+        family = _mapping(family, label=f"{stage}.families.{name}")
+        values = {
+            key: family.get(key)
+            for key in (
+                "dwp_caseload",
+                "caseload_before",
+                "caseload_after",
+                "reachable_pools_dwp_caseload",
+                "reachable_pools_caseload_after",
+            )
+        }
+        details[str(name)] = values
+        if any(not isinstance(value, int | float) for value in values.values()):
+            failures.append(
+                f"{stage}: family type {name} carries a caseload resting on fewer "
+                "than ten sources, or none."
+            )
+            continue
+        dwp = _finite_number(values["dwp_caseload"], label=f"{stage}.{name}.dwp")
+        before = _finite_number(values["caseload_before"], label=f"{stage}.{name}")
+        after = _finite_number(values["caseload_after"], label=f"{stage}.{name}")
+        target = _finite_number(
+            values["reachable_pools_dwp_caseload"], label=f"{stage}.{name}"
+        )
+        realized = _finite_number(
+            values["reachable_pools_caseload_after"], label=f"{stage}.{name}"
+        )
+        if target > 0.0 and abs(realized - target) > tolerance * target:
+            failures.append(
+                f"{stage}: family type {name} realizes {realized:,.0f} against "
+                f"DWP's {target:,.0f} over its reachable pools (tolerance "
+                f"{tolerance})."
+            )
+        if abs(after - dwp) > abs(before - dwp) + tolerance * dwp:
+            failures.append(
+                f"{stage}: family type {name} moves from {before:,.0f} to "
+                f"{after:,.0f}, further from DWP's {dwp:,.0f}."
+            )
     return (
         _fail(stage, check, failures, details)
         if failures

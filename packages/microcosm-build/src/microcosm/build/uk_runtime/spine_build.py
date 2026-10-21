@@ -202,6 +202,7 @@ from microcosm.build.uk_runtime.uc_deduction_attributes import (
 from microcosm.build.uk_runtime.uc_reporter_redraw import (
     UKUCReporterRedrawStageTransform,
 )
+from microcosm.build.uk_runtime.uc_take_up import UKUCTakeUpStageTransform
 from microcosm.build.uk_runtime.was_lisa import UKWASLISAStageTransform
 from microcosm.build.uk_runtime.was_wealth import UKWASWealthStageTransform
 from microcosm.frame import Frame
@@ -1717,6 +1718,11 @@ def prepare_uk_spine_execution(
     if "uc_capital_coherence" in stage_names:
         implementations["uc_capital_coherence"] = UKUCCapitalCoherenceStageTransform(
             stage=stages_by_name["uc_capital_coherence"]
+        )
+    if "uc_take_up" in stage_names:
+        implementations["uc_take_up"] = UKUCTakeUpStageTransform(
+            stage=stages_by_name["uc_take_up"],
+            engine=engine,
         )
     if "uc_legacy_closure_take_up" in stage_names:
         implementations["uc_legacy_closure_take_up"] = (

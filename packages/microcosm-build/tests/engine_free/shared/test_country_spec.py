@@ -934,6 +934,7 @@ class TestUKCountryPackage:
             "hmrc_property_rental_income_facts.json",
             "hmrc_stamp_tax_facts.json",
             "dwp_move_to_uc_facts.json",
+            "dwp_uc_award_band_facts.json",
             "obr_hvcts_costing_facts.json",
             "hmrc_itl_taxpayer_counts.json",
             "hmrc_uprating_engine_pins.json",
@@ -1039,8 +1040,8 @@ class TestUKCountryPackage:
         # after property_components and uc_legacy_closure_take_up after
         # uc_capital_coherence; microcosm#1319 carers_allowance_take_up after
         # child_benefit_take_up; childcare_copy_take_up last, after every copy
-        # stage.
-        assert len(spec.sources.stages) == 47
+        # stage; microcosm#1334 uc_take_up after uc_capital_coherence.
+        assert len(spec.sources.stages) == 48
         assert not {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.intersection(
             stage.stage for stage in spec.sources.stages
         )
@@ -1084,6 +1085,7 @@ class TestExistingPackagesGeneralize:
             "hmrc_property_rental_income_facts.json",
             "hmrc_stamp_tax_facts.json",
             "dwp_move_to_uc_facts.json",
+            "dwp_uc_award_band_facts.json",
             "obr_hvcts_costing_facts.json",
             "hmrc_itl_taxpayer_counts.json",
             "hmrc_uprating_engine_pins.json",
@@ -1461,6 +1463,7 @@ class TestUKGatesManifest:
             "uk_stage_spi_support_channel_mass",
             "uk_stage_hmrc_spi_income_spine_identity",
             "uk_stage_spi_benefit_coherence",
+            "uk_stage_uc_take_up",
             "uk_stage_pension_credit_take_up",
             "uk_stage_child_benefit_take_up",
             "uk_stage_cgt_incidence_clone_mass",
@@ -1584,6 +1587,7 @@ class TestUKGatesManifest:
             "uk_stage_spi_support_channel_mass",
             "uk_stage_hmrc_spi_income_spine_identity",
             "uk_stage_spi_benefit_coherence",
+            "uk_stage_uc_take_up",
             "uk_stage_pension_credit_take_up",
             "uk_stage_child_benefit_take_up",
             "uk_stage_cgt_incidence_clone_mass",

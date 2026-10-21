@@ -57,9 +57,10 @@ def test_uk_spine_graph_contains_every_manifest_stage() -> None:
     # microcosm#1106 property_components after the regional uprating, and
     # microcosm#1240 high_value_home_support between those two; microcosm#1095
     # adds property_purchases and uc_legacy_closure_take_up, microcosm#1112
-    # regional_home_values, microcosm#1319 carers_allowance_take_up, and the
-    # copies' childcare re-draw childcare_copy_take_up.
-    assert len(expected) == 47
+    # regional_home_values, microcosm#1319 carers_allowance_take_up, the
+    # copies' childcare re-draw childcare_copy_take_up, and microcosm#1334
+    # uc_take_up.
+    assert len(expected) == 48
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(expected)
     assert set(expected) <= ids
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(ids)

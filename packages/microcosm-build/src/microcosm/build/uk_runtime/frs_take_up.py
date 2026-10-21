@@ -148,9 +148,11 @@ UK_UC_CHILDCARE_RATE_KEYS = {
 # would_claim_child_benefit and child_benefit_opts_out are redrawn by
 # ``child_benefit_take_up`` against HMRC's claim rates of eligible children and
 # opted-out share of registered families; its stage gate measures them
-# (microcosm#1063).
+# (microcosm#1063). would_claim_uc is redrawn after the SPI chain by
+# ``uc_take_up`` by award band and family type against DWP's caseloads; its
+# stage gate measures it, so it is no longer one share of the age population
+# (microcosm#1334).
 UK_TAKE_UP_SIGNAL_OUTPUTS = (
-    ("benunit", "would_claim_uc", "universal_credit"),
     ("benunit", "would_claim_tfc", "tax_free_childcare"),
     ("benunit", "would_claim_extended_childcare", "extended_childcare"),
     ("benunit", "would_claim_universal_childcare", "universal_childcare"),
@@ -614,14 +616,12 @@ def uk_take_up_signal_gate(
     *,
     contract: UKTakeUpContract | None = None,
     maximum_share_deviation: float = 0.05,
-    population_policy: UKTakeUpPopulationPolicy | None = None,
 ) -> GateResult:
     """Require non-constant UK stochastic flags near contract target shares."""
 
     resolved = contract if contract is not None else load_uk_take_up_contract()
     failures: list[str] = []
     details: dict[str, object] = {}
-    policy: UKTakeUpPopulationPolicy | None = population_policy
     for entity, output, key in UK_TAKE_UP_SIGNAL_OUTPUTS:
         table = frame.table(entity)
         if output not in table.columns:
@@ -631,20 +631,6 @@ def uk_take_up_signal_gate(
         unique_count = int(pd.Series(values).nunique(dropna=False))
         weights = np.asarray(frame.resolve_weights(entity).values, dtype=np.float64)
         population = np.ones(values.shape, dtype=bool)
-        if key == "universal_credit":
-            # The contract rate is a share of the units that can claim: those
-            # with a UC claimant or partner within the engine's age bounds at
-            # the build instant. The gate measures the realized share on the
-            # same population.
-            if policy is None:
-                policy = uk_take_up_population_policy(uk_time_period(frame))
-            population = uc_age_eligible_benunits(frame.table("person"), table, policy)
-            details["universal_credit_population_policy"] = {
-                "adult_age": policy.adult_age,
-                "state_pension_age": policy.state_pension_age,
-                "instant": policy.instant,
-                "source": policy.source,
-            }
         if key == UK_UNDER_TWO_USAGE_SIGNAL_KEY:
             # The rate is a share of the children under 2 in units that claim
             # the working-parent hours; every other person keeps 30 hours.

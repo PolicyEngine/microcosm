@@ -63,13 +63,15 @@ def test_stage_orders_after_every_universal_credit_report_writer() -> None:
 
     assert reporter_writers
     assert all(index < coherence_index for index, _ in reporter_writers)
-    # The Move to UC claim draw (microcosm#1095), the Pension Credit take-up
-    # redraw (microcosm#1069 c7), the Child Benefit redraw (microcosm#1063 c8)
-    # and the Carer's Allowance draw (microcosm#1319) sit between the
-    # coherence stage and the deduction attributes; none writes a UC report.
+    # The Universal Credit redraw (microcosm#1334), the Move to UC claim draw
+    # (microcosm#1095), the Pension Credit take-up redraw (microcosm#1069 c7),
+    # the Child Benefit redraw (microcosm#1063 c8) and the Carer's Allowance
+    # draw (microcosm#1319) sit between the coherence stage and the deduction
+    # attributes; none writes a UC report.
     assert [
-        stage.stage for stage in stages[coherence_index + 1 : coherence_index + 6]
+        stage.stage for stage in stages[coherence_index + 1 : coherence_index + 7]
     ] == [
+        "uc_take_up",
         "uc_legacy_closure_take_up",
         "pension_credit_take_up",
         "child_benefit_take_up",

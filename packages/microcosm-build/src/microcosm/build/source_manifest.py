@@ -51,6 +51,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "assign_bus_pass_eligibility",
         "assign_clipped_normal",
         "assign_component_take_up_residual",
+        "assign_award_band_take_up_residual",
         "assign_family_claims_by_child_age",
         "assign_opt_out_by_charge_income",
         "assign_period_constant",

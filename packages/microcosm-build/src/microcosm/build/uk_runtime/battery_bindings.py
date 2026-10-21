@@ -2145,6 +2145,8 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # microcosm#1069 c7 pension_credit_take_up stage-health check.
                 "maximum_take_up_deviation",
                 "minimum_entitled_units",
+                # microcosm#1334 uc_take_up stage-health check.
+                "maximum_caseload_deviation",
                 # microcosm#1095 spi_benefit_coherence stage-health check.
                 "zeroed_columns",
                 "restored_columns",

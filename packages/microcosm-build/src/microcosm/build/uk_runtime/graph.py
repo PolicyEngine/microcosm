@@ -119,6 +119,9 @@ _READER_ISOLATION_BOUNDARIES = frozenset(
         # would_claim_uc (microcosm#1095).
         "spi_benefit_coherence",
         "uc_capital_coherence",
+        # The Universal Credit redraw rewrites ``would_claim_uc``, which the
+        # open-surface readers before it bind (microcosm#1334).
+        "uc_take_up",
         # The Pension Credit redraw rewrites ``frs_take_up``'s would_claim_pc,
         # which the open-surface readers before it bind (microcosm#1069).
         "pension_credit_take_up",
@@ -347,6 +350,10 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     # Runs one temporary engine materialization over the whole frame for its
     # award screen, so its input surface is genuinely open.
     "uc_reporter_redraw": None,
+    # One temporary engine materialization of the Universal Credit award over
+    # the whole frame, which also hands the stage the source lineage its pools
+    # and receipt count by: an open surface (microcosm#1334).
+    "uc_take_up": None,
     # One temporary engine materialization of Pension Credit entitlement over
     # the whole frame: an open surface, like the UC award screen.
     "pension_credit_take_up": None,
@@ -1019,6 +1026,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("benunit", "frs_benunit_capital", "float64"),
         _Cell("benunit", "would_claim_uc", "bool"),
     ),
+    "uc_take_up": (_Cell("benunit", "would_claim_uc", "bool"),),
     "uc_legacy_closure_take_up": (
         _Cell("benunit", "would_claim_uc_at_legacy_closure", "bool"),
     ),

@@ -39,6 +39,10 @@ qualifying-young-person status and the taxable benefits:
   it for the FRS units: a unit with a Universal Credit reporter claims, and the
   other units in the Universal Credit age population claim as the residual of
   the take-up contract's rate, on draws keyed on the SPI unit's own identity.
+  That draw stands for a unit with no award: ``uc_take_up`` redraws every
+  entitled unit of both channels by award band and family type once
+  ``uc_capital_coherence`` has set the capital the engine assesses
+  (microcosm#1334).
 
 Contributory ESA, the disability benefits, Carer's Allowance, State Pension
 and Winter Fuel Payment keep their draws, and FRS base rows are never

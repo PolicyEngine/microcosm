@@ -6505,6 +6505,90 @@
       "draw",
       "seed",
       "anchor",
+      "population",
+      "award",
+      "family_type",
+      "award_bands",
+      "targets",
+      "pooling",
+      "minimum_pool_sources",
+      "drawn_units",
+      "undrawn_claims",
+      "weight_mapping",
+      "residual_rate",
+      "solve_scope",
+      "not_drawn"
+     ],
+     "properties": {
+      "kind": {
+       "const": "assign_award_band_take_up_residual"
+      },
+      "output": {
+       "type": "string"
+      },
+      "draw": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "anchor": {
+       "type": "string"
+      },
+      "population": {
+       "type": "string"
+      },
+      "award": {
+       "type": "string"
+      },
+      "family_type": {
+       "type": "string"
+      },
+      "award_bands": {
+       "type": "string"
+      },
+      "targets": {
+       "type": "string"
+      },
+      "pooling": {
+       "type": "string"
+      },
+      "minimum_pool_sources": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "drawn_units": {
+       "type": "string"
+      },
+      "undrawn_claims": {
+       "type": "string"
+      },
+      "weight_mapping": {
+       "type": "string"
+      },
+      "residual_rate": {
+       "type": "string"
+      },
+      "solve_scope": {
+       "type": "string",
+       "enum": [
+        "great_britain"
+       ]
+      },
+      "not_drawn": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "draw",
+      "seed",
+      "anchor",
       "eligibility",
       "family_key",
       "resource",

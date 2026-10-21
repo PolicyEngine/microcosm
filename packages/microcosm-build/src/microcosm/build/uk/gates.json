@@ -548,6 +548,20 @@
       "notes": "Stage-time structural gate over the SPI benefit coherence receipt (microcosm#1095, uk-data#514): no SPI-channel row keeps a zeroed legacy report, every restored report equals the FRS twin's, receives_benefits_in_own_right agrees with each person's own reports, FRS rows are unchanged, every SPI benefit unit with a Universal Credit reporter claims, and no SPI unit outside the Universal Credit age population claims without reporting."
     },
     {
+      "id": "uk_stage_uc_take_up",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "uc_take_up",
+        "check": "uc_take_up",
+        "maximum_caseload_deviation": 0.05
+      },
+      "notes": "Stage-time gate over the Universal Credit take-up receipt (microcosm#1334): every reporter claims and no unit outside the draw changes; in each DWP family type the pools whose target is reachable realize DWP's calendar-2025 caseload within 0.05 of it at the stage's weights, Great Britain only, counting units the engine moves off their legacy benefits at their expected claim at the closure; and the family type's caseload is no further from DWP's than before the redraw, give or take 0.05 of DWP's count. The terminal take-up signal gate no longer measures would_claim_uc, whose rate is now set by award band and family type, not as one share of the age population."
+    },
+    {
       "id": "uk_stage_pension_credit_take_up",
       "gate": "stage_health",
       "phase": "transferred",
@@ -1135,7 +1149,7 @@
       "parameters": {
         "maximum_share_deviation": 0.05
       },
-      "notes": "Every contract-driven stochastic flag must be non-constant and have a weighted share within +/-0.05 of its contract target. would_claim_pc is measured by uk_stage_pension_credit_take_up instead (microcosm#1069 R9), and would_claim_child_benefit and child_benefit_opts_out by uk_stage_child_benefit_take_up (microcosm#1063). would_claim_uc is drawn for FRS benefit units by frs_take_up and redrawn for SPI-channel units by spi_benefit_coherence on the same rule (microcosm#1095), so the gate measures both channels at the contract rate. would_claim_universal_childcare is nested under would_claim_extended_childcare, so its target is the nested marginal r_e + (1 - r_e) * r_u of the contract's conditional universal rate, and the gate fails on any benefit unit that claims the extended hours without the universal ones. max_free_entitlement_hours_used carries the under-2 usage draw: its share of persons with hours is measured over the children of whole-year age 0 or 1 in units that claim the extended hours, against the weighted mean of their ages' contract rates (extended_childcare_age_0_usage, extended_childcare_age_1_usage)."
+      "notes": "Every contract-driven stochastic flag must be non-constant and have a weighted share within +/-0.05 of its contract target. would_claim_pc is measured by uk_stage_pension_credit_take_up instead (microcosm#1069 R9), would_claim_child_benefit and child_benefit_opts_out by uk_stage_child_benefit_take_up (microcosm#1063), and would_claim_uc by uk_stage_uc_take_up (microcosm#1334): frs_take_up and spi_benefit_coherence draw it at the contract rate, and uc_take_up redraws every entitled unit by award band and family type. would_claim_universal_childcare is nested under would_claim_extended_childcare, so its target is the nested marginal r_e + (1 - r_e) * r_u of the contract's conditional universal rate, and the gate fails on any benefit unit that claims the extended hours without the universal ones. max_free_entitlement_hours_used carries the under-2 usage draw: its share of persons with hours is measured over the children of DfE age 0 or 1 in units that claim the extended hours, against the weighted mean of their ages' contract rates (extended_childcare_age_0_usage, extended_childcare_age_1_usage)."
     },
     {
       "id": "uk_brma_enum_domain",
