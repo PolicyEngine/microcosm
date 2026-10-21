@@ -191,6 +191,50 @@ def test_the_band_covers_exactly_what_the_real_gate_judges(
     assert failed == (banded if gate_fails_the_band else set())
 
 
+def test_a_row_two_requirements_match_takes_the_tighter_band(builder) -> None:
+    # The Social Security total's name (5% gate) carried with the itemized
+    # total's family and role (15% gate) matches both requirements. The gate
+    # makes it pass both, so the band must use the tighter tolerance.
+    ss = _requirement(builder, "social_security_benefits")
+    itemized = next(
+        r
+        for r in builder.US_CRITICAL_TARGET_FIT_REQUIREMENTS
+        if "itemized_deduction_total" in (r.target_roles or ())
+    )
+    assert ss.max_abs_relative_error < itemized.max_abs_relative_error
+    spec = _spec(
+        builder,
+        ss.names[0].rsplit("@", 1)[0],
+        family=itemized.families[0],
+        role="itemized_deduction_total",
+    )
+    registry = TargetRegistry((spec,), country="us")
+    [tolerance] = builder._critical_target_band_tolerances(registry, margin=1.0)
+    assert tolerance == pytest.approx(ss.max_abs_relative_error)
+    name = builder._target_row_name(spec)
+    for error, judged in ((tolerance * 1.001, True), (tolerance * 0.999, False)):
+        estimate = 100.0 * (1.0 + error)
+        result = SimpleNamespace(
+            diagnostics=(
+                SimpleNamespace(
+                    name=name,
+                    target=100.0,
+                    final_estimate=estimate,
+                    relative_error=(estimate - 100.0) / 100.0,
+                ),
+            ),
+            problem=SimpleNamespace(targets=(spec.to_target(),), names=(name,)),
+        )
+        failures = [
+            failure
+            for failure in builder._critical_target_fit_failures(
+                result, target_registry=registry
+            )
+            if f"'{name}'" in failure
+        ]
+        assert bool(failures) is judged, (error, failures)
+
+
 def _solve_calls(function: ast.FunctionDef, names: set[str]) -> list[ast.Call]:
     return [
         node

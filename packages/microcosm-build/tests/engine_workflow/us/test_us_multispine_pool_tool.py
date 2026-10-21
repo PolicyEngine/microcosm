@@ -342,7 +342,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # bytes (its seed protocol); microcosm#1124's opt-in
             # retain_best_objective, microcosm#1301's budget_search_bracket and
             # microcosm#1330's target band move it.
-            "spec_sha256": "28029671ec7463f29674f2790c34d0b5395bd6f6d632a80be7fd7983e3951f2e",
+            "spec_sha256": "b1b4eedc5d57db25b8abe0712a08b9b1bfb521a9f4632462c5790beb8afd902c",
         },
     }
 

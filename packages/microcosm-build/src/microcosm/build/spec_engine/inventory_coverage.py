@@ -370,8 +370,8 @@ EXPECTED_HASHES = {
     # moves both again: solve gains an opt-in target band, off by default in
     # the library, but build_us_fiscal_refresh_release.py turns it on for the
     # critical targets, so US release solves do change this time.
-    "seed_map": "cd6251c8f11e1f051b468a878b254bca32eb5f9f41b5df19e2b1442b622a9e98",
-    "seed_protocol": "622d25a441de377c074974c92585bd43199ecb5a4180784abdbb78a3ab9439b3",
+    "seed_map": "a2127325815c5fc24c73fe345ec04bad82577a102cf5cd8bb56ca2f40bf20409",
+    "seed_protocol": "4da2f66919a49e0fed996ef50f53b86aa05ae2c22cbf4e760301d33936ba0191",
     "source_manifest": "f4f8bfeb79268a4043a843b47cec1d1c0e58e9f5dd6bc23417ada95446dd7b8e",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "ac92829c88a1a4fb6460d61190918d5d99c6c377fc8dd8f62f02b332d09bf59c",

@@ -6991,6 +6991,8 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
                 captured.setdefault("telemetry_events", []).append(("stage", stage))
                 if stage == "weeks_unemployed_input":
                     captured["weeks_unemployed_telemetry"] = dict(details)
+                if stage == "calibrating":
+                    captured["calibrating_telemetry"] = dict(details)
 
             def attach_artifact(self, name, path, **details):
                 captured.setdefault("telemetry_events", []).append(
@@ -8526,6 +8528,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     def fake_write_calibration_diagnostics(
         result, path, *, target_registry, build, target_surface
     ):
+        captured["diagnostics_build"] = dict(build)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
             json.dumps(
@@ -9020,6 +9023,12 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         assert tail_details["dormant_exclusions"] == ["bond_assets"]
     if terminal_mode == "telemetry":
         assert captured["telemetry_crashed"] is True
+        # microcosm#1330: the calibrating stage reports the band the solve used.
+        assert captured["calibrating_telemetry"]["critical_target_band"] == {
+            "penalty": 1.0,
+            "margin": 0.9,
+            "banded_rows": 1,
+        }
         assert captured["weeks_unemployed_telemetry"] == {
             "message": (
                 "Restored measured ASEC LKWEEKS before frozen-support "
@@ -9117,6 +9126,11 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
                 "margin": 0.9,
                 "banded_rows": 1,
             }
+            assert captured["diagnostics_build"]["critical_target_band"] == {
+                "penalty": 1.0,
+                "margin": 0.9,
+                "banded_rows": 1,
+            }
             return
     else:
         # Corridor order: SSI delivery + basis note, health-input crash
@@ -9189,6 +9203,12 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
     assert captured["l0_kwargs"]["target_band_penalty"] == 1.0
     assert captured["diagnostics"]["critical_target_band"] == {
+        "penalty": 1.0,
+        "margin": 0.9,
+        "banded_rows": 1,
+    }
+    # The build block the diagnostics writer receives carries the same record.
+    assert captured["diagnostics_build"]["critical_target_band"] == {
         "penalty": 1.0,
         "margin": 0.9,
         "banded_rows": 1,

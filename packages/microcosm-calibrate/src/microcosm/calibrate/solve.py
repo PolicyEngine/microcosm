@@ -1288,8 +1288,8 @@ def _optimize(
     ``target_band`` adds its hinge term (see :class:`_TargetBand`) to the
     objective. The trajectory still records the fit loss alone. Best-iterate
     retention compares the same objective the optimizer minimizes, fit plus
-    band, so it can keep an iterate that is slightly outside a band when the
-    fit it gains is worth more than the penalty.
+    band, so it keeps an iterate outside a band whenever the fit it gains
+    exceeds the penalty times the band violation it adds.
     """
     w0 = np.asarray(initial_weights, dtype=np.float64)
     start = _prepare_warm_start_weights(

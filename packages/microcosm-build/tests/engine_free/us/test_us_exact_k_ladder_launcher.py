@@ -411,7 +411,7 @@ def test_config_can_pin_the_critical_target_band(tmp_path: Path) -> None:
         config=default_config,
         pool_manifest=tmp_path / "pool.manifest.json",
         out=tmp_path / "out",
-        k=8,
+        k="N",
     )
     assert "--critical-target-band-penalty" not in default_argv
     default_args = launcher.fiscal_release._parse_args(default_argv)
@@ -427,7 +427,7 @@ def test_config_can_pin_the_critical_target_band(tmp_path: Path) -> None:
             config=pinned,
             pool_manifest=tmp_path / "pool.manifest.json",
             out=tmp_path / "out",
-            k=8,
+            k="N",
         )
     )
     assert parsed.critical_target_band_penalty == 0.0

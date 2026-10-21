@@ -511,10 +511,11 @@ US_FISCAL_TARGET_LOSS_CAP = 1.0
 # critical fiscal target's relative error beyond DEFAULT_CRITICAL_TARGET_BAND_MARGIN
 # times its gate tolerance, at a slope of the penalty. The release uses the
 # default target-defined loss scales, so the fit loss's slope in any one
-# target's relative error is that target's loss share, at most 1: a penalty of
-# 1 outweighs the target's own pull in the fit. Whether the band holds against
-# the combined pull of the other targets depends on how their errors move with
-# this one's, so this steers the solve rather than guaranteeing the gate. A
+# target's relative error is that target's loss share, at most 1. Past the
+# band, the band adds a pull of slope PENALTY on that target, in the same
+# direction as its own fit term; the other targets' fit terms can pull against
+# both. Whether the band holds depends on how their errors move with this
+# one's, so this steers the solve rather than guaranteeing the gate. A
 # remaining violation shows in the calibration diagnostics, and the gate still
 # judges the result. The d1386 release missed its Social Security total by
 # 6.4% against a 5% gate, while that target carried 0.19% of the loss weight.
