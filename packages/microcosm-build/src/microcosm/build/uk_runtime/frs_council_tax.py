@@ -170,8 +170,13 @@ def derive_council_tax(
     reduction and takes the larger of its bill and its cell's mean. Missing
     or negative bills take the cell mean. So does a zero bill where someone
     pays council tax (``CTPAID`` 1) and no reduction is reported, since such
-    a household owes a bill (microcosm#1278); from 2024-25 the FRS no longer
-    asks the amount, and DWP derives ``CTANNUAL`` from the band. A
+    a household owes a bill (microcosm#1278). From April 2024 the band and
+    "some other Council Tax block questions" left the FRS field interview:
+    editing teams input the band from Valuation Office Agency and Scottish
+    Assessors data, and the other answers "are then imputed during DWP's
+    validation processes" (FRS 2024-25 background information and
+    methodology, section 1.3). The methodology does not say whether
+    ``CTPAID`` itself is still asked or is imputed. A
     non-recipient's zero bill otherwise stays zero: the household does not
     have to pay (``CTPAID`` 3), or says the council pays (``CTPAID`` 2)
     without reporting a reduction. The cells pool non-recipients with a
