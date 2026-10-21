@@ -881,11 +881,24 @@ def _floor_employment_pay_at_minimum_wage(
     )
     eligible_sources = distinct_count(sources, eligible, weights)
     floored_sources = distinct_count(sources, floored, weights)
+    unfloored_sources = distinct_count(sources, eligible & ~floored, weights)
     eligible_weight = float(weights[eligible].sum())
     floored_weight = float(weights[floored].sum())
     added = float((uplift * weights).sum())
     # Weighted figures over one to nine source households are "<10"; a count
     # of support is rounded (receipt_counts), and no row's value is given.
+    # The floored weight beside the eligible weight gives back the unfloored
+    # side, and so do the share times the eligible weight and the amount added
+    # over the mean uplift, so the floored weight, share and amount are given
+    # only where neither side rests on one to nine sources, as the Carer's
+    # Allowance take-up receipt gives its share.
+    either_side_small = 0 < min(floored_sources, unfloored_sources) < 10
+
+    def beside_eligible(value: float) -> float | str:
+        if either_side_small:
+            return "<10"
+        return small_cell_share(value, floored_sources)
+
     return result, {
         "step": "spi_employment_pay_floor_before_stage2",
         "column": SPI_EMPLOYMENT_PAY_FLOOR_COLUMN,
@@ -896,16 +909,15 @@ def _floor_employment_pay_at_minimum_wage(
         },
         "floored": {
             "source_households": rounded_count(floored_sources),
-            "weighted_people": small_cell_share(floored_weight, floored_sources),
-            "weighted_share_of_eligible": small_cell_share(
-                floored_weight / eligible_weight if eligible_weight > 0.0 else 0.0,
-                floored_sources,
+            "weighted_people": beside_eligible(floored_weight),
+            "weighted_share_of_eligible": beside_eligible(
+                floored_weight / eligible_weight if eligible_weight > 0.0 else 0.0
             ),
             "weighted_mean_uplift_gbp": small_cell_share(
                 added / floored_weight if floored_weight > 0.0 else 0.0,
                 floored_sources,
             ),
-            "weighted_amount_added_gbp": small_cell_share(added, floored_sources),
+            "weighted_amount_added_gbp": beside_eligible(added),
         },
     }
 

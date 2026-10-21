@@ -1191,7 +1191,7 @@ def test_spi_pay_floor_lifts_only_drawn_employee_pay_below_the_minimum() -> None
 
 def test_spi_pay_floor_receipt_counts_source_households_not_copies() -> None:
     # Twelve floored copies of three source households, then twelve floored
-    # rows of twelve households and eight unfloored ones.
+    # rows of twelve households beside ten, then eight, unfloored ones.
     copies = [
         {"age": 40, "weekly_hours": 35, "pay": 1_000.0, "source": index % 3}
         for index in range(12)
@@ -1207,32 +1207,49 @@ def test_spi_pay_floor_receipt_counts_source_households_not_copies() -> None:
     assert receipt["floored"]["source_households"] == "<10"
     assert receipt["floored"]["weighted_mean_uplift_gbp"] == "<10"
 
-    many = [
-        {"age": 40, "weekly_hours": 35, "pay": 1_000.0, "source": 100 + index}
-        for index in range(12)
-    ] + [
-        {"age": 40, "weekly_hours": 35, "pay": 90_000.0, "source": 200 + index}
-        for index in range(8)
-    ]
-    person, household, rows, weights = _pay_floor_frames(many)
-    _, receipt = spi_income._floor_employment_pay_at_minimum_wage(
-        person,
-        rows=rows,
-        floor=_PAY_FLOOR_2024_25,
-        household=household,
-        person_weights=weights,
-    )
+    def receipt_of(unfloored: int) -> dict[str, object]:
+        rows_ = [
+            {"age": 40, "weekly_hours": 35, "pay": 1_000.0, "source": 100 + index}
+            for index in range(12)
+        ] + [
+            {"age": 40, "weekly_hours": 35, "pay": 90_000.0, "source": 200 + index}
+            for index in range(unfloored)
+        ]
+        person, household, rows, weights = _pay_floor_frames(rows_)
+        return spi_income._floor_employment_pay_at_minimum_wage(
+            person,
+            rows=rows,
+            floor=_PAY_FLOOR_2024_25,
+            household=household,
+            person_weights=weights,
+        )[1]
+
+    receipt = receipt_of(10)
     minimum = 35 * 52 * 11.44
-    assert receipt["eligible"] == {"source_households": 20, "weighted_people": 2_000.0}
+    assert receipt["eligible"] == {"source_households": 20, "weighted_people": 2_200.0}
     assert receipt["floored"]["source_households"] == 10
     assert receipt["floored"]["weighted_people"] == pytest.approx(1_200.0)
-    assert receipt["floored"]["weighted_share_of_eligible"] == pytest.approx(0.6)
+    assert receipt["floored"]["weighted_share_of_eligible"] == pytest.approx(
+        1_200.0 / 2_200.0
+    )
     assert receipt["floored"]["weighted_mean_uplift_gbp"] == pytest.approx(
         minimum - 1_000.0
     )
     assert receipt["floored"]["weighted_amount_added_gbp"] == pytest.approx(
         1_200.0 * (minimum - 1_000.0)
     )
+
+    # Eight unfloored sources: the floored weight, share or amount beside the
+    # eligible weight would give back their weight, so none is given.
+    receipt = receipt_of(8)
+    assert receipt["eligible"] == {"source_households": 20, "weighted_people": 2_000.0}
+    assert receipt["floored"] == {
+        "source_households": 10,
+        "weighted_people": "<10",
+        "weighted_share_of_eligible": "<10",
+        "weighted_mean_uplift_gbp": pytest.approx(minimum - 1_000.0),
+        "weighted_amount_added_gbp": "<10",
+    }
 
 
 def test_spi_pay_floor_refuses_a_frame_without_hours() -> None:

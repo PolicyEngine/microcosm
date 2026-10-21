@@ -201,8 +201,10 @@ SPI_SPINE_EMPLOYMENT_PAY_FLOOR: Mapping[str, object] = {
     ),
     "receipt": (
         "eligible and floored source households (rounded), weighted people, "
-        "the weighted share floored and the weighted mean uplift; figures on "
-        "one to nine source households are <10"
+        "the weighted share floored, the weighted mean uplift and the amount "
+        "added; figures on one to nine source households are <10, and the "
+        "floored weight, share and amount are given only where neither the "
+        "floored nor the unfloored side rests on one to nine"
     ),
 }
 
