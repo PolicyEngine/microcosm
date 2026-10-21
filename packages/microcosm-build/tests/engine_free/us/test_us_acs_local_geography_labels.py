@@ -32,6 +32,7 @@ from microcosm.calibrate import (
     TargetSpec,
     geography_constants,
 )
+from microcosm.calibrate import registry as registry_module
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -254,3 +255,38 @@ def test_materialize_refuses_a_geography_label_conflict_before_the_engine_pass(
         ),
     ):
         module.do_materialize(args)
+
+
+def test_calibrate_refuses_an_earlier_checkpoint_and_names_the_remedy(
+    monkeypatch, tmp_path
+) -> None:
+    """A checkpoint from before the label fix is refused with its remedy.
+
+    The earlier materialize stage labelled a state's population target with
+    its postal code, so its target_registry.json gives the state two labels.
+    The calibrate stage must tell the operator to re-run the materialize
+    stage, not stop at the registry's error, which names only the labels.
+    """
+
+    module = _load_tool_module()
+    checkpoint_dir = tmp_path / "checkpoint"
+    checkpoint_dir.mkdir()
+    earlier_specs = [
+        _ledger_state_spec("usda_snap.me.households", "23", "Maine"),
+        _ledger_state_spec("pop_state_23", "23", "ME"),
+    ]
+    with monkeypatch.context() as patch:
+        # The earlier tool wrote its registry without the label check.
+        patch.setattr(
+            registry_module, "GEOGRAPHY_LABEL_REFUSING_COUNTRIES", frozenset()
+        )
+        with pytest.warns(registry_module.GeographyLabelConflictWarning):
+            earlier_registry = TargetRegistry(earlier_specs, country="us")
+        earlier_registry.to_json(checkpoint_dir / "target_registry.json")
+    (checkpoint_dir / module.TARGET_MATRIX_FILENAME).write_bytes(b"matrix")
+    (checkpoint_dir / module.TARGET_ROLES_FILENAME).write_text("[]")
+
+    with pytest.raises(SystemExit, match="Re-run --stage materialize") as refusal:
+        module.load_checkpoint_surface(checkpoint_dir)
+
+    assert "'0400000US23' is 'Maine'" in str(refusal.value)
