@@ -45,6 +45,10 @@ from microcosm.build.us_runtime.acs_local_income import (
     acs_local_income_transfer_signal_gate,
     require_acs_local_income_donor,
 )
+from microcosm.build.us_runtime.acs_local_receipt_anchors import (
+    ACS_LOCAL_RECEIPT_ANCHOR_ISSUE,
+    acs_local_receipt_anchor_signal_gate,
+)
 from microcosm.build.us_runtime.acs_local_spm_units import (
     ACS_LOCAL_SPM_UNIT_ISSUE,
     acs_local_spm_unit_signal_gate,
@@ -327,6 +331,7 @@ def main(argv: list[str] | None = None) -> int:
         work_disability_inputs=True,
         income_transfer=True,
         split_adult_nonrelative_spm_units=True,
+        native_receipt_anchors=True,
         donor_channel=args.donor_channel,
         seed=args.seed,
         n_estimators=args.n_estimators,
@@ -339,6 +344,9 @@ def main(argv: list[str] | None = None) -> int:
     # microcosm#1023: the ACS rows' adult roommates and other nonrelatives got
     # SPM units of their own on the loader frame; gate the pooled partition.
     spm_units = _require_local_spm_units(result)
+    # microcosm#1022: the ACS rows' receives_snap is native household FS,
+    # written after the transfer and before pooling; gate the pooled frame.
+    receipt_anchors = _require_local_receipt_anchors(result)
     transfer_coverage = _require_default_transfer_coverage(
         result,
         base,
@@ -419,6 +427,7 @@ def main(argv: list[str] | None = None) -> int:
         "details": dict(hours_gate.details),
     }
     summary.update(spm_units)
+    summary.update(receipt_anchors)
     summary.update(immigration)
     summary.update(work_disability)
     summary.update(income)
@@ -579,6 +588,40 @@ def _require_local_spm_units(result: AcsMultispineResult) -> dict[str, object]:
     return {
         "acs_local_spm_units": receipt,
         "acs_local_spm_units_gate": {
+            "name": gate.name,
+            "passed": gate.passed,
+            "failures": list(gate.failures),
+            "details": dict(gate.details),
+        },
+    }
+
+
+def _require_local_receipt_anchors(result: AcsMultispineResult) -> dict[str, object]:
+    """Gate the ACS rows' native SNAP receipt anchor; return the summary entries.
+
+    ``build_optional_acs_multispine(native_receipt_anchors=True)`` replaces the
+    transferred ``receives_snap`` with household ``FS`` on every ACS SPM unit
+    and records the receipt in its provenance. The gate must pass before the
+    staging H5 is written, and the release tool refuses a staging summary
+    without both entries (``acs_local_receipt_anchors`` and
+    ``acs_local_receipt_anchors_gate``).
+    """
+
+    receipt = result.provenance.get("acs_local_receipt_anchors")
+    if not isinstance(receipt, dict):
+        raise SystemExit(
+            "ACS multispine recorded no receipt-anchor receipt "
+            f"({ACS_LOCAL_RECEIPT_ANCHOR_ISSUE}); the ACS rows' receives_snap "
+            "would be the QRF transfer, not the measured household FS."
+        )
+    gate = acs_local_receipt_anchor_signal_gate(result.frame, receipt=receipt)
+    if not gate.passed:
+        raise SystemExit(
+            "Local staging receipt-anchor gate failed: " + "; ".join(gate.failures)
+        )
+    return {
+        "acs_local_receipt_anchors": receipt,
+        "acs_local_receipt_anchors_gate": {
             "name": gate.name,
             "passed": gate.passed,
             "failures": list(gate.failures),

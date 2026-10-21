@@ -61,6 +61,11 @@ _HOUSEHOLD_REQUIRED = (
     "TYPEHUGQ",
 )
 _HOUSEHOLD_STATE_COLUMNS = ("ST", "STATE")
+# SNAP recipiency in the past 12 months (1 yes, 2 no), a housing-unit item the
+# ACS local lane reads as its native reported-receipt anchor (microcosm#1022,
+# acs_local_receipt_anchors). Like the optional person columns below, an
+# absent column stays absent and a Census blank stays missing.
+_HOUSEHOLD_OPTIONAL: tuple[str, ...] = ("FS",)
 _HOUSEHOLD_FRAME_COLUMNS = (
     "NP",
     "ADJHSG",
@@ -89,12 +94,14 @@ _PERSON_REQUIRED = (
 # Preserve source hours and their universe/allocation evidence when supplied,
 # the citizenship, entry-year, birthplace, coverage, class-of-worker, school,
 # employment and military-service fields the ACS local lane's immigration
-# stage reads (microcosm#1020, acs_local_immigration), the weeks-worked
-# and six disability-difficulty items the local lane maps natively
-# (microcosm#1021, acs_local_work_disability), and all other income (OIP),
-# the local income pass's child-support predictor (microcosm#1022,
-# acs_local_income). Older or minimal source fixtures remain loadable; an
-# absent column stays absent and a Census blank stays missing, never a zero.
+# stage reads (microcosm#1020, acs_local_immigration), the weeks-worked and
+# six disability-difficulty items the local lane maps natively
+# (microcosm#1021, acs_local_work_disability), all other income (OIP), the
+# local income pass's child-support predictor (microcosm#1022,
+# acs_local_income), and the public assistance income the local lane's
+# receipt-anchor receipt records (microcosm#1022, acs_local_receipt_anchors).
+# Older or minimal source fixtures remain loadable; an absent column stays
+# absent and a Census blank stays missing, never a zero.
 _PERSON_OPTIONAL: tuple[str, ...] = (
     "WKHP",
     "WKL",
@@ -119,6 +126,7 @@ _PERSON_OPTIONAL: tuple[str, ...] = (
     "ESR",
     "MIL",
     "OIP",
+    "PAP",
 )
 # ACS source columns whose Census name is already a different CPS ASEC field in
 # the pooled person table. ACS ``MIL`` is military service (veteran status);
@@ -226,7 +234,7 @@ def load_acs_pums_tables(
         source.household_zip,
         member_prefix="psam_hus",
         required=_HOUSEHOLD_REQUIRED,
-        optional=_HOUSEHOLD_STATE_COLUMNS,
+        optional=(*_HOUSEHOLD_STATE_COLUMNS, *_HOUSEHOLD_OPTIONAL),
         chunksize=chunksize,
     )
     state_column = next(
@@ -695,6 +703,9 @@ def _attach_household_source_columns(
     household["puma"] = household["puma_geoid"].to_numpy()
     for column in _HOUSEHOLD_FRAME_COLUMNS:
         household[column] = source[column].to_numpy()
+    for column in _HOUSEHOLD_OPTIONAL:
+        if column in source:
+            household[column] = source[column].to_numpy()
     return Frame(
         tables,
         frame.schema,
