@@ -15,7 +15,10 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.gates import FitWeightRecord
-from microcosm.build.stochastic_assignment import stable_identity_uniforms
+from microcosm.build.stochastic_assignment import (
+    integer_record_keys,
+    stable_identity_uniforms,
+)
 from microcosm.build.uk_runtime.frs_disability import (
     UKDWPDisabilityCategoryRates,
     UKDWPDisabilityFlagRates,
@@ -1166,7 +1169,11 @@ def impute_uk_spi_income_support(
     )
     # Queried over the age domain like stage 1; a dependant's row conditions
     # on its twin's values and is discarded below, and each row draws from
-    # uniforms keyed on its own identity, so no recipient's draw depends on it.
+    # uniforms keyed on its own person_id, so no recipient's draw depends on
+    # it. Stage 1 keys on the twin's person_source_id on purpose and counts
+    # the shared identities; stage 2 does not, because the SPI channel and
+    # the band donors copy one FRS person more than once, and each copy
+    # draws its stage-2 values apart, as under the positional stream.
     target_predictors = _person_predictors(
         person.loc[spi_age_domain],
         household,
@@ -1218,7 +1225,10 @@ def impute_uk_spi_income_support(
         list(stage2_outputs),
         weights="importance",
     )
-    stage2_keys = person.loc[spi_age_domain, SPI_TRANSPORT_KEY_COLUMN].to_numpy()
+    stage2_keys = integer_record_keys(
+        person.loc[spi_age_domain, "person_id"].to_numpy(),
+        label="SPI stage-2 person_id",
+    )
     stage2_draws = stage2.predict_from_uniforms(
         encoded_target,
         quantiles={
