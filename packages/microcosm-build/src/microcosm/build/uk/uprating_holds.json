@@ -21,6 +21,22 @@
       "scope": "national",
       "kind": "in_year_snapshot",
       "target_ids": [
+        "dfe.funded_childcare.universal_nursery_children_age_3",
+        "dfe.funded_childcare.working_parent_children_age_1",
+        "dfe.funded_childcare.working_parent_children_age_2",
+        "dfe.funded_childcare.working_parent_children_age_3"
+      ],
+      "reason": "DfE funded early-education registrations by single year of age and provision counted in the January 2025 census: a count at a date inside the calibration year, not a lagged period. Requested by María on 2026-10-21 with the single-age rows.",
+      "tracking": "microcosm#1278",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-21",
+      "status": "approved",
+      "expires_on": "2026-12-11"
+    },
+    {
+      "scope": "national",
+      "kind": "in_year_snapshot",
+      "target_ids": [
         "dwp.benefit_cap.capped_households",
         "dwp.benefit_cap.capped_households_1000_01_to_1100",
         "dwp.benefit_cap.capped_households_100_01_to_200",

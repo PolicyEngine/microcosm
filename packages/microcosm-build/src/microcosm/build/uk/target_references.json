@@ -258,8 +258,12 @@
       "dfc_ni.state_pension.amount": "dfc_ni.state_pension",
       "dfc_ni.state_pension.recipients": "dfc_ni.state_pension",
       "dfe.funded_childcare.early_learning_2_year_olds": "dfe.funded_childcare",
+      "dfe.funded_childcare.universal_nursery_children_age_3": "dfe.funded_childcare",
       "dfe.funded_childcare.universal_only_children": "dfe.funded_childcare",
       "dfe.funded_childcare.working_parent_children_2_to_4": "dfe.funded_childcare",
+      "dfe.funded_childcare.working_parent_children_age_1": "dfe.funded_childcare",
+      "dfe.funded_childcare.working_parent_children_age_2": "dfe.funded_childcare",
+      "dfe.funded_childcare.working_parent_children_age_3": "dfe.funded_childcare",
       "dfi_ni.bus.passenger_receipts": "dfi_ni.local_bus_finances",
       "dft.bus_fare_receipts.england": "dft.local_bus_finances",
       "dft.bus_fare_receipts.london": "dft.local_bus_finances",
@@ -621,8 +625,12 @@
       "dfc_ni.state_pension.amount": "State Pension paid, Northern Ireland",
       "dfc_ni.state_pension.recipients": "State Pension recipients, Northern Ireland",
       "dfe.funded_childcare.early_learning_2_year_olds": "Early learning 2 year olds",
+      "dfe.funded_childcare.universal_nursery_children_age_3": "Universal nursery children age 3",
       "dfe.funded_childcare.universal_only_children": "Universal only children",
       "dfe.funded_childcare.working_parent_children_2_to_4": "Working parent children 2 to 4",
+      "dfe.funded_childcare.working_parent_children_age_1": "Working parent children age 1",
+      "dfe.funded_childcare.working_parent_children_age_2": "Working parent children age 2",
+      "dfe.funded_childcare.working_parent_children_age_3": "Working parent children age 3",
       "dfi_ni.bus.passenger_receipts": "Translink passenger receipts",
       "dft.bus_fare_receipts.england": "England",
       "dft.bus_fare_receipts.london": "London",
@@ -24252,6 +24260,118 @@
           }
         }
       ],
+      "uprating_from_period": "2025-01",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dfe.funded_childcare.working_parent_children_age_1",
+      "ledger_selector": {
+        "source_name": "dfe",
+        "source_concept": "dfe.number_of_registered_children",
+        "source_measure_id": "registered_children_count",
+        "entity_name": "person",
+        "dimension_values": {
+          "entitlement_type": "Working parents",
+          "age": "1 year",
+          "registration_basis": "registered_children",
+          "provision": "all"
+        },
+        "geography_level": "country",
+        "geography_id": "E92000001"
+      },
+      "entity": "person",
+      "measure": "dfe/funded_childcare/working_parent_children_age_1",
+      "family": "dfe_funded_childcare",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dfe.funded_childcare.working_parent_children_age_1",
+        "measure_kind": "prepared_column",
+        "observation_basis": "january_stock"
+      },
+      "uprating_from_period": "2025-01",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dfe.funded_childcare.working_parent_children_age_2",
+      "ledger_selector": {
+        "source_name": "dfe",
+        "source_concept": "dfe.number_of_registered_children",
+        "source_measure_id": "registered_children_count",
+        "entity_name": "person",
+        "dimension_values": {
+          "entitlement_type": "Working parents",
+          "age": "2 years",
+          "registration_basis": "registered_children",
+          "provision": "all"
+        },
+        "geography_level": "country",
+        "geography_id": "E92000001"
+      },
+      "entity": "person",
+      "measure": "dfe/funded_childcare/working_parent_children_age_2",
+      "family": "dfe_funded_childcare",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dfe.funded_childcare.working_parent_children_age_2",
+        "measure_kind": "prepared_column",
+        "observation_basis": "january_stock"
+      },
+      "uprating_from_period": "2025-01",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dfe.funded_childcare.working_parent_children_age_3",
+      "ledger_selector": {
+        "source_name": "dfe",
+        "source_concept": "dfe.number_of_registered_children",
+        "source_measure_id": "registered_children_count",
+        "entity_name": "person",
+        "dimension_values": {
+          "entitlement_type": "Working parents",
+          "age": "3 years",
+          "registration_basis": "registered_children",
+          "provision": "all"
+        },
+        "geography_level": "country",
+        "geography_id": "E92000001"
+      },
+      "entity": "person",
+      "measure": "dfe/funded_childcare/working_parent_children_age_3",
+      "family": "dfe_funded_childcare",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dfe.funded_childcare.working_parent_children_age_3",
+        "measure_kind": "prepared_column",
+        "observation_basis": "january_stock"
+      },
+      "uprating_from_period": "2025-01",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dfe.funded_childcare.universal_nursery_children_age_3",
+      "ledger_selector": {
+        "source_name": "dfe",
+        "source_concept": "dfe.number_of_registered_children_nursery",
+        "source_measure_id": "registered_children_nursery_count",
+        "entity_name": "person",
+        "dimension_values": {
+          "entitlement_type": "Universal",
+          "age": "3 years",
+          "registration_basis": "registered_children",
+          "provision": "nursery"
+        },
+        "geography_level": "country",
+        "geography_id": "E92000001"
+      },
+      "entity": "person",
+      "measure": "dfe/funded_childcare/universal_nursery_children_age_3",
+      "family": "dfe_funded_childcare",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dfe.funded_childcare.universal_nursery_children_age_3",
+        "measure_kind": "prepared_column",
+        "observation_basis": "january_stock"
+      },
       "uprating_from_period": "2025-01",
       "uprating_to_period": 2025
     },

@@ -354,6 +354,25 @@ _ONS_SINGLE_YEAR_AGE_0_6_ROWS = frozenset(
     )
 )
 
+_DFE_SINGLE_AGE_LEDGER_ONLY_RATIONALE = (
+    "Requested by María on 2026-10-21 for the £100k childcare costing fixes "
+    "(microcosm#1278, #1095): one of the four DfE funded-childcare counts by "
+    "single year of age from the January 2025 census, England (working parent "
+    "registrations at ages 1, 2 and 3, and universal nursery registrations at "
+    "age 3), bound beside the working parent 2 to 4 and universal-only rows, which "
+    "stay bound. The age-4 cells are signed out for their 31 December reference "
+    "date. The incumbent binds no DfE row, so this row has no fixture counterpart."
+)
+_DFE_SINGLE_AGE_ROWS = frozenset(
+    (
+        *(
+            f"dfe.funded_childcare.working_parent_children_age_{age}"
+            for age in (1, 2, 3)
+        ),
+        "dfe.funded_childcare.universal_nursery_children_age_3",
+    )
+)
+
 _DEVOLVED_RENT_FIXTURE_ONLY_RATIONALE = (
     "Ruled signed exclusion: the incumbent y-values for devolved private rent "
     "are hardcoded constants in devolved_housing.py with no source or year, "
@@ -832,6 +851,8 @@ def _add_signed_rationale_notes(
             row["reason"] = _ONS_SINGLE_YEAR_AGE_LEDGER_ONLY_RATIONALE
         elif name in _ONS_SINGLE_YEAR_AGE_0_6_ROWS and row.get("kind") == "ledger_only":
             row["reason"] = _ONS_SINGLE_YEAR_AGE_0_6_LEDGER_ONLY_RATIONALE
+        elif name in _DFE_SINGLE_AGE_ROWS and row.get("kind") == "ledger_only":
+            row["reason"] = _DFE_SINGLE_AGE_LEDGER_ONLY_RATIONALE
 
 
 #: microcosm#1240: the high_value_homes family binds a Microcosm-derived
