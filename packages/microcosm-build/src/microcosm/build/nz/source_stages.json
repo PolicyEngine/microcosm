@@ -42,6 +42,7 @@
         "person_id",
         "household_id",
         "person_household_id",
+        "source_household_id",
         "household_weight",
         "support_stratum",
         "donor_country_code",

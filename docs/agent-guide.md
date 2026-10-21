@@ -14,6 +14,12 @@ the PEP 420 namespace `microcosm.<x>`: `frame`, `fit`, `calibrate`, `build`,
 
 ## Commands
 
+UK build completion exports and stages Orrery graph evidence. Publication uses
+an independent worker inside the external `microcosm-emitter` service and a durable queue;
+see [configuration and retry](orrery-publication.md). No new producer secret or
+environment variable is required. Keep graph export/publication tests independent
+of the hosted runs app and collector; use synthetic files and fake HTTP.
+
 ```bash
 uv sync --all-packages   # set up the whole workspace
 uv sync --all-packages --locked --extra us  # US engine environment
@@ -87,15 +93,23 @@ engine-free runner installs the supported public Orrery range and locked Node
 dependency set under `tools/orrery-contract/`; the pytest test generates a
 document through Microcosm's public Python API and requires Orrery's public
 parser to accept it. The recorded-evidence assertion in `test_graph_evidence.py`
-uses the same pinned parser for groups, statuses, activities and artifacts.
+uses the same pinned parser for groups, statuses, activities and artifacts, and
+the one in `test_graph_reconstruction.py` uses it for the reconstruction marker
+of a declaration-only document.
 These CI tests perform no browser rendering.
 
 Workspace tests use an in-memory telemetry emitter by default. The shared
-fixture isolates Hugging Face credentials and cache paths and blocks collector
-HTTP requests outside loopback. Tests of actual emitter startup must request
-`real_local_telemetry` and supply an explicit loopback development collector;
-that opt-in retains credential isolation. Other build tests can inspect
-`fake_telemetry_emitters` without creating sockets or service processes.
+fixture isolates Hugging Face credentials and cache paths. Adapter tests replace
+emitter startup, inventory and publication APIs with fakes. Emitter process, persistence
+and HTTP-delivery tests belong in microcosm-emitter; do not copy them
+into Microcosm. Build tests inspect `fake_telemetry_emitters` without creating
+sockets or service processes.
+
+The UK full-build caller sets `close_service_on_finish=False`: reporting an outcome
+leaves the graph worker available, and that caller's existing `finally` cleanup
+closes the combined service. Other callers close automatically when they finish.
+Keep validation-refused outcomes and structured
+failure codes intact when changing the adapter.
 
 New commits to a PR cancel older unfinished CI runs for that same PR.
 Each main-push run has a unique concurrency group, so all main-push runs
@@ -145,6 +159,18 @@ Move fixtures and helper functions shared by those files to
 `test_support.paths.paths_for()` for repository, package, and fixture locations
 instead of deriving them from a test module's `__file__`. Keep fixture data in
 the package's root `tests/fixtures/` or `tests/golden/` directory.
+
+A test that commits to or fetches into a throwaway git repository keeps git's
+background maintenance out of it with the settings in
+`test_support.git_repositories`: `["git", *NO_BACKGROUND_MAINTENANCE, ...]` for
+git the test runs, or `NO_BACKGROUND_MAINTENANCE_ENV` in the environment for
+git the code under test runs (a fetch, say). A helper whose environment
+already carries the variables needs no options. Code that strips git's
+repository-local variables (`git rev-parse --local-env-vars`, as the Axiom
+checkout check does) drops the variables. Without these settings, `git commit`
+and `git fetch` can leave a detached maintenance process that removes the
+repository's `objects/maintenance.lock` after the command has returned, and a
+test that lists or hashes `.git` then fails now and then.
 
 `tools/ci_test_plan.py` recursively enumerates and validates this layout. Run
 `python3 tools/ci_test_plan.py verify` after adding, moving, or splitting tests,
@@ -217,6 +243,30 @@ wrapper, and accepts `ROUTE_A_STAGING=0` as the opt-out. It runs only the
 publisher's offline `--preflight-only` check and leaves publication to Max.
 
 The US fiscal-refresh builder scores its written H5 in household batches.
+Alongside its out-of-sample reports, it writes
+`us_ssi_social_security_holdout.json`: the household-weighted share of SSI
+recipients also receiving Social Security at ages 18–64 and 65+, compared with
+SSA's SSI Annual Statistical Report 2024, Table 9. This held-out diagnostic
+never feeds calibration or refuses a release; unavailable measurements are
+reported explicitly. The report records the difference between SSA's December
+2024 recipient snapshot and the model's positive annual benefits.
+It also writes `us_medicare_irmaa_holdout.json`: weighted Medicare Part B and
+Part D income-related premium (IRMAA) payers and annual amounts, compared with
+the 2026 Medicare Trustees Report's calendar-year rows in Tables V.E3 and V.E4
+(microcosm#1206). Both Parts count `medicare_enrolled` people only (Part A
+and/or Part B). Part B is
+`gross_medicare_part_b_premium_if_enrolled - base_part_b_premium`, because the
+base premium is defined for every eligible person. Part D is
+`income_adjusted_part_d_premium_surcharge`, which policyengine-us charges every
+Medicare enrollee above the thresholds until PolicyEngine/policyengine-us#10115
+gates it on Part D enrollment. IRMAA rests on income from two years before
+the period. The locked policyengine-us 2.2.1 reads that year's inputs, and a
+single-year release H5 has none, so a 2024 release on that engine reports
+`status: no_payers` (the batched scorer gives exactly that on the certified
+`populace-us-2024-spm-20260915` file) until the engine includes
+PolicyEngine/policyengine-us#10106. A Part with no weighted payer never reports
+a Trustees comparison. It is held out the same way: no calibration row, no
+release refusal.
 Before a release rerun, run the small-H5 guard sweep described in
 [the release build rule](us-release-build-rule.md#post-export-scoring).
 That fixture check is separate from full-export timing and release
@@ -264,8 +314,18 @@ certification and on every replay, and the ACS local-area chain's package
 stage (`tools/build_us_acs_local_release.py`). A new provenance column needs a
 register entry with its reason, bound to its producer in
 `test_us_stored_input_register.py`; a renamed engine input needs its live
-name. A new US lane that writes a release H5 must run the check where it
-records `build.built_with_model_package`.
+name. A new US lane that writes a release H5 must run the check where it records
+`build.built_with_model_package`, and bind the verdict into the release: the
+publisher runs no engine for a calibration release, so it requires the
+fiscal-refresh tool's `stored_inputs.json` and manifest `stored_inputs` block,
+and the ACS local-area `stored_inputs` gate, each naming the built-with engine
+(microcosm#1034). The ACS local-area package stage also refuses a calibrated H5
+on which an SPM unit the built-with engine measures has no classified adult,
+and binds the `spm_measurement_composition` gate the publisher requires
+(microcosm#1263; `microcosm.build.us_runtime.spm_measurement_gate`).
+A source-enrichment publisher claim widens the range
+consumers accept, not what was checked: the bundle's
+`compatibility.claim_measurement` names the one version the probe measured.
 
 A US release or release-gate preflight that receives a multispine pool through
 `--base-h5` must authenticate its sibling terminal manifest. A current stacked
@@ -292,6 +352,10 @@ build evidence, not certification. Its byte-preservation verifier lives in
 `microcosm.data.h5_boolean_append`, so the reported-receipt release contract
 can replay it. See
 [the qualification note](us-acs-donor-receipt-qualification.md).
+
+The ACS local-area release can build its fresh staging H5 on Modal with
+`us-acs-multispine-staging`, then consume its verified H5 and summary through
+`us-acs-local-release`; see [the Modal stage runbook](us-modal-stage-runbook.md#acs-multispine-staging).
 
 The independent US annual static-aging candidate builder lives in
 `microcosm.build.us_annual_static_aging`; it consumes a pinned published parent
@@ -392,9 +456,13 @@ local `--spec-dir`.
 Extensions can wrap a factory in `TransportExtension` to declare additional
 sources and ordered checkpoints. Source names must be new; skeleton predecessor
 sets must stay identical except for explicit `package_inputs` artifact edges
-from extension nodes to a terminal `transport.package@1` receipt. Other skeleton
-nodes cannot gain predecessors. Checkpoints run after calibration and before export,
-and must not depend on the exported dataset. `transport_rules_node` supplies
+from extension nodes to a terminal `transport.package@1` receipt and the
+battery evidence edges described below. Checkpoints run after calibration and before export,
+and must not depend on the exported dataset. Explicit `gate_inputs` artifact
+edges may attach required extension diagnostics to a skeleton
+`gates.battery@1` node; its existing report edge governs export permission.
+Only package receipts and battery nodes may gain these declared artifact
+predecessors. `transport_rules_node` supplies
 the prepared engine reference and period from the binding, so extensions do
 not repeat period values.
 An optional `entitlement_graph.json` legacy resource installs the entitlement

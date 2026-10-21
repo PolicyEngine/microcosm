@@ -1383,7 +1383,7 @@
  "engine": "axiom:nz",
  "engine_version": "6fe181fc4c65763150fe97501ef3443774e64869",
  "input_count": 668,
- "schema_sha256": "d824f5e97d58292d62f65ffae60bc8654408711344b638d4e3caa95d6c2e8d1e",
+ "schema_sha256": "5a55669d0447a686692911a6327ae298f19741dde29559f2654a75807878a141",
  "structural_inputs": [],
  "uncovered_inputs": [
   {
@@ -4285,6 +4285,7 @@
  "unknown_inputs": [],
  "unmapped_concepts": {
   "fact:household.property_tax": "The only rates input, rr_rates_payable_before_rebate (Person) in statutes/rates_rebates/rates_rebate.yaml, cannot be bound at 6fe181f, because the dense engine could not compile that module and nz.json lists it only under cli_walk_inputs, which the adapter's surface loader does not read; once the module compiles, allocate_to_reference_person of property_tax is the candidate (approximate, because the ratepayer need not be the reference person).",
+  "fact:household.source_household_id": "Original donor household lineage is build provenance and weight diagnostic support, not a rulespec-nz legal input.",
   "fact:person.educational_attainment": "rulespec-nz at 6fe181f has no input for completed education: no rule or input name mentions a qualification, degree, diploma or attainment level; the education inputs are current enrollment or school attendance (this mapping binds some of them to education_enrollment and enrolled_full_time); and young_person_is_study_ready is what youth_young_parent_payment/core.yaml calls an agency-adjudicated composite input (s 50).",
   "fact:person.realized_capital_gains": "rulespec-nz at 6fe181f has no input for gains on disposals: no rule mentions gains, disposals or the bright-line test, and the only capital input, income_tax_expenditure_or_loss_is_capital_nature (income_tax/core/taxable_income.yaml, s DA 2), classifies expenditure for the general deduction limitation.",
   "fact:person.sex": "rulespec-nz at 6fe181f has no sex- or gender-dependent input: none of the 668 dense-surface input names or 40 module YAMLs mention sex, gender, male, female, man, woman, wife or husband, and the only related hit, sole_parent_is_mother_or_father_or_child_regarded_as_child (social_security/main_benefits/entitlement.yaml), tests parenthood, which this mapping binds to the parent_of_coresident_child role.",

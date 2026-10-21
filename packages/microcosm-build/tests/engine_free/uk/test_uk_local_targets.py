@@ -10,6 +10,10 @@ from microcosm.build.uk_runtime import (
     metric_names,
     metric_names_from_target_profile,
 )
+from microcosm.build.uk_runtime.domestic_energy_targets import (
+    household_energy_kwh,
+    household_energy_prices,
+)
 
 
 class Result:
@@ -25,8 +29,11 @@ class FakeUKSimulation:
         self.data = {
             "household_id": [101, 102, 103],
             "self_employment_income": [0.0, 100.0, 0.0, 50.0],
+            # Losses brought forward the profit is counted after (microcosm#1095).
+            "loss_relief": [0.0, 0.0, 0.0, 0.0],
             "employment_income": [10.0, 20.0, 0.0, 30.0],
             "income_tax": [1.0, 0.0, 2.0, 3.0],
+            "tax_band": ["HIGHER", "HIGHER", "BASIC", "HIGHER"],
             "age": [5, 35, 72, 12],
             "universal_credit": [0.0, 100.0, 50.0],
             # Benefit unit 2's only member is a 12-year-old the FRS records as
@@ -48,6 +55,14 @@ class FakeUKSimulation:
             ],
             "benunit_rent": [0.0, 10.0, 20.0],
             "council_tax_band": ["A", "H", "D"],
+            # microcosm#1240: stored home values at the dataset period; only the
+            # owner-occupied first household clears the deflated thresholds.
+            "main_residence_value": [2_500_000.0, 1_800_000.0, 0.0],
+            # microcosm#1207: the lcfs stage's stored energy spend; the second
+            # household pays for no gas.
+            "electricity_consumption": [900.0, 1100.0, 700.0],
+            "gas_consumption": [800.0, 0.0, 950.0],
+            "region": ["LONDON", "WALES", "SCOTLAND"],
         }
 
     def calculate(self, variable, **_kwargs):
@@ -85,13 +100,18 @@ def test_metric_names_match_expected_constituency_surface() -> None:
     )
     assert "age/0_10" in names
     assert "age/70_80" in names
-    assert names[-5:] == (
+    assert names[-9:] == (
         "uc_hh_0_children",
         "uc_hh_1_child",
         "uc_hh_2_children",
         "uc_hh_3plus_children",
         # Appended last so incumbent metric positions never renumber.
         "households",
+        "hmrc/higher_rate_taxpayers/count",
+        # microcosm#1240: the high-value homes family, after every earlier one.
+        "high_value_homes/over_1m",
+        "high_value_homes/over_1_5m",
+        "high_value_homes/over_2m",
     )
 
 
@@ -103,7 +123,7 @@ def test_metric_names_match_expected_la_surface() -> None:
     assert "tenure/private_rent" in names
     assert "rent/private_rent" in names
     assert "uc_hh_0_children" not in names
-    assert names[-10:] == (
+    assert names[-17:] == (
         "households",
         "council_tax/band_a",
         "council_tax/band_b",
@@ -114,7 +134,15 @@ def test_metric_names_match_expected_la_surface() -> None:
         "council_tax/band_g",
         "council_tax/band_h",
         "council_tax/band_i",
+        "hmrc/higher_rate_taxpayers/count",
+        "high_value_homes/over_1m",
+        "high_value_homes/over_1_5m",
+        "high_value_homes/over_2m",
+        "energy/electricity_kwh",
+        "energy/gas_kwh",
+        "energy/gas_connected_households",
     )
+    assert not any(name.startswith("energy/") for name in metric_names("constituency"))
 
 
 def test_metric_names_can_come_from_ledger_target_profile() -> None:
@@ -207,11 +235,27 @@ def test_compute_constituency_household_metrics() -> None:
     assert metrics.columns.tolist() == list(metric_names("constituency"))
     assert metrics["hmrc/self_employment_income/amount"].tolist() == [0.0, 0.0, 50.0]
     assert metrics["hmrc/employment_income/count"].tolist() == [1.0, 0.0, 1.0]
+    # Higher rate taxpayers only: the second person is HIGHER but pays no tax.
+    assert metrics["hmrc/higher_rate_taxpayers/count"].tolist() == [1.0, 0.0, 1.0]
     assert metrics["age/0_10"].tolist() == [1.0, 0.0, 0.0]
     assert metrics["age/70_80"].tolist() == [0.0, 1.0, 0.0]
     assert metrics["uc_households"].tolist() == [0.0, 1.0, 1.0]
     assert metrics["uc_hh_0_children"].tolist() == [0.0, 1.0, 0.0]
     assert metrics["uc_hh_1_child"].tolist() == [0.0, 0.0, 1.0]
+
+
+def test_the_area_self_employment_rows_count_the_profit_after_loss_relief() -> None:
+    # HMRC counts the profit after losses brought forward (microcosm#1095).
+    sim = FakeUKSimulation()
+    sim.data["loss_relief"] = [0.0, 0.0, 0.0, 20.0]
+    metrics = compute_household_metrics(sim, "constituency")
+    assert metrics["hmrc/self_employment_income/amount"].tolist() == [0.0, 0.0, 30.0]
+    assert metrics["hmrc/self_employment_income/count"].tolist() == [0.0, 0.0, 1.0]
+    # Losses that absorb the whole profit leave no self-employment income.
+    sim.data["loss_relief"] = [0.0, 0.0, 0.0, 80.0]
+    metrics = compute_household_metrics(sim, "constituency")
+    assert metrics["hmrc/self_employment_income/amount"].tolist() == [0.0, 0.0, 0.0]
+    assert metrics["hmrc/self_employment_income/count"].tolist() == [0.0, 0.0, 0.0]
 
 
 def test_uc_child_bands_sum_uc_benefit_units_to_household() -> None:
@@ -226,8 +270,10 @@ def test_uc_child_bands_sum_uc_benefit_units_to_household() -> None:
             self.data = {
                 "household_id": [101],
                 "self_employment_income": [0.0] * 9,
+                "loss_relief": [0.0] * 9,
                 "employment_income": [0.0] * 9,
                 "income_tax": [0.0] * 9,
+                "tax_band": ["NONE"] * 9,
                 "age": [35, 10, 40, 3, 6, 9, 45, 19, 18],
                 "universal_credit": [100.0, 50.0, 0.0],
                 "is_uc_claimant": [
@@ -253,6 +299,8 @@ def test_uc_child_bands_sum_uc_benefit_units_to_household() -> None:
                     True,
                 ],
                 "is_child": [0.0, 1.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0],
+                "main_residence_value": [0.0],
+                "tenure_type": ["RENT_PRIVATELY"],
             }
 
         def map_result(self, values, from_entity, to_entity):
@@ -297,6 +345,41 @@ def test_compute_la_household_metrics() -> None:
     assert metrics["council_tax/band_a"].tolist() == [1.0, 0.0, 0.0]
     assert metrics["council_tax/band_d"].tolist() == [0.0, 0.0, 1.0]
     assert metrics["council_tax/band_h"].tolist() == [0.0, 1.0, 0.0]
+
+
+class PeriodRecordingUKSimulation(FakeUKSimulation):
+    """The fake, recording the periods each variable is read at."""
+
+    def __init__(self):
+        super().__init__()
+        self.periods: dict[str, set] = {}
+
+    def calculate(self, variable, **kwargs):
+        self.periods.setdefault(variable, set()).add(kwargs.get("period"))
+        return super().calculate(variable, **kwargs)
+
+
+def test_la_energy_metrics_read_the_stored_spend_back_into_kwh() -> None:
+    """The stage's calendar-2024 spend, at the dataset period (#1207)."""
+
+    sim = PeriodRecordingUKSimulation()
+    metrics = compute_household_metrics(sim, "la", period=2025, input_period=2023)
+
+    kwh = household_energy_kwh(
+        sim.data["electricity_consumption"],
+        sim.data["gas_consumption"],
+        region=sim.data["region"],
+        prices=household_energy_prices(),
+    )
+    assert metrics["energy/electricity_kwh"].tolist() == pytest.approx(
+        kwh["electricity_kwh"].tolist()
+    )
+    assert metrics["energy/gas_kwh"].tolist() == pytest.approx(kwh["gas_kwh"].tolist())
+    assert metrics["energy/gas_connected_households"].tolist() == [1.0, 0.0, 1.0]
+    assert metrics["energy/gas_kwh"].iloc[1] == 0.0
+    # Read where they are stored, never where the engine would uprate them.
+    for variable in ("electricity_consumption", "gas_consumption", "region"):
+        assert sim.periods[variable] == {2023}, variable
 
 
 def test_compute_household_metrics_validates_area_type() -> None:
@@ -349,3 +432,14 @@ def _profile_target(
         "geography_levels": geography_levels,
         "bindings": {"policyengine": {"metric_name": metric_name}},
     }
+
+
+def test_brma_codes_and_metrics_cover_scotland_only():
+    """microcosm#1305 review: the partial BRMA grain's codes and its one metric."""
+    from microcosm.build.uk_runtime.local_targets import uk_brma_area_codes
+
+    lothian, cardiff = uk_brma_area_codes(["LOTHIAN", "CARDIFF"])
+    assert lothian.startswith("S33") and cardiff == ""
+    metrics = compute_household_metrics(FakeUKSimulation(), "brma")
+    assert metrics.columns.tolist() == ["rent/private_rent_brma"]
+    assert metrics["rent/private_rent_brma"].tolist() == [0.0, 10.0, 0.0]

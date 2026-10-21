@@ -15,12 +15,17 @@ from microcosm.build.uk_runtime.calibration_run import resign_uk_gate_report
 from microcosm.build.uk_runtime.local_targets import load_uk_population_contract
 from microcosm.build.uk_runtime.national_frame import (
     uk_national_frame,
+    uk_release_export_frame,
     write_uk_national_frame,
 )
 from microcosm.build.uk_runtime.release_certification import (
     compose_uk_release_certification,
 )
 from microcosm.build.uk_runtime.release_identity import UK_NATIONAL_RELEASE_ID
+from microcosm.build.uk_runtime.weight_year import (
+    uk_dataset_year_frame,
+    uk_weight_projection_factor,
+)
 from microcosm.data.contract import validate_release_dir
 from microcosm.data.registry import REGISTRY
 from microcosm.frame import WeightKind
@@ -215,15 +220,16 @@ def _build_assembler_inputs(
     tmp_path: Path,
     *,
     spine_frame=None,
+    candidate_frame=None,
     runtime=None,
 ):
     pytest.importorskip("tables")  # pandas HDF backend
     pytest.importorskip("h5py")
     candidate = green_certification_inputs["candidate_path"]
     spine = tmp_path / "spine.h5"
-    write_uk_national_frame(
-        _frame([0.0, 4.0], weight_kind=WeightKind.CALIBRATED), candidate
-    )
+    if candidate_frame is None:
+        candidate_frame = _frame([0.0, 4.0], weight_kind=WeightKind.CALIBRATED)
+    write_uk_national_frame(candidate_frame, candidate)
     if spine_frame is None:
         spine_frame = _frame([1.0, 2.0], weight_kind=WeightKind.DESIGN)
     write_uk_national_frame(spine_frame, spine)
@@ -361,6 +367,11 @@ def test_assemble_green_release_dir(assembler_inputs, capsys) -> None:
     build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
     release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
     assert build_manifest["dataset"]["filename"] == driver._DATASET_FILENAME
+    # The fixture candidate was written as solved, never divided for release.
+    assert build_manifest["calibration"]["household_weight_year"] == {
+        "dataset_year": 2024,
+        "basis": "as_solved",
+    }
     assert build_manifest["staging"] == {
         "contract_version": 2,
         "enabled": False,
@@ -586,6 +597,72 @@ def test_assemble_refuses_build_record_attempt_id_tamper(assembler_inputs) -> No
     record_path.write_text(json.dumps(record), encoding="utf-8")
     with pytest.raises(SystemExit, match="signed diagnostics.build.build_id"):
         _load_driver_module().main(assembler_inputs["argv"])
+
+
+def test_assemble_labels_weights_written_at_the_dataset_year(
+    green_certification_inputs, tmp_path: Path
+) -> None:
+    """microcosm#796 A19: the NPZ pairs with the H5 it ships beside, so it
+    carries the dataset-year weights and the build manifest says so."""
+    released = uk_dataset_year_frame(
+        _frame([0.0, 4.0], weight_kind=WeightKind.CALIBRATED), solve_year=2025
+    )
+    inputs = _build_assembler_inputs(
+        green_certification_inputs, tmp_path, candidate_frame=released
+    )
+    driver = _load_driver_module()
+
+    assert driver.main(inputs["argv"]) == 0
+
+    release_dir = inputs["out_dir"] / UK_NATIONAL_RELEASE_ID
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    assert build_manifest["calibration"]["household_weight_year"] == {
+        "dataset_year": 2024,
+        "basis": "dataset_year",
+    }
+    calibration_path = inputs["candidate"].with_name(
+        "microcosm_uk_2024_25_calibration.npz"
+    )
+    with np.load(calibration_path) as calibration:
+        np.testing.assert_array_equal(
+            calibration["household_weight"],
+            np.asarray([0.0, 4.0]) / uk_weight_projection_factor(2024, 2025),
+        )
+
+
+def test_assemble_pairs_a_renumbered_release_with_its_spine(
+    green_certification_inputs, tmp_path: Path
+) -> None:
+    """microcosm#1194: the release renumbers its identifiers, so the row
+    pairing with the spine stands on the build identifiers it keeps."""
+    ids = np.asarray([5, 6], dtype="int64")
+
+    def frame(weights, weight_kind):
+        return uk_national_frame(
+            person=pd.DataFrame(
+                {
+                    "person_id": ids,
+                    "person_benunit_id": ids,
+                    "person_household_id": ids,
+                }
+            ),
+            benunit=pd.DataFrame({"benunit_id": ids}),
+            household=pd.DataFrame({"household_id": ids}),
+            time_period="2024",
+            weight_kind=weight_kind,
+            household_weights=np.asarray(weights, dtype="float64"),
+        )
+
+    released = uk_release_export_frame(frame([0.0, 4.0], WeightKind.CALIBRATED))
+    assert released.table("household")["household_id"].tolist() == [1, 2]
+    inputs = _build_assembler_inputs(
+        green_certification_inputs,
+        tmp_path,
+        candidate_frame=released,
+        spine_frame=frame([1.0, 2.0], WeightKind.DESIGN),
+    )
+
+    assert _load_driver_module().main(inputs["argv"]) == 0
 
 
 def test_assemble_refuses_spine_with_different_household_count(

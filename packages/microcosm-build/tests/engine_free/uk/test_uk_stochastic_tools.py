@@ -89,40 +89,87 @@ def test_childcare_fit_receipt_is_deterministic_with_seeded_runner(
 
 def test_childcare_expected_counts_are_bilinear_in_the_extended_rate() -> None:
     tool = _load_tool("fit_uk_childcare_takeup")
-    # Two rows: the first family is extended-eligible (loses targeted and
-    # universal when it claims extended), the second is not.
+    # Two rows. Since pe-uk#2177 a working-parent family keeps its targeted
+    # hours beside the extended ones, and without its own targeted claim it
+    # still receives them, allocated from the working-parent hours (DfE A1.11).
+    # The second family is not extended-eligible. A child who receives
+    # extended hours is never universal-only.
     with_ext = {
         "hmrc.tfc.government_top_up": np.array([100.0, 50.0]),
         "hmrc.tfc.children_with_used_accounts": np.array([1.0, 1.0]),
         "dfe.funded_childcare.working_parent_children_2_to_4": np.array([1.0, 0.0]),
-        "dfe.funded_childcare.early_learning_2_year_olds": np.array([0.0, 1.0]),
+        "dfe.funded_childcare.early_learning_2_year_olds": np.array([1.0, 1.0]),
         "dfe.funded_childcare.universal_only_children": np.array([0.0, 1.0]),
     }
     without_ext = {
         **with_ext,
-        "dfe.funded_childcare.early_learning_2_year_olds": np.array([1.0, 1.0]),
         "dfe.funded_childcare.universal_only_children": np.array([1.0, 1.0]),
     }
+    allocated = {
+        "dfe.funded_childcare.early_learning_2_year_olds": np.array([1.0, 0.0]),
+        "dfe.funded_childcare.universal_only_children": np.array([0.0, 0.0]),
+    }
     basis = tool.ChildcareExpectationBasis(
-        with_extended=with_ext, without_extended=without_ext, rows=2
+        with_extended=with_ext,
+        without_extended=without_ext,
+        allocated_from_extended=allocated,
+        rows=2,
     )
     # RATE_KEYS order: tfc, extended, targeted, universal
-    expected = tool.expected_childcare_counts(basis, np.array([0.5, 0.25, 1.0, 0.4]))
+    expected = tool.expected_childcare_counts(basis, np.array([0.5, 0.25, 0.6, 0.4]))
 
     assert expected["hmrc.tfc.government_top_up"] == pytest.approx(75.0)
     assert expected["hmrc.tfc.children_with_used_accounts"] == pytest.approx(1.0)
     assert expected["dfe.funded_childcare.working_parent_children_2_to_4"] == (
         pytest.approx(0.25)
     )
-    # targeted: family 1 is eligible only when it does not claim extended.
+    # targeted: claimed on their own at 0.6 by both families, and for the
+    # working-parent family also allocated when it does not claim them but
+    # takes up the extended hours (0.4 * 0.25).
     assert expected["dfe.funded_childcare.early_learning_2_year_olds"] == (
-        pytest.approx(1.0 * (0.75 + 1.0))
+        pytest.approx(0.6 * 2.0 + 0.4 * 0.25 * 1.0)
     )
+    # universal-only: the working-parent family counts only when it does not
+    # take up the extended hours.
     assert expected["dfe.funded_childcare.universal_only_children"] == (
         pytest.approx(0.4 * (0.75 + 1.0))
     )
     ceiling = tool.expected_childcare_counts(basis, np.ones(4))
-    assert ceiling["dfe.funded_childcare.early_learning_2_year_olds"] == 1.0
+    assert ceiling["dfe.funded_childcare.early_learning_2_year_olds"] == 2.0
+    # Without its own claim the targeted row rests on the allocation alone.
+    allocated_only = tool.expected_childcare_counts(
+        basis, np.array([1.0, 1.0, 0.0, 1.0])
+    )
+    assert allocated_only["dfe.funded_childcare.early_learning_2_year_olds"] == 1.0
+
+
+def test_the_fit_draws_extended_hours_at_the_contract_anchor() -> None:
+    """The spine predates the anchor, so the fit sets the hours the take-up
+    stage draws under the current contract (microcosm#1095, #1126)."""
+
+    tool = _load_tool("fit_uk_childcare_takeup")
+    from microcosm.build.stochastic_assignment import (
+        clipped_normal_from_uniforms,
+        stable_identity_uniforms,
+    )
+    from microcosm.build.uk_runtime.take_up_contract import (
+        load_uk_take_up_contract,
+    )
+
+    contract = load_uk_take_up_contract()
+    ids = np.arange(1, 2001, dtype=np.int64)
+    hours = tool._anchor_hours(ids, contract)
+    entry = contract.continuous_entry(tool.HOURS_OUTPUT)
+    expected = clipped_normal_from_uniforms(
+        stable_identity_uniforms(ids, seed=0, salt=tool.HOURS_OUTPUT),
+        mean=float(entry["mean"]),
+        sd=float(entry["sd"]),
+        lower=float(entry["lower"]),
+        upper=float(entry["upper"]),
+    )
+    np.testing.assert_array_equal(hours, expected)
+    assert float(entry["mean"]) == 31.141
+    assert hours.min() >= 0.0 and hours.max() <= 30.0
 
 
 def test_childcare_fitter_family_allow_list_excludes_entitlement_spending() -> None:
@@ -187,6 +234,7 @@ def test_e4_identity_receipt_survives_permutation_on_synthetic_frame() -> None:
             "person_benunit_id": [10, 10, 20, 30],
             "person_household_id": [1, 1, 1, 2],
             "age": [5, 6, 40, 70],
+            "is_uc_claimant": [False, False, True, True],
             "child_benefit_reported": [0.0, 10.0, 0.0, 0.0],
             "pension_credit_reported": [0.0, 0.0, 0.0, 5.0],
             "universal_credit_reported": [0.0, 0.0, 20.0, 0.0],

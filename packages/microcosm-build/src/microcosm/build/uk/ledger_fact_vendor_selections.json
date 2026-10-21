@@ -2,7 +2,7 @@
   "schema_version": 1,
   "country": "uk",
   "kind": "uk_ledger_fact_vendor_selections",
-  "description": "Which pinned Chronicle facts are vendored into UK build resources, resource by resource. Selectors use the target-reference selector vocabulary and are matched by the same function; tools/vendor_uk_ledger_facts.py regenerates every listed resource from the national feed pin and refuses a selection whose match count differs from expected_row_count. Consumers declare their own arithmetic on the vendored rows; no value in a vendored resource is derived. consumers lists the modules that read the resource today (a test checks each names the file); planned_consumers lists the spine stages and gate policies that will read it once the #890 spine half lands.",
+  "description": "Which pinned Chronicle facts are vendored into UK build resources, resource by resource. Selectors use the target-reference selector vocabulary and are matched by the same function; tools/vendor_uk_ledger_facts.py regenerates every listed resource from the national feed pin and refuses a selection whose match count differs from expected_row_count. Consumers declare their own arithmetic on the vendored rows; no value in a vendored resource is derived. consumers lists the modules that read the resource today (a test checks each names the file); planned_consumers lists the stages and gate policies meant to read it.",
   "resources": [
     {
       "resource": "dft_bus_value_anchors.json",
@@ -120,7 +120,12 @@
             "source_name": "ons",
             "source_concept": "ons.mid_year_population_estimate",
             "geography_id": "K02000001",
-            "dimensions": []
+            "dimensions": [],
+            "period_type": "calendar_year",
+            "period_value": [
+              "2023",
+              "2024"
+            ]
           },
           "expected_row_count": 2
         }
@@ -184,7 +189,7 @@
     },
     {
       "resource": "ofgem_price_cap_facts.json",
-      "purpose": "Ofgem default tariff cap levels at nil and benchmark consumption for the four charge restriction periods of FY2024-25 (2024-Q2 to 2025-Q1), direct debit, single-rate electricity and gas, every charge restriction region excluding VAT plus the GB average including and excluding VAT; and the benchmark consumption each level is set at. Consumed by the LCFS energy pricing (unit rate = (benchmark - nil) / benchmark consumption; nil = annual standing charge; VAT added from the engine parameter). Since chronicle #271 the stage prices at the DESNZ QEP average prices paid (qep_energy_prices.json); the cap levels stay vendored as the regional maximum that the QEP-versus-cap lockstep test and the receipts compare against.",
+      "purpose": "Ofgem default tariff cap levels at nil and benchmark consumption for the four charge restriction periods of FY2024-25 (2024-Q2 to 2025-Q1), direct debit, single-rate electricity and gas, every charge restriction region excluding VAT plus the GB average including and excluding VAT; and the benchmark consumption each level is set at. The LCFS energy pricing read these levels until chronicle #271 (unit rate = (benchmark - nil) / benchmark consumption; nil = annual standing charge); since then it prices at the DESNZ QEP average prices paid (qep_energy_prices.json), and the cap levels stay vendored for validation only, as the regional maximum the QEP-versus-cap lockstep test compares against.",
       "consumers": [],
       "planned_consumers": [
         "uk_runtime.energy_pricing"
@@ -334,7 +339,15 @@
               "dfi_ni.translink_bus.passenger_journeys",
               "dfi_ni.translink_bus.passenger_receipts"
             ],
-            "period_type": "fiscal_year"
+            "period_type": "fiscal_year",
+            "period_value": [
+              "2019",
+              "2020",
+              "2021",
+              "2022",
+              "2023",
+              "2024"
+            ]
           },
           "expected_row_count": 24
         },
@@ -376,8 +389,10 @@
     },
     {
       "resource": "ons_household_expenditure_facts.json",
-      "purpose": "ONS Consumer Trends household final consumption expenditure, current prices, annual, for COICOP 04.5 electricity, gas and other fuels and its sub-classes 04.5.1 electricity, 04.5.2 gas, 04.5.3 liquid fuels and 04.5.4 solid fuels, 07.2.2 fuels and lubricants for personal transport and 07.3.2 passenger transport by road, 2020 to 2025. Consumed by the domestic energy spend targets (04.5.1 and 04.5.2 bound per fuel) and the motor-fuel spend diagnostic.",
-      "consumers": [],
+      "purpose": "ONS Consumer Trends household final consumption expenditure, current prices, annual (30 June 2026 release). The seven specific series, 2020 to 2025: COICOP 04.5 and its sub-classes 04.5.1 to 04.5.4, 07.2.2 fuels and lubricants for personal transport and 07.3.2 passenger transport by road, all on the domestic concept. For 2023 to 2025: the national (NAT0) and domestic (0) totals and the twelve domestic divisions from the overview sheet, and the three classes a household diary does not record (02.3 narcotics, 04.2 imputed rentals, 12.6.1 FISIM). Consumed by the lcfs_consumption road-fuel level (07.2.2, microcosm#1113) and the division-capture diagnostic.",
+      "consumers": [
+        "uk_runtime.lcfs_consumption"
+      ],
       "planned_consumers": [
         "uk_aggregate_admin"
       ],
@@ -398,12 +413,96 @@
             "period_type": "calendar_year"
           },
           "expected_row_count": 42
+        },
+        {
+          "label": "ons_consumer_trends_totals_and_divisions",
+          "selector": {
+            "source_name": "ons",
+            "source_concept": "ons.household_final_consumption_expenditure",
+            "period_type": "calendar_year",
+            "period_value": [
+              2023,
+              2024,
+              2025
+            ],
+            "dimension_values": {
+              "source_sheet": "0CN",
+              "coicop": [
+                "NAT0",
+                "0",
+                "01",
+                "02",
+                "03",
+                "04",
+                "05",
+                "06",
+                "07",
+                "08",
+                "09",
+                "10",
+                "11",
+                "12"
+              ]
+            }
+          },
+          "expected_row_count": 42
+        },
+        {
+          "label": "ons_consumer_trends_out_of_survey_classes",
+          "selector": {
+            "source_name": "ons",
+            "source_concept": "ons.household_final_consumption_expenditure",
+            "period_type": "calendar_year",
+            "period_value": [
+              2023,
+              2024,
+              2025
+            ],
+            "dimension_values": {
+              "source_sheet": [
+                "02CN",
+                "04CN",
+                "12CN"
+              ],
+              "coicop": [
+                "02.3",
+                "04.2",
+                "12.6.1"
+              ]
+            }
+          },
+          "expected_row_count": 9
+        }
+      ]
+    },
+    {
+      "resource": "desnz_road_fuel_by_vehicle.json",
+      "purpose": "DESNZ sub-national road transport fuel consumption (25 June 2026 workbook), UK totals by vehicle type and fuel in ktoe, calendar years 2022 to 2024: the cars share of each fuel's road use for the LCFS litres audit's per-fuel benchmark (microcosm#1113, PolicyEngine/chronicle#322).",
+      "consumers": [
+        "uk_runtime.lcfs_consumption"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "desnz_road_fuel_uk_by_vehicle_and_fuel",
+          "selector": {
+            "source_name": "desnz",
+            "source_concept": "desnz.road_transport.fuel_consumption",
+            "geography_id": "K02000001",
+            "period_type": "calendar_year",
+            "period_value": [
+              2022,
+              2023,
+              2024
+            ]
+          },
+          "expected_row_count": 30
         }
       ]
     },
     {
       "resource": "desnz_domestic_energy_facts.json",
-      "purpose": "DESNZ domestic energy volumes: Energy Trends domestic electricity (table 5.5) and gas (table 4.1) consumption at actual temperature, annual and quarterly, United Kingdom, 2022 to the latest quarter (the published level the LCFS kWh rake scales to over FY2024-25), and the subnational electricity and gas statistics' domestic consumption and meter counts for Great Britain, England and Wales, the countries and the English regions, 2023 and 2024 (the published gas-connected share by region: gas meters over electricity meters).",
+      "purpose": "DESNZ domestic energy volumes: Energy Trends domestic electricity (table 5.5) and gas (table 4.1) consumption at actual temperature, annual and quarterly, United Kingdom, 2022 to the latest quarter (the published level the LCFS kWh rake scales to, summed over the four quarters of calendar 2024; microcosm#1113), and the subnational electricity and gas statistics' domestic consumption and meter counts for Great Britain, England and Wales, the countries and the English regions, 2023 and 2024 (the published gas-connected share by region: gas meters over electricity meters; and the Great Britain totals that level the local-authority energy rows, microcosm#1207).",
       "consumers": [
         "uk_runtime.energy_pricing"
       ],
@@ -433,7 +532,8 @@
             "geography_level": [
               "country",
               "region"
-            ]
+            ],
+            "geography_vintage": "publication_2025_nspl"
           },
           "expected_row_count": 112
         }
@@ -726,7 +826,11 @@
               "E12000008",
               "E12000009"
             ],
-            "dimensions": []
+            "dimensions": [],
+            "period_value": [
+              "2023",
+              "2024"
+            ]
           },
           "expected_row_count": 26
         }
@@ -1049,6 +1153,268 @@
           "expected_row_count": 21
         }
       ]
+    },
+    {
+      "resource": "ons_spree_tenure_dwellings.json",
+      "purpose": "ONS subnational dwelling stock by tenure (SPREE) for English local authorities, 2022 and 2024: owned outright, owned with a mortgage, private rented, social rented and total dwellings. Consumed by the census tenure share drift (uk_runtime.tenure_drift, microcosm#1123): dwellings move the census tenure shares, never their levels.",
+      "consumers": [
+        "uk_runtime.tenure_drift"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "spree_dwellings_by_tenure_2022_2024",
+          "selector": {
+            "source_name": "ons",
+            "source_concept": [
+              "ons.spree.owned_outright_dwellings",
+              "ons.spree.owned_mortgage_dwellings",
+              "ons.spree.private_rent_dwellings",
+              "ons.spree.social_rent_dwellings",
+              "ons.spree.total_dwellings"
+            ],
+            "geography_level": "local_authority",
+            "period_type": "calendar_year",
+            "period_value": [
+              "2022",
+              "2024"
+            ]
+          },
+          "expected_row_count": 2950
+        }
+      ]
+    },
+    {
+      "resource": "hmrc_spi_table_3_11_uk_rows.json",
+      "purpose": "HMRC Survey of Personal Incomes 2023-24, Table 3.11 (income and tax by sex, region and country): the United Kingdom rows by range of total income, for taxpayers, total income and total tax. The UK row counts the taxpayers HMRC places in no region, so it is larger than the twelve regional areas' sum. Consumed by the national band bridges (uk_runtime.national_reconciliation, microcosm#1123), which check that the factor each bridge applies to the regional cells is the one the UK row over the regional sum explains.",
+      "consumers": [
+        "uk_runtime.national_reconciliation"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "spi_2023_24_table_3_11_united_kingdom_rows",
+          "selector": {
+            "source_name": "hmrc",
+            "source_measure_id": [
+              "total_income_count",
+              "total_income_amount",
+              "total_tax_amount"
+            ],
+            "groupby_dimension": "hmrc.total_income_band_by_sex",
+            "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: Table 3.11 income and tax by sex, region and country",
+            "geography_id": "K02000001",
+            "period_type": "tax_year"
+          },
+          "expected_row_count": 120
+        }
+      ]
+    },
+    {
+      "resource": "hmrc_property_rental_income_facts.json",
+      "purpose": "HMRC Property Rental Income Statistics 2026 release, tax year 2024-25 rows the property components stage allocates landlords' receipts from and reports against (microcosm#1106): Table 1 unincorporated landlords by type of tax entity (individuals, partnerships, all; the individuals' share that restates Table 13 on the individuals basis), Table 2 rental income before allowable expenses by type of tax entity (the individuals' receipts the open top band is solved to), Table 6 allowable expenses by type of tax entity (the individuals' share of expenses), Table 8 allowable expenses by expense type, all tax entities (residential finance costs among them, although ITTOIA 2005 s. 272A no longer deducts them) and Table 13 landlords by size of rental income, all tax entities (the eleven bands the receipts walk fills). No value is derived here.",
+      "consumers": [
+        "uk_runtime.hmrc_property_rental",
+        "uk_runtime.property_components"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "table1_ty2024_landlords_by_tax_entity_type",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.property_rental_2026.table_1.ty2024"
+          },
+          "expected_row_count": 3
+        },
+        {
+          "label": "table2_ty2024_rental_income_by_tax_entity_type",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.property_rental_2026.table_2.ty2024"
+          },
+          "expected_row_count": 3
+        },
+        {
+          "label": "table6_ty2024_allowable_expenses_by_tax_entity_type",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.property_rental_2026.table_6.ty2024"
+          },
+          "expected_row_count": 3
+        },
+        {
+          "label": "table8_ty2024_allowable_expenses_by_expense_type",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.property_rental_2026.table_8.ty2024"
+          },
+          "expected_row_count": 24
+        },
+        {
+          "label": "table13_ty2024_landlords_by_size_of_rental_income",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.property_rental_2026.table_13.ty2024"
+          },
+          "expected_row_count": 11
+        }
+      ]
+    },
+    {
+      "resource": "hmrc_stamp_tax_facts.json",
+      "purpose": "HMRC Annual Stamp Tax Statistics 2024 to 2025 (corrected 11 March 2026), the 2024-25 rows the property purchases stage fits households' additional-dwelling and non-residential purchases to (uk-data#573, microcosm#1095): Table 6b transactions paying the higher rates on additional dwellings, every buyer, by price band (the HRAD transactions, value and receipts); Table 8a residential transactions, value and receipts for individuals and for other buyers (the individuals' shares that allocate HRAD to households); and Table 8b non-residential transactions, value and receipts for individuals, by price band. Every fact covers England and Northern Ireland and transactions of GBP 40,000 or above. No value is derived here.",
+      "consumers": [
+        "uk_runtime.property_purchases"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "table6b_fy2024_hrad",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.stamp_taxes_2024_25.table_6b.hrad.fy2024"
+          },
+          "expected_row_count": 44
+        },
+        {
+          "label": "table8a_fy2024_residential_individuals",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.stamp_taxes_2024_25.table_8a.individuals.fy2024"
+          },
+          "expected_row_count": 21
+        },
+        {
+          "label": "table8a_fy2024_residential_other_buyers",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.stamp_taxes_2024_25.table_8a.other_buyers.fy2024"
+          },
+          "expected_row_count": 24
+        },
+        {
+          "label": "table8b_fy2024_non_residential_individuals",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.stamp_taxes_2024_25.table_8b.individuals.fy2024"
+          },
+          "expected_row_count": 21
+        }
+      ]
+    },
+    {
+      "resource": "dwp_move_to_uc_facts.json",
+      "purpose": "DWP Stat-Xplore, households sent a Move to Universal Credit migration notice in Great Britain, notices July 2022 to June 2026, by the legacy benefits they received and their move status (claimed Universal Credit, did not claim as the legacy benefit closed, in progress), with the totals by combination and by status (uk-data#534, microcosm#1095): the uc_legacy_closure_take_up stage's claim rate for a combination is claimed / (claimed + did not claim). No value is derived here.",
+      "consumers": [
+        "uk_runtime.legacy_closure_take_up"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "mtuc_households_by_legacy_benefit_and_move_status",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06"
+          },
+          "expected_row_count": 57
+        },
+        {
+          "label": "mtuc_households_totals",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total"
+          },
+          "expected_row_count": 23
+        }
+      ]
+    },
+    {
+      "resource": "obr_hvcts_costing_facts.json",
+      "purpose": "OBR costing of the high value council tax surcharge (2 April 2026): Table 1.1 and 1.2 properties in scope by band for 2028-29 to 2030-31 (static and post-behaviour) and the paragraph 1.13 non-owner-occupied share. Consumed by the uk_high_value_homes_benchmarks diagnostic gate and the high-value home stock builder's owner-occupied control (microcosm#1240).",
+      "consumers": [
+        "uk_runtime.high_value_homes",
+        "uk_runtime.high_value_homes"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "hvcts_properties_in_scope",
+          "selector": {
+            "source_name": "obr",
+            "source_concept": "obr.hvcts_costing.properties_in_scope",
+            "period_type": "fiscal_year"
+          },
+          "expected_row_count": 30
+        },
+        {
+          "label": "hvcts_non_owner_occupied_share",
+          "selector": {
+            "source_name": "obr",
+            "source_concept": "obr.hvcts_costing.non_owner_occupied_share",
+            "period_type": "fiscal_year"
+          },
+          "expected_row_count": 1
+        }
+      ]
+    },
+    {
+      "resource": "desnz_local_energy_facts.json",
+      "purpose": "The DESNZ sub-national domestic electricity and gas meter counts for every Great Britain local authority, 2024 (gas meters over electricity meters give the share of each authority's census households bound as gas-connected), and Northern Ireland's sub-national domestic electricity and gas consumption, 2024 (the N92000002 row, all domestic meters: Great Britain's part of the Energy Trends UK level the authority kWh rows are levelled to is its share of the sub-national total with this row added, microcosm#1278). Consumed by the local energy appliers (uk_runtime.domestic_energy_targets, microcosm#1207).",
+      "consumers": [
+        "uk_runtime.domestic_energy_targets"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "subnational_domestic_meters_local_authorities_2024",
+          "selector": {
+            "source_name": "desnz",
+            "source_concept": [
+              "desnz.subnational.domestic_electricity_meter_count",
+              "desnz.subnational.domestic_gas_meter_count"
+            ],
+            "geography_level": "local_authority",
+            "geography_vintage": "publication_2025_nspl",
+            "period_type": [
+              "calendar_year",
+              "gas_year"
+            ],
+            "period_value": "2024",
+            "dimension_values": {
+              "domestic_scope": "all_domestic"
+            }
+          },
+          "expected_row_count": 697
+        },
+        {
+          "label": "subnational_domestic_consumption_northern_ireland_2024",
+          "selector": {
+            "source_name": "desnz",
+            "source_concept": [
+              "desnz.subnational.domestic_electricity_consumption",
+              "desnz.subnational.domestic_gas_consumption"
+            ],
+            "geography_id": "N92000002",
+            "period_type": [
+              "fiscal_year",
+              "gas_year"
+            ],
+            "period_value": "2024",
+            "dimension_values": {
+              "domestic_scope": "all_domestic",
+              "metric": "consumption"
+            }
+          },
+          "expected_row_count": 2
+        }
+      ],
+      "licence": {
+        "licence": "Open Government Licence v3.0",
+        "attribution": [
+          "Contains public sector information licensed under the Open Government Licence v3.0 (Department for Energy Security and Net Zero, sub-national electricity and gas consumption statistics, Great Britain and Northern Ireland)."
+        ]
+      }
     }
   ]
 }

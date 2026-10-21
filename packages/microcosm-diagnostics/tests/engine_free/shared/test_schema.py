@@ -153,9 +153,7 @@ def _uk_payload() -> dict:
                     "worst_target": "population@2024",
                     "worst_abs_relative_error": 0.0,
                     "loss_contribution": 0.0,
-                    "nonzero_households": 1,
-                    "nonzero_source_households": 1,
-                    "effective_sample_size": 1.0,
+                    "support_below_floor": True,
                 }
             ],
             "countries": [
@@ -205,6 +203,25 @@ def _uk_payload() -> dict:
                 },
             ],
         },
+        "consumption_drift": {
+            "report_only": True,
+            "totals": {
+                "petrol_spending": {
+                    "design": 100.0,
+                    "final": 102.0,
+                    "change": 2.0,
+                    "relative_change": 0.02,
+                }
+            },
+            "shares": {
+                "fuel_car_households_without_fuel": {
+                    "design": 0.0,
+                    "final": 0.0,
+                    "change": 0.0,
+                    "relative_change": None,
+                }
+            },
+        },
     }
     return payload
 
@@ -229,6 +246,29 @@ def test_schema_8_round_trips_the_complete_uk_extension() -> None:
 
     assert isinstance(model, CalibrationDiagnosticsV8)
     assert json.loads(model.model_dump_json(exclude_defaults=True)) == payload
+
+
+def test_uk_area_fit_still_parses_legacy_support_figures() -> None:
+    # Released diagnostics carry the floor flag in place of an area's support
+    # figures (microcosm#1301); payloads written before still parse, and a
+    # row may carry neither.
+    payload = _uk_payload()
+    (area,) = payload["uk_diagnostics"]["weakest_areas_by_fit"]["bottom_by_fit"]
+    del area["support_below_floor"]
+    bare = parse_calibration_diagnostics(payload)
+    assert json.loads(bare.model_dump_json(exclude_defaults=True)) == payload
+
+    area.update(
+        nonzero_households=60,
+        nonzero_source_households=55,
+        effective_sample_size=52.5,
+    )
+    legacy = parse_calibration_diagnostics(payload)
+    assert json.loads(legacy.model_dump_json(exclude_defaults=True)) == payload
+
+    area["effective_sample_size"] = -1.0
+    with pytest.raises(ValidationError):
+        parse_calibration_diagnostics(payload)
 
 
 def test_every_declared_uk_record_forbids_undeclared_fields() -> None:
@@ -283,6 +323,14 @@ def test_every_declared_uk_record_forbids_undeclared_fields() -> None:
             0,
             "holdout_target_indices",
         ),
+        ("uk_diagnostics", "consumption_drift", "report_only"),
+        (
+            "uk_diagnostics",
+            "consumption_drift",
+            "totals",
+            "petrol_spending",
+            "relative_change",
+        ),
     ],
 )
 def test_schema_8_rejects_missing_fields_across_the_uk_extension(
@@ -308,6 +356,13 @@ def test_schema_8_rejects_missing_fields_across_the_uk_extension(
         ("uk_diagnostics", "weakest_areas_by_fit", "countries", 0),
         ("uk_diagnostics", "rotated_holdout"),
         ("uk_diagnostics", "rotated_holdout", "folds", 0),
+        ("uk_diagnostics", "consumption_drift"),
+        (
+            "uk_diagnostics",
+            "consumption_drift",
+            "shares",
+            "fuel_car_households_without_fuel",
+        ),
     ],
 )
 def test_schema_8_rejects_undeclared_fields_across_the_uk_extension(
@@ -530,3 +585,20 @@ def test_writer_round_trips_valid_output(tmp_path: Path) -> None:
 
     assert outcome.status == "available"
     assert parse_calibration_diagnostics(json.loads(path.read_text())) == model
+
+
+@pytest.mark.parametrize(
+    ("change", "match"),
+    [
+        ({"change": 3.0}, "final minus design"),
+        ({"relative_change": None}, "undefined only at zero"),
+    ],
+)
+def test_uk_consumption_drift_values_reconcile(change: dict, match: str) -> None:
+    payload = _uk_payload()
+    payload["uk_diagnostics"]["consumption_drift"]["totals"]["petrol_spending"].update(
+        change
+    )
+
+    with pytest.raises(ValidationError, match=match):
+        parse_calibration_diagnostics(payload)

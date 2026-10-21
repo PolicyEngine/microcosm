@@ -108,6 +108,12 @@ _STAGED_DATASET_PHASES = STAGED_DATASET_PHASES
 _ACTIVE_EMITTER: LocalTelemetryEmitter | None = None
 
 
+def active_telemetry_emitter() -> LocalTelemetryEmitter | None:
+    """The process-local emitter of the current UK build attempt, if started."""
+
+    return _ACTIVE_EMITTER
+
+
 def _hub_api() -> Any:
     """The Hub client used for the run bundle and staged dataset (test seam)."""
 
@@ -227,6 +233,7 @@ def start_telemetry_emitter(
     *,
     build_id: str,
     run_kind: str = "calibration",
+    close_service_on_finish: bool = True,
 ) -> LocalTelemetryEmitter:
     """Start or reuse the process-local emitter for one UK build attempt."""
 
@@ -247,6 +254,7 @@ def start_telemetry_emitter(
         pipeline=posture.pipeline,
         candidate_id=args.staging_candidate_id or build_id,
         run_kind=run_kind,
+        close_service_on_finish=close_service_on_finish,
     )
     return _ACTIVE_EMITTER
 
@@ -364,7 +372,10 @@ _staging_epoch_every = staging_epoch_every
 
 
 def thinned_epochs(
-    sink: Callable[[Mapping[str, Any]], None], *, every: int = STAGING_EPOCH_EVERY
+    sink: Callable[[Mapping[str, Any]], None],
+    *,
+    every: int = STAGING_EPOCH_EVERY,
+    withhold_loss: bool = False,
 ) -> Callable[[dict[str, object]], None]:
     """Forward every ``every``-th epoch and each phase's last epoch to ``sink``.
 
@@ -373,6 +384,10 @@ def thinned_epochs(
     (the national command never runs a budget search and never met this). A
     contract or content refusal from the telemetry is reported once and stops
     the forwarding: the solve must never abort on its own progress report.
+
+    ``withhold_loss`` forwards each epoch with a null ``loss``: an epoch's loss
+    covers every row, so for a problem that may withhold a row's model figures
+    it would give them back against the published ones (microcosm#1262).
     """
 
     disabled = False
@@ -386,6 +401,8 @@ def thinned_epochs(
         if epoch % every != 0 and epoch != epochs:
             return
         forwarded = dict(event)
+        if withhold_loss:
+            forwarded["loss"] = None
         budget_search = forwarded.get("budget_search")
         if isinstance(budget_search, bool):
             forwarded["budget_search"] = 1 if budget_search else None

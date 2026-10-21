@@ -44,6 +44,16 @@ E5_STAGE_NAMES = [
     # #1003: the Lifetime ISA holdings read the was_wealth household draws.
     "was_lisa",
     "regional_property_uprating",
+    "high_value_home_support",
+    # microcosm#1112: the regions' Land Registry home values on the spine, on
+    # the uprated values and the support copies.
+    "regional_home_values",
+    # #1106: landlords' receipts and finance costs follow the uprated rental
+    # property values their coherence receipt reads.
+    "property_components",
+    # microcosm#1095: annual purchases from the uprated stocks, after the
+    # support copies (uk-data#573).
+    "property_purchases",
 ]
 E6_STAGE_NAMES = [
     "nts_bus_travel",
@@ -69,11 +79,21 @@ SPI_BENEFIT_COHERENCE_STAGE_NAMES = [
 UC_COHERENCE_STAGE_NAMES = [
     "uc_capital_coherence",
 ]
+# microcosm#1095: the Move to UC claim draw reads the final legacy and UC
+# receipts and would_claim_uc (uk-data#534).
+UC_LEGACY_CLOSURE_TAKE_UP_STAGE_NAMES = [
+    "uc_legacy_closure_take_up",
+]
 PENSION_CREDIT_TAKE_UP_STAGE_NAMES = [
     "pension_credit_take_up",
 ]
 CHILD_BENEFIT_TAKE_UP_STAGE_NAMES = [
     "child_benefit_take_up",
+]
+# microcosm#1319: the Carer's Allowance draw reads the post-SPI earnings and
+# the anchor the SPI income chain refreshes.
+CARERS_ALLOWANCE_TAKE_UP_STAGE_NAMES = [
+    "carers_allowance_take_up",
 ]
 E9_STAGE_NAMES = [
     "uc_deduction_attributes",
@@ -89,6 +109,8 @@ E8_STAGE_NAMES = [
     "hmrc_cgt_asset_type_spine",
     "salary_sacrifice",
     "student_loans",
+    # microcosm#1095: the stored private-school attendance runs last.
+    "private_school_attendance",
 ]
 UK_SOURCE_STAGE_NAMES = [
     "frs_spine",
@@ -104,8 +126,10 @@ UK_SOURCE_STAGE_NAMES = [
     *UC_REPORTER_REDRAW_STAGE_NAMES,
     *SPI_BENEFIT_COHERENCE_STAGE_NAMES,
     *UC_COHERENCE_STAGE_NAMES,
+    *UC_LEGACY_CLOSURE_TAKE_UP_STAGE_NAMES,
     *PENSION_CREDIT_TAKE_UP_STAGE_NAMES,
     *CHILD_BENEFIT_TAKE_UP_STAGE_NAMES,
+    *CARERS_ALLOWANCE_TAKE_UP_STAGE_NAMES,
     *E9_STAGE_NAMES,
     *E8_STAGE_NAMES,
 ]
@@ -175,8 +199,10 @@ class TestUKSourceStagesManifest:
             *UC_REPORTER_REDRAW_STAGE_NAMES,
             *SPI_BENEFIT_COHERENCE_STAGE_NAMES,
             *UC_COHERENCE_STAGE_NAMES,
+            *UC_LEGACY_CLOSURE_TAKE_UP_STAGE_NAMES,
             *PENSION_CREDIT_TAKE_UP_STAGE_NAMES,
             *CHILD_BENEFIT_TAKE_UP_STAGE_NAMES,
+            *CARERS_ALLOWANCE_TAKE_UP_STAGE_NAMES,
             *E9_STAGE_NAMES,
         ]
 
@@ -238,6 +264,10 @@ class TestUKSourceStagesManifest:
                     "was_lisa": _identity,
                     "nts_bus_travel": _identity,
                     "regional_property_uprating": _identity,
+                    "high_value_home_support": _identity,
+                    "regional_home_values": _identity,
+                    "property_components": _identity,
+                    "property_purchases": _identity,
                     "lcfs_consumption": _identity,
                     "etb_vat": _identity,
                     "etb_services": _identity,
@@ -249,8 +279,10 @@ class TestUKSourceStagesManifest:
                     "uc_reporter_redraw": _identity,
                     "spi_benefit_coherence": _identity,
                     "uc_capital_coherence": _identity,
+                    "uc_legacy_closure_take_up": _identity,
                     "pension_credit_take_up": _identity,
                     "child_benefit_take_up": _identity,
+                    "carers_allowance_take_up": _identity,
                     "uc_deduction_attributes": _identity,
                     "cgt_support_split": _identity,
                     "cgt_incidence_clone": _identity,
@@ -260,6 +292,7 @@ class TestUKSourceStagesManifest:
                     "hmrc_cgt_asset_type_spine": _identity,
                     "salary_sacrifice": _identity,
                     "student_loans": _identity,
+                    "private_school_attendance": _identity,
                     "age_tail": _identity,
                     "frs_relationships": _identity,
                     "hmrc_spi_income_fallback": _identity,
@@ -615,15 +648,21 @@ class TestE3ManifestLockstep:
             "materialize_rules_engine_predictors",
             "fit_weighted_qrf_chain",
             "support_clip",
+            "impute_prepayment_meter",
             "iterative_proportional_fit",
             "price_domestic_energy",
             "price_bus_journeys",
             "fold_into",
             "zero_when_false",
+            "redraw_zero_road_fuel",
+            "level_road_fuel",
+            "recompose_from_remainder",
             "record_mass_conservation_receipt",
         ]
         assert [op.kind for op in stages["etb_vat"].operations] == [
             "derive",
+            # The donor's disposable income to the base year (microcosm#1164).
+            "uprate_donor_columns",
             "materialize_rules_engine_predictors",
             "fit_weighted_qrf",
             "support_clip",
@@ -752,6 +791,7 @@ class TestE3ManifestLockstep:
             UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS,
             UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS,
             UK_LCFS_CONSUMPTION_PREDICTORS,
+            UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
         )
         from microcosm.build.uk_runtime.uc_reporter_redraw import (
             UC_REPORTER_AGGREGATES,
@@ -824,14 +864,19 @@ class TestE3ManifestLockstep:
         )
         assert (
             tuple(lcfs_ops["fit_weighted_qrf_chain"].parameters["targets"])
-            == UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS[:-1]
+            == UK_LCFS_CONSUMPTION_TARGET_COLUMNS
         )
-        assert (
-            tuple(stages["etb_vat"].operations[1].parameters["predictors"])
-            == UK_ETB_VAT_ENGINE_PREDICTORS
+        assert UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS == (
+            *UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
+            "has_fuel_consumption",
+            "uses_energy_prepayment_meter",
         )
         assert (
             tuple(stages["etb_vat"].operations[2].parameters["predictors"])
+            == UK_ETB_VAT_ENGINE_PREDICTORS
+        )
+        assert (
+            tuple(stages["etb_vat"].operations[3].parameters["predictors"])
             == UK_ETB_VAT_PREDICTORS
         )
         from microcosm.build.uk_runtime.etb_services import (
@@ -965,8 +1010,13 @@ class TestE3ManifestLockstep:
             "assign_binary_from_rate": 0,
             "fit_weighted_qrf_chain": 0,
             "price_domestic_energy": 0,
+            # The road-fuel incidence redraw (microcosm#1113).
+            "redraw_zero_road_fuel": 0,
+            # The prepayment-meter flag (microcosm#1110).
+            "impute_prepayment_meter": 0,
         }
-        assert stages["etb_vat"].operations[2].parameters["seed"] == 0
+        assert stages["etb_vat"].operations[3].parameters["seed"] == 0
+        assert stages["etb_vat"].operations[3].parameters["salt"] == "etb_vat"
         assert stages["etb_services"].operations[3].parameters["seed"] == 0
 
     def test_e7_declared_seed_lockstep(self) -> None:
@@ -1055,6 +1105,7 @@ class TestE3ManifestLockstep:
             SPI_HMRC_DERIVED_AUXILIARY_COLUMNS,
             SPI_HMRC_QRF_AUXILIARY_COLUMNS,
             SPI_INCOME_IMPUTATION_COLUMNS,
+            SPI_PROPERTY_FINANCE_COSTS_COLUMN,
         )
 
         spec = load_country_spec("uk")
@@ -1064,10 +1115,16 @@ class TestE3ManifestLockstep:
             set(SPI_INCOME_IMPUTATION_COLUMNS)
             | set(SPI_HMRC_QRF_AUXILIARY_COLUMNS)
             | set(SPI_HMRC_DERIVED_AUXILIARY_COLUMNS)
+            | {SPI_PROPERTY_FINANCE_COSTS_COLUMN}
         )
         # The narrow PAY+EPB+TAXTERM employment input is written on SPI rows
         # by the stage even though the QRF output surface excludes it.
         written.add("employment_income")
+        # The rows stage 1 drew, flagged for the stages that tell tape-concept
+        # rows from FRS-concept ones (microcosm#840).
+        from microcosm.build.uk_runtime.spi_income import SPI_INCOME_RECIPIENT_COLUMN
+
+        written.add(SPI_INCOME_RECIPIENT_COLUMN)
         unbacked = [name for name in stage2.outputs if name not in written]
         assert unbacked == [], (
             "Declared outputs with no named runtime written-column constant "

@@ -104,6 +104,26 @@ With the default paths, this writes
 `microcosm_uk_2024_25.release_certification.json` next to the candidate. Continue
 only when the certification says `shippable: true`.
 
+**Interim check until microcosm#1276 lands.** microcosm#1281 removed the QRF
+tail-concentration gate, and nothing release-blocking yet checks the SPI
+stage-1 columns (`hmrc_spi_*` and the other stage-1 outputs). Before assembly,
+measure the candidate and the currently promoted cut together:
+
+```bash
+uv run --no-sync python tools/measure_uk_weighted_integrity_baselines.py \
+  --h5 candidate=<candidate-dir>/microcosm_uk_2024_25.h5 \
+  --h5 previous=<promoted-cut-h5> \
+  --output <candidate-dir>/stage1_comparison.json
+```
+
+Compare each stage-1 column's weighted total (`input_mass_totals`) and carrier
+count (`qrf_tail`) between the two, and explain any column that moves by more
+than half in either direction before continuing. microcosm#1256 cut
+`hmrc_spi_incapacity_benefit_income` by about six-sevenths, and only this kind
+of comparison would have shown it. The file is licensed output: keep it
+local, out of the release directory and out of any public text. The tool
+suppresses carrier counts below 10.
+
 ## 3. Assemble the release directory
 
 Assembly verifies the complete hash join before writing, mints the calibration

@@ -26,6 +26,7 @@ from microcosm.build.uk_runtime import (
     materialize_uk_ledger_targets,
 )
 from microcosm.build.uk_runtime.measure_simulation import UKMeasureResolver
+from microcosm.build.uk_runtime.national_frame import uk_time_period
 from microcosm.calibrate.matrix import CalibrationProblem, build_constraint_matrix
 from microcosm.frame import Frame, MassChangeRecord
 
@@ -282,6 +283,21 @@ def _engine_population_representation(frame, block_frames) -> dict[str, Any]:
             and inputs_match
         ),
         "blocks": blocks,
+        # What ``exact`` certifies, and what it does not: on a slice of the
+        # K=25 pool, per-clone and single-block resolution matched on every
+        # household column and constituency metric but differed on a small
+        # share of person records (state pension type, pension credit, SLC
+        # repayment), so engine draws that depend on a record's position in
+        # the simulation are outside it (microcosm#1124). A dense release
+        # states this in its engine_measurement limitation; re-measuring the
+        # released file on one engine is the incumbent-surface evaluation's,
+        # an opt-in diagnostic since microcosm#1301.
+        "exact_scope": (
+            "weight-share formulas see the pool's denominator in every block: "
+            "identical clone copies, pool-scaled block weights and equal "
+            "allocation-key sums; engine draws that depend on a record's "
+            "position in the simulation are not covered"
+        ),
         "factor_by_block": factors,
         "checks": {
             "identity_key": identity_key,
@@ -308,6 +324,7 @@ def _run_engine_blocks(
     local_grains: tuple[str, ...],
     on_block,
     engine_weight_scales: Mapping[str, float] | None = None,
+    identifier_universe=None,
 ) -> tuple[
     dict[str, list[pd.DataFrame]],
     list[Mapping[str, Any]],
@@ -335,6 +352,10 @@ def _run_engine_blocks(
             resolver_kwargs["engine_weight_scale"] = float(
                 engine_weight_scales[str(clone_index)]
             )
+        if identifier_universe is not None and clone_index is not None:
+            # A block's rows take the identifiers they have in the release,
+            # which numbers the whole frame (microcosm#1194).
+            resolver_kwargs["engine_identifier_universe"] = identifier_universe
         resolver = resolver_factory(**resolver_kwargs)
         resolution = resolve_target_measures(
             lambda block_frame=block_frame: CalibrationFrameAdapter(block_frame),
@@ -361,6 +382,7 @@ def _run_engine_blocks(
                     area_type,
                     period=period,
                     household_ids=block_household_ids,
+                    input_period=int(uk_time_period(block_frame)),
                 )
             )
         resolver_receipts.append(
@@ -545,6 +567,7 @@ def resolve_uk_full_measures(
         scratch_dir=scratch_dir,
         resolver_factory=resolver_factory,
         engine_weight_scales=representation.get("factor_by_block"),
+        identifier_universe=frame,
         local_grains=local_grains,
         on_block=collect,
     )
@@ -772,6 +795,7 @@ def resolve_uk_full_national_problem(
             scratch_dir=scratch_dir,
             resolver_factory=resolver_factory,
             engine_weight_scales=representation.get("factor_by_block"),
+            identifier_universe=frame,
             local_grains=local_grains,
             on_block=materialize,
         )

@@ -44,6 +44,7 @@ from microcosm.frame.concept_mapping import (
     Scale,
     ScaledSum,
     Share,
+    SignedPart,
     Sum,
     TakeUpThreshold,
     coverage_report,
@@ -52,6 +53,7 @@ from microcosm.frame.concept_mapping import (
 )
 from microcosm.frame.concepts import (
     CONCEPTS,
+    SOURCE_HOUSEHOLD_ID_COLUMN,
     AlignmentRelation,
     CanonicalConceptKind,
     ConceptAlignment,
@@ -253,6 +255,36 @@ class TestEveryMapping:
 
 
 class TestExecution:
+    @pytest.mark.parametrize("name", sorted(MAPPINGS))
+    @settings(max_examples=20, deadline=None, database=None)
+    @given(tables=concept_frames(), data=st.data())
+    def test_source_household_lineage_changes_no_engine_input(
+        self, name, tables, data
+    ) -> None:
+        mapping = MAPPINGS[name]
+        parameters = _parameters(mapping, data)
+        before = mapping.encode(tables, **parameters)
+        household = tables["household"].copy()
+        household[SOURCE_HOUSEHOLD_ID_COLUMN] = pd.array(
+            data.draw(
+                st.lists(
+                    st.text(min_size=1, max_size=20),
+                    min_size=len(household),
+                    max_size=len(household),
+                )
+            ),
+            dtype=pd.StringDtype(storage="python"),
+        )
+        after = mapping.encode(
+            {"person": tables["person"], "household": household}, **parameters
+        )
+        for entity in ("person", "household"):
+            pd.testing.assert_frame_equal(before.tables[entity], after.tables[entity])
+        assert before.deferred == after.deferred
+        assert (
+            SOURCE_HOUSEHOLD_ID_COLUMN not in mapping.decode(after.tables)["household"]
+        )
+
     @PROPERTY
     @given(name=mapping_names, tables=concept_frames(), data=st.data())
     def test_encode_matches_a_row_by_row_reference(self, name, tables, data) -> None:
@@ -1051,6 +1083,8 @@ TRANSFORMS = [
     Scale(factor=1 / 52),
     Positive(),
     Sum(),
+    SignedPart(sign="positive"),
+    SignedPart(sign="negative"),
     Product(),
     AllocateToReferencePerson(),
     Predicate(clauses=(("fact:person.sex", ("female",)),)),
@@ -1080,6 +1114,8 @@ class TestTransforms:
             ({"kind": "scale", "factor": True}, "number"),
             ({"kind": "coresident_child_count", "max_age": "17"}, "integer"),
             ({"kind": "take_up_threshold"}, "lacks"),
+            ({"kind": "signed_part"}, "lacks"),
+            ({"kind": "signed_part", "sign": "up"}, "'positive' or 'negative'"),
         ],
     )
     def test_malformed_transforms_are_refused(self, data, message) -> None:
@@ -1138,7 +1174,7 @@ class TestTransforms:
 
 #: The transforms that do arithmetic on a year's amount, and so read annual
 #: flows only.
-_ARITHMETIC = (Scale, Sum, ScaledSum, Share, Fraction)
+_ARITHMETIC = (Scale, Sum, ScaledSum, SignedPart, Share, Fraction)
 _NOT_FLOWS = tuple(
     basis for basis in TemporalBasis if basis is not TemporalBasis.ANNUAL_FLOW
 )
@@ -1174,6 +1210,7 @@ _EXAMPLE_TRANSFORMS = {
     Scale: Scale(factor=1 / 52),
     Sum: Sum(),
     ScaledSum: ScaledSum(factor=1 / 52),
+    SignedPart: SignedPart(sign="negative"),
     Share: Share(parameter="p"),
     Fraction: Fraction(parameter="f"),
 }
@@ -1189,6 +1226,10 @@ def _arithmetic(kind: type):
         return st.builds(Share, parameter=_parameter_names, complement=st.booleans())
     if kind is Fraction:
         return st.builds(Fraction, parameter=_parameter_names)
+    if kind is SignedPart:
+        return st.sampled_from(("positive", "negative")).map(
+            lambda sign: SignedPart(sign=sign)
+        )
     return st.just(Sum())
 
 

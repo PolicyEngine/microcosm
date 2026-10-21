@@ -83,6 +83,9 @@ def test_main_writes_selected_tree_receipts_manifest_and_summary(
     assert manifest["run"]["label"] == "candidate"
     assert manifest["references"][0]["label"] == "R17"
     assert manifest["steps"]["30-incumbent-score"]["status"] == "skipped"
+    assert manifest["steps"]["30-incumbent-score"]["reason"] == (
+        "opt-in incumbent diagnostic not requested (--incumbent-diagnostic)"
+    )
     summary = json.loads(expected[-2].read_text())
     assert summary["references"]["R17"]["n_common"] == 10
     assert "00-run-acceptance/run_acceptance.json" in summary["files"]
@@ -115,6 +118,55 @@ def test_absent_incumbent_inputs_skip_steps_30_and_40(tmp_path: Path) -> None:
     assert score["status"] == surface["status"] == "skipped"
     assert "--incumbent-dir" in score["reason"]
     assert "--ledger-facts" in surface["reason"]
+
+
+def test_the_incumbent_steps_are_opt_in(tmp_path: Path) -> None:
+    """microcosm#1301: steps 30 and 40 run only behind --incumbent-diagnostic
+    (or when --steps names them), even with their inputs supplied."""
+    tool = _load_tool()
+
+    def selected(*argv: str) -> set[str]:
+        return tool._selected_steps(tool._parse_args(["--run", "run", *argv]))
+
+    opt_in = {"30-incumbent-score", "40-incumbent-surface"}
+    assert selected("--ledger-facts", "facts") == set(tool._STEPS) - opt_in
+    assert selected("--incumbent-diagnostic") == set(tool._STEPS)
+    assert selected("--steps", "30-incumbent-score") == {"30-incumbent-score"}
+    assert selected("--steps", "90-summary", "--incumbent-diagnostic") == {
+        "90-summary",
+        *opt_in,
+    }
+    assert selected("--incumbent-diagnostic", "--skip", "40-incumbent-surface") == (
+        set(tool._STEPS) - {"40-incumbent-surface"}
+    )
+
+    run = _write_run_dir(tmp_path, "candidate", size_run=True)
+    out = tmp_path / "evaluation"
+    assert (
+        tool.main(
+            [
+                "--run",
+                str(run),
+                "--ledger-facts",
+                str(tmp_path / "facts"),
+                "--skip",
+                "50-downstream",
+                "--out",
+                str(out),
+            ]
+        )
+        == 0
+    )
+    manifest = json.loads((out / "evaluation_manifest.json").read_text())
+    for step in sorted(opt_in):
+        assert manifest["steps"][step] == {
+            "status": "skipped",
+            "reason": (
+                "opt-in incumbent diagnostic not requested (--incumbent-diagnostic)"
+            ),
+            "receipt": None,
+        }
+        assert not (out / step).exists()
 
 
 def _write_downstream_stubs(eval_home: Path) -> None:

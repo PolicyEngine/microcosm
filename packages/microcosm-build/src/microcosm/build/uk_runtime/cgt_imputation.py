@@ -123,6 +123,10 @@ from microcosm.build.uk_runtime.hmrc_capital_gains import (
     load_hmrc_cgt_conditioning_facts,
     load_hmrc_cgt_joint_distribution,
 )
+from microcosm.build.uk_runtime.hmrc_income import (
+    LOSS_RELIEF_COLUMN,
+    self_employment_income_after_loss_relief,
+)
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_national_frame,
@@ -387,7 +391,17 @@ def uk_cgt_component_sum_income(person: pd.DataFrame) -> np.ndarray:
         )
     total = np.zeros(len(person))
     for column in UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS:
-        total += pd.to_numeric(person[column], errors="raise").to_numpy(dtype=float)
+        values = pd.to_numeric(person[column], errors="raise").to_numpy(dtype=float)
+        if column == "self_employment_income" and LOSS_RELIEF_COLUMN in person:
+            # Total income holds the profit after losses brought forward,
+            # which policyengine-uk keeps apart in loss_relief (microcosm#1095).
+            values = self_employment_income_after_loss_relief(
+                values,
+                pd.to_numeric(person[LOSS_RELIEF_COLUMN], errors="raise").to_numpy(
+                    dtype=float
+                ),
+            )
+        total += values
     return total
 
 

@@ -18,7 +18,23 @@ def test_childcare_target_formula_contracts_match_the_installed_engine() -> None
     )
     tax_free_source = inspect.getsource(system.variables["tax_free_childcare"].formula)
 
-    assert "~has_extended_childcare" in universal_source
+    # From 2.128.1 a child on the working parent entitlement keeps the
+    # universal hours (pe-uk#2177), so the universal-only row must leave the
+    # extended entitlement out itself.
+    assert "has_extended_childcare" not in universal_source
+    universal_only = next(
+        target
+        for target in json.loads(
+            importlib_resources.files("microcosm.build.uk")
+            .joinpath("uk_population_targets.json")
+            .read_text(encoding="utf-8")
+        )["targets"]
+        if target["target_id"] == "dfe.funded_childcare.universal_only_children"
+    )
+    assert {
+        "variable": "is_child_receiving_extended_childcare",
+        "equals": False,
+    } in universal_only["bindings"]["policyengine"]["filters"]
     assert "tax_free_childcare_spend_routed_share" in tax_free_source
 
     for name in (

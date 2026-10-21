@@ -452,8 +452,18 @@ DIRECT_LEDGER_TARGETS: dict[
             ),
         },
     ),
+    # 2025 Trustees Report Table III.C3 Part B premiums from enrollees.
+    # gross_medicare_part_b_premium is defined for is_medicare_eligible, so
+    # it also charges eligible people who never enrolled. PolicyEngine-US
+    # documents the enrollment-gated gross_medicare_part_b_premium_if_enrolled
+    # for CMS premiums-from-enrollees targets (microcosm#1206).
+    # The target includes income-related premiums (IRMAA). On the locked
+    # policyengine-us 2.2.1 a 2024 release has none, because IRMAA rests on
+    # income two years earlier and the H5 carries 2024 inputs only, so this
+    # row reads the standard premium alone until Microcosm's engine includes
+    # PolicyEngine/policyengine-us#10106 (see microcosm#1206 for the sums).
     ("cms_medicare", "actual_amount", "premiums_from_enrollees"): (
-        "gross_medicare_part_b_premium",
+        "gross_medicare_part_b_premium_if_enrolled",
         "cms_medicare",
         {"target_role": "medicare_part_b_premium_total"},
     ),
@@ -2456,8 +2466,14 @@ def _eitc_source_decomposition_total_for_bounds(
     lower: float,
     upper: float,
 ) -> float | None:
-    total = 0.0
-    matched = False
+    """Source-period Table 2.5 EITC inside ``[lower, upper)``, all child splits.
+
+    Each child split's record set nests its AGI bins under its all-AGI total
+    row, so summing every contained row would count a split twice once the
+    interval holds both. Count only each split's outermost contained rows.
+    """
+
+    rows_by_split: dict[str, list[tuple[float, float, float]]] = {}
     for spec in registry.specs:
         if not _is_eitc_decomposition_spec(spec):
             continue
@@ -2467,9 +2483,40 @@ def _eitc_source_decomposition_total_for_bounds(
             continue
         spec_lower, spec_upper = _bounds_from_metadata(spec)
         if _contains_bounds(lower, upper, spec_lower, spec_upper):
-            total += spec.value
-            matched = True
-    return total if matched else None
+            rows_by_split.setdefault(
+                spec.metadata.get("ledger_layout_record_set_id", ""), []
+            ).append((spec_lower, spec_upper, spec.value))
+    if not rows_by_split:
+        return None
+    return sum(
+        _outermost_rows_total(record_set_id, rows)
+        for record_set_id, rows in rows_by_split.items()
+    )
+
+
+def _outermost_rows_total(
+    record_set_id: str,
+    rows: list[tuple[float, float, float]],
+) -> float:
+    outermost = sorted(
+        row
+        for index, row in enumerate(rows)
+        if not any(
+            other_index != index
+            and (other[0], other[1]) != (row[0], row[1])
+            and _contains_bounds(other[0], other[1], row[0], row[1])
+            for other_index, other in enumerate(rows)
+        )
+    )
+    for previous, current in zip(outermost, outermost[1:], strict=False):
+        if current[0] < previous[1]:
+            raise ValueError(
+                f"EITC decomposition {record_set_id!r} has overlapping AGI rows "
+                f"[{_format_bound(previous[0])}, {_format_bound(previous[1])}) and "
+                f"[{_format_bound(current[0])}, {_format_bound(current[1])}); "
+                "its rows must nest or be disjoint."
+            )
+    return sum(value for _, _, value in outermost)
 
 
 def _eitc_agi_uprating_group(
@@ -2935,9 +2982,38 @@ def _soi_return_universe_from_record_set_id(record_set_id: str) -> str:
     return "all_returns"
 
 
+def _soi_record_set_family(record_set_id: str) -> str:
+    """An SOI record set's table family, without period or data vintage.
+
+    ``irs_soi.ty2023.table_1_4`` is ``table_1_4``,
+    ``irs_soi.ty2022.historic_table_2.state_broad`` is ``historic_table_2`` and
+    ``irs_soi.ty2023.congressional_district_2022.all_returns`` is
+    ``congressional_district``.
+    """
+    parts = record_set_id.split(".")
+    if parts[0] != "irs_soi":
+        return ""
+    rest = parts[2:] if len(parts) > 1 and _is_period_token(parts[1]) else parts[1:]
+    if not rest:
+        return ""
+    family = rest[0]
+    if family.startswith("congressional_district"):
+        return "congressional_district"
+    return family
+
+
 def _is_soi_congressional_district_record_set(fact: object) -> bool:
-    record_set_id = _str_at(fact, "layout", "record_set_id")
-    return ".congressional_district_2022." in record_set_id
+    """Whether a fact comes from an IRS SOI congressional-district file.
+
+    Matched by family, at any data vintage: the next IRS release
+    (``congressional_district_2024``) must meet the same guards as the pinned
+    ``congressional_district_2022`` package — never an interest control
+    (microcosm#489) and no PTC amount target.
+    """
+    return (
+        _soi_record_set_family(_str_at(fact, "layout", "record_set_id"))
+        == "congressional_district"
+    )
 
 
 def _is_soi_cd_premium_tax_credit_amount_conflict(

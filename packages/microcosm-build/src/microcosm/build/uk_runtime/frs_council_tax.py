@@ -29,6 +29,7 @@ SCOTLAND_GVTREGNO = 12
 #: Raw household cells the derivation reads; the pinned tab carries them all.
 FRS_COUNCIL_TAX_RAW_COLUMNS = (
     "ctannual",
+    "ctpaid",
     "ctreb",
     "ctrebamt",
     "gvtregno",
@@ -38,6 +39,10 @@ FRS_COUNCIL_TAX_RAW_COLUMNS = (
     "csewamt1",
     "cwatamtd",
 )
+#: FRS 2024-25 question CTPaid, "Does anyone living here pay Council Tax?":
+#: 1 yes, 2 no because the council pays (a rebate), 3 no because the household
+#: does not have to. Northern Ireland, which pays domestic rates, is not asked.
+FRS_CTPAID_PAYS = 1
 #: Share of the gross Scottish water and sewerage charges that DWP's CTANNUAL
 #: carries for a council tax reduction recipient. Netting 65% of the gross
 #: charges brings Scottish recipients' bills to the non-recipient cells (ratio
@@ -57,7 +62,9 @@ def frs_council_tax_operation_parameters() -> dict[str, Any]:
         "kind": FRS_COUNCIL_TAX_IMPUTATION_KIND,
         "cells": ["gvtregno", "ctband", "adulth == 1"],
         "donor_filter": "raw ctreb != 1 and ctannual > 0",
-        "missing": "raw ctannual < 0 or NaN",
+        "missing": (
+            "raw ctannual < 0 or NaN, or ctannual == 0 with ctpaid == 1 and ctreb != 1"
+        ),
         "value": (
             "council tax before council tax reduction: CTANNUAL net of the "
             "Scottish water and sewerage charges ((CWATAMT1 + CSEWAMT1) x "
@@ -161,8 +168,19 @@ def derive_council_tax(
     cell (ratio 0.99 in England, 1.01 in Wales; uk-data#496/#499,
     microcosm#1095). A recipient with no positive amount has an unknown
     reduction and takes the larger of its bill and its cell's mean. Missing
-    or negative bills take the cell mean. The cells pool non-recipients with
-    a positive bill only, since recipients' ``CTANNUAL`` is net of their
+    or negative bills take the cell mean. So does a zero bill where someone
+    pays council tax (``CTPAID`` 1) and no reduction is reported, since such
+    a household owes a bill (microcosm#1278). From April 2024 the band and
+    "some other Council Tax block questions" left the FRS field interview:
+    editing teams input the band from Valuation Office Agency and Scottish
+    Assessors data, and the other answers "are then imputed during DWP's
+    validation processes" (FRS 2024-25 background information and
+    methodology, section 1.3). The methodology does not say whether
+    ``CTPAID`` itself is still asked or is imputed. A
+    non-recipient's zero bill otherwise stays zero: the household does not
+    have to pay (``CTPAID`` 3), or says the council pays (``CTPAID`` 2)
+    without reporting a reduction. The cells pool non-recipients with a
+    positive bill only, since recipients' ``CTANNUAL`` is net of their
     reduction.
 
     Scottish bills carry the water and sewerage charges, which council tax
@@ -204,14 +222,18 @@ def derive_council_tax(
     tax_only = pd.Series(np.maximum(ctannual - netted, 0), index=aligned.index)
 
     donors = ~recipient & (ctannual > 0)
-    cell_mean = tax_only[donors].groupby(
-        [gvtregno[donors], ctband[donors], single_adult[donors]], dropna=False
-    ).mean()
+    cell_mean = (
+        tax_only[donors]
+        .groupby([gvtregno[donors], ctband[donors], single_adult[donors]], dropna=False)
+        .mean()
+    )
     keys = pd.MultiIndex.from_arrays([gvtregno, ctband, single_adult])
     imputed = pd.Series(keys.map(cell_mean).to_numpy(dtype=float), index=aligned.index)
     imputed = imputed.fillna(0.0).clip(lower=0)
 
-    missing = (ctannual < 0) | ctannual.isna()
+    pays = number("ctpaid") == FRS_CTPAID_PAYS
+    paying_zero = (ctannual == 0) & pays & ~recipient
+    missing = (ctannual < 0) | ctannual.isna() | paying_zero
     gross = np.where(
         missing,
         imputed,

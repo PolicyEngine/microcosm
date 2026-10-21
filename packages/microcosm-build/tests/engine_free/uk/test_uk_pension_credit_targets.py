@@ -43,6 +43,13 @@ GB_REGIONS = {
 }
 
 
+def _sha256(path: Path) -> str:
+    """The file's digest, read in chunks: the pinned feed is several GB."""
+
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
 def _targets() -> list[dict]:
     return [
         target
@@ -144,9 +151,7 @@ def _pension_credit_facts() -> list[dict]:
         feed = feed / "consumer_facts.jsonl"
     if not feed.is_file():
         pytest.skip("pinned UK Chronicle consumer feed is not present")
-    assert hashlib.sha256(feed.read_bytes()).hexdigest() == (
-        load_uk_chronicle_feed().facts_sha256
-    )
+    assert _sha256(feed) == (load_uk_chronicle_feed().facts_sha256)
     with feed.open(encoding="utf-8") as handle:
         return [json.loads(line) for line in handle if "pension_credit" in line]
 

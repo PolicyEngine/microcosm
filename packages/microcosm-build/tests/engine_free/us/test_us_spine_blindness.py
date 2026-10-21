@@ -276,6 +276,8 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "l0_refit_export.py",
         "late_producer_dag.py",  # Pure contract/schedule derivation; no treatment.
         "medicaid_take_up.py",
+        # Reviewed held-out Medicare IRMAA diagnostic; no population treatment.
+        "medicare_irmaa_holdout.py",
         "misc_itemized.py",
         "nonzero_shares.py",
         "operator_boundary.py",  # Raw-stage validator; no population treatment.
@@ -326,6 +328,11 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # Measured SPM independence role restored by exact pinned Census identity
         # through spm_role_source; a manifest stage shaped like relationship_inputs.
         "spm_independence_role.py",
+        # Release gate over a final frame: the composition check above, graded
+        # on the units the certified engine measures, with the universe read
+        # through spm_universe_source. Reads no provenance tag itself and
+        # treats no population.
+        "spm_measurement_gate.py",
         "spm_resources.py",
         # Pinned ASEC role reconstruction and exact parent join; no population
         # treatment. Remains subject to the all-runtime source-identity scan.
@@ -333,6 +340,12 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # Source-owned SPM measurement-universe declaration; reads the source
         # record type and no population attribute. Provenance owner above.
         "spm_universe_source.py",
+        # Reviewed held-out SSI/Social Security diagnostic; no population treatment.
+        "ssi_social_security_holdout.py",
+        # Consumer-artifact remedy for two retired stored inputs (microcosm#1263):
+        # renames the WIC draw and drops a dead column. It reads no provenance
+        # column; the release tool passes the people who may lack a decision.
+        "retired_stored_inputs.py",
         "stacked_spine.py",  # Provenance owner (#578 revision); see owners list.
         "support_provenance.py",
         "take_up.py",

@@ -20,6 +20,7 @@ from microcosm.graph.canonical import canonical_json
 _BRANCHES = (
     "spi_support_channel",
     "cgt_support_split",
+    "high_value_support",
     "cgt_incidence_clone",
     "cgt_residential_split",
     "geographic_support",
