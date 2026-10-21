@@ -90,6 +90,11 @@ PENSION_CREDIT_TAKE_UP_STAGE_NAMES = [
 CHILD_BENEFIT_TAKE_UP_STAGE_NAMES = [
     "child_benefit_take_up",
 ]
+# microcosm#1319: the Carer's Allowance draw reads the post-SPI earnings and
+# the anchor the SPI income chain refreshes.
+CARERS_ALLOWANCE_TAKE_UP_STAGE_NAMES = [
+    "carers_allowance_take_up",
+]
 E9_STAGE_NAMES = [
     "uc_deduction_attributes",
 ]
@@ -124,6 +129,7 @@ UK_SOURCE_STAGE_NAMES = [
     *UC_LEGACY_CLOSURE_TAKE_UP_STAGE_NAMES,
     *PENSION_CREDIT_TAKE_UP_STAGE_NAMES,
     *CHILD_BENEFIT_TAKE_UP_STAGE_NAMES,
+    *CARERS_ALLOWANCE_TAKE_UP_STAGE_NAMES,
     *E9_STAGE_NAMES,
     *E8_STAGE_NAMES,
 ]
@@ -196,6 +202,7 @@ class TestUKSourceStagesManifest:
             *UC_LEGACY_CLOSURE_TAKE_UP_STAGE_NAMES,
             *PENSION_CREDIT_TAKE_UP_STAGE_NAMES,
             *CHILD_BENEFIT_TAKE_UP_STAGE_NAMES,
+            *CARERS_ALLOWANCE_TAKE_UP_STAGE_NAMES,
             *E9_STAGE_NAMES,
         ]
 
@@ -275,6 +282,7 @@ class TestUKSourceStagesManifest:
                     "uc_legacy_closure_take_up": _identity,
                     "pension_credit_take_up": _identity,
                     "child_benefit_take_up": _identity,
+                    "carers_allowance_take_up": _identity,
                     "uc_deduction_attributes": _identity,
                     "cgt_support_split": _identity,
                     "cgt_incidence_clone": _identity,

@@ -21,6 +21,7 @@ def test_uk_contract_loads_and_selects_build_year_rates() -> None:
         "pension_credit_guarantee_credit",
         "pension_credit_savings_credit_only",
         "pension_credit_newly_entitled",
+        "carers_allowance_newly_entitled",
         "universal_credit",
         "marriage_allowance",
         "tax_free_childcare",
@@ -39,6 +40,8 @@ def test_uk_contract_loads_and_selects_build_year_rates() -> None:
         0.69,
         0.37,
         0.37,
+        # microcosm#1319: María's ruling of 2026-10-20.
+        0.6,
         0.55,
         0.5,
         # microcosm#1095 U2c: the v4 refit on the policyengine-uk 2.132.6 spine.

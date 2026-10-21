@@ -72,6 +72,9 @@ from microcosm.build.uk_runtime.calibration_run import (
     UK_SPINE_GATE_SCOPE,
     uk_scoped_gate_manifest,
 )
+from microcosm.build.uk_runtime.carers_allowance_take_up import (
+    UKCarersAllowanceTakeUpStageTransform,
+)
 from microcosm.build.uk_runtime.cgt_asset_type import (
     uk_cgt_asset_type_stage_transform,
 )
@@ -1727,6 +1730,14 @@ def prepare_uk_spine_execution(
         implementations["child_benefit_take_up"] = UKChildBenefitTakeUpStageTransform(
             stage=stages_by_name["child_benefit_take_up"],
             engine=engine,
+        )
+    if "carers_allowance_take_up" in stage_names:
+        implementations["carers_allowance_take_up"] = (
+            UKCarersAllowanceTakeUpStageTransform(
+                stage=stages_by_name["carers_allowance_take_up"],
+                engine=engine,
+                contract=stochastic_contract,
+            )
         )
     if "uc_deduction_attributes" in stage_names:
         implementations["uc_deduction_attributes"] = (

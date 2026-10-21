@@ -857,7 +857,10 @@
       "dft.bus_journeys.south_west": "Post-freeze fact family (DfT BUS01a passenger journeys by English region, FY2024-25), no uk-data metric (microcosm#1207).",
       "microcosm.high_value_homes.over_1m_by_region": "Microcosm-derived fact family (owner-occupied homes over £1m by English region and Wales, from Land Registry Price Paid, the UK HPI and the NSPL; uk/high_value_home_stock_facts.json, microcosm#1240), no uk-data metric. Bound on the local line only (calibration_lines), so the national line drops it after the compile (microcosm#1301).",
       "microcosm.high_value_homes.over_1_5m_by_region": "Microcosm-derived fact family (owner-occupied homes over £1.5m by English region and Wales, from Land Registry Price Paid, the UK HPI and the NSPL; uk/high_value_home_stock_facts.json, microcosm#1240), no uk-data metric. Bound on the local line only (calibration_lines), so the national line drops it after the compile (microcosm#1301).",
-      "microcosm.high_value_homes.over_2m_by_region": "Microcosm-derived fact family (owner-occupied homes over £2m by English region and Wales, from Land Registry Price Paid, the UK HPI and the NSPL; uk/high_value_home_stock_facts.json, microcosm#1240), no uk-data metric. Bound on the local line only (calibration_lines), so the national line drops it after the compile (microcosm#1301)."
+      "microcosm.high_value_homes.over_2m_by_region": "Microcosm-derived fact family (owner-occupied homes over £2m by English region and Wales, from Land Registry Price Paid, the UK HPI and the NSPL; uk/high_value_home_stock_facts.json, microcosm#1240), no uk-data metric. Bound on the local line only (calibration_lines), so the national line drops it after the compile (microcosm#1301).",
+      "ons.population.age_0": "microcosm#1278 (the pre-Budget PR's plan, approved by María on 2026-10-20; microcosm#1095): the national 0_4 sex bands bind, but the single years inside them were free to move, so the contract also binds ages 0, 1 and 2 for all persons, on the 15_19 split's precedent. The 0_4 sex bands stay bound beside them: the three rows cover ages 0 to 2 for both sexes together, so neither band is their sum. No incumbent row has this row's definition.",
+      "ons.population.age_1": "microcosm#1278 (the pre-Budget PR's plan, approved by María on 2026-10-20; microcosm#1095): the national 0_4 sex bands bind, but the single years inside them were free to move, so the contract also binds ages 0, 1 and 2 for all persons, on the 15_19 split's precedent. The 0_4 sex bands stay bound beside them: the three rows cover ages 0 to 2 for both sexes together, so neither band is their sum. No incumbent row has this row's definition.",
+      "ons.population.age_2": "microcosm#1278 (the pre-Budget PR's plan, approved by María on 2026-10-20; microcosm#1095): the national 0_4 sex bands bind, but the single years inside them were free to move, so the contract also binds ages 0, 1 and 2 for all persons, on the 15_19 split's precedent. The 0_4 sex bands stay bound beside them: the three rows cover ages 0 to 2 for both sexes together, so neither band is their sum. No incumbent row has this row's definition."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -889,7 +892,8 @@
       "geography_level_order_canonicalization": "The 9 voa.council_tax_stock.* rows use country, region order to match the rest of the contract; consumers use membership only.",
       "ons_terminal_sex_band_split": "María ruling 2026-08-21: split the incumbent terminal sex bands into uniform five-year 85_89 bands plus 90_plus tails. The incumbent six-year 85_90 terminal rows leave ages 91+ unconstrained; Microcosm keeps the uniform five-year bands and constrains the tail. The 85_89-vs-85_90 value gap is the single-age-90 share and is a signed semantic difference.",
       "cgt_band_promotion": "The 18 banded CGT registry names (hmrc/cgt_taxpayers_band_<lower> and hmrc/capital_gains_band_<lower>, nine bands from 12,300) move from excluded to mapped: Chronicle now carries HMRC Table 2.1a for 2024-25 (cgt_size_of_gain_2026), so the incumbent's unpackaged uk-data CSV is superseded by published individual rows bound at identity; the 3,000 and 6,000 bands the incumbent never carried are authored under the same naming form and the 0-2,999 band below the 2024 AEA is signed out (microcosm#467, #725). Chronicle's Table 2.1a package emits taxpayers and gains only, although the published sheet carries an amounts-of-tax column, so no liability-by-band target exists yet; it becomes possible once Chronicle emits that column.",
-      "ons_15_19_sex_band_split": "María's ruling of 2026-10-13 (microcosm#1095, uk-data#563): the two national 15_19 sex bands are split into ages 15, 16-17 and 18-19. uk-data#563 found weights that fit the five-year band while holding too many 16-year-olds and too few 18- and 19-year-olds, and nothing in this contract bound the mix inside the band either. The six rows partition the two bands and read the same ONS mid-year estimate by single year of age, so each sex's three rows sum to the band they replace. The incumbent ons/female_15_19 and ons/male_15_19 rows move from mapped to excluded: no single contract row has their definition."
+      "ons_15_19_sex_band_split": "María's ruling of 2026-10-13 (microcosm#1095, uk-data#563): the two national 15_19 sex bands are split into ages 15, 16-17 and 18-19. uk-data#563 found weights that fit the five-year band while holding too many 16-year-olds and too few 18- and 19-year-olds, and nothing in this contract bound the mix inside the band either. The six rows partition the two bands and read the same ONS mid-year estimate by single year of age, so each sex's three rows sum to the band they replace. The incumbent ons/female_15_19 and ons/male_15_19 rows move from mapped to excluded: no single contract row has their definition.",
+      "ons_single_year_ages_0_2": "microcosm#1278 (the pre-Budget PR's plan, approved by María on 2026-10-20; microcosm#1095): three all-persons rows bind ages 0, 1 and 2, read from the same ONS mid-year estimate by single year of age as the 0_4 sex bands. Unlike the 15_19 split, whose pieces replaced the bands, the 0_4 sex bands keep their incumbent mapping and stay bound: the three rows cover ages 0 to 2 for both sexes together, so neither band is their sum. The three are contract-only declarations; no incumbent row moves."
     },
     "scope_target_ids": [
       "obr.income_tax",
@@ -983,6 +987,9 @@
       "ons.population.age_60_69_by_region",
       "ons.population.age_70_79_by_region",
       "ons.population.age_80_89_by_region",
+      "ons.population.age_0",
+      "ons.population.age_1",
+      "ons.population.age_2",
       "ons.population.female_0_4",
       "ons.population.female_10_14",
       "ons.population.female_15",
@@ -7994,6 +8001,189 @@
       },
       "category_id": "ons.population",
       "label": "Age 80 89 by region",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
+    },
+    {
+      "target_id": "ons.population.age_0",
+      "family": "ons_population",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 0
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<",
+            "value": 1
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "ons/age_0",
+          "filters": [
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 0
+            },
+            {
+              "variable": "age",
+              "operator": "<",
+              "value": 1
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household"
+        },
+        "axiom": {
+          "metric_name": "ons/age_0",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "age": [
+            0
+          ]
+        }
+      },
+      "category_id": "ons.population",
+      "label": "Age 0",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
+    },
+    {
+      "target_id": "ons.population.age_1",
+      "family": "ons_population",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 1
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<",
+            "value": 2
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "ons/age_1",
+          "filters": [
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 1
+            },
+            {
+              "variable": "age",
+              "operator": "<",
+              "value": 2
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household"
+        },
+        "axiom": {
+          "metric_name": "ons/age_1",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "age": [
+            1
+          ]
+        }
+      },
+      "category_id": "ons.population",
+      "label": "Age 1",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
+    },
+    {
+      "target_id": "ons.population.age_2",
+      "family": "ons_population",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 2
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<",
+            "value": 3
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "ons/age_2",
+          "filters": [
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 2
+            },
+            {
+              "variable": "age",
+              "operator": "<",
+              "value": 3
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household"
+        },
+        "axiom": {
+          "metric_name": "ons/age_2",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "age": [
+            2
+          ]
+        }
+      },
+      "category_id": "ons.population",
+      "label": "Age 2",
       "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
@@ -15398,6 +15588,7 @@
         "policyengine": {
           "metric_name": "dft/bus_net_support/england",
           "value_variable": "bus_subsidy_spending",
+          "measurement_period": 2024,
           "filters": [
             {
               "variable": "country",
@@ -15477,6 +15668,7 @@
         "policyengine": {
           "metric_name": "dft/bus_net_support/london",
           "value_variable": "bus_subsidy_spending",
+          "measurement_period": 2024,
           "filters": [
             {
               "variable": "region",
@@ -16143,6 +16335,7 @@
         "policyengine": {
           "metric_name": "orr/rail_government_support",
           "value_variable": "rail_subsidy_spending",
+          "measurement_period": 2024,
           "filters": [
             {
               "variable": "region",
@@ -16295,7 +16488,9 @@
         "policyengine": {
           "metric_name": "ons/household_road_fuel_expenditure",
           "value_expression": "petrol_spending + diesel_spending",
-          "notes": "ONS Consumer Trends COICOP 07.2.2 fuels and lubricants for personal transport equipment, current prices, calendar year, bound on the frame's petrol plus diesel spend (microcosm#1113). The publisher class also carries other motor fuels and lubricants, about 0.46 percent of it on the LCFS 2024-25 diary (c72213), which the measure does not. The lcfs_consumption stage levels petrol plus diesel to the calendar-2024 row less that share, so this row reads about 0.5 percent low from scope alone: a known offset, left in place and not scaled into the target (María's ruling of 2026-10-10). ONS publishes the class on the domestic concept (spending on UK territory; PolicyEngine/chronicle#322): it includes non-residents' fuel bought in the UK, which the residents-only frame does not hold, and leaves out residents' fuel bought abroad. Consumer Trends publishes those two flows for total spending only (for 2024, GBP 64.7bn by non-residents in the UK, 3.8 percent of the domestic total, and GBP 78.9bn by residents abroad) and splits them by no class, so no national bridge is applied and their size for road fuel is not known. Beyond the scope offset, the design-weight gap to this calendar-2025 row is the engine's 2024-to-2025 uprating of the two columns against ONS's own move (37.025bn to 35.099bn, -5.2 percent). policyengine-uk 2.122.2 carries both columns -2.7 percent, so on that version the row reads about +2.3 percent at design weights, scope offset included, and the calibration closes that by moving weight away from fuel buyers. That is a desk figure from the engine's indices; the national remeasure records the measured one. Household-scope road fuel replaces the OBR cars receipts as the bound fuel row: those are a fiscal-year duty total that includes business use of cars, which the frame reaches only through the engine's conversion of spend to litres, so they stay measured as a diagnostic (calibration_measure_exclusions.json)."
+          "notes": "ONS Consumer Trends COICOP 07.2.2 fuels and lubricants for personal transport equipment, current prices, calendar year, bound on the frame's petrol plus diesel spend (microcosm#1113). The publisher class also carries other motor fuels and lubricants, about 0.46 percent of it on the LCFS 2024-25 diary (c72213), which the measure does not. The lcfs_consumption stage levels petrol plus diesel to the calendar-2024 row less that share, so this row reads about 0.5 percent low from scope alone: a known offset, left in place and not scaled into the target (María's ruling of 2026-10-10). ONS publishes the class on the domestic concept (spending on UK territory; PolicyEngine/chronicle#322): it includes non-residents' fuel bought in the UK, which the residents-only frame does not hold, and leaves out residents' fuel bought abroad. Consumer Trends publishes those two flows for total spending only (for 2024, GBP 64.7bn by non-residents in the UK, 3.8 percent of the domestic total, and GBP 78.9bn by residents abroad) and splits them by no class, so no national bridge is applied and their size for road fuel is not known. The row binds ONS's calendar-2024 figure (GBP 37.025bn) on the frame's own 2024 petrol and diesel columns, declared as the frame's period (measurement_period 2024, require_matching_fact_period; microcosm#1324). The fact and the stored columns are then the same year, so the binding does not depend on the engine's 2024-to-2025 fuel projection. Before #1324 the row was compared, as a stored read at 2024, with the calendar-2025 figure (GBP 35.099bn), so its reported fit measured neither year; measuring the 2025 figure through the engine instead would put the engine's fuel projection, which falls faster than ONS's own move, into the weights. Household-scope road fuel replaces the OBR cars receipts as the bound fuel row: those are a fiscal-year duty total that includes business use of cars, which the frame reaches only through the engine's conversion of spend to litres, so they stay measured as a diagnostic (calibration_measure_exclusions.json).",
+          "measurement_period": 2024,
+          "require_matching_fact_period": true
         },
         "axiom": {
           "metric_name": "ons/household_road_fuel_expenditure",
@@ -16308,6 +16503,7 @@
         "source_concept": "ons.household_expenditure.personal_transport_fuels_lubricants",
         "entity_name": "household",
         "period_type": "calendar_year",
+        "period_value": 2024,
         "dimension_values": {
           "coicop": "07.2.2",
           "frequency": "annual",
@@ -16340,6 +16536,7 @@
         "policyengine": {
           "metric_name": "scotgov/bus_passenger_revenue",
           "value_variable": "bus_fare_spending",
+          "measurement_period": 2024,
           "filters": [
             {
               "variable": "region",
@@ -16386,6 +16583,7 @@
         "policyengine": {
           "metric_name": "scotgov/bus_government_support",
           "value_variable": "bus_subsidy_spending",
+          "measurement_period": 2024,
           "filters": [
             {
               "variable": "region",
@@ -16434,6 +16632,7 @@
         "policyengine": {
           "metric_name": "welshgov/bus_public_support",
           "value_variable": "bus_subsidy_spending",
+          "measurement_period": 2024,
           "filters": [
             {
               "variable": "region",
@@ -16537,6 +16736,7 @@
         "policyengine": {
           "metric_name": "nithc/public_transport_support",
           "value_expression": "bus_subsidy_spending + rail_subsidy_spending",
+          "measurement_period": 2024,
           "filters": [
             {
               "variable": "region",

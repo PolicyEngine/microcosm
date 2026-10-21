@@ -65,21 +65,32 @@ def test_the_hmrc_measures_read_the_profit_after_loss_relief(tmp_path) -> None:
         assert not resolver.knows("household", name)
         assert resolver.entity_for(name) == "person"
 
-    after, _ = resolver.compute("person", UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF)
+    after, route = resolver.compute(
+        "person", UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF
+    )
     banded, _ = resolver.compute("person", UK_TOTAL_INCOME_AFTER_LOSS_RELIEF)
     profit, _ = resolver.compute("person", "self_employment_income")
     total, _ = resolver.compute("person", "total_income")
 
+    # At the frame's own period the profit after the relief is read from the
+    # stored columns (microcosm#1095).
     np.testing.assert_allclose(after, [7_000.0, 0.0, 5_000.0])
-    # The rows read self_employment_income from the frame's stored column, so
-    # the profit after the relief is read from the stored columns too, at any
-    # measurement year (microcosm#1095).
+    assert route.startswith("frame_columns:")
+    # At any other period the engine computes both components there, as it
+    # does every stored value (microcosm#1324).
     later = UKMeasureResolver(
         simulation_source=None, frame=_frame(), scratch_dir=tmp_path, year=2026
     )
-    stored, route = later.compute("person", UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF)
-    np.testing.assert_allclose(stored, [7_000.0, 0.0, 5_000.0])
-    assert route.startswith("frame_columns:")
+    projected, route = later.compute(
+        "person", UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF
+    )
+    assert route.startswith("engine_components:")
+    later_profit, _ = later.compute("person", "self_employment_income")
+    later_relief, _ = later.compute("person", "loss_relief")
+    np.testing.assert_allclose(
+        projected,
+        np.maximum(np.asarray(later_profit) - np.asarray(later_relief), 0.0),
+    )
     # The band reads total income with the profit after the relief in place of
     # the profit before it.
     np.testing.assert_allclose(banded, np.asarray(total) - np.asarray(profit) + after)
