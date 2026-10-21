@@ -125,6 +125,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "fit_weighted_qrf_chain",
         "fit_weighted_qrf_stage1",
         "fit_weighted_qrf_stage2",
+        "floor_spi_employment_pay_at_minimum_wage",
         "fold_into",
         "gate_distributional_effective_mass",
         "gate_zero_weight_strata",

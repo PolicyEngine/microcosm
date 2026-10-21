@@ -1859,6 +1859,19 @@ stages:
     salt: spi_income_band_donor_leaf_draw
     outputs: stage-1 outputs, uprated as the stage-1 draws
     seed: 44
+  - kind: floor_spi_employment_pay_at_minimum_wage
+    column: hmrc_spi_pay
+    hours_column: hours_worked
+    hours_basis: "annual usual hours: the FRS adult's usual weekly hours in all jobs (TOTHOURS) times 365.25/7, read back to weekly hours"
+    weeks_in_year: 52
+    hourly_rate: "policyengine-uk gov.hmrc.minimum_wage.non_apprentice by the twin's age, read as the engine reads the build year (30 April)"
+    employee_statuses:
+    - FT_EMPLOYED
+    - PT_EMPLOYED
+    rows: "drawn recipients other than reserved band carriers, whose twin has no trade (has_trade 0), an employee main job and usual hours above zero, and whose drawn PAY is positive; FRS rows, undrawn copies and every other leaf keep their values"
+    pay_basis: "tape PAY is taxable pay, net of net-pay pension contributions and salary sacrifice; the minimum wage binds gross pay, and the engine reads employment_income (PAY + EPB + TAXTERM) as gross pay, so PAY alone is compared with the gross minimum and a twin at the minimum wage who pays net-pay contributions can be lifted by up to them"
+    reason: "stage 1 draws annual tape pay without hours and the tape holds part-year workers, so a twin reporting usual employee hours could draw a year's pay below what those hours earn at the minimum wage"
+    receipt: "eligible and floored source households (rounded), weighted people, the weighted share floored and the weighted mean uplift; figures on one to nine source households are <10"
   - kind: fit_weighted_qrf_stage2
     training_population: uk_frs_raw_spine_base_support_channel
     target_population: spi_synthetic_support_channel claimants and partners (is_uc_claimant) aged 16 and over
