@@ -146,6 +146,93 @@ def test_acs_loader_preserves_hours_and_allocation_without_filling_blanks(tmp_pa
     assert "weekly_hours_worked_before_lsr" not in tables["person"]
 
 
+_IMMIGRATION_SOURCES = {
+    "CIT": 5,
+    "YOEP": 2015,
+    "POBP": 303,
+    "HINS3": 2,
+    "HINS4": 1,
+    "HINS5": 2,
+    "HINS6": 2,
+    "HINS7": 2,
+    "COW": 5,
+    "SCHG": 15,
+    "ESR": 4,
+    "MIL": 2,
+}
+
+
+def _immigration_source(tmp_path: Path) -> AcsPumsSource:
+    household_zip = tmp_path / "immigration-hh.zip"
+    person_zip = tmp_path / "immigration-person.zip"
+    _write_csv_zip(household_zip, {"psam_husa.csv": [_household("imm", NP=2)]})
+    _write_csv_zip(
+        person_zip,
+        {
+            "psam_pusa.csv": [
+                _person("imm", 1, 20, **_IMMIGRATION_SOURCES),
+                # A US-born child: Census blanks for entry year, class of
+                # worker, school, employment and military service.
+                _person(
+                    "imm",
+                    2,
+                    25,
+                    AGEP=10,
+                    MAR=5,
+                    WAGP=None,
+                    **{
+                        **_IMMIGRATION_SOURCES,
+                        "CIT": 1,
+                        "YOEP": None,
+                        "POBP": 6,
+                        "HINS4": 2,
+                        "COW": None,
+                        "SCHG": None,
+                        "ESR": None,
+                        "MIL": None,
+                    },
+                ),
+            ]
+        },
+    )
+    return AcsPumsSource(household_zip, person_zip)
+
+
+def test_acs_loader_keeps_immigration_sources_and_renames_military_service(
+    tmp_path: Path,
+) -> None:
+    """microcosm#1020: ACS MIL (military service) must not land in the CPS
+    ``MIL`` (military health coverage) column the ASEC stage reads."""
+
+    tables, _ = load_acs_pums_tables(_immigration_source(tmp_path))
+    person = tables["person"]
+    assert "MIL" not in person
+    assert person["ACS_MIL"].iloc[0] == 2
+    for column, value in _IMMIGRATION_SOURCES.items():
+        assert person["ACS_MIL" if column == "MIL" else column].iloc[0] == value
+    # Census blanks stay missing; they are never read as a code or a zero.
+    for column in ("YOEP", "COW", "SCHG", "ESR", "ACS_MIL"):
+        assert pd.isna(person[column].iloc[1])
+    assert person["CIT"].tolist() == [5, 1]
+
+
+def test_acs_loader_leaves_absent_immigration_sources_absent(tmp_path: Path) -> None:
+    tables, _ = load_acs_pums_tables(_source(tmp_path))
+    for column in (*_IMMIGRATION_SOURCES, "ACS_MIL"):
+        assert column not in tables["person"]
+
+
+def test_built_acs_frame_carries_the_immigration_sources(tmp_path: Path) -> None:
+    pytest.importorskip("microunit")  # sanctioned tax-unit constructor (us extra)
+    frame, _metadata = build_acs_pums_unit_frame(_immigration_source(tmp_path))
+    person = frame.table("person").sort_values("source_row_id")
+    assert "MIL" not in person
+    assert person["ACS_MIL"].iloc[0] == 2
+    assert person["CIT"].tolist() == [5, 1]
+    assert person["SPORDER"].tolist() == [1, 2]
+    assert frame.table("household")["SERIALNO"].tolist() == ["imm"]
+
+
 def _asec_shaped_frame() -> Frame:
     """Return one ASEC-like row sharing only structural and lineage fields."""
 

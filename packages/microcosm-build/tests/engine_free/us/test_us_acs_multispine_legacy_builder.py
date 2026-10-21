@@ -180,6 +180,15 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     combined.table("household")["congressional_district_geoid"] = [101, 200]
     combined.table("household")["county_fips"] = ["01001", "02020"]
     combined.table("household")["TYPEHUGQ"] = [1.0, 3.0]
+    # What the ACS local immigration stage returns (microcosm#1020): the
+    # null audit, hours gate and export must all see this frame, not the
+    # unlabelled pool.
+    labelled = Frame(
+        {entity: combined.table(entity) for entity in combined.entities},
+        combined.schema,
+        {"household": combined.weights_for("household")},
+    )
+    immigration_receipt = {"issue": "microcosm#1020", "assigned_sha256": "b" * 64}
     base_h5 = tmp_path / "dense.h5"
     base_h5.write_bytes(b"dense-base")
     manifest_path = tmp_path / "acs_sources.json"
@@ -273,8 +282,27 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         captured["puma_ladder_path"] = path
         return puma_ladder
 
-    def staging_hours_gate(frame, *, source_null_audit):
+    def fake_immigration(frame, *, seed, time_period):
         assert frame is combined
+        captured["immigration"] = (seed, time_period)
+        return labelled, immigration_receipt
+
+    def fake_immigration_gate(frame):
+        assert frame is labelled
+        return GateResult(
+            name="acs_local_immigration_signal",
+            passed=True,
+            failures=(),
+            details={"per_spine": {}},
+        )
+
+    def fake_null_audit(frame):
+        assert frame is labelled
+        captured["audited"] = True
+        return [reviewed_null]
+
+    def staging_hours_gate(frame, *, source_null_audit):
+        assert frame is labelled
         assert source_null_audit == [reviewed_null]
         captured["staging_hours_gate"] = True
         return GateResult(
@@ -327,11 +355,7 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         "load_us_puma_ladder",
         fake_load_puma_ladder,
     )
-    monkeypatch.setattr(
-        builder,
-        "_engine_input_null_audit",
-        lambda frame: [reviewed_null],
-    )
+    monkeypatch.setattr(builder, "_engine_input_null_audit", fake_null_audit)
     monkeypatch.setattr(
         builder,
         "_preflight_staging_export",
@@ -339,6 +363,17 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     )
     monkeypatch.setattr(builder, "_write_dataset", fake_write)
     monkeypatch.setattr(builder, "acs_local_hours_signal_gate", staging_hours_gate)
+    monkeypatch.setattr(
+        builder,
+        "require_acs_local_immigration_donor",
+        lambda frame, *, time_period: captured.setdefault(
+            "immigration_donor", (frame, time_period)
+        ),
+    )
+    monkeypatch.setattr(builder, "with_acs_local_immigration_inputs", fake_immigration)
+    monkeypatch.setattr(
+        builder, "acs_local_immigration_signal_gate", fake_immigration_gate
+    )
 
     arguments = [
         "--base-h5",
@@ -396,7 +431,10 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         "max_targets_per_fit": 8,
         "geography_seed": 19,
     }
-    assert captured["write"] == (combined, output_h5, 2024)
+    assert captured["write"] == (labelled, output_h5, 2024)
+    assert captured["immigration_donor"] == (base, 2024)
+    assert captured["immigration"] == (11, 2024)
+    assert captured["audited"] is True
 
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     assert summary["artifact_kind"] == "nullable_precalibration_staging_h5"
@@ -415,6 +453,13 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     ]
     assert summary["reviewed_engine_input_nulls"] == [reviewed_null]
     assert summary["local_hours_gate"]["passed"] is True
+    assert summary["acs_local_immigration"] == immigration_receipt
+    assert summary["acs_local_immigration_gate"] == {
+        "name": "acs_local_immigration_signal",
+        "passed": True,
+        "failures": [],
+        "details": {"per_spine": {}},
+    }
     assert "pending_engine_input_nulls" not in summary
     assert summary["staging_export_peak_estimate_bytes"] == 123_456
     assert summary["geography_ladder"] == {
@@ -471,6 +516,63 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         },
     }
     assert summary["output"]["sha256"] == hashlib.sha256(b"combined-output").hexdigest()
+
+
+def test_immigration_stage_failures_abort_staging(monkeypatch) -> None:
+    """microcosm#1020: a failed stage or gate never reaches the null audit."""
+
+    builder = _load_builder_module()
+    result = builder.AcsMultispineResult(frame=_frame())
+
+    def refusing_stage(frame, *, seed, time_period):
+        raise ValueError("3 foreign-born ACS person(s) have a blank YOEP")
+
+    monkeypatch.setattr(builder, "with_acs_local_immigration_inputs", refusing_stage)
+    with pytest.raises(SystemExit, match=r"microcosm#1020\): 3 foreign-born"):
+        builder._with_local_immigration(result, seed=0, period=2024)
+
+    labelled = _frame()
+    monkeypatch.setattr(
+        builder,
+        "with_acs_local_immigration_inputs",
+        lambda frame, *, seed, time_period: (labelled, {"issue": "microcosm#1020"}),
+    )
+    monkeypatch.setattr(
+        builder,
+        "acs_local_immigration_signal_gate",
+        lambda frame: GateResult(
+            name="acs_local_immigration_signal",
+            passed=False,
+            failures=("acs_2024_1yr: ssn_card_type is constant 'CITIZEN'",),
+        ),
+    )
+    with pytest.raises(
+        SystemExit, match="Local staging immigration gate failed: acs_2024_1yr"
+    ):
+        builder._with_local_immigration(result, seed=0, period=2024)
+
+    monkeypatch.setattr(
+        builder,
+        "acs_local_immigration_signal_gate",
+        lambda frame: GateResult(
+            name="acs_local_immigration_signal", passed=True, failures=()
+        ),
+    )
+    updated, entries = builder._with_local_immigration(result, seed=0, period=2024)
+    assert updated.frame is labelled
+    assert entries["acs_local_immigration"] == {"issue": "microcosm#1020"}
+    assert entries["acs_local_immigration_gate"]["passed"] is True
+
+
+def test_immigration_donor_preflight_refuses_before_transfer(monkeypatch) -> None:
+    builder = _load_builder_module()
+
+    def refusing_donor(frame, *, time_period):
+        raise ValueError("The donor lacks person column(s) ['PRCITSHP']")
+
+    monkeypatch.setattr(builder, "require_acs_local_immigration_donor", refusing_donor)
+    with pytest.raises(SystemExit, match=r"cannot seed .* \['PRCITSHP'\]"):
+        builder._require_immigration_donor(_frame(), period=2024)
 
 
 def test_weights_audit_failure_aborts_before_export() -> None:

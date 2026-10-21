@@ -1211,6 +1211,7 @@ def test_resume_refuses_weights_without_the_run_identity_stamp(
     monkeypatch.setattr(module.cd_surface, "calibration_target_set", lambda *a, **k: [])
     args = SimpleNamespace(
         checkpoint_dir=checkpoint,
+        staging_summary=tmp_path / "staging.summary.json",
         resume=True,
         epochs=10,
         epoch_batch=5,
