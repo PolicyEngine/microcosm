@@ -44,11 +44,11 @@ def test_uk_contract_loads_and_selects_build_year_rates() -> None:
         0.6,
         0.55,
         0.5,
-        # microcosm#1095 U2c: the v4 refit on the policyengine-uk 2.132.6 spine.
-        0.9797,
-        0.6579,
-        0.4353,
-        0.7769,
+        # The v5 refit (nested universal, reception out) on the childcare-fix spine.
+        0.9912,
+        0.7594,
+        0.0,
+        0.8478,
         0.441,
         0.2682,
         0.97,
@@ -90,7 +90,7 @@ def test_year_selection_uses_latest_value_at_or_before_build_year() -> None:
 
     assert contract.rate("child_benefit", 2021) == 0.97
     assert contract.rate("child_benefit", 2023) == 0.89
-    assert contract.rate("tax_free_childcare", 2024) == 0.9797
+    assert contract.rate("tax_free_childcare", 2024) == 0.9912
     assert contract.rate("tax_free_childcare", 2023) == 0.586
     assert contract.rate("tv_licence_evasion_rate", 2024) == 0.1252
     assert contract.rate("tax_free_childcare_spend_routed_share", 2017) == 0.359

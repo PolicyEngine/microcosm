@@ -165,7 +165,7 @@
       "entity": "benunit",
       "values": {
         "2015-01-01": 0.586,
-        "2024-04-06": 0.9797
+        "2024-04-06": 0.9912
       },
       "source": {
         "source": "FRS empirical fit and HMRC Tax-Free Childcare statistics, June 2025 release",
@@ -175,22 +175,22 @@
         "status": "fitted_offline"
       },
       "fitting_receipt": {
-        "source": "tools/fit_uk_childcare_takeup.py (microcosm#1095 U2c, licensed lane)",
-        "tool_version": 4,
-        "receipt_sha256": "32b06ee06f235089847b5c469e7c49ad9ee39c51e46aa5908522fec61c130d96",
+        "source": "tools/fit_uk_childcare_takeup.py (childcare £100k-limit fixes, licensed lane)",
+        "tool_version": 5,
+        "receipt_sha256": "4c9a7b3b4e057e486a3bc8baa52e52b6c917979908026011f812039e55b25a4a",
         "seed": 0,
-        "engine_version": "2.132.6",
+        "engine_version": "2.134.4",
         "model_period": 2024,
         "vintage_overrides": {
           "dfe.funded_childcare.working_parent_children_2_to_4": 2025
         },
-        "input_h5_sha256": "c883a0506a7e626804e33a43e3e7b4dbf7ea7e55a67e5624edbc445187a7ab07",
-        "input_spine": "the bump arm of the fifth #1095 ports PR (policyengine-uk 2.132.6, spine before the extended-hours anchor moved)",
-        "ledger_facts_sha256": "3033e437ed61d7d5e970f4fef34a2a5523fe068770a7798e5768af656f2a48a4",
-        "stochastic_contract_sha256_at_fit": "3d9fd8cd58de359ecb07b9af478f4bf8b30045dc1ad108d1952f8f9bedb44d96",
+        "input_h5_sha256": "83c83f044606e915b1d8a85cbbdd16f689b88a82ec690e74dc08848e0759fb58",
+        "input_spine": "local unsigned spine built at 13307a64e (uk-childcare-100k-fixes on #1329, items 3 and 4 reverted; policyengine-uk 2.134.4, feed abf0921), sha256 83c83f044606e915b1d8a85cbbdd16f689b88a82ec690e74dc08848e0759fb58",
+        "ledger_facts_sha256": "2b64fecfe746164203dac1726aae6ffdb3e5d8e478bd3d64d118ac76cb00780b",
+        "stochastic_contract_sha256_at_fit": "54c65e6bbc2bd5612b8d4ec3254af78d1ca0d2c9bd5fcaaf05bbf69b75e2bea2",
         "optimizer": {
           "eps": 1e-06,
-          "loss": 0.030876275034388008,
+          "loss": 0.03520654649905628,
           "maxiter": 50,
           "method": "L-BFGS-B",
           "success": true
@@ -198,31 +198,31 @@
         "achieved": {
           "dfe.funded_childcare.early_learning_2_year_olds": {
             "target": 115852.0,
-            "value": 115851.869,
+            "value": 115852.118,
             "ratio": 1.0
           },
           "dfe.funded_childcare.universal_only_children": {
             "target": 416537.0,
-            "value": 416536.609,
-            "ratio": 1.0
+            "value": 431558.609,
+            "ratio": 1.0361
           },
           "dfe.funded_childcare.working_parent_children_2_to_4": {
             "target": 621482.0,
-            "value": 621481.151,
-            "ratio": 1.0
+            "value": 597323.794,
+            "ratio": 0.9611
           },
           "hmrc.tfc.children_with_used_accounts": {
             "target": 1085020.0,
-            "value": 1202038.13,
-            "ratio": 1.1078
+            "value": 1204412.311,
+            "ratio": 1.11
           },
           "hmrc.tfc.government_top_up": {
             "target": 632200000.0,
-            "value": 544497415.126,
-            "ratio": 0.8613
+            "value": 542154568.577,
+            "ratio": 0.8576
           }
         },
-        "status": "fitted at the 2024 base year with the expectation basis of tool version 4: targeted and universal hours allocated from working-parent hours (pe-uk#2177) and the DfE extended-hours anchor (#1126) in the simulation. No rate reached its bound. The two HMRC Tax-Free Childcare rows cannot both be met (spend below, children above): a residual of the frame's spend per child with a used account, not of the rate."
+        "status": "fitted at the 2024 base year with the expectation basis of tool version 5: universal take-up nested under working-parent take-up (its rate is conditional on not claiming extended hours), targeted hours allocated from working-parent hours (pe-uk#2177), reception-age children (current_education PRIMARY) left out of the DfE working-parent and universal-only rows, and the DfE extended-hours anchor (#1126) in the simulation. At a bound: universal_childcare. The conditional universal rate stops at its lower bound of 0 (universal take-up fully nested under working-parent take-up): with reception children out, the nested floor already gives more universal-only children than DfE's January count, because the model's interview-date ages hold more 4-year-olds outside reception than DfE's 31 December ages; per María's U2c ruling the rate keeps its bound and the receipt records the residual, and the national calibration binds the DfE rows."
       }
     },
     {
@@ -231,7 +231,7 @@
       "entity": "benunit",
       "values": {
         "2015-01-01": 0.812,
-        "2024-04-06": 0.6579
+        "2024-04-06": 0.7594
       },
       "source": {
         "source": "FRS empirical fit",
@@ -240,22 +240,22 @@
         "status": "fitted_offline"
       },
       "fitting_receipt": {
-        "source": "tools/fit_uk_childcare_takeup.py (microcosm#1095 U2c, licensed lane)",
-        "tool_version": 4,
-        "receipt_sha256": "32b06ee06f235089847b5c469e7c49ad9ee39c51e46aa5908522fec61c130d96",
+        "source": "tools/fit_uk_childcare_takeup.py (childcare £100k-limit fixes, licensed lane)",
+        "tool_version": 5,
+        "receipt_sha256": "4c9a7b3b4e057e486a3bc8baa52e52b6c917979908026011f812039e55b25a4a",
         "seed": 0,
-        "engine_version": "2.132.6",
+        "engine_version": "2.134.4",
         "model_period": 2024,
         "vintage_overrides": {
           "dfe.funded_childcare.working_parent_children_2_to_4": 2025
         },
-        "input_h5_sha256": "c883a0506a7e626804e33a43e3e7b4dbf7ea7e55a67e5624edbc445187a7ab07",
-        "input_spine": "the bump arm of the fifth #1095 ports PR (policyengine-uk 2.132.6, spine before the extended-hours anchor moved)",
-        "ledger_facts_sha256": "3033e437ed61d7d5e970f4fef34a2a5523fe068770a7798e5768af656f2a48a4",
-        "stochastic_contract_sha256_at_fit": "3d9fd8cd58de359ecb07b9af478f4bf8b30045dc1ad108d1952f8f9bedb44d96",
+        "input_h5_sha256": "83c83f044606e915b1d8a85cbbdd16f689b88a82ec690e74dc08848e0759fb58",
+        "input_spine": "local unsigned spine built at 13307a64e (uk-childcare-100k-fixes on #1329, items 3 and 4 reverted; policyengine-uk 2.134.4, feed abf0921), sha256 83c83f044606e915b1d8a85cbbdd16f689b88a82ec690e74dc08848e0759fb58",
+        "ledger_facts_sha256": "2b64fecfe746164203dac1726aae6ffdb3e5d8e478bd3d64d118ac76cb00780b",
+        "stochastic_contract_sha256_at_fit": "54c65e6bbc2bd5612b8d4ec3254af78d1ca0d2c9bd5fcaaf05bbf69b75e2bea2",
         "optimizer": {
           "eps": 1e-06,
-          "loss": 0.030876275034388008,
+          "loss": 0.03520654649905628,
           "maxiter": 50,
           "method": "L-BFGS-B",
           "success": true
@@ -263,31 +263,31 @@
         "achieved": {
           "dfe.funded_childcare.early_learning_2_year_olds": {
             "target": 115852.0,
-            "value": 115851.869,
+            "value": 115852.118,
             "ratio": 1.0
           },
           "dfe.funded_childcare.universal_only_children": {
             "target": 416537.0,
-            "value": 416536.609,
-            "ratio": 1.0
+            "value": 431558.609,
+            "ratio": 1.0361
           },
           "dfe.funded_childcare.working_parent_children_2_to_4": {
             "target": 621482.0,
-            "value": 621481.151,
-            "ratio": 1.0
+            "value": 597323.794,
+            "ratio": 0.9611
           },
           "hmrc.tfc.children_with_used_accounts": {
             "target": 1085020.0,
-            "value": 1202038.13,
-            "ratio": 1.1078
+            "value": 1204412.311,
+            "ratio": 1.11
           },
           "hmrc.tfc.government_top_up": {
             "target": 632200000.0,
-            "value": 544497415.126,
-            "ratio": 0.8613
+            "value": 542154568.577,
+            "ratio": 0.8576
           }
         },
-        "status": "fitted at the 2024 base year with the expectation basis of tool version 4: targeted and universal hours allocated from working-parent hours (pe-uk#2177) and the DfE extended-hours anchor (#1126) in the simulation. No rate reached its bound. The two HMRC Tax-Free Childcare rows cannot both be met (spend below, children above): a residual of the frame's spend per child with a used account, not of the rate."
+        "status": "fitted at the 2024 base year with the expectation basis of tool version 5: universal take-up nested under working-parent take-up (its rate is conditional on not claiming extended hours), targeted hours allocated from working-parent hours (pe-uk#2177), reception-age children (current_education PRIMARY) left out of the DfE working-parent and universal-only rows, and the DfE extended-hours anchor (#1126) in the simulation. At a bound: universal_childcare. The conditional universal rate stops at its lower bound of 0 (universal take-up fully nested under working-parent take-up): with reception children out, the nested floor already gives more universal-only children than DfE's January count, because the model's interview-date ages hold more 4-year-olds outside reception than DfE's 31 December ages; per María's U2c ruling the rate keeps its bound and the receipt records the residual, and the national calibration binds the DfE rows."
       }
     },
     {
@@ -297,7 +297,7 @@
       "nested_under": "would_claim_extended_childcare",
       "values": {
         "2015-01-01": 0.563,
-        "2024-04-06": 0.4353
+        "2024-04-06": 0.0
       },
       "source": {
         "source": "FRS empirical fit",
@@ -306,22 +306,22 @@
         "status": "fitted_offline"
       },
       "fitting_receipt": {
-        "source": "tools/fit_uk_childcare_takeup.py (microcosm#1095 U2c, licensed lane)",
-        "tool_version": 4,
-        "receipt_sha256": "32b06ee06f235089847b5c469e7c49ad9ee39c51e46aa5908522fec61c130d96",
+        "source": "tools/fit_uk_childcare_takeup.py (childcare £100k-limit fixes, licensed lane)",
+        "tool_version": 5,
+        "receipt_sha256": "4c9a7b3b4e057e486a3bc8baa52e52b6c917979908026011f812039e55b25a4a",
         "seed": 0,
-        "engine_version": "2.132.6",
+        "engine_version": "2.134.4",
         "model_period": 2024,
         "vintage_overrides": {
           "dfe.funded_childcare.working_parent_children_2_to_4": 2025
         },
-        "input_h5_sha256": "c883a0506a7e626804e33a43e3e7b4dbf7ea7e55a67e5624edbc445187a7ab07",
-        "input_spine": "the bump arm of the fifth #1095 ports PR (policyengine-uk 2.132.6, spine before the extended-hours anchor moved)",
-        "ledger_facts_sha256": "3033e437ed61d7d5e970f4fef34a2a5523fe068770a7798e5768af656f2a48a4",
-        "stochastic_contract_sha256_at_fit": "3d9fd8cd58de359ecb07b9af478f4bf8b30045dc1ad108d1952f8f9bedb44d96",
+        "input_h5_sha256": "83c83f044606e915b1d8a85cbbdd16f689b88a82ec690e74dc08848e0759fb58",
+        "input_spine": "local unsigned spine built at 13307a64e (uk-childcare-100k-fixes on #1329, items 3 and 4 reverted; policyengine-uk 2.134.4, feed abf0921), sha256 83c83f044606e915b1d8a85cbbdd16f689b88a82ec690e74dc08848e0759fb58",
+        "ledger_facts_sha256": "2b64fecfe746164203dac1726aae6ffdb3e5d8e478bd3d64d118ac76cb00780b",
+        "stochastic_contract_sha256_at_fit": "54c65e6bbc2bd5612b8d4ec3254af78d1ca0d2c9bd5fcaaf05bbf69b75e2bea2",
         "optimizer": {
           "eps": 1e-06,
-          "loss": 0.030876275034388008,
+          "loss": 0.03520654649905628,
           "maxiter": 50,
           "method": "L-BFGS-B",
           "success": true
@@ -329,31 +329,31 @@
         "achieved": {
           "dfe.funded_childcare.early_learning_2_year_olds": {
             "target": 115852.0,
-            "value": 115851.869,
+            "value": 115852.118,
             "ratio": 1.0
           },
           "dfe.funded_childcare.universal_only_children": {
             "target": 416537.0,
-            "value": 416536.609,
-            "ratio": 1.0
+            "value": 431558.609,
+            "ratio": 1.0361
           },
           "dfe.funded_childcare.working_parent_children_2_to_4": {
             "target": 621482.0,
-            "value": 621481.151,
-            "ratio": 1.0
+            "value": 597323.794,
+            "ratio": 0.9611
           },
           "hmrc.tfc.children_with_used_accounts": {
             "target": 1085020.0,
-            "value": 1202038.13,
-            "ratio": 1.1078
+            "value": 1204412.311,
+            "ratio": 1.11
           },
           "hmrc.tfc.government_top_up": {
             "target": 632200000.0,
-            "value": 544497415.126,
-            "ratio": 0.8613
+            "value": 542154568.577,
+            "ratio": 0.8576
           }
         },
-        "status": "fitted at the 2024 base year with the expectation basis of tool version 4: targeted and universal hours allocated from working-parent hours (pe-uk#2177) and the DfE extended-hours anchor (#1126) in the simulation. No rate reached its bound. The two HMRC Tax-Free Childcare rows cannot both be met (spend below, children above): a residual of the frame's spend per child with a used account, not of the rate."
+        "status": "fitted at the 2024 base year with the expectation basis of tool version 5: universal take-up nested under working-parent take-up (its rate is conditional on not claiming extended hours), targeted hours allocated from working-parent hours (pe-uk#2177), reception-age children (current_education PRIMARY) left out of the DfE working-parent and universal-only rows, and the DfE extended-hours anchor (#1126) in the simulation. At a bound: universal_childcare. The conditional universal rate stops at its lower bound of 0 (universal take-up fully nested under working-parent take-up): with reception children out, the nested floor already gives more universal-only children than DfE's January count, because the model's interview-date ages hold more 4-year-olds outside reception than DfE's 31 December ages; per María's U2c ruling the rate keeps its bound and the receipt records the residual, and the national calibration binds the DfE rows."
       }
     },
     {
@@ -362,7 +362,7 @@
       "entity": "benunit",
       "values": {
         "2015-01-01": 0.597,
-        "2024-04-06": 0.7769
+        "2024-04-06": 0.8478
       },
       "source": {
         "source": "FRS empirical fit",
@@ -371,22 +371,22 @@
         "status": "fitted_offline"
       },
       "fitting_receipt": {
-        "source": "tools/fit_uk_childcare_takeup.py (microcosm#1095 U2c, licensed lane)",
-        "tool_version": 4,
-        "receipt_sha256": "32b06ee06f235089847b5c469e7c49ad9ee39c51e46aa5908522fec61c130d96",
+        "source": "tools/fit_uk_childcare_takeup.py (childcare £100k-limit fixes, licensed lane)",
+        "tool_version": 5,
+        "receipt_sha256": "4c9a7b3b4e057e486a3bc8baa52e52b6c917979908026011f812039e55b25a4a",
         "seed": 0,
-        "engine_version": "2.132.6",
+        "engine_version": "2.134.4",
         "model_period": 2024,
         "vintage_overrides": {
           "dfe.funded_childcare.working_parent_children_2_to_4": 2025
         },
-        "input_h5_sha256": "c883a0506a7e626804e33a43e3e7b4dbf7ea7e55a67e5624edbc445187a7ab07",
-        "input_spine": "the bump arm of the fifth #1095 ports PR (policyengine-uk 2.132.6, spine before the extended-hours anchor moved)",
-        "ledger_facts_sha256": "3033e437ed61d7d5e970f4fef34a2a5523fe068770a7798e5768af656f2a48a4",
-        "stochastic_contract_sha256_at_fit": "3d9fd8cd58de359ecb07b9af478f4bf8b30045dc1ad108d1952f8f9bedb44d96",
+        "input_h5_sha256": "83c83f044606e915b1d8a85cbbdd16f689b88a82ec690e74dc08848e0759fb58",
+        "input_spine": "local unsigned spine built at 13307a64e (uk-childcare-100k-fixes on #1329, items 3 and 4 reverted; policyengine-uk 2.134.4, feed abf0921), sha256 83c83f044606e915b1d8a85cbbdd16f689b88a82ec690e74dc08848e0759fb58",
+        "ledger_facts_sha256": "2b64fecfe746164203dac1726aae6ffdb3e5d8e478bd3d64d118ac76cb00780b",
+        "stochastic_contract_sha256_at_fit": "54c65e6bbc2bd5612b8d4ec3254af78d1ca0d2c9bd5fcaaf05bbf69b75e2bea2",
         "optimizer": {
           "eps": 1e-06,
-          "loss": 0.030876275034388008,
+          "loss": 0.03520654649905628,
           "maxiter": 50,
           "method": "L-BFGS-B",
           "success": true
@@ -394,31 +394,31 @@
         "achieved": {
           "dfe.funded_childcare.early_learning_2_year_olds": {
             "target": 115852.0,
-            "value": 115851.869,
+            "value": 115852.118,
             "ratio": 1.0
           },
           "dfe.funded_childcare.universal_only_children": {
             "target": 416537.0,
-            "value": 416536.609,
-            "ratio": 1.0
+            "value": 431558.609,
+            "ratio": 1.0361
           },
           "dfe.funded_childcare.working_parent_children_2_to_4": {
             "target": 621482.0,
-            "value": 621481.151,
-            "ratio": 1.0
+            "value": 597323.794,
+            "ratio": 0.9611
           },
           "hmrc.tfc.children_with_used_accounts": {
             "target": 1085020.0,
-            "value": 1202038.13,
-            "ratio": 1.1078
+            "value": 1204412.311,
+            "ratio": 1.11
           },
           "hmrc.tfc.government_top_up": {
             "target": 632200000.0,
-            "value": 544497415.126,
-            "ratio": 0.8613
+            "value": 542154568.577,
+            "ratio": 0.8576
           }
         },
-        "status": "fitted at the 2024 base year with the expectation basis of tool version 4: targeted and universal hours allocated from working-parent hours (pe-uk#2177) and the DfE extended-hours anchor (#1126) in the simulation. No rate reached its bound. The two HMRC Tax-Free Childcare rows cannot both be met (spend below, children above): a residual of the frame's spend per child with a used account, not of the rate."
+        "status": "fitted at the 2024 base year with the expectation basis of tool version 5: universal take-up nested under working-parent take-up (its rate is conditional on not claiming extended hours), targeted hours allocated from working-parent hours (pe-uk#2177), reception-age children (current_education PRIMARY) left out of the DfE working-parent and universal-only rows, and the DfE extended-hours anchor (#1126) in the simulation. At a bound: universal_childcare. The conditional universal rate stops at its lower bound of 0 (universal take-up fully nested under working-parent take-up): with reception children out, the nested floor already gives more universal-only children than DfE's January count, because the model's interview-date ages hold more 4-year-olds outside reception than DfE's 31 December ages; per María's U2c ruling the rate keeps its bound and the receipt records the residual, and the national calibration binds the DfE rows."
       }
     },
     {
