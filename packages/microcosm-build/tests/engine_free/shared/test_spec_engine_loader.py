@@ -13,9 +13,10 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # exact normative projection as one reviewable golden vector. The seed
     # protocol inside it attests microcosm.calibrate.solve's bytes, so
     # microcosm#1124's opt-in retain_best_objective and microcosm#1301's
-    # budget_search_bracket move it.
+    # budget_search_bracket move it, and the fit kernels' bytes, so the QRF
+    # chain step's caller-owned uniforms move it too.
     assert first.spec_sha256 == (
-        "58a60d16e514df91eb7b5eacb812906594e95f9ca2f76fd5ce4db7ffc008e160"
+        "4f71334334c67cc17d1aab5b02a838def57bcc54ac4413b89b70b8ae3086d9ee"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")
