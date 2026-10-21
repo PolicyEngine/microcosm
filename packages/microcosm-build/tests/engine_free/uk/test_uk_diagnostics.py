@@ -317,6 +317,13 @@ def _consumption_columns(n: int) -> dict[str, np.ndarray]:
 
 
 def _diagnostics_case(*, with_skipped: bool = False, with_consumption: bool = False):
+    """One row per geography level, each carried by one household.
+
+    Every row rests on fewer than ten source households, so a test that is not
+    about withholding passes an empty withheld set; the withheld path has its
+    own tests (María's rule of 2026-10-21 withholds a thin row's figures).
+    """
+
     levels_and_weights = (
         ("national", 11.0),
         ("region", 12.0),
@@ -559,6 +566,7 @@ def test_payload_preserves_common_schema_and_adds_versioned_uk_evidence() -> Non
         frame,
         target_geography_levels=geography,
         target_registry=registry,
+        withheld=frozenset(),
         build={"release_id": "fixture"},
     )
 
@@ -751,6 +759,7 @@ def test_payload_carries_the_consumption_drift_when_the_frame_has_it() -> None:
         frame,
         target_geography_levels=geography,
         target_registry=registry,
+        withheld=frozenset(),
     )
 
     drift = payload["uk_diagnostics"]["consumption_drift"]
@@ -780,6 +789,7 @@ def test_uk_payload_shared_layer_matches_shared_diagnostics_format() -> None:
         frame,
         target_geography_levels=geography,
         target_registry=registry,
+        withheld=frozenset(),
         build=build,
     )
 
@@ -836,6 +846,7 @@ def test_skipped_target_counts_as_a_geography_non_pass() -> None:
         frame,
         target_geography_levels=geography,
         target_registry=registry,
+        withheld=frozenset(),
     )
 
     assert len(payload["skipped"]) == 1
@@ -863,6 +874,7 @@ def test_skipped_target_counts_as_a_geography_non_pass() -> None:
             frame,
             target_geography_levels=missing_skipped,
             target_registry=registry,
+            withheld=frozenset(),
         )
 
 
@@ -935,6 +947,7 @@ def test_writer_round_trips_strict_json(tmp_path: Path) -> None:
         frame,
         target_geography_levels=geography,
         target_registry=registry,
+        withheld=frozenset(),
     )
 
     assert isinstance(outcome, DiagnosticsWriteSuccess)
@@ -945,6 +958,7 @@ def test_writer_round_trips_strict_json(tmp_path: Path) -> None:
             frame,
             target_geography_levels=geography,
             target_registry=registry,
+            withheld=frozenset(),
         )
     )
     invalid = write_uk_calibration_diagnostics(
@@ -953,6 +967,7 @@ def test_writer_round_trips_strict_json(tmp_path: Path) -> None:
         frame,
         target_geography_levels=geography,
         target_registry=registry,
+        withheld=frozenset(),
         build={"not_json": object()},
     )
     assert isinstance(invalid, DiagnosticsWriteFailure)
@@ -1011,6 +1026,7 @@ def test_writer_rejects_nested_non_finite_build_provenance(
         frame,
         target_geography_levels=geography,
         target_registry=registry,
+        withheld=frozenset(),
         build={"nested": [{"value": value}]},
     )
 
@@ -1039,6 +1055,7 @@ def test_writer_reports_canonical_atomic_replace_failure(
         frame,
         target_geography_levels=geography,
         target_registry=registry,
+        withheld=frozenset(),
     )
 
     assert isinstance(outcome, DiagnosticsWriteFailure)
@@ -1079,6 +1096,7 @@ def test_writer_delegates_a_typed_payload_to_the_canonical_writer(
         frame,
         target_geography_levels=geography,
         target_registry=registry,
+        withheld=frozenset(),
     )
 
     assert isinstance(outcome, DiagnosticsWriteSuccess)
@@ -1288,6 +1306,83 @@ def test_a_thin_brma_row_keeps_its_place_but_not_its_model_figures() -> None:
     assert (brma["n_targets"], brma["n_scored"], brma["n_within_10pct"]) == (2, 2, 0)
     (family,) = payload["uk_diagnostics"]["weakest_families"]
     assert family["n_targets"] == 1 and family["worst_target"] == wide["name"]
+
+
+def test_a_thin_national_row_keeps_its_place_but_not_its_model_figures() -> None:
+    """María's rule of 2026-10-21: a national row is bound however thin it is.
+
+    The BRMA rule now covers every row. One national row rests on three source
+    households and stays bound, its model figures null and noted; the other,
+    on eleven, publishes. The withheld block restates the totals over the
+    published row, and no row is told it met a BRMA floor.
+    """
+
+    n = 14
+    sources = [0, 0, 1, 1, 2, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    household = pd.DataFrame(
+        {
+            "household_id": np.arange(n, dtype=np.int64),
+            "source_household_id": np.asarray(sources, dtype=np.int64),
+            _SPI_COLUMN: [False] * n,
+            _CG_COLUMN: [False] * n,
+            "thin_measure": [1.0] * 6 + [0.0] * 8,
+            "wide_measure": [1.0] * n,
+        }
+    )
+    specs = [
+        TargetSpec(
+            name=name,
+            entity="household",
+            value=10.0,
+            measure=measure,
+            period=2023,
+            source="Synthetic UK diagnostics fixture",
+            family="dwp_universal_credit",
+            hierarchy=_fixture_hierarchy(name, "national"),
+        )
+        for name, measure in (
+            ("thin_payment_band", "thin_measure"),
+            ("wide_payment_band", "wide_measure"),
+        )
+    ]
+    geography = {f"{spec.name}@2023": "national" for spec in specs}
+    weights = np.ones(n)
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {
+                    "person_id": np.arange(n, dtype=np.int64),
+                    "person_household_id": np.arange(n, dtype=np.int64),
+                }
+            ),
+            "household": household,
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(weights, WeightKind.DESIGN)},
+    )
+    registry = TargetRegistry(specs, country="uk")
+    result = score_targets(frame, registry.to_target_set(), weights=weights)
+    payload = uk_calibration_diagnostics_payload(
+        result,
+        frame,
+        target_geography_levels=geography,
+        target_registry=registry,
+    )
+    rows = {row["target_name"]: row for row in payload["targets"]}
+    thin, wide = rows["thin_payment_band"], rows["wide_payment_band"]
+    assert thin["final_estimate"] is None and thin["relative_error"] is None
+    assert "model_figures_withheld" in thin["metadata"]
+    assert "carrier_floor_met" not in (thin.get("metadata") or {})
+    assert wide["final_estimate"] == pytest.approx(14.0)
+    (national,) = [
+        row
+        for row in payload["uk_diagnostics"]["target_pass_rates_by_geography_level"]
+        if row["geography_level"] == "national"
+    ]
+    assert (national["n_targets"], national["n_scored"]) == (2, 2)
+    block = payload["uk_diagnostics"]["model_figures_withheld"]
+    assert block["targets"] == 1 and block["totals_basis"] == "published_rows"
+    assert payload["loss_trajectory"] == []
 
 
 def _thin_and_wide_brma_payload(

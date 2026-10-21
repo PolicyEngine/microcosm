@@ -31,17 +31,6 @@ from .graph_national import NATIONAL_GATE_REPORT_TYPE, NATIONAL_TARGET_TYPE
 from .graph_targets import TARGET_SELECTION_TYPE, registry_from_payload
 from .graph_terminal import FULL_GATE_REPORT_TYPE
 
-
-def _summary_level(metadata) -> str:
-    """A target's geography level as the diagnostics read it: ``la`` and
-    ``statistical_scope`` are the local-authority and BRMA levels."""
-
-    from .diagnostics import _GEOGRAPHY_LEVEL_ALIASES
-
-    level = str(metadata.get("geography_level", "")).strip().lower()
-    return _GEOGRAPHY_LEVEL_ALIASES.get(level, level)
-
-
 #: A summary row's fields that the result's weights produce.
 _SUMMARY_MODEL_FIELDS = (
     "initial",
@@ -53,29 +42,19 @@ _SUMMARY_MODEL_FIELDS = (
 
 
 def _withhold_summary_rows(data: dict, result, ordered) -> None:
-    """Keep a thin BRMA row's figures out of the published summary (#1262).
+    """Keep a thin row's figures out of the published summary (#1262).
 
     María's ruling of 2026-10-17: a BRMA row's model figures leave a build
     only when ten distinct source households carry them, here counted on this
-    result's own weights. A withheld row keeps its target and its place, and
-    the final loss covers the published rows (her ruling of 2026-10-18).
+    result's own weights; her rule of 2026-10-21 extends it to every row. A
+    withheld row keeps its target and its place, and the final loss covers the
+    published rows (her ruling of 2026-10-18).
     """
 
-    from .diagnostics import _restate_totals_over_published_rows, uk_withheld_brma_rows
+    from .diagnostics import _restate_totals_over_published_rows, uk_withheld_rows
 
     rows = data["tables"]["targets"]
-    withheld = uk_withheld_brma_rows(
-        ordered.problem,
-        result.weights,
-        result.frame,
-        rows,
-        {
-            target.row_name: _summary_level(metadata)
-            for target, metadata in zip(
-                ordered.problem.targets, ordered.target_metadata, strict=True
-            )
-        },
-    )
+    withheld = uk_withheld_rows(ordered.problem, result.weights, result.frame, rows)
     if not withheld:
         return
     for row in rows:
@@ -193,13 +172,13 @@ def _size_summary(context: ArtifactSummaryContext) -> dict:
         "pi_hi",
     )
     summary = {key: value[key] for key in fields if key in value}
-    # Totals over every row: with a BRMA row withheld they would give it back
-    # by difference (microcosm#1262). Without the weights behind them this
-    # summary cannot tell, so a problem that binds BRMA rows publishes none.
-    if any(_summary_level(metadata) == "brma" for metadata in problem.target_metadata):
-        for key in ("dense_loss", "compact_loss", "max_target_scaled_change"):
-            if key in summary:
-                summary[key] = None
+    # Totals over every row: with a row withheld they would give it back by
+    # difference (microcosm#1262). Without the weights behind them this
+    # summary cannot tell which rows are thin, and since María's rule of
+    # 2026-10-21 any problem may bind one, so it publishes none.
+    for key in ("dense_loss", "compact_loss", "max_target_scaled_change"):
+        if key in summary:
+            summary[key] = None
     summary["problem_sha256"] = problem.sha256
     for key in ("support", "protected", "household_ids", "pool_row_indices"):
         if key in value:

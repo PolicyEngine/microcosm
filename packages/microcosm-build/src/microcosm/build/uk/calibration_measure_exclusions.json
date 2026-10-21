@@ -5,17 +5,31 @@
       "dwp.uc.payment_distribution_single",
       "dwp.uc.payment_distribution_lone_parent",
       "dwp.uc.payment_distribution_couple_no_children",
-      "dwp.uc.payment_distribution_couple_with_children"
+      "dwp.uc.payment_distribution_couple_with_children",
+      "dwp.benefit_cap.capped_households_up_to_100",
+      "dwp.benefit_cap.capped_households_100_01_to_200",
+      "dwp.benefit_cap.capped_households_200_01_to_300",
+      "dwp.benefit_cap.capped_households_300_01_to_400",
+      "dwp.benefit_cap.capped_households_400_01_to_500",
+      "dwp.benefit_cap.capped_households_500_01_to_600",
+      "dwp.benefit_cap.capped_households_600_01_to_700",
+      "dwp.benefit_cap.capped_households_700_01_to_800",
+      "dwp.benefit_cap.capped_households_800_01_to_900",
+      "dwp.benefit_cap.capped_households_900_01_to_1000",
+      "dwp.benefit_cap.capped_households_1000_01_to_1100",
+      "dwp.benefit_cap.capped_households_1100_01_to_1200",
+      "dwp.benefit_cap.capped_households_1200_01_to_1300",
+      "dwp.benefit_cap.capped_households_1300_01_and_above"
     ],
     "metric": "distinct_source_households_with_positive_prior_weight",
-    "floor": 10,
+    "floor": 1,
     "max_dropped_rows": 24,
     "max_dropped_published_share": 0.05,
-    "reason": "Sparse-band support floor: a UC payment-distribution band whose compiled matrix row reaches fewer than 10 distinct source households (household_source_id) with a positive prior weight is fitted only by stretching those few weights, and a fit that rests on fewer than 10 source households is a cell the release must not report (the UK Data Service working floor of 10, CD171 section 5.2.1). Such rows are dropped from the solve, not pooled; the floor's receipt reports each family's dropped published total, and the run refuses when the drops pass either ceiling or when a per-row exclusion names a row the floor drops.",
+    "reason": "Zero-support floor: a UC payment-distribution band or a benefit-cap amount band whose compiled matrix row reaches no source household (household_source_id) with a positive prior weight cannot be fitted by any weights (the solver's initialiser refuses a nonzero target with no support), so it is dropped from the solve, not pooled. A row that some households carry stays bound however few they are; when fewer than 10 distinct source households carry it, its model figures are withheld from every written surface (the UK Data Service working floor, CD171 section 5.2.1). The floor's receipt reports each target's dropped published total, and the run refuses when the drops pass either ceiling or when a per-row exclusion names a row the floor drops.",
     "tracking": "microcosm#1095",
     "approved_by": "juaristi22",
-    "adjudication": "microcosm#1095 U3, ruled 2026-10-16 with the fifth ports PR: floor 10 distinct source households with a positive prior weight, rows dropped not pooled, dropped published totals reported; the per-row payment-band entries the floor covers retire",
-    "approved_on": "2026-10-16",
+    "adjudication": "microcosm#1095 U3, ruled 2026-10-16 with the fifth ports PR (floor 10) and revised 2026-10-21 with #1333: a cell that rests on fewer than 10 records is no reason to leave a row out, only a measured distortion of the calibration is. The floor drops only rows no household carries, the benefit-cap amount bands join its scope and their per-row entries retire, and the figures of rows under 10 source households are withheld, as the BRMA rows' are.",
+    "approved_on": "2026-10-21",
     "expires_on": "2027-01-08"
   },
   "exclusions": [
@@ -263,24 +277,6 @@
       "expires_on": "2026-11-26"
     },
     {
-      "name": "hmrc/dividend_income_income_band_500_000_to_1_000_000",
-      "reason": "Sparse cell support: fewer than ten in-band carrier records under the SPI assessable-income concept and a similarly thin count under the component-sum proxy, measured identically on spine-i and spine-j (microcosm#807) - too few for the solver to hit the published value without distorting neighbouring cells. One of the three thin 500k-1m cells retained when the microcosm#807 revision lifted the three mid-band cells whose measured support was in the hundreds; re-measure on the next spine build before renewal.",
-      "tracking": "microcosm#757",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411); reason revised 2026-08-28 per microcosm#807 (the spine-i/j excluded-cell support re-measurement)",
-      "approved_on": "2026-08-26",
-      "expires_on": "2026-11-26"
-    },
-    {
-      "name": "hmrc/property_income_count_income_band_500_000_to_1_000_000",
-      "reason": "Sparse cell support: fewer than ten in-band carrier records under the SPI assessable-income concept and under the component-sum proxy, measured identically on spine-i and spine-j (microcosm#807) - too few for the solver to hit the published value without distorting neighbouring cells. One of the three thin 500k-1m cells retained when the microcosm#807 revision lifted the three mid-band cells whose measured support was in the hundreds; re-measure on the next spine build before renewal.",
-      "tracking": "microcosm#757",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411); reason revised 2026-08-28 per microcosm#807 (the spine-i/j excluded-cell support re-measurement)",
-      "approved_on": "2026-08-26",
-      "expires_on": "2026-11-26"
-    },
-    {
       "name": "ons.savings_interest_income",
       "reason": "Concept, not a weight question: the ONS UKEA HAXV row is households' (S.14) D.41 interest resources in the national accounts (FISIM-adjusted, including the unincorporated-business part of the sector; GBP 95.5bn at 2025) while the model's savings_interest_income is cash interest, so the row is unreachable by design (-82 percent on the v20 national candidate). From 2026-09-22 the fitting anchor for interest is the SPI 2023-24 Table 3.7 interest rows by total-income band, uprated to the calibration year (hmrc.spi.savings_interest_income.*, PolicyEngine/chronicle#280 lane); this row is measured on every evaluation as the D.41 diagnostic and never fitted. Retire only with a declared D.41-to-cash bridge.",
       "tracking": "microcosm#866",
@@ -385,105 +381,6 @@
       "tracking": "microcosm#867",
       "approved_by": "juaristi22",
       "adjudication": "microcosm#882 (the 2026-09-16 status comment, issuecomment-5694598278, whose next-steps list this repair works, and the repairs plan María approved on 2026-09-16 with her population ruling on the U8 take-up entry; approver as author per the register convention). Expiry 2026-12-08 aligns the whole UC-repair tranche with the zero-band clock already on the register (microcosm#877), so the next spine re-adjudicates them together. Receipts: experiments/882-uc-repairs-receipts.md (R1 and R5, tools/diagnose_uk_legacy_benefits.py on spine-q, the Q50f candidate, FRS 2024-25 and the twins).",
-      "approved_on": "2026-09-16",
-      "expires_on": "2026-12-08"
-    },
-    {
-      "name": "dwp.benefit_cap.capped_households_100_01_to_200",
-      "reason": "Support, not a weight question (#882): the benefit-cap amount band 100 .01 to 200 measures far below its published count, outside the 25 percent bound on the Q50f candidate at calibrated weights (November 2025 DWP Table 4, GB). The capped population rests on a handful of source households cloned many times: four of the fourteen bands are empty, and the share of capped units above GBP 1,300 a month is many times the published 0.6 percent, a tail of large families outside London on full child elements and large housing elements. The bound total (dwp.benefit_cap.capped_households) and the up-to-GBP-100 band, the one band inside the 25 percent bound, stay in the objective; fitting this band would move weight onto those clones (the #762 zero-band lesson). Measured on every evaluation with tools/diagnose_uk_benefit_cap.py; retire when support exists and the band sits inside the bound.",
-      "tracking": "microcosm#882",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#882 (the 2026-09-16 status comment, issuecomment-5694598278, whose next-steps list this repair works, and the repairs plan María approved on 2026-09-16 with her population ruling on the U8 take-up entry; approver as author per the register convention). Expiry 2026-12-08 aligns the whole UC-repair tranche with the zero-band clock already on the register (microcosm#877), so the next spine re-adjudicates them together. Receipts: experiments/882-uc-repairs-receipts.md (R2 and R5, tools/diagnose_uk_benefit_cap.py on the Q50f candidate and the twins).",
-      "approved_on": "2026-09-16",
-      "expires_on": "2026-12-08"
-    },
-    {
-      "name": "dwp.benefit_cap.capped_households_300_01_to_400",
-      "reason": "Support, not a weight question (#882): the benefit-cap amount band 300 .01 to 400 measures far below its published count, outside the 25 percent bound on the Q50f candidate at calibrated weights (November 2025 DWP Table 4, GB). The capped population rests on a handful of source households cloned many times: four of the fourteen bands are empty, and the share of capped units above GBP 1,300 a month is many times the published 0.6 percent, a tail of large families outside London on full child elements and large housing elements. The bound total (dwp.benefit_cap.capped_households) and the up-to-GBP-100 band, the one band inside the 25 percent bound, stay in the objective; fitting this band would move weight onto those clones (the #762 zero-band lesson). Measured on every evaluation with tools/diagnose_uk_benefit_cap.py; retire when support exists and the band sits inside the bound.",
-      "tracking": "microcosm#882",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#882 (the 2026-09-16 status comment, issuecomment-5694598278, whose next-steps list this repair works, and the repairs plan María approved on 2026-09-16 with her population ruling on the U8 take-up entry; approver as author per the register convention). Expiry 2026-12-08 aligns the whole UC-repair tranche with the zero-band clock already on the register (microcosm#877), so the next spine re-adjudicates them together. Receipts: experiments/882-uc-repairs-receipts.md (R2 and R5, tools/diagnose_uk_benefit_cap.py on the Q50f candidate and the twins).",
-      "approved_on": "2026-09-16",
-      "expires_on": "2026-12-08"
-    },
-    {
-      "name": "dwp.benefit_cap.capped_households_500_01_to_600",
-      "reason": "Support, not a weight question (#882): the benefit-cap amount band 500 .01 to 600 measures far above its published count, outside the 25 percent bound on the Q50f candidate at calibrated weights (November 2025 DWP Table 4, GB). The capped population rests on a handful of source households cloned many times: four of the fourteen bands are empty, and the share of capped units above GBP 1,300 a month is many times the published 0.6 percent, a tail of large families outside London on full child elements and large housing elements. The bound total (dwp.benefit_cap.capped_households) and the up-to-GBP-100 band, the one band inside the 25 percent bound, stay in the objective; fitting this band would move weight onto those clones (the #762 zero-band lesson). Measured on every evaluation with tools/diagnose_uk_benefit_cap.py; retire when support exists and the band sits inside the bound.",
-      "tracking": "microcosm#882",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#882 (the 2026-09-16 status comment, issuecomment-5694598278, whose next-steps list this repair works, and the repairs plan María approved on 2026-09-16 with her population ruling on the U8 take-up entry; approver as author per the register convention). Expiry 2026-12-08 aligns the whole UC-repair tranche with the zero-band clock already on the register (microcosm#877), so the next spine re-adjudicates them together. Receipts: experiments/882-uc-repairs-receipts.md (R2 and R5, tools/diagnose_uk_benefit_cap.py on the Q50f candidate and the twins).",
-      "approved_on": "2026-09-16",
-      "expires_on": "2026-12-08"
-    },
-    {
-      "name": "dwp.benefit_cap.capped_households_600_01_to_700",
-      "reason": "Support, not a weight question (#882): the benefit-cap amount band 600 .01 to 700 measures no model unit in the band on the Q50f candidate at calibrated weights (November 2025 DWP Table 4, GB). The capped population rests on a handful of source households cloned many times: four of the fourteen bands are empty, and the share of capped units above GBP 1,300 a month is many times the published 0.6 percent, a tail of large families outside London on full child elements and large housing elements. The bound total (dwp.benefit_cap.capped_households) and the up-to-GBP-100 band, the one band inside the 25 percent bound, stay in the objective; fitting this band would move weight onto those clones (the #762 zero-band lesson). Measured on every evaluation with tools/diagnose_uk_benefit_cap.py; retire when support exists and the band sits inside the bound.",
-      "tracking": "microcosm#882",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#882 (the 2026-09-16 status comment, issuecomment-5694598278, whose next-steps list this repair works, and the repairs plan María approved on 2026-09-16 with her population ruling on the U8 take-up entry; approver as author per the register convention). Expiry 2026-12-08 aligns the whole UC-repair tranche with the zero-band clock already on the register (microcosm#877), so the next spine re-adjudicates them together. Receipts: experiments/882-uc-repairs-receipts.md (R2 and R5, tools/diagnose_uk_benefit_cap.py on the Q50f candidate and the twins).",
-      "approved_on": "2026-09-16",
-      "expires_on": "2026-12-08"
-    },
-    {
-      "name": "dwp.benefit_cap.capped_households_700_01_to_800",
-      "reason": "Support, not a weight question (#882): the benefit-cap amount band 700 .01 to 800 measures far above its published count, outside the 25 percent bound on the Q50f candidate at calibrated weights (November 2025 DWP Table 4, GB). The capped population rests on a handful of source households cloned many times: four of the fourteen bands are empty, and the share of capped units above GBP 1,300 a month is many times the published 0.6 percent, a tail of large families outside London on full child elements and large housing elements. The bound total (dwp.benefit_cap.capped_households) and the up-to-GBP-100 band, the one band inside the 25 percent bound, stay in the objective; fitting this band would move weight onto those clones (the #762 zero-band lesson). Measured on every evaluation with tools/diagnose_uk_benefit_cap.py; retire when support exists and the band sits inside the bound.",
-      "tracking": "microcosm#882",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#882 (the 2026-09-16 status comment, issuecomment-5694598278, whose next-steps list this repair works, and the repairs plan María approved on 2026-09-16 with her population ruling on the U8 take-up entry; approver as author per the register convention). Expiry 2026-12-08 aligns the whole UC-repair tranche with the zero-band clock already on the register (microcosm#877), so the next spine re-adjudicates them together. Receipts: experiments/882-uc-repairs-receipts.md (R2 and R5, tools/diagnose_uk_benefit_cap.py on the Q50f candidate and the twins).",
-      "approved_on": "2026-09-16",
-      "expires_on": "2026-12-08"
-    },
-    {
-      "name": "dwp.benefit_cap.capped_households_800_01_to_900",
-      "reason": "Support, not a weight question (#882): the benefit-cap amount band 800 .01 to 900 measures far above its published count, outside the 25 percent bound on the Q50f candidate at calibrated weights (November 2025 DWP Table 4, GB). The capped population rests on a handful of source households cloned many times: four of the fourteen bands are empty, and the share of capped units above GBP 1,300 a month is many times the published 0.6 percent, a tail of large families outside London on full child elements and large housing elements. The bound total (dwp.benefit_cap.capped_households) and the up-to-GBP-100 band, the one band inside the 25 percent bound, stay in the objective; fitting this band would move weight onto those clones (the #762 zero-band lesson). Measured on every evaluation with tools/diagnose_uk_benefit_cap.py; retire when support exists and the band sits inside the bound.",
-      "tracking": "microcosm#882",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#882 (the 2026-09-16 status comment, issuecomment-5694598278, whose next-steps list this repair works, and the repairs plan María approved on 2026-09-16 with her population ruling on the U8 take-up entry; approver as author per the register convention). Expiry 2026-12-08 aligns the whole UC-repair tranche with the zero-band clock already on the register (microcosm#877), so the next spine re-adjudicates them together. Receipts: experiments/882-uc-repairs-receipts.md (R2 and R5, tools/diagnose_uk_benefit_cap.py on the Q50f candidate and the twins).",
-      "approved_on": "2026-09-16",
-      "expires_on": "2026-12-08"
-    },
-    {
-      "name": "dwp.benefit_cap.capped_households_900_01_to_1000",
-      "reason": "Support, not a weight question (#882): the benefit-cap amount band 900 .01 to 1000 measures no model unit in the band on the Q50f candidate at calibrated weights (November 2025 DWP Table 4, GB). The capped population rests on a handful of source households cloned many times: four of the fourteen bands are empty, and the share of capped units above GBP 1,300 a month is many times the published 0.6 percent, a tail of large families outside London on full child elements and large housing elements. The bound total (dwp.benefit_cap.capped_households) and the up-to-GBP-100 band, the one band inside the 25 percent bound, stay in the objective; fitting this band would move weight onto those clones (the #762 zero-band lesson). Measured on every evaluation with tools/diagnose_uk_benefit_cap.py; retire when support exists and the band sits inside the bound.",
-      "tracking": "microcosm#882",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#882 (the 2026-09-16 status comment, issuecomment-5694598278, whose next-steps list this repair works, and the repairs plan María approved on 2026-09-16 with her population ruling on the U8 take-up entry; approver as author per the register convention). Expiry 2026-12-08 aligns the whole UC-repair tranche with the zero-band clock already on the register (microcosm#877), so the next spine re-adjudicates them together. Receipts: experiments/882-uc-repairs-receipts.md (R2 and R5, tools/diagnose_uk_benefit_cap.py on the Q50f candidate and the twins).",
-      "approved_on": "2026-09-16",
-      "expires_on": "2026-12-08"
-    },
-    {
-      "name": "dwp.benefit_cap.capped_households_1000_01_to_1100",
-      "reason": "Support, not a weight question (#882): the benefit-cap amount band 1000 .01 to 1100 measures no model unit in the band on the Q50f candidate at calibrated weights (November 2025 DWP Table 4, GB). The capped population rests on a handful of source households cloned many times: four of the fourteen bands are empty, and the share of capped units above GBP 1,300 a month is many times the published 0.6 percent, a tail of large families outside London on full child elements and large housing elements. The bound total (dwp.benefit_cap.capped_households) and the up-to-GBP-100 band, the one band inside the 25 percent bound, stay in the objective; fitting this band would move weight onto those clones (the #762 zero-band lesson). Measured on every evaluation with tools/diagnose_uk_benefit_cap.py; retire when support exists and the band sits inside the bound.",
-      "tracking": "microcosm#882",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#882 (the 2026-09-16 status comment, issuecomment-5694598278, whose next-steps list this repair works, and the repairs plan María approved on 2026-09-16 with her population ruling on the U8 take-up entry; approver as author per the register convention). Expiry 2026-12-08 aligns the whole UC-repair tranche with the zero-band clock already on the register (microcosm#877), so the next spine re-adjudicates them together. Receipts: experiments/882-uc-repairs-receipts.md (R2 and R5, tools/diagnose_uk_benefit_cap.py on the Q50f candidate and the twins).",
-      "approved_on": "2026-09-16",
-      "expires_on": "2026-12-08"
-    },
-    {
-      "name": "dwp.benefit_cap.capped_households_1100_01_to_1200",
-      "reason": "Support, not a weight question (#882): the benefit-cap amount band 1100 .01 to 1200 measures far above its published count, outside the 25 percent bound on the Q50f candidate at calibrated weights (November 2025 DWP Table 4, GB). The capped population rests on a handful of source households cloned many times: four of the fourteen bands are empty, and the share of capped units above GBP 1,300 a month is many times the published 0.6 percent, a tail of large families outside London on full child elements and large housing elements. The bound total (dwp.benefit_cap.capped_households) and the up-to-GBP-100 band, the one band inside the 25 percent bound, stay in the objective; fitting this band would move weight onto those clones (the #762 zero-band lesson). Measured on every evaluation with tools/diagnose_uk_benefit_cap.py; retire when support exists and the band sits inside the bound.",
-      "tracking": "microcosm#882",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#882 (the 2026-09-16 status comment, issuecomment-5694598278, whose next-steps list this repair works, and the repairs plan María approved on 2026-09-16 with her population ruling on the U8 take-up entry; approver as author per the register convention). Expiry 2026-12-08 aligns the whole UC-repair tranche with the zero-band clock already on the register (microcosm#877), so the next spine re-adjudicates them together. Receipts: experiments/882-uc-repairs-receipts.md (R2 and R5, tools/diagnose_uk_benefit_cap.py on the Q50f candidate and the twins).",
-      "approved_on": "2026-09-16",
-      "expires_on": "2026-12-08"
-    },
-    {
-      "name": "dwp.benefit_cap.capped_households_1200_01_to_1300",
-      "reason": "Support, not a weight question (#882): the benefit-cap amount band 1200 .01 to 1300 measures no model unit in the band on the Q50f candidate at calibrated weights (November 2025 DWP Table 4, GB). The capped population rests on a handful of source households cloned many times: four of the fourteen bands are empty, and the share of capped units above GBP 1,300 a month is many times the published 0.6 percent, a tail of large families outside London on full child elements and large housing elements. The bound total (dwp.benefit_cap.capped_households) and the up-to-GBP-100 band, the one band inside the 25 percent bound, stay in the objective; fitting this band would move weight onto those clones (the #762 zero-band lesson). Measured on every evaluation with tools/diagnose_uk_benefit_cap.py; retire when support exists and the band sits inside the bound.",
-      "tracking": "microcosm#882",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#882 (the 2026-09-16 status comment, issuecomment-5694598278, whose next-steps list this repair works, and the repairs plan María approved on 2026-09-16 with her population ruling on the U8 take-up entry; approver as author per the register convention). Expiry 2026-12-08 aligns the whole UC-repair tranche with the zero-band clock already on the register (microcosm#877), so the next spine re-adjudicates them together. Receipts: experiments/882-uc-repairs-receipts.md (R2 and R5, tools/diagnose_uk_benefit_cap.py on the Q50f candidate and the twins).",
-      "approved_on": "2026-09-16",
-      "expires_on": "2026-12-08"
-    },
-    {
-      "name": "dwp.benefit_cap.capped_households_1300_01_and_above",
-      "reason": "Support, not a weight question (#882): the benefit-cap amount band 1300 .01 and above measures far above its published count, outside the 25 percent bound on the Q50f candidate at calibrated weights (November 2025 DWP Table 4, GB). The capped population rests on a handful of source households cloned many times: four of the fourteen bands are empty, and the share of capped units above GBP 1,300 a month is many times the published 0.6 percent, a tail of large families outside London on full child elements and large housing elements. The bound total (dwp.benefit_cap.capped_households) and the up-to-GBP-100 band, the one band inside the 25 percent bound, stay in the objective; fitting this band would move weight onto those clones (the #762 zero-band lesson). Measured on every evaluation with tools/diagnose_uk_benefit_cap.py; retire when support exists and the band sits inside the bound.",
-      "tracking": "microcosm#882",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#882 (the 2026-09-16 status comment, issuecomment-5694598278, whose next-steps list this repair works, and the repairs plan María approved on 2026-09-16 with her population ruling on the U8 take-up entry; approver as author per the register convention). Expiry 2026-12-08 aligns the whole UC-repair tranche with the zero-band clock already on the register (microcosm#877), so the next spine re-adjudicates them together. Receipts: experiments/882-uc-repairs-receipts.md (R2 and R5, tools/diagnose_uk_benefit_cap.py on the Q50f candidate and the twins).",
       "approved_on": "2026-09-16",
       "expires_on": "2026-12-08"
     },

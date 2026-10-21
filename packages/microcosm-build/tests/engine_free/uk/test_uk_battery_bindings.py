@@ -170,6 +170,7 @@ def _parity(**overrides) -> SimpleNamespace:
         "candidate_targets": {"ons/population"},
         "reference_targets": {"ons/population"},
         "target_relative_errors": {"ons/population": 0.01},
+        "withheld_targets": frozenset(),
     }
     fields.update(overrides)
     return SimpleNamespace(**fields)
@@ -1084,6 +1085,37 @@ class TestBatteryRegressions:
             "uk_export_surface",
             "uk_target_fit",
         } <= failed
+
+    def test_the_fit_gate_decides_on_the_published_national_rows(self) -> None:
+        """María's rule of 2026-10-21: a thin national row is bound, its figures kept.
+
+        The fit gate neither checks nor names a withheld row, and counts it; a
+        published row's breach still fails the gate.
+        """
+
+        thin = "dwp.uc.payment_distribution_single_thin@2025"
+        withheld = _parity(
+            candidate_targets={"ons/population", thin},
+            reference_targets={"ons/population", thin},
+            target_relative_errors={"ons/population": 0.01, thin: -0.60},
+            withheld_targets=frozenset({thin}),
+        )
+        battery = _run_battery(_tables(), parity=withheld)
+        fit = {o.entry.id: o for o in battery.outcomes}["uk_target_fit"]
+        assert fit.status is GateStatus.PASSED, fit.result.failures
+        assert fit.result.details["withheld_targets"] == 1
+        assert thin not in str(fit.result.details)
+        breached = _parity(
+            candidate_targets={"ons/population", thin},
+            reference_targets={"ons/population", thin},
+            target_relative_errors={"ons/population": -0.40, thin: -0.60},
+            withheld_targets=frozenset({thin}),
+        )
+        battery = _run_battery(_tables(), parity=breached)
+        fit = {o.entry.id: o for o in battery.outcomes}["uk_target_fit"]
+        assert fit.status is GateStatus.FAILED
+        assert fit.result.failures
+        assert all(thin not in failure for failure in fit.result.failures)
 
 
 class TestUnevidencedArms:

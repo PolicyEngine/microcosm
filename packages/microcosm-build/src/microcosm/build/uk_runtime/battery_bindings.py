@@ -1776,12 +1776,34 @@ def _evaluate_target_fit(
     exclusions, _source = _resolve_target_fit_exclusions(context)
     exclusions, out_of_line = _in_line(exclusions, context)
     parity = context.artifacts["parity_evidence"]
+    # María's rule of 2026-10-21 binds a national row however few source
+    # households carry it, and keeps the figures of one under ten in the
+    # build; the gate decides on the published rows and counts the withheld
+    # ones, as it does for the local rows (her ruling of 2026-10-19). Every
+    # producer states the set, empty or not, so a missing one fails closed.
+    withheld = frozenset(parity.withheld_targets)
+    errors = {
+        name: error
+        for name, error in parity.target_relative_errors.items()
+        if name not in withheld
+    }
+    exclusions = {
+        name: record for name, record in exclusions.items() if name not in withheld
+    }
+    out_of_line = [name for name in out_of_line if name not in withheld]
     result = uk_target_fit_gate(
-        parity.target_relative_errors,
+        errors,
         reviewed_exclusions=exclusions,
         now=_exclusion_clock(context),
         **kwargs,
     )
+    if withheld:
+        result = GateResult(
+            name=result.name,
+            passed=result.passed,
+            failures=result.failures,
+            details={**result.details, "withheld_targets": len(withheld)},
+        )
     return _with_out_of_line(result, context, out_of_line)
 
 

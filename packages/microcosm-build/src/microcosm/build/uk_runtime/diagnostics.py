@@ -71,11 +71,14 @@ _UK_DEFAULT_ZERO_WEIGHT_STRATUM_COLUMNS: tuple[str, ...] = (
 
 _TARGET_PASS_RELATIVE_ERROR = 0.10
 _AREA_FIT_LIMIT = 15
-#: A BRMA row's model figures leave the build only when at least this many
-#: distinct source households carry them (María's ruling of 2026-10-17 on the
-#: #1305 review, UKDS CD137 clause 8); the support gate covers constituencies
-#: and authorities, not the partial BRMA grain.
-UK_BRMA_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS = 10
+#: A target row's model figures leave the build only when at least this many
+#: distinct source households carry them (UKDS CD137 clause 8): María's ruling
+#: of 2026-10-17 on the #1305 review for BRMA rows, extended to every row by
+#: her rule of 2026-10-21, which binds a thin row rather than leave it out.
+UK_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS = 10
+#: The BRMA rows' floor, the same ten (the support gate covers constituencies
+#: and authorities, not the partial BRMA grain).
+UK_BRMA_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS = UK_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS
 #: The fields of a target row that the model's weights produce (the shared
 #: tuple the release contract checks too).
 _MODEL_FIGURE_FIELDS = UK_MODEL_FIGURE_FIELDS
@@ -959,6 +962,52 @@ def _declared_target_partition(
     return declared, compiled, skipped_names
 
 
+def uk_withheld_rows(
+    problem: Any,
+    weights: Sequence[float] | np.ndarray,
+    frame: Frame,
+    target_rows: Sequence[Mapping[str, object]],
+) -> set[str]:
+    """The rows whose model figures rest on fewer than ten source households.
+
+    Every row, national or local: María's rule of 2026-10-21 binds a row
+    however few households carry it, and keeps its figures in the build, as
+    BRMA rows' have been kept since her ruling of 2026-10-17. ``problem`` is
+    the numerical problem the rows were scored on (its ``matrix`` and
+    ``names``) and ``weights`` the weights they were scored at. A row's
+    carriers are the distinct ``source_household_id`` values of the
+    positive-weight households with a nonzero entry in its problem row, as the
+    area support counts them.
+    """
+
+    names = [str(row["name"]) for row in target_rows]
+    if not names:
+        return set()
+    household = frame.table("household")
+    if "source_household_id" not in household.columns:
+        raise ValueError(
+            "UK diagnostics need household source_household_id to count each "
+            "row's carriers."
+        )
+    sources = household["source_household_id"].to_numpy()
+    positive = np.asarray(weights, dtype=float) > 0
+    if positive.shape != sources.shape:
+        raise ValueError("UK row carriers need one weight per household.")
+    matrix = problem.matrix.tocsr()
+    index = {str(name): position for position, name in enumerate(problem.names)}
+    withheld = set()
+    for name in names:
+        position = index.get(name)
+        if position is None:
+            raise ValueError(f"UK target diagnostic {name!r} has no problem row.")
+        span = slice(matrix.indptr[position], matrix.indptr[position + 1])
+        columns = matrix.indices[span][matrix.data[span] != 0]
+        columns = columns[positive[columns]]
+        if len(pd.unique(sources[columns])) < UK_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS:
+            withheld.add(name)
+    return withheld
+
+
 def uk_withheld_brma_rows(
     problem: Any,
     weights: Sequence[float] | np.ndarray,
@@ -966,45 +1015,12 @@ def uk_withheld_brma_rows(
     target_rows: Sequence[Mapping[str, object]],
     geography_levels: Mapping[str, str],
 ) -> set[str]:
-    """The BRMA rows whose model figures rest on fewer than ten source households.
+    """The BRMA rows among :func:`uk_withheld_rows` (their ``carrier_floor_met`` flag)."""
 
-    ``problem`` is the numerical problem the rows were scored on (its
-    ``matrix`` and ``names``) and ``weights`` the weights they were scored at.
-    A row's carriers are the distinct ``source_household_id`` values of the
-    positive-weight households with a nonzero entry in its problem row, as the
-    area support counts them.
-    """
-
-    names = [
-        str(row["name"])
-        for row in target_rows
-        if geography_levels.get(str(row["name"])) == "brma"
+    brma = [
+        row for row in target_rows if geography_levels.get(str(row["name"])) == "brma"
     ]
-    if not names:
-        return set()
-    household = frame.table("household")
-    if "source_household_id" not in household.columns:
-        raise ValueError(
-            "UK BRMA diagnostics need household source_household_id to count "
-            "each row's carriers."
-        )
-    sources = household["source_household_id"].to_numpy()
-    positive = np.asarray(weights, dtype=float) > 0
-    if positive.shape != sources.shape:
-        raise ValueError("UK BRMA carriers need one weight per household.")
-    matrix = problem.matrix.tocsr()
-    index = {str(name): position for position, name in enumerate(problem.names)}
-    withheld = set()
-    for name in names:
-        position = index.get(name)
-        if position is None:
-            raise ValueError(f"UK BRMA diagnostic {name!r} has no problem row.")
-        span = slice(matrix.indptr[position], matrix.indptr[position + 1])
-        columns = matrix.indices[span][matrix.data[span] != 0]
-        columns = columns[positive[columns]]
-        if len(pd.unique(sources[columns])) < UK_BRMA_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS:
-            withheld.add(name)
-    return withheld
+    return uk_withheld_rows(problem, weights, frame, brma) if brma else set()
 
 
 def uk_withheld_flag(value: object) -> bool:
@@ -1192,10 +1208,25 @@ def _restate_totals_over_published_rows(
     )
     return {
         "targets": len(withheld),
-        "min_source_households": UK_BRMA_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS,
+        "min_source_households": UK_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS,
         "totals_basis": "published_rows",
         "note": _WITHHELD_TOTALS_NOTE,
     }
+
+
+def uk_published_row_losses(
+    result: CalibrationResult, withheld: frozenset[str]
+) -> tuple[float | None, float | None]:
+    """The initial and final loss over the published rows (microcosm#1262).
+
+    For a manifest that would otherwise carry the solve's loss over every row,
+    which against the published rows' contributions gives a withheld row back
+    (María's ruling of 2026-10-18); ``None`` where the result cannot restate.
+    """
+
+    totals: dict[str, object] = {}
+    _restate_totals_over_published_rows(totals, result, frozenset(withheld))
+    return totals["initial_loss"], totals["final_loss"]
 
 
 def uk_published_options(options: Mapping[str, object]) -> dict[str, object]:
@@ -1300,7 +1331,7 @@ def uk_calibration_diagnostics_payload(
     unknown mapping aborts instead of silently shrinking a scoreboard level.
 
     ``withheld`` names the rows whose model figures stay in the build
-    (:func:`uk_withheld_brma_rows`); the gate kernel passes the set its gate
+    (:func:`uk_withheld_rows`); the gate kernel passes the set its gate
     evidence carries, and by default it is counted here on the same rule.
     """
 
@@ -1332,9 +1363,7 @@ def uk_calibration_diagnostics_payload(
     geography = _geography_mapping(declared, target_geography_levels)
     weights = uk_weight_summary(result_weights)
     withheld = frozenset(
-        uk_withheld_brma_rows(
-            result.problem, result.weights, frame, target_rows, geography
-        )
+        uk_withheld_rows(result.problem, result.weights, frame, target_rows)
         if withheld is None
         else withheld
     )
@@ -1414,8 +1443,13 @@ def write_uk_calibration_diagnostics(
     build: dict[str, Any] | None = None,
     local_area_support: pd.DataFrame | None = None,
     rotated_holdout: Mapping[str, object] | None = None,
+    withheld: Collection[str] | None = None,
 ) -> DiagnosticsWriteOutcome:
-    """Validate and write shared-plus-UK diagnostics through the canonical writer."""
+    """Validate and write shared-plus-UK diagnostics through the canonical writer.
+
+    ``withheld`` is the payload's: the rows whose model figures stay in the
+    build, counted on the payload's rule when not given.
+    """
 
     output = Path(path)
     try:
@@ -1428,6 +1462,7 @@ def write_uk_calibration_diagnostics(
             build=build,
             local_area_support=local_area_support,
             rotated_holdout=rotated_holdout,
+            withheld=withheld,
         )
         diagnostics = CalibrationDiagnosticsV8.model_validate(payload)
     except ValidationError as error:
