@@ -460,6 +460,78 @@ def test_a_contribution_above_the_pay_that_remains_is_refused(
         impute_salary_sacrifice(frame)
 
 
+def test_draws_move_only_for_the_people_whose_inputs_move(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Each prediction reads uniforms keyed on the person's own id: reversing
+    the people, changing one and adding another moves no other person's draw
+    (Vahid's review of microcosm#1332)."""
+
+    from test_support.microcosm_build.uk_keyed_draws import (
+        assert_draws_are_keyed_on_ids,
+    )
+
+    drawn: dict[str, pd.Series] = {}
+
+    class _Keyed(_Fitted):
+        def predict_from_uniforms(self, predictors, *, quantiles, sign_uniforms):
+            drawn["quantile"] = pd.Series(
+                quantiles[SALSAC_OUTPUT], index=predictors.index
+            )
+            return pd.DataFrame({SALSAC_OUTPUT: 0.0}, index=predictors.index)
+
+    class _KeyedQRF(_FakeQRF):
+        def fit(self, frame, predictors, targets, *, weights):
+            super().fit(frame, predictors, targets, weights=weights)
+            return _Keyed()
+
+    monkeypatch.setattr(salary_sacrifice, "QRF", _KeyedQRF)
+
+    def draw(recipient: pd.DataFrame, ids: np.ndarray) -> pd.DataFrame:
+        # The person rows keep the recipients' order; the group tables are
+        # sorted by id, as a frame requires.
+        groups = np.sort(ids)
+        frame = uk_national_frame(
+            person=recipient.assign(
+                person_id=ids, person_benunit_id=ids, person_household_id=ids
+            ),
+            benunit=pd.DataFrame({"benunit_id": groups}),
+            household=pd.DataFrame(
+                {
+                    "household_id": groups,
+                    "household_support_channel": "frs",
+                    HOUSEHOLD_IS_CGT_CLONE: False,
+                    HOUSEHOLD_IS_CGT_SUPPORT_COPY: False,
+                }
+            ),
+            household_weights=np.ones(len(ids)),
+            time_period="2024",
+        )
+        drawn.clear()
+        impute_salary_sacrifice(frame)
+        quantile = pd.Series(np.nan, index=frame.table("person").index)
+        quantile.loc[drawn["quantile"].index] = drawn["quantile"].to_numpy()
+        return pd.DataFrame({"quantile": quantile.to_numpy()})
+
+    rows = 6
+    recipient = pd.DataFrame(
+        {
+            "age": np.linspace(25, 55, rows),
+            "employment_income": np.full(rows, 30_000.0),
+            "salary_sacrifice_asked": [1, 1, 0, 0, 0, 0],
+            SALSAC_OUTPUT: [10.0, 20.0, 0.0, 0.0, 0.0, 0.0],
+            "employee_pension_contributions": np.zeros(rows),
+        }
+    )
+    assert_draws_are_keyed_on_ids(
+        draw,
+        recipient,
+        np.arange(101, 101 + rows, dtype="int64"),
+        perturbed_column="age",
+        perturbed_value=61.0,
+    )
+
+
 def test_anchor_is_self_consistent() -> None:
     anchor = load_salary_sacrifice_anchor()
     assert anchor["hmrc_anchor"]["total_users"] * anchor["derived"][
