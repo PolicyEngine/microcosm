@@ -454,10 +454,10 @@ _UK_GATE_BATTERY_POLICY_SHA256 = (
     "3e9896aa61e9d9340a3cf6ce4a7b85626288b4312f59b795a7aef77fb4c111d6"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "ae6c2af5153f99e3a77dab6bb9d875a0cc76793ad17fe0a2c5aa21fecf0c8abd"
+    "2054ed4194fac38952f51832c7a30ca81abfec177dff0f22c3d34acf4e63a779"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "5494fcd1bffce5ff12b095bdd95aa2afb7d9fb6b0c4f5794757a3a01afbe8226"
+    "a6d9b3f1dcaeea839af81fda2388e60736fd41c1c7b2e9d23af9b9dbca4e8886"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -947,7 +947,7 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "3c876c1d8927a5b31b1a3373ee6ea09c005322838efff967d7148531caf05594"
+            "da420e28423aa685d82d65ff3367401b63be7dd37edcc4574bdd7d38faac5c19"
         ),
         "policy_sha256": (
             "939309226c43641ded9402ab47b7b12b0c46fa5165f73da5ced9d97a38985d02"

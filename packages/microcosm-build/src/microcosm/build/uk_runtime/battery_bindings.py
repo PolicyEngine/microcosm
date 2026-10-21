@@ -575,6 +575,31 @@ def _evaluate_column_implication(
             "same_source_mismatch_count": int(sum_mismatch.sum()),
             "nonfinite_capital_count": int(nonfinite.sum()),
         }
+    # From policyengine-uk 2.136.1 a unit on the sentinel takes its own share
+    # of its household's property for each scheme, which a recording unit
+    # beside it already holds, so the property would count twice there
+    # (Vahid's review of microcosm#1333). No unit may sit on the sentinel
+    # beside a unit that records a property share for either scheme.
+    person = frame.table("person")
+    unit_household = (
+        person.drop_duplicates("person_benunit_id")
+        .set_index("person_benunit_id")["person_household_id"]
+        .reindex(target[target_id_column])
+        .to_numpy()
+    )
+    on_sentinel = carrier == sentinel
+    sentinel_beside: dict[str, int] = {}
+    for column in property_shares:
+        share = np.asarray(shares.get(column, 0.0), dtype=float)
+        recording = (carrier >= 0.0) & (share > 0.0)
+        beside = on_sentinel & np.isin(unit_household, unit_household[recording])
+        sentinel_beside[column] = int(beside.sum())
+        if beside.any():
+            failures.append(
+                f"{target_entity}: {int(beside.sum())} unit(s) on the "
+                f"{sentinel:g} sentinel beside a unit that records {column}'s "
+                "property share; the engine would count that property twice."
+            )
     return GateResult(
         name="column_implication",
         passed=not failures,
@@ -595,6 +620,7 @@ def _evaluate_column_implication(
                 f"{target_entity}.{column}": counts[column]
                 for column in capital_columns
             },
+            "sentinel_units_beside_recorded_property": sentinel_beside,
         },
     )
 

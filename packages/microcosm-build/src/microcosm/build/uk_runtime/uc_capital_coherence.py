@@ -75,7 +75,7 @@ UC_CAPITAL_COARSENING = (
 _UC_CAPITAL_LEVELS = ("exact_cell", *UC_CAPITAL_COARSENING)
 #: The UC capital limits the receipt measures the redraw against.
 _UC_CAPITAL_RECEIPT_LIMITS = (6_000.0, 16_000.0)
-#: policyengine-uk 2.139.2 counts these household property values as Universal
+#: policyengine-uk 2.142.0 counts these household property values as Universal
 #: Credit capital (``property_sources`` under
 #: ``gov.dwp.universal_credit.means_test.capital``, at 90% of value less any
 #: secured debt since 2.136.1) and as Pension Credit capital (the ``sources``
@@ -373,7 +373,11 @@ def cohere_uc_capital(
         .reindex(benunit["benunit_id"])
         .to_numpy()
     )
-    recording = (np.asarray(capital) >= 0.0) & (uc_share > 0.0)
+    # Either scheme: a unit that reports Universal Credit records no UC share
+    # but may still record the household's Pension Credit property.
+    recording = (np.asarray(capital) >= 0.0) & (
+        (uc_share > 0.0) | (pension_credit_share > 0.0)
+    )
     sentinel_beside = (np.asarray(capital) == UC_CAPITAL_UNAVAILABLE) & np.isin(
         benunit_household, benunit_household[recording]
     )

@@ -530,6 +530,54 @@ class TestUKSurfaceAdapter:
         for column in ("uc_reported_capital", "pension_credit_reported_capital"):
             assert columns[f"benunit.{column}"]["same_source_mismatch_count"] == 1
 
+    @pytest.mark.parametrize(
+        ("reference_reports_uc", "expected"),
+        [
+            (False, {"uc_reported_capital": 1, "pension_credit_reported_capital": 1}),
+            (True, {"uc_reported_capital": 0, "pension_credit_reported_capital": 1}),
+        ],
+        ids=["both_schemes", "pension_credit_only"],
+    )
+    def test_uc_column_implication_binding_refuses_a_sentinel_unit_beside_property(
+        self, reference_reports_uc: bool, expected: dict[str, int]
+    ) -> None:
+        # From policyengine-uk 2.136.1 a unit on the sentinel takes its own
+        # share of its household's property, which the recording unit beside
+        # it already holds (Vahid's review of microcosm#1333). Unit 204 joins
+        # household 2 on the sentinel, beside the reference person's unit 202,
+        # which records the property: both schemes' shares, or Pension
+        # Credit's alone where unit 202 reports Universal Credit.
+        person, benunit, household = _tables()
+        person.loc[3, "person_household_id"] = 2
+        person.loc[3, "is_household_head"] = False
+        for column in (
+            "frs_benunit_capital",
+            "uc_reported_capital",
+            "pension_credit_reported_capital",
+        ):
+            benunit.loc[3, column] = -1.0
+        if reference_reports_uc:
+            person.loc[1, "universal_credit_reported"] = 10.0
+            benunit.loc[1, "would_claim_uc"] = True
+            benunit.loc[1, "uc_reported_capital"] = benunit.loc[
+                1, "frs_benunit_capital"
+            ]
+        frame = uk_national_frame(
+            person=person,
+            benunit=benunit,
+            household=household.iloc[:3].copy(),
+            time_period="2023",
+        )
+        entry = self._capital_gate()
+        result = UK_GATE_REGISTRY["column_implication"].evaluate(
+            EvidenceContext(frame=frame), entry.parameters
+        )
+
+        assert not result.passed
+        assert result.details["sentinel_units_beside_recorded_property"] == expected
+        beside = [failure for failure in result.failures if "would count" in failure]
+        assert len(beside) == sum(expected.values())
+
     def test_uc_column_implication_binding_keeps_a_reporters_receipt(
         self,
     ) -> None:
