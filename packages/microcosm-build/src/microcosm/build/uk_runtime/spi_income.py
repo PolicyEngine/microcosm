@@ -7,7 +7,7 @@ import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from functools import cache
-from importlib import import_module, metadata
+from importlib import import_module
 from pathlib import Path
 from typing import Any
 
@@ -29,18 +29,11 @@ from microcosm.build.uk_runtime.frs_hmrc_source import (
 )
 from microcosm.build.uk_runtime.frs_spine import (
     FRS_LANDLORD_CARRIER_COLUMN,
-    WEEKS_IN_YEAR,
     uc_gainful_self_employment,
 )
 from microcosm.build.uk_runtime.hmrc_income import (
     LOSS_RELIEF_COLUMN,
     self_employment_income_after_loss_relief,
-)
-from microcosm.build.uk_runtime.receipt_counts import (
-    distinct_count,
-    rounded_count,
-    small_cell_share,
-    source_household_ids,
 )
 from microcosm.build.uk_runtime.spi_rank_transport import (
     SPI_STAGE1_ANALOGUE_COLUMNS,
@@ -656,248 +649,6 @@ def _zero_below_state_pension_age(
     }
 
 
-#: The employment pay floor. Stage 1 draws a recipient's annual tape pay on
-#: age, sex, region and the bridge predictors, not on hours, and the tape
-#: holds part-year workers, so a twin who reports usual hours in an employee
-#: job could draw a year's pay below what those hours earn at the minimum
-#: wage, and the drawn rows of employees working 16 or more hours fell under
-#: the 30 hours' minimum-income threshold more often than FRS rows. The floor
-#: lifts the drawn PAY leaf to the twin's usual weekly hours times the weeks
-#: below times the engine's minimum wage for the twin's age, before
-#: employment_income is derived from the leaves and before stage 2 conditions
-#: on it, so every later reader sees the floored pay.
-#:
-#: The pay basis: tape PAY is taxable pay, net of net-pay pension
-#: contributions and salary sacrifice, while the minimum wage binds gross pay.
-#: The floor compares PAY alone with the gross minimum (benefits in kind and
-#: termination pay are not minimum-wage pay), since PAY is the leaf the
-#: engine's employment_income input carries and the engine reads that input
-#: as gross pay. A twin at exactly the minimum wage who pays net-pay
-#: contributions can therefore be lifted by up to those contributions; the
-#: conservative choices elsewhere (52 paid weeks, the non-apprentice rate the
-#: engine itself applies, no floor on a twin with a trade, whose hours cover
-#: both jobs, or on a zero draw) keep the floor at or below what the twin's
-#: own hours require.
-SPI_EMPLOYMENT_PAY_FLOOR_COLUMN = SPI_HMRC_PAY_COLUMN
-SPI_EMPLOYMENT_PAY_FLOOR_HOURS_COLUMN = "hours_worked"
-#: The engine's minimum wage by age for a non-apprentice, the rate its own
-#: ``minimum_wage`` variable pays a person whose ``is_apprentice`` is false, as
-#: the spine leaves it. Apprentices cannot be told apart on the FRS twin.
-SPI_EMPLOYMENT_PAY_FLOOR_PARAMETER = "gov.hmrc.minimum_wage.non_apprentice"
-#: Paid weeks a year. The spine's hours_worked annualises usual weekly hours at
-#: 365.25/7 (frs_spine.WEEKS_IN_YEAR); the floor reads them back to weekly
-#: hours and pays 52 weeks, the lower of the two readings.
-SPI_EMPLOYMENT_PAY_FLOOR_WEEKS = 52
-#: employment_status values of an employee main job (FRS EMPSTATI 1 and 2).
-SPI_EMPLOYMENT_PAY_FLOOR_EMPLOYEE_STATUSES = ("FT_EMPLOYED", "PT_EMPLOYED")
-
-
-@dataclass(frozen=True)
-class SPIEmploymentPayFloor:
-    """The minimum wage by age that floors drawn tape pay, read from the engine.
-
-    ``age_thresholds`` and ``hourly_rates`` are the bracket scale's thresholds
-    and amounts: an age takes the rate of the highest threshold at or below it.
-    """
-
-    age_thresholds: tuple[float, ...]
-    hourly_rates: tuple[float, ...]
-    weeks_in_year: float
-    instant: str
-    source: str
-
-    def __post_init__(self) -> None:
-        thresholds = np.asarray(self.age_thresholds, dtype=np.float64)
-        rates = np.asarray(self.hourly_rates, dtype=np.float64)
-        if (
-            thresholds.size == 0
-            or thresholds.size != rates.size
-            or thresholds[0] != 0.0
-            or (np.diff(thresholds) <= 0.0).any()
-        ):
-            raise ValueError(
-                "The SPI pay floor needs increasing age thresholds from zero, "
-                "one hourly rate each."
-            )
-        if not np.isfinite(rates).all() or (rates <= 0.0).any():
-            raise ValueError("The SPI pay floor's hourly rates must be positive.")
-        if not math.isfinite(self.weeks_in_year) or self.weeks_in_year <= 0.0:
-            raise ValueError("The SPI pay floor's weeks must be positive.")
-
-    def hourly_rate(self, ages: np.ndarray) -> np.ndarray:
-        """Each age's hourly rate."""
-
-        index = np.searchsorted(
-            np.asarray(self.age_thresholds, dtype=np.float64),
-            np.asarray(ages, dtype=np.float64),
-            side="right",
-        )
-        return np.asarray(self.hourly_rates, dtype=np.float64)[
-            np.clip(index - 1, 0, None)
-        ]
-
-    def evidence(self) -> dict[str, object]:
-        return {
-            "parameter": SPI_EMPLOYMENT_PAY_FLOOR_PARAMETER,
-            "instant": self.instant,
-            "source": self.source,
-            "hourly_rate_by_age_from": {
-                str(int(threshold)): rate
-                for threshold, rate in zip(
-                    self.age_thresholds, self.hourly_rates, strict=True
-                )
-            },
-            "weeks_in_year": self.weeks_in_year,
-        }
-
-
-def load_spi_employment_pay_floor(build_period: int | str) -> SPIEmploymentPayFloor:
-    """Read the engine's minimum wage by age as it reads ``build_period``.
-
-    policyengine-uk reads a yearly parameter at 30 April of the year
-    (``convert_to_fiscal_year_parameters``), so the survey year 2024 reads
-    the 2024-25 rates: £11.44 from age 21, £8.60 from 18 and £6.40 below.
-    """
-
-    try:
-        import policyengine_uk
-        from policyengine_core.parameters import ParameterNode
-    except ImportError as exc:
-        raise ImportError(
-            "The SPI employment pay floor requires `uv sync --all-packages --extra uk`."
-        ) from exc
-
-    parameters = ParameterNode(
-        directory_path=str(Path(policyengine_uk.__file__).parent / "parameters")
-    )
-    instant = f"{int(build_period)}-04-30"
-    scale = parameters.gov.hmrc.minimum_wage.non_apprentice(instant)
-    return SPIEmploymentPayFloor(
-        age_thresholds=tuple(float(value) for value in scale.thresholds),
-        hourly_rates=tuple(float(value) for value in scale.amounts),
-        weeks_in_year=float(SPI_EMPLOYMENT_PAY_FLOOR_WEEKS),
-        instant=instant,
-        source=(
-            f"policyengine-uk {metadata.version('policyengine-uk')} "
-            f"{SPI_EMPLOYMENT_PAY_FLOOR_PARAMETER} at {instant}"
-        ),
-    )
-
-
-def _floor_employment_pay_at_minimum_wage(
-    person: pd.DataFrame,
-    *,
-    rows: pd.Series,
-    floor: SPIEmploymentPayFloor,
-    household: pd.DataFrame,
-    person_weights: pd.Series,
-) -> tuple[pd.DataFrame, dict[str, object]]:
-    """Lift drawn PAY on ``rows`` to the twin's hours at the minimum wage.
-
-    ``rows`` are the recipients the floor may touch (the caller leaves out
-    band carriers and twins with a trade). Of those, a row is floored only
-    when its twin's main job is as an employee, its twin reports usual hours
-    and its drawn PAY is positive: the floor lifts drawn pay, never creates
-    it. Self-employment and every other leaf keep their draws. The receipt
-    counts support by distinct source household and gives no row's value.
-    """
-
-    _require_columns(
-        person,
-        (
-            SPI_EMPLOYMENT_PAY_FLOOR_COLUMN,
-            SPI_EMPLOYMENT_PAY_FLOOR_HOURS_COLUMN,
-            "employment_status",
-            "age",
-            "person_household_id",
-        ),
-        label="SPI employment pay floor",
-    )
-    candidates = person.loc[rows.reindex(person.index).fillna(False).astype(bool)]
-    hours = pd.to_numeric(
-        candidates[SPI_EMPLOYMENT_PAY_FLOOR_HOURS_COLUMN], errors="coerce"
-    ).to_numpy(dtype=np.float64)
-    pay = pd.to_numeric(
-        candidates[SPI_EMPLOYMENT_PAY_FLOOR_COLUMN], errors="coerce"
-    ).to_numpy(dtype=np.float64)
-    if not np.isfinite(hours).all() or (hours < 0.0).any():
-        raise ValueError("SPI pay floor hours must be finite and non-negative.")
-    if not np.isfinite(pay).all():
-        raise ValueError("SPI pay floor drawn pay must be finite.")
-    employee = (
-        candidates["employment_status"]
-        .astype(str)
-        .isin(SPI_EMPLOYMENT_PAY_FLOOR_EMPLOYEE_STATUSES)
-        .to_numpy()
-    )
-    eligible = employee & (hours > 0.0) & (pay > 0.0)
-    minimum = (
-        hours
-        / WEEKS_IN_YEAR
-        * floor.weeks_in_year
-        * floor.hourly_rate(candidates["age"].to_numpy(dtype=np.float64))
-    )
-    floored = eligible & (pay < minimum)
-    uplift = np.where(floored, minimum - pay, 0.0)
-    result = person.copy()
-    result.loc[candidates.index[floored], SPI_EMPLOYMENT_PAY_FLOOR_COLUMN] = minimum[
-        floored
-    ]
-
-    weights = person_weights.loc[candidates.index].to_numpy(dtype=np.float64)
-    sources = (
-        candidates["person_household_id"]
-        .map(
-            pd.Series(
-                source_household_ids(household, stage="The SPI employment pay floor"),
-                index=household["household_id"].to_numpy(),
-            )
-        )
-        .to_numpy()
-    )
-    eligible_sources = distinct_count(sources, eligible, weights)
-    floored_sources = distinct_count(sources, floored, weights)
-    unfloored_sources = distinct_count(sources, eligible & ~floored, weights)
-    eligible_weight = float(weights[eligible].sum())
-    floored_weight = float(weights[floored].sum())
-    added = float((uplift * weights).sum())
-    # Weighted figures over one to nine source households are "<10"; a count
-    # of support is rounded (receipt_counts), and no row's value is given.
-    # The floored weight beside the eligible weight gives back the unfloored
-    # side, and so do the share times the eligible weight and the amount added
-    # over the mean uplift, so the floored weight, share and amount are given
-    # only where neither side rests on one to nine sources, as the Carer's
-    # Allowance take-up receipt gives its share.
-    either_side_small = 0 < min(floored_sources, unfloored_sources) < 10
-
-    def beside_eligible(value: float) -> float | str:
-        if either_side_small:
-            return "<10"
-        return small_cell_share(value, floored_sources)
-
-    return result, {
-        "step": "spi_employment_pay_floor_before_stage2",
-        "column": SPI_EMPLOYMENT_PAY_FLOOR_COLUMN,
-        **floor.evidence(),
-        "eligible": {
-            "source_households": rounded_count(eligible_sources),
-            "weighted_people": small_cell_share(eligible_weight, eligible_sources),
-        },
-        "floored": {
-            "source_households": rounded_count(floored_sources),
-            "weighted_people": beside_eligible(floored_weight),
-            "weighted_share_of_eligible": beside_eligible(
-                floored_weight / eligible_weight if eligible_weight > 0.0 else 0.0
-            ),
-            "weighted_mean_uplift_gbp": small_cell_share(
-                added / floored_weight if floored_weight > 0.0 else 0.0,
-                floored_sources,
-            ),
-            "weighted_amount_added_gbp": beside_eligible(added),
-        },
-    }
-
-
 @dataclass(frozen=True)
 class UKSPIIncomeImputationResult:
     """SPI-filled person table and auditable fit/source evidence."""
@@ -923,7 +674,6 @@ class UKSPIIncomeImputationResult:
     reference_training_rows: int = 0
     state_pension_age: int | None = None
     gainful_self_employment_refresh: Mapping[str, object] | None = None
-    employment_pay_floor: Mapping[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -1031,7 +781,6 @@ def impute_uk_spi_income_support(
     state_pension_age_guard: UKSPIStatePensionAgeGuard | None = None,
     state_pension_age: int | None = None,
     allow_in_sample_reference: bool = False,
-    employment_pay_floor: SPIEmploymentPayFloor | None = None,
 ) -> UKSPIIncomeImputationResult:
     """Run strict SPI-income and FRS-only QRFs on rebuilt positive support.
 
@@ -1045,10 +794,6 @@ def impute_uk_spi_income_support(
     age with receipts (microcosm#1069). ``state_pension_age`` is the boundary
     the bridge predictor ``at_or_over_spa`` reads on the twin; it defaults to
     the donor age model's and is required without one (microcosm#840).
-    ``employment_pay_floor`` lifts drawn PAY to the twin's usual hours at the
-    minimum wage for its age, on drawn recipients other than band carriers
-    whose twin works as an employee with no trade, before employment_income
-    is derived and stage 2 reads it; ``None`` keeps every draw.
     """
 
     if support.household_weight_kind is not WeightKind.IMPORTANCE:
@@ -1378,32 +1123,6 @@ def impute_uk_spi_income_support(
             step="spi_state_pension_leaf_after_stage1",
         )
         guard_receipts.append(receipt)
-    pay_floor_receipt = None
-    if employment_pay_floor is not None:
-        # The floor reads the twin's hours, status and trade, which stage 1
-        # leaves alone, and lifts the drawn PAY leaf after every stage-1
-        # writer and before the employment input, stage 2 and the HMRC
-        # aggregates read it. The transport receipt was taken on the
-        # unfloored draws' uniforms above. Band carriers keep their pool
-        # draws, whose total income sits in a published band; a twin with a
-        # trade reports hours that cover both jobs.
-        no_trade = recipient_predictors["has_trade"].to_numpy(dtype=np.float64) == 0.0
-        band_carrier = (
-            person.loc[spi_people, SPI_INCOME_BAND_CARRIER_COLUMN]
-            .astype(bool)
-            .to_numpy()
-            if SPI_INCOME_BAND_CARRIER_COLUMN in person.columns
-            else np.zeros(int(spi_people.sum()), dtype=bool)
-        )
-        floor_rows = spi_people.copy()
-        floor_rows.loc[spi_people] = no_trade & ~band_carrier
-        person, pay_floor_receipt = _floor_employment_pay_at_minimum_wage(
-            person,
-            rows=floor_rows,
-            floor=employment_pay_floor,
-            household=household,
-            person_weights=_person_household_weights(person, household),
-        )
     person = _derive_policyengine_employment_input(person, spi_people=spi_people)
 
     taxable_interest_draw = person.loc[spi_people, "savings_interest_income"].to_numpy(
@@ -1565,7 +1284,6 @@ def impute_uk_spi_income_support(
         reference_training_rows=int(reference_people.sum()),
         state_pension_age=int(state_pension_age),
         gainful_self_employment_refresh=gainful_self_employment,
-        employment_pay_floor=pay_floor_receipt,
     )
 
 
@@ -3212,10 +2930,6 @@ __all__ = [
     "SPI_DONOR_UKDS_STUDY",
     "SPI_DONOR_VINTAGE",
     "SPI_DONOR_REQUIRED_COLUMNS",
-    "SPI_EMPLOYMENT_PAY_FLOOR_EMPLOYEE_STATUSES",
-    "SPI_EMPLOYMENT_PAY_FLOOR_PARAMETER",
-    "SPI_EMPLOYMENT_PAY_FLOOR_WEEKS",
-    "SPIEmploymentPayFloor",
     "SPI_INCOME_RECIPIENT_COLUMN",
     "SPI_INCOME_SOURCE_COLUMNS",
     "SPI_DERIVED_POLICYENGINE_SOURCE_COLUMNS",
@@ -3230,7 +2944,6 @@ __all__ = [
     "SPI_INCOME_BAND_CARRIER_KEY_COLUMN",
     "SPI_INCOME_BAND_DONOR_LEAF_DRAW_SALT",
     "SPI_INCOME_BAND_LOWER_BOUND_COLUMN",
-    "load_spi_employment_pay_floor",
     "prepare_spi_donor_table",
     "SPI_SOURCE_LEAF_RECONCILIATION_ABS_TOLERANCE_GBP",
     "SPI_SOURCE_TEI_FORMULA",
