@@ -76,9 +76,10 @@ _AREA_FIT_LIMIT = 15
 #: of 2026-10-17 on the #1305 review for BRMA rows, extended to every row by
 #: her rule of 2026-10-21, which binds a thin row rather than leave it out.
 UK_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS = 10
-#: The BRMA rows' floor, the same ten (the support gate covers constituencies
-#: and authorities, not the partial BRMA grain).
-UK_BRMA_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS = UK_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS
+#: The BRMA rows' floor, the same ten under its own ruling of 2026-10-17 (the
+#: support gate covers constituencies and authorities, not the partial BRMA
+#: grain).
+UK_BRMA_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS = 10
 #: The fields of a target row that the model's weights produce (the shared
 #: tuple the release contract checks too).
 _MODEL_FIGURE_FIELDS = UK_MODEL_FIGURE_FIELDS
@@ -962,17 +963,28 @@ def _declared_target_partition(
     return declared, compiled, skipped_names
 
 
+#: The local area levels whose rows the area-support rule governs
+#: (``uk_local_area_support``) rather than the per-row floor below: María's
+#: rule of 2026-10-21 has not been applied to the local line, and the report
+#: guard matches a withheld local row by its bare area code, which suits a
+#: BRMA's one family but not an area that binds many.
+UK_AREA_SUPPORT_LEVELS = frozenset({"constituency", "local_authority"})
+
+
 def uk_withheld_rows(
     problem: Any,
     weights: Sequence[float] | np.ndarray,
     frame: Frame,
     target_rows: Sequence[Mapping[str, object]],
+    geography_levels: Mapping[str, object] | None = None,
 ) -> set[str]:
     """The rows whose model figures rest on fewer than ten source households.
 
-    Every row, national or local: María's rule of 2026-10-21 binds a row
+    National, regional and BRMA rows: María's rule of 2026-10-21 binds a row
     however few households carry it, and keeps its figures in the build, as
-    BRMA rows' have been kept since her ruling of 2026-10-17. ``problem`` is
+    BRMA rows' have been kept since her ruling of 2026-10-17. A row whose
+    level in ``geography_levels`` is a constituency or a local authority is
+    left to the area-support rule (``UK_AREA_SUPPORT_LEVELS``). ``problem`` is
     the numerical problem the rows were scored on (its ``matrix`` and
     ``names``) and ``weights`` the weights they were scored at. A row's
     carriers are the distinct ``source_household_id`` values of the
@@ -980,7 +992,16 @@ def uk_withheld_rows(
     area support counts them.
     """
 
-    names = [str(row["name"]) for row in target_rows]
+    def level(name: str) -> str:
+        raw = (geography_levels or {}).get(name, "")
+        text = str(getattr(raw, "value", raw)).strip().lower()
+        return _GEOGRAPHY_LEVEL_ALIASES.get(text, text)
+
+    names = [
+        str(row["name"])
+        for row in target_rows
+        if level(str(row["name"])) not in UK_AREA_SUPPORT_LEVELS
+    ]
     if not names:
         return set()
     household = frame.table("household")
@@ -1003,7 +1024,12 @@ def uk_withheld_rows(
         span = slice(matrix.indptr[position], matrix.indptr[position + 1])
         columns = matrix.indices[span][matrix.data[span] != 0]
         columns = columns[positive[columns]]
-        if len(pd.unique(sources[columns])) < UK_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS:
+        floor = (
+            UK_BRMA_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS
+            if level(name) == "brma"
+            else UK_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS
+        )
+        if len(pd.unique(sources[columns])) < floor:
             withheld.add(name)
     return withheld
 
@@ -1020,7 +1046,11 @@ def uk_withheld_brma_rows(
     brma = [
         row for row in target_rows if geography_levels.get(str(row["name"])) == "brma"
     ]
-    return uk_withheld_rows(problem, weights, frame, brma) if brma else set()
+    return (
+        uk_withheld_rows(problem, weights, frame, brma, geography_levels)
+        if brma
+        else set()
+    )
 
 
 def uk_withheld_flag(value: object) -> bool:
@@ -1363,7 +1393,7 @@ def uk_calibration_diagnostics_payload(
     geography = _geography_mapping(declared, target_geography_levels)
     weights = uk_weight_summary(result_weights)
     withheld = frozenset(
-        uk_withheld_rows(result.problem, result.weights, frame, target_rows)
+        uk_withheld_rows(result.problem, result.weights, frame, target_rows, geography)
         if withheld is None
         else withheld
     )
@@ -1409,13 +1439,13 @@ def uk_calibration_diagnostics_payload(
         },
     }
     if local_area_support is not None:
-        # A withheld row stays out of every rollup, so that no family total
-        # can be differenced against the published rows to recover it.
-        uk_diagnostics["weakest_families"] = uk_weakest_families(
-            [row for row in target_rows if str(row["name"]) not in withheld]
-        )
+        # A withheld row stays out of every rollup, so that no family or area
+        # total can be differenced against the published rows to recover it,
+        # and no rollup reads a figure the row no longer carries.
+        published = [row for row in target_rows if str(row["name"]) not in withheld]
+        uk_diagnostics["weakest_families"] = uk_weakest_families(published)
         uk_diagnostics["weakest_areas_by_fit"] = uk_weakest_areas_by_fit(
-            target_rows,
+            published,
             local_area_support,
         )
     if rotated_holdout is not None:

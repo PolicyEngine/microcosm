@@ -951,6 +951,23 @@ def test_both_gate_kernels_are_registered():
     assert type(registry.get(UKFullHoldoutKernel.ref)) is UKFullHoldoutKernel
 
 
+@pytest.fixture(autouse=True)
+def _toy_national_rows_published(monkeypatch):
+    """Publish the two-household toy frame's national rows.
+
+    A national row's model figures leave a build only when ten distinct
+    source households carry it (María's rule of 2026-10-21), and no row here
+    rests on more than two. These kernel tests lower that floor to one; the
+    BRMA floor stays at ten, so the withheld BRMA row keeps its own test, and
+    the national withheld path has its tests in test_uk_diagnostics.py and
+    test_uk_national_graph.py.
+    """
+
+    from microcosm.build.uk_runtime import diagnostics
+
+    monkeypatch.setattr(diagnostics, "UK_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS", 1)
+
+
 def _run_final_gate_kernel(monkeypatch, *, brma_row: bool = False, solved=None):
     """Run the terminal gate kernel on a two-household fixture.
 

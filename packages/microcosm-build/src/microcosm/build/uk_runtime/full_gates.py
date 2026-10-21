@@ -242,7 +242,13 @@ def build_full_gate_context(
     # binds a thin row rather than leave it out. The fit gates decide on the
     # published rows and count the withheld ones (her ruling of 2026-10-19);
     # the flag tells the bindings and the writers which rows those are.
-    withheld = uk_withheld_rows(problem, solution.weights, frame, diagnostics)
+    withheld = uk_withheld_rows(
+        problem,
+        solution.weights,
+        frame,
+        diagnostics,
+        {str(row["name"]): str(row["geography_level"]) for row in diagnostics},
+    )
     for row in diagnostics:
         if row["name"] in withheld:
             row["model_figures_withheld"] = True

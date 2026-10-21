@@ -1385,6 +1385,59 @@ def test_a_thin_national_row_keeps_its_place_but_not_its_model_figures() -> None
     assert payload["loss_trajectory"] == []
 
 
+def test_a_thin_local_area_row_stays_with_the_area_support_rule() -> None:
+    """Constituency and authority rows keep the local line's area-support rule.
+
+    María's rule of 2026-10-21 on thin rows reaches national, regional and
+    BRMA rows; whether it reaches the local line is still hers to rule, and
+    the report guard matches a withheld local row by its bare area code.
+    """
+
+    from types import SimpleNamespace
+
+    from scipy import sparse
+
+    from microcosm.build.uk_runtime.diagnostics import uk_withheld_rows
+
+    n = 12
+    matrix = sparse.csr_array(
+        (np.ones(3), (np.zeros(3, dtype=int), np.arange(3))), shape=(1, n)
+    )
+    problem = SimpleNamespace(matrix=matrix, names=["thin_row@2025"])
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {
+                    "person_id": np.arange(n, dtype=np.int64),
+                    "person_household_id": np.arange(n, dtype=np.int64),
+                }
+            ),
+            "household": pd.DataFrame(
+                {
+                    "household_id": np.arange(n, dtype=np.int64),
+                    "source_household_id": np.arange(n, dtype=np.int64),
+                }
+            ),
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(np.ones(n), WeightKind.DESIGN)},
+    )
+    rows = [{"name": "thin_row@2025"}]
+    for level, withheld in (
+        ("national", True),
+        ("region", True),
+        ("brma", True),
+        ("statistical_scope", True),
+        ("constituency", False),
+        ("local_authority", False),
+        ("la", False),
+    ):
+        found = uk_withheld_rows(
+            problem, np.ones(n), frame, rows, {"thin_row@2025": level}
+        )
+        assert (found == {"thin_row@2025"}) is withheld, level
+
+
 def _thin_and_wide_brma_payload(
     thin_values=(1.0,) * 6 + (0.0,) * 8, extra_options=None, thin_target=10.0
 ):

@@ -54,7 +54,18 @@ def _withhold_summary_rows(data: dict, result, ordered) -> None:
     from .diagnostics import _restate_totals_over_published_rows, uk_withheld_rows
 
     rows = data["tables"]["targets"]
-    withheld = uk_withheld_rows(ordered.problem, result.weights, result.frame, rows)
+    withheld = uk_withheld_rows(
+        ordered.problem,
+        result.weights,
+        result.frame,
+        rows,
+        {
+            target.row_name: metadata.get("geography_level", "")
+            for target, metadata in zip(
+                ordered.problem.targets, ordered.target_metadata, strict=True
+            )
+        },
+    )
     if not withheld:
         return
     for row in rows:
