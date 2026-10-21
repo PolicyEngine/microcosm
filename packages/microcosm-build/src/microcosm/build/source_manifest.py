@@ -82,6 +82,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "declare_income_reference_offset",
         "derive",
         "derive_adult_care_inputs",
+        "derive_annual_income_spells",
         "derive_childcare_inputs",
         "derive_child_support_inputs",
         "derive_disability_benefits",

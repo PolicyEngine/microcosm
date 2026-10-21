@@ -278,6 +278,7 @@ UK_GATE_BATTERY_ENTRIES = {
         "transferred",
         None,
     ),
+    "uk_stage_frs_annual_income_spells": ("stage_health", "transferred", None),
     "uk_stage_spi_support_channel_mass": (
         "stage_health",
         "transferred",
@@ -1377,6 +1378,7 @@ def _gate_battery_payload(
         "uk_stage_etb_services_support": "etb_services",
         "uk_stage_etb_services_support_pricing": "etb_services",
         "uk_stage_frs_hmrc_spine_leaves_signal": "frs_hmrc_spine_leaves",
+        "uk_stage_frs_annual_income_spells": "frs_annual_income_spells",
         "uk_stage_spi_support_channel_mass": "spi_support_channel",
         "uk_stage_hmrc_spi_income_spine_identity": "hmrc_spi_income_spine",
         "uk_stage_spi_benefit_coherence": "spi_benefit_coherence",

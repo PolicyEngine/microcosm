@@ -115,6 +115,7 @@ UK_SPINE_GATE_SCOPE = (
     "uk_stage_etb_services_support",
     "uk_stage_etb_services_support_pricing",
     "uk_stage_frs_hmrc_spine_leaves_signal",
+    "uk_stage_frs_annual_income_spells",
     "uk_stage_spi_support_channel_mass",
     "uk_stage_hmrc_spi_income_spine_identity",
     "uk_stage_spi_benefit_coherence",

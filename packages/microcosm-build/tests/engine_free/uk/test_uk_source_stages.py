@@ -63,6 +63,7 @@ E6_STAGE_NAMES = [
 ]
 E7_STAGE_NAMES = [
     "frs_hmrc_spine_leaves",
+    "frs_annual_income_spells",
     "spi_support_channel",
     "spi_income_band_donors",
     "hmrc_spi_income_spine",
@@ -284,6 +285,7 @@ class TestUKSourceStagesManifest:
                     "etb_vat": _identity,
                     "etb_services": _identity,
                     "frs_hmrc_spine_leaves": _identity,
+                    "frs_annual_income_spells": _identity,
                     "spi_support_channel": _identity,
                     "spi_income_band_donors": _identity,
                     "hmrc_spi_income_spine": _identity,

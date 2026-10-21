@@ -105,6 +105,7 @@ _STAGE_MODULES = {
     "etb_vat": "etb_vat",
     "etb_services": "etb_services",
     "frs_hmrc_spine_leaves": "spi_spine",
+    "frs_annual_income_spells": "frs_annual_income",
     "spi_support_channel": "spi_spine",
     "spi_income_band_donors": "spi_band_donors",
     "hmrc_spi_income_spine": "spi_spine",
@@ -137,6 +138,9 @@ _STAGE_MODULES = {
 # helpers and the adapter's input-retention checks into every consuming stage.
 _STAGE_HELPER_MODULES = {
     "frs_hmrc_spine_leaves": (frs_hmrc_source,),
+    # The annual income descriptors' receipt follows the shared disclosure rules
+    # (microcosm#1164).
+    "frs_annual_income_spells": (receipt_counts,),
     # The SPI income stage's imputation, band-donor resample and receipt live
     # in spi_income, so an edit there moves the stage's hash (microcosm#1278).
     "hmrc_spi_income_spine": (spi_income,),
@@ -518,6 +522,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .childcare_copy_take_up import UKChildcareCopyTakeUpStageTransform
     from .etb_services import UKETBServicesStageTransform
     from .etb_vat import UKETBVATStageTransform
+    from .frs_annual_income import UKFRSAnnualIncomeStageTransform
     from .frs_brma import UKFRSBRMAStageTransform
     from .frs_council_tax import UKFRSCouncilTaxStageTransform
     from .frs_disability import UKFRSDisabilityStageTransform
@@ -716,6 +721,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             ),
             "frs_hmrc_spine_leaves": UKFRSHMRCSpineLeavesStageTransform(
                 raw_dir, stage=stages["frs_hmrc_spine_leaves"]
+            ),
+            "frs_annual_income_spells": UKFRSAnnualIncomeStageTransform(
+                raw_dir, stage=stages["frs_annual_income_spells"]
             ),
             "spi_support_channel": UKSPISupportChannelStageTransform(
                 stage=stages["spi_support_channel"],

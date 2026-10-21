@@ -487,6 +487,28 @@
       "notes": "Stage-time source-signal gate over the retained FRS/HMRC leaves receipt. hmrc_spi_incapacity_benefit_income is the E7 reviewed-absent adjudication (microcosm#683, 2026-08-18): the FRS 2024-25 source carries no incapacity-benefit signal, the stage's own fence raises at build time if a future vintage does, and the reviewed list here makes the battery agree with that adjudication instead of re-litigating it every build."
     },
     {
+      "id": "uk_stage_frs_annual_income_spells",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "frs_annual_income_spells",
+        "check": "frs_annual_income_spells",
+        "pay_concept_ratio_bounds": [
+          0.95,
+          1.1
+        ],
+        "annual_over_current_earners_bounds": [
+          1.0,
+          1.15
+        ],
+        "minimum_observed_pay_share": 0.7
+      },
+      "notes": "Stage-time gate over the annual income descriptors' receipt: every share lies in [0, 1], no other-spell amount is negative and every full-year earner keeps the whole year, exactly; the usual-to-DV pay ratio the stage measures lies in [0.95, 1.10]; annual employee earners are between one and 1.15 times current ones (the survey's spells add part-year earners and cannot remove a current one); and, where ten or more households carry it, at least 0.7 of the pay outside the current job is observed rather than drawn from a donor."
+    },
+    {
       "id": "uk_stage_spi_support_channel_mass",
       "gate": "stage_health",
       "phase": "transferred",
@@ -1027,6 +1049,12 @@
           "person.dla_m_category",
           "person.dla_sc_category",
           "person.employment_sector",
+          "person.contributory_benefits_annual_share",
+          "person.employment_income_annual_share",
+          "person.employment_income_other_spells",
+          "person.private_pension_income_annual_share",
+          "person.self_employment_income_annual_share",
+          "person.self_employment_income_other_spells",
           "person.esa_health_condition_proxy",
           "person.esa_includes_support_component",
           "person.esa_support_group_proxy",

@@ -1040,8 +1040,9 @@ class TestUKCountryPackage:
         # after property_components and uc_legacy_closure_take_up after
         # uc_capital_coherence; microcosm#1319 carers_allowance_take_up after
         # child_benefit_take_up; childcare_copy_take_up last, after every copy
-        # stage; microcosm#1334 uc_take_up after uc_capital_coherence.
-        assert len(spec.sources.stages) == 48
+        # stage; microcosm#1334 uc_take_up after uc_capital_coherence and
+        # frs_annual_income_spells after frs_hmrc_spine_leaves.
+        assert len(spec.sources.stages) == 49
         assert not {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.intersection(
             stage.stage for stage in spec.sources.stages
         )
@@ -1460,6 +1461,7 @@ class TestUKGatesManifest:
             "uk_stage_etb_services_support",
             "uk_stage_etb_services_support_pricing",
             "uk_stage_frs_hmrc_spine_leaves_signal",
+            "uk_stage_frs_annual_income_spells",
             "uk_stage_spi_support_channel_mass",
             "uk_stage_hmrc_spi_income_spine_identity",
             "uk_stage_spi_benefit_coherence",
@@ -1584,6 +1586,7 @@ class TestUKGatesManifest:
             "uk_stage_etb_services_support",
             "uk_stage_etb_services_support_pricing",
             "uk_stage_frs_hmrc_spine_leaves_signal",
+            "uk_stage_frs_annual_income_spells",
             "uk_stage_spi_support_channel_mass",
             "uk_stage_hmrc_spi_income_spine_identity",
             "uk_stage_spi_benefit_coherence",

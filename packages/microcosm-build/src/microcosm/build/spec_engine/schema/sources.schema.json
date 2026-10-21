@@ -257,6 +257,84 @@
     {
      "type": "object",
      "additionalProperties": false,
+     "required": [
+      "kind",
+      "outputs",
+      "window_months",
+      "leaving_date_share",
+      "unknown_leaving_months",
+      "donor_recent_start_months",
+      "minimum_donors",
+      "donor_age_edges",
+      "seed",
+      "salt",
+      "earnings_index",
+      "earnings_index_from",
+      "earnings_index_to",
+      "maximum_uprating_months"
+     ],
+     "properties": {
+      "kind": {
+       "const": "derive_annual_income_spells"
+      },
+      "outputs": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       },
+       "minItems": 1
+      },
+      "window_months": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "leaving_date_share": {
+       "type": "number",
+       "minimum": 0,
+       "maximum": 1
+      },
+      "unknown_leaving_months": {
+       "type": "number",
+       "minimum": 0
+      },
+      "donor_recent_start_months": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "minimum_donors": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "donor_age_edges": {
+       "type": "array",
+       "items": {
+        "type": "integer"
+       }
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "salt": {
+       "type": "string"
+      },
+      "earnings_index": {
+       "type": "string"
+      },
+      "earnings_index_from": {
+       "type": "string"
+      },
+      "earnings_index_to": {
+       "type": "string"
+      },
+      "maximum_uprating_months": {
+       "type": "integer",
+       "minimum": 0
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
      "properties": {
       "basis": {
        "type": "string"

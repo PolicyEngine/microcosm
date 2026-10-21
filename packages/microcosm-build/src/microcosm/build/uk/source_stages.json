@@ -1463,6 +1463,119 @@
    "notes": "Retains adjudicated raw-FRS HMRC leaves on the raw FRS spine, where person_id equals the raw sernum*1000+person identity, then draws employer pension contributions: each member of an employer scheme (PENPROV.STEMPPEN 1 to 4) with earnings takes an ASHE 2024 employer contribution rate for their scheme type and sector (Table P10 band shares, full pay, all industries; occupational schemes split into defined benefit and defined contribution by the sector's Table P2 job counts), uniform within the band (top band 20% to 30%), times pay. It replaces the incumbent's three times the employee contribution (microcosm#1069 c9, R6)."
   },
   {
+   "stage": "frs_annual_income_spells",
+   "survey": "Family Resources Survey 2024-25",
+   "source": "Department for Work and Pensions Family Resources Survey 2024-25, UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1; local licensed 2024_25 adult, job and household tabs; the OBR average earnings index pinned in hmrc_uprating_engine_pins.json.",
+   "grain": "person",
+   "artifacts": [
+    {
+     "role": "frs_table",
+     "table": "adult",
+     "kind": "licensed_microdata",
+     "format": "tab",
+     "vintage": "2024_25",
+     "locator": "adult.tab",
+     "sha256": "4eaea0809a7ccca0fddeb98e358771e4a6e5ebb81b21c4fac4070fc9d227658d",
+     "size_bytes": 34885825,
+     "runtime_sha256_required": true,
+     "tax_year_start": 2024,
+     "ukds_study_number": 9563,
+     "doi": "10.5255/UKDA-SN-9563-1"
+    },
+    {
+     "role": "frs_table",
+     "table": "job",
+     "kind": "licensed_microdata",
+     "format": "tab",
+     "vintage": "2024_25",
+     "locator": "job.tab",
+     "sha256": "eb7faf7ada3a3851cb2afb83e2983f8907ffeec897cfbe01e56cb0dfefa853e2",
+     "size_bytes": 10518760,
+     "runtime_sha256_required": true,
+     "tax_year_start": 2024,
+     "ukds_study_number": 9563,
+     "doi": "10.5255/UKDA-SN-9563-1"
+    },
+    {
+     "role": "frs_table",
+     "table": "househol",
+     "kind": "licensed_microdata",
+     "format": "tab",
+     "vintage": "2024_25",
+     "locator": "househol.tab",
+     "sha256": "2b93b6aed49e1591d6f5360736b4aee3a11ef506b276435f4d2c011a8afbb6a5",
+     "size_bytes": 12108606,
+     "runtime_sha256_required": true,
+     "tax_year_start": 2024,
+     "ukds_study_number": 9563,
+     "doi": "10.5255/UKDA-SN-9563-1"
+    },
+    {
+     "role": "earnings_index",
+     "kind": "public_aggregate_reference",
+     "resource": "hmrc_uprating_engine_pins.json",
+     "format": "json",
+     "runtime_sha256_required": true
+    }
+   ],
+   "operations": [
+    {
+     "kind": "read_tables",
+     "format": "tab",
+     "delimiter": "\t",
+     "lowercase_columns": true,
+     "numeric_errors": "coerce",
+     "runtime_sha256_required": true
+    },
+    {
+     "kind": "derive_annual_income_spells",
+     "outputs": [
+      "employment_income_annual_share",
+      "employment_income_other_spells",
+      "self_employment_income_annual_share",
+      "self_employment_income_other_spells",
+      "private_pension_income_annual_share",
+      "contributory_benefits_annual_share"
+     ],
+     "window_months": 12,
+     "leaving_date_share": 0.75,
+     "unknown_leaving_months": 6.0,
+     "donor_recent_start_months": 24,
+     "minimum_donors": 30,
+     "donor_age_edges": [
+      25,
+      35,
+      50,
+      65
+     ],
+     "seed": 0,
+     "salt": "employment_income_other_spells",
+     "earnings_index": "gov.economic_assumptions.indices.obr.average_earnings",
+     "earnings_index_from": "2023-01-01",
+     "earnings_index_to": "2024-01-01",
+     "maximum_uprating_months": 24
+    }
+   ],
+   "outputs": [
+    "employment_income_annual_share",
+    "employment_income_other_spells",
+    "self_employment_income_annual_share",
+    "self_employment_income_other_spells",
+    "private_pension_income_annual_share",
+    "contributory_benefits_annual_share"
+   ],
+   "nonnegative_outputs": [
+    "employment_income_annual_share",
+    "employment_income_other_spells",
+    "self_employment_income_annual_share",
+    "self_employment_income_other_spells",
+    "private_pension_income_annual_share",
+    "contributory_benefits_annual_share"
+   ],
+   "rewrites": [],
+   "notes": "Describes each FRS adult's 12 months before the interview beside the current income columns, which it never changes, so the HMRC income-band measures can read annual income while poverty, benefits and the published engine tax keep current income. HMRC counts income received over a tax year: a person who started, left or changed a job, or had a gap, sits in another HMRC band than current pay puts them in, or in none. Outputs: the share of the year paid at today's employee pay and annual pay from other spells (chiefly a recent leaver's last job), the same pair for self-employment, and the shares of the year a private pension started on retiring and contributory JSA, ESA and Incapacity Benefit started on leaving work were in payment; an annual amount is the current amount times its share plus the other spells. The State Pension needs none: policyengine-uk's months_since_state_pension_age gives its share. Months come from CURRJOBM and JOB.WRKPREV for people in work (a person in work is never a leaver), the SAMESIT/SDEMP calendar only where it records a change, and LSTYR, LSTWRK1/2 or RETIRE1 for people out of work who worked in the last 12 months (NUMJOB2 and their last-job JOB rows); a leaving date 12 months or more before the interview gives none. A leaver's pay is the last job's usual gross pay (JOB.UGROSS, asked of people out of work who last worked in the previous 12 months, in respect of that job), scaled to the DV concept by the weighted job-level UGRSPAY/UGROSS ratio on current employees who report both and uprated by the pinned OBR average earnings index for the months since leaving; otherwise a donor's weekly pay, drawn by GROSS4 weight from current employees in their first 24 months in the job within age band x sex x full- or part-time cells (sex dropped below 30 donors), on an identity-keyed uniform (seed 0, salt employment_income_other_spells). Self-employment keeps the whole year where SEJBLONG is one or more, (SEJBMTHS + 1)/12 under a year and at most the calendar's self-employed months where self-employment is the activity today (the calendar records the main activity only, so a side business beside a job keeps its whole year); a ceased self-employed last job pays SEINCAMT (else PROFIT1, a loss as zero) for its SELWKS weeks; SEINCAM2 is already uprated to the interview by the FRS, so it is not uprated again. The receipt gives each source's support as a band of distinct households, ratios only where ten or more households carry them, and the exact zeros its stage gate reads."
+  },
+  {
    "stage": "spi_support_channel",
    "survey": "Family Resources Survey 2024-25",
    "source": "Synthetic SPI support channel sampled uniformly without replacement from the raw FRS spine before cloning.",
@@ -2489,9 +2602,15 @@
     "owned_company_income_share",
     "hmrc_spi_pay",
     "hmrc_spi_unemployment_benefit_income",
-    "hmrc_spi_incapacity_benefit_income"
+    "hmrc_spi_incapacity_benefit_income",
+    "employment_income_annual_share",
+    "employment_income_other_spells",
+    "self_employment_income_annual_share",
+    "self_employment_income_other_spells",
+    "private_pension_income_annual_share",
+    "contributory_benefits_annual_share"
    ],
-   "notes": "Runs the SPI-trained income QRFs on the raw-spine support channel, drawing for its claimants and partners aged 16 and over so dependants aged 16 to 19 keep their FRS twin's values (uk-data#504, microcosm#1095), initializes FRS charity columns to zero, trains FRS-only stage 2 on the FRS rows' reported values, flags the rows it drew (person_is_spi_income_recipient) so later stages tell tape-concept rows from FRS-concept ones without re-deriving the recipient rule (microcosm#840), leaves every FRS-channel income as reported (no base-channel redraw of dividends; uk-data#498, microcosm#1095), and emits a sidecar-only 208-fact replay report for the spine path. Stage 2 also draws trading_loss, the year's trading loss the tape does not carry, from the FRS rows (uk-data#528), and a drawn row whose self_employment_income is positive keeps no loss, so profit and loss never both hold an amount, as on the FRS rows (microcosm#1095). The chain draws self_employment_income net of the tape's losses brought forward (LOSSBF), as the tape holds profits, and last of all, so no earlier draw moves, the year's profit before them and the losses. After the FRS-only fill and the HMRC aggregates the stage moves the losses out of the profit into loss_relief and ni_class_4_losses_brought_forward, the inputs policyengine-uk relieves them against (income tax under ITA 2007 s.83, Class 4 under SSCBA 1992 Sch 2 para 3), so Universal Credit, HBAI and market income read the year's profit; where the drawn net profit is positive the losses are its gap to the year's profit and where it is zero they are at least that profit, so the profit after the relief is the drawn net profit on every row, which the HMRC aggregates and the HMRC self-employment rows read (uk-data#528, microcosm#1095). The engine carries both losses into each projected year at their nominal value while the profit grows with its index. Stage 2 draws the six owner-manager inputs last, the five flags as 0 or 1 and then the income share, so each follows the drawn incomes; the root stage's rules then hold on the drawn rows (an owner works in the company, its other inputs need an owner, and a company carries on a trade or a property business, never both), since the tape carries no director answers (microcosm#1095)."
+   "notes": "Runs the SPI-trained income QRFs on the raw-spine support channel, drawing for its claimants and partners aged 16 and over so dependants aged 16 to 19 keep their FRS twin's values (uk-data#504, microcosm#1095), initializes FRS charity columns to zero, trains FRS-only stage 2 on the FRS rows' reported values, flags the rows it drew (person_is_spi_income_recipient) so later stages tell tape-concept rows from FRS-concept ones without re-deriving the recipient rule (microcosm#840), leaves every FRS-channel income as reported (no base-channel redraw of dividends; uk-data#498, microcosm#1095), and emits a sidecar-only 208-fact replay report for the spine path. Stage 2 also draws trading_loss, the year's trading loss the tape does not carry, from the FRS rows (uk-data#528), and a drawn row whose self_employment_income is positive keeps no loss, so profit and loss never both hold an amount, as on the FRS rows (microcosm#1095). The chain draws self_employment_income net of the tape's losses brought forward (LOSSBF), as the tape holds profits, and last of all, so no earlier draw moves, the year's profit before them and the losses. After the FRS-only fill and the HMRC aggregates the stage moves the losses out of the profit into loss_relief and ni_class_4_losses_brought_forward, the inputs policyengine-uk relieves them against (income tax under ITA 2007 s.83, Class 4 under SSCBA 1992 Sch 2 para 3), so Universal Credit, HBAI and market income read the year's profit; where the drawn net profit is positive the losses are its gap to the year's profit and where it is zero they are at least that profit, so the profit after the relief is the drawn net profit on every row, which the HMRC aggregates and the HMRC self-employment rows read (uk-data#528, microcosm#1095). The engine carries both losses into each projected year at their nominal value while the profit grows with its index. Stage 2 draws the six owner-manager inputs last, the five flags as 0 or 1 and then the income share, so each follows the drawn incomes; the root stage's rules then hold on the drawn rows (an owner works in the company, its other inputs need an owner, and a company carries on a trade or a property business, never both), since the tape carries no director answers (microcosm#1095). A drawn row's annual income descriptors follow its drawn incomes. The tape records the tax year's income, so its pay, profit and private pension shares are 1, and its contributory benefits, stage-2 draws on the current concept with no spell of their own, take share 1 too. It keeps its twin's other-spell pay only where it drew no pay, and its twin's ceased self-employment only where it drew no profit, since the bridge draws a record without pay for a twin who left a job in the year. An undrawn copy keeps its twin's descriptors with its twin's incomes."
   },
   {
    "stage": "spi_housing_shell",

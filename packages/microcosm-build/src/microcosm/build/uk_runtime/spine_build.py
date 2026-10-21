@@ -104,6 +104,9 @@ from microcosm.build.uk_runtime.frs_education_grants import (
     FRS_EDUCATION_GRANT_REWRITES,
     UKFRSEducationGrantSplitStageTransform,
 )
+from microcosm.build.uk_runtime.frs_annual_income import (
+    UKFRSAnnualIncomeStageTransform,
+)
 from microcosm.build.uk_runtime.frs_employment import UKFRSEmploymentStageTransform
 from microcosm.build.uk_runtime.frs_household_draws import (
     UKFRSHouseholdDrawsStageTransform,
@@ -1689,6 +1692,13 @@ def prepare_uk_spine_execution(
             sampled_rung=_is_sampled(args),
         )
     )
+    if "frs_annual_income_spells" in stage_names:
+        implementations["frs_annual_income_spells"] = _GraphSourceTransform(
+            lambda sources: UKFRSAnnualIncomeStageTransform(
+                sources["frs"],
+                stage=stages_by_name["frs_annual_income_spells"],
+            )
+        )
     implementations["spi_support_channel"] = UKSPISupportChannelStageTransform(
         stage=stages_by_name["spi_support_channel"],
         sample_fraction=args.sample_fraction,

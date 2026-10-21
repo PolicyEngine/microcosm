@@ -43,6 +43,8 @@ def uk_stage_health_gate(
         return _spi_support_channel_gate(stage, evidence, parameters)
     if check == "spi_income_spine":
         return _spi_income_spine_gate(stage, evidence, parameters)
+    if check == "frs_annual_income_spells":
+        return _frs_annual_income_spells_gate(stage, evidence, parameters)
     if check == "pension_credit_take_up":
         return _pension_credit_take_up_gate(stage, evidence, parameters)
     if check == "uc_take_up":
@@ -1065,6 +1067,80 @@ def _child_benefit_take_up_gate(
                 f"the published {target_share:.4f} (tolerance {opt_out_tolerance}, "
                 f"charged families exhausted: {exhausted})."
             )
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
+
+
+#: The structural counts the annual income receipt records exactly; each must
+#: be zero.
+_ANNUAL_INCOME_STRUCTURAL_ZEROS = (
+    "full_year_rows_not_whole",
+    "rows_outside_share_bounds",
+    "rows_negative_other_spells",
+)
+
+
+def _frs_annual_income_spells_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """The annual income descriptors keep their invariants and plausible sizes.
+
+    Every share lies in [0, 1], no other-spell amount is negative and every
+    full-year earner keeps the whole year, exactly. The usual-to-DV pay ratio
+    the stage measures lies in its bounds, and so does the ratio of annual to
+    current employee earners: the survey's spells can add part-year earners
+    but cannot remove a current one. Where the receipt measures it, at least
+    the declared share of the pay outside the current job is observed rather
+    than drawn from a donor; a share carried by fewer than ten households is
+    reported unmeasured.
+    """
+
+    check = "frs_annual_income_spells"
+    failures: list[str] = []
+    for key in _ANNUAL_INCOME_STRUCTURAL_ZEROS:
+        value = evidence.get(key)
+        if value != 0:
+            failures.append(f"{stage}: {key} is {value!r}, not 0.")
+    details: dict[str, object] = {}
+    for key, bounds_key in (
+        ("pay_concept_ratio", "pay_concept_ratio_bounds"),
+        ("annual_over_current_earners", "annual_over_current_earners_bounds"),
+    ):
+        bounds = parameters[bounds_key]
+        if not isinstance(bounds, list | tuple) or len(bounds) != 2:
+            raise ValueError(f"{stage}.{bounds_key} must be a [lower, upper] pair.")
+        lower = _finite_number(bounds[0], label=f"{stage}.{bounds_key}[0]")
+        upper = _finite_number(bounds[1], label=f"{stage}.{bounds_key}[1]")
+        value = evidence.get(key)
+        details[key] = value
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            failures.append(f"{stage}: {key} is {value!r}, not a measured ratio.")
+        elif not lower <= float(value) <= upper:
+            failures.append(
+                f"{stage}: {key} {float(value):.4f} lies outside [{lower}, {upper}]."
+            )
+    minimum = _finite_number(
+        parameters["minimum_observed_pay_share"],
+        label=f"{stage}.minimum_observed_pay_share",
+    )
+    observed = evidence.get("other_spells_pay_observed_share")
+    details["other_spells_pay_observed_share"] = observed
+    if observed == "<10":
+        details["observed_pay_share_measured"] = False
+    elif isinstance(observed, bool) or not isinstance(observed, int | float):
+        failures.append(
+            f"{stage}: other_spells_pay_observed_share is {observed!r}."
+        )
+    elif float(observed) < minimum:
+        failures.append(
+            f"{stage}: only {float(observed):.4f} of the pay outside the current "
+            f"job is observed, below {minimum}."
+        )
     return (
         _fail(stage, check, failures, details)
         if failures

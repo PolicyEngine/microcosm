@@ -59,8 +59,8 @@ def test_uk_spine_graph_contains_every_manifest_stage() -> None:
     # adds property_purchases and uc_legacy_closure_take_up, microcosm#1112
     # regional_home_values, microcosm#1319 carers_allowance_take_up, the
     # copies' childcare re-draw childcare_copy_take_up, and microcosm#1334
-    # uc_take_up.
-    assert len(expected) == 48
+    # uc_take_up and frs_annual_income_spells.
+    assert len(expected) == 49
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(expected)
     assert set(expected) <= ids
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(ids)

@@ -520,6 +520,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
         "stage_health",
         "transferred",
     ),
+    "uk_stage_frs_annual_income_spells": ("stage_health", "transferred"),
     "uk_stage_spi_support_channel_mass": ("stage_health", "transferred"),
     "uk_stage_hmrc_spi_income_spine_identity": (
         "stage_health",
@@ -634,6 +635,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_stage_etb_services_support",
         "uk_stage_etb_services_support_pricing",
         "uk_stage_frs_hmrc_spine_leaves_signal",
+        "uk_stage_frs_annual_income_spells",
         "uk_stage_spi_support_channel_mass",
         "uk_stage_hmrc_spi_income_spine_identity",
         "uk_stage_spi_benefit_coherence",
@@ -869,6 +871,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_etb_services_support_pricing",
             "uk_stage_etb_vat_support",
             "uk_stage_frs_hmrc_spine_leaves_signal",
+            "uk_stage_frs_annual_income_spells",
             "uk_stage_frs_relationships_composition",
             "uk_stage_high_value_home_support_mass",
             "uk_stage_hmrc_cgt_asset_type_spine_summary",
