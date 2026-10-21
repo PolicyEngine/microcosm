@@ -793,3 +793,248 @@ def test_build_spi_support_channel_refuses_invalid_pension_age_arguments(
             source_year=2023,
             **arguments,
         )
+
+
+def _shaped_frames(weights: list[float], *, regions: list[str] | None = None):
+    count = len(weights)
+    household = pd.DataFrame(
+        {
+            "household_id": list(range(1, count + 1)),
+            "household_weight": [float(weight) for weight in weights],
+            "region": regions or ["LONDON"] * count,
+        }
+    )
+    person = pd.DataFrame(
+        {
+            "person_id": [1000 * (index + 1) + 1 for index in range(count)],
+            "person_household_id": list(range(1, count + 1)),
+            "person_benunit_id": [100 * (index + 1) + 1 for index in range(count)],
+            "age": [40] * count,
+            "employment_income": [0.0] * count,
+        }
+    )
+    benunit = pd.DataFrame(
+        {"benunit_id": [100 * (index + 1) + 1 for index in range(count)]}
+    )
+    return person, benunit, household
+
+
+def _shaped_spi_weights(result) -> pd.Series:
+    channel = support_channel_column("household")
+    spi = result.household[channel].eq(SPI_SYNTHETIC_SUPPORT_CHANNEL)
+    return (
+        result.household.loc[spi]
+        .set_index("source_household_id")["household_weight"]
+        .sort_index()
+    )
+
+
+@pytest.mark.parametrize(
+    ("shape", "factors"),
+    [
+        (
+            spi_support.UKSPIPriorShape("design_damped", exponent=1.0),
+            [1.0, 10.0, 10.0, 10.0, 69.0],
+        ),
+        (
+            spi_support.UKSPIPriorShape("design_damped", exponent=0.5),
+            list(np.sqrt([1.0, 10.0, 10.0, 10.0, 69.0])),
+        ),
+        # Mean 20: the relative weights 0.05 and 3.45 are held to 0.5 and 2.
+        (
+            spi_support.UKSPIPriorShape("design_bounded", bounds=(0.5, 2.0)),
+            [0.5, 0.5, 0.5, 0.5, 2.0],
+        ),
+        (spi_support.UKSPIPriorShape(), [1.0] * 5),
+    ],
+)
+def test_spi_prior_shape_shares_stratum_mass_by_the_copies_design_weights(
+    shape, factors: list[float]
+) -> None:
+    person, benunit, household = _shaped_frames([1.0, 10.0, 10.0, 10.0, 69.0])
+
+    result = build_uk_spi_support_channel(
+        person=person,
+        benunit=benunit,
+        household=household,
+        spi_household_count=5,
+        seed=42,
+        source_year=2023,
+        strata_columns=("region",),
+        prior_shape=shape,
+    )
+
+    spi = _shaped_spi_weights(result)
+    expected = 50.0 * np.asarray(factors) / np.sum(factors)
+    np.testing.assert_allclose(spi.to_numpy(), expected, rtol=1e-12)
+    # The stratum's channel mass is exactly its declared share, and the
+    # national total is conserved to the bit.
+    assert spi.sum() == pytest.approx(50.0, rel=1e-12)
+    assert result.household["household_weight"].sum() == 100.0
+    base = result.household[support_channel_column("household")].eq(
+        BASE_FRS_SUPPORT_CHANNEL
+    )
+    np.testing.assert_allclose(
+        result.household.loc[base, "household_weight"].to_numpy(),
+        0.5 * household["household_weight"].to_numpy(),
+    )
+
+
+def test_spi_prior_shape_conserves_each_region_and_pension_age_stratum() -> None:
+    person, benunit, household = _pension_age_frames()
+
+    result = build_uk_spi_support_channel(
+        person=person,
+        benunit=benunit,
+        household=household,
+        spi_household_count=4,
+        seed=42,
+        source_year=2023,
+        strata_columns=("region",),
+        pension_age_share=0.2,
+        state_pension_age=66,
+        prior_shape=spi_support.UKSPIPriorShape("design_damped", exponent=0.5),
+    )
+
+    # Households 1 and 3 (weights 10 and 20) have a member at or over 66, and
+    # share 20% of their 30; households 2 and 4 (30 and 40) share 50% of 70.
+    spi = _shaped_spi_weights(result)
+    root = np.sqrt([10.0, 30.0, 20.0, 40.0])
+    assert spi[1] == pytest.approx(6.0 * root[0] / (root[0] + root[2]))
+    assert spi[3] == pytest.approx(6.0 * root[2] / (root[0] + root[2]))
+    assert spi[2] == pytest.approx(35.0 * root[1] / (root[1] + root[3]))
+    assert spi[4] == pytest.approx(35.0 * root[3] / (root[1] + root[3]))
+    assert result.pension_age_allocation["pension_age_spi_mass"] == pytest.approx(6.0)
+    assert result.pension_age_allocation["other_spi_mass"] == pytest.approx(35.0)
+    assert result.household["household_weight"].sum() == 100.0
+    assert "design weights to the power 0.5" in result.mass_log[-1].reason
+    assert "0.2 in households with" in result.mass_log[-1].reason
+
+
+def test_spi_prior_shape_receipt_gives_aggregates_only() -> None:
+    person, benunit, household = _shaped_frames([1.0, 10.0, 10.0, 10.0, 69.0])
+
+    equal = build_uk_spi_support_channel(
+        person=person,
+        benunit=benunit,
+        household=household,
+        spi_household_count=5,
+        seed=42,
+        source_year=2023,
+        strata_columns=("region",),
+    )
+    bounded = build_uk_spi_support_channel(
+        person=person,
+        benunit=benunit,
+        household=household,
+        spi_household_count=5,
+        seed=42,
+        source_year=2023,
+        strata_columns=("region",),
+        prior_shape=spi_support.UKSPIPriorShape("design_bounded", bounds=(0.5, 2.0)),
+    )
+
+    assert equal.prior_shape_allocation is None
+    assert equal.mass_log[-1].reason == SPI_PRIOR_MASS_CHANGE_REASON
+    # Five copies: the percentiles and shares would rest on fewer than ten
+    # source households, so the receipt withholds them.
+    small = bounded.prior_shape_allocation
+    assert small["shape"] == "design_bounded"
+    assert small["bounds"] == [0.5, 2.0]
+    assert small["copies"] == "<10"
+    assert small["copy_weight_over_equal_weight_p10_p50_p90"] == "<10"
+    assert small["clipped_low_share"] == "<10"
+    assert small["clipped_high_share"] == "<10"
+    assert small["clipped_low_copies"] == "<10"
+    assert small["clipped_high_copies"] == "<10"
+
+    person, benunit, household = _shaped_frames([1.0, 10.0, 10.0, 10.0, 69.0] * 2)
+    receipt = build_uk_spi_support_channel(
+        person=person,
+        benunit=benunit,
+        household=household,
+        spi_household_count=10,
+        seed=42,
+        source_year=2023,
+        strata_columns=("region",),
+        prior_shape=spi_support.UKSPIPriorShape("design_bounded", bounds=(0.5, 2.0)),
+    ).prior_shape_allocation
+    assert receipt["copies"] == 10
+    # Equal weight is 5: eight copies at 3.125 and two at 12.5. Only the
+    # relative weights 0.05 and 3.45 lie outside the bounds.
+    assert receipt["copy_weight_over_equal_weight_p10_p50_p90"] == [0.62, 0.62, 2.5]
+    assert receipt["clipped_low_share"] == 0.2
+    assert receipt["clipped_high_share"] == 0.2
+    assert receipt["clipped_low_copies"] == "<10"
+    assert receipt["clipped_high_copies"] == "<10"
+    assert receipt["copies_above_2_of_equal_weight"] == "<10"
+    assert receipt["copies_below_0.5_of_equal_weight"] == 0
+    for allocation in (small, receipt):
+        assert not any("min" in key or "max" in key for key in allocation)
+
+
+def test_spi_prior_refuses_a_copy_of_a_zero_weight_source() -> None:
+    """The #420 guard: every copy stands for a household the design weighs."""
+
+    person, benunit, household = _shaped_frames([0.0, 10.0, 30.0])
+
+    for shape in (
+        None,
+        spi_support.UKSPIPriorShape("design_damped", exponent=0.5),
+    ):
+        with pytest.raises(ValueError, match="strictly positive source-household"):
+            build_uk_spi_support_channel(
+                person=person,
+                benunit=benunit,
+                household=household,
+                spi_household_count=3,
+                seed=42,
+                source_year=2023,
+                strata_columns=("region",),
+                prior_shape=shape,
+            )
+
+
+def test_spi_prior_design_shape_refuses_fitted_incoming_weights() -> None:
+    person, benunit, household = _shaped_frames([1.0, 10.0, 30.0])
+
+    with pytest.raises(ValueError, match="re-creates microcosm#630"):
+        build_uk_spi_support_channel(
+            person=person,
+            benunit=benunit,
+            household=household,
+            spi_household_count=3,
+            seed=42,
+            source_year=2023,
+            strata_columns=("region",),
+            input_weight_kind=WeightKind.CALIBRATED,
+            prior_shape=spi_support.UKSPIPriorShape("design_damped", exponent=0.5),
+        )
+
+
+@pytest.mark.parametrize(
+    ("arguments", "message"),
+    [
+        ({"kind": "proportional"}, "must be one of"),
+        ({"kind": "design_damped"}, r"exponent in \(0, 1\]"),
+        ({"kind": "design_damped", "exponent": 1.5}, r"exponent in \(0, 1\]"),
+        ({"kind": "design_damped", "exponent": True}, r"exponent in \(0, 1\]"),
+        (
+            {"kind": "design_damped", "exponent": 0.5, "bounds": (0.5, 2.0)},
+            "takes no bounds",
+        ),
+        ({"kind": "design_bounded"}, "needs \\(lower, upper\\) bounds"),
+        ({"kind": "design_bounded", "bounds": (1.2, 2.0)}, "0 < lower <= 1"),
+        ({"kind": "design_bounded", "bounds": (0.0, 2.0)}, "0 < lower <= 1"),
+        (
+            {"kind": "design_bounded", "bounds": (0.5, 2.0), "exponent": 0.5},
+            "takes no exponent",
+        ),
+        ({"kind": "equal", "exponent": 0.5}, "takes no exponent"),
+    ],
+)
+def test_spi_prior_shape_refuses_invalid_declarations(
+    arguments: dict, message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        spi_support.UKSPIPriorShape(**arguments)

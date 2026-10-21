@@ -19,6 +19,11 @@ import pandas as pd
 from microcosm.build.uk_runtime.hmrc_income import (
     HMRC_SPI_ASSESSABLE_INCOME_COLUMN,
 )
+from microcosm.build.uk_runtime.receipt_counts import (
+    extreme_count,
+    floored_share,
+    rounded_count,
+)
 from microcosm.build.uk_runtime.rowwise_geography import id_multiplier_for_values
 from microcosm.build.uk_runtime.terminal_gates import (
     UKZeroWeightStratumDeclaration,
@@ -49,6 +54,24 @@ SPI_PRIOR_MASS_CHANGE_REASON = (
 #: State Pension age (microcosm#1069). It is derived for the allocation only and
 #: never written to the frame.
 SPI_PENSION_AGE_STRATUM_COLUMN = "household_has_state_pension_age_member"
+#: How a stratum's SPI-channel mass is shared among its copies. ``equal`` gives
+#: every copy the same weight (microcosm#710). The channel's draw is uniform,
+#: so equal weights count each FRS respondent once and reproduce the
+#: respondent mix rather than the design's population; the design shapes give
+#: each copy a weight that follows its source household's design weight
+#: relative to the stratum's copies, damped (``design_damped``: the relative
+#: weight to a power) or clipped (``design_bounded``: the relative weight held
+#: to bounds).
+SPI_PRIOR_SHAPE_EQUAL = "equal"
+SPI_PRIOR_SHAPE_DESIGN_DAMPED = "design_damped"
+SPI_PRIOR_SHAPE_DESIGN_BOUNDED = "design_bounded"
+SPI_PRIOR_SHAPES = (
+    SPI_PRIOR_SHAPE_EQUAL,
+    SPI_PRIOR_SHAPE_DESIGN_DAMPED,
+    SPI_PRIOR_SHAPE_DESIGN_BOUNDED,
+)
+#: Copy factors the receipt counts as far from an equal weight.
+_SPI_PRIOR_SHAPE_RECEIPT_FACTORS = (0.5, 2.0)
 
 SPI_INCOME_COMPONENT_COLUMNS = (
     "employment_income",
@@ -224,6 +247,101 @@ _HOUSEHOLD_ID_COLUMNS = ("household_id",)
 
 
 @dataclass(frozen=True)
+class UKSPIPriorShape:
+    """How a stratum's SPI-channel prior mass is shared among its copies.
+
+    Copy ``j`` of stratum ``s`` takes ``M_s * share_s * f_j / sum_k f_k`` over
+    the stratum's copies ``k``, where ``f`` is :meth:`copy_factors` of the
+    copy's source design weight over the mean of the stratum's copies'. So the
+    stratum's channel mass is exactly the declared share of its mass whatever
+    the shape, and the hosts and their incomes do not move.
+    """
+
+    kind: str = SPI_PRIOR_SHAPE_EQUAL
+    exponent: float | None = None
+    bounds: tuple[float, float] | None = None
+
+    def __post_init__(self) -> None:
+        if self.kind not in SPI_PRIOR_SHAPES:
+            raise ValueError(
+                f"SPI prior shape must be one of {list(SPI_PRIOR_SHAPES)}, got "
+                f"{self.kind!r}."
+            )
+        if self.kind == SPI_PRIOR_SHAPE_DESIGN_DAMPED:
+            exponent = self.exponent
+            if (
+                isinstance(exponent, bool)
+                or not isinstance(exponent, int | float)
+                or not np.isfinite(exponent)
+                or not 0.0 < exponent <= 1.0
+            ):
+                raise ValueError(
+                    "A design_damped SPI prior needs an exponent in (0, 1]."
+                )
+            object.__setattr__(self, "exponent", float(exponent))
+        elif self.exponent is not None:
+            raise ValueError(f"A {self.kind} SPI prior takes no exponent.")
+        if self.kind == SPI_PRIOR_SHAPE_DESIGN_BOUNDED:
+            bounds = self.bounds
+            if bounds is None or len(tuple(bounds)) != 2:
+                raise ValueError(
+                    "A design_bounded SPI prior needs (lower, upper) bounds."
+                )
+            lower, upper = (float(value) for value in bounds)
+            if not (np.isfinite(lower) and np.isfinite(upper)) or not (
+                0.0 < lower <= 1.0 <= upper and lower < upper
+            ):
+                raise ValueError(
+                    "A design_bounded SPI prior needs 0 < lower <= 1 <= upper "
+                    "with lower < upper."
+                )
+            object.__setattr__(self, "bounds", (lower, upper))
+        elif self.bounds is not None:
+            raise ValueError(f"A {self.kind} SPI prior takes no bounds.")
+
+    @property
+    def reads_design_weights(self) -> bool:
+        return self.kind != SPI_PRIOR_SHAPE_EQUAL
+
+    def copy_factors(self, relative_design_weight: np.ndarray) -> np.ndarray:
+        """Each copy's factor from its source design weight over the copies' mean."""
+
+        relative = np.asarray(relative_design_weight, dtype=np.float64)
+        if self.kind == SPI_PRIOR_SHAPE_DESIGN_DAMPED:
+            return relative ** float(self.exponent)
+        if self.kind == SPI_PRIOR_SHAPE_DESIGN_BOUNDED:
+            lower, upper = self.bounds
+            return np.clip(relative, lower, upper)
+        return np.ones_like(relative)
+
+    def sentence(self) -> str:
+        """The shape as the allocation's MassChangeRecord states it."""
+
+        if self.kind == SPI_PRIOR_SHAPE_DESIGN_DAMPED:
+            return (
+                "shared among each stratum's copies in proportion to their "
+                "source households' design weights to the power "
+                f"{self.exponent:.12g}"
+            )
+        if self.kind == SPI_PRIOR_SHAPE_DESIGN_BOUNDED:
+            lower, upper = self.bounds
+            return (
+                "shared among each stratum's copies in proportion to their "
+                "source households' design weights over the copies' mean, held "
+                f"to [{lower:.12g}, {upper:.12g}]"
+            )
+        return "shared equally among each stratum's copies"
+
+    def to_evidence(self) -> dict[str, object]:
+        evidence: dict[str, object] = {"shape": self.kind}
+        if self.exponent is not None:
+            evidence["exponent"] = self.exponent
+        if self.bounds is not None:
+            evidence["bounds"] = list(self.bounds)
+        return evidence
+
+
+@dataclass(frozen=True)
 class UKSPISupportResult:
     """UK entity tables with an enhanced-FRS SPI support channel."""
 
@@ -239,6 +357,7 @@ class UKSPISupportResult:
     pension_age_spi_prior_mass_share: float | None = None
     state_pension_age: int | None = None
     pension_age_allocation: Mapping[str, float] | None = None
+    prior_shape_allocation: Mapping[str, object] | None = None
 
     @property
     def n_spi_households(self) -> int:
@@ -509,6 +628,7 @@ def build_uk_spi_support_channel(
     ) = (),
     pension_age_share: float | None = None,
     state_pension_age: int | None = None,
+    prior_shape: UKSPIPriorShape | None = None,
 ) -> UKSPISupportResult:
     """Stack the E7 SPI support channel and allocate prior mass by stratum.
 
@@ -519,6 +639,12 @@ def build_uk_spi_support_channel(
     and the channel's households are drawn unweighted with one weight per
     region, so without the split the channel holds more pension-age mass than
     the FRS design gives pension-age households (microcosm#1069).
+
+    ``prior_shape`` shares each stratum's channel mass among its copies (equal
+    by default). A design shape reads every copy's source household's incoming
+    weight, so it requires ``DESIGN`` input weights: shaping by calibrated or
+    importance weights would carry a lineage's fitted weight into its copy,
+    the defect microcosm#630 found and #710 removed.
     """
 
     if not isinstance(input_weight_kind, WeightKind):
@@ -548,6 +674,15 @@ def build_uk_spi_support_channel(
                 f"{SPI_PENSION_AGE_STRATUM_COLUMN} is derived by the allocation; "
                 "do not pass it as a stratum column."
             )
+    shape = UKSPIPriorShape() if prior_shape is None else prior_shape
+    if not isinstance(shape, UKSPIPriorShape):
+        raise TypeError("prior_shape must be a UKSPIPriorShape.")
+    if shape.reads_design_weights and input_weight_kind is not WeightKind.DESIGN:
+        raise ValueError(
+            f"A {shape.kind} SPI prior reads the source households' design "
+            f"weights; the incoming weights are {input_weight_kind.value}. "
+            "Shaping copies by fitted weights re-creates microcosm#630."
+        )
 
     stacked = create_uk_spi_support_tables(
         person=person,
@@ -575,6 +710,7 @@ def build_uk_spi_support_channel(
             input_weight_kind=input_weight_kind,
             mass_log=mass_log,
             strata_columns=stratum_columns,
+            prior_shape=shape,
         )
     pension_age = _households_with_member_at_or_over(
         stacked.person, stacked.household, age=int(state_pension_age)
@@ -592,6 +728,7 @@ def build_uk_spi_support_channel(
         mass_log=mass_log,
         strata_columns=(*stratum_columns, SPI_PENSION_AGE_STRATUM_COLUMN),
         pension_age_share=float(pension_age_share),
+        prior_shape=shape,
     )
     return replace(
         allocated,
@@ -890,7 +1027,9 @@ def _allocate_spi_prior_mass(
     mass_log: tuple[MassChangeRecord, ...],
     strata_columns: tuple[str, ...],
     pension_age_share: float | None = None,
+    prior_shape: UKSPIPriorShape | None = None,
 ) -> UKSPISupportResult:
+    shape = UKSPIPriorShape() if prior_shape is None else prior_shape
     household = result.household.copy()
     channels = household[support_channel_column("household")]
     base_mask = channels.eq(BASE_FRS_SUPPORT_CHANNEL).to_numpy()
@@ -904,6 +1043,26 @@ def _allocate_spi_prior_mass(
         household["household_weight"], errors="coerce"
     ).to_numpy(dtype=float, na_value=np.nan)
     old_total = float(pre_weights.sum())
+    # Every copy must stand for a household the incoming spine weighs (the
+    # #420 guard): a copy of a zero-weight source would put channel mass on a
+    # household the design gives none, and a design shape divides by it.
+    source_weights = pd.Series(
+        pre_weights[base_mask],
+        index=household.loc[base_mask, "household_id"].to_numpy(),
+    )
+    spi_source_weights = (
+        household.loc[spi_mask, support_source_id_column("household")]
+        .map(source_weights)
+        .to_numpy(dtype=np.float64, na_value=np.nan)
+    )
+    if (
+        not np.isfinite(spi_source_weights).all()
+        or not (spi_source_weights > 0.0).all()
+    ):
+        raise ValueError(
+            "Every rebuilt SPI household must inherit a strictly positive "
+            "source-household prior."
+        )
     _require_columns(household, strata_columns, label="rebuilt household")
     allocation = household[list(strata_columns)].copy()
     allocation["_base_mass"] = np.where(base_mask, pre_weights, 0.0)
@@ -915,6 +1074,7 @@ def _allocate_spi_prior_mass(
     )
     stratum_base_mass = grouped["_base_mass"].transform("sum").to_numpy(dtype=float)
     stratum_spi_count = grouped["_spi_count"].transform("sum").to_numpy(dtype=np.int64)
+    stratum_ids = grouped.ngroup().to_numpy(dtype=np.int64)
     unrepresented_base = (
         base_mask & (stratum_base_mass > 0.0) & (stratum_spi_count == 0)
     )
@@ -954,10 +1114,31 @@ def _allocate_spi_prior_mass(
     final_weights[base_mask] = pre_weights[base_mask] * (
         1.0 - household_share[base_mask]
     )
+    # Copy j of stratum s takes M_s * share_s * f_j / sum_k f_k: the stratum's
+    # channel mass is the declared share of its mass under any shape, and an
+    # equal shape (f = 1) is the per-stratum quota rule of microcosm#710.
+    relative_design_weight = np.zeros_like(pre_weights)
+    copy_factor = np.zeros_like(pre_weights)
+    spi_stratum_ids = stratum_ids[spi_mask]
+    stratum_copies = np.bincount(spi_stratum_ids)
+    stratum_design_mean = np.divide(
+        np.bincount(spi_stratum_ids, weights=spi_source_weights),
+        stratum_copies,
+        out=np.zeros(len(stratum_copies), dtype=np.float64),
+        where=stratum_copies > 0,
+    )
+    relative_design_weight[spi_mask] = (
+        spi_source_weights / stratum_design_mean[spi_stratum_ids]
+    )
+    copy_factor[spi_mask] = shape.copy_factors(relative_design_weight[spi_mask])
+    if not np.isfinite(copy_factor).all() or not (copy_factor[spi_mask] > 0.0).all():
+        raise ValueError("The SPI prior shape gave a copy a non-positive factor.")
+    stratum_copy_factor = np.bincount(stratum_ids, weights=copy_factor)
     final_weights[spi_mask] = (
         stratum_base_mass[spi_mask]
         * household_share[spi_mask]
-        / stratum_spi_count[spi_mask]
+        * copy_factor[spi_mask]
+        / stratum_copy_factor[spi_stratum_ids]
     )
 
     # This is a newly assembled two-channel population, not an in-place
@@ -981,7 +1162,9 @@ def _allocate_spi_prior_mass(
         new_total=allocated_weights.total,
         declared_factor=1.0,
         reason=_spi_prior_mass_change_reason(
-            spi_prior_mass_share, pension_age_share=pension_age_share
+            spi_prior_mass_share,
+            pension_age_share=pension_age_share,
+            prior_shape=shape,
         ),
     )
     pension_age_allocation = None
@@ -995,6 +1178,17 @@ def _allocate_spi_prior_mass(
             "other_prior_mass": float(pre_weights[~pension_age].sum()),
             "other_spi_mass": float(final[~pension_age & spi_mask].sum()),
         }
+    prior_shape_allocation = None
+    if shape.reads_design_weights:
+        prior_shape_allocation = _prior_shape_receipt(
+            shape,
+            relative_design_weight=relative_design_weight[spi_mask],
+            equal_weight_factor=(
+                copy_factor[spi_mask]
+                * stratum_copies[spi_stratum_ids]
+                / stratum_copy_factor[spi_stratum_ids]
+            ),
+        )
     return UKSPISupportResult(
         person=result.person,
         benunit=result.benunit,
@@ -1006,7 +1200,63 @@ def _allocate_spi_prior_mass(
         spi_prior_mass_share=spi_prior_mass_share,
         pension_age_spi_prior_mass_share=pension_age_share,
         pension_age_allocation=pension_age_allocation,
+        prior_shape_allocation=prior_shape_allocation,
     )
+
+
+def _prior_shape_receipt(
+    shape: UKSPIPriorShape,
+    *,
+    relative_design_weight: np.ndarray,
+    equal_weight_factor: np.ndarray,
+) -> dict[str, object]:
+    """The design shape's receipt: aggregates over the channel's copies only.
+
+    Each copy is a distinct FRS source household (the draw is without
+    replacement), so a count of copies is a count of source households. The
+    receipt follows UKDS disclosure control (microcosm#1164): the adjustment's
+    10th, 50th and 90th percentiles, never a minimum or a maximum, shares
+    floored, and counts of copies at a bound or far from an equal weight
+    banded. A channel of one to nine copies (a small scale-ladder rung) gives
+    "<10" in place of its percentiles and shares, which would rest on fewer
+    than ten source households.
+    """
+
+    lower, upper = _SPI_PRIOR_SHAPE_RECEIPT_FACTORS
+    small = len(equal_weight_factor) < 10
+    receipt: dict[str, object] = {
+        **shape.to_evidence(),
+        "design_weight": "source household's incoming spine weight",
+        "copies": rounded_count(len(equal_weight_factor)),
+        "copy_weight_over_equal_weight_p10_p50_p90": (
+            "<10" if small else _percentiles_10_50_90(equal_weight_factor)
+        ),
+        f"copies_below_{lower:g}_of_equal_weight": extreme_count(
+            int((equal_weight_factor < lower).sum())
+        ),
+        f"copies_above_{upper:g}_of_equal_weight": extreme_count(
+            int((equal_weight_factor > upper).sum())
+        ),
+    }
+    if shape.bounds is not None:
+        low, high = shape.bounds
+        clipped_low = relative_design_weight < low
+        clipped_high = relative_design_weight > high
+        receipt["clipped_low_share"] = (
+            "<10" if small else floored_share(float(clipped_low.mean()))
+        )
+        receipt["clipped_high_share"] = (
+            "<10" if small else floored_share(float(clipped_high.mean()))
+        )
+        receipt["clipped_low_copies"] = extreme_count(int(clipped_low.sum()))
+        receipt["clipped_high_copies"] = extreme_count(int(clipped_high.sum()))
+    return receipt
+
+
+def _percentiles_10_50_90(values: np.ndarray) -> list[float]:
+    """The 10th, 50th and 90th percentiles, to two decimals."""
+
+    return [round(float(value), 2) for value in np.quantile(values, (0.1, 0.5, 0.9))]
 
 
 def _importance_weights_with_exact_total(
@@ -1133,15 +1383,26 @@ def _positive_float_from_bits(bits: int) -> float:
 
 
 def _spi_prior_mass_change_reason(
-    share: float, *, pension_age_share: float | None = None
+    share: float,
+    *,
+    pension_age_share: float | None = None,
+    prior_shape: UKSPIPriorShape | None = None,
 ) -> str:
+    shaped = prior_shape is not None and prior_shape.reads_design_weights
     if pension_age_share is not None:
+        shape_clause = f", {prior_shape.sentence()}" if shaped else ""
         return (
             f"Allocate {share:.12g} of certified UK national household prior mass "
             "in households without, and "
             f"{pension_age_share:.12g} in households with, a member at or over "
-            "State Pension age to the rebuilt 2022-23 SPI support channel; total "
-            "national mass is conserved."
+            "State Pension age to the rebuilt 2022-23 SPI support channel"
+            f"{shape_clause}; total national mass is conserved."
+        )
+    if shaped:
+        return (
+            f"Allocate {share:.12g} of certified UK national household prior mass "
+            "to the rebuilt 2022-23 SPI support channel, "
+            f"{prior_shape.sentence()}; total national mass is conserved."
         )
     if np.isclose(share, DEFAULT_SPI_PRIOR_MASS_SHARE, rtol=0.0, atol=0.0):
         return SPI_PRIOR_MASS_CHANGE_REASON
@@ -1328,9 +1589,14 @@ __all__ = [
     "SPI_LOSS_DRAW_COLUMNS",
     "SPI_PENSION_AGE_STRATUM_COLUMN",
     "SPI_PRIOR_MASS_CHANGE_REASON",
+    "SPI_PRIOR_SHAPES",
+    "SPI_PRIOR_SHAPE_DESIGN_BOUNDED",
+    "SPI_PRIOR_SHAPE_DESIGN_DAMPED",
+    "SPI_PRIOR_SHAPE_EQUAL",
     "SPI_PROFIT_BEFORE_LOSSES_DRAW_COLUMN",
     "SPI_PROPERTY_FINANCE_COSTS_COLUMN",
     "SPI_REPLACEMENT_STRATA_COLUMNS",
+    "UKSPIPriorShape",
     "UKSPISupportResult",
     "UK_SPI_SUPPORT_STAGE_NAME",
     "build_uk_spi_support_channel",

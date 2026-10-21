@@ -1479,6 +1479,8 @@
      ],
      "pension_age_share": 0.2,
      "pension_age_stratum": "any_member_at_or_over_state_pension_age",
+     "prior_shape": "design_damped",
+     "prior_shape_exponent": 0.5,
      "weight_kind_out": "importance",
      "conservation": "exact_total"
     }
@@ -1508,7 +1510,7 @@
     "source_household_id",
     "source_year"
    ],
-   "notes": "Stacks the pre-clone SPI support channel, gates the 10,000 zero-weight synthetic households under a stage-local declaration, and allocates prior mass with exact national conservation within each region, split by whether the household has a member at or over State Pension age (the engine's at the build instant): the SPI channel takes 50 percent of the stratum mass of households without one and pension_age_share of those with one. The channel's households are drawn unweighted with one weight per stratum and every adult in them carries a taxpayer's income, so a region-only allocation gave the channel more pension-age mass than the FRS design gives pension-age households (microcosm#1069)."
+   "notes": "Stacks the pre-clone SPI support channel, gates the 10,000 zero-weight synthetic households under a stage-local declaration, and allocates prior mass with exact national conservation within each region, split by whether the household has a member at or over State Pension age (the engine's at the build instant): the SPI channel takes 50 percent of the stratum mass of households without one and pension_age_share of those with one. The channel's households are drawn unweighted with one weight per stratum and every adult in them carries a taxpayer's income, so a region-only allocation gave the channel more pension-age mass than the FRS design gives pension-age households (microcosm#1069). Within each stratum the channel's mass is shared among its copies in proportion to their source households' raw FRS design weights (GROSS4, the incoming spine weight; never a calibrated or a later stage's weight, which carried a lineage's fitted weight into its copy in microcosm#630) over the mean of the stratum's copies, damped to the square root (prior_shape design_damped, exponent 0.5). The draw is uniform, so equal copy weights reproduced the FRS respondent mix (young families, single adults and one-earner couples over-represented, households of three or more adults under-represented) rather than the design's population. The square root was chosen on 21 October 2026 over the full design shape and the shape clipped to [0.5, 2], whose re-solves of the release calibration put more rows at the weight-ratio cap or widened the standard error of the count of adults with GBP 125,000 to 150,000 of income. Each stratum's channel mass stays exactly its declared share, and the stage receipt gives the shape's spread as the 10th, 50th and 90th percentiles with banded counts, never a minimum or a maximum."
   },
   {
    "stage": "spi_income_band_donors",

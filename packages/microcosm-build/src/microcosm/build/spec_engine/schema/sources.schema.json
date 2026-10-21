@@ -7557,6 +7557,24 @@
       "pension_age_stratum": {
        "type": "string"
       },
+      "prior_shape": {
+       "enum": [
+        "equal",
+        "design_damped",
+        "design_bounded"
+       ]
+      },
+      "prior_shape_bounds": {
+       "type": "array",
+       "minItems": 2,
+       "maxItems": 2,
+       "items": {
+        "type": "number"
+       }
+      },
+      "prior_shape_exponent": {
+       "type": "number"
+      },
       "share": {
        "type": "number"
       },
