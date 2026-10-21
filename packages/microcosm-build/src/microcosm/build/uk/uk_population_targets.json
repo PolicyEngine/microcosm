@@ -29953,12 +29953,12 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/self_employment_income/amount",
-          "value_variable": "self_employment_income_after_loss_relief",
+          "value_variable": "self_employment_income_after_loss_relief_annual",
           "from_entity": "person",
           "map_to": "household",
           "filters": [
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             }
@@ -30018,12 +30018,12 @@
           "map_to": "household",
           "filters": [
             {
-              "variable": "self_employment_income_after_loss_relief",
+              "variable": "self_employment_income_after_loss_relief_annual",
               "operator": "!=",
               "value": 0
             },
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             }
@@ -30070,12 +30070,12 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/employment_income/amount",
-          "value_variable": "employment_income",
+          "value_variable": "employment_income_annual",
           "from_entity": "person",
           "map_to": "household",
           "filters": [
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             }
@@ -30135,12 +30135,12 @@
           "map_to": "household",
           "filters": [
             {
-              "variable": "employment_income",
+              "variable": "employment_income_annual",
               "operator": "!=",
               "value": 0
             },
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             }
@@ -33163,12 +33163,12 @@
           "map_to": "household",
           "filters": [
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             },
             {
-              "variable": "tax_band",
+              "variable": "tax_band_annual",
               "operator": "==",
               "value": "HIGHER"
             }

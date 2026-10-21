@@ -177,7 +177,12 @@ def extract_incumbent_surface(
         raise ValueError(f"Area codes collide across incumbent grains: {overlap[:10]}.")
 
     # The local metrics are their declarations read through the measure
-    # resolver, as the build's local line reads them.
+    # resolver, as the build's local line reads them; the incumbent was built
+    # before the annual income descriptors existed, so its annual measures
+    # are its current values, as rule 1 scores it nationally.
+    from microcosm.build.uk_runtime.candidate_score import (
+        UK_INCUMBENT_ANNUAL_INCOME_FALLBACK,
+    )
     from microcosm.build.uk_runtime.measure_simulation import UKMeasureResolver
 
     with tempfile.TemporaryDirectory() as scratch:
@@ -187,6 +192,9 @@ def extract_incumbent_surface(
             year=int(period),
             frame=None,
             microsimulation_factory=microsimulation_factory,
+        )
+        resolver.use_current_income_for_annual_measures(
+            reason=UK_INCUMBENT_ANNUAL_INCOME_FALLBACK
         )
         metric_frames = [
             compute_household_metrics(

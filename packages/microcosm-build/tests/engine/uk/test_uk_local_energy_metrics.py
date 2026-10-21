@@ -15,6 +15,10 @@ from microcosm.build.uk_runtime.domestic_energy_targets import (
     household_energy_kwh,
     household_energy_prices,
 )
+from microcosm.build.uk_runtime.frs_annual_income import (
+    ANNUAL_SHARE_COLUMNS,
+    OTHER_SPELLS_COLUMNS,
+)
 from microcosm.build.uk_runtime.local_targets import compute_household_metrics
 from microcosm.build.uk_runtime.measure_simulation import UKMeasureResolver
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
@@ -34,6 +38,10 @@ def _resolver(tmp_path) -> UKMeasureResolver:
                 "person_benunit_id": [1],
                 "person_household_id": [1],
                 "age": [40.0],
+                # A full year at today's income: the annual measures the
+                # local hmrc rows read are the current ones.
+                **{column: [1.0] for column in ANNUAL_SHARE_COLUMNS},
+                **{column: [0.0] for column in OTHER_SPELLS_COLUMNS},
             }
         ),
         benunit=pd.DataFrame({"benunit_id": [1]}),

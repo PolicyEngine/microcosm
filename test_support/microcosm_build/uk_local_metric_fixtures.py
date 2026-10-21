@@ -127,7 +127,9 @@ def local_metric_resolver(
     The frame stores the engine's ages and tenure, the FRS benefit-unit roles
     and the home values; at the frame's own period it also stores the
     self-employment profit and the losses brought forward, which the
-    resolver then reads from it.
+    resolver then reads from it. It carries no annual income descriptors, so
+    the annual measures the local ``hmrc`` rows read are its current values
+    (the engine test of the annual measures covers the annual route).
     """
 
     monkeypatch.setattr(
@@ -162,7 +164,7 @@ def local_metric_resolver(
             "tenure_type": np.asarray(engine.values["tenure_type"]),
         }
     )
-    return UKMeasureResolver(
+    resolver = UKMeasureResolver(
         simulation_source=scratch_dir / "engine.h5",
         scratch_dir=scratch_dir,
         year=year,
@@ -172,6 +174,10 @@ def local_metric_resolver(
         ),
         microsimulation_factory=lambda **_: engine,
     )
+    resolver.use_current_income_for_annual_measures(
+        reason="a stub frame without annual income descriptors"
+    )
+    return resolver
 
 
 def three_household_engine(**values: Sequence[Any]) -> StubUKEngine:

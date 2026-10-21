@@ -12,6 +12,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.uk_runtime.frs_annual_income import (
+    ANNUAL_SHARE_COLUMNS,
+    OTHER_SPELLS_COLUMNS,
+)
 from microcosm.build.uk_runtime.local_targets import (
     HIGHER_RATE_TAXPAYERS_METRIC,
     compute_household_metrics,
@@ -117,6 +121,10 @@ def test_the_area_metric_counts_higher_rate_taxpayers_only(tmp_path):
                 "employment_income": [30_000.0, 60_000.0, 200_000.0],
                 "is_benunit_head": [True, True, True],
                 "is_parent": [False, False, False],
+                # Each paid all year at today's rate: the rows read the tax
+                # band of each person's year, here the current band.
+                **{column: [1.0] * 3 for column in ANNUAL_SHARE_COLUMNS},
+                **{column: [0.0] * 3 for column in OTHER_SPELLS_COLUMNS},
             }
         ),
         benunit=pd.DataFrame({"benunit_id": ids, "dependent_children": [0, 0, 0]}),

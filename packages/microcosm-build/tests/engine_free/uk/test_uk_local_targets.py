@@ -308,6 +308,26 @@ def test_la_energy_metrics_read_the_stored_spend_back_into_kwh(
         assert engine.periods[variable] == {2023}, variable
 
 
+def test_the_local_hmrc_rows_read_each_persons_tax_year() -> None:
+    # As the national HMRC income rows do (microcosm#1334): the values, the
+    # taxpayer test and the rate band on each person's income over the year.
+    for area_type in ("constituency", "la"):
+        bindings = local_metric_bindings(area_type)
+        for name in metric_names(area_type):
+            if not name.startswith("hmrc/"):
+                continue
+            binding = bindings[name]
+            read = [
+                binding["value_variable"],
+                *(predicate["variable"] for predicate in binding["filters"]),
+            ]
+            assert "income_tax_annual" in read, name
+            assert all(
+                variable == "person_count" or variable.endswith("_annual")
+                for variable in read
+            ), (name, read)
+
+
 def test_every_local_metric_is_read_from_its_declaration() -> None:
     for area_type in AREA_TYPES:
         bindings = local_metric_bindings(area_type)

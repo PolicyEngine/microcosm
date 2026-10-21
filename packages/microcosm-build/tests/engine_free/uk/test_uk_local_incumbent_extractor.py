@@ -10,6 +10,9 @@ import pandas as pd
 import pytest
 
 from microcosm.build.uk_runtime import measure_simulation
+from microcosm.build.uk_runtime.candidate_score import (
+    UK_INCUMBENT_ANNUAL_INCOME_FALLBACK,
+)
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -49,6 +52,10 @@ def test_extract_incumbent_surface_from_tiny_h5_and_stub_simulation(
     class StubResolver:
         def __init__(self, **kwargs):
             self.kwargs = kwargs
+            self.fallback = None
+
+        def use_current_income_for_annual_measures(self, *, reason):
+            self.fallback = reason
 
     resolvers = []
 
@@ -57,7 +64,7 @@ def test_extract_incumbent_surface_from_tiny_h5_and_stub_simulation(
         return resolvers[-1]
 
     # The metrics are the declarations read through one resolver over the
-    # incumbent file.
+    # incumbent file, its annual measures its current values (rule 1's R1).
     monkeypatch.setattr(measure_simulation, "UKMeasureResolver", make_resolver)
 
     def fake_metrics(resolver, grain, *, period, household_ids):
@@ -93,6 +100,7 @@ def test_extract_incumbent_surface_from_tiny_h5_and_stub_simulation(
     assert resolver.kwargs["frame"] is None
     assert resolver.kwargs["year"] == 2025
     assert resolver.kwargs["microsimulation_factory"] is factory
+    assert resolver.fallback == UK_INCUMBENT_ANNUAL_INCOME_FALLBACK
 
     weights = pd.read_csv(out_dir / tool.WEIGHTS_FILENAME)
     metrics = pd.read_csv(out_dir / tool.METRICS_FILENAME)
