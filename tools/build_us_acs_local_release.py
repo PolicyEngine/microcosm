@@ -1832,10 +1832,13 @@ def load_checkpoint_surface(checkpoint_dir: Path, identity: dict | None = None):
     roles and the matrix must still be the bytes materialize wrote. A
     checkpoint from before the sparse matrix (dense measure columns in the
     lean H5) is refused: re-run ``--stage materialize``.
+    A checkpoint whose registry gives one geography two labels (written
+    before microcosm#1335) is refused the same way.
     Returns ``(frame, design_weights, registry, roles, matrix)``.
     """
 
     from microcosm.calibrate import TargetRegistry
+    from microcosm.calibrate.registry import GeographyLabelConflictError
 
     matrix_path = checkpoint_dir / TARGET_MATRIX_FILENAME
     roles_path = checkpoint_dir / TARGET_ROLES_FILENAME
@@ -1849,7 +1852,17 @@ def load_checkpoint_surface(checkpoint_dir: Path, identity: dict | None = None):
         )
     if identity is not None:
         _verify_checkpoint_digests(checkpoint_dir, identity)
-    registry = TargetRegistry.from_json(registry_path)
+    try:
+        registry = TargetRegistry.from_json(registry_path)
+    except GeographyLabelConflictError as error:
+        # A materialize stage from before microcosm#1335 labelled a state's
+        # population target with its postal code ("ME") and the ledger
+        # targets with the state's name ("Maine").
+        raise SystemExit(
+            f"{registry_path} gives one geography more than one label, as "
+            "checkpoints written before microcosm#1335 do. Re-run --stage "
+            f"materialize with the current tool. {error}"
+        ) from error
     roles = json.loads(roles_path.read_text())
     matrix = cd_surface.load_target_matrix(matrix_path)
     frame, design_weights = load_lean_frame(checkpoint_dir / "target_frame_lean.h5")
