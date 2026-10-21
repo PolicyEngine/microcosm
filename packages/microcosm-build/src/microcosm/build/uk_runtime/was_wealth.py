@@ -13,7 +13,10 @@ import pandas as pd
 
 from microcosm.build.gates import FitWeightRecord
 from microcosm.build.source_manifest import SourceStageSpec
-from microcosm.build.stochastic_assignment import stable_identity_uniforms
+from microcosm.build.stochastic_assignment import (
+    integer_record_keys,
+    stable_identity_uniforms,
+)
 from microcosm.build.uk_runtime.frs_brma import _benunit_household_map
 from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
 from microcosm.build.uk_runtime.national_frame import (
@@ -773,7 +776,10 @@ def impute_was_wealth(
             raise KeyError(
                 f"WAS {side} table is missing {UK_WAS_TENURE_CATEGORY_COLUMN!r}."
             )
-    ids = pd.Series(np.asarray(record_ids), index=recipient_predictor_frame.index)
+    ids = pd.Series(
+        integer_record_keys(record_ids, label="WAS record_ids"),
+        index=recipient_predictor_frame.index,
+    )
     if len(ids) != len(recipient_predictor_frame) or ids.duplicated().any():
         raise ValueError(
             "WAS record_ids must name every recipient once, in recipient row order."

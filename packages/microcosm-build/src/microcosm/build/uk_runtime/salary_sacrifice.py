@@ -13,7 +13,10 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.source_manifest import SourceStageSpec
-from microcosm.build.stochastic_assignment import stable_identity_uniforms
+from microcosm.build.stochastic_assignment import (
+    integer_record_keys,
+    stable_identity_uniforms,
+)
 from microcosm.build.uk_runtime.cgt_structure import (
     HOUSEHOLD_IS_CGT_CLONE,
     _assert_closed_world_operations,
@@ -280,7 +283,10 @@ def impute_salary_sacrifice(frame: Frame) -> UKSalarySacrificeResult:
     if predict_mask.any():
         # Uniforms keyed on each person's own id, never a positional stream:
         # a person's predicted sacrifice moves only when their own predictors do.
-        keys = person.loc[predict_mask, "person_id"].to_numpy()
+        keys = integer_record_keys(
+            person.loc[predict_mask, "person_id"].to_numpy(),
+            label="salary sacrifice person_id",
+        )
         salt = f"salary_sacrifice:{SALSAC_OUTPUT}"
         predictions = fitted.predict_from_uniforms(
             numeric.loc[predict_mask, list(SALSAC_PREDICTORS)],
@@ -364,7 +370,10 @@ def impute_salary_sacrifice(frame: Frame) -> UKSalarySacrificeResult:
         )
     # Net-pay contributions come out of pay: the spine caps them at pay
     # (uk_runtime.pension_coherence), and the conversion takes the same amount
-    # off both, so a contribution above the pay that remains is a defect.
+    # off both, so a contribution above the pay that remains is a defect. The
+    # caps hold here only while no stage between them and this one lowers
+    # pay: today only hmrc_spi_income_spine and salary_sacrifice write
+    # employment_income, so a new pay rewrite must cap contributions again.
     if (employee > np.maximum(employment_income, 0.0) + 1e-6).any():
         raise ValueError(
             "Employee pension contributions must not exceed the pay that remains."

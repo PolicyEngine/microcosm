@@ -13,7 +13,10 @@ import pandas as pd
 
 from microcosm.build.gates import EXPLICIT_KIND, FitWeightRecord
 from microcosm.build.source_manifest import SourceStageSpec
-from microcosm.build.stochastic_assignment import stable_identity_uniforms
+from microcosm.build.stochastic_assignment import (
+    integer_record_keys,
+    stable_identity_uniforms,
+)
 from microcosm.build.uk_runtime.bus_fare_pricing import (
     PRICE_BUS_JOURNEYS_KIND,
     UK_DFT_BUS_JOURNEYS_RESOURCE,
@@ -3127,7 +3130,7 @@ def impute_lcfs_consumption(
     donor_encoded, recipient_encoded, predictors = _encode_consumption_predictors(
         donor, recipient_predictor_frame
     )
-    ids = np.asarray(record_ids)
+    ids = integer_record_keys(record_ids, label="LCFS record_ids")
     if ids.shape != (len(recipient_encoded),) or pd.Series(ids).duplicated().any():
         raise ValueError(
             "LCFS record_ids must name every recipient once, in recipient row order."

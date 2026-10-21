@@ -17,7 +17,10 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.source_manifest import SourceStageSpec
-from microcosm.build.stochastic_assignment import stable_identity_uniforms
+from microcosm.build.stochastic_assignment import (
+    integer_record_keys,
+    stable_identity_uniforms,
+)
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_national_frame,
@@ -317,7 +320,9 @@ def redraw_spi_reported_uc(
     draws = np.zeros(len(benunit), dtype=np.float64)
     # Uniforms keyed on each benefit unit's own id, never a positional
     # stream: a unit's redraw moves only when its own predictors do.
-    keys = benunit["benunit_id"].to_numpy()[target]
+    keys = integer_record_keys(
+        benunit["benunit_id"].to_numpy()[target], label="UC reporter benunit_id"
+    )
     salt = f"uc_reporter_redraw:{UC_REPORTER_TARGET}"
     predicted = fitted.predict_from_uniforms(
         encoded_target,

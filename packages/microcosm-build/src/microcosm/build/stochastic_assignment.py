@@ -13,6 +13,7 @@ __all__ = [
     "assign_binary_from_rate",
     "assign_binary_with_anchored_residual",
     "clipped_normal_from_uniforms",
+    "integer_record_keys",
     "sample_categorical_from_counts",
     "stable_identity_uniforms",
 ]
@@ -42,6 +43,25 @@ def stable_identity_uniforms(
         ],
         dtype=np.float64,
     )
+
+
+def integer_record_keys(
+    ids: Sequence[object] | np.ndarray, *, label: str
+) -> np.ndarray:
+    """Record ids to key ``stable_identity_uniforms`` on: integers, each once.
+
+    The key string formats each id, so the integer ``1001`` and the float
+    ``1001.0`` draw differently, and a merge that turned an id column into
+    floats would silently redraw every record. A repeated id would give two
+    records the same uniforms.
+    """
+
+    keys = np.asarray(ids)
+    if keys.ndim != 1 or not np.issubdtype(keys.dtype, np.integer):
+        raise TypeError(f"{label} must be a one-dimensional array of integer ids.")
+    if np.unique(keys).size != keys.size:
+        raise ValueError(f"{label} must name each record once.")
+    return keys
 
 
 def assign_binary_from_rate(

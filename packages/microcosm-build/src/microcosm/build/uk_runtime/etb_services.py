@@ -13,7 +13,10 @@ import pandas as pd
 
 from microcosm.build.gates import FitWeightRecord
 from microcosm.build.source_manifest import SourceStageSpec
-from microcosm.build.stochastic_assignment import stable_identity_uniforms
+from microcosm.build.stochastic_assignment import (
+    integer_record_keys,
+    stable_identity_uniforms,
+)
 from microcosm.build.uk_runtime.bus_support_pricing import (
     PRICE_BUS_SUPPORT_KIND,
     bus_support_pricing_operation,
@@ -458,7 +461,7 @@ def impute_etb_services(
     from microcosm.fit import RegimeGatedQRF
 
     targets = UK_ETB_SERVICES_HOUSEHOLD_OUTPUT_COLUMNS[:3]
-    ids = np.asarray(record_ids)
+    ids = integer_record_keys(record_ids, label="ETB record_ids")
     if ids.shape != (len(recipient),) or pd.Series(ids).duplicated().any():
         raise ValueError(
             "ETB record_ids must name every recipient once, in recipient row order."
