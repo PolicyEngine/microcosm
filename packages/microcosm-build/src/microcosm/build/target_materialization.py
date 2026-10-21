@@ -982,7 +982,9 @@ def _refuse_ignored_measurement_period(
     read at one of those two and is refused. So is the frame's period on a
     value the frame does not hold at that period: the engine computes it at
     the calibration period, so the row would be measured there under the
-    declared period.
+    declared period. Only the value terms are checked: a filter, condition or
+    band on an engine-computed variable is still read at the calibration
+    period under a declared frame period.
     """
 
     declared = binding.get("measurement_period")
