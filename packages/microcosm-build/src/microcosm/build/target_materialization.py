@@ -979,20 +979,44 @@ def _refuse_ignored_measurement_period(
     A plain-column value is read at the calibration period (through the
     provider, for a stored column) or, by declaration, at the frame's own
     period (the stored column as it is). Any other declared period would be
-    read at one of those two and is refused.
+    read at one of those two and is refused. So is the frame's period on a
+    value the frame does not hold at that period: the engine computes it at
+    the calibration period, so the row would be measured there under the
+    declared period.
     """
 
     declared = binding.get("measurement_period")
     frame_period = getattr(adapter, "frame_period", None)
-    if declared is None or frame_period is None:
+    if declared is None or frame_period is None or str(declared) == str(period):
         return
-    if str(declared) in {str(period), str(frame_period)}:
+    name = getattr(spec, "name", "?")
+    if str(declared) != str(frame_period):
+        raise MeasurementPeriodError(
+            f"target {name!r} declares measurement period "
+            f"{declared!r}; a plain-column read honours only the calibration "
+            f"period {period!r} or the frame's period {frame_period!r}"
+        )
+    value_period = getattr(adapter, "value_period", None)
+    if not callable(value_period):
         return
-    raise MeasurementPeriodError(
-        f"target {getattr(spec, 'name', '?')!r} declares measurement period "
-        f"{declared!r}; a plain-column read honours only the calibration "
-        f"period {period!r} or the frame's period {frame_period!r}"
-    )
+    entity = str(binding.get("from_entity") or spec.entity)
+    for variable in _value_variables(binding):
+        if value_period(entity, variable) != str(declared):
+            raise MeasurementPeriodError(
+                f"target {name!r} declares the frame's period {declared!r}, "
+                f"but {entity}.{variable} is not held at that period on the "
+                f"frame, so the engine would compute it at the calibration "
+                f"period {period!r}"
+            )
+
+
+def _value_variables(binding: Mapping[str, Any]) -> tuple[str, ...]:
+    """The value variables a plain-column binding reads."""
+
+    if "value_expression" in binding:
+        parts = str(binding["value_expression"]).split("+")
+        return tuple(part.strip() for part in parts if part.strip())
+    return (str(binding["value_variable"]),)
 
 
 def _binding_mask(

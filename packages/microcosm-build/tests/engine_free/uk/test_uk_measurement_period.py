@@ -208,6 +208,80 @@ def test_a_declared_period_the_route_cannot_honour_refuses(monkeypatch, tmp_path
         )
 
 
+@pytest.mark.parametrize(
+    "binding",
+    [
+        {"value_variable": "income_tax", "measurement_period": 2024},
+        {
+            "value_expression": "employment_income + income_tax",
+            "measurement_period": 2024,
+        },
+    ],
+)
+def test_the_frame_period_on_an_engine_value_refuses(binding):
+    # The frame stores no income_tax, so the engine would compute it at the
+    # calibration period and the row would be read there under 2024.
+    registry, contract = _registry({"engine_value": binding})
+    adapter = UKFrameTargetAdapter(PeriodFrameStub())
+
+    with pytest.raises(MeasurementPeriodError, match="person.income_tax"):
+        materialize_target_bindings(adapter, registry, contract, period=2025)
+
+
+def test_the_resolver_refuses_the_frame_period_on_an_engine_value(
+    monkeypatch, tmp_path
+):
+    with pytest.raises(MeasurementPeriodError, match="person.income_tax"):
+        _resolve_and_materialize(
+            monkeypatch,
+            tmp_path,
+            {
+                "engine_value": {
+                    "value_variable": "income_tax",
+                    "measurement_period": 2024,
+                }
+            },
+        )
+
+
+def test_a_cgt_measure_dated_by_its_name_holds_its_own_year():
+    adapter = UKFrameTargetAdapter(PeriodFrameStub())
+
+    assert adapter.value_period("person", "employment_income") == "2024"
+    assert adapter.value_period("person", "cgt_2024_tax") == "2024"
+    assert adapter.value_period("person", "cgt_2025_gains") == "2025"
+    assert adapter.value_period("person", "income_tax") is None
+
+    # The guard lets the dated measure through: the provider computes it at
+    # the year in its name. With no provider here, the read reports it missing.
+    registry, contract = _registry(
+        {"dated": {"value_variable": "cgt_2024_tax", "measurement_period": 2024}}
+    )
+    materialized = materialize_target_bindings(adapter, registry, contract, period=2025)
+    assert [skip.name for skip in materialized.skipped] == ["dated"]
+
+    registry, contract = _registry(
+        {"misdated": {"value_variable": "cgt_2025_tax", "measurement_period": 2024}}
+    )
+    with pytest.raises(MeasurementPeriodError, match="person.cgt_2025_tax"):
+        materialize_target_bindings(
+            UKFrameTargetAdapter(PeriodFrameStub()), registry, contract, period=2025
+        )
+
+
+def test_a_run_at_the_frame_period_declares_any_value_without_refusal():
+    # Calibrating at the frame's own period, the engine computes every value
+    # at that period, so the declaration is honoured whatever the value.
+    registry, contract = _registry(
+        {"engine_value": {"value_variable": "income_tax", "measurement_period": 2024}}
+    )
+    adapter = UKFrameTargetAdapter(PeriodFrameStub())
+
+    materialized = materialize_target_bindings(adapter, registry, contract, period=2024)
+
+    assert [skip.name for skip in materialized.skipped] == ["engine_value"]
+
+
 def test_without_a_provider_the_frame_is_read_as_it_is():
     frame = PeriodFrameStub()
     registry, contract = _registry(

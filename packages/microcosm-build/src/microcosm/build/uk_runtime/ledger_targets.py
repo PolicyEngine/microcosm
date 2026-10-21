@@ -35,7 +35,10 @@ from microcosm.build.target_materialization import (
     materialize_target_bindings,
 )
 from microcosm.build.uk_runtime.bus_fare_pricing import bus_journey_appliers
-from microcosm.build.uk_runtime.cgt_calibration import uk_cgt_annual_exempt_amount
+from microcosm.build.uk_runtime.cgt_calibration import (
+    uk_cgt_annual_exempt_amount,
+    uk_cgt_dated_measure_year,
+)
 from microcosm.build.uk_runtime.cross_grain_declarations import (
     assert_uk_cross_grain_coverage,
     load_uk_cross_grain_declarations,
@@ -1629,6 +1632,20 @@ class UKFrameTargetAdapter:
 
     def has_column(self, entity: str, variable: str) -> bool:
         return variable in self.tables[entity]
+
+    def value_period(self, entity: str, variable: str) -> str | None:
+        """The period a value variable holds without the engine (microcosm#1324).
+
+        A stored column holds the frame's own period, and a CGT calibration
+        measure dated by its name (``cgt_2024_gains``) is computed at that
+        year. Any other value comes from the engine at the run's calibration
+        period, so it holds no period of its own: None.
+        """
+
+        if variable in self.stored_columns.get(entity, ()):
+            return self.frame_period
+        year = uk_cgt_dated_measure_year(variable)
+        return None if year is None else str(year)
 
     def column_at(
         self,

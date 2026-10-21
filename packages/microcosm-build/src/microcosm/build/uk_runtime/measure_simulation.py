@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
 import warnings
 from collections.abc import Mapping
 from datetime import date
@@ -17,6 +16,7 @@ import pandas as pd
 from microcosm.build.uk_runtime.atomic_area_support import (
     without_uk_native_alias_columns,
 )
+from microcosm.build.uk_runtime.cgt_calibration import UK_CGT_DATED_MEASURE
 from microcosm.build.uk_runtime.high_value_homes import (
     high_value_home_mask,
     uk_high_value_home_thresholds,
@@ -84,9 +84,6 @@ _CGT_CALIBRATION_VARIABLES = {
     # Derived, not a policyengine-uk variable: see _cgt_taxable_income.
     "cgt_calibration_taxable_income": "cgt_taxable_income",
 }
-_CGT_DATED_MEASURE = re.compile(
-    r"^cgt_(20[0-9]{2})_(gains|tax|badr_gains|taxable_income)$"
-)
 
 #: The taxable income policyengine-uk's ``capital_gains_tax`` sets the CGT
 #: rate bands on, which the engine computes inline and exposes as no
@@ -263,7 +260,7 @@ def _binding_variable_names(binding: Mapping[str, Any]) -> list[str]:
 def _cgt_model_measure(variable: str, default_year: int) -> tuple[str, int] | None:
     if variable in _CGT_CALIBRATION_VARIABLES:
         return _CGT_CALIBRATION_VARIABLES[variable], default_year
-    match = _CGT_DATED_MEASURE.fullmatch(variable)
+    match = UK_CGT_DATED_MEASURE.fullmatch(variable)
     if match:
         return _CGT_CALIBRATION_VARIABLES[f"cgt_calibration_{match[2]}"], int(match[1])
     return None
