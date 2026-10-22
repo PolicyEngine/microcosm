@@ -1,7 +1,7 @@
 """Federal student loan balances from the 2025 Survey of Consumer Finances.
 
-microcosm#1073 carries SCF education debt into the US build for the EqRC student
-debt pilot (PolicyEngine/us-student-debt#1). It writes four person inputs of
+microcosm#1073 carries SCF education debt into the US build for the student debt
+pilot (PolicyEngine/us-student-debt#1). It writes four person inputs of
 PolicyEngine-US: ``federal_student_loan_balance`` and
 ``federal_parent_plus_loan_balance`` (policyengine-us#9721), and
 ``is_income_based_repayment_new_borrower`` and
