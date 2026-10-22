@@ -18040,6 +18040,15 @@
             "concept": "uk.benefits.benefit_cap.reduction",
             "operator": "<=",
             "value": 1200
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
           }
         ]
       },
@@ -18116,6 +18125,15 @@
             "concept": "uk.benefits.benefit_cap.reduction",
             "operator": "<=",
             "value": 2400
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
           }
         ]
       },
@@ -18192,6 +18210,15 @@
             "concept": "uk.benefits.benefit_cap.reduction",
             "operator": "<=",
             "value": 3600
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
           }
         ]
       },
@@ -18268,6 +18295,15 @@
             "concept": "uk.benefits.benefit_cap.reduction",
             "operator": "<=",
             "value": 4800
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
           }
         ]
       },
@@ -18344,6 +18380,15 @@
             "concept": "uk.benefits.benefit_cap.reduction",
             "operator": "<=",
             "value": 6000
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
           }
         ]
       },
@@ -18420,6 +18465,15 @@
             "concept": "uk.benefits.benefit_cap.reduction",
             "operator": "<=",
             "value": 7200
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
           }
         ]
       },
@@ -18496,6 +18550,15 @@
             "concept": "uk.benefits.benefit_cap.reduction",
             "operator": "<=",
             "value": 8400
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
           }
         ]
       },
@@ -18572,6 +18635,15 @@
             "concept": "uk.benefits.benefit_cap.reduction",
             "operator": "<=",
             "value": 9600
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
           }
         ]
       },
@@ -18648,6 +18720,15 @@
             "concept": "uk.benefits.benefit_cap.reduction",
             "operator": "<=",
             "value": 10800
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
           }
         ]
       },
@@ -18724,6 +18805,15 @@
             "concept": "uk.benefits.benefit_cap.reduction",
             "operator": "<=",
             "value": 12000
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
           }
         ]
       },
@@ -18800,6 +18890,15 @@
             "concept": "uk.benefits.benefit_cap.reduction",
             "operator": "<=",
             "value": 13200
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
           }
         ]
       },
@@ -18876,6 +18975,15 @@
             "concept": "uk.benefits.benefit_cap.reduction",
             "operator": "<=",
             "value": 14400
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
           }
         ]
       },
@@ -18952,6 +19060,15 @@
             "concept": "uk.benefits.benefit_cap.reduction",
             "operator": "<=",
             "value": 15600
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
           }
         ]
       },
@@ -19023,6 +19140,15 @@
             "concept": "uk.benefits.benefit_cap.reduction",
             "operator": ">",
             "value": 15600
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
           }
         ]
       },
