@@ -1054,8 +1054,11 @@ def contract_pin_check(python: str) -> Check:
         text=True,
         check=False,
     )
-    tail = (run.stdout or run.stderr).strip().splitlines()[-1:] or [""]
-    return Check("contract pins agree with the gate spec", run.returncode == 0, tail[0])
+    return Check(
+        "contract pins agree with the gate spec",
+        run.returncode == 0,
+        _pytest_detail(run),
+    )
 
 
 def surfaces_check(python: str, chronicle_dir: Path) -> Check:
@@ -1073,10 +1076,25 @@ def surfaces_check(python: str, chronicle_dir: Path) -> Check:
         env=env,
         check=False,
     )  # fmt: skip
-    tail = (run.stdout or run.stderr).strip().splitlines()[-1:] or [""]
     return Check(
-        "target surfaces current against the pinned feed", run.returncode == 0, tail[0]
+        "target surfaces current against the pinned feed",
+        run.returncode == 0,
+        _pytest_detail(run),
     )
+
+
+def _pytest_detail(run: subprocess.CompletedProcess) -> str:
+    """The repo's addopts already pass -q, so the summary line may be absent:
+    report the exit code and any failing test ids instead."""
+
+    failed = [
+        line.split()[1]
+        for line in (run.stdout or "").splitlines()
+        if line.startswith(("FAILED ", "ERROR "))
+    ]
+    if run.returncode == 0:
+        return "passed"
+    return f"exit {run.returncode}" + (f": {', '.join(failed[:5])}" if failed else "")
 
 
 # --------------------------------------------------------------------------- #
