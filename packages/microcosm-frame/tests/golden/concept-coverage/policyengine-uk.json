@@ -413,8 +413,8 @@
   }
  ],
  "engine": "policyengine-uk",
- "engine_version": "2.134.4",
- "input_count": 302,
+ "engine_version": "2.145.0",
+ "input_count": 311,
  "schema_sha256": "5a55669d0447a686692911a6327ae298f19741dde29559f2654a75807878a141",
  "structural_inputs": [
   {
@@ -732,6 +732,10 @@
    "name": "deficiency_relief"
   },
   {
+   "entity": "person",
+   "name": "defined_benefit_pension_share"
+  },
+  {
    "entity": "household",
    "name": "dfe_education_spending"
   },
@@ -933,6 +937,10 @@
   },
   {
    "entity": "person",
+   "name": "is_full_year_category_a_director"
+  },
+  {
+   "entity": "person",
    "name": "is_in_approved_training"
   },
   {
@@ -966,6 +974,10 @@
   {
    "entity": "household",
    "name": "local_authority"
+  },
+  {
+   "entity": "person",
+   "name": "local_bus_uncapped_single_fare"
   },
   {
    "entity": "person",
@@ -1057,6 +1069,10 @@
   },
   {
    "entity": "household",
+   "name": "non_residential_property_secured_debt"
+  },
+  {
+   "entity": "household",
    "name": "non_residential_property_value"
   },
   {
@@ -1090,6 +1106,10 @@
   {
    "entity": "person",
    "name": "other_local_bus_trips"
+  },
+  {
+   "entity": "household",
+   "name": "other_residential_property_secured_debt"
   },
   {
    "entity": "household",
@@ -1149,7 +1169,15 @@
   },
   {
    "entity": "person",
+   "name": "pension_annual_allowance_taxable_lump_sum_death_benefits"
+  },
+  {
+   "entity": "person",
    "name": "pension_contributions_via_salary_sacrifice"
+  },
+  {
+   "entity": "person",
+   "name": "pension_contributions_via_salary_sacrifice_pre_2015"
   },
   {
    "entity": "person",
@@ -1177,11 +1205,11 @@
   },
   {
    "entity": "person",
-   "name": "pip_dl_category"
+   "name": "pip_dl_points"
   },
   {
    "entity": "person",
-   "name": "pip_m_category"
+   "name": "pip_m_points"
   },
   {
    "entity": "household",
@@ -1242,6 +1270,10 @@
   {
    "entity": "person",
    "name": "role"
+  },
+  {
+   "entity": "person",
+   "name": "salary_sacrifice_returned_to_income"
   },
   {
    "entity": "household",
@@ -1432,6 +1464,10 @@
    "name": "uses_energy_prepayment_meter"
   },
   {
+   "entity": "person",
+   "name": "war_widows_pension_reported"
+  },
+  {
    "entity": "household",
    "name": "water_and_sewerage_charges"
   },
@@ -1465,7 +1501,7 @@
   "fact:household.reference_person_id": "is_household_head is formula-owned (the oldest member). The UK build overrides it with the FRS household reference person (frs_spine.py), an override the loader accepts, but it is not an input, so the mapping does not target it. Every housing input is household-level, so nothing is allocated to the reference person.",
   "fact:household.source_household_id": "Original donor household lineage is build provenance and weight diagnostic support, not a policyengine-uk rules input.",
   "fact:person.legal_marital_status": "policyengine-uk derives marital status from benefit-unit composition; marital_status and is_married are formula-owned.",
-  "fact:person.liquid_financial_assets": "policyengine-uk holds financial wealth on the household: savings ('Household liquid savings'), corporate_wealth ('Wealth held in corporations directly or through investment funds'), gross_financial_wealth and net_financial_wealth are household inputs, and no transform puts a person amount on a household input. Its person-level GBP stock inputs are student_loan_balance, a debt; car_list_price, the price vehicle excise duty's expensive-car supplement tests; and lifetime_isa_balance ('Current value of the person's Lifetime ISAs, cash and stocks and shares together'), one savings wrapper, which the engine documents as already inside gross_financial_wealth and net_financial_wealth. Since policyengine-uk 2.130.0 three more describe a company the person owns, for Universal Credit's regulation 77 (owned_company_capital, owned_company_holding_value and owned_company_trade_assets); every one defaults to no such company, and the build sets none. savings and corporate_wealth are two of Universal Credit's capital sources (gov.dwp.universal_credit.means_test.capital.sources), and lifetime_isa_countable_capital, the Lifetime ISA at its surrender value, is its one person-level source (capital.person_sources). uc_reported_capital (benefit unit, default -1) is Universal Credit capital. It is formula-owned since policyengine-uk 2.124.0: unless set directly it is benunit_reported_capital, a benefit-unit input ('Savings and investments of the benefit unit's adults (the claimant and any partner) as recorded'). When it is zero or more, uc_assessable_capital takes it in place of both the household-capital proxy it otherwise sums from the household sources, net of capital other benefit units report, and apportions by claimant and partner count, and the person-level sources of the unit's claimant and partner, so feeding it would be a modelling choice for a UK build, not a mapping of this concept.",
+  "fact:person.liquid_financial_assets": "policyengine-uk holds financial wealth on the household: savings ('Household liquid savings'), corporate_wealth ('Wealth held in corporations directly or through investment funds'), gross_financial_wealth and net_financial_wealth are household inputs, and no transform puts a person amount on a household input. Its person-level GBP stock inputs are student_loan_balance, a debt; car_list_price, the price vehicle excise duty's expensive-car supplement tests; and lifetime_isa_balance ('Current value of the person's Lifetime ISAs, cash and stocks and shares together'), one savings wrapper, which the engine documents as already inside gross_financial_wealth and net_financial_wealth. Since policyengine-uk 2.130.0 three more describe a company the person owns, for Universal Credit's regulation 77 (owned_company_capital, owned_company_holding_value and owned_company_trade_assets); every one defaults to no such company, and the build sets none. savings and corporate_wealth are two of Universal Credit's capital sources (gov.dwp.universal_credit.means_test.capital.sources), and lifetime_isa_countable_capital, the Lifetime ISA at its surrender value, is its one person-level source (capital.person_sources). uc_reported_capital (benefit unit, default -1) is Universal Credit capital; since policyengine-uk 2.136.1 a value of zero or more set directly is the unit's complete countable capital, in place of every source, property included. benunit_reported_capital, a benefit-unit input ('Savings and investments of the benefit unit's adults (the claimant and any partner) as recorded'), replaces the financial sources only: the household pool it otherwise sums from the household sources, net of what other benefit units report or override, and apportions by claimant and partner count, and the person-level sources of the unit's claimant and partner. Property is valued separately (uc_property_capital) and shared across every claimant and partner in the household. Feeding either would be a modelling choice for a UK build, not a mapping of this concept.",
   "fact:person.partner_person_id": "Partnerships reach policyengine-uk only through benefit-unit membership, a structure the bundle must already carry (the adapter builds no units); is_benunit_head and is_married are formula-owned.",
   "fact:person.public_pension_income": "The State Pension is computed from state_pension_reported, which is formula-owned: the loader accepts it as an override, but it is not an input."
  }

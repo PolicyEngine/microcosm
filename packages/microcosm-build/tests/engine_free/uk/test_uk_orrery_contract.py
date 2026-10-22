@@ -270,9 +270,13 @@ def test_unavailable_checkpoint_bytes_are_named_not_linked(tmp_path):
     assert "gone.json" not in saved.read_text()
 
 
-def _brma_problem(n: int = 4, level: str = "brma"):
-    """An ordered problem over ``n`` households binding one Scottish BRMA row,
-    its level spelt ``level``."""
+def _brma_problem(n: int = 12, level: str = "brma"):
+    """An ordered problem over ``n`` households binding one constituency row on
+    all of them and one Scottish BRMA row on four, its level spelt ``level``.
+
+    Every row with fewer than ten source households is withheld (María's
+    rule of 2026-10-21), so the constituency row needs the twelve to publish.
+    """
     import numpy as np
     import pandas as pd
 
@@ -301,7 +305,12 @@ def _brma_problem(n: int = 4, level: str = "brma"):
     targets = TargetSet(
         [
             Target("households@E14000001", "household", lambda f: np.ones(n), 4.0),
-            Target("rent@S33000001", "household", lambda f: np.ones(n), 40.0),
+            Target(
+                "rent@S33000001",
+                "household",
+                lambda f: (np.arange(n) < 4).astype(float),
+                40.0,
+            ),
         ]
     )
     payload = encode_problem(
@@ -341,7 +350,7 @@ def test_the_published_result_summary_withholds_a_thin_brma_row():
         )
 
     result = SimpleNamespace(
-        weights=np.ones(4),
+        weights=np.ones(12),
         frame=frame,
         diagnostics=[
             row(ordered.problem.names[0], 4.0, 4.0),
@@ -412,6 +421,36 @@ def test_a_size_summary_over_brma_rows_publishes_no_all_row_total(level):
     )
 
 
+def test_a_size_summary_over_any_problem_publishes_no_all_row_total():
+    """Since María's rule of 2026-10-21 any problem may bind a thin row.
+
+    The summary cannot count a row's carriers without the weights, so a
+    problem with no BRMA row withholds its all-row totals too.
+    """
+    from types import SimpleNamespace
+
+    from microcosm.build.uk_runtime.orrery_contract import _size_summary
+
+    _, ordered, payload = _brma_problem(level="constituency")
+    receipt = {
+        "method": "full_pool",
+        "problem_sha256": ordered.sha256,
+        "dense_loss": 0.2,
+        "compact_loss": 0.3,
+        "max_target_scaled_change": 0.4,
+        "requested_households": 4,
+    }
+    context = SimpleNamespace(
+        payload=json.dumps(receipt).encode(),
+        input_payload=lambda name: payload,
+    )
+    overview = _size_summary(context)["overview"]
+    assert all(
+        overview[field] is None
+        for field in ("dense_loss", "compact_loss", "max_target_scaled_change")
+    )
+
+
 @pytest.mark.parametrize("level", ["brma", "statistical_scope"])
 def test_the_registered_result_provider_withholds_a_thin_brma_row(level, monkeypatch):
     """The third review of #1305: through the provider, not the helper alone.
@@ -439,8 +478,8 @@ def test_the_registered_result_provider_withholds_a_thin_brma_row(level, monkeyp
         )
 
     result = SimpleNamespace(
-        weights=np.ones(4),
-        initial_weights=np.ones(4),
+        weights=np.ones(12),
+        initial_weights=np.ones(12),
         frame=SimpleNamespace(
             table=frame.table,
             weights_for=lambda entity: SimpleNamespace(

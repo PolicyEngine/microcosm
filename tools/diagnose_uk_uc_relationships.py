@@ -58,7 +58,10 @@ BU_VARIABLES = (
     "uc_carer_element",
     "uc_deductions",
     "benefit_cap_reduction",
-    "is_benefit_cap_exempt",
+    # policyengine-uk 2.135.0 gives Universal Credit and Housing Benefit a cap
+    # each; the single exemption flag is gone.
+    "is_uc_benefit_cap_exempt",
+    "is_housing_benefit_benefit_cap_exempt",
     "is_uc_eligible",
     "family_type",
     "relation_type",
