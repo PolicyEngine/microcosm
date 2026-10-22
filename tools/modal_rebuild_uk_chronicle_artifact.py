@@ -72,11 +72,11 @@ PIN = _load_pin() if modal.is_local() else json.loads(os.environ["CHRONICLE_PIN"
 
 
 def _secrets() -> list[modal.Secret]:
-    if not modal.is_local():
-        return []
-    token = os.environ.get("HF_TOKEN")
     # An ephemeral secret for this run only; nothing is stored in the
     # workspace. Absent locally, the build runs and simply cannot upload.
+    # The container must declare the same dependencies as the launcher, and
+    # there the secret itself supplies HF_TOKEN, so both sides agree.
+    token = os.environ.get("HF_TOKEN")
     return [modal.Secret.from_dict({"HF_TOKEN": token})] if token else []
 
 
