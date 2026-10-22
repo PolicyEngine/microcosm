@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
   "issue": "PolicyEngine/microcosm#1073",
-  "generated_at": "2026-10-21",
+  "generated_at": "2026-10-22",
   "provenance": {
-    "commit": "e35c4b0f911883585c150d2d6417dc01da2bb9d9",
-    "run": "20261021T133110Z-e35c4b0f9"
+    "commit": "2a6e65a739b79a8232e1177610d11928fe92e26c",
+    "run": "20261022T153020Z-2a6e65a73"
   },
   "scf_files": {
     "rscfp2025.dta": {
@@ -179,7 +179,7 @@
         "50_to_61": 0.1615926964748789,
         "62_and_older": 0.06902425352362417
       },
-      "graduate_share_of_own_original_principal": 0.4773824150738412,
+      "graduate_share_of_own_original_principal": 0.47738241507384116,
       "ibr_new_borrower_share": 0.5915143468879298
     }
   },
@@ -332,7 +332,7 @@
               "50_to_61": 0.21093410606503074,
               "62_and_older": 0.11268289035889188
             },
-            "graduate_share_of_own_original_principal": 0.45213865186363184,
+            "graduate_share_of_own_original_principal": 0.4521386518636319,
             "ibr_new_borrower_share": 0.5904131759381358
           }
         },
@@ -655,7 +655,7 @@
               "50_to_61": 0.15779746384936916,
               "62_and_older": 0.06408599384077752
             },
-            "graduate_share_of_own_original_principal": 0.4619857518712365,
+            "graduate_share_of_own_original_principal": 0.46198575187123647,
             "ibr_new_borrower_share": 0.5919421297398388
           }
         },
@@ -852,8 +852,8 @@
             "mean_among_borrowers": 38129.7481875102,
             "median_among_borrowers": 23000.0,
             "total_household_weight": 134963690.69015205,
-            "federal_education_debt_total": 918653496595.8906,
-            "parent_plus_share_of_total": 0.12228737578012734
+            "federal_education_debt_total": 918653496595.8905,
+            "parent_plus_share_of_total": 0.12228737578012737
           },
           "household_balance_bands": {
             "under_5k": 0.09079966274592437,
@@ -978,7 +978,7 @@
               "50_to_61": 0.15141879980849401,
               "62_and_older": 0.06556996190233892
             },
-            "graduate_share_of_own_original_principal": 0.45012054963197445,
+            "graduate_share_of_own_original_principal": 0.4501205496319744,
             "ibr_new_borrower_share": 0.5931987024130821
           }
         },
@@ -1139,7 +1139,7 @@
               "50_to_61": 0.14875323302634258,
               "62_and_older": 0.06483235002890703
             },
-            "graduate_share_of_own_original_principal": 0.45388442861260153,
+            "graduate_share_of_own_original_principal": 0.4538844286126015,
             "ibr_new_borrower_share": 0.5880863294842776
           }
         },
@@ -1645,7 +1645,7 @@
             "50_to_61": 0.20778027670943267,
             "62_and_older": 0.07240287305689257
           },
-          "graduate_share_of_own_original_principal": 0.48269344604304165,
+          "graduate_share_of_own_original_principal": 0.4826934460430418,
           "ibr_new_borrower_share": 0.6147006160485154
         }
       },
@@ -1833,7 +1833,7 @@
           "50_to_61": 0.20778027670943267,
           "62_and_older": 0.07240287305689257
         },
-        "graduate_share_of_own_original_principal": 0.48269344604304165,
+        "graduate_share_of_own_original_principal": 0.4826934460430418,
         "ibr_new_borrower_share": 0.6147006160485154
       }
     },

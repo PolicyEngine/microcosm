@@ -1,6 +1,6 @@
 # microcosm#1073 receipts: SCF 2025 federal student loan balances
 
-Generated 2026-10-21 by `experiments/build_1073_scf_education_debt_receipt.py` on branch `scf-2025-education-debt`, commit `e35c4b0f911883585c150d2d6417dc01da2bb9d9`, Modal run `20261021T133110Z-e35c4b0f9` (`experiments/modal_1073.py`). Machine-readable copy: `experiments/receipts/1073-scf-education-debt-fit.json`.
+Generated 2026-10-22 by `experiments/build_1073_scf_education_debt_receipt.py` on branch `scf-2025-education-debt`, commit `2a6e65a739b79a8232e1177610d11928fe92e26c`, Modal run `20261022T153020Z-2a6e65a73` (`experiments/modal_1073.py`). Machine-readable copy: `experiments/receipts/1073-scf-education-debt-fit.json`.
 
 Host columns impute the published default `populace-us-2024-spm-20260915` at its calibrated weights under three settings: the first receipt's construction (oldest adult, `A_MARITL` marriage, own children, whole-household income, every candidate predictor); the SCF-matching codings with every candidate predictor; and the build, which also leaves out interest and dividends and Social Security and pensions. The cause and the evidence are in the stage notes and `experiments/receipts/1073-predictor-shift-diagnosis.json`.
 
