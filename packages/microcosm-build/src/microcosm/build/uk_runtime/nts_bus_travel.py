@@ -427,8 +427,10 @@ class FareCapRegime:
     England's per-journey cap outside London (``cap_fare``) covers the whole of
     each of ``cap_years`` (an NTS survey year is a calendar year) and none of
     ``pre_cap_years``. The single-fare share is read on the cap years, because
-    the base year sits under the same cap; the pre-cap years show the uncapped
-    fare mix. A fare paid within ``cap_tolerance`` of the cap pays the cap.
+    most of the base year sits under the same cap: nine months of FRS 2024-25
+    under England's £2 cap, the last three under the £3 cap, which no survey
+    year of the extract observes. The pre-cap years show the uncapped fare
+    mix. A fare paid within ``cap_tolerance`` of the cap pays the cap.
     """
 
     cap_fare: float
@@ -1307,7 +1309,7 @@ def single_fare_shares_from_donor(
     Weighted by the diary household weight over the cell's boardings.
     ``years`` keeps the donors of those survey years only: the stage passes
     the declared cap years, so the share a per-journey cap binds on is read
-    under a cap, as the base year's is (microcosm#1331); ``None`` pools every
+    under a cap, as most of the base year's is (microcosm#1331); ``None`` pools every
     donor year. A cell with no fare-paying boardings takes its group's
     all-band share, then the all-England share, receipted; a series with no
     fare-paying boardings at all is refused.

@@ -580,8 +580,10 @@ microcosm#1331 items 3 and 4, folded into #1333 ahead of policyengine-uk's index
 `fare_cap_regime`: England's £2 single-fare cap outside London (`cap_fare` 2.0) covers the whole of
 the 2023 and 2024 survey years (`cap_years`; an NTS survey year is a calendar year, and the cap ran
 from 1 January 2023 to 31 December 2024) and none of 2022 (`pre_cap_years`), with a penny's
-tolerance. The stage reads the single-ticket share on the cap years only, because the FRS 2024-25
-base year sits under the same cap; the band and trip fit keep all three years. An engine-free run
+tolerance. The stage reads the single-ticket share on the cap years only, because nine months of
+the FRS 2024-25 base year (April to December 2024) sit under the same cap; January to March 2025,
+and the whole of the model year 2025-26, sit under the £3 cap. The band and trip fit keep all three
+years. An engine-free run
 on the pinned tabs reads, for the other-local-bus series outside London, a share of fare-paying
 boardings paid at the point of use of 0.70 pooled over 2022–24, 0.57 in 2022 alone and 0.73 on
 2023–24. The bus-in-London share in London stays at 0.90. One band cell has no fare-paying
@@ -634,3 +636,8 @@ At policyengine-uk 2.145.0 the engine's index ratio for each area equals these f
 machine precision. The bus parity receipt records the tie, and the engine test holds it within
 0.1%. The membership and the national compile-parity receipts re-derive from the pinned feed,
 and only the two fare rows move.
+
+Both sides pin DfT's June 2026 release. DfT's address now serves the September release, which
+revises the December 2025 and March 2026 values, so the 2025 factors will move a little when the
+engine's index and the vendored anchors are re-pinned together (Vahid's second review of #1333,
+item 14).
