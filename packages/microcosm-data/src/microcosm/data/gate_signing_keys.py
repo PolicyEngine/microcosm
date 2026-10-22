@@ -113,6 +113,25 @@ UK_GATE_SIGNING_KEYS: Mapping[str, GateSigningKey] = MappingProxyType(
                 ),
             )
         ),
+        "dd31e32563854596d983a71a6519c6b7860a7c1f63ffb80dbe679d5d34c4de8c": (
+            GateSigningKey(
+                key_sha256=(
+                    "dd31e32563854596d983a71a6519c6b7860a7c1f63ffb80dbe679d5d34c4de8c"
+                ),
+                label="uk-gate-team-2026",
+                status="active",
+                custodian="the PolicyEngine team (Max Ghenis's shared agent store)",
+                held_in=(
+                    "agent-secret service microcosm/uk-gate-signing-key-team, "
+                    "account maxghenis, on Max's build Mac"
+                ),
+                registered="2026-10-22",
+                evidence=(
+                    "Generated 2026-10-22 for team-built cuts (microcosm#1348); "
+                    "never printed or committed."
+                ),
+            )
+        ),
     }
 )
 
