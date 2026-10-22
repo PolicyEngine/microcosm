@@ -872,13 +872,10 @@
       "ons.population.england_age_4": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095): England's funded childcare is costed on England's children, whose single years the UK rows and the region 0_9 cells leave free, so the contract binds England's ages 0 to 6 for all persons, read from the ONS mid-year estimate for England (E92000001) by single year of age. Wales, Scotland and Northern Ireland get no single-year rows: each nation's single year rests on too few FRS households, and the UK rows bind their sum. No incumbent row has this row's definition.",
       "ons.population.england_age_5": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095): England's funded childcare is costed on England's children, whose single years the UK rows and the region 0_9 cells leave free, so the contract binds England's ages 0 to 6 for all persons, read from the ONS mid-year estimate for England (E92000001) by single year of age. Wales, Scotland and Northern Ireland get no single-year rows: each nation's single year rests on too few FRS households, and the UK rows bind their sum. No incumbent row has this row's definition.",
       "ons.population.england_age_6": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095): England's funded childcare is costed on England's children, whose single years the UK rows and the region 0_9 cells leave free, so the contract binds England's ages 0 to 6 for all persons, read from the ONS mid-year estimate for England (E92000001) by single year of age. Wales, Scotland and Northern Ireland get no single-year rows: each nation's single year rests on too few FRS households, and the UK rows bind their sum. No incumbent row has this row's definition.",
-      "dfe.funded_childcare.working_parent_children_age_1": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): bind every DfE funded-childcare count the model can carry, even on few records, and sign out only those with a real reason. The working parent registrations by single year of age (1, 2, 3 and 4) from the DfE January census, England. The 2 to 4 row stays bound beside them. No incumbent row has this row's definition.",
-      "dfe.funded_childcare.working_parent_children_age_2": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): bind every DfE funded-childcare count the model can carry, even on few records, and sign out only those with a real reason. The working parent registrations by single year of age (1, 2, 3 and 4) from the DfE January census, England. The 2 to 4 row stays bound beside them. No incumbent row has this row's definition.",
-      "dfe.funded_childcare.working_parent_children_age_3": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): bind every DfE funded-childcare count the model can carry, even on few records, and sign out only those with a real reason. The working parent registrations by single year of age (1, 2, 3 and 4) from the DfE January census, England. The 2 to 4 row stays bound beside them. No incumbent row has this row's definition.",
-      "dfe.funded_childcare.working_parent_children_age_4": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): bind every DfE funded-childcare count the model can carry, even on few records, and sign out only those with a real reason. The working parent registrations by single year of age (1, 2, 3 and 4) from the DfE January census, England. The 2 to 4 row stays bound beside them. No incumbent row has this row's definition.",
-      "dfe.funded_childcare.universal_nursery_children_age_3": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): bind every DfE funded-childcare count the model can carry, even on few records, and sign out only those with a real reason. The universal registrations in nursery provision at ages 3 and 4 from the DfE January census, England. No incumbent row has this row's definition.",
-      "dfe.funded_childcare.universal_nursery_children_age_4": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): bind every DfE funded-childcare count the model can carry, even on few records, and sign out only those with a real reason. The universal registrations in nursery provision at ages 3 and 4 from the DfE January census, England. No incumbent row has this row's definition.",
-      "dfe.funded_childcare.universal_reception_children_age_4": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): bind every DfE funded-childcare count the model can carry, even on few records, and sign out only those with a real reason. The 4-year-olds in reception from the DfE January census, England, which pins the share of 4-year-olds in school. No incumbent row has this row's definition."
+      "dfe.funded_childcare.working_parent_children_age_1": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): bind every DfE funded-childcare count the model can carry, even on few records, and sign out only those with a real reason. The working parent registrations by single year of age (1, 2 and 3) from the DfE January census, England; age 4 is signed out for its reference date (accounting note dfe_funded_childcare_single_ages). The 2 to 4 row stays bound beside them. No incumbent row has this row's definition.",
+      "dfe.funded_childcare.working_parent_children_age_2": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): bind every DfE funded-childcare count the model can carry, even on few records, and sign out only those with a real reason. The working parent registrations by single year of age (1, 2 and 3) from the DfE January census, England; age 4 is signed out for its reference date (accounting note dfe_funded_childcare_single_ages). The 2 to 4 row stays bound beside them. No incumbent row has this row's definition.",
+      "dfe.funded_childcare.working_parent_children_age_3": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): bind every DfE funded-childcare count the model can carry, even on few records, and sign out only those with a real reason. The working parent registrations by single year of age (1, 2 and 3) from the DfE January census, England; age 4 is signed out for its reference date (accounting note dfe_funded_childcare_single_ages). The 2 to 4 row stays bound beside them. No incumbent row has this row's definition.",
+      "dfe.funded_childcare.universal_nursery_children_age_3": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): bind every DfE funded-childcare count the model can carry, even on few records, and sign out only those with a real reason. The universal registrations in nursery provision at age 3 from the DfE January census, England; age 4 is signed out for its reference date (accounting note dfe_funded_childcare_single_ages). No incumbent row has this row's definition."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -913,7 +910,7 @@
       "ons_15_19_sex_band_split": "María's ruling of 2026-10-13 (microcosm#1095, uk-data#563): the two national 15_19 sex bands are split into ages 15, 16-17 and 18-19. uk-data#563 found weights that fit the five-year band while holding too many 16-year-olds and too few 18- and 19-year-olds, and nothing in this contract bound the mix inside the band either. The six rows partition the two bands and read the same ONS mid-year estimate by single year of age, so each sex's three rows sum to the band they replace. The incumbent ons/female_15_19 and ons/male_15_19 rows move from mapped to excluded: no single contract row has their definition.",
       "ons_single_year_ages_0_2": "microcosm#1278 (the pre-Budget PR's plan, approved by María on 2026-10-20; microcosm#1095): three all-persons rows bind ages 0, 1 and 2, read from the same ONS mid-year estimate by single year of age as the 0_4 sex bands. Unlike the 15_19 split, whose pieces replaced the bands, the 0_4 sex bands keep their incumbent mapping and stay bound: the three rows cover ages 0 to 2 for both sexes together, so neither band is their sum. The three are contract-only declarations; no incumbent row moves.",
       "ons_single_year_ages_0_6": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095). Eleven all-persons rows extend the single years of age: the UK rows go on from age 2 to age 6, and England binds ages 0 to 6 at E92000001. Every row reads the ONS mid-2025 estimate by single year of age, the series the 0_4 and 5_9 sex bands and the region 0_9 cells sum, so the nested rows are consistent: the UK rows for ages 0 to 4 sum to the two 0_4 sex bands, and England's rows sit inside England's nine region 0_9 cells. Every band stays bound; the eleven are contract-only declarations and no incumbent row moves. Scotland's age 0 is already bound as ons.population.scotland_babies_under_1; Wales and Northern Ireland are left to the UK rows, as each nation's single year rests on too few FRS households.",
-      "dfe_funded_childcare_single_ages": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): bind every DfE funded-childcare count the model can carry, even on few records, and sign out only those with a real reason. Seven England rows read the January 2025 census (Funded early education and childcare, headline figures): working parent registrations at single ages 1, 2, 3 and 4, universal registrations in nursery at ages 3 and 4, and 4-year-olds in reception. They are seven contract-only declarations; the three earlier DfE rows stay bound. The nested rows are consistent: the working parent 2 to 4 row is the sum of ages 2, 3 and 4 (fact and measure), and universal_only_children is the nursery ages 3 and 4 less the working parent ages 3 and 4 on the facts, and on the measures wherever a working parent child keeps the universal hours (policyengine-uk 2.128.1). Signed out, each for its reason: the working parent 9 to 11 months cell (policyengine-uk gives a child of whole-year age 0 no working parent hours, so no record carries it); reception at age 3 (the FRS codes no 3-year-old in primary education, so no record carries it); the 9 months to 2 years, 3 to 4 years and Total working parent cells, the nursery and reception Totals, the early learning for 2-year-olds Total and the all-entitlements Total (sums or copies of bound cells, or sums that include an uncarried cell); the universal all-provision cells at ages 3, 4 and Total (nursery plus reception, both bound, a few children off their sum in DfE's own table); the estimated eligible children, eligible nursery children and all-children estimates (DfE builds them from population and survey-based inputs, not administrative counts, and the all-children estimates restate the ONS England single years already bound at a different reference date); and the registered percentages (ratios of a bound count to one of those estimates)."
+      "dfe_funded_childcare_single_ages": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): bind every DfE funded-childcare count the model can carry, even on few records, and sign out only those with a real reason. Four England rows read the January 2025 census (Funded early education and childcare, headline figures): working parent registrations at single ages 1, 2 and 3, and universal registrations in nursery at age 3. They are four contract-only declarations; the three earlier DfE rows stay bound. The working parent 2 to 4 row, the take-up fitter's anchor, and universal_only_children stay bound beside them, unaffected by the age-4 sign-out below: the 2 to 4 row is the bound ages 2 and 3 plus the signed-out age 4 cell (fact and measure), and universal_only_children is the nursery ages 3 and 4 less the working parent ages 3 and 4 on the facts, and on the measures wherever a working parent child keeps the universal hours (policyengine-uk 2.128.1). Signed out, each for its reason: the three age-4 cells, the working parent registrations, the universal registrations in nursery and the 4-year-olds in reception (María's ruling of 2026-10-21: DfE's January census reports ages as at 31 December, when about two-thirds of funded 4-year-olds are already in reception, while the model's whole-year age is the age at interview spread over the survey year, so fewer of its 4-year-olds are in primary education, and binding the single age-4 cells would move weight between 4-year-olds in school and in nursery because of the reference date, not the data); the working parent 9 to 11 months cell (policyengine-uk gives a child of whole-year age 0 no working parent hours, so no record carries it); reception at age 3 (the FRS codes no 3-year-old in primary education, so no record carries it); the 9 months to 2 years, 3 to 4 years and Total working parent cells, the nursery and reception Totals, the early learning for 2-year-olds Total and the all-entitlements Total (sums or copies of bound cells, or sums that include an uncarried or signed-out cell); the universal all-provision cells at ages 3, 4 and Total (nursery plus reception, whose single cells are bound, uncarried or signed out above, a few children off their sum in DfE's own table); the estimated eligible children, eligible nursery children and all-children estimates (DfE builds them from population and survey-based inputs, not administrative counts, and the all-children estimates restate the ONS England single years already bound at a different reference date); and the registered percentages (ratios of a bound count to one of those estimates)."
     },
     "scope_target_ids": [
       "obr.income_tax",
@@ -1139,10 +1136,7 @@
       "dfe.funded_childcare.working_parent_children_age_1",
       "dfe.funded_childcare.working_parent_children_age_2",
       "dfe.funded_childcare.working_parent_children_age_3",
-      "dfe.funded_childcare.working_parent_children_age_4",
       "dfe.funded_childcare.universal_nursery_children_age_3",
-      "dfe.funded_childcare.universal_nursery_children_age_4",
-      "dfe.funded_childcare.universal_reception_children_age_4",
       "dft.bus_fare_receipts.england",
       "dft.bus_net_support.england",
       "dft.bus_fare_receipts.london",
@@ -16455,7 +16449,7 @@
               "equals": "ENGLAND"
             }
           ],
-          "notes": "Caseload only, by single year of age: working parent registrations at age 2 in the January census. DfE's January registrations leave out children in reception, so a child in primary education (current_education PRIMARY) is not counted. The 2 to 4 row stays bound beside the single years; its measure is the sum of the age 2, 3 and 4 rows, and its fact the sum of their facts."
+          "notes": "Caseload only, by single year of age: working parent registrations at age 2 in the January census. DfE's January registrations leave out children in reception, so a child in primary education (current_education PRIMARY) is not counted. The 2 to 4 row stays bound beside the single years: its measure and its fact cover ages 2 and 3 and age 4, whose single-age cell is signed out for its 31 December reference date."
         },
         "axiom": {
           "metric_name": "dfe/funded_childcare/working_parent_children_age_2",
@@ -16546,7 +16540,7 @@
               "equals": "ENGLAND"
             }
           ],
-          "notes": "Caseload only, by single year of age: working parent registrations at age 3 in the January census. DfE's January registrations leave out children in reception, so a child in primary education (current_education PRIMARY) is not counted. The 2 to 4 row stays bound beside the single years; its measure is the sum of the age 2, 3 and 4 rows, and its fact the sum of their facts."
+          "notes": "Caseload only, by single year of age: working parent registrations at age 3 in the January census. DfE's January registrations leave out children in reception, so a child in primary education (current_education PRIMARY) is not counted. The 2 to 4 row stays bound beside the single years: its measure and its fact cover ages 2 and 3 and age 4, whose single-age cell is signed out for its 31 December reference date."
         },
         "axiom": {
           "metric_name": "dfe/funded_childcare/working_parent_children_age_3",
@@ -16568,97 +16562,6 @@
       },
       "category_id": "dfe.funded_childcare",
       "label": "Working parent children age 3"
-    },
-    {
-      "target_id": "dfe.funded_childcare.working_parent_children_age_4",
-      "family": "dfe_funded_childcare",
-      "geography_levels": [
-        "country"
-      ],
-      "measurement": {
-        "entity": "person",
-        "map_to": "household",
-        "concept": "uk.person.count",
-        "observation_basis": "january_stock",
-        "filters": [
-          {
-            "concept": "uk.childcare.is_child_receiving_extended_childcare",
-            "equals": true
-          },
-          {
-            "concept": "uk.demographics.age",
-            "operator": ">=",
-            "value": 4
-          },
-          {
-            "concept": "uk.demographics.age",
-            "operator": "<",
-            "value": 5
-          },
-          {
-            "concept": "uk.education.current_education",
-            "operator": "!=",
-            "value": "PRIMARY"
-          },
-          {
-            "concept": "uk.geography.country",
-            "equals": "ENGLAND"
-          }
-        ]
-      },
-      "bindings": {
-        "policyengine": {
-          "metric_name": "dfe/funded_childcare/working_parent_children_age_4",
-          "value_variable": "person_count",
-          "from_entity": "person",
-          "map_to": "household",
-          "filters": [
-            {
-              "variable": "is_child_receiving_extended_childcare",
-              "equals": true
-            },
-            {
-              "variable": "age",
-              "operator": ">=",
-              "value": 4
-            },
-            {
-              "variable": "age",
-              "operator": "<",
-              "value": 5
-            },
-            {
-              "variable": "current_education",
-              "operator": "!=",
-              "value": "PRIMARY"
-            },
-            {
-              "variable": "country",
-              "equals": "ENGLAND"
-            }
-          ],
-          "notes": "Caseload only, by single year of age: working parent registrations at age 4 in the January census. DfE's January registrations leave out children in reception, so a child in primary education (current_education PRIMARY) is not counted. The 2 to 4 row stays bound beside the single years; its measure is the sum of the age 2, 3 and 4 rows, and its fact the sum of their facts."
-        },
-        "axiom": {
-          "metric_name": "dfe/funded_childcare/working_parent_children_age_4",
-          "status": "pending",
-          "value_rule": "uk.person.count"
-        }
-      },
-      "ledger_selector": {
-        "source_name": "dfe",
-        "source_concept": "dfe.number_of_registered_children",
-        "source_measure_id": "registered_children_count",
-        "entity_name": "person",
-        "dimension_values": {
-          "entitlement_type": "Working parents",
-          "age": "4 years",
-          "registration_basis": "registered_children",
-          "provision": "all"
-        }
-      },
-      "category_id": "dfe.funded_childcare",
-      "label": "Working parent children age 4"
     },
     {
       "target_id": "dfe.funded_childcare.universal_nursery_children_age_3",
@@ -16728,7 +16631,7 @@
               "equals": "ENGLAND"
             }
           ],
-          "notes": "Universal hours registrations at age 3 outside reception (DfE's nursery provision), counting working parent children too, as DfE's universal counts do. DfE's January registrations leave out children in reception, so a child in primary education (current_education PRIMARY) is not counted. The nursery total is the sum of the age 3 and age 4 rows and is not bound again; universal_only_children is that total less the working parent age 3 and 4 rows."
+          "notes": "Universal hours registrations at age 3 outside reception (DfE's nursery provision), counting working parent children too, as DfE's universal counts do. DfE's January registrations leave out children in reception, so a child in primary education (current_education PRIMARY) is not counted. The nursery total is the age 3 and age 4 cells and is not bound; the age 4 cell is signed out for its 31 December reference date, and universal_only_children is that total less the working parent ages 3 and 4."
         },
         "axiom": {
           "metric_name": "dfe/funded_childcare/universal_nursery_children_age_3",
@@ -16750,178 +16653,6 @@
       },
       "category_id": "dfe.funded_childcare",
       "label": "Universal nursery children age 3"
-    },
-    {
-      "target_id": "dfe.funded_childcare.universal_nursery_children_age_4",
-      "family": "dfe_funded_childcare",
-      "geography_levels": [
-        "country"
-      ],
-      "measurement": {
-        "entity": "person",
-        "map_to": "household",
-        "concept": "uk.person.count",
-        "observation_basis": "january_stock",
-        "filters": [
-          {
-            "concept": "uk.childcare.is_child_receiving_universal_childcare",
-            "equals": true
-          },
-          {
-            "concept": "uk.demographics.age",
-            "operator": ">=",
-            "value": 4
-          },
-          {
-            "concept": "uk.demographics.age",
-            "operator": "<",
-            "value": 5
-          },
-          {
-            "concept": "uk.education.current_education",
-            "operator": "!=",
-            "value": "PRIMARY"
-          },
-          {
-            "concept": "uk.geography.country",
-            "equals": "ENGLAND"
-          }
-        ]
-      },
-      "bindings": {
-        "policyengine": {
-          "metric_name": "dfe/funded_childcare/universal_nursery_children_age_4",
-          "value_variable": "person_count",
-          "from_entity": "person",
-          "map_to": "household",
-          "filters": [
-            {
-              "variable": "is_child_receiving_universal_childcare",
-              "equals": true
-            },
-            {
-              "variable": "age",
-              "operator": ">=",
-              "value": 4
-            },
-            {
-              "variable": "age",
-              "operator": "<",
-              "value": 5
-            },
-            {
-              "variable": "current_education",
-              "operator": "!=",
-              "value": "PRIMARY"
-            },
-            {
-              "variable": "country",
-              "equals": "ENGLAND"
-            }
-          ],
-          "notes": "Universal hours registrations at age 4 outside reception (DfE's nursery provision), counting working parent children too, as DfE's universal counts do. DfE's January registrations leave out children in reception, so a child in primary education (current_education PRIMARY) is not counted. The nursery total is the sum of the age 3 and age 4 rows and is not bound again; universal_only_children is that total less the working parent age 3 and 4 rows."
-        },
-        "axiom": {
-          "metric_name": "dfe/funded_childcare/universal_nursery_children_age_4",
-          "status": "pending",
-          "value_rule": "uk.person.count"
-        }
-      },
-      "ledger_selector": {
-        "source_name": "dfe",
-        "source_concept": "dfe.number_of_registered_children_nursery",
-        "source_measure_id": "registered_children_nursery_count",
-        "entity_name": "person",
-        "dimension_values": {
-          "entitlement_type": "Universal",
-          "age": "4 years",
-          "registration_basis": "registered_children",
-          "provision": "nursery"
-        }
-      },
-      "category_id": "dfe.funded_childcare",
-      "label": "Universal nursery children age 4"
-    },
-    {
-      "target_id": "dfe.funded_childcare.universal_reception_children_age_4",
-      "family": "dfe_funded_childcare",
-      "geography_levels": [
-        "country"
-      ],
-      "measurement": {
-        "entity": "person",
-        "map_to": "household",
-        "concept": "uk.person.count",
-        "observation_basis": "january_stock",
-        "filters": [
-          {
-            "concept": "uk.demographics.age",
-            "operator": ">=",
-            "value": 4
-          },
-          {
-            "concept": "uk.demographics.age",
-            "operator": "<",
-            "value": 5
-          },
-          {
-            "concept": "uk.education.current_education",
-            "equals": "PRIMARY"
-          },
-          {
-            "concept": "uk.geography.country",
-            "equals": "ENGLAND"
-          }
-        ]
-      },
-      "bindings": {
-        "policyengine": {
-          "metric_name": "dfe/funded_childcare/universal_reception_children_age_4",
-          "value_variable": "person_count",
-          "from_entity": "person",
-          "map_to": "household",
-          "filters": [
-            {
-              "variable": "age",
-              "operator": ">=",
-              "value": 4
-            },
-            {
-              "variable": "age",
-              "operator": "<",
-              "value": 5
-            },
-            {
-              "variable": "current_education",
-              "equals": "PRIMARY"
-            },
-            {
-              "variable": "country",
-              "equals": "ENGLAND"
-            }
-          ],
-          "notes": "Four-year-olds in reception classes in the January census. The entitlement is the school place, so the measure counts every 4-year-old in primary education (current_education PRIMARY) in England, with no take-up flag: the row pins the share of 4-year-olds in reception, which decides who can take working parent and universal hours outside school. Reception at age 3 is not bound: the FRS codes no 3-year-old in primary education, so the model has no carrier."
-        },
-        "axiom": {
-          "metric_name": "dfe/funded_childcare/universal_reception_children_age_4",
-          "status": "pending",
-          "value_rule": "uk.person.count"
-        }
-      },
-      "ledger_selector": {
-        "source_name": "dfe",
-        "source_concept": "dfe.number_of_registered_children_reception",
-        "source_measure_id": "registered_children_reception_count",
-        "entity_name": "person",
-        "dimension_values": {
-          "entitlement_type": "Universal",
-          "age": "4 years",
-          "registration_basis": "registered_children",
-          "provision": "reception"
-        }
-      },
-      "category_id": "dfe.funded_childcare",
-      "label": "Universal reception children age 4"
     },
     {
       "target_id": "dft.bus_fare_receipts.england",

@@ -72,7 +72,7 @@ from tools.generate_uk_target_references import (
 
 _TEST_PATHS = paths_for("microcosm-build")
 
-ACTIVE_REFERENCE_COUNT = 1340
+ACTIVE_REFERENCE_COUNT = 1337
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 
 
@@ -540,10 +540,7 @@ def test_childcare_and_bus_references_compile_with_declared_provenance() -> None
         "dfe.funded_childcare.working_parent_children_age_1": 195_104.0,
         "dfe.funded_childcare.working_parent_children_age_2": 242_453.0,
         "dfe.funded_childcare.working_parent_children_age_3": 278_640.0,
-        "dfe.funded_childcare.working_parent_children_age_4": 100_389.0,
         "dfe.funded_childcare.universal_nursery_children_age_3": 565_954.0,
-        "dfe.funded_childcare.universal_nursery_children_age_4": 210_040.0,
-        "dfe.funded_childcare.universal_reception_children_age_4": 379_308.0,
         "dft.bus_fare_receipts.england": pytest.approx(
             3_417_388_656.43538 * 204.125 / 193.125
         ),
@@ -608,19 +605,25 @@ def test_childcare_and_bus_references_compile_with_declared_provenance() -> None
         ]
         == "minuend - subtrahend"
     )
-    # The nested rows reconcile on the facts: the 2 to 4 row is the sum of the
-    # working parent ages 2 to 4, and universal-only is the nursery ages 3 and
-    # 4 less the working parent ages 3 and 4.
+    # The combined rows stay bound beside the singles, unaffected by the age-4
+    # sign-out (María's ruling, 2026-10-21). On the facts the 2 to 4 row is the
+    # bound working parent ages 2 and 3 plus DfE's signed-out age-4 cell, and
+    # universal-only is the bound nursery age 3 plus the signed-out nursery
+    # age-4 cell less the working parent ages 3 and 4 (DfE's published January
+    # 2025 headline figures).
+    working_parent_age_4, nursery_age_4 = 100_389.0, 210_040.0
     value = {name: spec.value for name, spec in specs.items()}
     prefix = "dfe.funded_childcare."
-    assert value[prefix + "working_parent_children_2_to_4"] == sum(
-        value[prefix + f"working_parent_children_age_{age}"] for age in (2, 3, 4)
+    assert value[prefix + "working_parent_children_2_to_4"] == (
+        value[prefix + "working_parent_children_age_2"]
+        + value[prefix + "working_parent_children_age_3"]
+        + working_parent_age_4
     )
     assert value[prefix + "universal_only_children"] == (
         value[prefix + "universal_nursery_children_age_3"]
-        + value[prefix + "universal_nursery_children_age_4"]
+        + nursery_age_4
         - value[prefix + "working_parent_children_age_3"]
-        - value[prefix + "working_parent_children_age_4"]
+        - working_parent_age_4
     )
 
 
@@ -757,22 +760,24 @@ def test_ons_single_year_age_references_pin_the_uk_and_england() -> None:
 
 
 DFE_SINGLE_AGE_IDS = (
-    *(
-        f"dfe.funded_childcare.working_parent_children_age_{age}"
-        for age in (1, 2, 3, 4)
-    ),
+    *(f"dfe.funded_childcare.working_parent_children_age_{age}" for age in (1, 2, 3)),
     "dfe.funded_childcare.universal_nursery_children_age_3",
+)
+DFE_SIGNED_OUT_AGE_4_IDS = (
+    "dfe.funded_childcare.working_parent_children_age_4",
     "dfe.funded_childcare.universal_nursery_children_age_4",
     "dfe.funded_childcare.universal_reception_children_age_4",
 )
 
 
 def test_dfe_single_age_references_pin_england_at_the_january_2025_census() -> None:
-    """The seven DfE single-age rows resolve one England fact each.
+    """The four DfE single-age rows resolve one England fact each.
 
     The ``dfe.`` prefix pins every DfE row to England (E92000001); each new
     row selects one age cell of its census table, January 2025, held to the
-    2025 calibration year (María's ruling, 2026-10-21).
+    2025 calibration year (María's ruling, 2026-10-21). The age-4 cells are
+    signed out for their 31 December reference date, so they have no
+    reference and no membership entry.
     """
 
     references = {
@@ -796,6 +801,9 @@ def test_dfe_single_age_references_pin_england_at_the_january_2025_census() -> N
         assert membership["targets"][target_id]["status"] == "active"
         (candidate,) = membership["targets"][target_id]["candidates"]
         assert candidate["resolved_fact_period"] == "2025-01"
+    for target_id in DFE_SIGNED_OUT_AGE_4_IDS:
+        assert target_id not in references
+        assert target_id not in membership["targets"]
 
 
 UC_ELEMENT_TARGET_IDS = frozenset(
@@ -996,7 +1004,7 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
     assert membership["status_counts"] == {
-        "active": 1340,
+        "active": 1337,
         "no_fact_at_or_before_period": 5,
         "signed_excluded": 17,
     }

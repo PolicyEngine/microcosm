@@ -22,12 +22,9 @@
       "kind": "in_year_snapshot",
       "target_ids": [
         "dfe.funded_childcare.universal_nursery_children_age_3",
-        "dfe.funded_childcare.universal_nursery_children_age_4",
-        "dfe.funded_childcare.universal_reception_children_age_4",
         "dfe.funded_childcare.working_parent_children_age_1",
         "dfe.funded_childcare.working_parent_children_age_2",
-        "dfe.funded_childcare.working_parent_children_age_3",
-        "dfe.funded_childcare.working_parent_children_age_4"
+        "dfe.funded_childcare.working_parent_children_age_3"
       ],
       "reason": "DfE funded early-education registrations by single year of age and provision counted in the January 2025 census: a count at a date inside the calibration year, not a lagged period. Requested by María on 2026-10-21 with the single-age rows.",
       "tracking": "microcosm#1278",
