@@ -61,6 +61,10 @@ from microcosm.build.uk_runtime.cgt_projection import (
     uk_cgt_projection_read_from_engine,
 )
 from microcosm.build.uk_runtime.terminal_gates import uk_export_candidate_columns
+from microcosm.data.gate_signing_keys import (
+    GateSigningKeyError,
+    require_registered_gate_signing_key,
+)
 
 __all__ = [
     "UK_RELEASE_CERTIFICATION_KIND",
@@ -575,7 +579,12 @@ def _require_signing_key() -> bytes:
         raise UKReleaseCertificationError(
             f"{env_name} must decode to exactly 32 bytes."
         )
-    return key
+    # The certifier verifies every part and signs the certification with
+    # this one key, so it must be a registered key that may still sign.
+    try:
+        return require_registered_gate_signing_key("uk", key, purpose="sign")
+    except GateSigningKeyError as exc:
+        raise UKReleaseCertificationError(f"{env_name}: {exc}") from exc
 
 
 def _verify_part(
