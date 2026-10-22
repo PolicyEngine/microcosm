@@ -437,8 +437,8 @@ def assert_installed_engine_is_pinned() -> str:
     jobs and the H2 parity run them on the lock.
 
     Three things must hold. The distribution's version is the pinned one,
-    exactly, so a post-release or a local build of it (``2.145.0.post1``,
-    ``2.145.0+local``) is refused. ``policyengine_uk`` imports from that
+    exactly, so a post-release or a local build of it (``2.147.2.post1``,
+    ``2.147.2+local``) is refused. ``policyengine_uk`` imports from that
     distribution's own files, so a copy earlier on ``sys.path`` or an editable
     install is refused. And its ``__init__.py`` matches the distribution's
     RECORD, so a stale record beside other files is refused where the files

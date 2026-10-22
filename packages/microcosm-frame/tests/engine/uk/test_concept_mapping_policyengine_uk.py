@@ -171,16 +171,27 @@ def test_the_liquid_asset_reason_holds(engine) -> None:
 
 
 def test_the_liquid_asset_reason_names_the_household_wealth_inputs(engine) -> None:
-    # Shares and funds sit on the household too, in corporate_wealth, which
-    # Universal Credit counts as capital alongside savings. Its one
+    # Shares and funds sit on the household too, in corporate_wealth. Since
+    # policyengine-uk 2.147.0 Universal Credit counts them, alongside savings,
+    # as share_like_capital: corporate_wealth unless its two household
+    # components, which the build leaves unset, add up to more. Its one
     # person-level source is the Lifetime ISA at its surrender value.
     reason = MAPPING.unmapped["fact:person.liquid_financial_assets"]
+    inputs = set(engine.variables())
     assert engine.variable_metadata("corporate_wealth").entity == "household"
     assert engine._variable("corporate_wealth").quantity_type == "stock"
     assert engine._variable("corporate_wealth").unit == "currency-GBP"
     universal_credit = engine._tax_benefit_system().parameters.gov.dwp.universal_credit
     sources = universal_credit.means_test.capital.sources("2026-01-01")
-    assert {"savings", "corporate_wealth"} <= set(sources)
+    assert {"savings", "share_like_capital"} <= set(sources)
+    assert "share_like_capital" not in inputs
+    share_like = inspect.getsource(engine._variable("share_like_capital").get_formula())
+    for name in ("corporate_wealth", "directly_held_shares", "unit_and_investment_trusts"):
+        assert name in share_like, name
+    for name in ("directly_held_shares", "unit_and_investment_trusts"):
+        assert name in inputs, name
+        assert engine.variable_metadata(name).entity == "household", name
+        assert name in reason, name
     person_sources = universal_credit.means_test.capital.person_sources("2026-01-01")
     assert list(person_sources) == ["lifetime_isa_countable_capital"]
     source = inspect.getsource(engine._variable("uc_assessable_capital").get_formula())
@@ -188,6 +199,7 @@ def test_the_liquid_asset_reason_names_the_household_wealth_inputs(engine) -> No
     for name in (
         "savings",
         "corporate_wealth",
+        "share_like_capital",
         "gross_financial_wealth",
         "net_financial_wealth",
         "lifetime_isa_countable_capital",

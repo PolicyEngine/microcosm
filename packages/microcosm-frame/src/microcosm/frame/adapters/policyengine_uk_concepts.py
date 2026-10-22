@@ -32,7 +32,7 @@ __all__ = ["POLICYENGINE_UK_CONCEPT_MAPPING", "UK_ENGINE_DEFAULT_TAKE_UP_INPUTS"
 # ---------------------------------------------------------------------------
 #
 # Which PolicyEngine-UK inputs each engine-neutral concept feeds
-# (microcosm.frame.concepts), reviewed against policyengine-uk 2.145.0. Every
+# (microcosm.frame.concepts), reviewed against policyengine-uk 2.147.2. Every
 # target is a pure input (in ``PolicyEngineUKEngine.variables``). The UK
 # loader also accepts some formula-owned variables as overrides
 # (``employment_income``, ``state_pension_reported``, ``is_household_head``);
@@ -206,7 +206,7 @@ def _uk_take_up(program: str, entity: str) -> InputBinding:
 
 POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
     engine="policyengine-uk",
-    engine_version="2.145.0",
+    engine_version="2.147.2",
     entity_correspondence={"person": "person", "household": "household"},
     input_declaration=InputDeclaration.ENGINE_TYPED,
     bindings=(
@@ -575,11 +575,15 @@ POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
             "describe a company the person owns, for Universal Credit's "
             "regulation 77 (owned_company_capital, owned_company_holding_value "
             "and owned_company_trade_assets); every one defaults to no such "
-            "company, and the build sets none. savings and corporate_wealth are two of "
-            "Universal Credit's capital sources "
-            "(gov.dwp.universal_credit.means_test.capital.sources), and "
+            "company, and the build sets none. savings and share_like_capital are two "
+            "of Universal Credit's capital sources "
+            "(gov.dwp.universal_credit.means_test.capital.sources); since "
+            "policyengine-uk 2.147.0 share_like_capital is corporate_wealth unless "
+            "its components, the household inputs directly_held_shares and "
+            "unit_and_investment_trusts, add up to more, and the build sets "
+            "neither. Universal Credit's one person-level source is "
             "lifetime_isa_countable_capital, the Lifetime ISA at its surrender "
-            "value, is its one person-level source (capital.person_sources). "
+            "value (capital.person_sources). "
             "uc_reported_capital (benefit unit, default -1) is Universal "
             "Credit capital; since policyengine-uk 2.136.1 a value of zero or "
             "more set directly is the unit's complete countable capital, in "
