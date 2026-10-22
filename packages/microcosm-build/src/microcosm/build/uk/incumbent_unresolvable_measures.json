@@ -30,12 +30,26 @@
       "approved_on": "2026-09-22",
       "expires_on": "2026-12-22"
     },
+    "household.bus_in_london_boardings": {
+      "reason": "NTS bus-travel stage (microcosm#930): the enhanced FRS carries no bus travel, so it cannot materialize household boardings on London buses; the dft.bus_journeys London row (microcosm#1207, bound since microcosm#1286) binds through it.",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#823 (rule-1 evaluation on the common surface; microcosm#578); the bus journeys family was bound after the incumbent pin (microcosm#1286).",
+      "approved_on": "2026-10-19",
+      "expires_on": "2027-01-19"
+    },
     "household.ons_household_type": {
       "reason": "ONS census household type (microcosm#887): the enhanced FRS carries no household-type classification; 10 ons_household_composition rows bind through it.",
       "approved_by": "juaristi22",
       "adjudication": "microcosm#823 (rule-1 evaluation on the common surface; microcosm#578)",
       "approved_on": "2026-09-22",
       "expires_on": "2026-12-22"
+    },
+    "household.other_local_bus_boardings": {
+      "reason": "NTS bus-travel stage (microcosm#930): the enhanced FRS carries no bus travel, so it cannot materialize household boardings on local buses outside London; the 8 dft.bus_journeys rows for the English regions outside London (microcosm#1207, bound since microcosm#1286) bind through it.",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#823 (rule-1 evaluation on the common surface; microcosm#578); the bus journeys family was bound after the incumbent pin (microcosm#1286).",
+      "approved_on": "2026-10-19",
+      "expires_on": "2027-01-19"
     },
     "person.capital_gains_asset_type": {
       "reason": "CGT asset type (microcosm#939, the E8 spine stage): the enhanced FRS carries gains amounts only; 2 hmrc_cgt rows bind through it.",

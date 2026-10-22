@@ -358,6 +358,12 @@ class TestImputation:
         assert total == pytest.approx([1_000.0 * components, 2_000.0 * components])
         with pytest.raises(ValueError, match="missing"):
             uk_cgt_component_sum_income(person.drop(columns=["dividend_income"]))
+        # Total income holds the profit after losses brought forward, which
+        # the spine keeps apart in loss_relief (microcosm#1095).
+        relieved = person.assign(loss_relief=[500.0, 5_000.0])
+        assert uk_cgt_component_sum_income(relieved) == pytest.approx(
+            [1_000.0 * components - 500.0, 2_000.0 * components - 2_000.0]
+        )
 
     def test_allocation_preserves_the_existing_ranking(self) -> None:
         # Everyone sits in one income band, whose cells hold 100 people each

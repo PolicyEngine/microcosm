@@ -584,6 +584,74 @@ def test_remote_read_back_failure_is_explicit(tmp_path):
     assert telemetry.delivery_summary["read_back"] == "failed"
 
 
+def test_a_failed_refresh_after_a_passed_read_back_keeps_the_verified_delivery(
+    tmp_path, capsys
+):
+    """The read-back verdict owns the error code (microcosm#1301).
+
+    The refresh upload after a passed read-back is best effort. When it
+    fails, the delivery stays verified with no error code, the miss shows as
+    an attempt without a success, and the remote copy still shows the
+    delivery as it was before read-back; the run is not failed.
+    """
+
+    class RefreshFailsApi(MemoryApi):
+        def upload_file(self, **kwargs):
+            if self.downloaded:
+                raise RuntimeError("503 token=do-not-record")
+            super().upload_file(**kwargs)
+
+    api = RefreshFailsApi(tmp_path)
+    telemetry = _recorder(
+        tmp_path,
+        delivery_mode="local_and_remote",
+        repo_id="policyengine/populace-uk-staging",
+        api=api,
+        upload_interval_seconds=0,
+    )
+    telemetry.set_sample(_sample())
+    telemetry.complete()
+
+    telemetry.verify_remote()
+
+    delivery = telemetry.delivery_summary
+    assert delivery["read_back"] == "passed"
+    assert delivery["last_error_code"] is None
+    assert delivery["upload_attempts"] > delivery["upload_successes"] > 0
+    bundle = telemetry.validate_local_bundle()
+    assert bundle["run_manifest"]["delivery"] == delivery
+    remote_manifest = json.loads(api.files["runs/uk-smoke-5-42/run_manifest.json"])
+    assert remote_manifest["delivery"]["read_back"] == "not_requested"
+    err = capsys.readouterr().err
+    assert "staging upload failed" in err
+    assert "do-not-record" not in err
+
+
+def test_a_failed_read_back_keeps_its_error_code_through_later_uploads(tmp_path):
+    class UploadOnlyApi(MemoryApi):
+        def hf_hub_download(self, **kwargs):
+            raise RuntimeError("unavailable")
+
+    telemetry = _recorder(
+        tmp_path,
+        delivery_mode="local_and_remote",
+        repo_id="policyengine/populace-uk-staging",
+        api=UploadOnlyApi(tmp_path),
+        upload_interval_seconds=0,
+    )
+    telemetry.complete()
+    with pytest.raises(StagingReadBackError):
+        telemetry.verify_remote()
+
+    # A successful upload afterwards cannot clear the failed verdict's code.
+    telemetry._maybe_upload(force=True)
+
+    delivery = telemetry.delivery_summary
+    assert delivery["read_back"] == "failed"
+    assert delivery["last_error_code"] == "READ_BACK_FAILED"
+    assert telemetry.validate_local_bundle()["run_manifest"]["delivery"] == delivery
+
+
 def test_bundle_validation_checks_reviewed_artifact_digest(tmp_path):
     telemetry = _recorder(tmp_path)
     diagnostic = tmp_path / "aggregate.json"

@@ -269,6 +269,145 @@ def _apply_sum_bridges(
     return receipts
 
 
+@dataclass(frozen=True)
+class UKHouseholdBasisPartition:
+    """Dwelling cells put on the household basis of their area (microcosm#1284).
+
+    At each geography where a parent target (a region's or nation's
+    council-tax dwelling total) and a control target (its official household
+    estimate) both have a cell, the parent takes the control's value and the
+    member cells (its bands) move by the same factor, so they keep the band
+    mix and the level follows the household estimate. The factor is the
+    area's published households per chargeable dwelling; the declaration signs
+    the assumption that it is the same in every band. National register only:
+    the local band cells follow the national rows by signature. A factor
+    further than ``max_factor_shift`` from one refuses, a tripwire set from
+    the measured factors.
+    """
+
+    partition_id: str
+    control_target_ids: tuple[str, ...]
+    parent_target_ids: tuple[str, ...]
+    member_target_ids: tuple[str, ...]
+    max_factor_shift: float
+
+
+def uk_household_basis_partitions(
+    declarations: Mapping[str, Any] | None = None,
+) -> tuple[UKHouseholdBasisPartition, ...]:
+    declared = declarations or load_uk_cross_grain_declarations()
+    return tuple(
+        UKHouseholdBasisPartition(
+            partition_id=str(entry["partition_id"]),
+            control_target_ids=tuple(str(v) for v in entry["control_target_ids"]),
+            parent_target_ids=tuple(str(v) for v in entry["parent_target_ids"]),
+            member_target_ids=tuple(str(v) for v in entry["member_target_ids"]),
+            max_factor_shift=_partition_bound(entry),
+        )
+        for entry in declared.get("household_basis_partitions", ())
+    )
+
+
+def _partition_bound(entry: Mapping[str, Any]) -> float:
+    bound = entry.get("max_factor_shift")
+    if not isinstance(bound, (int, float)) or not 0.0 < float(bound) < 1.0:
+        raise ValueError(
+            f"UK household-basis partition {entry.get('partition_id')!r} must "
+            f"declare a max_factor_shift in (0, 1), got {bound!r}."
+        )
+    return float(bound)
+
+
+def _household_basis_sides(
+    specs: Sequence[TargetSpec], partition: UKHouseholdBasisPartition
+) -> dict[str, dict[str, list[int]]]:
+    """Each geography's control, parent and member positions."""
+
+    from microcosm.build.uk_runtime.ledger_targets import _spec_geography
+
+    roles = {
+        **{target_id: "member" for target_id in partition.member_target_ids},
+        **{target_id: "parent" for target_id in partition.parent_target_ids},
+        **{target_id: "control" for target_id in partition.control_target_ids},
+    }
+    sides: dict[str, dict[str, list[int]]] = {}
+    for position, spec in enumerate(specs):
+        role = roles.get(_contract_target_id(spec))
+        if role is None:
+            continue
+        geography_id = _spec_geography(spec)[1]
+        cells = sides.setdefault(
+            geography_id, {"control": [], "parent": [], "member": []}
+        )
+        cells[role].append(position)
+    return sides
+
+
+def _apply_household_basis_partitions(
+    specs: list[TargetSpec],
+    partitions: Sequence[UKHouseholdBasisPartition],
+) -> list[dict[str, Any]]:
+    receipts: list[dict[str, Any]] = []
+    for partition in partitions:
+        for geography_id, sides in sorted(
+            _household_basis_sides(specs, partition).items()
+        ):
+            if not sides["parent"]:
+                if sides["member"]:
+                    raise ValueError(
+                        f"UK household-basis partition {partition.partition_id!r} "
+                        f"has member cells at {geography_id!r} without their total."
+                    )
+                continue
+            if len(sides["parent"]) != 1 or len(sides["control"]) != 1:
+                raise ValueError(
+                    f"UK household-basis partition {partition.partition_id!r} at "
+                    f"{geography_id!r} needs one total and one household control, "
+                    f"found {len(sides['parent'])} and {len(sides['control'])}."
+                )
+            (parent,) = sides["parent"]
+            (control_position,) = sides["control"]
+            control = float(specs[control_position].value)
+            old_total = float(specs[parent].value)
+            if old_total <= 0.0 or control <= 0.0:
+                raise ValueError(
+                    f"UK household-basis partition {partition.partition_id!r} at "
+                    f"{geography_id!r} cannot scale {old_total!r} onto {control!r}."
+                )
+            factor = control / old_total
+            if abs(factor - 1.0) > partition.max_factor_shift:
+                raise ValueError(
+                    f"UK household-basis partition {partition.partition_id!r} at "
+                    f"{geography_id!r} has factor {factor!r}, further than "
+                    f"{partition.max_factor_shift!r} from one: the households per "
+                    "dwelling it was signed at no longer hold (microcosm#1284)."
+                )
+            for position in (parent, *sides["member"]):
+                spec = specs[position]
+                specs[position] = replace(
+                    spec,
+                    value=float(spec.value) * factor,
+                    metadata={
+                        **spec.metadata,
+                        "cross_grain_value_before": repr(float(spec.value)),
+                        "cross_grain_factor": repr(factor),
+                        "cross_grain_control": partition.partition_id,
+                    },
+                )
+            receipts.append(
+                {
+                    "partition_id": partition.partition_id,
+                    "geography_id": geography_id,
+                    "control": control,
+                    "old_total": old_total,
+                    "declared_factor": factor,
+                    "max_factor_shift": partition.max_factor_shift,
+                    "members": len(sides["member"]),
+                }
+            )
+    return receipts
+
+
 def _contract_target_id(spec: TargetSpec) -> str:
     return str(spec.metadata.get("contract_target_id", spec.name.split("@", 1)[0]))
 
@@ -477,6 +616,11 @@ def reconcile_uk_national_registry(
             },
         )
         moved += 1
+    # Last, on the reconciled household controls: the council-tax dwelling
+    # cells take their area's household basis (microcosm#1284).
+    partition_receipts = _apply_household_basis_partitions(
+        specs, uk_household_basis_partitions(declarations)
+    )
     if all(new is old for new, old in zip(specs, registry.specs, strict=True)):
         out = registry
     else:
@@ -485,6 +629,7 @@ def reconcile_uk_national_registry(
     return out, {
         "band_bridges": band_receipts,
         "sum_bridges": sum_receipts,
+        "household_basis_partitions": partition_receipts,
         "fanout_sum_controls": uk_fanout_sum_controls(out, declarations),
         "cross_grain": receipt,
         "fanout_targets_not_controls": sorted(fanout),
@@ -737,6 +882,18 @@ def _assert_national_closure(
                 f"UK national register does not close on sum bridge "
                 f"{sum_bridge.bridge_id!r}: {lower!r} against {higher!r}."
             )
+    for partition in uk_household_basis_partitions(declarations):
+        for geography_id, sides in _household_basis_sides(specs, partition).items():
+            if not sides["parent"]:
+                continue
+            total = float(specs[sides["parent"][0]].value)
+            control = float(specs[sides["control"][0]].value)
+            if not math.isclose(total, control, rel_tol=_CLOSURE_RTOL, abs_tol=0.0):
+                raise ValueError(
+                    f"UK national register does not close on household-basis "
+                    f"partition {partition.partition_id!r} at {geography_id!r}: "
+                    f"{total!r} against {control!r}."
+                )
     for bridge in uk_band_bridges(declarations):
         if bridge.higher_target_id not in bound and bound.isdisjoint(
             bridge.lower_target_ids

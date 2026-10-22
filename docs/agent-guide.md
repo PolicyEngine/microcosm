@@ -93,7 +93,9 @@ engine-free runner installs the supported public Orrery range and locked Node
 dependency set under `tools/orrery-contract/`; the pytest test generates a
 document through Microcosm's public Python API and requires Orrery's public
 parser to accept it. The recorded-evidence assertion in `test_graph_evidence.py`
-uses the same pinned parser for groups, statuses, activities and artifacts.
+uses the same pinned parser for groups, statuses, activities and artifacts, and
+the one in `test_graph_reconstruction.py` uses it for the reconstruction marker
+of a declaration-only document.
 These CI tests perform no browser rendering.
 
 Workspace tests use an in-memory telemetry emitter by default. The shared
@@ -317,7 +319,11 @@ name. A new US lane that writes a release H5 must run the check where it records
 publisher runs no engine for a calibration release, so it requires the
 fiscal-refresh tool's `stored_inputs.json` and manifest `stored_inputs` block,
 and the ACS local-area `stored_inputs` gate, each naming the built-with engine
-(microcosm#1034). A source-enrichment publisher claim widens the range
+(microcosm#1034). The ACS local-area package stage also refuses a calibrated H5
+on which an SPM unit the built-with engine measures has no classified adult,
+and binds the `spm_measurement_composition` gate the publisher requires
+(microcosm#1263; `microcosm.build.us_runtime.spm_measurement_gate`).
+A source-enrichment publisher claim widens the range
 consumers accept, not what was checked: the bundle's
 `compatibility.claim_measurement` names the one version the probe measured.
 
@@ -406,6 +412,17 @@ label, search for an existing definition and follow
 [`docs/shared-constants.md`](shared-constants.md). Human contributors and
 AI assistants must import shared static data from its domain-specific constants
 module instead of copying it or reconstructing alternate views in consumers.
+
+## Calibration diagnostics JSON Schema
+
+`packages/microcosm-diagnostics/src/microcosm/diagnostics/schemas/calibration_diagnostics.v8.schema.json`
+is generated from the schema-8 models in `microcosm.diagnostics.schema`. After
+changing one, regenerate it with
+`uv run --no-sync python tools/generate_calibration_diagnostics_json_schema.py`.
+A new model validator also needs an entry in
+`CALIBRATION_DIAGNOSTICS_V8_JSON_SCHEMA_GAPS` and a document in
+`test_json_schema.py` that the schema accepts and the models refuse; the
+diagnostics tests fail until both exist.
 
 ## Review this guide
 

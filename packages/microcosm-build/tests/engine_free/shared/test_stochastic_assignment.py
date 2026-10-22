@@ -7,6 +7,7 @@ from microcosm.build.stochastic_assignment import (
     assign_binary_from_rate,
     assign_binary_with_anchored_residual,
     clipped_normal_from_uniforms,
+    integer_record_keys,
     sample_categorical_from_counts,
     stable_identity_uniforms,
 )
@@ -160,3 +161,27 @@ def test_anchored_residual_population_without_anchor_and_shape_refusal() -> None
         assign_binary_with_anchored_residual(
             draws, 0.4, np.zeros(10, dtype=bool), population=np.ones(3, dtype=bool)
         )
+
+
+def test_integer_record_keys_pass_unique_integer_ids_through() -> None:
+    ids = np.array([3, 1, 2], dtype="int64")
+
+    np.testing.assert_array_equal(integer_record_keys(ids, label="ids"), ids)
+
+
+def test_a_float_id_keys_a_different_draw_so_it_is_refused() -> None:
+    # The key string formats each id, so 1001 and 1001.0 draw differently:
+    # a merge that turned an id column into floats would redraw every record.
+    assert not np.array_equal(
+        stable_identity_uniforms([1001], seed=0, salt="s"),
+        stable_identity_uniforms([1001.0], seed=0, salt="s"),
+    )
+    with pytest.raises(TypeError, match="integer ids"):
+        integer_record_keys(np.array([1001.0, 1002.0]), label="ids")
+    with pytest.raises(TypeError, match="integer ids"):
+        integer_record_keys(np.array(["1001"], dtype=object), label="ids")
+
+
+def test_a_repeated_id_is_refused() -> None:
+    with pytest.raises(ValueError, match="each record once"):
+        integer_record_keys(np.array([1, 2, 1]), label="ids")
