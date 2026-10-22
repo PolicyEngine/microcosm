@@ -38,6 +38,7 @@ from microcosm.build.uk_runtime.uc_take_up import (
     uc_award_band_targets_from_rows,
     uc_award_bands,
     uc_family_types,
+    working_age_housing_benefit_receipt,
 )
 from microcosm.frame import WeightKind
 
@@ -607,3 +608,63 @@ def test_contract_records_the_u8_ruling_and_keeps_the_early_rate() -> None:
     assert freeze["approved_on"] == "2026-10-21"
     assert "microcosm#1334" in freeze["adjudication"]
     assert "uc_take_up" in freeze["decision"]
+
+
+def test_the_receipt_counts_working_age_housing_benefit_kept_and_drawn() -> None:
+    # Vahid's review of #1344, item 7: 30 units, each its own source; 20 report
+    # Housing Benefit, 4 of those the engine moves off legacy benefits, and the
+    # redraw sets 6 of the other 16 to claim UC, so 10 keep the award.
+    count = 30
+    person = pd.DataFrame(
+        {
+            "person_id": np.arange(count),
+            "person_benunit_id": np.arange(count),
+            "housing_benefit_reported": [100.0] * 20 + [0.0] * 10,
+        }
+    )
+    benunit = pd.DataFrame({"benunit_id": np.arange(count)})
+    moved = np.zeros(count, dtype=bool)
+    moved[16:20] = True
+    uc_after = np.zeros(count, dtype=bool)
+    uc_after[:6] = True
+    receipt = working_age_housing_benefit_receipt(
+        person=person,
+        benunit=benunit,
+        population=np.ones(count, dtype=bool),
+        moved=moved,
+        uc_before=np.zeros(count, dtype=bool),
+        uc_after=uc_after,
+        weights=np.ones(count),
+        great_britain=np.ones(count, dtype=bool),
+        source_ids=np.arange(count),
+    )
+    assert receipt["reporting_units"] == pytest.approx(16.0)
+    assert receipt["keeping_housing_benefit_before"] == pytest.approx(16.0)
+    assert receipt["keeping_housing_benefit_after"] == pytest.approx(10.0)
+    # Six drawn units rest on fewer than ten sources: no weighted figure.
+    assert receipt["drawn_onto_universal_credit"] == "<10"
+
+
+def test_a_unit_keeping_a_legacy_benefit_is_not_drawn_onto_uc() -> None:
+    # Vahid's review of #1344, item 7: a unit reporting a legacy benefit the
+    # engine leaves in place keeps it, so the pool's draw skips it and counts
+    # it at its stored flag, however many claims the pool needs.
+    award = np.full(4, 600.0)
+    legacy_kept = np.asarray([True, False, False, False])
+    draws = np.asarray([0.01, 0.2, 0.3, 0.4])
+    would_claim, receipt = _assign(
+        award=award,
+        draws=draws,
+        legacy_kept=legacy_kept,
+        targets=_targets(SINGLE_0=3.0),
+    )
+    assert would_claim.tolist() == [False, True, True, True]
+    kept_previous, _ = _assign(
+        award=award,
+        draws=draws,
+        legacy_kept=legacy_kept,
+        previous=np.asarray([True, False, False, False]),
+        targets=_targets(SINGLE_0=3.0),
+    )
+    # Counted at its stored flag: the pool then needs only two more claims.
+    assert kept_previous.tolist() == [True, True, True, False]

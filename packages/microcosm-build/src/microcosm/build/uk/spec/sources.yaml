@@ -4503,7 +4503,7 @@ stages:
     targets: DWP Stat-Xplore Households on Universal Credit by family type and monthly award band, mean of April to December 2025
     pooling: adjacent bands within a family type, lowest first, until the drawn units rest on minimum_pool_sources distinct household_source_id values; a short last pool joins the one before it
     minimum_pool_sources: 30
-    drawn_units: entitled, non-reporting units of the population that the engine does not move off their legacy benefits (legacy_benefits_closed)
+    drawn_units: entitled, non-reporting units of the population that the engine does not move off their legacy benefits (legacy_benefits_closed) and that report none, since a legacy benefit the engine leaves in place ends once the unit claims UC
     undrawn_claims: a reporter at 1, a moved unit at the claim probability uc_legacy_closure_take_up's rule gives it (dwp_move_to_uc_facts.json), any other at its stored flag
     weight_mapping: household_to_benunit
     residual_rate: (T - F) / D, clipped to [0, 1]; T DWP's calendar-2025 mean count of the pool's bands, D the weight of the pool's drawn units and F the expected claims of its other entitled units, over Great Britain at the stage's household weights; realized by the drawn units claiming in the order of their uniform until their weight is nearest T - F, and applied at that uniform to Northern Ireland's drawn units too

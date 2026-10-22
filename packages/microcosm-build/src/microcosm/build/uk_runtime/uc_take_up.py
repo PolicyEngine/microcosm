@@ -28,7 +28,8 @@ month. Within a
 family type, adjacent bands pool until the pool's drawable units rest on at
 least 30 distinct source households. In each pool a reporter claims, and every
 other entitled unit of the age population that the engine does not move off
-its legacy benefits claims at
+its legacy benefits, and that reports none it keeps (policyengine-uk ends a
+kept legacy benefit once the unit claims UC), claims at
 
     r = (T - F) / D,
 
@@ -129,6 +130,7 @@ __all__ = [
     "uc_award_bands",
     "uc_family_types",
     "uc_take_up_operation_parameters",
+    "working_age_housing_benefit_receipt",
 ]
 
 UC_TAKE_UP_STAGE_NAME = "uc_take_up"
@@ -364,12 +366,16 @@ def assign_award_band_take_up(
     source_ids: np.ndarray,
     targets: Mapping[tuple[str, int], float],
     minimum_pool_sources: int = UC_TAKE_UP_MINIMUM_POOL_SOURCES,
+    legacy_kept: np.ndarray | None = None,
 ) -> tuple[np.ndarray, dict[str, object]]:
     """Reporters claim; drawn units claim at their pool's residual rate.
 
     The drawn units are the entitled, non-reporting units of the age
-    population that the engine does not move off their legacy benefits. Every
-    other unit keeps ``previous``, or claims if it reports. In a pool, ``F``
+    population that the engine does not move off their legacy benefits and
+    that report none (``legacy_kept``: a unit reporting a legacy benefit the
+    engine leaves in place keeps it, and policyengine-uk ends it once the unit
+    claims UC, so the draw must not move it; Vahid's review of #1344, item 7).
+    Every other unit keeps ``previous``, or claims if it reports. In a pool, ``F``
     counts a reporter at 1, a moved unit at ``moved_claim`` (its expected claim
     at the legacy closure) and any other undrawn entitled unit at ``previous``.
     A drawn unit claims where its uniform falls below the pool's realized rate
@@ -384,6 +390,11 @@ def assign_award_band_take_up(
     moved = np.asarray(moved, dtype=bool)
     moved_claim = np.asarray(moved_claim, dtype=np.float64)
     previous = np.asarray(previous, dtype=bool)
+    legacy_kept = (
+        np.zeros(previous.shape, dtype=bool)
+        if legacy_kept is None
+        else np.asarray(legacy_kept, dtype=bool)
+    )
     weights = np.asarray(weights, dtype=np.float64)
     draws = np.asarray(draws, dtype=np.float64)
     gb = np.asarray(great_britain, dtype=bool)
@@ -396,6 +407,7 @@ def assign_award_band_take_up(
         ("moved", moved),
         ("moved_claim", moved_claim),
         ("previous", previous),
+        ("legacy_kept", legacy_kept),
         ("weights", weights),
         ("draws", draws),
         ("great_britain", gb),
@@ -418,7 +430,7 @@ def assign_award_band_take_up(
         raise ValueError(f"UC take-up targets are missing cells: {missing}.")
     band = uc_award_bands(award)
     entitled = band >= 0
-    drawable = entitled & population & ~reporter & ~moved
+    drawable = entitled & population & ~reporter & ~moved & ~legacy_kept
     # Each undrawn entitled unit's expected claim.
     fixed = np.where(
         reporter, 1.0, np.where(moved, moved_claim, previous.astype(np.float64))
@@ -541,6 +553,9 @@ def assign_award_band_take_up(
         "drawn_units": rounded_count(int(drawable.sum())),
         "drawn_units_northern_ireland": rounded_count(int((drawable & ~gb).sum())),
         "moved_units": rounded_count(int((entitled & moved & ~reporter).sum())),
+        "legacy_kept_units": rounded_count(
+            int((entitled & population & legacy_kept & ~reporter & ~moved).sum())
+        ),
         "set_true": rounded_count(int((changed & would_claim).sum())),
         "set_false": rounded_count(int((changed & ~would_claim).sum())),
     }
@@ -717,6 +732,18 @@ def redraw_uc_take_up(
         source_ids=source_ids,
         targets=targets,
         minimum_pool_sources=minimum_pool_sources,
+        legacy_kept=(combination != "") & ~moved & ~reporter,
+    )
+    working_age_hb = working_age_housing_benefit_receipt(
+        person=person,
+        benunit=benunit,
+        population=population,
+        moved=moved,
+        uc_before=previous | reporter,
+        uc_after=would_claim | reporter,
+        weights=weights,
+        great_britain=great_britain,
+        source_ids=source_ids,
     )
     benunit[UK_UC_TAKE_UP_OUTPUT] = would_claim
     result = uk_national_frame(
@@ -734,9 +761,68 @@ def redraw_uc_take_up(
         receipt={
             **receipt,
             "population_state_pension_age": int(population_policy.state_pension_age),
+            "working_age_housing_benefit": working_age_hb,
         },
         entitlement_year=entitlement_year,
     )
+
+
+def working_age_housing_benefit_receipt(
+    *,
+    person: pd.DataFrame,
+    benunit: pd.DataFrame,
+    population: np.ndarray,
+    moved: np.ndarray,
+    uc_before: np.ndarray,
+    uc_after: np.ndarray,
+    weights: np.ndarray,
+    great_britain: np.ndarray,
+    source_ids: np.ndarray,
+) -> dict[str, object]:
+    """Working-age Housing Benefit the redraw keeps, at the stage's weights.
+
+    policyengine-uk continues an existing Housing Benefit award only while the
+    unit neither claims Universal Credit nor is moved off its legacy benefits,
+    so a working-age unit reporting Housing Benefit that the redraw sets to
+    claim UC loses it. This counts, over Great Britain, the benefit units of
+    the UC age population with a member reporting Housing Benefit that the
+    engine does not move, and how many of them keep the award before and after
+    the redraw, so the stage's effect on working-age Housing Benefit can be set
+    beside DWP's 2025 caseload (Vahid's review of #1344, item 7). Weighted
+    figures only where ten or more source households carry them.
+    """
+
+    column = "housing_benefit_reported"
+    reported = (
+        pd.to_numeric(person[column], errors="coerce").fillna(0.0) > 0.0
+        if column in person.columns
+        else pd.Series(False, index=person.index)
+    )
+    reporting = (
+        benunit["benunit_id"]
+        .isin(set(person.loc[reported.to_numpy(dtype=bool), "person_benunit_id"]))
+        .to_numpy(dtype=bool)
+    )
+    base = reporting & population & ~moved & great_britain
+    kept_before = base & ~uc_before
+    kept_after = base & ~uc_after
+    drawn_onto_uc = kept_before & uc_after
+
+    def weighted(mask: np.ndarray) -> object:
+        return small_cell_share(
+            float(weights[mask].sum()), distinct_count(source_ids, mask, weights)
+        )
+
+    return {
+        "scope": "great_britain",
+        "reporting_units": weighted(base),
+        "keeping_housing_benefit_before": weighted(kept_before),
+        "keeping_housing_benefit_after": weighted(kept_after),
+        "drawn_onto_universal_credit": weighted(drawn_onto_uc),
+        "drawn_support": support_band(
+            distinct_count(source_ids, drawn_onto_uc, weights)
+        ),
+    }
 
 
 def _aligned(values: object, expected: int, label: str) -> np.ndarray:
@@ -832,7 +918,9 @@ def uc_take_up_operation_parameters() -> tuple[tuple[str, dict[str, object]], ..
                 "drawn_units": (
                     "entitled, non-reporting units of the population that the "
                     "engine does not move off their legacy benefits "
-                    "(legacy_benefits_closed)"
+                    "(legacy_benefits_closed) and that report none, since a "
+                    "legacy benefit the engine leaves in place ends once the "
+                    "unit claims UC"
                 ),
                 "undrawn_claims": (
                     "a reporter at 1, a moved unit at the claim probability "
