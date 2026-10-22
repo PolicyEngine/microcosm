@@ -1,0 +1,1 @@
+The ACS local-area release's package stage now refuses to name a release after code that did not write its calibrated artifact: calibrate records its code identity in `consumer_export.json`, and package requires the same commit. The interim WIC limitation now states exactly whom the assumption covers, and its receipt records how many people were allowed to lack a decision.
