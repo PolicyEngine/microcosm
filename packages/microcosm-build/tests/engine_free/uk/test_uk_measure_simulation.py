@@ -1922,12 +1922,21 @@ def _spring_term_simulation() -> SimulationStub:
                 "person",
                 np.array([1.0, 1.0, 1 / 3], dtype=np.float32),
             ),
-            "is_child_receiving_extended_childcare": (
+            "extended_childcare_entitlement_total_per_child": (
                 "person",
-                np.array([False, True, True]),
+                np.array([0.0, 6_000.0, 2_000.0]),
             ),
             "is_of_compulsory_school_age": ("person", np.array([False] * 3)),
             "max_free_entitlement_hours_used": (
+                "person",
+                np.array([30.0, 30.0, 30.0]),
+            ),
+            "maximum_extended_childcare_hours_usage": (
+                "benunit",
+                np.array([30.0, 30.0]),
+            ),
+            # A numeric group value reaches people through map_to.
+            ("maximum_extended_childcare_hours_usage", "person"): (
                 "person",
                 np.array([30.0, 30.0, 30.0]),
             ),

@@ -11,10 +11,21 @@ from microcosm.build.uk_runtime.dfe_spring_term import (
     DFE_SPRING_TERM_ENGINE_INPUTS,
     DFE_SPRING_UNIVERSAL,
     DFE_SPRING_WORKING_PARENT,
+    UNIVERSAL_WEEKLY_HOURS,
     dfe_spring_term_status,
 )
 
 YEAR = 2025
+WORKING_COUPLE = (40_000.0, 30_000.0)
+#: A lone parent on Universal Credit earning enough for working-parent hours
+#: and little enough for early learning for 2-year-olds.
+LOW_PAID_LONE_PARENT = (12_000.0,)
+_SPRING = (
+    DFE_AGE_AT_31_DECEMBER,
+    DFE_SPRING_WORKING_PARENT,
+    DFE_SPRING_UNIVERSAL,
+    DFE_SPRING_EARLY_LEARNING_2,
+)
 
 
 def _age_on_6_october(date_of_birth: int) -> int:
@@ -22,31 +33,41 @@ def _age_on_6_october(date_of_birth: int) -> int:
     return YEAR - birth_year - (1 if month_day > 1006 else 0)
 
 
-def _child_status(
-    date_of_birth: int,
-    *,
-    earnings: tuple[float, ...] = (40_000.0, 30_000.0),
+def _children(
+    *dates_of_birth: int,
+    earnings: tuple[float, ...] = WORKING_COUPLE,
+    claims: dict[str, bool] | None = None,
+    hours: float | None = None,
+    country: str = "ENGLAND",
     deferred: bool = False,
-) -> tuple[dict[str, float], dict[str, float]]:
+    give_date_of_birth: bool = True,
+) -> list[dict[str, float]]:
+    """Each child's spring-term status, with the engine's own amounts."""
+
     from policyengine_uk import Simulation
 
     people = {
         f"parent{index}": {"age": {YEAR: 35}, "employment_income": {YEAR: pay}}
         for index, pay in enumerate(earnings)
     }
-    child = {
-        "age": {YEAR: _age_on_6_october(date_of_birth)},
-        "date_of_birth": {YEAR: date_of_birth},
-    }
-    if deferred:
-        child["early_years_school_start_deferred"] = {YEAR: True}
-    people["child"] = child
+    for index, date_of_birth in enumerate(dates_of_birth):
+        child = {"age": {YEAR: _age_on_6_october(date_of_birth)}}
+        if give_date_of_birth:
+            child["date_of_birth"] = {YEAR: date_of_birth}
+        if hours is not None:
+            child["max_free_entitlement_hours_used"] = {YEAR: hours}
+        if deferred:
+            child["early_years_school_start_deferred"] = {YEAR: True}
+        people[f"child{index}"] = child
+    family = {"members": list(people)}
+    for name, value in (claims or {}).items():
+        family[name] = {YEAR: value}
     simulation = Simulation(
         situation={
             "people": people,
-            "benunits": {"family": {"members": list(people)}},
+            "benunits": {"family": family},
             "households": {
-                "home": {"members": list(people), "country": {YEAR: "ENGLAND"}}
+                "home": {"members": list(people), "country": {YEAR: country}}
             },
         }
     )
@@ -62,17 +83,23 @@ def _child_status(
         return np.repeat(values, len(people)) if len(values) == 1 else values
 
     status = dfe_spring_term_status(calculate, YEAR)
-    child_row = list(people).index("child")
+    rows = [list(people).index(f"child{i}") for i in range(len(dates_of_birth))]
     engine = {
-        name: float(np.asarray(simulation.calculate(name, YEAR))[child_row])
+        name: np.asarray(simulation.calculate(name, YEAR), dtype=float)
         for name in (
-            "is_child_receiving_universal_childcare",
-            "is_child_receiving_extended_childcare",
-            "is_child_receiving_targeted_childcare",
+            "universal_childcare_entitlement",
+            "targeted_childcare_entitlement",
+            "extended_childcare_entitlement_per_child",
             "early_years_term_share_before_school",
         )
     }
-    return {name: float(values[child_row]) for name, values in status.items()}, engine
+    return [
+        {
+            **{name: float(status[name][row]) for name in _SPRING},
+            **{name: float(values[row]) for name, values in engine.items()},
+        }
+        for row in rows
+    ]
 
 
 def test_the_engine_year_starts_its_spring_term_on_1_january() -> None:
@@ -81,87 +108,120 @@ def test_the_engine_year_starts_its_spring_term_on_1_january() -> None:
     assert term_starts(YEAR) == (20250401, 20250901, 20260101)
 
 
-def test_the_measures_read_existing_person_or_group_variables() -> None:
+def test_the_measures_read_existing_variables() -> None:
     from policyengine_uk import CountryTaxBenefitSystem
 
-    variables = CountryTaxBenefitSystem().variables
+    system = CountryTaxBenefitSystem()
     for name in DFE_SPRING_TERM_ENGINE_INPUTS:
-        assert name in variables, name
+        assert name in system.variables, name
+    universal = system.parameters(f"{YEAR}-04-30").gov.dfe
+    weekly = universal.universal_childcare_entitlement.hours / universal.weeks_per_year
+    assert weekly == UNIVERSAL_WEEKLY_HOURS
+
+
+def test_universal_hours_follow_dfe_age_and_school_start() -> None:
+    # Born on 31 August 2021 the child starts reception in September 2025;
+    # born on 1 September it stays in nursery until September 2026.
+    in_reception, in_nursery = _children(20210831, 20210901)
+    assert (
+        in_reception[DFE_AGE_AT_31_DECEMBER] == in_nursery[DFE_AGE_AT_31_DECEMBER] == 4
+    )
+    assert in_reception[DFE_SPRING_UNIVERSAL] == 0
+    assert in_reception["early_years_term_share_before_school"] == pytest.approx(1 / 3)
+    assert in_nursery[DFE_SPRING_UNIVERSAL] == 1
+    # Three on 31 December whether born on 6 or 7 October 2022, though the
+    # engine pays the second no universal hours (two on 6 October).
+    sixth, seventh = _children(20221006, 20221007)
+    assert sixth[DFE_SPRING_UNIVERSAL] == seventh[DFE_SPRING_UNIVERSAL] == 1
+    assert sixth["universal_childcare_entitlement"] > 0
+    assert seventh["universal_childcare_entitlement"] == 0
+    # 31 December 2022 is three on 31 December 2025; 1 January 2023 is two.
+    older, younger = _children(20221231, 20230101)
+    assert (older[DFE_AGE_AT_31_DECEMBER], younger[DFE_AGE_AT_31_DECEMBER]) == (3, 2)
+    assert (older[DFE_SPRING_UNIVERSAL], younger[DFE_SPRING_UNIVERSAL]) == (1, 0)
+
+
+def test_working_parent_hours_start_the_term_after_nine_months() -> None:
+    # Nine months on 31 December 2025: funded from 1 January 2026. Nine
+    # months on 1 January 2026: not yet funded in that term.
+    funded, not_yet = _children(20250331, 20250401)
+    assert funded[DFE_AGE_AT_31_DECEMBER] == not_yet[DFE_AGE_AT_31_DECEMBER] == 0
+    assert (funded[DFE_SPRING_WORKING_PARENT], not_yet[DFE_SPRING_WORKING_PARENT]) == (
+        1,
+        0,
+    )
+
+
+def test_a_family_that_claims_only_working_parent_hours_is_counted() -> None:
+    # The engine allocates the universal and targeted hours from the gross
+    # working-parent hours to a family that does not claim them on their own.
+    (universal_child,) = _children(
+        20220515, claims={"would_claim_universal_childcare": False}, hours=12
+    )
+    assert universal_child["universal_childcare_entitlement"] > 0
+    assert universal_child[DFE_SPRING_UNIVERSAL] == 1
+    # Twelve hours is within the universal 15, so not a working-parent child.
+    assert universal_child[DFE_SPRING_WORKING_PARENT] == 0
+    (two_year_old,) = _children(
+        20230515,
+        earnings=LOW_PAID_LONE_PARENT,
+        claims={"would_claim_targeted_childcare": False},
+    )
+    assert two_year_old["targeted_childcare_entitlement"] > 0
+    assert two_year_old[DFE_SPRING_EARLY_LEARNING_2] == 1
+    assert two_year_old[DFE_SPRING_WORKING_PARENT] == 0
+
+
+def test_dfe_counts_a_two_year_old_under_one_entitlement() -> None:
+    # Two on 31 December but one on 6 October: the engine gives working-parent
+    # hours and no targeted hours, but DfE records the child under early
+    # learning for 2-year-olds only.
+    (child,) = _children(20231115, earnings=LOW_PAID_LONE_PARENT)
+    assert child["extended_childcare_entitlement_per_child"] > 0
+    assert child[DFE_SPRING_EARLY_LEARNING_2] == 1
+    assert child[DFE_SPRING_WORKING_PARENT] == 0
+    # Three on 31 December but two on 6 October: the engine nets the
+    # targeted hours, but in the spring term the child takes universal and
+    # working-parent hours.
+    (child,) = _children(20221115, earnings=LOW_PAID_LONE_PARENT)
+    assert child["extended_childcare_entitlement_per_child"] == 0
+    assert child[DFE_SPRING_WORKING_PARENT] == 1
+    assert child[DFE_SPRING_UNIVERSAL] == 1
+    assert child[DFE_SPRING_EARLY_LEARNING_2] == 0
 
 
 @pytest.mark.parametrize(
-    ("date_of_birth", "expected"),
-    [
-        # Born in 2021 before September: reception from September 2025, so
-        # not funded in the spring term although the engine funds its summer.
-        (20210615, {DFE_AGE_AT_31_DECEMBER: 4, DFE_SPRING_UNIVERSAL: 0}),
-        # Born after 1 September 2021: nursery until September 2026.
-        (20211015, {DFE_AGE_AT_31_DECEMBER: 4, DFE_SPRING_UNIVERSAL: 1}),
-        # Three on 31 December 2025 but two on 6 October: funded from January
-        # under the regulations, and the engine pays no universal hours.
-        (20221115, {DFE_AGE_AT_31_DECEMBER: 3, DFE_SPRING_UNIVERSAL: 1}),
-        # Five on 31 December: outside DfE's 3 and 4.
-        (20200915, {DFE_AGE_AT_31_DECEMBER: 5, DFE_SPRING_UNIVERSAL: 0}),
-    ],
+    "dates_of_birth",
+    [(20231115,), (20230515,), (20221115, 20231115), (20220101, 20230701, 20240301)],
 )
-def test_universal_hours_in_the_spring_term(date_of_birth, expected) -> None:
-    status, engine = _child_status(date_of_birth)
-    for name, value in expected.items():
-        assert status[name] == value, name
-    if date_of_birth == 20221115:
-        assert engine["is_child_receiving_universal_childcare"] == 0
-    if date_of_birth == 20210615:
-        assert engine["is_child_receiving_universal_childcare"] == 1
-        assert engine["early_years_term_share_before_school"] == pytest.approx(1 / 3)
-
-
-@pytest.mark.parametrize(
-    ("date_of_birth", "funded"),
-    [
-        # Nine months on 15 November 2025: funded from 1 January 2026.
-        (20250215, 1),
-        # Nine months on 15 January 2026: not yet funded in that term.
-        (20250415, 0),
-        # In reception from September 2025.
-        (20210615, 0),
-        (20221115, 1),
-    ],
-)
-def test_working_parent_hours_in_the_spring_term(date_of_birth, funded) -> None:
-    status, _ = _child_status(date_of_birth)
-    assert status[DFE_SPRING_WORKING_PARENT] == funded
-
-
-def test_early_learning_for_two_year_olds_follows_dfe_age() -> None:
-    # A lone parent with no earnings: the family qualifies for the targeted
-    # offer. Born November 2023, the child is two on 31 December 2025 and
-    # funded in the spring term, while the engine (age one on 6 October)
-    # pays it nothing.
-    status, engine = _child_status(20231115, earnings=(0.0,))
-    assert status[DFE_AGE_AT_31_DECEMBER] == 2
-    assert status[DFE_SPRING_EARLY_LEARNING_2] == 1
-    assert engine["is_child_receiving_targeted_childcare"] == 0
-    # A working couple does not qualify; its child takes working-parent hours.
-    status, _ = _child_status(20231115)
-    assert status[DFE_SPRING_EARLY_LEARNING_2] == 0
-    assert status[DFE_SPRING_WORKING_PARENT] == 1
+@pytest.mark.parametrize("earnings", [WORKING_COUPLE, LOW_PAID_LONE_PARENT])
+def test_no_child_is_counted_under_two_dfe_entitlements_at_age_two(
+    dates_of_birth, earnings
+) -> None:
+    for child in _children(*dates_of_birth, earnings=earnings):
+        assert not (
+            child[DFE_SPRING_WORKING_PARENT] and child[DFE_SPRING_EARLY_LEARNING_2]
+        )
 
 
 def test_a_deferred_school_start_keeps_the_spring_term() -> None:
-    status, engine = _child_status(20210615, deferred=True)
-    assert engine["early_years_term_share_before_school"] == 1
-    assert status[DFE_SPRING_UNIVERSAL] == 1
-    assert status[DFE_SPRING_WORKING_PARENT] == 1
+    (child,) = _children(20210615, deferred=True)
+    assert child["early_years_term_share_before_school"] == 1
+    assert child[DFE_SPRING_UNIVERSAL] == 1
+    assert child[DFE_SPRING_WORKING_PARENT] == 1
 
 
-@pytest.mark.parametrize("date_of_birth", [20210915, 20211015, 20220315, 20220915])
-def test_at_engine_age_three_or_four_universal_is_the_engines_flag(
-    date_of_birth,
-) -> None:
-    # The measure departs from the engine only for children the engine still
-    # gates out on their age at 6 October.
-    status, engine = _child_status(date_of_birth)
-    in_nursery = engine["early_years_term_share_before_school"] > 0.5
-    assert status[DFE_SPRING_UNIVERSAL] == float(
-        bool(engine["is_child_receiving_universal_childcare"]) and in_nursery
-    )
+def test_outside_england_no_dfe_entitlement_is_counted() -> None:
+    (child,) = _children(20211015, country="WALES")
+    assert child[DFE_SPRING_UNIVERSAL] == 0
+    assert child[DFE_SPRING_WORKING_PARENT] == 0
+    assert child[DFE_SPRING_EARLY_LEARNING_2] == 0
+
+
+def test_a_child_placed_by_age_alone_is_classified() -> None:
+    # Without a date of birth the engine places a whole age of 3 at the
+    # middle of the year (born in April 2022), so it is three on 31 December.
+    (child,) = _children(20220101, give_date_of_birth=False)
+    assert child[DFE_AGE_AT_31_DECEMBER] == 3
+    assert child[DFE_SPRING_UNIVERSAL] == 1
+    assert child[DFE_SPRING_WORKING_PARENT] == 1

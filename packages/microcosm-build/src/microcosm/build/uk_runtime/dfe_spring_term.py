@@ -15,15 +15,21 @@ starts on 1 January of Y + 1:
   so it is tested against one half, never for equality.
 - **Working parent.** Working-parent hours start the term after the child
   reaches the minimum age (SI 2022/1134 reg 27). The year's eligible terms
-  always end with the spring term, so an annual receipt before school is a
-  spring receipt.
+  always end with the spring term, so a child the engine gives working-parent
+  hours in the year (its gross total per child) and that is still before
+  school takes part in the spring term. DfE records each child under one
+  entitlement: at DfE age 2 a child counted under early learning for
+  2-year-olds is not counted again under working parents, and at 3 and 4 a
+  working-parent child is one that uses more than the universal hours, as the
+  engine nets them.
 - **Universal and early learning for 2-year-olds.** These start the term
   after the third or second birthday, so in the spring term they reach every
   child of that DfE age. policyengine-uk still gates them on the whole age at
   6 October, which leaves out the children born from 7 October to 31
-  December. The measures keep the engine's family and claim conditions and
-  replace only that age gate, so they count the children DfE counts; they do
-  not change what the engine pays.
+  December. The measures keep the engine's family and claim conditions (a
+  claim on their own, or allocation from the gross working-parent hours, as
+  the engine allocates them) and replace only that age gate, so they count
+  the children DfE counts; they do not change what the engine pays.
 - **DfE age** is ``Y - birth_year``, the age on 31 December Y.
 
 The take-up flags and family conditions are annual and apply to the spring
@@ -45,6 +51,7 @@ __all__ = [
     "DFE_SPRING_TERM_MEASURES",
     "DFE_SPRING_UNIVERSAL",
     "DFE_SPRING_WORKING_PARENT",
+    "UNIVERSAL_WEEKLY_HOURS",
     "dfe_spring_term_status",
 ]
 
@@ -64,15 +71,20 @@ DFE_SPRING_TERM_ENGINE_INPUTS = (
     "birth_year",
     "country",
     "early_years_term_share_before_school",
-    "is_child_receiving_extended_childcare",
+    "extended_childcare_entitlement_total_per_child",
     "is_of_compulsory_school_age",
     "max_free_entitlement_hours_used",
+    "maximum_extended_childcare_hours_usage",
     "targeted_childcare_entitlement_eligible",
     "would_claim_targeted_childcare",
     "would_claim_universal_childcare",
 )
 _UNIVERSAL_DFE_AGES = (3, 4)
 _EARLY_LEARNING_DFE_AGE = 2
+#: The universal entitlement's weekly hours: 570 a year over 38 weeks
+#: (SI 2014/2147 regs 4 and 5). A working-parent child aged 3 or 4 is
+#: registered under working parents only if it uses more than these.
+UNIVERSAL_WEEKLY_HOURS = 15.0
 
 
 def _spring_term_start(year: int) -> int:
@@ -111,12 +123,19 @@ def dfe_spring_term_status(
     in_nursery = (
         np.asarray(calculate("early_years_term_share_before_school"), dtype=float) > 0.5
     )
-    uses_hours = (
-        np.asarray(calculate("max_free_entitlement_hours_used"), dtype=float) > 0
+    child_hours = np.asarray(calculate("max_free_entitlement_hours_used"), dtype=float)
+    family_hours = np.asarray(
+        calculate("maximum_extended_childcare_hours_usage"), dtype=float
     )
-    working_parent = (
-        _flag(calculate("is_child_receiving_extended_childcare")) & in_nursery
-    )
+    uses_hours = child_hours > 0
+    # Gross working-parent hours, before the universal or targeted hours are
+    # netted out: what the engine allocates those hours from.
+    takes_part = (
+        np.asarray(
+            calculate("extended_childcare_entitlement_total_per_child"), dtype=float
+        )
+        > 0
+    ) & in_nursery
     in_england = np.asarray(calculate("country")).astype(str) == "ENGLAND"
     universal = (
         in_england
@@ -124,13 +143,20 @@ def dfe_spring_term_status(
         & in_nursery
         & uses_hours
         & np.isin(dfe_age, _UNIVERSAL_DFE_AGES)
-        & (_flag(calculate("would_claim_universal_childcare")) | working_parent)
+        & (_flag(calculate("would_claim_universal_childcare")) | takes_part)
     )
     early_learning_2 = (
         _flag(calculate("targeted_childcare_entitlement_eligible"))
+        & in_nursery
         & uses_hours
         & (dfe_age == _EARLY_LEARNING_DFE_AGE)
-        & (_flag(calculate("would_claim_targeted_childcare")) | working_parent)
+        & (_flag(calculate("would_claim_targeted_childcare")) | takes_part)
+    )
+    beyond_universal = np.minimum(child_hours, family_hours) > UNIVERSAL_WEEKLY_HOURS
+    working_parent = takes_part & np.select(
+        [dfe_age < _EARLY_LEARNING_DFE_AGE, dfe_age == _EARLY_LEARNING_DFE_AGE],
+        [True, ~early_learning_2],
+        default=beyond_universal,
     )
     return {
         DFE_AGE_AT_31_DECEMBER: dfe_age,
