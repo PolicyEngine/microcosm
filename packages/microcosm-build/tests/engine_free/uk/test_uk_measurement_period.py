@@ -352,9 +352,11 @@ def test_a_frame_without_a_period_label_keeps_the_frame_route():
 #: reads. They keep their stored reads (microcosm#1324): who a row counts is
 #: fixed at the frame. Each is engine-computed (measured at the calibration
 #: period through the provider) or a stored input that does not change between
-#: the frame's period and the calibration period (ages and sex are static,
-#: sign filters keep their sign under uprating, the student-loan plan and the
-#: private-school flag are stored at the calibration year). A new name here is
+#: the frame's period and the calibration period (ages and sex are static, and
+#: so is current_education, which the DfE childcare rows read beside age to
+#: leave out reception; sign filters keep their sign under uprating, the
+#: student-loan plan and the private-school flag are stored at the calibration
+#: year). A new name here is
 #: a stored read to review: route it, or measure the row at the frame period.
 REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
     {
@@ -366,6 +368,7 @@ REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
         "benunit_tenure_type",
         "council_tax_band",
         "country",
+        "current_education",
         "dividend_income",
         "eldest_adult_age",
         "employment_income",

@@ -45,6 +45,16 @@ def test_childcare_draws_are_identity_keyed_and_hold_hours_fixed(monkeypatch) ->
 
     for key in first:
         np.testing.assert_array_equal(first[key], second[key])
+    # The universal flag is nested under the extended one, as frs_take_up
+    # draws it.
+    assert not (
+        first["would_claim_extended_childcare"]
+        & ~first["would_claim_universal_childcare"]
+    ).any()
+    nested = tool.draw_childcare_inputs(
+        ids, np.array([0.5, 1.0, 0.5, 0.0]), seed=42, contract=contract
+    )
+    assert nested["would_claim_universal_childcare"].all()
 
 
 def test_childcare_fit_receipt_is_deterministic_with_seeded_runner(
@@ -129,10 +139,13 @@ def test_childcare_expected_counts_are_bilinear_in_the_extended_rate() -> None:
     assert expected["dfe.funded_childcare.early_learning_2_year_olds"] == (
         pytest.approx(0.6 * 2.0 + 0.4 * 0.25 * 1.0)
     )
-    # universal-only: the working-parent family counts only when it does not
-    # take up the extended hours.
+    # universal-only, nested under the extended flag: a family that takes up
+    # the extended hours claims the universal ones (the with-extended side,
+    # where only the second family's child is universal-only), any other at
+    # the conditional universal rate (the without-extended side). No
+    # allocated term (tool version 5).
     assert expected["dfe.funded_childcare.universal_only_children"] == (
-        pytest.approx(0.4 * (0.75 + 1.0))
+        pytest.approx(0.25 * 1.0 + 0.75 * 0.4 * 2.0)
     )
     ceiling = tool.expected_childcare_counts(basis, np.ones(4))
     assert ceiling["dfe.funded_childcare.early_learning_2_year_olds"] == 2.0

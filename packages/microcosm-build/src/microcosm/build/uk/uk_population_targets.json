@@ -16077,6 +16077,11 @@
             "value": 2
           },
           {
+            "concept": "uk.education.current_education",
+            "operator": "!=",
+            "value": "PRIMARY"
+          },
+          {
             "concept": "uk.geography.country",
             "equals": "ENGLAND"
           }
@@ -16099,11 +16104,16 @@
               "value": 2
             },
             {
+              "variable": "current_education",
+              "operator": "!=",
+              "value": "PRIMARY"
+            },
+            {
               "variable": "country",
               "equals": "ENGLAND"
             }
           ],
-          "notes": "Caseload only: entitlement spending is not bound because caseload multiplied by full-usage ceilings would double count assumptions."
+          "notes": "Caseload only: entitlement spending is not bound because caseload multiplied by full-usage ceilings would double count assumptions. DfE's January registrations leave out children in reception, so a child in primary education (current_education PRIMARY) is not counted."
         },
         "axiom": {
           "metric_name": "dfe/funded_childcare/working_parent_children_2_to_4",
@@ -16231,6 +16241,11 @@
             "equals": false
           },
           {
+            "concept": "uk.education.current_education",
+            "operator": "!=",
+            "value": "PRIMARY"
+          },
+          {
             "concept": "uk.geography.country",
             "equals": "ENGLAND"
           }
@@ -16252,11 +16267,16 @@
               "equals": false
             },
             {
+              "variable": "current_education",
+              "operator": "!=",
+              "value": "PRIMARY"
+            },
+            {
               "variable": "country",
               "equals": "ENGLAND"
             }
           ],
-          "notes": "Universal-only caseload is the declared difference between the overlapping published universes; no entitlement spending row is bound. From policyengine-uk 2.128.1 a child on the working parent entitlement keeps the universal hours (Childcare Act 2016 s.1(6)(a); pe-uk#2177), so the measure counts children on the universal hours who are not receiving the extended entitlement, as the published difference does."
+          "notes": "Universal-only caseload is the declared difference between the overlapping published universes; no entitlement spending row is bound. DfE's January registrations leave out children in reception, so a child in primary education (current_education PRIMARY) is not counted. From policyengine-uk 2.128.1 a child on the working parent entitlement keeps the universal hours (Childcare Act 2016 s.1(6)(a); pe-uk#2177), so the measure counts children on the universal hours who are not receiving the extended entitlement, as the published difference does."
         },
         "axiom": {
           "metric_name": "dfe/funded_childcare/universal_only_children",
