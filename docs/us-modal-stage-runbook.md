@@ -62,7 +62,11 @@ release directory onto the runs volume. Publication stays the human step in
    three times the list price (see "Preemption and restarts").
 2. **The image is the commit.** It starts from `debian_slim` with Python
    3.14, the minor version the local US builds record (`runtime.python`
-   3.14.4 in the #974 build manifest; Modal served 3.14.2). It adds git and uv 0.11.7, makes a shallow
+   3.14.4 in the #974 build manifest; Modal served 3.14.2). It adds git,
+   upgrades `ca-certificates` to Debian's current release, and installs
+   uv 0.13.4 and, for the runner, `huggingface_hub` with certifi 2026.10.19
+   or later: the first releases whose CA lists drop the compromised eMudhra
+   roots (https://emudhra.we-have-a-problem.com). It then makes a shallow
    clone of the plan's commit from GitHub, checks out the plan's branch name,
    and asserts `HEAD` equals the commit. It then runs
    `uv sync --all-packages --extra us --frozen` against that tree's own
