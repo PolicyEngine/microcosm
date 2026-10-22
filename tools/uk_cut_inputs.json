@@ -115,7 +115,7 @@
       "kind": "hf_files",
       "repo_id": "policyengine/microcosm-uk-build-inputs",
       "repo_type": "dataset",
-      "revision": null,
+      "revision": "d4c8b1917ee6e0b38fae4c6a03568f094fc682cc",
       "path_in_repo": "chronicle-uk/abf0921b896d29ee0745ed2aefde8d6337ed7164",
       "directory": "chronicle_uk",
       "members": [

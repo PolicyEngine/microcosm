@@ -128,7 +128,7 @@ ever left at an input's path.
 | HMRC personal incomes ODS | gov.uk URL pinned in `source_stages.json` | fetched, matches |
 | Incumbent enhanced FRS | `policyengine-uk-data-private` `enhanced_frs_2024_25.h5` @ `a9e52499` | fetched, matches |
 | Input-mass reference | `policyengine/microcosm-uk-build-inputs` (private) `input-mass-reference/fd41cb5f…/` | fetched, matches |
-| Chronicle UK consumer artifact (7.4 GB) | `policyengine/microcosm-uk-build-inputs` `chronicle-uk/abf0921b…/` | rebuilt on Modal; hosted only if it reproduces the pin |
+| Chronicle UK consumer artifact (7.4 GB) | `policyengine/microcosm-uk-build-inputs` `chronicle-uk/abf0921b…/` @ `d4c8b191` | rebuilt on Modal from public Chronicle; both digests reproduce the pin byte for byte |
 | NTS 2002-2024 (5 tabs) | `policyengine-uk-data-private` `nts_2002_24.zip` | **needs a one-time upload** |
 | LCFS 2024-25 (2 tabs) | `policyengine-uk-data-private` `lcfs_2024_25.zip` | **needs a one-time upload** |
 
@@ -170,7 +170,8 @@ HF_TOKEN=… modal run --detach tools/modal_rebuild_uk_chronicle_artifact.py --b
 ```
 
 The artifact is uploaded under `chronicle-uk/<commit>/` only when both of its
-digests match `chronicle_feed.json`. Otherwise only the receipt and the bundle
+digests match `chronicle_feed.json`. The 2026-10-22 rebuild reproduced both
+(bundle 2h24m, artifact 30 min, peak memory 35.5 GB). Otherwise only the receipt and the bundle
 reports go to `diagnostic/`, so the difference can be traced. The token is
 passed for that run only and is never stored as a Modal secret.
 
