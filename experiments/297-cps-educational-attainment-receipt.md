@@ -1,6 +1,6 @@
 # microcosm#297 receipt: CPS educational attainment against ACS S1501
 
-Generated 2026-10-22 by `experiments/build_297_attainment_receipt.py` at commit `fe2ea8b4d20e726b59916b81c95eb23505c53188`, Modal run `20261022T170139Z-fe2ea8b4d` (`experiments/modal_297.py`). Machine-readable copy: `experiments/receipts/297-cps-educational-attainment-s1501.json`.
+Generated 2026-10-22 by `experiments/build_297_attainment_receipt.py` at commit `e2621e231c6cbc62939711e7c967be314624f65c`, Modal run `20261022T171517Z-e2621e231` (`experiments/modal_297.py`). Machine-readable copy: `experiments/receipts/297-cps-educational-attainment-s1501.json`.
 
 The build stage ran on the published release `populace-us-2024-spm-20260915` (166,321 persons, 57,240 households) at its calibrated weights. Every person joined its own Census member row; the signal gate passed. The S1501 facts are a **temporary draft input** (PolicyEngine/chronicle#347, unmerged): 676 facts, 357 compiled targets (51 states and DC x 7 classes, population 25 and over), 0 mismatches against the raw Census response, largest gap between a state's categories and its total 0.
 
@@ -73,7 +73,7 @@ Two-year degree = `associates_degree`, four-year degree = `bachelors_degree`, ea
 
 ### Reading the comparison
 
-- **Some college against associate's is an instrument difference.** Nationally the release has 14.1% some college, no degree against S1501's 18.5%, and 11.1% associate's against 8.8%. The release is below S1501 on some college in 49 of 51 states and above it on associate's in 44. The gap has one sign almost everywhere, so it reads as a difference between the instruments rather than sampling: the CPS interviews by telephone or visit and offers occupational and academic associate's answers, the ACS is mostly self-response and includes group quarters (Census, "Educational Attainment Fact Sheet", https://www.census.gov/topics/education/educational-attainment/guidance/factsheet-acs-cps.html). Binding the two cells separately would move weight to settle a definition; their sum agrees better (merged rows below).
+- **Some college against associate's is an instrument difference.** Nationally the release has 14.1% some college, no degree against S1501's 18.5%, and 11.1% associate's against 8.8%. The release is below S1501 on some college in 49 of 51 states and above it on associate's in 44. The gap has one sign almost everywhere, so it reads as a difference between the instruments rather than sampling: the CPS interviews by telephone or visit and offers occupational and academic associate's answers, the ACS is mostly self-response and includes group quarters (Census, "Educational Attainment Fact Sheet", https://www.census.gov/topics/education/educational-attainment/guidance/factsheet-acs-cps.html). Binding the two cells separately would move weight to settle a definition. Their sum is -2.1 pp off nationally (25.3% against 27.3%), less than the some-college cell alone; the merged rows below give the state spread.
 - **Thin cells.** 13 cells have fewer than 30 records; 10 of them are `less_than_9th_grade`. The standalone calibration's largest weight ratio (131) is in LA. Merging the two classes below a diploma (the six-class view) thickens those cells.
 
 | Merged row | Mean abs share error | Max abs share error |
