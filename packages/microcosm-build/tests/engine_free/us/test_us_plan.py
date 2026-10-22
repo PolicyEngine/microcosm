@@ -991,6 +991,9 @@ class TestUsSources:
             # incumbent, as frs_release.json does: download locations
             # verified against committed pins, never an import.
             "tools/uk_cut_inputs.json",
+            # Its operator doc names the same repository as the upload
+            # destination for the licensed NTS and LCFS archives.
+            "docs/uk-cut-anyone.md",
             # The UK population contract's registry-parity accounting names the
             # retired data package by necessity: 651 rows at pinned ref ebf733c
             # = 609 mapped + 42 signed exclusions + 3 unmapped declarations.
