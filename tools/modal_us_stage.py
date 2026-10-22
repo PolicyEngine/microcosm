@@ -21,7 +21,10 @@ without running the stage)::
 
 Run the stage (paid; sized per stage in the plan module)::
 
-    MICROCOSM_MODAL_PLAN=plan.json modal run --detach tools/modal_us_stage.py --run
+    MICROCOSM_MODAL_PLAN=plan.json modal run --detach tools/modal_us_stage.py --run --spawn
+
+``--spawn`` returns once the stage is spawned; ``--run`` alone waits on it
+(see ``main``).
 
 Set ``MICROCOSM_MODAL_HF_SECRET=<modal secret name>`` only when an input
 lives in a gated or private Hugging Face repo; public releases need no
@@ -1150,11 +1153,39 @@ RUNNERS = {
 
 
 @app.local_entrypoint()
-def main(run: bool = False) -> None:
-    """Check the plan (default) or, with --run, execute the stage."""
+def main(run: bool = False, spawn: bool = False) -> None:
+    """Check the plan (default) or, with --run, execute the stage.
+
+    ``--run`` waits for the stage, prints a summary of its receipt and exits
+    nonzero unless the stage COMPLETED. A waited-on call can be lost with its
+    client: on 2026-10-19 the Route A rerun base's first attempt was
+    cancelled 99 s after the launching Mac went to sleep (attributed to the
+    sleep from its timing).
+
+    ``--run --spawn`` spawns the stage, prints its function call id and
+    returns at once. Run it under ``modal run --detach``. A probe that day
+    showed a call spawned under ``--detach`` finishing after its client had
+    exited; client sleep, and a spawn without ``--detach``, were not tested.
+
+    A spawned stage's outcome is read from the runs volume, not this
+    client's exit code. A COMPLETED or FAILED stage writes a receipt under
+    ``runs/<run_id>/receipts/``. A refusal or an exception writes only an
+    attempt record under ``runs/<run_id>/attempts/``, with ``outcome``
+    ``refused`` or ``error``. A plan rejected before its attempt record
+    (``_run_stage``) writes nothing. A killed container leaves an attempt
+    record whose ``last_seen_epoch`` stops advancing.
+    ``modal.FunctionCall.from_id(<id>).get()``, run with the modal tool's
+    interpreter, blocks until the call ends. It returns the receipt
+    (COMPLETED or FAILED), or re-raises the error of an attempt that raised:
+    a rejected plan, a refusal or an exception, which ``_run_stage``
+    re-raises. Every attempt of a run shares its run_id, so match the attempt
+    record by ``modal.function_call_id`` and the receipt by ``attempt_id``.
+    """
 
     assert _LOADED is not None
     plan_data, plan = _LOADED
+    if spawn and not run:
+        raise SystemExit("--spawn needs --run (and modal run --detach)")
     if not run:
         report = check_stage.remote(plan_data)
         print(json.dumps(report, indent=2))
@@ -1163,6 +1194,19 @@ def main(run: bool = False) -> None:
         print("CHECK OK")
         return
     runner = RUNNERS[(plan.resources.name, plan.nonpreemptible)]
+    if spawn:
+        call = runner.spawn(plan_data)
+        print(
+            json.dumps(
+                {
+                    "run_id": plan.run_id,
+                    "stage": plan.stage,
+                    "function_call_id": call.object_id,
+                },
+                indent=2,
+            )
+        )
+        return
     receipt = runner.remote(plan_data)
     brief = {
         key: receipt[key]

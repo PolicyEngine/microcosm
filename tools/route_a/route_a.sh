@@ -50,13 +50,17 @@ LOG=$RUN_ROOT/route_a.log
 # Inputs, resolved and hashed on this machine on 2026-09-23 (see status.md).
 # Format: role|path|sha256|bytes|where main pins it
 # ---------------------------------------------------------------------------
-FEED_SHA=b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801
+# Preserve the published defaults; a rerun's settings must pin the feed and
+# crosswalk at its chosen commit when those inputs have changed on main.
+: "${FEED_SHA:=b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801}"
+: "${FEED_BYTES:=164603204}"
 # The base stage reads the feed only for the SOI congressional-district return
 # counts. On 2026-09-23 the pinned feed and the 2026-09-16 base feed
 # (consumer_facts_builde_aging_v5.jsonl, a5d34d4a...) gave the same 436-row
 # distribution through main's congressional_district_distribution_from_ledger_facts;
 # after the vintage crosswalk, 73 weights differ by at most 2.2e-16 relative.
-# The pinned feed is used for both stages so the lineage has one feed identity.
+# Both stages default to this feed. Explicit BASE_LEDGER_FACTS and its SHA can
+# retain a different base feed while the release follows its committed pin.
 BASE_LEDGER_FACTS=${BASE_LEDGER_FACTS:-$FEED}
 BASE_LEDGER_FACTS_SHA=${BASE_LEDGER_FACTS_SHA:-$FEED_SHA}
 # d713 (Max 2026-10-03): the next certified build uses the Connecticut-fixed ladder from microcosm#1072
@@ -71,7 +75,7 @@ ASEC_2024_SHA=ec36604cb735a660b51b0b2f90be27d803b5878f3464fb30d0eacead59c1260d
 ASEC_2023_SHA=cb57817327799f42b741caed5f9be94d04021c2e6809c1ad7bd0686da5428d88
 ASEC_2022_SHA=7ccca976284bb47815d84460cc4f75a0a65d26d7754ab0a0f417de351b3d474e
 CROSSWALK_REL=packages/microcosm-build/src/microcosm/build/us_runtime/data/congressional_district_vintage_crosswalk.csv
-CROSSWALK_SHA=c7cb040b1f57ca2ea2adcbfe60cc2b250ca23acbc4b640cd421e766fa54c1aec
+: "${CROSSWALK_SHA:=c7cb040b1f57ca2ea2adcbfe60cc2b250ca23acbc4b640cd421e766fa54c1aec}"
 FEED_PIN_REL=packages/microcosm-build/src/microcosm/build/us/chronicle_feed.json
 ASEC_PIN_REL=packages/microcosm-build/src/microcosm/build/us_runtime/asec_sources.py
 SPM_ROLE_REL=packages/microcosm-build/src/microcosm/build/us_runtime/spm_independence_role.py
@@ -96,7 +100,7 @@ asec_education_2023_zip|$EDU/asecpub24csv.zip|cdb39cdac34bef99dd0940ab28e306f692
 asec_education_2024_zip|$EDU/asecpub25csv.zip|318845a2b5e0034eb2973898de1738f4df0025727de38499e7669cb9c0deef0b|147271429|us_runtime/education_assistance_source.py
 base_ledger_facts|$BASE_LEDGER_FACTS|$BASE_LEDGER_FACTS_SHA|-|us/chronicle_feed.json when it is the pinned feed
 block_ladder_npz|$LADDER|6840b990acdfa2003d7723da5595e3cfff7205a4fa3d8d6206ed835c85c3f233|18991218|d713: Connecticut-fixed ladder rebuilt at microcosm#1072 (af98853e); _build_artifacts/us-ct-cbsa/verify_vs_route_a.json
-release_ledger_facts|$FEED|$FEED_SHA|164603204|us/chronicle_feed.json facts_sha256 (Chronicle c5e5bf8, bare feed, 39,158 rows)
+release_ledger_facts|$FEED|$FEED_SHA|$FEED_BYTES|us/chronicle_feed.json facts_sha256
 ${TAIL:+qrf_tail_exclusions|$TAIL|${QRF_TAIL_EXCLUSIONS_SHA:-9bd497dc0d03dd793b53a228979e99408e62fdd2430bdd0d04df5fc7576e6229}|-|operator-supplied register; the release records its sha in diagnostics}
 ssi_take_up_prior_basis|$SSI|$SSI_SHA|4782|--ssi-take-up-prior-weight-basis-sha256
 scf_summary_extract|$SCF|6b8dd2d935a76ed225ddebc80fb2db22a467f0c80d9a1acaa67b4584aa4bafd1|24904185|us/source_stages.json, us_runtime/scf_wealth.py

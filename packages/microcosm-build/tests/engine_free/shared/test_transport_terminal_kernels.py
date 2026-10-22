@@ -88,6 +88,10 @@ from test_support.microcosm_build.transport_graph import (
     with_config,
     write_toy_sources,
 )
+from test_support.microcosm_diagnostics.json_schema import (
+    load_strict_json,
+    published_json_schema_errors,
+)
 
 DIAGNOSTICS = "toy.calibration.diagnostics"
 _KEY = "b" * 64
@@ -177,6 +181,12 @@ def test_diagnostics_validate_against_schema_8(toy_run, tmp_path) -> None:
         canonical_json(model.model_dump(mode="python", exclude_defaults=True))
         == payload
     )
+
+
+def test_transport_diagnostics_match_the_published_json_schema(toy_run) -> None:
+    payload = toy_run.artifact(DIAGNOSTICS, "diagnostics")
+
+    assert published_json_schema_errors(load_strict_json(payload)) == []
 
 
 def _diagnostics_artifacts(run, **overrides) -> dict[str, ArtifactValue]:

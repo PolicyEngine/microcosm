@@ -1115,6 +1115,17 @@ def district_row_parents(
     return parents, unchecked
 
 
+#: Digits of a ladder population target's geography code, by ladder geography.
+POPULATION_TARGET_CODE_DIGITS: Mapping[str, int] = {"state": 2, "cd": 4}
+
+
+def population_target_name(geography: str, code: int) -> str:
+    """A ladder population target's name: ``pop_state_06``, ``pop_cd_0601``."""
+
+    digits = POPULATION_TARGET_CODE_DIGITS[geography]
+    return f"pop_{geography}_{int(code):0{digits}d}"
+
+
 def population_rows(
     households: pd.DataFrame,
     household_size: np.ndarray,
@@ -1128,8 +1139,8 @@ def population_rows(
     """
 
     column_map = {
-        "state": ("state_fips", "state", 2, GEOGRAPHY_STATE),
-        "cd": ("congressional_district_geoid", "cd", 4, GEOGRAPHY_CD),
+        "state": ("state_fips", "state", GEOGRAPHY_STATE),
+        "cd": ("congressional_district_geoid", "cd", GEOGRAPHY_CD),
     }
     size32 = np.asarray(household_size, dtype=np.float32)
     records: list[dict] = []
@@ -1138,10 +1149,10 @@ def population_rows(
     data: list[np.ndarray] = []
     dropped: list[str] = []
     for geography in geographies:
-        column, key, width, level = column_map[geography]
+        column, key, level = column_map[geography]
         codes = pd.to_numeric(households[column]).to_numpy()
         for value, population in sorted(ladder_populations[key].items()):
-            name = f"pop_{geography}_{value:0{width}d}"
+            name = population_target_name(geography, value)
             present = np.flatnonzero(codes == value)
             if not len(present):
                 dropped.append(name)

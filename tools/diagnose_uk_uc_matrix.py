@@ -35,6 +35,9 @@ from microcosm.build.target_materialization import (
     materialize_target_bindings,
     resolve_target_measures,
 )
+from microcosm.build.uk_runtime.high_value_homes import (
+    load_uk_high_value_home_stock_facts,
+)
 from microcosm.build.uk_runtime.ledger_targets import (
     _candidate_facts_for_reference,
     _uk_baseline_flag_crosstab,
@@ -42,6 +45,7 @@ from microcosm.build.uk_runtime.ledger_targets import (
     _uk_parameter_gated_threshold,
     compile_uk_target_registry,
     materialize_uk_ledger_targets,
+    uk_registry_on_calibration_line,
 )
 from microcosm.build.uk_runtime.measure_simulation import (
     UKMeasureResolver,
@@ -557,11 +561,17 @@ def main():
             for target in json.loads(args.contract.read_text())["targets"]
         }
     else:
+        # The national line's surface, as load_uk_national_target_inputs
+        # compiles it: every reference on the feed and the derived facts, less
+        # the rows that bind on the local line only (microcosm#1301).
         compilation = compile_uk_target_registry(
-            artifact.facts, target_period=receipt["model_year"]
+            (*artifact.facts, *load_uk_high_value_home_stock_facts().rows),
+            target_period=receipt["model_year"],
         )
         assert not compilation.unsupported, compilation.unsupported
-        full_registry = compilation.registry
+        full_registry, _ = uk_registry_on_calibration_line(
+            compilation.registry, line="national"
+        )
     registry, exclusions = apply_uk_calibration_measure_exclusions(
         full_registry, load_uk_calibration_measure_exclusions(args.exclusions)
     )

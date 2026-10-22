@@ -829,6 +829,7 @@ def target_references_resource(
                         "scaled_by_ratio",
                         "rolled_forward_by_ratio",
                         "calendar_year_window",
+                        "calendar_year_window_scaled_by_ratio",
                     }
                 }
             ),
@@ -1489,14 +1490,20 @@ def _signed_row_exclusion(
     row: Mapping[str, Any],
     row_exclusions: Mapping[tuple[str, str], str],
 ) -> tuple[tuple[str, str], str] | None:
-    """The row-level sign-out this fan-out row matches, if any."""
+    """The row-level sign-out this fan-out row matches, if any.
+
+    A row is matched by one of its selector's dimension values or, for a
+    geography fan-out cell, by its ``geography_id`` (microcosm#1301).
+    """
 
     if not row_exclusions:
         return None
-    dimension_values = row.get("ledger_selector", {}).get("dimension_values")
-    if not isinstance(dimension_values, Mapping):
-        return None
-    for dimension, value in dimension_values.items():
+    selector = row.get("ledger_selector", {})
+    dimension_values = selector.get("dimension_values")
+    keyed = dict(dimension_values) if isinstance(dimension_values, Mapping) else {}
+    if selector.get("geography_id") is not None:
+        keyed.setdefault("geography_id", selector["geography_id"])
+    for dimension, value in keyed.items():
         key = (str(dimension), json.dumps(value, sort_keys=True))
         rationale = row_exclusions.get(key)
         if rationale is not None:
