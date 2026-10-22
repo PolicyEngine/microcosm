@@ -166,7 +166,11 @@ def test_natives_keep_their_draws_and_copies_are_redrawn_deterministically() -> 
             after.loc[copies, output].to_numpy(), redrawn[output]
         )
     inherited = before.loc[copies, "would_claim_extended_childcare"].to_numpy()
-    assert (redrawn["would_claim_extended_childcare"] != inherited).mean() > 0.3
+    # Independent draws at rate r disagree with probability 2r(1 - r).
+    rate = contract.rate("extended_childcare")
+    assert (redrawn["would_claim_extended_childcare"] != inherited).mean() == (
+        pytest.approx(2 * rate * (1 - rate), abs=0.03)
+    )
     extended = after.loc[copies, "would_claim_extended_childcare"].to_numpy()
     expected = stable_identity_uniforms(
         after.loc[copies, "benunit_id"].to_numpy(),

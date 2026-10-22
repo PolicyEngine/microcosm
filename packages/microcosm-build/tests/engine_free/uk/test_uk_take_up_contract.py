@@ -46,14 +46,15 @@ def test_uk_contract_loads_and_selects_build_year_rates() -> None:
         0.6,
         0.55,
         0.5,
-        # The v5 refit (nested universal, reception out) on the childcare-fix spine.
-        0.9912,
-        0.7594,
-        # Provisional until the tool-version-6 refit (María, 2026-10-22).
-        0.51,
-        0.81,
+        # The tool-version-6 refit: the DfE rows at the spring term, universal
+        # nested under working parent (at its lower bound), one usage share per
+        # under-2 age (age 1 at its upper bound).
+        0.9697,
+        0.8361,
+        0.698,
+        1.0,
         0.0,
-        0.8478,
+        0.6547,
         0.441,
         0.2682,
         0.97,
@@ -138,7 +139,7 @@ def test_year_selection_uses_latest_value_at_or_before_build_year() -> None:
 
     assert contract.rate("child_benefit", 2021) == 0.97
     assert contract.rate("child_benefit", 2023) == 0.89
-    assert contract.rate("tax_free_childcare", 2024) == 0.9912
+    assert contract.rate("tax_free_childcare", 2024) == 0.9697
     assert contract.rate("tax_free_childcare", 2023) == 0.586
     assert contract.rate("tv_licence_evasion_rate", 2024) == 0.1252
     assert contract.rate("tax_free_childcare_spend_routed_share", 2017) == 0.359
