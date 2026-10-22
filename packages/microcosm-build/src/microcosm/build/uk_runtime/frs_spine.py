@@ -16,9 +16,17 @@ from microcosm.build.uk_runtime.birth_month import (
     UK_BIRTH_MONTH_COLUMN,
     uk_months_since_last_birthday,
 )
+from microcosm.build.uk_runtime.council_tax_constants import (
+    UK_COUNCIL_TAX_BANDS,
+    UK_COUNCIL_TAX_PLACEHOLDER_BAND,
+)
 from microcosm.build.uk_runtime.national_frame import (
     uk_national_frame,
     validate_uk_national_frame,
+)
+from microcosm.build.uk_runtime.pension_coherence import (
+    cap_net_pay_contributions,
+    coherence_receipt,
 )
 from microcosm.build.uk_runtime.uc_relationships import frs_uc_claimant_mask
 from microcosm.frame import Frame, WeightKind
@@ -27,6 +35,7 @@ __all__ = [
     "FRS_SPINE_TABLES",
     "OUTPUT_COLUMNS",
     "REGION_MAP",
+    "STATE_PENSION_WEEKS_IN_YEAR",
     "TIME_PERIOD",
     "UC_CAPITAL_UNAVAILABLE",
     "WEEKS_IN_YEAR",
@@ -62,6 +71,13 @@ FRS_SPINE_TABLES = (
 )
 
 WEEKS_IN_YEAR = 365.25 / 7
+#: The State Pension alone annualises at 52 weeks (María's ruling of 2026-10-20,
+#: an exception to microcosm#1095's weekly amounts). It is paid at weekly rates,
+#: and policyengine-uk reads ``state_pension_reported`` back to a weekly amount
+#: at 52 weeks a year before comparing it with the full rate, so at 365.25 / 7 a
+#: full-rate pensioner would read 0.34% above the full rate and the excess
+#: would become a protected payment.
+STATE_PENSION_WEEKS_IN_YEAR = 52
 TIME_PERIOD = "2024"
 
 # Raw TOTCAPB4 blanks, nonnumeric values, and negative codes mean that the
@@ -112,16 +128,10 @@ ACCOMMODATION_MAP = {
     7: "OTHER",
 }
 
+#: FRS ``ctband`` codes 1-9 are the engine's bands A-I in order; any other
+#: code takes the placeholder band (``frs_council_tax_band``).
 COUNCIL_TAX_BAND_MAP = {
-    1: "A",
-    2: "B",
-    3: "C",
-    4: "D",
-    5: "E",
-    6: "F",
-    7: "G",
-    8: "H",
-    9: "I",
+    code: band for code, band in enumerate(UK_COUNCIL_TAX_BANDS, start=1)
 }
 
 MARITAL_MAP = {
@@ -186,6 +196,16 @@ FRS_CARE_HOURS_BY_BAND = {
 # in ROYYR1 is a profit (1) or a loss (2). ROYYR1 itself is always positive.
 FRS_RENTPROF_LOSS = 2
 
+#: The six owned-company inputs the root stage sets from the FRS job tab
+#: (microcosm#1095); see frs_owner_manager_inputs.
+OWNER_MANAGER_COLUMNS = (
+    "stands_as_sole_owner_or_partner_of_company",
+    "is_engaged_in_owned_company_trade",
+    "owned_company_is_main_employment",
+    "owned_company_carries_on_trade",
+    "owned_company_carries_on_property_business",
+    "owned_company_income_share",
+)
 OUTPUT_COLUMNS = (
     "person_id",
     "person_benunit_id",
@@ -209,10 +229,14 @@ OUTPUT_COLUMNS = (
     "rent_paid_as_lodger",
     "employment_income",
     "self_employment_income",
+    "trading_loss",
+    "loss_relief",
+    "ni_class_4_losses_brought_forward",
     "private_pension_income",
     "tax_free_savings_income",
     "savings_interest_income",
     "dividend_income",
+    *OWNER_MANAGER_COLUMNS,
     "property_income",
     "reports_rent_from_other_property",
     "maintenance_income",
@@ -263,7 +287,9 @@ OUTPUT_COLUMNS = (
     "jsa_income_reported",
     "esa_contrib_reported",
     "esa_income_reported",
+    "esa_includes_support_component",
     "bsp_reported",
+    "war_widows_pension_reported",
     "benunit_id",
     "frs_benunit_capital",
     "is_married",
@@ -298,6 +324,7 @@ class UKFRSSpineStageTransform:
         self.stage = stage
         self._sentinel_mapped_rows: int | None = None
         self._access_fund: dict[str, object] | None = None
+        self._net_pay: dict[str, object] | None = None
 
     def __call__(self, frame: Frame) -> Frame:
         evidence: dict[str, object] = {}
@@ -307,6 +334,7 @@ class UKFRSSpineStageTransform:
         capital = result.table("benunit")["frs_benunit_capital"]
         self._sentinel_mapped_rows = int((capital == UC_CAPITAL_UNAVAILABLE).sum())
         self._access_fund = dict(evidence["access_fund"])
+        self._net_pay = dict(evidence["net_pay_contributions"])
         return result
 
     @staticmethod
@@ -317,7 +345,11 @@ class UKFRSSpineStageTransform:
         """Report how loudly the capital availability rule and the
         access-fund repair fired."""
 
-        if self._sentinel_mapped_rows is None or self._access_fund is None:
+        if (
+            self._sentinel_mapped_rows is None
+            or self._access_fund is None
+            or self._net_pay is None
+        ):
             raise RuntimeError("checkpoint metadata requires a completed stage run.")
         return {
             "evidence": {
@@ -327,6 +359,7 @@ class UKFRSSpineStageTransform:
                     "mapped_rows": self._sentinel_mapped_rows,
                 },
                 "access_fund": dict(self._access_fund),
+                "net_pay_contributions": dict(self._net_pay),
             }
         }
 
@@ -539,9 +572,23 @@ def _assemble_frame(
     pe_person["is_blind"] = _number(person, "spcreg1") == FRS_REGISTERED_YES
 
     pe_person["employment_income"] = _positive(person, "inearns") * WEEKS_IN_YEAR
-    pe_person["self_employment_income"] = _positive(person, "seincam2") * WEEKS_IN_YEAR
+    # SEINCAM2 is the self-employment income the respondent gives, a loss as a
+    # negative amount. policyengine-uk takes profits in self_employment_income,
+    # never below zero, and the year's losses in trading_loss as a positive
+    # amount (pe-uk#2085, from 2.131.0), so the amount splits by its sign
+    # (uk-data#528).
+    self_employment = _number(person, "seincam2") * WEEKS_IN_YEAR
+    pe_person["self_employment_income"] = np.maximum(self_employment, 0)
+    pe_person["trading_loss"] = np.maximum(-self_employment, 0)
+    # The FRS records no losses of earlier years; the SPI channel moves the
+    # tape's into both inputs (microcosm#1095).
+    pe_person["loss_relief"] = 0.0
+    pe_person["ni_class_4_losses_brought_forward"] = 0.0
     _add_private_pension(pe_person, person, frs["pension"])
     _add_accounts(pe_person, person, frs["accounts"])
+    owner_managers = frs_owner_manager_inputs(person, frs["job"])
+    for column in OWNER_MANAGER_COLUMNS:
+        pe_person[column] = owner_managers[column].to_numpy()
     _add_person_income(pe_person, person, household, frs["oddjob"], evidence=evidence)
     _add_benefits(pe_person, person, frs["benefits"])
     # The engine pays Carer's Allowance on hours or receipt; a dataset keeps it
@@ -550,7 +597,7 @@ def _assemble_frame(
     pe_person["would_claim_carers_allowance"] = (
         pe_person["carers_allowance_reported"] > 0
     )
-    _add_person_expenses(pe_person, person, frs)
+    _add_person_expenses(pe_person, person, frs, evidence=evidence)
 
     pe_benunit["is_married"] = _number(benunit_raw, "famtypb2").isin([5, 7])
     pe_benunit["dependent_children"] = dependent_children
@@ -668,6 +715,72 @@ def _add_accounts(
     pe_person["dividend_income"] = np.maximum(0, dividends)
 
 
+#: FRS job-table answers that make a person like a sole owner or partner of a
+#: company, which Universal Credit treats as self-employed (UC Regs 2013 reg
+#: 77, policyengine-uk's owned-company inputs from pe-uk#1965): a director
+#: (DIRECTOR 1, or NATURE 1 "Director") who owns at least half of the company
+#: (DIRPERC 1 "100%", 2 "More than 50% but not 100%", 3 "50%"; María's
+#: ruling of 2026-10-16, microcosm#1095).
+OWNER_MANAGER_DIRPERC_CODES = (1, 2, 3)
+#: JOBTYPE 1, the first (main) job.
+FRS_MAIN_JOB_JOBTYPE = 1
+#: SIC 2007 division 68, real estate activities. ADULT.SIC codes the main job
+#: only, so it says whether an owned company held as the main job carries on
+#: a property business or a trade; another job's company carries on neither
+#: on this release, which leaves the engine's company-owner rules off for it.
+PROPERTY_BUSINESS_SIC_DIVISION = 68
+OWNER_MANAGER_JOB_COLUMNS = ("director", "nature", "dirperc", "jobtype", "dividend")
+
+
+def frs_owner_manager_inputs(person: pd.DataFrame, job: pd.DataFrame) -> pd.DataFrame:
+    """Six of policyengine-uk's eleven owned-company inputs, from the job tab.
+
+    A director owning at least half of a company stands as its sole owner or
+    partner and works in it. The company is their main employment when the job
+    is their first. Its income share is the dividends the job records (DIVIDEND,
+    the last 12 months, after tax): the engine reads the company's profit,
+    which the FRS does not ask, and the dividends paid out of it are its part
+    the survey sees. The stocks and the intermediaries inputs keep the engine's
+    defaults.
+    """
+
+    missing = [column for column in OWNER_MANAGER_JOB_COLUMNS if column not in job]
+    if missing:
+        raise KeyError(
+            f"The FRS job tab has no {missing} column(s), so owner-managers "
+            "cannot be set."
+        )
+    if "sic" not in person:
+        raise KeyError("The FRS adult tab has no SIC column.")
+    job_person = job["person_id"]
+    director = (_number(job, "director") == 1) | (_number(job, "nature") == 1)
+    owner = director & _number(job, "dirperc").isin(OWNER_MANAGER_DIRPERC_CODES)
+    main = owner & (_number(job, "jobtype") == FRS_MAIN_JOB_JOBTYPE)
+    persons = person["person_id"]
+    stands = _sum_to_entity(owner.astype(float), job_person, persons) > 0
+    main_employment = _sum_to_entity(main.astype(float), job_person, persons) > 0
+    property_division = (
+        _number(person, "sic").to_numpy() == PROPERTY_BUSINESS_SIC_DIVISION
+    )
+    return pd.DataFrame(
+        {
+            "stands_as_sole_owner_or_partner_of_company": stands,
+            "is_engaged_in_owned_company_trade": stands,
+            "owned_company_is_main_employment": main_employment,
+            "owned_company_carries_on_trade": main_employment & ~property_division,
+            "owned_company_carries_on_property_business": (
+                main_employment & property_division
+            ),
+            "owned_company_income_share": _sum_to_entity(
+                np.maximum(_number(job, "dividend"), 0) * owner,
+                job_person,
+                persons,
+            ),
+        },
+        index=person.index,
+    )
+
+
 def _add_person_income(
     pe_person: pd.DataFrame,
     person: pd.DataFrame,
@@ -691,6 +804,9 @@ def _add_person_income(
     pe_person["maintenance_income"] = (
         maintenance_to_self + _positive(person, "mntamt2").to_numpy()
     ) * WEEKS_IN_YEAR
+    # ALLPAY2, "Amount of allowance: organisation", is one amount, so it is
+    # miscellaneous income alone and not also a private transfer
+    # (microcosm#1320, uk-data#627; María's ruling of 2026-10-20).
     pe_person["miscellaneous_income"] = (
         _odd_job_income(person, oddjob)
         + _sum_positive_fields(
@@ -699,7 +815,7 @@ def _add_person_income(
     ) * WEEKS_IN_YEAR
     pe_person["private_transfer_income"] = (
         _sum_positive_fields(
-            person, ("apamt", "apdamt", "pareamt", "allpay2", "allpay3", "allpay4")
+            person, ("apamt", "apdamt", "pareamt", "allpay3", "allpay4")
         )
         * WEEKS_IN_YEAR
     )
@@ -878,17 +994,40 @@ def _add_benefits(
         )
         * WEEKS_IN_YEAR
     )
+    pe_person["esa_includes_support_component"] = _esa_includes_support_component(
+        benefits, person_id, person["person_id"]
+    )
     pe_person["bsp_reported"] = (
-        _sum_to_entity(amount * benefit.isin((6, 9)), person_id, person["person_id"])
+        _sum_to_entity(amount * (benefit == 6), person_id, person["person_id"])
+        * WEEKS_IN_YEAR
+    )
+    # FRS code 9 is War Widow's or Widower's Pension, which rises with CPI while
+    # Bereavement Support Payment's rates are frozen. policyengine-uk 2.135.7
+    # gives it its own input (pe-uk#2382), so it leaves bsp_reported (#1222).
+    pe_person["war_widows_pension_reported"] = (
+        _sum_to_entity(amount * (benefit == 9), person_id, person["person_id"])
         * WEEKS_IN_YEAR
     )
     pe_person["winter_fuel_allowance_reported"] = (
         pe_person["winter_fuel_allowance_reported"] / WEEKS_IN_YEAR
     )
+    # The State Pension's weekly amounts, re-summed at its own 52 weeks.
+    pe_person["state_pension_reported"] = (
+        _sum_to_entity(
+            amount * benefit.isin(BENEFIT_CODES["state_pension"]),
+            person_id,
+            person["person_id"],
+        )
+        * STATE_PENSION_WEEKS_IN_YEAR
+    )
 
 
 def _add_person_expenses(
-    pe_person: pd.DataFrame, person: pd.DataFrame, frs: Mapping[str, pd.DataFrame]
+    pe_person: pd.DataFrame,
+    person: pd.DataFrame,
+    frs: Mapping[str, pd.DataFrame],
+    *,
+    evidence: dict[str, object] | None = None,
 ) -> None:
     household = frs["househol"].set_index("household_id").sort_index()
     ctrebamt = pd.Series(_number(household, "ctrebamt").values, index=household.index)
@@ -939,7 +1078,7 @@ def _add_person_expenses(
         * WEEKS_IN_YEAR,
     )
     job = frs["job"]
-    pe_person["employee_pension_contributions"] = np.maximum(
+    deducted = np.maximum(
         0,
         _sum_to_entity(
             _number(job, "deduc1").fillna(0),
@@ -948,6 +1087,36 @@ def _add_person_expenses(
         )
         * WEEKS_IN_YEAR,
     )
+    # A net-pay deduction cannot exceed the pay it comes out of; the FRS
+    # records each job's deduction apart from the adult's usual earnings, so
+    # the deduction is capped at them (uk_runtime.pension_coherence).
+    capped, changed = cap_net_pay_contributions(
+        np.asarray(deducted, dtype=np.float64),
+        pe_person["employment_income"].to_numpy(dtype=np.float64),
+    )
+    pe_person["employee_pension_contributions"] = capped
+    if evidence is not None:
+        # A deduction beside no recorded pay may stand for pay the adult tab
+        # left blank, not for a contribution above pay, so the two cases are
+        # counted apart.
+        recorded_pay = pe_person["employment_income"].to_numpy(dtype=np.float64) > 0.0
+        receipt = {
+            "before": np.asarray(deducted, dtype=np.float64),
+            "after": capped,
+            "weights": person["household_id"]
+            .map(_raw_number(household, "gross4"))
+            .fillna(0.0)
+            .to_numpy(dtype=np.float64),
+            "source_ids": person["household_id"].to_numpy(),
+        }
+        evidence["net_pay_contributions"] = {
+            "above_recorded_pay": coherence_receipt(
+                changed=changed & recorded_pay, **receipt
+            ),
+            "beside_no_recorded_pay": coherence_receipt(
+                changed=changed & ~recorded_pay, **receipt
+            ),
+        }
     pe_person["pension_contributions_via_salary_sacrifice"] = np.maximum(
         0,
         _sum_to_entity(
@@ -995,9 +1164,7 @@ def _add_household_columns(
     )
     pe_household["num_bedrooms"] = _number(household, "bedroom6")
     pe_household["council_tax_reported"] = _positive(household, "ctannual")
-    pe_household["council_tax_band"] = _map_codes(
-        household, "ctband", COUNCIL_TAX_BAND_MAP, "D"
-    )
+    pe_household["council_tax_band"] = frs_council_tax_band(household)
     pe_household["council_tax_rebate"] = (
         _positive(household, "ctrebamt") * WEEKS_IN_YEAR
     )
@@ -1082,6 +1249,21 @@ def _sum_positive_fields(frame: pd.DataFrame, columns: tuple[str, ...]) -> np.nd
     return total
 
 
+def frs_council_tax_band(household: pd.DataFrame) -> pd.Series:
+    """The engine's council-tax band for each FRS household.
+
+    ``ctband`` maps through ``COUNCIL_TAX_BAND_MAP``. Northern Ireland pays
+    domestic rates, not council tax, so its households take the placeholder
+    band whatever ``ctband`` holds (microcosm#1278).
+    """
+
+    band = _map_codes(
+        household, "ctband", COUNCIL_TAX_BAND_MAP, UK_COUNCIL_TAX_PLACEHOLDER_BAND
+    )
+    region = _map_codes(household, "gvtregno", REGION_MAP, "UNKNOWN")
+    return band.mask(region == "NORTHERN_IRELAND", UK_COUNCIL_TAX_PLACEHOLDER_BAND)
+
+
 def _map_codes(
     frame: pd.DataFrame,
     column: str,
@@ -1108,6 +1290,41 @@ def frs_care_hours(person: pd.DataFrame) -> pd.Series:
     if unknown:
         raise ValueError(f"FRS hourtot carries unknown band code(s) {unknown}.")
     return codes.astype(int).map(FRS_CARE_HOURS_BY_BAND).astype("float64")
+
+
+def _esa_includes_support_component(
+    benefits: pd.DataFrame, person_id: pd.Series, person_ids: pd.Series
+) -> np.ndarray:
+    """Whether each person's ESA includes the support component.
+
+    An ESA row (BENEFIT 16) records the group in VAR3 (ESAGROUP): 1 the
+    work-related activity group, 2 the support group, 3 the assessment phase.
+    The FRS 2024-25 variable listing gives the codes (UK Data Service SN 9563,
+    ``9563_frs2425_variable_listing_eul.xlsx``, sheet BENEFITS_table): on an
+    ESA row VAR3 holds the questionnaire's ESAGroup, formatted 1
+    Work-related activity group, 2 Support group, 3 Assessment phase.
+    A stored column replaces policyengine-uk's default for everyone, which
+    assumes the support group for anyone with an ESA award of their own
+    (2.129.0), so the column is false only where the survey records a group
+    outside it and never the support group, and true everywhere else: the
+    engine reads it only where there is an award of one's own (microcosm#1095).
+    A tab without VAR3 refuses, rather than set nobody's group.
+    """
+
+    if "var3" not in benefits.columns:
+        raise KeyError(
+            "The FRS benefits tab has no VAR3 column, so the ESA group "
+            "(esa_includes_support_component) cannot be set."
+        )
+    esa_row = _number(benefits, "benefit") == 16
+    group = _number(benefits, "var3")
+    outside = _sum_to_entity(
+        (esa_row & group.isin((1, 3))).astype(float), person_id, person_ids
+    )
+    support = _sum_to_entity(
+        (esa_row & (group == 2)).astype(float), person_id, person_ids
+    )
+    return ~((np.asarray(outside) > 0) & ~(np.asarray(support) > 0))
 
 
 def _number(frame: pd.DataFrame, column: str) -> pd.Series:

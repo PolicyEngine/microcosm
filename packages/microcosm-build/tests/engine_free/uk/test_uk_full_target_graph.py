@@ -97,6 +97,93 @@ def test_local_problem_targets_come_from_chronicle_with_assignment_rosters(
     assert receipt["census_household_uprating"]["household_cells"]["cells"] == 10
 
 
+def test_the_local_problem_binds_scotlands_brma_rows_on_their_partial_grain(
+    toy_ladder,
+):
+    """microcosm#1305 re-review (1305-20): BRMA rows through the problem builder.
+
+    A Scottish household joins its BRMA's cell through its BRMA's S33 code;
+    every other household belongs to no BRMA area, so the BRMA row's matrix
+    row holds the Scottish clones only, and the full-scale coverage check
+    reads Scotland's assigned BRMAs alone.
+    """
+    from microcosm.build.uk_runtime.full_problem import build_uk_full_local_problem
+    from microcosm.build.uk_runtime.rowwise_dataset import (
+        clone_uk_dataset_with_ladder_geography,
+    )
+    from test_support.microcosm_build.uk_full_population_graph import source_frame
+
+    ladder, _ = toy_ladder
+    clone = clone_uk_dataset_with_ladder_geography(
+        source_frame(),
+        ladder,
+        n_clones=10,
+        seed=7,
+        source_year=2023,
+        expected_constituency_vintage="2024_pcon",
+    )
+    household = clone.frame.table("household").copy()
+    scottish = household["region"].astype(str).to_numpy() == "SCOTLAND"
+    household["brma"] = np.where(scottish, "LOTHIAN", "MAIDSTONE")
+    ids = household["household_id"]
+    metrics = {
+        "constituency": pd.DataFrame({"households": np.ones(len(ids))}, index=ids),
+        "brma": pd.DataFrame(
+            {"rent/private_rent_brma": np.full(len(ids), 9_000.0)}, index=ids
+        ),
+    }
+    rows = [
+        {
+            "target_name": f"ons.census.households@{code}",
+            "value": 10.0,
+            "family": "census_households",
+            "area_type": "constituency",
+            "area_code": code,
+            "metric": "households",
+        }
+        for code in sorted(set(household["constituency_code"].astype(str)))
+    ]
+    rows.append(
+        {
+            "target_name": "ons.rent.private_rent_brma@S33000011",
+            "value": 90_000.0,
+            "family": "private_rent",
+            "area_type": "brma",
+            "area_code": "S33000011",
+            "metric": "rent/private_rent_brma",
+        }
+    )
+    assignment = SimpleNamespace(
+        result=SimpleNamespace(frame=SimpleNamespace(table=lambda entity: household)),
+        ladder=ladder,
+    )
+    _, problem, _, local_bound, _ = build_uk_full_local_problem(
+        assignment,
+        local_registry=TargetRegistry([], country="uk"),
+        national_registry=TargetRegistry([], country="uk"),
+        local_metrics=metrics,
+        period=2025,
+        sample_fraction=1.0,
+        reviewed_unbound_higher_targets={},
+        selected_surface=pd.DataFrame(rows),
+    )
+    assert "private_rent/brma" in local_bound
+    assert problem.assigned_areas_by_grain["brma"] == tuple(
+        "S33000011" if flag else "" for flag in scottish
+    )
+    brma = problem.target_frame.set_index("target_name").loc[
+        "ons.rent.private_rent_brma@S33000011"
+    ]
+    assert brma["area_type"] == "brma"
+    matrix = problem.matrix.tocsr()
+    (row,) = np.flatnonzero(
+        problem.target_frame["target_name"].to_numpy()
+        == "ons.rent.private_rent_brma@S33000011"
+    )
+    columns = matrix.indices[matrix.indptr[row] : matrix.indptr[row + 1]]
+    assert set(columns) == set(np.flatnonzero(scottish)) and scottish.sum() == 10
+
+
 def test_target_kernel_identity_includes_reconciliation_and_ladder_diagnostics(
     monkeypatch,
 ):

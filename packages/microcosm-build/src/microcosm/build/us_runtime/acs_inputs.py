@@ -18,12 +18,24 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from microcosm.build.us_runtime.spm_role_source import (
+    NATIVE_SPM_ROLE,
+    SPM_ADULT_RULE,
+    SPM_ROLE_RULE,
+)
 from microcosm.frame import US_SCHEMA, Frame
 
 __all__ = [
+    "ACS_SPM_ROLE_PARTITION",
+    "ACS_SPM_ROLE_RULE",
     "ACS_UNRESOLVED_PARENT_ID_MAPPINGS",
+    "ACS_GROUP_QUARTERS_CHILD_RULE",
+    "AcsGroupQuartersChildrenResult",
     "AcsNativeInputResult",
+    "AcsSpmRoleResult",
     "map_acs_native_inputs",
+    "with_acs_spm_independence_role",
+    "without_acs_group_quarters_children",
 ]
 
 _INFLATION_FACTOR_DENOMINATOR = 1_000_000.0
@@ -76,12 +88,47 @@ _FORMULA_OWNED_AGGREGATES = frozenset(
 )
 
 
+#: RELSHIPP codes the ACS SPM independence role reads. 20 is the reference
+#: person; 21/23 the opposite-/same-sex spouse of the reference person; 37/38
+#: the institutional/noninstitutional group-quarters person, whom the PUMS
+#: records as the only person of their own household.
+_ACS_REFERENCE_PERSON = 20
+_ACS_SPOUSE_OF_REFERENCE = (21, 23)
+_ACS_GROUP_QUARTERS_PERSON = (37, 38)
+_ACS_RELSHIPP_CODES = frozenset(range(20, 39))
+_ACS_GROUP_QUARTERS_TYPEHUGQ = (2, 3)
+
+#: The ACS arm of the SPM independence role, the ASEC rule
+#: (:data:`~microcosm.build.us_runtime.spm_role_source.SPM_ROLE_RULE`) read on
+#: the ACS spine's SPM partition. ``SPM_HEAD`` is each unit's head: the
+#: reference person of a housing unit, or a group-quarters person, who is the
+#: sole member of their unit. ``A_FAMTYP 1, A_FAMREL 1/2`` is the primary
+#: family's reference person and spouse. ACS PUMS identifies no unrelated
+#: subfamily, so the rule's ``A_FAMTYP 4`` branch has no ACS counterpart.
+ACS_SPM_ROLE_RULE = (
+    "RELSHIPP == 20 OR RELSHIPP in {21, 23} OR RELSHIPP in {37, 38}, "
+    "on the one-SPM-unit-per-household ACS partition"
+)
+
+#: The SPM partition the rule is defined on. ACS PUMS carries no ``SPM_ID``,
+#: so ``assign_us_unit_structure`` makes each household one SPM unit.
+ACS_SPM_ROLE_PARTITION = "household (ACS PUMS carries no SPM_ID)"
+
+
 @dataclass(frozen=True)
 class AcsNativeInputResult:
     """Mapped ACS frame and JSON-ready native-column provenance."""
 
     frame: Frame
     native_inputs: Mapping[str, Mapping[str, Any]]
+
+
+@dataclass(frozen=True)
+class AcsSpmRoleResult:
+    """An ACS frame carrying the SPM independence role, plus its receipt."""
+
+    frame: Frame
+    provenance: Mapping[str, Any]
 
 
 def map_acs_native_inputs(frame: Frame) -> AcsNativeInputResult:
@@ -212,6 +259,357 @@ def map_acs_native_inputs(frame: Frame) -> AcsNativeInputResult:
         metadata=frame.metadata,
     )
     return AcsNativeInputResult(mapped, native)
+
+
+def with_acs_spm_independence_role(frame: Frame) -> AcsSpmRoleResult:
+    """Derive ``is_spm_independent_minor_role`` for an ACS spine, or refuse.
+
+    The engine declares the role a dataset source input
+    (``policyengine_us.spm.DATASET_SOURCE_INPUTS``): a producer must deliver
+    it and may not default it. ASEC rows get it from the Census SPM fields
+    (:mod:`~microcosm.build.us_runtime.spm_independence_role`). The ACS has no
+    SPM fields, but it has no SPM partition either: every ACS household is one
+    SPM unit (:data:`ACS_SPM_ROLE_PARTITION`). On that partition the ASEC
+    rule's unit head is the household's reference person, or the sole person
+    of a group-quarters record, and its family branch is the reference
+    person's spouse, so the rule is read off ``RELSHIPP``
+    (:data:`ACS_SPM_ROLE_RULE`). On the pinned ASEC files, in households that
+    are one SPM unit, this reading reproduces Census's own SPM adult and child
+    counts in 215,342 of 215,343 units across the four pinned vintages
+    (income years 2022 to 2025;
+    ``experiments/acs-spm-role-asec-validation.md``).
+
+    This is deliberately not part of :func:`map_acs_native_inputs`. That
+    mapping also feeds the stacked pool, whose ASEC arm carries no role and
+    whose ACS-row rule is an open decision (``docs/us-spm-role-stage.md``
+    §7 Q1). A caller applies this only where the partner spine delivers the
+    role too, so the pooled column is complete on both spines.
+
+    Refuses rather than deriving (a refusal about units names up to five
+    example unit ids, the others give counts) when: the frame already
+    carries the role; ``RELSHIPP`` is missing, blank or outside the ACS codes
+    20 to 38; ``age`` is missing or not finite (no age range is checked);
+    the SPM partition is not the household partition; a unit has other than
+    exactly one head, more than one spouse, or a group-quarters person beside
+    anyone else; ``TYPEHUGQ`` (when present) disagrees with ``RELSHIPP`` about
+    group quarters; or a housing-unit SPM unit is left with no classified
+    adult. A group-quarters person under 15 is a one-person unit with no
+    classified adult under any role; the source places group quarters outside
+    the ACS SPM universe (:mod:`~microcosm.build.us_runtime.spm_universe_source`),
+    so those units are counted in the receipt, not refused.
+    """
+
+    if frame.schema != US_SCHEMA:
+        raise ValueError("ACS SPM independence role requires the US schema.")
+    person = frame.table("person")
+    if NATIVE_SPM_ROLE in person:
+        raise ValueError(
+            f"ACS SPM independence role refuses to overwrite existing column "
+            f"{NATIVE_SPM_ROLE!r}."
+        )
+    missing = [
+        column
+        for column in ("RELSHIPP", "age", "person_household_id", "person_spm_unit_id")
+        if column not in person
+    ]
+    if missing:
+        raise ValueError(
+            f"ACS SPM independence role requires person column(s): {missing}."
+        )
+
+    relationship = pd.to_numeric(person["RELSHIPP"], errors="coerce").to_numpy(
+        dtype=np.float64
+    )
+    off_domain = np.isnan(relationship) | ~np.isin(
+        relationship, sorted(_ACS_RELSHIPP_CODES)
+    )
+    if off_domain.any():
+        raise ValueError(
+            "ACS SPM independence role requires every RELSHIPP to be an ACS "
+            f"relationship code in [20, 38]; {int(off_domain.sum())} row(s) are "
+            "blank or off-domain."
+        )
+    age = pd.to_numeric(person["age"], errors="coerce").to_numpy(dtype=np.float64)
+    if not np.isfinite(age).all():
+        raise ValueError(
+            "ACS SPM independence role requires an observed age for every person."
+        )
+
+    household_id = person["person_household_id"].to_numpy()
+    unit_id = person["person_spm_unit_id"].to_numpy()
+    membership = pd.DataFrame({"unit": unit_id, "household": household_id})
+    households_per_unit = membership.groupby("unit", sort=False)["household"].nunique()
+    units_per_household = membership.groupby("household", sort=False)["unit"].nunique()
+    if (households_per_unit != 1).any() or (units_per_household != 1).any():
+        raise ValueError(
+            "ACS SPM independence role is defined only on the household SPM "
+            f"partition ({ACS_SPM_ROLE_PARTITION}); "
+            f"{int((households_per_unit != 1).sum())} SPM unit(s) span households "
+            f"and {int((units_per_household != 1).sum())} household(s) hold "
+            "several SPM units. A reconstructed ACS SPM partition must supply its "
+            "own role."
+        )
+
+    reference = relationship == _ACS_REFERENCE_PERSON
+    spouse = np.isin(relationship, _ACS_SPOUSE_OF_REFERENCE)
+    group_quarters = np.isin(relationship, _ACS_GROUP_QUARTERS_PERSON)
+    head = reference | group_quarters
+    units = pd.DataFrame(
+        {
+            "unit": unit_id,
+            "persons": 1,
+            "heads": head.astype(np.int64),
+            "spouses": spouse.astype(np.int64),
+            "group_quarters": group_quarters.astype(np.int64),
+        }
+    ).groupby("unit", sort=False)[["persons", "heads", "spouses", "group_quarters"]]
+    counts = units.sum()
+    _refuse_units(
+        counts.index[counts["heads"] != 1],
+        "not exactly one head (a RELSHIPP=20 reference person or one RELSHIPP "
+        "37/38 group-quarters person)",
+    )
+    _refuse_units(
+        counts.index[counts["spouses"] > 1],
+        "more than one RELSHIPP 21/23 spouse of the reference person",
+    )
+    _refuse_units(
+        counts.index[(counts["group_quarters"] > 0) & (counts["persons"] != 1)],
+        "a RELSHIPP 37/38 group-quarters person shares the unit",
+    )
+
+    household = frame.table("household")
+    if "TYPEHUGQ" in household:
+        kind = pd.Series(
+            pd.to_numeric(household["TYPEHUGQ"], errors="coerce").to_numpy(),
+            index=household["household_id"].to_numpy(),
+        )
+        person_kind = pd.Series(household_id).map(kind).to_numpy(dtype=np.float64)
+        if (np.isnan(person_kind) | ~np.isin(person_kind, (1, 2, 3))).any():
+            raise ValueError(
+                "ACS SPM independence role requires TYPEHUGQ in {1, 2, 3} for "
+                "every person's household."
+            )
+        disagree = np.isin(person_kind, _ACS_GROUP_QUARTERS_TYPEHUGQ) != group_quarters
+        if disagree.any():
+            raise ValueError(
+                "ACS SPM independence role found "
+                f"{int(disagree.sum())} person(s) whose RELSHIPP and household "
+                "TYPEHUGQ disagree about group quarters."
+            )
+
+    role = head | spouse
+    adult = (age >= 18) | ((age >= 15) & role)
+    unit_frame = pd.DataFrame(
+        {
+            "unit": unit_id,
+            "adult": adult,
+            "member_18_plus": age >= 18,
+            "group_quarters": group_quarters,
+        }
+    ).groupby("unit", sort=False)
+    unit_flags = unit_frame.agg(
+        adult=("adult", "any"),
+        member_18_plus=("member_18_plus", "any"),
+        group_quarters=("group_quarters", "any"),
+    )
+    _refuse_units(
+        unit_flags.index[~unit_flags["adult"] & ~unit_flags["group_quarters"]],
+        "a housing unit left with no classified adult "
+        f"({SPM_ADULT_RULE}); a zero-adult housing unit is a data defect, "
+        "never an inferred adult",
+    )
+
+    minor = (age >= 15) & (age < 18)
+    weights = np.asarray(frame.resolve_weights("person").values, dtype=np.float64)
+    total_weight = float(weights.sum())
+    minor_weight = float(weights[minor].sum())
+    provenance = {
+        "column": NATIVE_SPM_ROLE,
+        "entity": "person",
+        "source_columns": ["RELSHIPP"],
+        "rule": ACS_SPM_ROLE_RULE,
+        "partition": ACS_SPM_ROLE_PARTITION,
+        "asec_rule": SPM_ROLE_RULE,
+        "adult_rule": SPM_ADULT_RULE,
+        "provenance": "acs_2024_1yr_native",
+        "persons": int(len(person)),
+        "spm_units": int(len(counts)),
+        "role_true_persons": int(role.sum()),
+        "role_branches": {
+            "reference_person": int(reference.sum()),
+            "spouse_of_reference_person": int(spouse.sum()),
+            "group_quarters_sole_person": int(group_quarters.sum()),
+        },
+        "persons_aged_15_to_17": int(minor.sum()),
+        "independent_minor_persons": int((role & minor).sum()),
+        "housing_units_classified_only_by_role": int(
+            (
+                unit_flags["adult"]
+                & ~unit_flags["member_18_plus"]
+                & ~unit_flags["group_quarters"]
+            ).sum()
+        ),
+        "group_quarters_units_without_classified_adult": int(
+            (~unit_flags["adult"] & unit_flags["group_quarters"]).sum()
+        ),
+        "weighted_role_share": (
+            float(weights[role].sum()) / total_weight if total_weight else 0.0
+        ),
+        "weighted_minor_role_share": (
+            float(weights[role & minor].sum()) / minor_weight if minor_weight else 0.0
+        ),
+    }
+
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["person"][NATIVE_SPM_ROLE] = role
+    derived = Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+    return AcsSpmRoleResult(derived, provenance)
+
+
+#: The ACS records the interim drop removes (microcosm#1263, decision d1484).
+ACS_GROUP_QUARTERS_CHILD_RULE = (
+    "TYPEHUGQ in {2, 3} (a group-quarters record, the record's only person) "
+    "AND age < 15"
+)
+#: Census SEHSD-WP2020-09 pp. 6-7 limits the ACS SPM sample to housing units;
+#: ``spm_universe_source`` declares ACS group quarters OUTSIDE on that basis.
+_GROUP_QUARTERS_CHILDREN_AUTHORITY = (
+    "Census SEHSD-WP2020-09 pp. 6-7: the ACS SPM universe is people in housing "
+    "units; ACS group quarters are outside it "
+    "(microcosm.build.us_runtime.spm_universe_source)"
+)
+
+
+@dataclass(frozen=True)
+class AcsGroupQuartersChildrenResult:
+    """An ACS frame without its group-quarters children, plus the receipt."""
+
+    frame: Frame
+    provenance: Mapping[str, Any]
+
+
+def without_acs_group_quarters_children(
+    frame: Frame, *, age_column: str = "age"
+) -> AcsGroupQuartersChildrenResult:
+    """Remove the ACS group-quarters records whose only person is under 15.
+
+    An interim (microcosm#1263, decision d1484), not a source rule. No role
+    can give such a person a classified adult under spm-calculator's rule
+    (``age >= 18 OR (age >= 15 AND role)``), and an engine that does not scope
+    SPM by measurement universe refuses every SPM measurement on a population
+    containing one. The source places ACS group quarters outside the SPM
+    universe, so the end state is to keep these records and exclude them from
+    SPM measurement alone. Until the engine can, the staging builder removes
+    them from the population. That also removes them from every fiscal total,
+    which the receipt and the staging's reviewed limitation disclose. The
+    builder stops calling this once the certified engine scopes SPM by
+    universe.
+
+    Refuses when ``TYPEHUGQ``, the age column or a membership column is
+    missing or unreadable, or when a group-quarters record holds other than
+    one person. Housing units are never touched, whatever their ages.
+    ``age_column`` names the age: ``AGEP`` on the raw PUMS frame, where the
+    staging applies this before any receipt is computed, or ``age`` on a
+    mapped frame.
+    """
+
+    if frame.schema != US_SCHEMA:
+        raise ValueError("ACS group-quarters children require the US schema.")
+    person = frame.table("person")
+    household = frame.table("household")
+    for table, columns, label in (
+        (person, (age_column, "person_household_id"), "person"),
+        (household, ("household_id", "TYPEHUGQ"), "household"),
+    ):
+        missing = [column for column in columns if column not in table]
+        if missing:
+            raise ValueError(
+                f"ACS group-quarters children require {label} column(s): {missing}."
+            )
+    kind = pd.Series(
+        pd.to_numeric(household["TYPEHUGQ"], errors="coerce").to_numpy(),
+        index=household["household_id"].to_numpy(),
+    )
+    if not kind.isin((1, 2, 3)).all():
+        raise ValueError(
+            "ACS group-quarters children require TYPEHUGQ in {1, 2, 3} for every "
+            "household."
+        )
+    household_id = person["person_household_id"].to_numpy()
+    person_kind = pd.Series(household_id).map(kind).to_numpy(dtype=np.float64)
+    if np.isnan(person_kind).any():
+        raise ValueError(
+            "ACS group-quarters children found persons in no declared household."
+        )
+    age = pd.to_numeric(person[age_column], errors="coerce").to_numpy(dtype=np.float64)
+    if not np.isfinite(age).all():
+        raise ValueError(
+            "ACS group-quarters children require an observed age for every person."
+        )
+    group_quarters = np.isin(person_kind, _ACS_GROUP_QUARTERS_TYPEHUGQ)
+    persons_per_household = pd.Series(household_id).map(
+        pd.Series(household_id).value_counts()
+    )
+    crowded = group_quarters & (persons_per_household.to_numpy() != 1)
+    if crowded.any():
+        raise ValueError(
+            "ACS group-quarters children found "
+            f"{int(crowded.sum())} person(s) in group-quarters records of more "
+            "than one person; a group-quarters record is its only person's."
+        )
+    child = group_quarters & (age < 15)
+    weights = frame.weights_for("household")
+    household_weight = pd.Series(
+        np.asarray(weights.values, dtype=np.float64),
+        index=household["household_id"].to_numpy(),
+    )
+    dropped_weight = float(household_weight.loc[np.unique(household_id[child])].sum())
+    total_weight = float(household_weight.sum())
+    provenance = {
+        "rule": ACS_GROUP_QUARTERS_CHILD_RULE,
+        "authority": _GROUP_QUARTERS_CHILDREN_AUTHORITY,
+        "decision": "microcosm#1263 (d1484)",
+        "status": "interim",
+        "flip_condition": (
+            "Keep these records, declared OUTSIDE the SPM universe, in the first "
+            "release certified against an engine that scopes SPM measurement by "
+            "spm_unit_spm_universe_status "
+            "(microcosm.build.us_runtime.spm_measurement_gate."
+            "engine_scopes_spm_universe)."
+        ),
+        "households_before": int(len(household)),
+        "persons_before": int(len(person)),
+        "group_quarters_households": int(group_quarters.sum()),
+        "households_dropped": int(child.sum()),
+        "persons_dropped": int(child.sum()),
+        "household_weight_dropped": dropped_weight,
+        "household_weight_share_dropped": (
+            dropped_weight / total_weight if total_weight else 0.0
+        ),
+    }
+    if not child.any():
+        return AcsGroupQuartersChildrenResult(frame, provenance)
+    return AcsGroupQuartersChildrenResult(frame.select(~child), provenance)
+
+
+def _refuse_units(offending: pd.Index, problem: str) -> None:
+    if len(offending):
+        examples = [
+            value.item() if isinstance(value, np.generic) else value
+            for value in offending[:5]
+        ]
+        raise ValueError(
+            f"ACS SPM independence role refuses {len(offending)} SPM unit(s) "
+            f"with {problem}. Example unit id(s): {examples}."
+        )
 
 
 def _map_usual_hours(

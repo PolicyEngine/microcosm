@@ -33,6 +33,7 @@ from microcosm.build.uk_runtime.cgt_projection import UKCGTProjection
 from microcosm.build.uk_runtime.diagnostics import uk_weight_summary
 from microcosm.build.uk_runtime.weighted_integrity import (
     UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE,
+    UK_LOCAL_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE,
     UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE,
     UKInputMassParityPolicy,
     UKInputMassReference,
@@ -57,6 +58,7 @@ __all__ = [
     "UKInputMassReference",
     "UKZeroWeightStratumDeclaration",
     "uk_default_degenerate_reviewed_exclusions",
+    "uk_default_local_target_fit_reviewed_exclusions",
     "uk_default_target_fit_reviewed_exclusions",
     "uk_degenerate_release_surface_gate",
     "uk_export_candidate_columns",
@@ -170,7 +172,9 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "benunit.uc_deduction_type_random_draw",
     "benunit.uc_latent_deduction_rate",
     "benunit.uc_reported_capital",
+    "benunit.would_claim_uc_at_legacy_closure",
     "benunit.would_claim_uc_childcare",
+    "household.additional_residential_property_purchased",
     "household.atomic_area_basis",
     "household.atomic_area_code",
     "household.atomic_area_system",
@@ -180,6 +184,13 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     # #1045: the CGT support split's family copy count.
     "household.cgt_support_copies",
     "household.cgt_support_copy_index",
+    # microcosm#1240: the high-value homes support split's family copy count,
+    # index and flag, the CGT split's precedent. The stage's coverage-manifest
+    # outputs; the first dense release build failed this gate on them
+    # (microcosm#1301).
+    "household.high_value_support_copies",
+    "household.high_value_support_copy_index",
+    "household.household_is_high_value_support_copy",
     # #1063: the residential split's arm flag and index.
     "household.household_is_cgt_residential_clone",
     "household.cgt_residential_clone_index",
@@ -229,6 +240,7 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "household.lsoa_code",
     "household.mortgage_debt",
     "household.msoa_code",
+    "household.non_residential_property_purchased",
     "household.num_vehicles",
     "household.oa_code",
     "household.ons_household_type",
@@ -242,7 +254,9 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.a_and_e_visits",
     "person.aa_category",
     "person.admitted_patient_visits",
+    "person.age_left_full_time_education",
     "person.age_started_or_accepted_current_education_or_training",
+    "person.attends_private_school",
     "person.attends_private_school_random_draw",
     "person.capital_gains_asset_type",
     "person.capital_gains_badr",
@@ -256,6 +270,7 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.dla_sc_category",
     "person.employment_sector",
     "person.esa_health_condition_proxy",
+    "person.esa_includes_support_component",
     "person.esa_support_group_proxy",
     "person.gift_aid",
     "person.has_lifetime_isa",
@@ -263,6 +278,7 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.is_before_universal_credit_qualifying_young_person_terminal_date",
     "person.is_blind",
     "person.is_claimant_or_partner",
+    "person.is_engaged_in_owned_company_trade",
     "person.is_hbai_dependent_child",
     "person.is_in_non_advanced_education",
     "person.is_parent",
@@ -272,10 +288,16 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.local_bus_single_fare_share",
     "person.local_bus_trips",
     "person.local_bus_use_band",
+    "person.loss_relief",
+    "person.ni_class_4_losses_brought_forward",
     "person.ons_family_index",
     "person.ons_family_role",
     "person.other_local_bus_trips",
     "person.outpatient_visits",
+    "person.owned_company_carries_on_property_business",
+    "person.owned_company_carries_on_trade",
+    "person.owned_company_income_share",
+    "person.owned_company_is_main_employment",
     "person.pension_contributions_via_salary_sacrifice",
     "person.pip_dl_category",
     "person.pip_m_category",
@@ -285,13 +307,16 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.rent_paid_as_boarder",
     "person.rent_paid_as_lodger",
     "person.relationship_to_head",
+    "person.reports_outstanding_student_loan",
     "person.salary_sacrifice_asked",
     "person.salary_sacrifice_reported",
     "person.sic_industry_division",
+    "person.stands_as_sole_owner_or_partner_of_company",
     "person.statutory_paternity_pay",
     "person.student_loan_balance",
     "person.student_loan_plan",
     "person.tax_free_childcare_spend_routed_share",
+    "person.trading_loss",
     "person.uc_is_in_startup_period",
     "person.uc_is_in_gainful_self_employment",
     "person.is_looked_after_by_local_authority",
@@ -411,6 +436,25 @@ def uk_default_target_fit_reviewed_exclusions() -> Mapping[str, UKReviewedExclus
     return MappingProxyType(
         load_uk_reviewed_exclusion_register(
             None, resource=UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE
+        )
+    )
+
+
+@functools.cache
+def uk_default_local_target_fit_reviewed_exclusions() -> Mapping[
+    str, UKReviewedExclusion
+]:
+    """The committed local target-fit register (microcosm#1301), loaded lazily.
+
+    Keys are the ``uk_local_target_fit`` gate's cell names,
+    ``family/area_code/metric``. An entry lifts that gate's fence for one
+    cell and nothing else: the cell stays bound in the solve, and no target
+    compilation reads this register.
+    """
+
+    return MappingProxyType(
+        load_uk_reviewed_exclusion_register(
+            None, resource=UK_LOCAL_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE
         )
     )
 

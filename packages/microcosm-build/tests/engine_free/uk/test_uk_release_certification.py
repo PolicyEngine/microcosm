@@ -8,6 +8,7 @@ import importlib.util
 import json
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -141,6 +142,27 @@ def test_parity_evidence_refuses_bare_name_grain():
         parity_reference=_Reference(),
     )
     assert evidence.candidate_targets == {"dwp.uc.households@2025"}
+    assert evidence.withheld_targets == frozenset()
+    # A row that fewer than ten source households carry is published without
+    # its figures (María's rule of 2026-10-21): stated, kept on the candidate
+    # side, and outside the fit gate's errors.
+    thin = "dwp.uc.payment_distribution_single_thin@2025"
+    evidence = uk_release_parity_evidence(
+        _Frame(),
+        diagnostics_targets=[
+            {"name": "dwp.uc.households@2025", "relative_error": 0.1},
+            {
+                "name": thin,
+                "relative_error": None,
+                "metadata": {"model_figures_withheld": "model figures withheld"},
+            },
+        ],
+        reference_registry=_Registry(),
+        parity_reference=_Reference(),
+    )
+    assert evidence.target_relative_errors == {"dwp.uc.households@2025": 0.1}
+    assert evidence.withheld_targets == {thin}
+    assert evidence.candidate_targets == {"dwp.uc.households@2025", thin}
 
 
 def test_compose_green_certification(green_certification_inputs):
@@ -541,7 +563,8 @@ def test_release_cut_battery_runs_and_signs(tmp_path: Path, monkeypatch):
         local_ledger_registries={2025: object()},
         ledger_unsupported={2025: ()},
         local_ledger_unsupported={2025: ()},
-        parity_evidence=object(),
+        # Every producer states its withheld rows (María's rule of 2026-10-21).
+        parity_evidence=SimpleNamespace(withheld_targets=frozenset()),
         fit_weight_records=None,
         input_mass_reference={},
         exclusions_evaluated_on=date(2026, 8, 27),

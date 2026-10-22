@@ -5,10 +5,13 @@ from __future__ import annotations
 import pytest
 
 from microcosm.build.uk_runtime.receipt_counts import (
+    distinct_carriers,
+    distinct_count,
     extreme_count,
     floored_share,
     rounded_count,
     small_cell_share,
+    support_band,
 )
 
 
@@ -49,11 +52,23 @@ def test_extreme_count(count, expected) -> None:
     assert extreme_count(count) == expected
 
 
+@pytest.mark.parametrize(
+    ("count", "expected"),
+    [(0, 0), (1, "<10"), (9, "<10"), (10, "10-29"), (29, "10-29"), (30, "30+")],
+)
+def test_support_band(count, expected) -> None:
+    # An empty cell reads 0, as the other counts here, never "<10" beside a
+    # zero weight.
+    assert support_band(count) == expected
+
+
 def test_counts_refuse_a_negative_count() -> None:
     with pytest.raises(ValueError, match="negative"):
         rounded_count(-1)
     with pytest.raises(ValueError, match="negative"):
         extreme_count(-1)
+    with pytest.raises(ValueError, match="negative"):
+        support_band(-1)
 
 
 @pytest.mark.parametrize(
@@ -75,3 +90,35 @@ def test_small_cell_share() -> None:
     assert small_cell_share(0.25, 40) == pytest.approx(0.25)
     with pytest.raises(ValueError, match="negative"):
         small_cell_share(0.1, -1)
+
+
+def test_distinct_carriers_count_keyed_rows_of_positive_weight() -> None:
+    """The receipts' one carrier rule (the third review of #1305)."""
+
+    keys = ["a", "a", "b", "", None, "c"]
+    assert distinct_carriers(keys) == 3
+    assert distinct_carriers(keys, [1.0, 0.0, 2.0, 1.0, 1.0, 0.0]) == 2
+    with pytest.raises(ValueError, match="align"):
+        distinct_carriers(keys, [1.0])
+
+
+def test_a_key_counts_once_however_spelled_and_a_missing_key_never() -> None:
+    """The fourth review of #1305: NaN counted as a carrier, and 1 and 1.0 as two."""
+
+    import numpy as np
+    import pandas as pd
+
+    assert distinct_carriers([1, 1.0, np.int64(1), np.float64(1.0), "1"]) == 1
+    assert distinct_carriers([np.nan, None, "", "  ", pd.NA, pd.NaT]) == 0
+    assert distinct_carriers(["2024:1", "2024:2", 2.5]) == 3
+
+
+def test_a_cell_is_counted_by_the_same_rule() -> None:
+    """#1308's stage receipts count a cell's sources as the receipts do."""
+
+    import numpy as np
+
+    ids = np.array([1, 2, 2, 3, 4])
+    cell = np.array([True, True, True, True, False])
+    assert distinct_count(ids, cell) == 3
+    assert distinct_count(ids, cell, np.array([1.0, 0.0, 0.0, 2.0, 1.0])) == 2
