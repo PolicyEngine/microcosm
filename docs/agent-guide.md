@@ -207,6 +207,11 @@ HF_STAGING_READ_TOKEN= bash tools/run_integration_tests.sh
 
 ## The PR-CI / certification boundary
 
+[The release contract](release-contract.md) (C1 to C5) is what every
+country's releases must meet. Change it, its golden fixtures
+(`tools/generate_release_contract_fixtures.py`) and the code that enforces it in
+the same pull request.
+
 PR CI never receives external writer credentials or touches restricted
 microdata. Same-repository runs may receive the optional read-only
 `HF_STAGING_READ_TOKEN` in the `integration-uk` job; fork pull requests receive

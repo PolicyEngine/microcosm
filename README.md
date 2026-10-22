@@ -339,6 +339,9 @@ including Hypothesis properties) run in the normal `uv run pytest` suite.
 
 ## Releasing & alerts
 
+[The release contract](docs/release-contract.md) (C1 to C5) says what the
+publisher enforces today and what every release must meet from 2026-11-06.
+
 The [native SPM role source-enrichment lane](docs/us-native-spm-role-source-enrichment.md)
 creates a new US H5 from the exact reviewed BuildP parent, preserves its original
 variables and schema-5 calibration evidence, and requires fresh country/wrapper

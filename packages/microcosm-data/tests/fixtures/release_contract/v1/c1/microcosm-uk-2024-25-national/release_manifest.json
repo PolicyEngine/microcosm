@@ -1,0 +1,98 @@
+{
+ "schema_version": 1,
+ "data_package": {
+  "name": "microcosm-data",
+  "version": "0.1.0"
+ },
+ "default_datasets": {
+  "national": "microcosm_uk_2024_25"
+ },
+ "build": {
+  "build_id": "microcosm-uk-2024-25-national",
+  "built_at": "2026-01-01T00:00:00+00:00",
+  "built_with_core_package": {
+   "name": "policyengine-core",
+   "version": "3.0.0"
+  },
+  "built_with_model_package": {
+   "name": "policyengine-uk",
+   "version": "2.0.0"
+  },
+  "attempt_id": "uk-frs-calibration-attempt-20260101T000000Z-00000000",
+  "cut_tag": "microcosm-uk-2024-25-national-20260101T000000Z-00000000"
+ },
+ "compatible_core_packages": [
+  {
+   "name": "policyengine-core",
+   "specifier": "==3.0.0"
+  }
+ ],
+ "compatible_model_packages": [
+  {
+   "name": "policyengine-uk",
+   "specifier": "==2.0.0"
+  }
+ ],
+ "artifacts": {
+  "microcosm_uk_2024_25": {
+   "kind": "microdata",
+   "path": "microcosm_uk_2024_25.h5",
+   "repo_id": "policyengine/populace-uk-private",
+   "revision": "microcosm-uk-2024-25-national-20260101T000000Z-00000000",
+   "sha256": "d357112f939979d7e34696637ef874ca0531902c86bd34f503e1885d02eafb3e"
+  },
+  "microcosm_uk_2024_25_calibration": {
+   "kind": "calibration",
+   "path": "microcosm_uk_2024_25_calibration.npz",
+   "repo_id": "policyengine/populace-uk-private",
+   "revision": "microcosm-uk-2024-25-national-20260101T000000Z-00000000",
+   "sha256": "d1356e9ae3fb9baea7e7860931eeb274874f5ac61fc0b87277fc8245eac0801f"
+  },
+  "calibration_diagnostics": {
+   "kind": "diagnostics",
+   "path": "calibration_diagnostics.json",
+   "repo_id": "policyengine/populace-uk-private",
+   "revision": "microcosm-uk-2024-25-national-20260101T000000Z-00000000",
+   "sha256": "835fb1bf9e7ae31b5446813f76a8bc2c1fbb5e73d3dad2aae71558102c6988b5"
+  },
+  "release_certification": {
+   "kind": "diagnostics",
+   "path": "release_certification.json",
+   "repo_id": "policyengine/populace-uk-private",
+   "revision": "microcosm-uk-2024-25-national-20260101T000000Z-00000000",
+   "sha256": "a587dbc0e451e476bc45d2e49898935bcd2f58b52d8805b4710c79ad25615dd9"
+  },
+  "terminal_gates": {
+   "kind": "diagnostics",
+   "path": "terminal_gates.json",
+   "repo_id": "policyengine/populace-uk-private",
+   "revision": "microcosm-uk-2024-25-national-20260101T000000Z-00000000",
+   "sha256": "4da83cdcad9ae46e5c2d455476f5da1103490ca8398c543db4401cb1b4dacb40"
+  },
+  "release_cut_gates": {
+   "kind": "diagnostics",
+   "path": "release_cut_gates.json",
+   "repo_id": "policyengine/populace-uk-private",
+   "revision": "microcosm-uk-2024-25-national-20260101T000000Z-00000000",
+   "sha256": "5d5bc71f11821673fe286473e15dcf74770cbccde099d2a893f9300c13ed23a8"
+  },
+  "spine_gates": {
+   "kind": "diagnostics",
+   "path": "spine_gates.json",
+   "repo_id": "policyengine/populace-uk-private",
+   "revision": "microcosm-uk-2024-25-national-20260101T000000Z-00000000",
+   "sha256": "63eb81ac3d1dba7a137813c57358455c4b08c9e8383639d9ae26406121bece9a"
+  },
+  "score_vs_enhanced_frs": {
+   "kind": "diagnostics",
+   "path": "score_vs_enhanced_frs.json",
+   "repo_id": "policyengine/populace-uk-private",
+   "revision": "microcosm-uk-2024-25-national-20260101T000000Z-00000000",
+   "sha256": "75064c846279290ec8980518224b0ef5d65b2646813883dc643ef3954ef59cf4"
+  }
+ },
+ "description": "UK national calibration pipeline release assembled from attempt uk-frs-calibration-attempt-20260101T000000Z-00000000 at immutable cut microcosm-uk-2024-25-national-20260101T000000Z-00000000.",
+ "publisher_labels": {
+  "ons": "Office for National Statistics"
+ }
+}

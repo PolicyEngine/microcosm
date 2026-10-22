@@ -427,9 +427,6 @@ from microcosm.build.uk_runtime.release_identity import (
     UK_RELEASE_TIER_CPS_TRANSFER,
     UK_RELEASE_TIER_FRS,
     UK_RELEASE_TIERS,
-    UKReleaseIdentity,
-    apply_uk_release_identity,
-    format_uk_release_id,
     validate_uk_release_tier,
 )
 from microcosm.build.uk_runtime.release_input_coverage import (
@@ -791,7 +788,6 @@ __all__ = [
     "UKRowwiseDatasetResult",
     "UKReleaseInputColumn",
     "UKReleaseInputCoverageManifest",
-    "UKReleaseIdentity",
     "UKEffectiveMassCoveragePolicy",
     "UKSPISupportResult",
     "UKSPIIncomeImputationResult",
@@ -809,7 +805,6 @@ __all__ = [
     "VAT_LIABILITY_BANDS",
     "VINTAGES",
     "align_area_targets",
-    "apply_uk_release_identity",
     "apply_uk_source_lineage_modulus",
     "area_groups_from_codes",
     "area_support_tables",
@@ -863,7 +858,6 @@ __all__ = [
     "fill_support_channel_from_source",
     "fit_tables",
     "footprint",
-    "format_uk_release_id",
     "frozen_vs_recomputed",
     "impute_uk_spi_income_support",
     "replace_uk_spi_support_tables",
