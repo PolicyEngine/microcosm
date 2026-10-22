@@ -1440,11 +1440,15 @@ def test_a_thin_local_area_row_stays_with_the_area_support_rule() -> None:
 
 
 def _withheld_sets(
-    rows: dict[str, list[int]], n: int, values: dict[str, float] | None = None
+    rows: dict[str, list[int]],
+    n: int,
+    values: dict[str, float | list[float]] | None = None,
 ) -> tuple[set[str], set[str]]:
     """``uk_withheld_row_sets`` over rows given by the households that carry them.
 
-    Every household is its own source household and carries weight one.
+    Every household is its own source household and carries weight one. A
+    row's entries are one, or its ``values`` (one for all its households, or
+    one each).
     """
 
     from types import SimpleNamespace
@@ -1499,6 +1503,77 @@ def test_a_band_its_total_gives_back_withholds_the_next_smallest_band() -> None:
         30,
     )
     assert (thin, beside) == ({"band_a"}, {"band_b"})
+
+
+def test_a_thin_top_band_no_row_carries_withholds_the_next_smallest_band() -> None:
+    """Vahid's second review of #1344, item 17: a thin top band, no thin bound band.
+
+    The top band (above GBP 2,500 a month) is no row, so no row is thin and
+    no withheld row is given back, but the total less the bound bands gives
+    the top band's three households back. The smaller bound band is withheld,
+    so what the published rows give back rests on fifteen households.
+    """
+
+    thin, beside = _withheld_sets(
+        {
+            "total": list(range(30)),
+            "band_a": list(range(0, 15)),
+            "band_b": list(range(15, 27)),
+        },
+        30,
+    )
+    assert (thin, beside) == (set(), {"band_b"})
+
+
+def test_a_top_band_resting_on_no_household_withholds_nothing() -> None:
+    thin, beside = _withheld_sets(
+        {
+            "total": list(range(30)),
+            "band_a": list(range(0, 15)),
+            "band_b": list(range(15, 30)),
+        },
+        30,
+    )
+    assert (thin, beside) == (set(), set())
+
+
+def test_a_household_in_two_bands_still_leaves_the_bands_one_partition() -> None:
+    """Two benefit units of one household in two bands: half its total each.
+
+    The bands still partition the total, so its thin rest (the top band's
+    three households) is found and the smaller band withheld.
+    """
+
+    thin, beside = _withheld_sets(
+        {
+            "total": list(range(30)),
+            "band_a": list(range(0, 15)),
+            "band_b": [0, *range(15, 27)],
+        },
+        30,
+        values={"total": [2.0, *[1.0] * 29]},
+    )
+    assert (thin, beside) == (set(), {"band_b"})
+
+
+def test_bands_beside_regions_of_the_same_total_are_still_checked() -> None:
+    """The regions partition the total exactly; the bands leave a thin top band.
+
+    Each band crosses both regions, so a band and a region never stand in one
+    partition, and the bands' rest is measured on its own.
+    """
+
+    thin, beside = _withheld_sets(
+        {
+            "total": list(range(30)),
+            "region_1": list(range(0, 15)),
+            "region_2": list(range(15, 30)),
+            "band_a": [*range(0, 10), *range(15, 20)],
+            "band_b": [*range(10, 15), *range(20, 27)],
+        },
+        30,
+    )
+    assert (thin, beside) == (set(), {"band_b"})
 
 
 def test_a_row_given_back_two_ways_loses_a_giver_from_each() -> None:

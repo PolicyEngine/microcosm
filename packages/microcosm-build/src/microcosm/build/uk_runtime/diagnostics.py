@@ -1109,9 +1109,15 @@ def uk_withheld_row_sets(
     withheld rows that rests on fewer source households than its rows' floor,
     the published row with the fewest carriers among those that give it back
     is withheld too (the next-smallest band beside a thin one, not its total),
-    and the span is measured again. Constituency and authority rows stay
-    outside, as they stay outside the per-row floor: whether a local row can
-    give back a national one is part of the local-line ruling still owed.
+    and the span is measured again. The span sees only rows, so a total less
+    its published members, which gives back whatever they leave out, is
+    checked first (:class:`_ResidualCheck`; Vahid's second review of #1344,
+    item 17): the UC family total less its bound bands gives back the unbound
+    band above GBP 2,500 a month, which is no row and may rest on a handful of
+    households, and then the member with the fewest carriers is withheld.
+    Constituency and authority rows stay outside, as they stay outside the
+    per-row floor: whether a local row can give back a national one is part
+    of the local-line ruling still owed.
     """
 
     names, matrix, sources, carriers, floors = _scoped_rows(
@@ -1122,20 +1128,29 @@ def uk_withheld_row_sets(
         for name, count, floor in zip(names, carriers, floors, strict=True)
         if count < floor
     }
-    if not thin:
-        return thin, set()
-    norms = np.sqrt(np.asarray(matrix.multiply(matrix).sum(axis=1)).ravel())
-    scale = np.divide(1.0, norms, out=np.zeros_like(norms), where=norms > 0)
-    unit = sparse.csr_matrix(sparse.diags(scale) @ matrix)
-    gram = (unit @ unit.T).toarray()
     withheld = set(thin)
-    for _ in range(len(names)):
+    residuals = _ResidualCheck(matrix, sources, carriers, floors, names)
+    norms = np.sqrt(np.asarray(matrix.multiply(matrix).sum(axis=1)).ravel())
+    unit = matrix
+    gram: np.ndarray | None = None
+    for _ in range(len(names) + 1):
+        # A total less its published members gives back whatever they leave
+        # out, which need not be a row at all: the UC family total less its
+        # bound bands gives back the unbound band above GBP 2,500 a month
+        # (Vahid's second review of #1344, item 17). Withholding a total in
+        # the span check can turn its members into another total's members,
+        # so the residuals are measured again on each pass.
+        residuals.withhold(withheld)
         held = [i for i, name in enumerate(names) if name in withheld and norms[i]]
         published = [
             i for i, name in enumerate(names) if name not in withheld and norms[i]
         ]
         if not held or not published:
             break
+        if gram is None:
+            scale = np.divide(1.0, norms, out=np.zeros_like(norms), where=norms > 0)
+            unit = sparse.csr_matrix(sparse.diags(scale) @ matrix)
+            gram = (unit @ unit.T).toarray()
         recovery = _small_recovery(unit, gram, sources, held, published, floors)
         if recovery is None:
             break
@@ -1159,6 +1174,164 @@ def uk_withheld_row_sets(
         )
         withheld.add(names[pick])
     return thin, withheld - thin
+
+
+class _ResidualCheck:
+    """Withholds members so no published total less its members is thin.
+
+    A row's members are the other rows that restrict it to some of its
+    units: on each of a member's households the member's entry is a share of
+    the row's (above nothing, at most all of it) and on at least half of them
+    all of it (a UC payment band within its family total; a household with two
+    benefit units in two bands holds half its total's entry in each). The
+    half rule keeps a count out of an amount on the same households. A total's
+    published members fall into groups whose shares summed stay within the
+    total's (:meth:`_groups`: the bands, apart from, say, the regions), and
+    the total less a group's figures gives back the rest. While that rest
+    rests on one source household or more but fewer than the total's floor,
+    the group's member with the fewest carriers is withheld, which adds its
+    households to the rest, and the rests are measured again.
+    """
+
+    def __init__(
+        self,
+        matrix: sparse.csr_matrix,
+        sources: np.ndarray,
+        carriers: np.ndarray,
+        floors: np.ndarray,
+        names: list[str],
+    ) -> None:
+        self.sources = sources
+        self.carriers = carriers
+        self.floors = floors
+        self.names = names
+        matrix = sparse.csr_matrix(matrix)
+        self.size = np.diff(matrix.indptr)
+        support = sparse.csr_matrix(
+            (np.ones_like(matrix.data), matrix.indices, matrix.indptr),
+            shape=matrix.shape,
+        )
+        overlap = (support @ support.T).toarray()
+        # Per total: its members, their shares of it over its households,
+        # those households, and which members clash (their shares summed pass
+        # the total's somewhere).
+        self.totals: dict[
+            int, tuple[np.ndarray, sparse.csr_matrix, np.ndarray, np.ndarray]
+        ] = {}
+        for total in np.flatnonzero(self.size):
+            candidates = np.flatnonzero(overlap[:, total] == self.size)
+            candidates = candidates[(candidates != total) & (self.size[candidates] > 0)]
+            if not len(candidates):
+                continue
+            start, stop = matrix.indptr[total], matrix.indptr[total + 1]
+            columns = matrix.indices[start:stop]
+            values = matrix.data[start:stop]
+            block = sparse.csr_matrix(matrix[candidates][:, columns])
+            block.sort_indices()
+            share = block.copy()
+            share.data = block.data / values[block.indices]
+            within = (share.data > 0) & (share.data <= 1 + _RECOVERY_ROUNDING)
+            whole = np.abs(share.data - 1) <= _RECOVERY_ROUNDING
+            rows = np.repeat(np.arange(len(candidates)), np.diff(share.indptr))
+            inside = np.bincount(rows, weights=~within, minlength=len(candidates)) == 0
+            whole_share = np.bincount(rows, weights=whole, minlength=len(candidates))
+            inside &= whole_share * 2 >= self.size[candidates]
+            if not inside.any():
+                continue
+            members = candidates[inside]
+            share = sparse.csr_matrix(share[inside])
+            self.totals[int(total)] = (members, share, columns, np.zeros(0, dtype=bool))
+        # Two rows that are each other's member are one row: the later is no
+        # member of the earlier, so the earlier stands for both.
+        for total, (members, share, columns, _) in list(self.totals.items()):
+            keep = np.array(
+                [
+                    not (
+                        member > total
+                        and member in self.totals
+                        and total in self.totals[member][0]
+                    )
+                    for member in members
+                ]
+            )
+            members, share = members[keep], sparse.csr_matrix(share[keep])
+            if not len(members):
+                del self.totals[total]
+                continue
+            self.totals[total] = (members, share, columns, self._clashes(share))
+
+    @staticmethod
+    def _clashes(share: sparse.csr_matrix) -> np.ndarray:
+        """Which members' shares summed pass the total's on some household."""
+
+        support = share.copy()
+        support.data = np.ones_like(support.data)
+        clash = (support @ support.T).toarray() > 0
+        high = share.copy()
+        high.data = (high.data > 0.5 + _RECOVERY_ROUNDING).astype(float)
+        high.eliminate_zeros()
+        sure = (high @ high.T).toarray() > 0
+        np.fill_diagonal(clash, False)
+        for a, b in zip(*np.nonzero(np.triu(clash & ~sure, k=1)), strict=True):
+            pair = share[a] + share[b]
+            clash[a, b] = clash[b, a] = bool((pair.data > 1 + _RECOVERY_ROUNDING).any())
+        return clash
+
+    def withhold(self, withheld: set[str]) -> None:
+        """Add to ``withheld`` until no published total's rest is thin."""
+
+        for _ in range(len(self.names) + 1):
+            pick = self._first_thin_rest(withheld)
+            if pick is None:
+                return
+            withheld.add(self.names[pick])
+
+    def _first_thin_rest(self, withheld: set[str]) -> int | None:
+        for total, (members, share, columns, clash) in self.totals.items():
+            if self.names[total] in withheld:
+                continue
+            live = np.array(
+                [self.names[member] not in withheld for member in members], dtype=bool
+            )
+            if not live.any():
+                continue
+            local = np.flatnonzero(live)
+            for group in self._groups(members[local], clash[np.ix_(local, local)]):
+                summed = np.asarray(share[local[group]].sum(axis=0)).ravel()
+                if (summed > 1 + _RECOVERY_ROUNDING).any():
+                    continue
+                rest = summed < 1 - _RECOVERY_ROUNDING
+                carried = len(pd.unique(self.sources[columns[rest]]))
+                if 0 < carried < self.floors[total]:
+                    return min(
+                        members[local[group]],
+                        key=lambda i: (self.carriers[i], self.names[i]),
+                    )
+        return None
+
+    def _groups(self, members: np.ndarray, clash: np.ndarray) -> list[list[int]]:
+        """Greedy sets of members that clash with none in the same set.
+
+        Two bands of one family do not clash, even where a household with two
+        benefit units sits in both; a band and a region do. Each member seeds
+        one set, which takes the others, largest first, that clash with none
+        already in it.
+        """
+
+        order = sorted(
+            range(len(members)),
+            key=lambda i: (-self.size[members[i]], self.names[members[i]]),
+        )
+        groups: dict[frozenset[int], list[int]] = {}
+        for seed in order:
+            chosen = [seed]
+            blocked = clash[seed].copy()
+            for other in order:
+                if other != seed and not blocked[other]:
+                    chosen.append(other)
+                    blocked |= clash[other]
+            groups.setdefault(frozenset(chosen), sorted(chosen))
+        return list(groups.values())
 
 
 def _small_recovery(
