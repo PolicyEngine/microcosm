@@ -1175,8 +1175,8 @@ class TestExistingPackagesGeneralize:
 
         references = {reference.name: reference for reference in spec.target_references}
         assert (
-            len(references) == 1337
-        )  # childcare costing fixes: + 4, DfE funded childcare by single year of age (working parent 1-3, universal nursery 3; the age-4 cells are signed out); item 6: + 11, the UK's ONS single years 3 to 6 and England's 0 to 6; microcosm#1278: + 3, the ONS single years 0, 1 and 2 for all persons; microcosm#1095: + 4, the two national 15_19 sex bands split into ages 15, 16-17 and 18-19; microcosm#1106: + 13 SPI property amounts; microcosm#1113: + 1 ONS 07.2.2 household road fuel; PolicyEngine/chronicle#280 lane: 705 + 33 HMRC liabilities rows (Table 2.5, three
+            len(references) == 1338
+        )  # childcare costing fixes: + 5, DfE funded childcare by single age (working parent 9-11 months and 1-3, universal nursery 3; the age-4 cells are signed out); item 6: + 11, the UK's ONS single years 3 to 6 and England's 0 to 6; microcosm#1278: + 3, the ONS single years 0, 1 and 2 for all persons; microcosm#1095: + 4, the two national 15_19 sex bands split into ages 15, 16-17 and 18-19; microcosm#1106: + 13 SPI property amounts; microcosm#1113: + 1 ONS 07.2.2 household road fuel; PolicyEngine/chronicle#280 lane: 705 + 33 HMRC liabilities rows (Table 2.5, three
         # measures by eleven bands) + 26 SPI savings-interest rows (two measures by
         # thirteen bands) + 360 SPI Table 3.11 region-tier rows (three measures by
         # ten regional bands over twelve areas); microcosm#905: 424 - 18 country
