@@ -69,6 +69,7 @@ class _Contract:
         "universal_credit": 0.5,
         "tax_free_childcare": 0.5,
         "extended_childcare": 0.5,
+        "extended_childcare_under_2_usage": 0.5,
         "universal_childcare": 0.5,
         "targeted_childcare": 0.5,
         "uc_childcare_single": 0.5,

@@ -30,6 +30,7 @@ class _Contract:
             "universal_credit": 0.5,
             "tax_free_childcare": 0.5,
             "extended_childcare": 0.5,
+            "extended_childcare_under_2_usage": 0.5,
             # Conditional on not claiming the extended hours: the fixture's
             # universal flag is its extended flag, so the nested marginal is
             # 0.5 + 0.5 * 0.0.
@@ -51,13 +52,15 @@ class _Contract:
 def _frame(*, brma_values=("LONDON_A", "LONDON_B")):
     n = 10
     household_ids = np.arange(1, n + 1)
+    # Ten adults, one per unit, and four children under 2: two in units that
+    # claim the working-parent hours (201 and 203), two in units that do not.
     person = pd.DataFrame(
         {
-            "person_id": np.arange(101, 101 + n),
-            "person_benunit_id": np.arange(201, 201 + n),
-            "person_household_id": household_ids,
-            "age": [30, 40] * 5,
-            "is_uc_claimant": [True] * n,
+            "person_id": np.arange(101, 101 + n + 4),
+            "person_benunit_id": [*range(201, 201 + n), 201, 203, 202, 204],
+            "person_household_id": [*household_ids, 1, 3, 2, 4],
+            "age": [30, 40] * 5 + [0, 1, 0, 1],
+            "is_uc_claimant": [True] * n + [False] * 4,
         }
     )
     benunit = pd.DataFrame(
@@ -74,9 +77,12 @@ def _frame(*, brma_values=("LONDON_A", "LONDON_B")):
     for column in FRS_TAKE_UP_OUTPUT_COLUMNS:
         if column != "maximum_extended_childcare_hours_usage":
             benunit[column] = alternating
-    person["would_claim_marriage_allowance"] = alternating
-    person["would_claim_scp"] = alternating
-    person["attends_private_school_random_draw"] = np.linspace(0.05, 0.95, n)
+    people = np.array([True, False] * 7)
+    person["would_claim_marriage_allowance"] = people
+    person["would_claim_scp"] = people
+    person["attends_private_school_random_draw"] = np.linspace(0.05, 0.95, n + 4)
+    # One of the two claiming children uses the hours.
+    person["max_free_entitlement_hours_used"] = [30.0] * n + [30.0, 0.0, 30.0, 30.0]
     for column in FRS_HOUSEHOLD_DRAW_OUTPUT_COLUMNS:
         household[column] = alternating
     return uk_national_frame(
@@ -140,7 +146,7 @@ def test_brma_enum_domain_binding_fails_off_domain() -> None:
 
 def test_student_loan_enum_domain_binding_resolves_person_column() -> None:
     frame = _frame()
-    frame.table("person")["student_loan_plan"] = ["NONE"] * 9 + ["PLAN_4"]
+    frame.table("person")["student_loan_plan"] = ["NONE"] * 13 + ["PLAN_4"]
     binding = UK_GATE_REGISTRY["enum_domain"]
 
     result = binding.evaluate(
@@ -175,7 +181,7 @@ def test_take_up_gate_measures_uc_share_over_units_with_a_working_age_adult() ->
     person = frame.table("person")
     # Persons 101-110 sit one per benefit unit; make the last four benefit
     # units all-pension-age and mark them as claimants: they must not count.
-    person.loc[person["person_id"] >= 107, "age"] = 70
+    person.loc[person["person_id"].between(107, 110), "age"] = 70
     benunit = frame.table("benunit")
     benunit.loc[benunit["benunit_id"] >= 207, "would_claim_uc"] = True
 
@@ -201,3 +207,26 @@ def test_take_up_gate_fails_when_the_uc_population_is_empty() -> None:
     assert "would_claim_uc: no unit in the draw's population" in " ".join(
         result.failures
     )
+
+
+def test_take_up_gate_measures_under_two_usage_over_claiming_children() -> None:
+    result = uk_take_up_signal_gate(
+        _frame(), contract=_Contract(), population_policy=_POLICY
+    )
+
+    details = result.details["person.max_free_entitlement_hours_used"]
+    # Two children under 2 in claiming units, one of whom uses the hours; the
+    # children in units that do not claim keep 30 hours and are not counted.
+    assert details["population_units"] == 2
+    assert details["weighted_share"] == 0.5
+    assert details["target"] == 0.5
+
+    frame = _frame()
+    frame.table("person").drop(
+        columns=["max_free_entitlement_hours_used"], inplace=True
+    )
+    missing = uk_take_up_signal_gate(
+        frame, contract=_Contract(), population_policy=_POLICY
+    )
+    assert missing.passed is False
+    assert "max_free_entitlement_hours_used: missing" in " ".join(missing.failures)

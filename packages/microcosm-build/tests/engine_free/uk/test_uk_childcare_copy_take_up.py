@@ -20,8 +20,10 @@ from microcosm.build.uk_runtime.childcare_copy_take_up import (
 from microcosm.build.uk_runtime.frs_take_up import (
     UK_CHILDCARE_HOURS_OUTPUT,
     UK_CHILDCARE_TAKE_UP_OUTPUTS,
+    UK_UNDER_TWO_USAGE_OUTPUT,
     assert_universal_childcare_nesting_declaration,
     derive_childcare_take_up,
+    derive_under_two_childcare_usage,
     uk_take_up_signal_gate,
     universal_childcare_marginal_rate,
 )
@@ -97,12 +99,14 @@ def _frame(contract, *, natives: int = _NATIVES):
     household["region"] = "LONDON"
     ids = household["household_id"].to_numpy(dtype=np.int64)
     sources = household["source_household_id"].to_numpy(dtype=np.int64)
+    # Every other host's child is under 2, and its copies inherit its age.
+    ages = np.where(sources % 2 == 0, 1, 3)
     person = pd.DataFrame(
         {
             "person_id": ids,
             "person_benunit_id": ids,
             "person_household_id": ids,
-            "age": 3,
+            "age": ages,
         }
     )
     benunit = pd.DataFrame(
@@ -119,6 +123,13 @@ def _frame(contract, *, natives: int = _NATIVES):
         benunit[output] = inherited[output]
     benunit["would_claim_uc_childcare"] = True
     benunit["is_married"] = False
+    # frs_take_up drew each host child's usage keyed on the host's person and
+    # unit; the copies inherit it.
+    person[UK_UNDER_TWO_USAGE_OUTPUT] = derive_under_two_childcare_usage(
+        pd.DataFrame({"person_id": sources, "age": ages}),
+        claiming=inherited["would_claim_extended_childcare"],
+        contract=contract,
+    )
     return uk_national_frame(
         person=person, benunit=benunit, household=household, time_period="2024"
     )
@@ -286,3 +297,49 @@ def test_signal_gate_targets_the_nested_marginal_and_refuses_violations() -> Non
     )
     failures = uk_take_up_signal_gate(broken_frame, contract=contract).failures
     assert any("without the universal hours" in failure for failure in failures)
+
+
+def test_copies_children_redraw_their_under_two_usage_on_their_own_draws() -> None:
+    contract = load_uk_take_up_contract()
+    frame = _frame(contract)
+    before = frame.table("person")
+    after_frame = UKChildcareCopyTakeUpStageTransform(
+        contract=contract, stage=_stage()
+    )(frame)
+    after = after_frame.table("person")
+    benunit = after_frame.table("benunit")
+    native = (after["person_id"] <= _NATIVES).to_numpy()
+
+    # Natives keep their frs_take_up draws.
+    np.testing.assert_array_equal(
+        after.loc[native, UK_UNDER_TWO_USAGE_OUTPUT].to_numpy(),
+        before.loc[native, UK_UNDER_TWO_USAGE_OUTPUT].to_numpy(),
+    )
+    # A copy's child draws against its own unit's re-drawn flag, keyed on its
+    # own person_id.
+    copies = ~native
+    claiming = benunit.set_index("benunit_id").loc[
+        after.loc[copies, "person_benunit_id"], "would_claim_extended_childcare"
+    ]
+    expected = derive_under_two_childcare_usage(
+        after.loc[copies].reset_index(drop=True),
+        claiming=claiming.to_numpy(dtype=bool),
+        contract=contract,
+    )
+    np.testing.assert_array_equal(
+        after.loc[copies, UK_UNDER_TWO_USAGE_OUTPUT].to_numpy(), expected
+    )
+    under_two = (after["age"] < 2).to_numpy()
+    drawn = (
+        copies
+        & under_two
+        & np.isin(
+            after["person_benunit_id"],
+            benunit.loc[benunit["would_claim_extended_childcare"], "benunit_id"],
+        )
+    )
+    usage = after.loc[drawn, UK_UNDER_TWO_USAGE_OUTPUT].to_numpy() > 0
+    assert usage.mean() == pytest.approx(
+        contract.rate("extended_childcare_under_2_usage"), abs=0.03
+    )
+    assert (after.loc[~under_two, UK_UNDER_TWO_USAGE_OUTPUT] == 30.0).all()

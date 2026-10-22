@@ -771,6 +771,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
             "bool",
         ),
         _Cell("benunit", "maximum_extended_childcare_hours_usage", "float64"),
+        _Cell("person", "max_free_entitlement_hours_used", "float64"),
     ),
     "frs_person_draws": (
         _Cell("person", "would_claim_marriage_allowance", "bool"),
@@ -1092,6 +1093,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
             "bool",
         ),
         _Cell("benunit", "maximum_extended_childcare_hours_usage", "float64"),
+        _Cell("person", "max_free_entitlement_hours_used", "float64"),
     ),
     "age_tail": (_Cell("person", "age", "int64"),),
 }

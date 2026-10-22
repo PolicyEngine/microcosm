@@ -12,7 +12,10 @@ rate. This stage, which runs after the last copy stage, re-draws
 ``would_claim_universal_childcare`` (nested under the extended flag),
 ``would_claim_targeted_childcare`` and ``maximum_extended_childcare_hours_usage``
 for the copies only, through ``frs_take_up``'s own
-``derive_childcare_take_up`` at the same contract rates, seed and salts.
+``derive_childcare_take_up`` at the same contract rates, seed and salts, and
+the copies' children's ``max_free_entitlement_hours_used`` (the under-2 usage
+draw) against their own unit's re-drawn working-parent flag, through
+``derive_under_two_childcare_usage`` keyed on the copy's own ``person_id``.
 
 The draws are keyed on the copy's own ``benunit_id``. Every copy stage gives a
 copy the structural id ``source id + k × offset`` with an offset above every
@@ -41,8 +44,13 @@ from microcosm.build.uk_runtime.frs_take_up import (
     UK_CHILDCARE_HOURS_OUTPUT,
     UK_CHILDCARE_TAKE_UP_FLAGS,
     UK_CHILDCARE_TAKE_UP_OUTPUTS,
+    UK_EXTENDED_CHILDCARE_OUTPUT,
+    UK_UNDER_TWO_USAGE_OUTPUT,
+    assert_under_two_usage_declaration,
     assert_universal_childcare_nesting_declaration,
     derive_childcare_take_up,
+    derive_under_two_childcare_usage,
+    person_unit_flag,
 )
 from microcosm.build.uk_runtime.household_lineage import (
     uk_household_clone_paths,
@@ -58,6 +66,7 @@ from microcosm.build.uk_runtime.take_up_contract import UKTakeUpContract
 from microcosm.frame import Frame
 
 __all__ = [
+    "CHILDCARE_COPY_TAKE_UP_REWRITES",
     "CHILDCARE_COPY_TAKE_UP_STAGE_NAME",
     "UKChildcareCopyTakeUpStageTransform",
     "copy_benunits",
@@ -66,6 +75,12 @@ __all__ = [
 
 CHILDCARE_COPY_TAKE_UP_STAGE_NAME = "childcare_copy_take_up"
 BENUNIT_SUPPORT_CLONE_INDEX = "benunit_support_clone_index"
+#: The columns the stage rewrites: the benefit-unit childcare draws, then the
+#: children's under-2 usage.
+CHILDCARE_COPY_TAKE_UP_REWRITES = (
+    *UK_CHILDCARE_TAKE_UP_OUTPUTS,
+    UK_UNDER_TWO_USAGE_OUTPUT,
+)
 
 
 @dataclass(frozen=True)
@@ -77,11 +92,12 @@ class UKChildcareCopyTakeUpStageTransform:
 
     def __call__(self, frame: Frame) -> Frame:
         assert_universal_childcare_nesting_declaration(self.stage)
+        assert_under_two_usage_declaration(self.stage)
         declared = tuple(self.stage.rewrites)
-        if declared != UK_CHILDCARE_TAKE_UP_OUTPUTS:
+        if declared != CHILDCARE_COPY_TAKE_UP_REWRITES:
             raise ValueError(
                 f"stage {self.stage.stage!r} must declare the rewrites "
-                f"{list(UK_CHILDCARE_TAKE_UP_OUTPUTS)}; declared {list(declared)}"
+                f"{list(CHILDCARE_COPY_TAKE_UP_REWRITES)}; declared {list(declared)}"
             )
         return redraw_childcare_copy_take_up(frame, contract=self.contract)
 
@@ -131,6 +147,11 @@ def redraw_childcare_copy_take_up(frame: Frame, *, contract: UKTakeUpContract) -
             f"benunit columns {missing} are missing; frs_take_up must draw them "
             "before the copies' childcare take-up is re-drawn"
         )
+    if UK_UNDER_TWO_USAGE_OUTPUT not in person:
+        raise KeyError(
+            f"person.{UK_UNDER_TWO_USAGE_OUTPUT} is missing; frs_take_up must draw "
+            "it before the copies' childcare take-up is re-drawn"
+        )
     copies = copy_benunits(person, benunit, household)
     ids = benunit["benunit_id"].to_numpy()
     if pd.Series(ids).duplicated().any():
@@ -146,6 +167,25 @@ def redraw_childcare_copy_take_up(frame: Frame, *, contract: UKTakeUpContract) -
         hours = benunit[UK_CHILDCARE_HOURS_OUTPUT].to_numpy(dtype=np.float64, copy=True)
         hours[copies] = redrawn[UK_CHILDCARE_HOURS_OUTPUT]
         benunit[UK_CHILDCARE_HOURS_OUTPUT] = hours
+        # The copies' children draw their usage against their own unit's
+        # re-drawn flag, keyed on their own person_id; natives keep theirs.
+        copy_people = person_unit_flag(person, benunit, copies)
+        if pd.Series(person["person_id"]).duplicated().any():
+            raise ValueError(
+                "person_id must be unique: the copies' under-2 usage draws are "
+                "keyed on it"
+            )
+        usage = person[UK_UNDER_TWO_USAGE_OUTPUT].to_numpy(dtype=np.float64, copy=True)
+        usage[copy_people] = derive_under_two_childcare_usage(
+            person.loc[copy_people],
+            claiming=person_unit_flag(
+                person.loc[copy_people],
+                benunit,
+                benunit[UK_EXTENDED_CHILDCARE_OUTPUT].to_numpy(),
+            ),
+            contract=contract,
+        )
+        person[UK_UNDER_TWO_USAGE_OUTPUT] = usage
     result = uk_national_frame(
         person=person,
         benunit=benunit,

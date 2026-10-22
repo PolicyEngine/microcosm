@@ -26,6 +26,7 @@ def test_uk_contract_loads_and_selects_build_year_rates() -> None:
         "marriage_allowance",
         "tax_free_childcare",
         "extended_childcare",
+        "extended_childcare_under_2_usage",
         "universal_childcare",
         "targeted_childcare",
         "uc_childcare_single",
@@ -47,6 +48,8 @@ def test_uk_contract_loads_and_selects_build_year_rates() -> None:
         # The v5 refit (nested universal, reception out) on the childcare-fix spine.
         0.9912,
         0.7594,
+        # Provisional until the tool-version-6 refit (María, 2026-10-22).
+        0.75,
         0.0,
         0.8478,
         0.441,

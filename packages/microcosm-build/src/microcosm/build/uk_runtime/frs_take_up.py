@@ -41,13 +41,34 @@ FRS_TAKE_UP_OUTPUT_COLUMNS = (
     "would_claim_uc_childcare",
     "maximum_extended_childcare_hours_usage",
 )
-FRS_TAKE_UP_NONNEGATIVE_OUTPUT_COLUMNS = ("maximum_extended_childcare_hours_usage",)
+# A child under 2 in a benefit unit that claims the working-parent hours uses
+# them at the contract's under-2 usage rate: DfE registers far fewer of the
+# youngest eligible children than of those aged 2 to 4, mostly for parental
+# leave, so one family rate fitted at 2 to 4 would fund too many of them. A
+# child that does not use them gets no funded hours from the engine
+# (max_free_entitlement_hours_used 0); every other person keeps the engine's
+# default of 30. The draw is keyed on the person (seed 0, salt the output);
+# ``childcare_copy_take_up`` re-draws the copies' children against their own
+# unit's flag. The stage manifest declares the operation;
+# ``assert_under_two_usage_declaration`` refuses a manifest that drops it.
+UK_UNDER_TWO_USAGE_OUTPUT = "max_free_entitlement_hours_used"
+UK_UNDER_TWO_USAGE_KEY = "extended_childcare_under_2_usage"
+UK_UNDER_TWO_AGE = 2
+UK_ENGINE_FREE_HOURS_DEFAULT = 30.0
+FRS_TAKE_UP_PERSON_OUTPUT_COLUMNS = (UK_UNDER_TWO_USAGE_OUTPUT,)
+FRS_TAKE_UP_NONNEGATIVE_OUTPUT_COLUMNS = (
+    "maximum_extended_childcare_hours_usage",
+    UK_UNDER_TWO_USAGE_OUTPUT,
+)
 UK_TAKE_UP_ANCHOR_AGGREGATES = {
     "child_benefit_reported_anchor": "child_benefit_reported",
     "pension_credit_reported_anchor": "pension_credit_reported",
     "universal_credit_reported_anchor": "universal_credit_reported",
 }
-UK_TAKE_UP_DECLARED_SEEDS = {output: 0 for output in FRS_TAKE_UP_OUTPUT_COLUMNS}
+UK_TAKE_UP_DECLARED_SEEDS = {
+    output: 0
+    for output in (*FRS_TAKE_UP_OUTPUT_COLUMNS, *FRS_TAKE_UP_PERSON_OUTPUT_COLUMNS)
+}
 # Universal Credit is claimable only by a benefit unit whose claimant or
 # partner meets its age conditions: policyengine-uk 2.147.2's ``is_uc_eligible``
 # (capital aside) needs a single or joint claimant, taken from
@@ -125,6 +146,7 @@ UK_TAKE_UP_SIGNAL_OUTPUTS = (
     ("benunit", "would_claim_universal_childcare", "universal_childcare"),
     ("benunit", "would_claim_targeted_childcare", "targeted_childcare"),
     ("benunit", "would_claim_uc_childcare", "uc_childcare"),
+    ("person", UK_UNDER_TWO_USAGE_OUTPUT, UK_UNDER_TWO_USAGE_KEY),
     ("person", "would_claim_marriage_allowance", "marriage_allowance"),
     ("person", "would_claim_scp", "scp"),
     ("household", "household_owns_tv", "tv_ownership_rate"),
@@ -263,6 +285,27 @@ def assert_universal_childcare_nesting_declaration(stage: SourceStageSpec) -> No
         )
 
 
+def assert_under_two_usage_declaration(stage: SourceStageSpec) -> None:
+    """Refuse a manifest that does not declare the under-2 usage draw."""
+
+    declared = [
+        dict(op.parameters)
+        for op in stage.operations
+        if op.parameters.get("output") == UK_UNDER_TWO_USAGE_OUTPUT
+    ]
+    expected = {"rate_key": UK_UNDER_TWO_USAGE_KEY, "assignment_unit": "person"}
+    if not declared or any(
+        any(params.get(key) != value for key, value in expected.items())
+        for params in declared
+    ):
+        raise ValueError(
+            f"stage {stage.stage!r} must declare the {UK_UNDER_TWO_USAGE_OUTPUT!r} "
+            f"operation with {expected!r}; the code draws whether each child under "
+            f"{UK_UNDER_TWO_AGE} in a unit claiming the working-parent hours uses "
+            f"them and refuses a manifest that says otherwise (declared: {declared!r})"
+        )
+
+
 @dataclass(frozen=True)
 class UKFRSTakeUpStageTransform:
     """Whole-stage callable for UK benefit-unit take-up assignments."""
@@ -274,6 +317,7 @@ class UKFRSTakeUpStageTransform:
     def __call__(self, frame: Frame) -> Frame:
         assert_take_up_stage_population_declaration(self.stage)
         assert_universal_childcare_nesting_declaration(self.stage)
+        assert_under_two_usage_declaration(self.stage)
         policy = self.population_policy or uk_take_up_population_policy(
             uk_time_period(frame)
         )
@@ -281,7 +325,7 @@ class UKFRSTakeUpStageTransform:
 
     @staticmethod
     def output_columns() -> tuple[str, ...]:
-        return FRS_TAKE_UP_OUTPUT_COLUMNS
+        return (*FRS_TAKE_UP_OUTPUT_COLUMNS, *FRS_TAKE_UP_PERSON_OUTPUT_COLUMNS)
 
 
 def add_frs_take_up(
@@ -299,6 +343,13 @@ def add_frs_take_up(
     )
     for column in FRS_TAKE_UP_OUTPUT_COLUMNS:
         benunit[column] = derived[column].to_numpy()
+    person[UK_UNDER_TWO_USAGE_OUTPUT] = derive_under_two_childcare_usage(
+        person,
+        claiming=person_unit_flag(
+            person, benunit, benunit[UK_EXTENDED_CHILDCARE_OUTPUT].to_numpy()
+        ),
+        contract=contract,
+    )
     result = uk_national_frame(
         person=person,
         benunit=benunit,
@@ -450,6 +501,50 @@ def derive_childcare_take_up(
     return values
 
 
+def person_unit_flag(
+    person: pd.DataFrame, benunit: pd.DataFrame, flag: np.ndarray
+) -> np.ndarray:
+    """Each person's benefit-unit ``flag``, through ``person_benunit_id``."""
+
+    lookup = pd.Series(
+        np.asarray(flag, dtype=bool), index=benunit["benunit_id"].to_numpy()
+    )
+    mapped = lookup.reindex(person["person_benunit_id"].to_numpy())
+    if mapped.isna().any():
+        raise ValueError("every person must belong to a benefit unit in the frame")
+    return mapped.to_numpy(dtype=bool)
+
+
+def under_two_children(person: pd.DataFrame) -> np.ndarray:
+    """Persons of whole-year age under ``UK_UNDER_TWO_AGE``."""
+
+    if "age" not in person.columns:
+        raise KeyError("person.age is missing; the under-2 usage draw needs it")
+    age = pd.to_numeric(person["age"], errors="coerce")
+    if age.isna().any():
+        raise ValueError("person.age must be numeric for the under-2 usage draw")
+    return age.to_numpy(dtype=float) < UK_UNDER_TWO_AGE
+
+
+def derive_under_two_childcare_usage(
+    person: pd.DataFrame, *, claiming: np.ndarray, contract: UKTakeUpContract
+) -> np.ndarray:
+    """``max_free_entitlement_hours_used`` for every person in ``person``.
+
+    A child under 2 whose unit claims the working-parent hours uses them where
+    its draw (keyed on ``person_id``) falls under the contract's under-2 usage
+    rate and gets 0 hours otherwise; every other person keeps the engine's
+    default.
+    """
+
+    ids = person["person_id"].to_numpy()
+    uses = assign_binary_from_rate(
+        _draws(ids, UK_UNDER_TWO_USAGE_OUTPUT), contract.rate(UK_UNDER_TWO_USAGE_KEY)
+    )
+    drawn = under_two_children(person) & np.asarray(claiming, dtype=bool)
+    return np.where(drawn & ~uses, 0.0, UK_ENGINE_FREE_HOURS_DEFAULT)
+
+
 def universal_childcare_marginal_rate(contract: UKTakeUpContract) -> float:
     """The universal flag's expected share: r_e + (1 - r_e) * r_u_cond."""
 
@@ -515,6 +610,15 @@ def uk_take_up_signal_gate(
                 "instant": policy.instant,
                 "source": policy.source,
             }
+        if key == UK_UNDER_TWO_USAGE_KEY:
+            # The rate is a share of the children under 2 in units that claim
+            # the working-parent hours; every other person keeps 30 hours.
+            benunit_table = frame.table("benunit")
+            population = under_two_children(table) & person_unit_flag(
+                table,
+                benunit_table,
+                benunit_table[UK_EXTENDED_CHILDCARE_OUTPUT].to_numpy(),
+            )
         if not population.any() or float(weights[population].sum()) <= 0.0:
             failures.append(
                 f"{entity}.{output}: no unit in the draw's population carries "

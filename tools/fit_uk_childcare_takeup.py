@@ -395,9 +395,11 @@ class ChildcareExpectationBasis:
     nesting a family claiming the extended hours never has the universal flag
     off, so the row has no allocated term. From tool version 6 the DfE rows
     are measured at the spring term by the age on 31 December
-    (dfe_spring_term.py), and ``under_two`` holds each side's contributions
-    from children under 2, whom the under-2 usage share ``s`` scales: every
-    ``sum`` above is ``sum(rest) + s * sum(under_two)``. The expectation is the
+    (dfe_spring_term.py), and ``under_two`` holds the claiming-world sides'
+    contributions from children under 2, whom the under-2 usage share ``s``
+    scales (the draw applies only where the unit claims the working-parent
+    hours): each ``with_ext`` and ``allocated`` sum above is
+    ``sum(rest) + s * sum(under_two)``. The expectation is the
     quantity a take-up *rate*
     controls: the spine's persisted flags are one draw from it, and later
     stages clone and re-key rows, so no re-drawn realisation can sit on the
@@ -671,9 +673,9 @@ def compute_childcare_basis(
     with_extended, with_under_two = _basis_side(
         input_h5, target_period, contract, extended=True
     )
-    without_extended, without_under_two = _basis_side(
-        input_h5, target_period, contract, extended=False
-    )
+    # The usage draw applies only where the unit claims the working-parent
+    # hours, so the without-extended side keeps every child's hours.
+    without_extended, _ = _basis_side(input_h5, target_period, contract, extended=False)
     allocation, allocation_under_two = _basis_side(
         input_h5, target_period, contract, extended=True, allocated=True
     )
@@ -690,7 +692,6 @@ def compute_childcare_basis(
         },
         under_two={
             "with_extended": with_under_two,
-            "without_extended": without_under_two,
             "allocated_from_extended": {
                 target: allocation_under_two[target]
                 for target in allocated_targets

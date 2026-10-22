@@ -1067,6 +1067,7 @@
           "person.would_claim_carers_allowance",
           "person.would_claim_marriage_allowance",
           "person.would_claim_scp",
+          "person.max_free_entitlement_hours_used",
           "person.person_is_spi_income_band_carrier",
           "person.person_is_spi_income_recipient",
           "benunit.benunit_source_id",

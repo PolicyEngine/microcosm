@@ -1092,6 +1092,16 @@
      "draw": "maximum_extended_childcare_hours_usage",
      "distribution_key": "maximum_extended_childcare_hours_usage",
      "seed": 0
+    },
+    {
+     "kind": "assign_binary_from_rate",
+     "output": "max_free_entitlement_hours_used",
+     "draw": "max_free_entitlement_hours_used",
+     "rate_key": "extended_childcare_under_2_usage",
+     "eligibility": "persons of whole-year age 0 or 1 in benefit units that claim the working-parent hours (would_claim_extended_childcare)",
+     "assignment_unit": "person",
+     "rate_derivation": "a child under 2 in a claiming unit uses the working-parent hours where u < rate and gets max_free_entitlement_hours_used 0 otherwise; every other person keeps the engine's default of 30",
+     "seed": 0
     }
    ],
    "outputs": [
@@ -1104,12 +1114,14 @@
     "would_claim_universal_childcare",
     "would_claim_targeted_childcare",
     "would_claim_uc_childcare",
-    "maximum_extended_childcare_hours_usage"
+    "maximum_extended_childcare_hours_usage",
+    "max_free_entitlement_hours_used"
    ],
    "nonnegative_outputs": [
-    "maximum_extended_childcare_hours_usage"
+    "maximum_extended_childcare_hours_usage",
+    "max_free_entitlement_hours_used"
    ],
-   "notes": "Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only. The Universal Credit draw's population is the benefit units with a UC claimant or partner (is_uc_claimant) aged 18 or over and under Pension Credit qualifying age (66 for everyone who can reach it in this release), the age and role conditions of policyengine-uk 2.147.2's is_uc_eligible; the engine lockstep test pins it and names the three engine cases not mirrored (16- and 17-year-old claimants under the UC Regs 2013 reg 8 exceptions, mixed-age couples on the Pension Credit route, and from 2.128.0 pension-age families moved onto Universal Credit when their legacy benefit closes, SI 2014/1230 reg 60A). So the contract rate is a share of those units, an anchor outside them stays true, and any other unit is never drawn; a unit with no claimant or partner of that age keeps its reported Housing Benefit, which a claim it cannot make no longer zeroes (#882, microcosm#867, microcosm#1095). The universal childcare flag is nested under the working-parent one. A unit that claims the extended hours claims the universal hours, and any other unit claims them at the contract's universal_childcare rate, the rate conditional on not claiming the extended hours; the extended draw is unchanged. childcare_copy_take_up later re-draws the childcare flags and hours of the support and CGT copies on their own benefit units."
+   "notes": "Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only. The Universal Credit draw's population is the benefit units with a UC claimant or partner (is_uc_claimant) aged 18 or over and under Pension Credit qualifying age (66 for everyone who can reach it in this release), the age and role conditions of policyengine-uk 2.147.2's is_uc_eligible; the engine lockstep test pins it and names the three engine cases not mirrored (16- and 17-year-old claimants under the UC Regs 2013 reg 8 exceptions, mixed-age couples on the Pension Credit route, and from 2.128.0 pension-age families moved onto Universal Credit when their legacy benefit closes, SI 2014/1230 reg 60A). So the contract rate is a share of those units, an anchor outside them stays true, and any other unit is never drawn; a unit with no claimant or partner of that age keeps its reported Housing Benefit, which a claim it cannot make no longer zeroes (#882, microcosm#867, microcosm#1095). The universal childcare flag is nested under the working-parent one. A unit that claims the extended hours claims the universal hours, and any other unit claims them at the contract's universal_childcare rate, the rate conditional on not claiming the extended hours; the extended draw is unchanged. childcare_copy_take_up later re-draws the childcare flags and hours of the support and CGT copies on their own benefit units. A child of whole-year age 0 or 1 in a unit that claims the working-parent hours uses them at the contract's extended_childcare_under_2_usage rate (DfE registers far fewer of the youngest eligible children than of those aged 2 to 4); a child that does not gets max_free_entitlement_hours_used 0, so the engine funds it no hours, and every other person keeps the engine's default of 30."
   },
   {
    "stage": "frs_person_draws",
@@ -6530,6 +6542,16 @@
      "distribution_key": "maximum_extended_childcare_hours_usage",
      "eligibility": "copy benefit units only, a unit whose household has a non-empty clone path (SPI support channel or income-band donor, CGT support split, high-value home support, CGT incidence clone, residential arm) or whose benunit_support_clone_index is positive; native units keep their frs_take_up draw",
      "seed": 0
+    },
+    {
+     "kind": "assign_binary_from_rate",
+     "output": "max_free_entitlement_hours_used",
+     "draw": "max_free_entitlement_hours_used",
+     "rate_key": "extended_childcare_under_2_usage",
+     "eligibility": "children of whole-year age 0 or 1 in copy benefit units that claim the working-parent hours, against the copy's re-drawn would_claim_extended_childcare; native persons keep their frs_take_up draws",
+     "assignment_unit": "person",
+     "rate_derivation": "as in frs_take_up, keyed on the copy's own person_id",
+     "seed": 0
     }
    ],
    "outputs": [],
@@ -6538,9 +6560,10 @@
     "would_claim_extended_childcare",
     "would_claim_universal_childcare",
     "would_claim_targeted_childcare",
-    "maximum_extended_childcare_hours_usage"
+    "maximum_extended_childcare_hours_usage",
+    "max_free_entitlement_hours_used"
    ],
-   "notes": "Runs after the last copy stage and before private_school_attendance, whose net-income ranking counts the childcare entitlements and Tax-Free Childcare. frs_take_up draws the childcare flags and the extended-hours usage on FRS benefit units before any copy exists, so every SPI support copy, income-band donor, high-value home support copy, CGT support copy, CGT incidence clone and residential arm inherited its host's draws, and a cell with few hosts fixed the take-up of all their copies. This stage re-draws would_claim_tfc, would_claim_extended_childcare, would_claim_universal_childcare (nested under the extended flag) and would_claim_targeted_childcare at the contract rates, and maximum_extended_childcare_hours_usage from the contract's clipped normal, for the copies only, with frs_take_up's own helper, seed 0 and output-name salts, keyed on the copy's own benunit_id. A copy's structural id is its source id plus a multiple of an offset above every id in the frame, so it is unique, differs from every native id and gives the copy streams independent of its host's; a rebuild of the same frame draws the same values. Native benefit units keep their frs_take_up draws. The anchored Child Benefit, Pension Credit and Universal Credit flags and would_claim_uc_childcare are left as they are."
+   "notes": "Runs after the last copy stage and before private_school_attendance, whose net-income ranking counts the childcare entitlements and Tax-Free Childcare. frs_take_up draws the childcare flags and the extended-hours usage on FRS benefit units before any copy exists, so every SPI support copy, income-band donor, high-value home support copy, CGT support copy, CGT incidence clone and residential arm inherited its host's draws, and a cell with few hosts fixed the take-up of all their copies. This stage re-draws would_claim_tfc, would_claim_extended_childcare, would_claim_universal_childcare (nested under the extended flag) and would_claim_targeted_childcare at the contract rates, and maximum_extended_childcare_hours_usage from the contract's clipped normal, for the copies only, with frs_take_up's own helper, seed 0 and output-name salts, keyed on the copy's own benunit_id. A copy's structural id is its source id plus a multiple of an offset above every id in the frame, so it is unique, differs from every native id and gives the copy streams independent of its host's; a rebuild of the same frame draws the same values. Native benefit units keep their frs_take_up draws. The anchored Child Benefit, Pension Credit and Universal Credit flags and would_claim_uc_childcare are left as they are. It also re-draws the copies' children's max_free_entitlement_hours_used, the under-2 usage, against their own unit's re-drawn working-parent flag, keyed on their own person_id."
   },
   {
    "stage": "private_school_attendance",

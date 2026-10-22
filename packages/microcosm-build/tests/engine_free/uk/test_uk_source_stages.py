@@ -381,6 +381,7 @@ class TestDeclaredOutputsAreWrittenColumns:
         from microcosm.build.uk_runtime.frs_take_up import (
             FRS_TAKE_UP_NONNEGATIVE_OUTPUT_COLUMNS,
             FRS_TAKE_UP_OUTPUT_COLUMNS,
+            FRS_TAKE_UP_PERSON_OUTPUT_COLUMNS,
         )
         from microcosm.build.uk_runtime.lcfs_consumption import (
             UK_LCFS_CONSUMPTION_NONNEGATIVE_OUTPUT_COLUMNS,
@@ -417,7 +418,10 @@ class TestDeclaredOutputsAreWrittenColumns:
         assert (
             stages["frs_education_grant_split"].rewrites == FRS_EDUCATION_GRANT_REWRITES
         )
-        assert stages["frs_take_up"].outputs == FRS_TAKE_UP_OUTPUT_COLUMNS
+        assert stages["frs_take_up"].outputs == (
+            *FRS_TAKE_UP_OUTPUT_COLUMNS,
+            *FRS_TAKE_UP_PERSON_OUTPUT_COLUMNS,
+        )
         assert (
             stages["frs_take_up"].nonnegative_outputs
             == FRS_TAKE_UP_NONNEGATIVE_OUTPUT_COLUMNS
@@ -596,6 +600,7 @@ class TestE3ManifestLockstep:
             "assign_binary_from_rate",
             "assign_binary_from_banded_rates",
             "assign_clipped_normal",
+            "assign_binary_from_rate",
         ]
         assert [op.kind for op in stages["frs_person_draws"].operations] == [
             "assign_binary_from_rate",
@@ -919,6 +924,7 @@ class TestE3ManifestLockstep:
             "extended_childcare",
             "universal_childcare",
             "targeted_childcare",
+            "extended_childcare_under_2_usage",
             "marriage_allowance",
             "tv_ownership_rate",
             "tv_licence_evasion_rate",

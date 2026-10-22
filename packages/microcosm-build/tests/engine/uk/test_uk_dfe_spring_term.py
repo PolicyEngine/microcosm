@@ -225,3 +225,26 @@ def test_a_child_placed_by_age_alone_is_classified() -> None:
     assert child[DFE_AGE_AT_31_DECEMBER] == 3
     assert child[DFE_SPRING_UNIVERSAL] == 1
     assert child[DFE_SPRING_WORKING_PARENT] == 1
+
+
+def test_a_child_under_two_that_does_not_use_its_hours_gets_none() -> None:
+    """The under-2 usage draw writes max_free_entitlement_hours_used 0 for a
+    child that does not use the working-parent hours (frs_take_up)."""
+
+    from policyengine_uk import CountryTaxBenefitSystem
+
+    from microcosm.build.uk_runtime.frs_take_up import (
+        UK_ENGINE_FREE_HOURS_DEFAULT,
+        UK_UNDER_TWO_USAGE_OUTPUT,
+    )
+
+    variable = CountryTaxBenefitSystem().variables[UK_UNDER_TWO_USAGE_OUTPUT]
+    assert variable.entity.key == "person"
+    assert not variable.formulas
+    assert variable.default_value == UK_ENGINE_FREE_HOURS_DEFAULT
+    (uses,) = _children(20240515)
+    (does_not,) = _children(20240515, hours=0.0)
+    assert uses["extended_childcare_entitlement_per_child"] > 0
+    assert uses[DFE_SPRING_WORKING_PARENT] == 1
+    assert does_not["extended_childcare_entitlement_per_child"] == 0
+    assert does_not[DFE_SPRING_WORKING_PARENT] == 0

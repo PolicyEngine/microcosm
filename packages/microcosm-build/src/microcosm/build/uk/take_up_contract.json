@@ -291,6 +291,26 @@
       }
     },
     {
+      "key": "extended_childcare_under_2_usage",
+      "output": "max_free_entitlement_hours_used",
+      "entity": "person",
+      "values": {
+        "2024-04-06": 0.75
+      },
+      "source": {
+        "source": "DfE Funded early education and childcare, January 2025 (reporting year 2025 headline figures)",
+        "agency": "DfE",
+        "citation": "The share of children under 2 in benefit units that claim the working-parent hours who use them. DfE registers far fewer of the youngest eligible children than of those aged 2 to 4, mostly for parental leave: in January 2025, 29,155 working parent registrations at 9 to 11 months and 195,104 at age 1, against 621,482 at ages 2 to 4. 0.75 is provisional, the registrations per eligible child at 9 to 11 months and age 1 relative to ages 2 to 4 in DfE's own estimates, until tools/fit_uk_childcare_takeup.py (tool version 6) fits it with the other childcare rates against the working parent rows at 9 to 11 months and age 1. Applied by frs_take_up (and childcare_copy_take_up for the copies) to each child of whole-year age 0 or 1 in a unit that claims the working-parent hours: a child that does not use them gets max_free_entitlement_hours_used 0, every other person the engine's default of 30.",
+        "url": "https://explore-education-statistics.service.gov.uk/find-statistics/funded-early-education-and-childcare/2025",
+        "status": "frozen_by_adjudication",
+        "freeze": {
+          "decision": "María's ruling of 2026-10-22 on Vahid's round-2 review of microcosm#1338 (\"bind them with their own take up\"): the under-2 working parent rows are bound with their own usage rate, provisional until the tool-version-6 refit",
+          "followup": "microcosm#1338"
+        }
+      },
+      "population": "children of whole-year age 0 or 1 in benefit units that claim the working-parent hours (would_claim_extended_childcare)"
+    },
+    {
       "key": "universal_childcare",
       "output": "would_claim_universal_childcare",
       "entity": "benunit",
