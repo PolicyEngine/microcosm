@@ -410,6 +410,7 @@ REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
         "tenure_type",
         "total_income_after_loss_relief",
         "uc_LCWRA_element",
+        "uc_benefit_cap_reduction_after_floor",
         "uc_calibration_administrative_family_type",
         "uc_calibration_child_count",
         "uc_calibration_has_child_under_one",

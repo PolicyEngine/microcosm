@@ -5501,7 +5501,7 @@
         "geography_level": "country",
         "geography_id": "K03000001"
       },
-      "entity": "household",
+      "entity": "benunit",
       "measure": "dwp/benefit_capped_households",
       "family": "dwp_benefit_cap",
       "period": 2025,

@@ -4438,11 +4438,11 @@
         "country"
       ],
       "measurement": {
-        "entity": "household",
-        "concept": "uk.household.count",
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
         "filters": [
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": ">",
             "value": 0
           },
@@ -4460,15 +4460,17 @@
       "bindings": {
         "policyengine": {
           "metric_name": "dwp/benefit_capped_households",
-          "reduce": "any",
-          "household_conditions": [
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
             {
-              "variable": "benefit_cap_reduction",
-              "entity": "benunit",
-              "reduce": "any",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": ">",
               "value": 0
-            },
+            }
+          ],
+          "notes": "GB benefit units whose Universal Credit award loses an amount to the benefit cap (uc_benefit_cap_reduction_after_floor above zero), against Benefit cap tables to November 2025, Table 4, GB total row (point-in-time UC households capped at November 2025). DWP's 'UC household' is the unit of assessment, so the total binds at benefit-unit grain on the same reduction as the amount bands, which partition it (microcosm#1349); it was a 0/1 household indicator on benefit_cap_reduction, the incumbent's measure (compute/benefits.py:14-21), which also counts the Housing Benefit cap. The publisher's GBP 320.9m total-reduction companion is a computed annualization - excluded per the facts-only ADR. Scoped to Great Britain (microcosm#1095, uk-data#490): the DWP benefit cap statistics cover Great Britain (K03000001), so the model counts Great Britain benefit units only.",
+          "household_conditions": [
             {
               "variable": "region",
               "entity": "household",
@@ -4487,16 +4489,14 @@
                 "WALES",
                 "SCOTLAND"
               ],
-              "map_to": "household"
+              "map_to": "benunit"
             }
-          ],
-          "value_variable": "household_count",
-          "notes": "0/1 household indicator, not a benunit headcount (compute/benefits.py:14-21). The publisher's GBP 320.9m total-reduction companion is a computed annualization - excluded per the facts-only ADR. Scoped to Great Britain (microcosm#1095, uk-data#490): the DWP benefit cap statistics cover Great Britain (K03000001), so the model counts Great Britain households only."
+          ]
         },
         "axiom": {
           "metric_name": "dwp/benefit_capped_households",
           "status": "pending",
-          "value_rule": "uk.household.count"
+          "value_rule": "uk.benefit_unit.count"
         }
       },
       "ledger_selector": {
@@ -19198,12 +19198,12 @@
         "concept": "uk.benefit_unit.count",
         "filters": [
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": ">",
             "value": 0
           },
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": "<=",
             "value": 1200
           },
@@ -19225,17 +19225,17 @@
           "from_entity": "benunit",
           "filters": [
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": ">",
               "value": 0
             },
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": "<=",
               "value": 1200
             }
           ],
-          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band Up to £100 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "notes": "GB benefit units whose Universal Credit award loses an amount to the benefit cap in the DWP amount band Up to £100 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The rows read uc_benefit_cap_reduction_after_floor, the regulation 81 reduction bounded by the award, because DWP counts Universal Credit households by the amount the award loses; benefit_cap_reduction also counts the Housing Benefit cap and the gross regulation 81 amount (microcosm#1349). The publisher band is a monthly amount; the engine's reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows and the total bind at benefit-unit grain. Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
           "household_conditions": [
             {
               "variable": "region",
@@ -19283,12 +19283,12 @@
         "concept": "uk.benefit_unit.count",
         "filters": [
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": ">",
             "value": 1200
           },
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": "<=",
             "value": 2400
           },
@@ -19310,17 +19310,17 @@
           "from_entity": "benunit",
           "filters": [
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": ">",
               "value": 1200
             },
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": "<=",
               "value": 2400
             }
           ],
-          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £100.01 to £200 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "notes": "GB benefit units whose Universal Credit award loses an amount to the benefit cap in the DWP amount band £100.01 to £200 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The rows read uc_benefit_cap_reduction_after_floor, the regulation 81 reduction bounded by the award, because DWP counts Universal Credit households by the amount the award loses; benefit_cap_reduction also counts the Housing Benefit cap and the gross regulation 81 amount (microcosm#1349). The publisher band is a monthly amount; the engine's reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows and the total bind at benefit-unit grain. Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
           "household_conditions": [
             {
               "variable": "region",
@@ -19368,12 +19368,12 @@
         "concept": "uk.benefit_unit.count",
         "filters": [
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": ">",
             "value": 2400
           },
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": "<=",
             "value": 3600
           },
@@ -19395,17 +19395,17 @@
           "from_entity": "benunit",
           "filters": [
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": ">",
               "value": 2400
             },
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": "<=",
               "value": 3600
             }
           ],
-          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £200.01 to £300 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "notes": "GB benefit units whose Universal Credit award loses an amount to the benefit cap in the DWP amount band £200.01 to £300 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The rows read uc_benefit_cap_reduction_after_floor, the regulation 81 reduction bounded by the award, because DWP counts Universal Credit households by the amount the award loses; benefit_cap_reduction also counts the Housing Benefit cap and the gross regulation 81 amount (microcosm#1349). The publisher band is a monthly amount; the engine's reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows and the total bind at benefit-unit grain. Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
           "household_conditions": [
             {
               "variable": "region",
@@ -19453,12 +19453,12 @@
         "concept": "uk.benefit_unit.count",
         "filters": [
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": ">",
             "value": 3600
           },
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": "<=",
             "value": 4800
           },
@@ -19480,17 +19480,17 @@
           "from_entity": "benunit",
           "filters": [
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": ">",
               "value": 3600
             },
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": "<=",
               "value": 4800
             }
           ],
-          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £300.01 to £400 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "notes": "GB benefit units whose Universal Credit award loses an amount to the benefit cap in the DWP amount band £300.01 to £400 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The rows read uc_benefit_cap_reduction_after_floor, the regulation 81 reduction bounded by the award, because DWP counts Universal Credit households by the amount the award loses; benefit_cap_reduction also counts the Housing Benefit cap and the gross regulation 81 amount (microcosm#1349). The publisher band is a monthly amount; the engine's reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows and the total bind at benefit-unit grain. Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
           "household_conditions": [
             {
               "variable": "region",
@@ -19538,12 +19538,12 @@
         "concept": "uk.benefit_unit.count",
         "filters": [
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": ">",
             "value": 4800
           },
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": "<=",
             "value": 6000
           },
@@ -19565,17 +19565,17 @@
           "from_entity": "benunit",
           "filters": [
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": ">",
               "value": 4800
             },
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": "<=",
               "value": 6000
             }
           ],
-          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £400.01 to £500 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "notes": "GB benefit units whose Universal Credit award loses an amount to the benefit cap in the DWP amount band £400.01 to £500 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The rows read uc_benefit_cap_reduction_after_floor, the regulation 81 reduction bounded by the award, because DWP counts Universal Credit households by the amount the award loses; benefit_cap_reduction also counts the Housing Benefit cap and the gross regulation 81 amount (microcosm#1349). The publisher band is a monthly amount; the engine's reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows and the total bind at benefit-unit grain. Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
           "household_conditions": [
             {
               "variable": "region",
@@ -19623,12 +19623,12 @@
         "concept": "uk.benefit_unit.count",
         "filters": [
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": ">",
             "value": 6000
           },
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": "<=",
             "value": 7200
           },
@@ -19650,17 +19650,17 @@
           "from_entity": "benunit",
           "filters": [
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": ">",
               "value": 6000
             },
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": "<=",
               "value": 7200
             }
           ],
-          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £500.01 to £600 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "notes": "GB benefit units whose Universal Credit award loses an amount to the benefit cap in the DWP amount band £500.01 to £600 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The rows read uc_benefit_cap_reduction_after_floor, the regulation 81 reduction bounded by the award, because DWP counts Universal Credit households by the amount the award loses; benefit_cap_reduction also counts the Housing Benefit cap and the gross regulation 81 amount (microcosm#1349). The publisher band is a monthly amount; the engine's reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows and the total bind at benefit-unit grain. Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
           "household_conditions": [
             {
               "variable": "region",
@@ -19708,12 +19708,12 @@
         "concept": "uk.benefit_unit.count",
         "filters": [
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": ">",
             "value": 7200
           },
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": "<=",
             "value": 8400
           },
@@ -19735,17 +19735,17 @@
           "from_entity": "benunit",
           "filters": [
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": ">",
               "value": 7200
             },
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": "<=",
               "value": 8400
             }
           ],
-          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £600.01 to £700 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "notes": "GB benefit units whose Universal Credit award loses an amount to the benefit cap in the DWP amount band £600.01 to £700 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The rows read uc_benefit_cap_reduction_after_floor, the regulation 81 reduction bounded by the award, because DWP counts Universal Credit households by the amount the award loses; benefit_cap_reduction also counts the Housing Benefit cap and the gross regulation 81 amount (microcosm#1349). The publisher band is a monthly amount; the engine's reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows and the total bind at benefit-unit grain. Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
           "household_conditions": [
             {
               "variable": "region",
@@ -19793,12 +19793,12 @@
         "concept": "uk.benefit_unit.count",
         "filters": [
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": ">",
             "value": 8400
           },
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": "<=",
             "value": 9600
           },
@@ -19820,17 +19820,17 @@
           "from_entity": "benunit",
           "filters": [
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": ">",
               "value": 8400
             },
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": "<=",
               "value": 9600
             }
           ],
-          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £700.01 to £800 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "notes": "GB benefit units whose Universal Credit award loses an amount to the benefit cap in the DWP amount band £700.01 to £800 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The rows read uc_benefit_cap_reduction_after_floor, the regulation 81 reduction bounded by the award, because DWP counts Universal Credit households by the amount the award loses; benefit_cap_reduction also counts the Housing Benefit cap and the gross regulation 81 amount (microcosm#1349). The publisher band is a monthly amount; the engine's reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows and the total bind at benefit-unit grain. Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
           "household_conditions": [
             {
               "variable": "region",
@@ -19878,12 +19878,12 @@
         "concept": "uk.benefit_unit.count",
         "filters": [
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": ">",
             "value": 9600
           },
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": "<=",
             "value": 10800
           },
@@ -19905,17 +19905,17 @@
           "from_entity": "benunit",
           "filters": [
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": ">",
               "value": 9600
             },
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": "<=",
               "value": 10800
             }
           ],
-          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £800.01 to £900 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "notes": "GB benefit units whose Universal Credit award loses an amount to the benefit cap in the DWP amount band £800.01 to £900 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The rows read uc_benefit_cap_reduction_after_floor, the regulation 81 reduction bounded by the award, because DWP counts Universal Credit households by the amount the award loses; benefit_cap_reduction also counts the Housing Benefit cap and the gross regulation 81 amount (microcosm#1349). The publisher band is a monthly amount; the engine's reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows and the total bind at benefit-unit grain. Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
           "household_conditions": [
             {
               "variable": "region",
@@ -19963,12 +19963,12 @@
         "concept": "uk.benefit_unit.count",
         "filters": [
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": ">",
             "value": 10800
           },
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": "<=",
             "value": 12000
           },
@@ -19990,17 +19990,17 @@
           "from_entity": "benunit",
           "filters": [
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": ">",
               "value": 10800
             },
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": "<=",
               "value": 12000
             }
           ],
-          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £900.01 to £1,000 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "notes": "GB benefit units whose Universal Credit award loses an amount to the benefit cap in the DWP amount band £900.01 to £1,000 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The rows read uc_benefit_cap_reduction_after_floor, the regulation 81 reduction bounded by the award, because DWP counts Universal Credit households by the amount the award loses; benefit_cap_reduction also counts the Housing Benefit cap and the gross regulation 81 amount (microcosm#1349). The publisher band is a monthly amount; the engine's reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows and the total bind at benefit-unit grain. Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
           "household_conditions": [
             {
               "variable": "region",
@@ -20048,12 +20048,12 @@
         "concept": "uk.benefit_unit.count",
         "filters": [
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": ">",
             "value": 12000
           },
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": "<=",
             "value": 13200
           },
@@ -20075,17 +20075,17 @@
           "from_entity": "benunit",
           "filters": [
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": ">",
               "value": 12000
             },
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": "<=",
               "value": 13200
             }
           ],
-          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £1,000.01 to £1,100 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "notes": "GB benefit units whose Universal Credit award loses an amount to the benefit cap in the DWP amount band £1,000.01 to £1,100 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The rows read uc_benefit_cap_reduction_after_floor, the regulation 81 reduction bounded by the award, because DWP counts Universal Credit households by the amount the award loses; benefit_cap_reduction also counts the Housing Benefit cap and the gross regulation 81 amount (microcosm#1349). The publisher band is a monthly amount; the engine's reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows and the total bind at benefit-unit grain. Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
           "household_conditions": [
             {
               "variable": "region",
@@ -20133,12 +20133,12 @@
         "concept": "uk.benefit_unit.count",
         "filters": [
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": ">",
             "value": 13200
           },
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": "<=",
             "value": 14400
           },
@@ -20160,17 +20160,17 @@
           "from_entity": "benunit",
           "filters": [
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": ">",
               "value": 13200
             },
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": "<=",
               "value": 14400
             }
           ],
-          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £1,100.01 to £1,200 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "notes": "GB benefit units whose Universal Credit award loses an amount to the benefit cap in the DWP amount band £1,100.01 to £1,200 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The rows read uc_benefit_cap_reduction_after_floor, the regulation 81 reduction bounded by the award, because DWP counts Universal Credit households by the amount the award loses; benefit_cap_reduction also counts the Housing Benefit cap and the gross regulation 81 amount (microcosm#1349). The publisher band is a monthly amount; the engine's reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows and the total bind at benefit-unit grain. Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
           "household_conditions": [
             {
               "variable": "region",
@@ -20218,12 +20218,12 @@
         "concept": "uk.benefit_unit.count",
         "filters": [
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": ">",
             "value": 14400
           },
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": "<=",
             "value": 15600
           },
@@ -20245,17 +20245,17 @@
           "from_entity": "benunit",
           "filters": [
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": ">",
               "value": 14400
             },
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": "<=",
               "value": 15600
             }
           ],
-          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £1,200.01 to £1,300 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "notes": "GB benefit units whose Universal Credit award loses an amount to the benefit cap in the DWP amount band £1,200.01 to £1,300 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The rows read uc_benefit_cap_reduction_after_floor, the regulation 81 reduction bounded by the award, because DWP counts Universal Credit households by the amount the award loses; benefit_cap_reduction also counts the Housing Benefit cap and the gross regulation 81 amount (microcosm#1349). The publisher band is a monthly amount; the engine's reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows and the total bind at benefit-unit grain. Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
           "household_conditions": [
             {
               "variable": "region",
@@ -20303,7 +20303,7 @@
         "concept": "uk.benefit_unit.count",
         "filters": [
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": ">",
             "value": 15600
           },
@@ -20325,12 +20325,12 @@
           "from_entity": "benunit",
           "filters": [
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": ">",
               "value": 15600
             }
           ],
-          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £1,300.01 and above per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "notes": "GB benefit units whose Universal Credit award loses an amount to the benefit cap in the DWP amount band £1,300.01 and above per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The rows read uc_benefit_cap_reduction_after_floor, the regulation 81 reduction bounded by the award, because DWP counts Universal Credit households by the amount the award loses; benefit_cap_reduction also counts the Housing Benefit cap and the gross regulation 81 amount (microcosm#1349). The publisher band is a monthly amount; the engine's reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows and the total bind at benefit-unit grain. Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
           "household_conditions": [
             {
               "variable": "region",
