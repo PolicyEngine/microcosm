@@ -158,6 +158,11 @@ def test_a_dry_run_refuses_an_uncovered_dense_cut_before_writing(monkeypatch, tm
     }
     monkeypatch.setattr(handoff, "read_cut", lambda tag, release: cuts[tag])
     monkeypatch.setattr(handoff, "writer_check", lambda tag, repo: [])
+    surfaces = {
+        "2.132.6": {"all": ["a", "b", "f"], "inputs": ["a", "b"]},
+        "2.134.4": {"all": ["a", "b", "f", "n"], "inputs": ["a", "b", "f", "n"]},
+    }
+    monkeypatch.setattr(handoff, "model_surface", lambda version: surfaces[version])
     monkeypatch.setattr(
         handoff.subprocess,
         "run",
@@ -185,6 +190,12 @@ def test_a_dry_run_refuses_an_uncovered_dense_cut_before_writing(monkeypatch, tm
         handoff.certify(args)
     args.accept_regional_model_mismatch = "area receipts are uncertified (#685)"
     assert handoff.certify(args) == 0
+    # A column the newer model no longer defines would be lost in area runs.
+    surfaces["2.134.4"] = {"all": ["b", "f", "n"], "inputs": ["b", "f", "n"]}
+    with pytest.raises(handoff.CertifyError, match="area runs would lose them: a"):
+        handoff.certify(args)
+    args.allow_dropped_columns = "a is retired upstream; reviewed"
+    assert handoff.certify(args) == 0
     another = handoff.parse(
         ["--national-tag", NATIONAL, "--dense-tag", DENSE, "--dry-run",
          "--pepy-repo", str(tmp_path)]
@@ -192,3 +203,60 @@ def test_a_dry_run_refuses_an_uncovered_dense_cut_before_writing(monkeypatch, tm
     monkeypatch.setattr(handoff, "writer_check", lambda tag, repo: ["#700 open"])
     with pytest.raises(handoff.CertifyError, match="already being certified"):
         handoff.certify(another)
+
+
+names = st.sets(st.from_regex(r"[a-z]{1,6}", fullmatch=True), max_size=12)
+
+
+@given(built_all=names, built_inputs=names, cert_all=names, cert_inputs=names)
+def test_the_input_surface_change_is_exact(
+    built_all, built_inputs, cert_all, cert_inputs
+):
+    """Dropped columns are the file's inputs the new model lacks entirely;
+    defaulted inputs are the new model's inputs the file cannot carry; an
+    input that became a formula is in neither, because its values load."""
+
+    built_all |= built_inputs
+    cert_all |= cert_inputs
+    change = handoff.input_surface_change(
+        {"all": sorted(built_all), "inputs": sorted(built_inputs)},
+        {"all": sorted(cert_all), "inputs": sorted(cert_inputs)},
+    )
+    assert set(change["dropped"]) == built_inputs - cert_all
+    assert set(change["defaulted"]) == cert_inputs - built_inputs
+    assert not set(change["dropped"]) & cert_all
+    assert not set(change["defaulted"]) & built_inputs
+    became_formula = built_inputs & (cert_all - cert_inputs)
+    assert not became_formula & (set(change["dropped"]) | set(change["defaulted"]))
+    assert change == handoff.input_surface_change(
+        {"all": sorted(built_all), "inputs": sorted(built_inputs)},
+        {"all": sorted(cert_all), "inputs": sorted(cert_inputs)},
+    )
+
+
+def test_an_unchanged_model_changes_nothing():
+    surface = {"all": ["a", "b"], "inputs": ["a"]}
+    assert handoff.input_surface_change(surface, surface) == {
+        "dropped": [],
+        "defaulted": [],
+    }
+
+
+def test_the_pr_body_lists_the_area_input_surface():
+    body = handoff.pr_body(
+        {
+            "national_tag": NATIONAL,
+            "model": "2.146.4",
+            "core": "3.33.3",
+            "regional_summary": "`--keep-regional-release`",
+            "microcosm_commit": "a" * 40,
+            "commands": [],
+            "input_surface": {
+                "dropped": [],
+                "defaulted": ["local_bus_uncapped_single_fare"],
+            },
+            "regional_model": "2.132.6",
+        }
+    )
+    assert "built on 2.132.6" in body
+    assert "local_bus_uncapped_single_fare" in body

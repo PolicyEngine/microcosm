@@ -245,6 +245,49 @@ def rewrite_regional_constants(
     return changed
 
 
+_SURFACE_SCRIPT = (
+    "import json; from policyengine_uk import CountryTaxBenefitSystem as S; "
+    "s = S(); print(json.dumps({'all': sorted(s.variables), 'inputs': sorted("
+    "n for n, v in s.variables.items() if v.is_input_variable())}))"
+)
+
+
+def model_surface(version: str) -> dict[str, list[str]]:
+    """Every variable and every input variable of one policyengine-uk version."""
+
+    result = subprocess.run(
+        [
+            "uv", "run", "--no-project", "--python", PEPY_PYTHON,
+            "--with", f"policyengine-uk=={version}", "python", "-c", _SURFACE_SCRIPT,
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+        env={k: v for k, v in os.environ.items() if k not in {"UV_FROZEN", "VIRTUAL_ENV"}},
+    )  # fmt: skip
+    return json.loads(result.stdout.strip().splitlines()[-1])
+
+
+def input_surface_change(
+    built: dict[str, list[str]], certified: dict[str, list[str]]
+) -> dict[str, list[str]]:
+    """What area runs lose when a file built on one model runs under another.
+
+    ``dropped``: the file's input columns the certified model no longer
+    defines; policyengine-core ignores them on load. ``defaulted``: inputs
+    of the certified model the file cannot carry (new variables, and
+    variables that were formulas when it was built), which take defaults.
+    A built input that became a formula is in neither: its stored values
+    still load.
+    """
+
+    built_inputs = set(built["inputs"])
+    return {
+        "dropped": sorted(built_inputs - set(certified["all"])),
+        "defaulted": sorted(set(certified["inputs"]) - built_inputs),
+    }
+
+
 def overlay_diff(old_bundle: dict, new_bundle: dict) -> list[str]:
     old = set((old_bundle.get("dataset_overlays") or {}).get("uk", {}) or {})
     new = set((new_bundle.get("dataset_overlays") or {}).get("uk", {}) or {})
@@ -286,6 +329,15 @@ def pr_body(context: dict[str, Any]) -> str:
             f"{', '.join(context['dropped_overlays'])}. Re-add any that must stay "
             "loadable from the previous bundle (as #685 did)."
         )
+    surface = context.get("input_surface")
+    if surface is not None:
+        lines.append(
+            "- [ ] **Area runs on the older local-area file** (accepted mismatch, "
+            f"built on {context.get('regional_model')}): columns ignored on load: "
+            f"{', '.join(surface['dropped']) or 'none'}; inputs that take defaults: "
+            f"{', '.join(surface['defaulted']) or 'none'}. Confirm none matters "
+            "for a reform the Budget dashboard shows by area."
+        )
     if context.get("warnings"):
         lines.append(
             "- [ ] **Certification warnings** (from `certify-data`):\n  "
@@ -316,6 +368,14 @@ def parse(argv: list[str] | None) -> argparse.Namespace:
         "--accept-regional-model-mismatch",
         metavar="REASON",
         help="forwarded to certify-data where policyengine.py supports it",
+    )
+    parser.add_argument(
+        "--allow-dropped-columns",
+        metavar="REASON",
+        help=(
+            "with an accepted mismatch, proceed although the newer model no "
+            "longer defines some of the regional file's input columns"
+        ),
     )
     parser.add_argument("--model-version", help="default: the cut's build-time model")
     parser.add_argument("--core-version", help="default: the cut's build-time core")
@@ -384,6 +444,7 @@ def certify(args: argparse.Namespace) -> int:
     flags = regional_flags(args, record)
     new_regional = regional_tag(flags)
     regional_summary = shlex.join(flags)
+    dense, surface = None, None
     if new_regional is not None:
         dense = read_cut(new_regional, DENSE_RELEASE)
         if not covers(dense, model):
@@ -397,6 +458,17 @@ def certify(args: argparse.Namespace) -> int:
                     "accepted, recorded mismatch (--accept-regional-model-mismatch) "
                     "where policyengine.py supports one."
                 )
+            surface = input_surface_change(
+                model_surface(dense.model), model_surface(model)
+            )
+            if surface["dropped"] and not args.allow_dropped_columns:
+                raise CertifyError(
+                    f"policyengine-uk {model} no longer defines these input columns "
+                    f"of the {dense.model} local-area file, so area runs would lose "
+                    f"them: {', '.join(surface['dropped'])}. Build a dense cut on "
+                    f"{model}, or pass --allow-dropped-columns with a reason."
+                )
+            print(json.dumps({"input_surface_change": surface}, indent=2))
             flags += [
                 "--accept-regional-model-mismatch",
                 args.accept_regional_model_mismatch,
@@ -522,6 +594,8 @@ def certify(args: argparse.Namespace) -> int:
         "constants": ", ".join(constants),
         "dropped_overlays": overlay_diff(old_bundle, new_bundle),
         "warnings": warnings,
+        "input_surface": surface,
+        "regional_model": dense.model if dense is not None else None,
     }
     body = worktree.parent / f"{worktree.name}.pr-body.md"
     body.write_text(pr_body(context))

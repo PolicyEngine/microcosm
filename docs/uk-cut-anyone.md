@@ -276,5 +276,35 @@ There are four routes:
 4. **An enhanced-FRS release that claims the version.** This needs a new
    uk-data release on Max's go.
 
-The choice is María's (runbook Q13). The recommendation and its evidence are
-in microcosm#1348.
+**Measured cost of route 2** (2026-10-22, from each version's variable list):
+
+- Run the 2.132.6 dense file under policyengine-uk 2.146.4, and no column is
+  dropped on load.
+- `pip_dl_category` and `pip_m_category` became formulas in 2.144.0, but the
+  file's stored values still load.
+- 13 inputs take their defaults in area runs:
+  - nine new: `defined_benefit_pension_share`, `is_full_year_category_a_director`,
+    `non_residential_property_secured_debt`, `other_residential_property_secured_debt`,
+    `pension_annual_allowance_taxable_lump_sum_death_benefits`,
+    `pension_contributions_via_salary_sacrifice_pre_2015`, `pip_dl_points`,
+    `pip_m_points` (unused while the stored categories load) and
+    `war_widows_pension_reported`;
+  - four former formulas: `salary_sacrifice_returned_to_income`,
+    `local_bus_uncapped_single_fare`, `additional_residential_property_purchased`
+    and `non_residential_property_purchased`.
+- National figures are unaffected. An area breakdown of a reform that works
+  through salary sacrifice, bus fares or those property flags would be wrong.
+- `tools/certify_uk_cut_in_policyengine_py.py` measures this difference
+  whenever a mismatch is accepted. It lists the difference in the pull
+  request, and refuses if any column would be dropped.
+
+**Recommendation.**
+
+- Use route 2 for the rolling re-cuts (Sat 24, Mon 26), so area routing
+  stays on and the mismatch is recorded.
+- For the final Budget pair, prefer route 1: a dense cut on the final
+  policyengine-uk, started by Monday, with route 2 as the fallback if it
+  misses the Wed 07:00 UTC go/no-go.
+- Routes 3 and 4 are not recommended.
+
+The choice is María's (runbook Q13).
