@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from functools import cache
@@ -28,6 +29,15 @@ from microcosm.build.ledger_targets import (
 )
 from microcosm.build.us_runtime.congressional_district_vintage import (
     translate_congressional_district_facts_to_current_vintage,
+)
+from microcosm.build.us_runtime.educational_attainment import (
+    S1501_ATTAINMENT_CATEGORY_CLASSES,
+    S1501_BINDING_UNIVERSE,
+    US_CPS_EDUCATIONAL_ATTAINMENT_COLUMN,
+    US_EDUCATIONAL_ATTAINMENT_CLASSES,
+    US_EDUCATIONAL_ATTAINMENT_CLASSES_METADATA_KEY,
+    US_EDUCATIONAL_ATTAINMENT_TARGET_FAMILY,
+    US_EDUCATIONAL_ATTAINMENT_TARGET_MATERIALIZER,
 )
 from microcosm.build.us_runtime.target_aging import (
     age_us_dollar_targets,
@@ -3103,6 +3113,11 @@ def _reference_from_ledger_fact(
     if source_name == "census_stc":
         return _state_income_tax_reference_from_fact(fact, target_period=target_period)
     if source_name == "census_acs":
+        if _s1501_state_attainment_record_set(fact) is not None:
+            return _acs_attainment_reference_from_fact(
+                fact,
+                target_period=target_period,
+            )
         if _geography_level(fact) != "congressional_district":
             return None
         return _population_age_reference_from_fact(
@@ -3480,6 +3495,129 @@ def _population_age_reference_from_fact(
             _source_name(fact),
             "resident_population",
         ),
+    )
+
+
+#: ACS S1501 state educational-attainment record sets
+#: (``packages/census/acs_s1501_state_2024``, PolicyEngine/chronicle#310):
+#: ``census_acs.acs1_<year>.s1501.state_attainment_<universe>.<state fips>``.
+_S1501_STATE_ATTAINMENT_RECORD_SET = re.compile(
+    r"census_acs\.acs1_(?P<year>\d{4})\.s1501\.state_attainment_"
+    r"(?P<universe>25_plus|18_to_24)\.(?P<fips>\d{2})"
+)
+#: The age band each S1501 universe must declare, as ``_age_bounds`` reads it.
+_S1501_UNIVERSE_AGE_BOUNDS = {"25_plus": ("25", "inf"), "18_to_24": ("18", "25")}
+US_EDUCATIONAL_ATTAINMENT_TARGET_ROLE = "population_educational_attainment"
+
+
+def _s1501_state_attainment_record_set(fact: object) -> re.Match[str] | None:
+    return _S1501_STATE_ATTAINMENT_RECORD_SET.fullmatch(
+        _str_at(fact, "layout", "record_set_id")
+    )
+
+
+def _acs_attainment_reference_from_fact(
+    fact: object,
+    *,
+    target_period: int | str,
+) -> LedgerTargetReference | None:
+    """Compile one ACS S1501 state attainment cell (microcosm#297).
+
+    Binds the population-25-and-over detail rows, one per state and class, as
+    person counts of the auxiliary ``cps_educational_attainment`` column in
+    the cell's age band. ACS population margins are raw survey quantities,
+    which the fact-to-target doctrine admits (docs/us-fact-to-target.md); no
+    tax-benefit quantity is involved. Returns ``None``, by design, for:
+
+    - the universe ``Total`` rows: the population level by state and age
+      binds from Census PEP, so a second, ACS-weighted level would only fight
+      it;
+    - the 18-to-24 universe: the ACS counts college students living in
+      dormitories in the state of their college (group quarters), while the
+      CPS counts them in their parents' household, so state cells at those
+      ages measure a different residence concept. The receipt reports them
+      held out;
+    - Puerto Rico and any geography outside the 50 states and DC.
+
+    A detail row whose category, age band or measure is not the reviewed one
+    raises rather than drops, so a changed package cannot bind silently wrong.
+    """
+
+    match = _s1501_state_attainment_record_set(fact)
+    if match is None:
+        return None
+    if match["universe"] != S1501_BINDING_UNIVERSE:
+        return None
+    if _geography_level(fact) != "state":
+        return None
+    state_fips = _state_fips(fact)
+    if state_fips is None:
+        return None
+    source_record_id = _source_record_id(fact)
+    if not source_record_id:
+        return None
+    categories = [
+        _str_at(row, "value")
+        for row in _constraint_rows(fact)
+        if _str_at(row, "variable") == "educational_attainment"
+    ]
+    if not categories:
+        return None
+    if len(categories) != 1 or any(
+        _str_at(row, "operator") != "=="
+        for row in _constraint_rows(fact)
+        if _str_at(row, "variable") == "educational_attainment"
+    ):
+        raise ValueError(
+            f"S1501 fact {source_record_id} declares educational_attainment "
+            "other than as one equality constraint."
+        )
+    category = categories[0]
+    classes = S1501_ATTAINMENT_CATEGORY_CLASSES.get(category)
+    if classes is None:
+        raise ValueError(
+            f"S1501 fact {source_record_id} has unreviewed attainment category "
+            f"{category!r}; reviewed: {sorted(S1501_ATTAINMENT_CATEGORY_CLASSES)}."
+        )
+    if _measure_id(fact) != "population":
+        raise ValueError(
+            f"S1501 fact {source_record_id} has measure {_measure_id(fact)!r}, "
+            "not population."
+        )
+    lower, upper = _age_bounds(fact)
+    expected_bounds = _S1501_UNIVERSE_AGE_BOUNDS[match["universe"]]
+    if (lower, upper) != expected_bounds:
+        raise ValueError(
+            f"S1501 fact {source_record_id} declares ages [{lower}, {upper}), "
+            f"not the {match['universe']} universe {list(expected_bounds)}."
+        )
+    metadata = {
+        "materializer": US_EDUCATIONAL_ATTAINMENT_TARGET_MATERIALIZER,
+        "measure_mode": "indicator_sum",
+        "source_measure_id": "population",
+        "source_period": str(_period_value(fact)),
+        "target_period": str(target_period),
+        "target_role": US_EDUCATIONAL_ATTAINMENT_TARGET_ROLE,
+        "geography_scope": "state",
+        "state_fips": state_fips,
+        "age_lower_bound": lower,
+        "age_upper_bound": upper,
+        AGE_BOUND_STAMP_SOURCE_KEY: _age_bound_stamp_source(fact),
+        "educational_attainment_category": category,
+        US_EDUCATIONAL_ATTAINMENT_CLASSES_METADATA_KEY: ",".join(
+            label for label in US_EDUCATIONAL_ATTAINMENT_CLASSES if label in classes
+        ),
+        "educational_attainment_column": US_CPS_EDUCATIONAL_ATTAINMENT_COLUMN,
+    }
+    return LedgerTargetReference(
+        name=source_record_id,
+        ledger_source_record_id=source_record_id,
+        entity="household",
+        measure=source_record_id,
+        period=target_period,
+        family=US_EDUCATIONAL_ATTAINMENT_TARGET_FAMILY,
+        metadata=metadata,
+        hierarchy=_us_hierarchy_seed("census_acs", "educational_attainment"),
     )
 
 

@@ -101,7 +101,8 @@
             "ledger_layout_record_set_id",
             "age_lower_bound",
             "age_upper_bound",
-            "age_group"
+            "age_group",
+            "educational_attainment_category"
           ]
         }
       }

@@ -186,6 +186,52 @@ binds them:
   band. `experiments/940-state-agi-bands/` measures pre-calibration support
   per state and band on the #982 fix's offline outputs.
 
+### ACS S1501 state attainment cells bind on an auxiliary column (microcosm#297)
+
+ACS population margins are raw survey quantities, so the doctrine above
+admits them. The compiler still admits `census_acs` only at
+congressional-district geography, with one exception:
+`_acs_attainment_reference_from_fact` binds the ACS 1-year S1501 state
+attainment record sets
+(`census_acs.acs1_<year>.s1501.state_attainment_25_plus.<st>`, Chronicle
+package `census/acs_s1501_state_2024`).
+
+- **Which rows.** The population-25-and-over detail rows, one per state and
+  class, for the 50 states and DC. The universe totals stay unbound, because
+  Census PEP binds population by state and age. The 18-to-24 universe stays
+  unbound too: the ACS counts dormitory residents in the state of their
+  college, and the CPS counts them in their parents' household. Puerto Rico
+  is outside the model. A detail row whose category, age band or measure is
+  not the reviewed one raises.
+- **The column.** Each row counts persons in its age band whose auxiliary
+  `cps_educational_attainment` class is the row's
+  (`microcosm.build.us_runtime.educational_attainment`; family
+  `census_educational_attainment`, materializer `population_attainment`).
+  The fiscal-refresh build writes the column with
+  `--cps-educational-attainment`. A frame without it refuses to materialize
+  the rows. The rows of one state differ only in their class, so the
+  congressional-district reconciliation rule in `fiscal_target_references.json`
+  matches on `educational_attainment_category` too.
+- **Levels.** The rows bind as levels. ACS 1-year weights are controlled to
+  the Census population estimates, so their 25-and-over totals sit close to
+  the PEP totals the release already binds. The receipt measures the gap per
+  state (`experiments/297-cps-educational-attainment-receipt.md`). If it
+  grows, rebase the rows onto the bound state population, as the AGI bands
+  are.
+- **Before they bind.** The CPS and the ACS split some college from
+  associate's degrees differently: on the published default the release
+  has fewer people with some college and more with an associate's degree
+  than S1501 in almost every state, and their sum is off by less than the
+  some-college cell alone. Binding the two cells separately would move weight
+  to settle a definition. The
+  `less_than_9th_grade` cells are also thin in small states. The receipt
+  measures both; the re-pin review decides whether to bind the seven cells
+  or merged ones.
+- **Feed.** The pinned feed carries no S1501 facts. When the re-pinned feed
+  adds them, regenerate the parity manifest, which then declares
+  `census_acs.acs1_2024` compiled. A release that compiles them must also
+  run with `--cps-educational-attainment`.
+
 ## 4. Keep the exclusion register honest
 
 `US_FISCAL_TARGET_SUPPORT_EXCLUSIONS` is keyed by `source_record_id` and its
