@@ -205,6 +205,21 @@ def _dead_support(
             position + 4,
             dtype=float,
         )
+    # The root stage writes the owner-manager flags as booleans that follow its
+    # rules, and no income share without an owner (microcosm#1095).
+    owners = np.array([True, False, True, False])
+    for column, values in {
+        "stands_as_sole_owner_or_partner_of_company": owners,
+        "is_engaged_in_owned_company_trade": owners,
+        "owned_company_is_main_employment": owners,
+        "owned_company_carries_on_trade": np.array([True, False, False, False]),
+        "owned_company_carries_on_property_business": np.array(
+            [False, False, True, False]
+        ),
+        "owned_company_income_share": np.where(owners, 0.5, 0.0),
+    }.items():
+        if column in person_columns:
+            person_columns[column] = values
     person_columns["tax_free_savings_income"] = np.zeros(4, dtype=float)
     person = pd.DataFrame(person_columns)
     benunit = pd.DataFrame({"benunit_id": np.arange(201, 205, dtype="int64")})

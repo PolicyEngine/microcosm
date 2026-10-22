@@ -48,6 +48,9 @@ from microcosm.build.uk_runtime.national_doctrine import (
     uk_national_target_loss_weights,
 )
 from microcosm.build.uk_runtime.national_frame import write_uk_national_frame
+from microcosm.build.uk_runtime.support_floor import (
+    load_uk_support_floor_declaration,
+)
 from microcosm.build.uk_runtime.terminal_gates import (
     uk_default_degenerate_reviewed_exclusions,
     uk_default_target_fit_reviewed_exclusions,
@@ -62,6 +65,7 @@ from microcosm.graph import ContentStore, KernelRegistry, compile_graph, run_gra
 from test_support.microcosm_build import uk_calibration_run as seam
 from test_support.microcosm_build.uk_calibration_run import (  # noqa: F401
     _cgt_projection,
+    _every_seam_row_published,
     _signing_key,
 )
 
@@ -194,6 +198,8 @@ def _review_date() -> str:
             uk_default_degenerate_reviewed_exclusions(),
             uk_default_input_mass_reviewed_exclusions(),
             load_uk_calibration_measure_exclusions(),
+            # The sparse-band support floor's signature (microcosm#1095 U3).
+            [load_uk_support_floor_declaration() or {}],
         )
         for record in records(register)
     ]
@@ -503,6 +509,35 @@ def test_national_gates_evaluate_the_seam_scope_and_record_the_evidence(
         "excluded_count": 0,
         "calibrated_count": 1,
     }
+
+
+def test_national_gates_withhold_a_thin_row_and_judge_only_the_published(
+    tmp_path, monkeypatch
+):
+    """María's rule of 2026-10-21 on the seam: the fixture's one row is thin.
+
+    Two source households carry it, so its figures stay in the build: the
+    evidence row is blank and flagged, the manifest's losses are read over the
+    published rows, and the fit gate, with no published row to judge, blocks
+    without naming the row.
+    """
+    from microcosm.build.uk_runtime import diagnostics
+
+    monkeypatch.setattr(diagnostics, "UK_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS", 10)
+    national, manifest, store, frame, registry = _run(tmp_path, monkeypatch)
+    row_name = registry.specs[0].to_target().row_name
+    evidence = json.loads(
+        _payload(manifest, store, NATIONAL_GATES_NODE, "calibration_evidence")
+    )
+    (row,) = evidence["diagnostics"]
+    assert row["name"] == row_name and row["model_figures_withheld"] is True
+    assert row["estimate"] is None and row["relative_error"] is None
+    calibration = evidence["calibration"]
+    assert calibration["totals_basis"] == "published_rows"
+    assert calibration["model_figures_withheld"] == 1
+    report = json.loads(_payload(manifest, store, NATIONAL_GATES_NODE, "gate_report"))
+    assert report["blocking"] == ["uk_target_fit"]
+    assert row_name.split("@")[0] not in json.dumps(report["report"])
 
 
 def test_national_problem_refuses_an_empty_register(tmp_path, monkeypatch):

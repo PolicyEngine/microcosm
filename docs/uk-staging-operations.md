@@ -135,7 +135,11 @@ Common options are `--staging-dir`, `--staging-repo-id`,
 `--staging-run-id`, `--staging-candidate-id`,
 `--staging-upload-interval-seconds`, and `--staging-read-back`. An empty
 repository identifier is invalid in remote mode. Authenticated read-back is
-valid only in remote mode.
+valid only in remote mode. Once read-back has passed or failed, its verdict
+owns the delivery's `last_error_code`: the refresh upload that follows a
+passed read-back is best effort, and if it fails the run keeps its verified
+delivery (the miss shows as an upload attempt without a success), while the
+remote copy may still show the delivery as it was before read-back.
 
 Version 2 and 3 storage use the fixed repository prefix `runs/`. Individual runs
 cannot select another prefix, so consumers can enumerate that subtree without

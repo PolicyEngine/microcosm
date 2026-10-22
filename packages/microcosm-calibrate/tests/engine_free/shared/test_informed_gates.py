@@ -377,3 +377,239 @@ def test_warm_start_probes_the_given_penalty_first_and_brackets_a_miss(monkeypat
     assert search["warm_edge_probe"]["steer"] == "smaller_penalty"
     assert search["stopped_on"] == "acceptable_within_tolerance"
     assert search["selected_feasible"] is True
+
+
+def _stub_budget_search(monkeypatch, thresholds, **kwargs):
+    """Run the feasibility-aware mass-basis search on the stub optimizer.
+
+    Returns the result and the progress events. ``thresholds`` sets, per
+    record, the log10 penalty below which its gate opens (sharpness 10 per
+    decade), so the open mass is a known, monotone function of the penalty.
+    """
+    import numpy as np
+    import pandas as pd
+
+    from microcosm.calibrate import Target, TargetSet, calibrate
+    from microcosm.calibrate import solve as solve_module
+    from microcosm.calibrate.solve import BUDGET_BASIS_OPEN_PROBABILITY_MASS
+    from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
+
+    n = len(thresholds)
+    monkeypatch.setattr(
+        solve_module, "_optimize", _stub_polarised_optimizer(thresholds, 10.0)
+    )
+    household = pd.DataFrame({"household_id": np.arange(1, n + 1)})
+    person = pd.DataFrame(
+        {"person_id": np.arange(1, n + 1), "person_household_id": np.arange(1, n + 1)}
+    )
+    frame = Frame(
+        {"person": person, "household": household},
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(np.ones(n), WeightKind.DESIGN)},
+    )
+    targets = TargetSet(
+        [Target("count", "household", lambda f: np.ones(f.n("household")), n / 2)]
+    )
+    events: list[dict] = []
+    options = dict(
+        epochs=3,
+        seed=1,
+        budget_iters=10,
+        target_records=n // 2,
+        budget_basis=BUDGET_BASIS_OPEN_PROBABILITY_MASS,
+        feasible_draw_pi_hi=0.95,
+        progress_callback=events.append,
+    )
+    options.update(kwargs)
+    return calibrate(frame, targets, **options), events
+
+
+def _probed(search):
+    return [probe["l0_lambda"] for probe in search["probes"]]
+
+
+def _assert_no_repeated_probe(search):
+    import math
+
+    logs = [math.log10(lam) for lam in _probed(search)]
+    for i, left in enumerate(logs):
+        for right in logs[i + 1 :]:
+            assert abs(left - right) > 1e-6, _probed(search)
+
+
+_UK_BRACKET = (1e-10, 10.0)
+
+
+def test_a_lower_bracket_settles_below_the_default_floor(monkeypatch):
+    """microcosm#1301: a budget that needs a penalty near 10^-8.5 settles
+    below 1e-7 when the caller's bracket reaches it, and the default bracket
+    refuses the warm start rather than clamping it to 1e-7."""
+    import numpy as np
+
+    n = 1000
+    # Open thresholds uniform on [-10.5, -6.5]: half the gates are open near
+    # 10^-8.5, far below the default floor.
+    thresholds = -10.5 + 4.0 * (np.arange(n) + 0.5) / n
+    result, events = _stub_budget_search(
+        monkeypatch, thresholds, l0_lambda=2.5e-8, budget_search_bracket=_UK_BRACKET
+    )
+    search = result.options["budget_search"]
+    assert search["search_bracket"] == {"lower": 1e-10, "upper": 10.0}
+    assert search["stopped_on"] == "acceptable_within_tolerance"
+    assert search["selected_feasible"] is True
+    assert result.l0_lambda < 1e-7
+    assert search["probes"][0]["l0_lambda"] == 2.5e-8
+    assert all(1e-10 <= lam <= 10.0 for lam in _probed(search))
+    _assert_no_repeated_probe(search)
+    done = [e for e in events if e.get("kind") == "budget_search_done"]
+    assert done[0]["stopped_on"] == search["stopped_on"]
+    assert done[0]["search_bracket"] == search["search_bracket"]
+
+    with pytest.raises(ValueError, match="bracket"):
+        _stub_budget_search(monkeypatch, thresholds, l0_lambda=2.5e-8)
+
+
+def test_the_search_stops_on_the_floor_instead_of_reprobing_it(monkeypatch):
+    """microcosm#1301: the 100,000-household search probed 1.9e-7, then 1e-7,
+    then 1e-7 again on a bracket collapsed onto the floor. When even the
+    floor opens too little mass the search now stops there by name."""
+    import numpy as np
+
+    n = 1000
+    # Every gate opens only below 10^-10.3: no penalty in either bracket
+    # opens enough mass.
+    thresholds = -12.5 + 2.2 * (np.arange(n) + 0.5) / n
+
+    replay, events = _stub_budget_search(monkeypatch, thresholds, l0_lambda=1.9e-7)
+    search = replay.options["budget_search"]
+    assert search["search_bracket"] == {"lower": 1e-7, "upper": 10.0}
+    assert _probed(search) == pytest.approx([1.9e-7, 1e-7])
+    assert search["evaluations"] == 2
+    assert search["warm_edge_probe"]["steer"] == "smaller_penalty"
+    assert search["stopped_on"] == "search_floor_reached"
+    done = [e for e in events if e.get("kind") == "budget_search_done"]
+    assert len(done) == 1 and done[0]["stopped_on"] == "search_floor_reached"
+    _assert_no_repeated_probe(search)
+
+    # A warm start on the floor that asks for a smaller penalty stops at
+    # once; it is never sent half a decade upward.
+    on_floor, _ = _stub_budget_search(monkeypatch, thresholds, l0_lambda=1e-7)
+    search = on_floor.options["budget_search"]
+    assert _probed(search) == [1e-7]
+    assert search["warm_edge_probe"] is None
+    assert search["stopped_on"] == "search_floor_reached"
+
+    # The same within three probes on a caller's lower floor.
+    lower, _ = _stub_budget_search(
+        monkeypatch, thresholds, l0_lambda=1.5e-10, budget_search_bracket=_UK_BRACKET
+    )
+    search = lower.options["budget_search"]
+    assert _probed(search) == pytest.approx([1.5e-10, 1e-10])
+    assert search["stopped_on"] == "search_floor_reached"
+    _assert_no_repeated_probe(search)
+
+
+def test_the_search_stops_on_the_ceiling_by_name(monkeypatch):
+    import numpy as np
+
+    n = 1000
+    # Every gate stays open up to 10^2.3: no penalty in the bracket closes
+    # enough of them.
+    thresholds = 2.3 + 2.2 * (np.arange(n) + 0.5) / n
+    near, _ = _stub_budget_search(monkeypatch, thresholds, l0_lambda=5.0)
+    search = near.options["budget_search"]
+    assert _probed(search) == pytest.approx([5.0, 10.0])
+    assert search["warm_edge_probe"]["steer"] == "larger_penalty"
+    assert search["stopped_on"] == "search_ceiling_reached"
+    _assert_no_repeated_probe(search)
+
+    on_ceiling, _ = _stub_budget_search(monkeypatch, thresholds, l0_lambda=10.0)
+    search = on_ceiling.options["budget_search"]
+    assert _probed(search) == [10.0]
+    assert search["stopped_on"] == "search_ceiling_reached"
+
+
+def test_a_warm_search_probes_the_bound_beyond_its_edge(monkeypatch):
+    """microcosm#1301: a warm start far from the floor whose edge still asks
+    for a smaller penalty probes the floor next. An unreachable budget stops
+    there by name in three probes; it no longer bisects toward the floor
+    until all ten probes are spent without ever measuring it. The ceiling
+    mirrors it."""
+    import numpy as np
+
+    n = 1000
+    # Every gate opens only below 10^-10.3, beyond the UK floor of 1e-10.
+    unreachable = -12.5 + 2.2 * (np.arange(n) + 0.5) / n
+    result, events = _stub_budget_search(
+        monkeypatch, unreachable, l0_lambda=2.5e-8, budget_search_bracket=_UK_BRACKET
+    )
+    search = result.options["budget_search"]
+    assert search["evaluations"] <= 3
+    assert _probed(search)[-1] == pytest.approx(1e-10)
+    assert search["warm_edge_probe"]["steer"] == "smaller_penalty"
+    assert search["stopped_on"] == "search_floor_reached"
+    done = [e for e in events if e.get("kind") == "budget_search_done"]
+    assert done[0]["stopped_on"] == "search_floor_reached"
+    _assert_no_repeated_probe(search)
+
+    # A budget between the floor and the edge: the floor steers back, and
+    # the search interpolates between the two measured ends.
+    below_edge = -11.5 + 4.0 * (np.arange(n) + 0.5) / n
+    settled, _ = _stub_budget_search(
+        monkeypatch, below_edge, l0_lambda=2.5e-8, budget_search_bracket=_UK_BRACKET
+    )
+    search = settled.options["budget_search"]
+    assert _probed(search)[2] == pytest.approx(1e-10)
+    assert search["stopped_on"] == "acceptable_within_tolerance"
+    assert search["selected_feasible"] is True
+    assert search["evaluations"] <= 6
+    _assert_no_repeated_probe(search)
+
+    # Every gate stays open up to 10^2.3, beyond the ceiling of 10.
+    ceiling = 2.3 + 2.2 * (np.arange(n) + 0.5) / n
+    result, _ = _stub_budget_search(
+        monkeypatch, ceiling, l0_lambda=1e-3, budget_search_bracket=_UK_BRACKET
+    )
+    search = result.options["budget_search"]
+    assert search["evaluations"] <= 3
+    assert _probed(search)[-1] == pytest.approx(10.0)
+    assert search["stopped_on"] == "search_ceiling_reached"
+    _assert_no_repeated_probe(search)
+
+
+def test_out_of_bracket_warm_starts_and_malformed_brackets_are_refused(monkeypatch):
+    import numpy as np
+
+    thresholds = -7.12 + 8.0 * (np.arange(1000) + 0.5) / 1000
+    for warm in (2.5e-8, 20.0):
+        with pytest.raises(ValueError, match="outside the L0 search bracket"):
+            _stub_budget_search(monkeypatch, thresholds, l0_lambda=warm)
+    with pytest.raises(ValueError, match="outside the L0 search bracket"):
+        _stub_budget_search(
+            monkeypatch, thresholds, l0_lambda=5e-11, budget_search_bracket=_UK_BRACKET
+        )
+    for bracket in (
+        (1e-7,),
+        (10.0, 1e-7),
+        (0.0, 1.0),
+        (float("nan"), 1.0),
+        (1e-10, float("inf")),
+        (True, 10.0),
+        "1e-10,10",
+    ):
+        with pytest.raises(ValueError, match="budget_search_bracket"):
+            _stub_budget_search(monkeypatch, thresholds, budget_search_bracket=bracket)
+    with pytest.raises(ValueError, match="budget_search_bracket"):
+        _stub_budget_search(
+            monkeypatch,
+            thresholds,
+            target_records=None,
+            budget_basis="nonzero_count",
+            feasible_draw_pi_hi=None,
+            budget_search_bracket=_UK_BRACKET,
+        )
+    # The default bracket is unchanged: the cold path still opens at 1e-3.
+    cold, _ = _stub_budget_search(monkeypatch, thresholds)
+    search = cold.options["budget_search"]
+    assert search["search_bracket"] == {"lower": 1e-7, "upper": 10.0}
+    assert search["probes"][0]["l0_lambda"] == 1e-3

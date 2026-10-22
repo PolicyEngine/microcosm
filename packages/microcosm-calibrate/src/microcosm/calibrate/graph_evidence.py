@@ -154,7 +154,14 @@ def result_summary_data(result, ordered) -> dict:
     }
 
 
-def result_summary(context: ArtifactSummaryContext) -> dict:
+def summary_result(context: ArtifactSummaryContext):
+    """The calibration result a summary describes, and its ordered problem.
+
+    The result is decoded against the node's saved population and checked
+    against any solution the node recorded, so a country provider can read
+    more of it than :func:`result_summary_data` does.
+    """
+
     ordered = decode_problem(_problem_payload(context))
     version = context.run.compiled.versions[context.node_id]
     receipt = context.run.manifest.nodes[version]
@@ -202,7 +209,11 @@ def result_summary(context: ArtifactSummaryContext) -> dict:
                 raise ValueError(
                     "Calibration result disagrees with its recorded solution."
                 )
-    return result_summary_data(result, ordered)
+    return result, ordered
+
+
+def result_summary(context: ArtifactSummaryContext) -> dict:
+    return result_summary_data(*summary_result(context))
 
 
 CALIBRATION_SUMMARY_PROVIDERS = {

@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import io
 import json
+import os
+from importlib import resources as importlib_resources
 from pathlib import Path
 
 import numpy as np
@@ -13,6 +16,7 @@ import pytest
 
 from microcosm.build.uk_runtime import high_value_home_stock as hv
 from microcosm.build.uk_runtime import high_value_homes
+from microcosm.build.uk_runtime.chronicle_feed import load_uk_chronicle_feed
 from test_support.paths import paths_for
 
 PATHS = paths_for("microcosm-build")
@@ -623,3 +627,115 @@ def test_committed_resource_loads_and_matches_the_crosswalk() -> None:
         t.basis_gbp for t in facts.thresholds
     )
     assert all(t.basis_gbp < t.nominal_gbp for t in facts.thresholds)
+
+
+# ----------------------------------------------------------------------------
+# The stock's feed inputs on the pinned feed (microcosm#1302 review)
+
+_PINNED_FEED_NAME = ".codex-work/consumer_facts_uk.jsonl"
+
+#: What the stock builder reads from the feed (the census tenure shares by
+#: local authority, the OBR non-owner-occupied share and that fact's key, the
+#: HPSSA seat cells), fingerprinted by ``_stock_feed_inputs`` on each feed a
+#: committed stock was built from, keyed by that feed's ``facts_sha256`` as the
+#: stock's provenance records it (``ledger_feed``). A stock rebuilt on a new
+#: feed records the new feed's fingerprint here.
+_STOCK_FEED_INPUTS_BY_BUILT_FEED = {
+    # 735820c (microcosm#1240); abf0921 carries the same (microcosm#1300).
+    "3033e437ed61d7d5e970f4fef34a2a5523fe068770a7798e5768af656f2a48a4": (
+        "0547b04ed9fed5d09a8e358c35e42cbbab4f5a82e865be36c77b375bc3b8ed7a"
+    ),
+}
+
+
+def _stock_provenance() -> dict:
+    return json.loads(
+        importlib_resources.files("microcosm.build.uk")
+        .joinpath("high_value_home_stock.provenance.json")
+        .read_text(encoding="utf-8")
+    )
+
+
+def _stock_feed_inputs(feed: Path) -> tuple[str, str]:
+    """Stream the feed: its sha256, and the fingerprint of what the stock reads.
+
+    The builder's own readers run over every row that carries one of their
+    selectors' strings, so no row they read is left out, and only those rows
+    are parsed.
+    """
+
+    tool = _load_tool("build_uk_high_value_home_stock")
+    markers = tuple(
+        marker.encode()
+        for marker in (
+            tool.TENURE_SPEC_PREFIX,
+            tool.OBR_SHARE_CONCEPT,
+            tool.HPSSA_SALES_CONCEPT,
+            tool.HPSSA_MEDIAN_CONCEPT,
+        )
+    )
+    digest = hashlib.sha256()
+    facts = []
+    with feed.open("rb") as stream:
+        for line in stream:
+            digest.update(line)
+            if any(marker in line for marker in markers):
+                facts.append(json.loads(line))
+    private_share, owner_share, tenure = tool._tenure_shares(facts)
+    obr_share, obr_key = tool._obr_non_owner_share(facts)
+    inputs = {
+        "tenure": {
+            "private_share": private_share,
+            "owner_share": owner_share,
+            "record_set_spec_ids": tenure["tenure_record_set_spec_ids"],
+        },
+        "obr_non_owner_share": {"value": obr_share, "fact_key": obr_key},
+        "hpssa": {
+            measure: sorted([*key, value] for key, value in cells.items())
+            for measure, cells in tool._hpssa_feed_cells(facts).items()
+        },
+    }
+    fingerprint = hashlib.sha256(
+        json.dumps(inputs, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    return digest.hexdigest(), fingerprint
+
+
+def test_the_stock_records_the_inputs_of_the_feed_it_was_built_from() -> None:
+    built_on = _stock_provenance()["ledger_feed"]["facts_sha256"]
+    assert built_on in _STOCK_FEED_INPUTS_BY_BUILT_FEED, (
+        f"The stock was built on the feed with facts_sha256 {built_on}, whose "
+        "inputs fingerprint is not recorded: run "
+        "test_the_pinned_feed_carries_the_inputs_the_stock_was_built_from with "
+        "CHRONICLE_UK_FACTS on that feed and record the fingerprint it reports."
+    )
+
+
+def test_the_pinned_feed_carries_the_inputs_the_stock_was_built_from() -> None:
+    """The re-pin procedure's stock check (docs/uk-chronicle-feed-repin.md).
+
+    A re-pin whose feed carries the stock's inputs unchanged leaves the stock
+    as built, and its provenance keeps naming the feed it was built from; one
+    that moves them needs the stock rebuilt.
+    """
+
+    configured = os.environ.get("CHRONICLE_UK_FACTS")
+    feed = Path(configured) if configured else PATHS.repository / _PINNED_FEED_NAME
+    if feed.is_dir():
+        feed = feed / "consumer_facts.jsonl"
+    if not feed.is_file():
+        pytest.skip("pinned UK Chronicle consumer feed is not present")
+    facts_sha256, inputs = _stock_feed_inputs(feed)
+    assert facts_sha256 == load_uk_chronicle_feed().facts_sha256
+    built_on = _stock_provenance()["ledger_feed"]["facts_sha256"]
+    recorded = _STOCK_FEED_INPUTS_BY_BUILT_FEED.get(built_on)
+    assert recorded is not None, (
+        f"No inputs fingerprint is recorded for the feed the stock was built "
+        f"from ({built_on}); on the pinned feed the stock's inputs fingerprint "
+        f"to {inputs}: record it if the stock was built on this feed."
+    )
+    assert inputs == recorded, (
+        "The high-value home stock's feed inputs differ on the pinned feed from "
+        "those it was built from: rebuild it with "
+        "tools/build_uk_high_value_home_stock.py (docs/uk-chronicle-feed-repin.md)."
+    )
