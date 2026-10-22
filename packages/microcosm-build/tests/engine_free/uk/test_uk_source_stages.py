@@ -109,13 +109,12 @@ E8_STAGE_NAMES = [
     "hmrc_cgt_asset_type_spine",
     "salary_sacrifice",
     "student_loans",
-    # microcosm#1095: the stored private-school attendance runs after the
-    # CGT stages.
-    "private_school_attendance",
-]
-# The copies' childcare re-draw runs after every copy stage, last.
-CHILDCARE_COPY_TAKE_UP_STAGE_NAMES = [
+    # The copies' childcare re-draw runs after every copy stage, before the
+    # private-school attendance ranks households on net income (which counts
+    # the childcare entitlements).
     "childcare_copy_take_up",
+    # microcosm#1095: the stored private-school attendance runs last.
+    "private_school_attendance",
 ]
 UK_SOURCE_STAGE_NAMES = [
     "frs_spine",
@@ -137,7 +136,6 @@ UK_SOURCE_STAGE_NAMES = [
     *CARERS_ALLOWANCE_TAKE_UP_STAGE_NAMES,
     *E9_STAGE_NAMES,
     *E8_STAGE_NAMES,
-    *CHILDCARE_COPY_TAKE_UP_STAGE_NAMES,
 ]
 
 
@@ -233,8 +231,7 @@ class TestUKSourceStagesManifest:
         canonical = _load_json(CANONICAL_SOURCE_STAGES)
         names = [stage["stage"] for stage in canonical["stages"]]
         start = names.index(E8_STAGE_NAMES[0])
-        # Only the copies' childcare re-draw follows the E8 block.
-        assert names[start:] == [*E8_STAGE_NAMES, *CHILDCARE_COPY_TAKE_UP_STAGE_NAMES]
+        assert names[start:] == E8_STAGE_NAMES
         assert "frs_hmrc_retained_leaves" not in names
         assert "hmrc_spi_income" not in names
 

@@ -6479,41 +6479,6 @@
    "notes": "Reported borrowers are PAYE repayers, classified without a country gate, and, in England and Wales, adults who report an outstanding loan (FRS SLOS) and are not in full-time education, the borrowers below the repayment threshold (microcosm#868). A course starts three years before its borrower left full-time education (FRS EDUCLEFT), or at 18 without an answer, and its start year sets the plan, except that before 2026 a repayer never takes PLAN_5: nobody repays a Plan 5 loan before April 2026, so SLC counts no Plan 5 borrower above the threshold in academic year 2024/25. England tertiary cohorts are then topped up PLAN_5 first and PLAN_2 second to the pinned liable stocks at the FRS release calibration year. The PLAN_2 walk takes nobody in full-time education, since a student is not yet liable to repay; the PLAN_5 walk keeps the age rule, since its starters have mostly not left education. The stocks are SLC academic year 2024/25, whose reference date falls in calendar 2025, the year the borrower targets bind (ruling of 2026-10-16). PLAN_4 is never imputed, and a Scottish or Northern Irish answer of an outstanding loan assigns no plan."
   },
   {
-   "stage": "private_school_attendance",
-   "survey": "policyengine-uk private-school attendance imputation, stored at the spine's weights",
-   "source": "policyengine-uk attends_private_school (the gov.simulation.private_school_vat attendance rates and factor), evaluated by the pinned engine",
-   "grain": "person",
-   "artifacts": [
-    {
-     "role": "frs_release",
-     "kind": "public_aggregate_reference",
-     "resource": "frs_release.json",
-     "format": "json",
-     "runtime_sha256_required": true
-    }
-   ],
-   "operations": [
-    {
-     "kind": "store_rules_engine_input",
-     "output": "attends_private_school",
-     "draw": "attends_private_school_random_draw",
-     "year_rule": "calibration_year",
-     "weights": "spine_design_weights"
-    },
-    {
-     "kind": "record_mass_conservation_receipt",
-     "entity": "household",
-     "reason": "Private-school attendance stored on the source spine: household weights pass through unchanged and total household mass is conserved.",
-     "declared_factor": 1.0,
-     "gate_coupling": "The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason."
-    }
-   ],
-   "outputs": [
-    "attends_private_school"
-   ],
-   "notes": "The last spine stage (uk-data#568, microcosm#1095). policyengine-uk imputes attends_private_school with a formula that ranks households by net income at their weights and compares a percentile rate, scaled to the national pupil count, with the stored attends_private_school_random_draw. Left to the formula, attendance is re-imputed in every simulation, so a reform to income tax, National Insurance or benefits switches pupils in or out, a population under one million people of weight imputes none (pe-uk#1905), and the calibration and the release read different flags once the weights change. This stage materializes the engine's attendance once, at the calibration year and the spine's design weights, and stores it, as the root stage stores months_since_last_birthday, so the solve and the release read the same flags; no stage after it copies or re-keys a person. Stored attendance no longer responds to income changes or to reforms of the attendance parameters, and a reform to the fee VAT does not move pupils either way in the pinned engine."
-  },
-  {
    "stage": "childcare_copy_take_up",
    "survey": "Family Resources Survey 2024-25",
    "source": "The UK take-up contract's childcare rates and extended-hours usage distribution, as frs_take_up draws them, applied to the support and CGT copies on their own benefit units.",
@@ -6575,7 +6540,42 @@
     "would_claim_targeted_childcare",
     "maximum_extended_childcare_hours_usage"
    ],
-   "notes": "Runs after the last copy stage and before calibration. frs_take_up draws the childcare flags and the extended-hours usage on FRS benefit units before any copy exists, so every SPI support copy, income-band donor, high-value home support copy, CGT support copy, CGT incidence clone and residential arm inherited its host's draws, and a cell with few hosts fixed the take-up of all their copies. This stage re-draws would_claim_tfc, would_claim_extended_childcare, would_claim_universal_childcare (nested under the extended flag) and would_claim_targeted_childcare at the contract rates, and maximum_extended_childcare_hours_usage from the contract's clipped normal, for the copies only, with frs_take_up's own helper, seed 0 and output-name salts, keyed on the copy's own benunit_id. A copy's structural id is its source id plus a multiple of an offset above every id in the frame, so it is unique, differs from every native id and gives the copy streams independent of its host's; a rebuild of the same frame draws the same values. Native benefit units keep their frs_take_up draws. The anchored Child Benefit, Pension Credit and Universal Credit flags and would_claim_uc_childcare are left as they are."
+   "notes": "Runs after the last copy stage and before private_school_attendance, whose net-income ranking counts the childcare entitlements and Tax-Free Childcare. frs_take_up draws the childcare flags and the extended-hours usage on FRS benefit units before any copy exists, so every SPI support copy, income-band donor, high-value home support copy, CGT support copy, CGT incidence clone and residential arm inherited its host's draws, and a cell with few hosts fixed the take-up of all their copies. This stage re-draws would_claim_tfc, would_claim_extended_childcare, would_claim_universal_childcare (nested under the extended flag) and would_claim_targeted_childcare at the contract rates, and maximum_extended_childcare_hours_usage from the contract's clipped normal, for the copies only, with frs_take_up's own helper, seed 0 and output-name salts, keyed on the copy's own benunit_id. A copy's structural id is its source id plus a multiple of an offset above every id in the frame, so it is unique, differs from every native id and gives the copy streams independent of its host's; a rebuild of the same frame draws the same values. Native benefit units keep their frs_take_up draws. The anchored Child Benefit, Pension Credit and Universal Credit flags and would_claim_uc_childcare are left as they are."
+  },
+  {
+   "stage": "private_school_attendance",
+   "survey": "policyengine-uk private-school attendance imputation, stored at the spine's weights",
+   "source": "policyengine-uk attends_private_school (the gov.simulation.private_school_vat attendance rates and factor), evaluated by the pinned engine",
+   "grain": "person",
+   "artifacts": [
+    {
+     "role": "frs_release",
+     "kind": "public_aggregate_reference",
+     "resource": "frs_release.json",
+     "format": "json",
+     "runtime_sha256_required": true
+    }
+   ],
+   "operations": [
+    {
+     "kind": "store_rules_engine_input",
+     "output": "attends_private_school",
+     "draw": "attends_private_school_random_draw",
+     "year_rule": "calibration_year",
+     "weights": "spine_design_weights"
+    },
+    {
+     "kind": "record_mass_conservation_receipt",
+     "entity": "household",
+     "reason": "Private-school attendance stored on the source spine: household weights pass through unchanged and total household mass is conserved.",
+     "declared_factor": 1.0,
+     "gate_coupling": "The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason."
+    }
+   ],
+   "outputs": [
+    "attends_private_school"
+   ],
+   "notes": "The last spine stage (uk-data#568, microcosm#1095). policyengine-uk imputes attends_private_school with a formula that ranks households by net income at their weights and compares a percentile rate, scaled to the national pupil count, with the stored attends_private_school_random_draw. Left to the formula, attendance is re-imputed in every simulation, so a reform to income tax, National Insurance or benefits switches pupils in or out, a population under one million people of weight imputes none (pe-uk#1905), and the calibration and the release read different flags once the weights change. This stage materializes the engine's attendance once, at the calibration year and the spine's design weights, and stores it, as the root stage stores months_since_last_birthday, so the solve and the release read the same flags; no stage after it copies or re-keys a person. Stored attendance no longer responds to income changes or to reforms of the attendance parameters, and a reform to the fee VAT does not move pupils either way in the pinned engine."
   }
  ]
 }
