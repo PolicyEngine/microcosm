@@ -218,11 +218,11 @@ class FakeHub:
         self.files = files
         self.downloads = 0
 
-    def hf_file(self, *, repo_id, repo_type, filename, revision):
+    def hf_file(self, *, repo_id, repo_type, filename, revision, local_dir=None):
         self.downloads += 1
         if filename not in self.files:
             raise FileNotFoundError(f"404 {filename}")
-        path = self.root / "hub" / filename
+        path = (local_dir or self.root / "hub") / filename
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(self.files[filename])
         return path
@@ -549,3 +549,41 @@ def test_status_reads_without_running_anything(tmp_path):
     with redirect_stdout(out):
         cut.status(paths)
     assert "todo spine" in out.getvalue()
+
+
+def test_a_hosted_file_is_moved_into_place_not_copied(tmp_path):
+    """A multi-gigabyte input must not occupy the disk twice."""
+
+    data = b"facts"
+    source = cut.InputSource(
+        key="chronicle",
+        kind="hf_files",
+        directory="chronicle",
+        files=(cut.PinnedFile("consumer_facts.jsonl", _sha(data)),),
+        repo_id="org/inputs",
+        repo_type="dataset",
+        path_in_repo="chronicle-uk/abc",
+    )
+    hub = FakeHub(tmp_path, {"chronicle-uk/abc/consumer_facts.jsonl": data})
+    result = cut.fetch_inputs([source], tmp_path / "inputs", downloader=hub)
+    assert result[0].status == "fetched"
+    installed = tmp_path / "inputs/chronicle/consumer_facts.jsonl"
+    assert installed.read_bytes() == data
+    leftovers = [
+        p
+        for p in (tmp_path / "inputs").rglob("*")
+        if p.is_file() and p != installed and p.name != ".verified.json"
+    ]
+    assert leftovers == []
+
+
+def test_a_failed_dry_run_is_rerun(tmp_path):
+    runner, fake = _runner(tmp_path)
+    cut.run_spine(runner, staging_local_only=True)
+    fake.fail = {"national-dry-run"}
+    with pytest.raises(cut.CutError, match="national-dry-run exited 1"):
+        cut.run_national(runner, retry=False, logbook_prev_row_digest=None)
+    fake.fail = set()
+    cut.run_national(runner, retry=False, logbook_prev_row_digest=None)
+    assert fake.calls.count("national-dry-run") == 2
+    assert fake.calls.count("national") == 1

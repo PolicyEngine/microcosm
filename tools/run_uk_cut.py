@@ -238,7 +238,13 @@ def load_input_sources(
 
 class Downloader(Protocol):
     def hf_file(
-        self, *, repo_id: str, repo_type: str, filename: str, revision: str | None
+        self,
+        *,
+        repo_id: str,
+        repo_type: str,
+        filename: str,
+        revision: str | None,
+        local_dir: Path | None = None,
     ) -> Path: ...
 
     def url(self, url: str, dest: Path) -> Path: ...
@@ -251,17 +257,27 @@ class HubDownloader:
         self.cache_dir = cache_dir
 
     def hf_file(
-        self, *, repo_id: str, repo_type: str, filename: str, revision: str | None
+        self,
+        *,
+        repo_id: str,
+        repo_type: str,
+        filename: str,
+        revision: str | None,
+        local_dir: Path | None = None,
     ) -> Path:
+        """Through the cache, or straight into ``local_dir`` for a file that
+        will be moved into place (no second copy of a multi-gigabyte input)."""
+
         from huggingface_hub import hf_hub_download
 
+        location = (
+            {"local_dir": str(local_dir)}
+            if local_dir is not None
+            else {"cache_dir": str(self.cache_dir)}
+        )
         return Path(
             hf_hub_download(
-                repo_id,
-                filename,
-                repo_type=repo_type,
-                revision=revision,
-                cache_dir=str(self.cache_dir),
+                repo_id, filename, repo_type=repo_type, revision=revision, **location
             )
         )
 
@@ -323,12 +339,24 @@ class VerifiedFiles:
         tmp.replace(self.path)
 
 
-def _place(source: Path, dest: Path, pin: PinnedFile) -> None:
-    """Copy (clone where the filesystem can) and verify before the rename."""
+def _place(source: Path, dest: Path, pin: PinnedFile, *, move: bool = False) -> None:
+    """Verify, then install at ``dest`` by an atomic rename.
+
+    ``move`` installs ``source`` itself (a download staged beside ``dest``);
+    otherwise a copy is verified, so a shared cache entry is never moved.
+    A file that misses its pin is deleted, never installed.
+    """
 
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_name(dest.name + ".partial")
-    shutil.copyfile(source, tmp)
+    if move:
+        try:
+            os.replace(source, tmp)
+        except OSError:  # another filesystem: fall back to a copy
+            shutil.copyfile(source, tmp)
+            source.unlink(missing_ok=True)
+    else:
+        shutil.copyfile(source, tmp)
     digest = _sha256_file(tmp)
     if digest != pin.sha256:
         tmp.unlink()
@@ -473,13 +501,14 @@ def _fetch_source(
                 repo_type=source.repo_type,
                 filename=name,
                 revision=source.revision,
+                local_dir=paths[pin.name].parent / ".download",
             )
-            _place(local, paths[pin.name], pin)
+            _place(local, paths[pin.name], pin, move=True)
     elif source.kind == "url":
         for pin in pending:
             with tempfile.TemporaryDirectory() as scratch:
                 local = downloader.url(source.url, Path(scratch) / pin.name)
-                _place(local, paths[pin.name], pin)
+                _place(local, paths[pin.name], pin, move=True)
     else:
         raise CutError(f"{source.key}: unknown source kind {source.kind!r}.")
     for pin in pending:
@@ -989,7 +1018,10 @@ def host_checks(
     work_dir: Path, *, min_free_gb: float, reservation_caller: str | None
 ) -> list[Check]:
     checks = []
-    usage = shutil.disk_usage(work_dir if work_dir.exists() else work_dir.parent)
+    probe = next(
+        (path for path in (work_dir, *work_dir.parents) if path.exists()), Path.home()
+    )
+    usage = shutil.disk_usage(probe)
     free_gb = usage.free / 1e9
     checks.append(
         Check(
@@ -1218,8 +1250,8 @@ def run_national(
         sources=runner.sources,
         logbook_prev_row_digest=logbook_prev_row_digest,
     )
-    plan_log = paths.logs / "national-dry-run.log"
-    if not plan_log.exists() or "national-dry-run" not in runner.state()["steps"]:
+    dry_run = runner.state()["steps"].get("national-dry-run", {})
+    if dry_run.get("status") != "done":
         runner.run("national-dry-run", national_argv(paths, dry_run=True, **common))
     runner.run("national", national_argv(paths, dry_run=False, **common))
     done, detail = national_done(paths)
