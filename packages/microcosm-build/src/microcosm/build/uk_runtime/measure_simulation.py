@@ -17,6 +17,11 @@ from microcosm.build.uk_runtime.atomic_area_support import (
     without_uk_native_alias_columns,
 )
 from microcosm.build.uk_runtime.cgt_calibration import UK_CGT_DATED_MEASURE
+from microcosm.build.uk_runtime.dfe_spring_term import (
+    DFE_SPRING_TERM_ENGINE_INPUTS,
+    DFE_SPRING_TERM_MEASURES,
+    dfe_spring_term_status,
+)
 from microcosm.build.uk_runtime.high_value_homes import (
     high_value_home_mask,
     uk_high_value_home_thresholds,
@@ -367,6 +372,17 @@ def compute_uk_measure_input(
             household_high_value_home(frame, variable),
             f"frame_columns:high_value_home_mask:{_HIGH_VALUE_HOME_MEASURES[variable]}",
         )
+
+    if variable in DFE_SPRING_TERM_MEASURES:
+        if entity != "person":
+            raise KeyError(f"DfE spring-term measures are person-only: {entity}")
+        status = dfe_spring_term_status(
+            lambda name: compute_uk_measure_input(
+                frame, simulation, "person", name, year
+            )[0],
+            year,
+        )
+        return status[variable], f"dfe_spring_term:{variable}"
 
     if variable in _LOSS_RELIEF_MEASURES:
         if entity != "person":
@@ -838,6 +854,14 @@ class UKMeasureResolver:
                 "High-value home measures must not be persisted as source inputs: "
                 f"{persisted_high_value}"
             )
+        persisted_spring_term = sorted(
+            set(DFE_SPRING_TERM_MEASURES) & set(map(str, frame.table("person")))
+        )
+        if persisted_spring_term:
+            raise ValueError(
+                "DfE spring-term measures must not be persisted as source inputs: "
+                f"{persisted_spring_term}"
+            )
         self.simulation = factory(dataset=str(source_path))
         validate_uc_claimant_input(self.simulation, frame.table("person"), self.year)
         self.contract_targets = _uk_contract_targets()
@@ -916,6 +940,10 @@ class UKMeasureResolver:
             return entity == "benunit"
         if variable in _BUS_BOARDING_MEASURES or variable in _HIGH_VALUE_HOME_MEASURES:
             return entity == "household"
+        if variable in DFE_SPRING_TERM_MEASURES:
+            return entity == "person" and all(
+                self.knows("person", name) for name in DFE_SPRING_TERM_ENGINE_INPUTS
+            )
         cgt_measure = _cgt_model_measure(variable, self.year)
         if cgt_measure is not None:
             return entity == "person" and self.knows(entity, cgt_measure[0])
@@ -947,7 +975,7 @@ class UKMeasureResolver:
             return "household"
         if _cgt_model_measure(variable, self.year) is not None:
             return "person"
-        if variable in _LOSS_RELIEF_MEASURES:
+        if variable in _LOSS_RELIEF_MEASURES or variable in DFE_SPRING_TERM_MEASURES:
             return "person"
         if (
             variable
