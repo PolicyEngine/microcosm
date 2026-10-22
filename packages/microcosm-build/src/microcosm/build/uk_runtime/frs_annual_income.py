@@ -142,6 +142,7 @@ from microcosm.build.uk_runtime.national_frame import (
 )
 from microcosm.build.uk_runtime.receipt_counts import (
     distinct_carriers,
+    extreme_count,
     small_cell_share,
     support_band,
 )
@@ -916,7 +917,9 @@ def _receipt(
     sources = {
         label: support_band(carriers(source == label)) for label in SPELL_SOURCES
     }
-    # Structural checks the stage gate reads exactly.
+    # Structural checks the stage gate reads: each is zero by construction,
+    # and a count of rows that break one is banded as the other stages band
+    # theirs (zero exact), so a failing build never records 1 to 9.
     full_year = source == SOURCE_FULL_YEAR
     return {
         "window_months": WINDOW_MONTHS,
@@ -950,17 +953,25 @@ def _receipt(
             / float(weights[outside].sum())
         ),
         "other_spells_pay_donor_support": support_band(carriers(needs_donor)),
-        "full_year_rows_not_whole": int((full_year & (employment_share != 1.0)).sum()),
-        "rows_outside_share_bounds": int(
-            sum(
-                ((descriptors[column] < 0) | (descriptors[column] > 1)).to_numpy().sum()
-                for column in ANNUAL_SHARE_COLUMNS
+        "full_year_rows_not_whole": extreme_count(
+            int((full_year & (employment_share != 1.0)).sum())
+        ),
+        "rows_outside_share_bounds": extreme_count(
+            int(
+                sum(
+                    ((descriptors[column] < 0) | (descriptors[column] > 1))
+                    .to_numpy()
+                    .sum()
+                    for column in ANNUAL_SHARE_COLUMNS
+                )
             )
         ),
-        "rows_negative_other_spells": int(
-            sum(
-                (descriptors[column] < 0).to_numpy().sum()
-                for column in OTHER_SPELLS_COLUMNS
+        "rows_negative_other_spells": extreme_count(
+            int(
+                sum(
+                    (descriptors[column] < 0).to_numpy().sum()
+                    for column in OTHER_SPELLS_COLUMNS
+                )
             )
         ),
     }

@@ -398,6 +398,40 @@ def test_receipt_gives_bands_and_structural_zeros() -> None:
         assert receipt[key] == 0
 
 
+@pytest.mark.parametrize(
+    ("broken", "count"), [(0, 0), (3, "<10"), (12, "10-49"), (150, 200)]
+)
+def test_receipt_bands_its_structural_counts(broken: int, count: object) -> None:
+    # A count of rows that break an invariant says something about the tail,
+    # so the receipt bands it as the other stages' receipts do, zero exact.
+    rows = 200
+    descriptors = pd.DataFrame(
+        {column: np.ones(rows) for column in fai.ANNUAL_SHARE_COLUMNS}
+        | {column: np.zeros(rows) for column in fai.OTHER_SPELLS_COLUMNS}
+    )
+    employment_share = np.ones(rows)
+    employment_share[:broken] = 0.5
+    receipt = fai._receipt(
+        pd.DataFrame({"person_household_id": np.arange(rows)}),
+        weights=np.ones(rows),
+        descriptors=descriptors,
+        current=np.zeros(rows),
+        se_current=np.zeros(rows),
+        pay=np.zeros(rows, dtype=bool),
+        source=np.full(rows, fai.SOURCE_FULL_YEAR),
+        observed=np.zeros(rows, dtype=bool),
+        needs_donor=np.zeros(rows, dtype=bool),
+        donor_cells={},
+        ratio=1.0,
+        ratio_support=0,
+        earnings_growth=0.0,
+        employment_share=employment_share,
+    )
+    assert receipt["full_year_rows_not_whole"] == count
+    assert receipt["rows_outside_share_bounds"] == 0
+    assert receipt["rows_negative_other_spells"] == 0
+
+
 def _gate(evidence: dict):
     """The declared stage-health gate, called as the gate battery calls it."""
 
@@ -441,8 +475,9 @@ def test_gate_passes_the_stages_own_receipt() -> None:
 @pytest.mark.parametrize(
     ("key", "value", "message"),
     [
-        ("full_year_rows_not_whole", 3, "full_year_rows_not_whole is 3"),
-        ("rows_outside_share_bounds", 1, "rows_outside_share_bounds is 1"),
+        # The receipt bands a count of broken rows (extreme_count).
+        ("full_year_rows_not_whole", "<10", "full_year_rows_not_whole is '<10'"),
+        ("rows_outside_share_bounds", 100, "rows_outside_share_bounds is 100"),
         ("rows_negative_other_spells", None, "rows_negative_other_spells is None"),
         # Weekly pay read as a monthly amount gives a ratio far above one.
         ("pay_concept_ratio", 3.58, "pay_concept_ratio 3.5800 lies outside"),

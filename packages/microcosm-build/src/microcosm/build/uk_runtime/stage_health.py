@@ -1074,8 +1074,8 @@ def _child_benefit_take_up_gate(
     )
 
 
-#: The structural counts the annual income receipt records exactly; each must
-#: be zero.
+#: The structural counts the annual income receipt records, banded by
+#: ``receipt_counts.extreme_count`` with zero exact; each must be zero.
 _ANNUAL_INCOME_STRUCTURAL_ZEROS = (
     "full_year_rows_not_whole",
     "rows_outside_share_bounds",
@@ -1133,9 +1133,7 @@ def _frs_annual_income_spells_gate(
     if observed == "<10":
         details["observed_pay_share_measured"] = False
     elif isinstance(observed, bool) or not isinstance(observed, int | float):
-        failures.append(
-            f"{stage}: other_spells_pay_observed_share is {observed!r}."
-        )
+        failures.append(f"{stage}: other_spells_pay_observed_share is {observed!r}.")
     elif float(observed) < minimum:
         failures.append(
             f"{stage}: only {float(observed):.4f} of the pay outside the current "
