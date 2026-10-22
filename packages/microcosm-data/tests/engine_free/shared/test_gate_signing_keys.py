@@ -175,6 +175,19 @@ def test_the_publisher_verifies_only_registered_keys(monkeypatch, status, verifi
         assert "revoked" in failures[0]
 
 
+def test_the_legacy_schema_3_trust_root_is_bound_too(monkeypatch):
+    legacy_env = contract._UK_TERMINAL_GATE_SIGNING_KEY_ENV
+    monkeypatch.setenv(legacy_env, base64.b64encode(UNREGISTERED_KEY).decode())
+    _use_registry(monkeypatch, _entry(b"\x22" * 32, "active"))
+    failures: list[str] = []
+    assert contract._uk_terminal_verification_key(failures) is None
+    assert len(failures) == 1 and "not registered" in failures[0]
+    _use_registry(monkeypatch, _entry(UNREGISTERED_KEY, "retired"))
+    failures = []
+    assert contract._uk_terminal_verification_key(failures) == UNREGISTERED_KEY
+    assert failures == []
+
+
 def test_the_publisher_refuses_an_unregistered_key(monkeypatch):
     _set_key(monkeypatch, UNREGISTERED_KEY)
     _use_registry(monkeypatch, _entry(b"\x22" * 32, "active"))

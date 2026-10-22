@@ -1076,9 +1076,21 @@ def _uk_release_key_from_env(env_var: str, failures: list[str]) -> bytes | None:
 
 
 def _uk_terminal_verification_key(failures: list[str]) -> bytes | None:
-    """The legacy aggregator's trust root (schema-3 reports)."""
+    """The legacy aggregator's trust root (schema-3 reports).
 
-    return _uk_release_key_from_env(_UK_TERMINAL_GATE_SIGNING_KEY_ENV, failures)
+    Bound to the same committed registry as schema 4: no schema-3 report is
+    published (every UK terminal report on the Hub is schema 4), so a
+    legacy report verifies only under a registered key.
+    """
+
+    key = _uk_release_key_from_env(_UK_TERMINAL_GATE_SIGNING_KEY_ENV, failures)
+    if key is None:
+        return None
+    problem = unregistered_gate_signing_key_problem("uk", key, purpose="verify")
+    if problem is not None:
+        failures.append(f"{_UK_TERMINAL_GATE_SIGNING_KEY_ENV}: {problem}")
+        return None
+    return key
 
 
 def _uk_gate_battery_verification_key(failures: list[str]) -> bytes | None:
