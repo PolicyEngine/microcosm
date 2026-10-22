@@ -12,9 +12,11 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # Pin the domain separator, normalization rules, schema-set receipt, and
     # exact normative projection as one reviewable golden vector. The seed
     # protocol inside it attests microcosm.calibrate.solve's bytes, so
-    # microcosm#1124's opt-in retain_best_objective moves it.
+    # microcosm#1124's opt-in retain_best_objective and microcosm#1301's
+    # budget_search_bracket move it, and the fit kernels' bytes, so the QRF
+    # chain step's caller-owned uniforms move it too.
     assert first.spec_sha256 == (
-        "43cac9831759a907bbf53205bed5cba6dea4f045aea674c4decae8aed014d0a5"
+        "4f71334334c67cc17d1aab5b02a838def57bcc54ac4413b89b70b8ae3086d9ee"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")

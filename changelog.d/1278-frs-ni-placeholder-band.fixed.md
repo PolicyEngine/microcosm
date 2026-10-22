@@ -1,0 +1,1 @@
+Northern Ireland FRS households take the placeholder council-tax band D whatever `ctband` holds (`frs_spine.frs_council_tax_band`), so the band no longer relies on the FRS leaving `ctband` unset there (microcosm#1278 review). Every Northern Ireland household on the licensed data already holds D, so no band moves.

@@ -58,6 +58,15 @@ MONTHLY_WINDOW_COUNT_X_MEAN = "monthly_window_count_x_mean"
 #: exceed one; it is bounded to ``ROLLED_FORWARD_RATIO_BOUNDS`` so a
 #: mis-pinned operand cannot pass for growth.
 ROLLED_FORWARD_BY_RATIO = "rolled_forward_by_ratio"
+#: ``calendar_year_window_scaled_by_ratio``: the ``calendar_year_window`` of
+#: the reference's own series, translated by the quotient of two facts that
+#: each pin their own period and may come from another publisher: a subset's
+#: share of the published universe, read where it is published (the
+#: individuals' share of HMRC's SDLT receipts by property type restating the
+#: OBR's SDLT lines for households, microcosm#1095). The quotient lies in
+#: ``(0, 1]`` as for ``scaled_by_ratio``; the operands translate the window,
+#: they do not join it.
+CALENDAR_YEAR_WINDOW_SCALED_BY_RATIO = "calendar_year_window_scaled_by_ratio"
 ROLLED_FORWARD_OPERAND_ROLES = ("base", "numerator", "denominator")
 ROLLED_FORWARD_RATIO_BOUNDS = (0.5, 2.0)
 #: Ordered operand roles of ``monthly_window_count_x_mean``.
@@ -74,6 +83,7 @@ ALLOWED_VALUE_OPERATIONS = frozenset(
         "count_x_mean",
         "scaled_by_ratio",
         ROLLED_FORWARD_BY_RATIO,
+        CALENDAR_YEAR_WINDOW_SCALED_BY_RATIO,
         MONTHLY_WINDOW_COUNT_X_MEAN,
         *MONTHLY_WINDOW_OPERATIONS,
     )
@@ -89,6 +99,7 @@ MULTI_FACT_VALUE_OPERATIONS = frozenset(
         "count_x_mean",
         "scaled_by_ratio",
         ROLLED_FORWARD_BY_RATIO,
+        CALENDAR_YEAR_WINDOW_SCALED_BY_RATIO,
         MONTHLY_WINDOW_COUNT_X_MEAN,
         *MONTHLY_WINDOW_OPERATIONS,
     )
@@ -289,6 +300,8 @@ class LedgerTargetReference:
             _validate_rolled_forward_operands(self.name, self.value_operands)
         if self.value_operation == "calendar_year_window":
             _validate_calendar_year_window_reference(self)
+        elif self.value_operation == CALENDAR_YEAR_WINDOW_SCALED_BY_RATIO:
+            _validate_calendar_year_window_scaled_by_ratio_reference(self)
         elif SOURCE_MEASURE_ID_BY_OPENING_YEAR in self.ledger_selector:
             raise ValueError(
                 f"LedgerTargetReference {self.name!r}: "
@@ -799,8 +812,18 @@ def target_spec_from_ledger_reference(
             f"{reference.value_operation!r}."
         )
     numeric_values = []
-    for member in facts:
-        _validate_resolved_reference_fact(member, reference)
+    operand_facts = (
+        sum(_window_ratio_operand_counts(reference))
+        if reference.value_operation == CALENDAR_YEAR_WINDOW_SCALED_BY_RATIO
+        else 0
+    )
+    for index, member in enumerate(facts):
+        if operand_facts and index >= len(facts) - operand_facts:
+            # A ratio operand pins its own source, period and entity: the
+            # reference's consumer pins describe the window, not the operand.
+            _validate_window_ratio_operand_fact(member, reference)
+        else:
+            _validate_resolved_reference_fact(member, reference)
         numeric_values.append(_numeric_fact_value(member, reference))
         _validate_fact_aggregation(member, reference)
 
@@ -852,10 +875,30 @@ def target_spec_from_ledger_reference(
             for weight, value in zip(weights, numeric_values, strict=True)
         )
         value_metadata = _calendar_year_window_metadata(reference, facts)
+    elif reference.value_operation == CALENDAR_YEAR_WINDOW_SCALED_BY_RATIO:
+        numerators, denominators = _window_ratio_operand_counts(reference)
+        cut = len(facts) - numerators - denominators
+        window = facts[:cut]
+        weights = _calendar_year_window_weights(reference, window)
+        base = math.fsum(
+            weight * value
+            for weight, value in zip(weights, numeric_values[:cut], strict=True)
+        )
+        numerator = math.fsum(numeric_values[cut : cut + numerators])
+        denominator = math.fsum(numeric_values[cut + numerators :])
+        numeric_value, ratio_metadata = _scaled_by_ratio_value(
+            reference, [base, numerator, denominator]
+        )
+        value_metadata = {
+            **_calendar_year_window_metadata(reference, window),
+            **ratio_metadata,
+        }
     else:
         numeric_value = numeric_values[0]
     representative_fact = _value_representative_fact(
-        facts,
+        _window_ratio_window_facts(reference, facts)
+        if reference.value_operation == CALENDAR_YEAR_WINDOW_SCALED_BY_RATIO
+        else facts,
         operation=reference.value_operation,
     )
     # A ratio-scaled cell keeps the base cell's identity: the national
@@ -866,6 +909,8 @@ def target_spec_from_ledger_reference(
         if reference.value_operation == "scaled_by_ratio"
         else facts[:-2]
         if reference.value_operation == ROLLED_FORWARD_BY_RATIO
+        else _window_ratio_window_facts(reference, facts)
+        if reference.value_operation == CALENDAR_YEAR_WINDOW_SCALED_BY_RATIO
         else facts
     )
     publication_metadata = dict(value_metadata)
@@ -1854,6 +1899,13 @@ def _resolve_reference_fact(
             return _resolve_calendar_year_window_reference_facts(
                 reference, eligible_matches
             )
+        if (
+            reference.value_operation == CALENDAR_YEAR_WINDOW_SCALED_BY_RATIO
+            and eligible_matches
+        ):
+            return _resolve_calendar_year_window_scaled_by_ratio_reference_facts(
+                reference, eligible_matches, fact_index.facts
+            )
         if reference.value_operation == "latest_plateau" and eligible_matches:
             return _resolve_latest_plateau_reference_facts(reference, eligible_matches)
         if reference.value_operation == "count_x_mean" and eligible_matches:
@@ -2474,6 +2526,8 @@ def reference_fact_selectors(
         selectors.append(dict(reference.ledger_selector))
     if reference.value_operation == "scaled_by_ratio":
         selectors.extend(_scaled_by_ratio_operand_selectors(reference))
+    if reference.value_operation == CALENDAR_YEAR_WINDOW_SCALED_BY_RATIO:
+        selectors.extend(_window_ratio_operand_selectors(reference))
     if reference.value_operation == ROLLED_FORWARD_BY_RATIO:
         if _rolled_forward_base_overlay(reference):
             selectors.append(_rolled_forward_base_selector(reference))
@@ -3016,6 +3070,193 @@ def _calendar_year_window_opening_year(
             "matched a fact whose annual period does not parse to an opening year."
         )
     return period_key[1] // 100
+
+
+def _validate_calendar_year_window_scaled_by_ratio_reference(
+    reference: LedgerTargetReference,
+) -> None:
+    """A window of the reference's own series, then two pinned ratio operands."""
+
+    prefix = (
+        f"LedgerTargetReference {reference.name!r}: "
+        f"{CALENDAR_YEAR_WINDOW_SCALED_BY_RATIO}"
+    )
+    roles = [
+        str(operand.get("role")) if isinstance(operand, Mapping) else ""
+        for operand in reference.value_operands
+    ]
+    if roles != list(SCALED_BY_RATIO_OPERAND_ROLES):
+        raise ValueError(
+            f"{prefix} requires exactly ordered "
+            f"{'/'.join(SCALED_BY_RATIO_OPERAND_ROLES)} operands, got {roles!r}."
+        )
+    if {key for key in reference.value_operands[0] if key != "role"}:
+        raise ValueError(
+            f"{prefix}: the base operand is the reference's own windowed series "
+            "and takes no overrides."
+        )
+    for operand in reference.value_operands[1:]:
+        if "period_type" not in operand or "period_value" not in operand:
+            raise ValueError(
+                f"{prefix}: operand {operand.get('role')!r} must pin its own "
+                "period_type and period_value; the window's years are the "
+                "base's, not the ratio's."
+            )
+        count = operand.get("expected_member_count", 1)
+        if isinstance(count, bool) or not isinstance(count, int) or count <= 0:
+            raise ValueError(
+                f"{prefix}: operand {operand.get('role')!r} "
+                "expected_member_count must be a positive integer."
+            )
+        if not {key for key in operand} - {
+            "period_type",
+            "period_value",
+            *_WINDOW_RATIO_OPERAND_METADATA_KEYS,
+        }:
+            raise ValueError(
+                f"{prefix}: operand {operand.get('role')!r} needs at least one "
+                "selector field besides its period."
+            )
+        members = _window_ratio_member_keys(operand)
+        if (count > 1 or members) and (
+            len(members) != 1
+            or len({str(value) for value in operand[members[0]]}) != count
+            or len(operand[members[0]]) != count
+        ):
+            raise ValueError(
+                f"{prefix}: operand {operand.get('role')!r} sums {count} "
+                "cell(s), so it names them in exactly one list-valued selector "
+                f"field of {count} distinct member(s), got {members!r}."
+            )
+    if SOURCE_MEASURE_ID_BY_OPENING_YEAR in reference.ledger_selector:
+        raise ValueError(
+            f"{prefix} reads one series; {SOURCE_MEASURE_ID_BY_OPENING_YEAR!r} is "
+            "refused."
+        )
+    if reference.period_match_policy != "latest_not_after":
+        raise ValueError(
+            f"{prefix} resolves the two years overlapping the target calendar "
+            "year itself; declare period_match_policy 'latest_not_after' (the "
+            "default)."
+        )
+    period_key = _period_key_from_value(reference.period)
+    if reference.period is None or not period_key[0] or period_key[1] % 100 != 99:
+        raise ValueError(f"{prefix} requires an explicit calendar-year target period.")
+
+
+#: Keys of a window-ratio operand that are not selector fields.
+_WINDOW_RATIO_OPERAND_METADATA_KEYS = frozenset(
+    ("role", "expected_member_count", "label")
+)
+
+
+def _window_ratio_member_keys(operand: Mapping[str, object]) -> list[str]:
+    """The operand's list-valued selector fields, which name its members."""
+
+    return sorted(
+        str(key)
+        for key, value in operand.items()
+        if key not in _WINDOW_RATIO_OPERAND_METADATA_KEYS
+        and key not in {"dimensions", "dimension_values"}
+        and isinstance(value, (list, tuple))
+    )
+
+
+def _window_ratio_operand_selectors(
+    reference: LedgerTargetReference,
+) -> tuple[Mapping[str, object], ...]:
+    """The numerator and denominator selectors, complete as declared."""
+
+    return tuple(
+        {
+            str(key): value
+            for key, value in operand.items()
+            if key not in _WINDOW_RATIO_OPERAND_METADATA_KEYS
+        }
+        for operand in reference.value_operands[1:]
+    )
+
+
+def _window_ratio_operand_counts(reference: LedgerTargetReference) -> tuple[int, int]:
+    """How many facts the numerator and the denominator each sum."""
+
+    numerator, denominator = (
+        int(operand.get("expected_member_count", 1))
+        for operand in reference.value_operands[1:]
+    )
+    return numerator, denominator
+
+
+def _window_ratio_window_facts(
+    reference: LedgerTargetReference, facts: tuple[object, ...]
+) -> tuple[object, ...]:
+    """The window's own facts, without the operands that translate it."""
+
+    return facts[: len(facts) - sum(_window_ratio_operand_counts(reference))]
+
+
+def _validate_window_ratio_operand_fact(
+    fact: object, reference: LedgerTargetReference
+) -> None:
+    """A ratio operand is checked against the reference's assertion policy."""
+
+    if not _assertion_allowed(reference, fact):
+        raise ValueError(
+            f"Ledger target reference {reference.name!r} assertion_policy="
+            f"{reference.assertion_policy!r} does not allow ratio operand "
+            f"assertion {_fact_assertion(fact)!r}."
+        )
+
+
+def _resolve_calendar_year_window_scaled_by_ratio_reference_facts(
+    reference: LedgerTargetReference,
+    eligible_matches: list[object],
+    facts: tuple[object, ...],
+) -> tuple[object, ...]:
+    """Resolve the window from the selector and each operand exactly once.
+
+    The window's two years come from the reference's own series, as for
+    ``calendar_year_window``. The numerator and denominator are complete
+    selectors over every fact the compile was given, each pinned at its own
+    period, and each must match exactly its declared number of facts (one
+    unless ``expected_member_count`` says otherwise), which it sums.
+    """
+
+    resolved = list(
+        _resolve_calendar_year_window_reference_facts(reference, eligible_matches)
+    )
+    for operand, selector in zip(
+        reference.value_operands[1:],
+        _window_ratio_operand_selectors(reference),
+        strict=True,
+    ):
+        matches = [fact for fact in facts if _fact_matches_selector(fact, selector)]
+        expected = int(operand.get("expected_member_count", 1))
+        if len(matches) != expected:
+            raise ValueError(
+                f"Ledger target reference {reference.name!r}: "
+                f"{CALENDAR_YEAR_WINDOW_SCALED_BY_RATIO} operand "
+                f"{operand.get('role')!r} matched {len(matches)} facts; expected "
+                f"exactly {expected}."
+            )
+        # Each named member matches exactly once: two facts for one member
+        # and none for another would pass the total alone.
+        for key in _window_ratio_member_keys(operand):
+            for member in operand[key]:
+                hits = sum(
+                    1
+                    for fact in matches
+                    if str(member) in {str(v) for v in _selector_candidates(fact, key)}
+                )
+                if hits != 1:
+                    raise ValueError(
+                        f"Ledger target reference {reference.name!r}: "
+                        f"{CALENDAR_YEAR_WINDOW_SCALED_BY_RATIO} operand "
+                        f"{operand.get('role')!r} member {member!r} of {key!r} "
+                        f"matched {hits} facts; expected exactly one."
+                    )
+        resolved.extend(sorted(matches, key=lambda fact: str(_fact_key(fact))))
+    return tuple(resolved)
 
 
 def _resolve_calendar_year_window_reference_facts(
@@ -3865,6 +4106,12 @@ def _reference_metadata(reference: LedgerTargetReference) -> dict[str, str]:
         metadata["ledger_value_formula"] = "minuend - subtrahend"
     if reference.value_operation == "scaled_by_ratio":
         metadata["ledger_value_formula"] = "base * numerator / denominator"
+    if reference.value_operation == CALENDAR_YEAR_WINDOW_SCALED_BY_RATIO:
+        target_year = _calendar_year_from_reference(reference)
+        metadata["ledger_value_formula"] = (
+            f"(3/12 * FY{target_year - 1} + 9/12 * FY{target_year}) "
+            "* numerator / denominator"
+        )
     if reference.value_operation == "linear_combination":
         metadata["ledger_value_formula"] = _linear_combination_formula(reference)
     if reference.value_operation == "calendar_year_window":

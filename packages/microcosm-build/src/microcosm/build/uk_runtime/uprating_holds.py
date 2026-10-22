@@ -53,6 +53,7 @@ _WINDOW_VALUE_OPERATIONS = frozenset(
     (
         "calendar_year_average",
         "calendar_year_window",
+        "calendar_year_window_scaled_by_ratio",
         MONTHLY_WINDOW_COUNT_X_MEAN,
         *MONTHLY_WINDOW_OPERATIONS,
     )

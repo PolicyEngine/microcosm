@@ -86,9 +86,9 @@ def test_uk_local_area_crosswalk_pins_rosters_and_vintages() -> None:
         "ew:2023_april_lad;scotland:2019_council_area;ni:2014_lgd"
     )
     assert local_authority["expected_vintage"] == {
-        "E": ["lad_2023"],
-        "W": ["lad_2023"],
-        "S": ["ca_2019", "lad_2023"],
+        "E": ["lad_2023", "publication_2025_nspl"],
+        "W": ["lad_2023", "publication_2025_nspl"],
+        "S": ["ca_2019", "lad_2023", "publication_2025_nspl"],
         "N": ["lgd_2014", "lad_2023"],
     }
     assert local_authority["area_count"] == 361
@@ -128,3 +128,51 @@ def test_uk_local_area_crosswalk_carries_region_tier_membership() -> None:
     assert sum(region == "S92000003" for region in local_authority.values()) == 32
     assert sum(region == "W92000004" for region in local_authority.values()) == 22
     assert sum(region == "N92000002" for region in local_authority.values()) == 11
+
+
+def test_desnz_publication_vintage_binds_in_great_britain_only() -> None:
+    """DESNZ stamps its authorities with its NSPL publication label (#1207)."""
+
+    from types import SimpleNamespace
+
+    from microcosm.build.uk_runtime.ledger_targets import (
+        _assert_local_fact_vintages,
+        _local_crosswalk_rosters,
+    )
+
+    crosswalk = json.loads(
+        importlib_resources.files("microcosm.build.uk")
+        .joinpath("local_area_crosswalk.json")
+        .read_text()
+    )
+    rosters = _local_crosswalk_rosters(crosswalk)
+    reference = SimpleNamespace(
+        name="desnz.test@la", ledger_selector={"geography_level": "local_authority"}
+    )
+
+    def fact(code: str) -> dict:
+        return {"geography": {"id": code, "vintage": "publication_2025_nspl"}}
+
+    # England, Wales and Scotland, and Barnsley under its April 2025 code.
+    _assert_local_fact_vintages(
+        tuple(
+            fact(code) for code in ("E06000001", "W06000001", "S12000005", "E08000038")
+        ),
+        reference,
+        rosters,
+    )
+    with pytest.raises(ValueError, match="publication_2025_nspl"):
+        _assert_local_fact_vintages((fact("N09000001"),), reference, rosters)
+
+
+def test_the_brma_level_pins_the_committed_area_layer() -> None:
+    """A ladder-free check of the BRMA level's layer pin (#1305 review)."""
+    import hashlib
+
+    layer = (
+        importlib_resources.files("microcosm.build.uk")
+        .joinpath("brma_area_layer.json")
+        .read_bytes()
+    )
+    level = _load()["levels"]["statistical_scope"]
+    assert level["area_layer_sha256"] == hashlib.sha256(layer).hexdigest()

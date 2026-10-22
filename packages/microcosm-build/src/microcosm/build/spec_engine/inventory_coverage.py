@@ -363,9 +363,12 @@ EXPECTED_HASHES = {
     # RNG rules and the ordered QRF targets are unchanged. microcosm#104 moves
     # both again: the protocol attests microcosm.calibrate.solve. microcosm#1124
     # moves both once more: solve gains the opt-in retain_best_objective, off
-    # by default, so no US solve, RNG rule or QRF target changes.
-    "seed_map": "158e0a7fb281ca879094bd3bfd226c790a92fb9bde45dab7343ad2cd62d28440",
-    "seed_protocol": "e1cf6b795f88a070ca43259857a77ecc7bfcda127fadc4bd45bea44315aef09b",
+    # by default, so no US solve, RNG rule or QRF target changes. microcosm#1301
+    # moves both again: calibrate gains budget_search_bracket, whose default
+    # keeps the US bracket, and the budget search, which the US solve does
+    # not run, changes its probes, so again no US solve changes.
+    "seed_map": "0db599df419dd16779097361dc72afdefb8df2abf8b134078da9c52d31d8e017",
+    "seed_protocol": "2b7bdc1d6b0da1bdaf54b4cac29f10f2d3c8bed2e177729c2c89e6b33a099cc5",
     "source_manifest": "f4f8bfeb79268a4043a843b47cec1d1c0e58e9f5dd6bc23417ada95446dd7b8e",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "ac92829c88a1a4fb6460d61190918d5d99c6c377fc8dd8f62f02b332d09bf59c",

@@ -47,6 +47,7 @@ from microcosm.build.gate_battery import (
 from microcosm.build.gates import (
     GateResult,
     aggregate_admin_gate,
+    area_support_below_floor,
     area_support_gate,
     column_implication_gate,
     enum_domain_gate,
@@ -61,7 +62,10 @@ from microcosm.build.uk_runtime.cgt_projection import (
     UK_CGT_PROJECTION_ARTIFACT_KEY,
     UKCGTProjection,
 )
-from microcosm.build.uk_runtime.diagnostics import uk_support_family_weights
+from microcosm.build.uk_runtime.diagnostics import (
+    uk_support_family_weights,
+    uk_withheld_gate_keys,
+)
 from microcosm.build.uk_runtime.frs_take_up import uk_take_up_signal_gate
 from microcosm.build.uk_runtime.geography_ladder import uk_geography_ladder_gate
 from microcosm.build.uk_runtime.high_value_home_gates import (
@@ -99,6 +103,7 @@ from microcosm.build.uk_runtime.terminal_gates import (
     _missing_fit_weight_evidence_gate,
     uk_cgt_projection_entrants_gate,
     uk_default_degenerate_reviewed_exclusions,
+    uk_default_local_target_fit_reviewed_exclusions,
     uk_default_target_fit_reviewed_exclusions,
     uk_degenerate_release_surface_gate,
     uk_export_surface_gate,
@@ -112,6 +117,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE,
     UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
     UK_INPUT_MASS_REFERENCE_REGISTRY,
+    UK_LOCAL_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE,
     UK_RELEASE_LINES,
     UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE,
     UKInputMassParityPolicy,
@@ -569,6 +575,31 @@ def _evaluate_column_implication(
             "same_source_mismatch_count": int(sum_mismatch.sum()),
             "nonfinite_capital_count": int(nonfinite.sum()),
         }
+    # From policyengine-uk 2.136.1 a unit on the sentinel takes its own share
+    # of its household's property for each scheme, which a recording unit
+    # beside it already holds, so the property would count twice there
+    # (Vahid's review of microcosm#1333). No unit may sit on the sentinel
+    # beside a unit that records a property share for either scheme.
+    person = frame.table("person")
+    unit_household = (
+        person.drop_duplicates("person_benunit_id")
+        .set_index("person_benunit_id")["person_household_id"]
+        .reindex(target[target_id_column])
+        .to_numpy()
+    )
+    on_sentinel = carrier == sentinel
+    sentinel_beside: dict[str, int] = {}
+    for column in property_shares:
+        share = np.asarray(shares.get(column, 0.0), dtype=float)
+        recording = (carrier >= 0.0) & (share > 0.0)
+        beside = on_sentinel & np.isin(unit_household, unit_household[recording])
+        sentinel_beside[column] = int(beside.sum())
+        if beside.any():
+            failures.append(
+                f"{target_entity}: {int(beside.sum())} unit(s) on the "
+                f"{sentinel:g} sentinel beside a unit that records {column}'s "
+                "property share; the engine would count that property twice."
+            )
     return GateResult(
         name="column_implication",
         passed=not failures,
@@ -589,6 +620,7 @@ def _evaluate_column_implication(
                 f"{target_entity}.{column}": counts[column]
                 for column in capital_columns
             },
+            "sentinel_units_beside_recorded_property": sentinel_beside,
         },
     )
 
@@ -691,6 +723,46 @@ def _engine_enum_domain(engine: Any, column: str) -> Any:
     )
 
 
+def _nation_partitioned_domains(
+    column: str, parameters: Mapping[str, Any]
+) -> dict[str, tuple[str, ...]] | None:
+    """The declared domains by nation, refused unless they are the code's.
+
+    A nation-partitioned gate names its row partition (the household's
+    ``region``, whose nation the region tier fixes) and repeats the domains in
+    ``gates.json`` so the declaration is reviewable; the declaration must equal
+    the shared constant the stages draw from.
+    """
+
+    from microcosm.build.uk_runtime.council_tax_constants import (
+        UK_COUNCIL_TAX_BANDS_BY_NATION,
+    )
+
+    declared_keys = {"partition_column", "domains_by_nation"} & set(parameters)
+    if not declared_keys:
+        return None
+    if declared_keys != {"partition_column", "domains_by_nation"}:
+        raise ValueError(
+            "A nation-partitioned enum_domain gate declares both "
+            "partition_column and domains_by_nation."
+        )
+    if parameters["partition_column"] != "region":
+        raise ValueError(
+            "enum_domain gates partition by nation through the household region."
+        )
+    code = {"council_tax_band": UK_COUNCIL_TAX_BANDS_BY_NATION}.get(column)
+    declared = {
+        str(nation): tuple(str(member) for member in members)
+        for nation, members in dict(parameters["domains_by_nation"]).items()
+    }
+    if code is None or declared != dict(code):
+        raise ValueError(
+            f"{column} domains by nation must equal the shared constant "
+            f"{dict(code) if code is not None else None}, got {declared}."
+        )
+    return declared
+
+
 def _evaluate_enum_domain(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
@@ -703,16 +775,34 @@ def _evaluate_enum_domain(
         domain = _engine_enum_domain(context.artifacts["rules_engine"], column)
     if domain is None:
         raise ValueError(f"{column} enum domain could not be resolved from evidence.")
-    matches = [
-        context.frame.table(entity)[column]
+    tables = [
+        context.frame.table(entity)
         for entity in context.frame.entities
         if column in context.frame.table(entity).columns
     ]
-    if len(matches) != 1:
+    if len(tables) != 1:
         raise ValueError(
-            f"{column} must occur on exactly one frame entity; found {len(matches)}."
+            f"{column} must occur on exactly one frame entity; found {len(tables)}."
         )
-    return enum_domain_gate({column: matches[0]}, {column: domain})
+    (table,) = tables
+    by_nation = _nation_partitioned_domains(column, parameters)
+    if by_nation is None:
+        return enum_domain_gate({column: table[column]}, {column: domain})
+
+    from microcosm.build.uk_runtime.council_tax_constants import UK_NATION_BY_REGION
+
+    if "region" not in table.columns:
+        raise ValueError(f"{column} is partitioned by region, which its table lacks.")
+    nations = table["region"].astype(str).map(UK_NATION_BY_REGION)
+    if nations.isna().any():
+        unknown = sorted(set(table.loc[nations.isna(), "region"].astype(str)))
+        raise ValueError(f"{column} rows carry regions with no nation: {unknown}.")
+    return enum_domain_gate(
+        {column: table[column]},
+        {column: domain},
+        partitions={column: nations},
+        partition_domains={column: by_nation},
+    )
 
 
 def _evaluate_support(
@@ -1247,31 +1337,76 @@ def _evaluate_area_support(
         None,
         resource=exclusions_resource,
     )
-    records = register["exclusions"]
+    # The exclusions are gate-only (microcosm#1301): an entry, keyed
+    # ``local_authority/<code>`` or ``constituency/<code>``, excuses its
+    # area's floor miss here and defers none of its cells. The Isles of
+    # Scilly and City of London cell deferrals are the local reference
+    # generator's own constants, lockstep-tested against this block. An
+    # entry scoped to another release line stands aside; the
+    # ``bound_despite_support_floor`` approvals stay window-checked whatever
+    # the line.
+    records, out_of_line = _in_line(register["exclusions"], context)
     clock = _exclusion_clock(context)
     invalid = {}
-    for block, entries in register.items():
+    for block, entries in (
+        ("exclusions", records),
+        ("bound_despite_support_floor", register["bound_despite_support_floor"]),
+    ):
         for key, record in entries.items():
             if record.expired(clock) or record.premature(clock):
                 invalid[f"{block}/{key}"] = record
     if invalid:
-        return GateResult(
-            name="area_support",
-            passed=False,
-            failures=tuple(
-                f"{key}: reviewed exclusion is outside its approval window "
-                f"{record.approved_on}..{record.expires_on} at {clock.isoformat()}."
-                for key, record in sorted(invalid.items())
+        return _with_out_of_line(
+            GateResult(
+                name="area_support",
+                passed=False,
+                failures=tuple(
+                    f"{key}: reviewed exclusion is outside its approval window "
+                    f"{record.approved_on}..{record.expires_on} at "
+                    f"{clock.isoformat()}."
+                    for key, record in sorted(invalid.items())
+                ),
+                details={"invalid_reviewed_exclusions": sorted(invalid)},
             ),
-            details={"invalid_reviewed_exclusions": sorted(invalid)},
+            context,
+            out_of_line,
         )
     levels = tuple(str(level) for level in kwargs["geography_levels"])
-    return area_support_gate(
+    result = area_support_gate(
         context.artifacts["uk_area_support_summary"],
         area_roster=_local_area_roster(resource, levels),
         reviewed_exclusions=_exclusion_payload(records),
         **kwargs,
     )
+    return _with_out_of_line(result, context, out_of_line)
+
+
+def uk_area_support_floors() -> dict[str, float | int]:
+    """The local support floors the ``uk_local_area_support`` gate declares."""
+
+    from microcosm.build import load_country_spec
+
+    (entry,) = (
+        entry
+        for entry in load_country_spec("uk").gates.gates
+        if entry.id == "uk_local_area_support"
+    )
+    floors = entry.parameters
+    return {
+        "minimum_rows": int(floors["minimum_rows"]),
+        "minimum_effective_sample_size": float(floors["minimum_effective_sample_size"]),
+        "minimum_distinct_sources": int(floors["minimum_distinct_sources"]),
+    }
+
+
+def uk_area_support_below_floor(area_support: pd.DataFrame) -> pd.Series:
+    """``support_below_floor`` for each area, under the declared local floors.
+
+    The flag a consumer reads and the gate that blocks a release apply one rule
+    (microcosm#1278). A reviewed exclusion does not clear the flag.
+    """
+
+    return area_support_below_floor(area_support, **uk_area_support_floors())
 
 
 def _local_target_error_items(evidence: object) -> tuple[tuple[str, float], ...]:
@@ -1310,11 +1445,34 @@ def _local_target_error_items(evidence: object) -> tuple[tuple[str, float], ...]
 def _evaluate_per_family_fit(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
-    items = _local_target_error_items(context.artifacts["local_target_diagnostics"])
-    return per_family_fit_gate(
-        (name for name, _ in items),
-        (error for _, error in items),
+    """Each family's fit over its published rows (microcosm#1262).
+
+    A row whose model figures are withheld stays out of every rollup, so the
+    family shares, sizes and the decision rest on the published rows and the
+    details count the withheld ones by family: a share over every row, set
+    beside the published rows' errors, would give a withheld row's fit back.
+    """
+
+    evidence = context.artifacts["local_target_diagnostics"]
+    items = _local_target_error_items(evidence)
+    withheld = uk_withheld_gate_keys(evidence)
+    published = [(name, error) for name, error in items if name not in withheld]
+    result = per_family_fit_gate(
+        (name for name, _ in published),
+        (error for _, error in published),
         **dict(parameters),
+    )
+    if not withheld:
+        return result
+    counts: dict[str, int] = {}
+    for name in withheld:
+        family = name.split("/", 1)[0]
+        counts[family] = counts.get(family, 0) + 1
+    return GateResult(
+        name=result.name,
+        passed=result.passed,
+        failures=result.failures,
+        details={**result.details, "withheld_targets": dict(sorted(counts.items()))},
     )
 
 
@@ -1462,6 +1620,8 @@ def _local_default_expected_surface(crosswalk_resource: str) -> frozenset[str]:
     for area_type, geography_level in (
         ("constituency", "constituency"),
         ("la", "local_authority"),
+        # Scotland's PIPR BRMAs (microcosm#1262).
+        ("brma", "statistical_scope"),
     ):
         level = levels.get(geography_level)
         if not isinstance(level, Mapping):
@@ -1565,12 +1725,49 @@ def _evaluate_target_fit(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
     kwargs = dict(parameters)
-    if kwargs.pop("surface", None) == "local_candidate":
-        errors = dict(
-            _local_target_error_items(context.artifacts["local_target_diagnostics"])
-        )
-        return uk_target_fit_gate(errors, **kwargs)
     register = kwargs.pop("reviewed_exclusions_resource", None)
+    if kwargs.pop("surface", None) == "local_candidate":
+        # The local cells have their own register, keyed by this gate's
+        # family/area_code/metric names (microcosm#1301). An entry lifts the
+        # fence for its cell only; the cell stays bound in the solve.
+        if register != UK_LOCAL_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE:
+            raise ValueError(
+                f"uk/gates.json names local exclusion register {register!r} but "
+                f"the runtime loads {UK_LOCAL_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE!r}."
+            )
+        evidence = context.artifacts["local_target_diagnostics"]
+        # María's ruling of 2026-10-19 on the third review of #1305: the gate
+        # decides on the published rows. A withheld BRMA row's status against
+        # the bound would be a two-sided bound on an estimate resting on fewer
+        # than ten households, so the gate neither checks it nor reads its
+        # register entry, and counts it only.
+        withheld = uk_withheld_gate_keys(evidence)
+        errors = {
+            key: error
+            for key, error in _local_target_error_items(evidence)
+            if key not in withheld
+        }
+        exclusions, out_of_line = _in_line(
+            uk_default_local_target_fit_reviewed_exclusions(), context
+        )
+        exclusions = {
+            key: record for key, record in exclusions.items() if key not in withheld
+        }
+        out_of_line = [key for key in out_of_line if key not in withheld]
+        result = uk_target_fit_gate(
+            errors,
+            reviewed_exclusions=exclusions,
+            now=_exclusion_clock(context),
+            **kwargs,
+        )
+        if withheld:
+            result = GateResult(
+                name=result.name,
+                passed=result.passed,
+                failures=result.failures,
+                details={**result.details, "withheld_targets": len(withheld)},
+            )
+        return _with_out_of_line(result, context, out_of_line)
     if register != UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE:
         raise ValueError(
             f"uk/gates.json names exclusion register {register!r} but the "
@@ -1579,12 +1776,34 @@ def _evaluate_target_fit(
     exclusions, _source = _resolve_target_fit_exclusions(context)
     exclusions, out_of_line = _in_line(exclusions, context)
     parity = context.artifacts["parity_evidence"]
+    # María's rule of 2026-10-21 binds a national row however few source
+    # households carry it, and keeps the figures of one under ten in the
+    # build; the gate decides on the published rows and counts the withheld
+    # ones, as it does for the local rows (her ruling of 2026-10-19). Every
+    # producer states the set, empty or not, so a missing one fails closed.
+    withheld = frozenset(parity.withheld_targets)
+    errors = {
+        name: error
+        for name, error in parity.target_relative_errors.items()
+        if name not in withheld
+    }
+    exclusions = {
+        name: record for name, record in exclusions.items() if name not in withheld
+    }
+    out_of_line = [name for name in out_of_line if name not in withheld]
     result = uk_target_fit_gate(
-        parity.target_relative_errors,
+        errors,
         reviewed_exclusions=exclusions,
         now=_exclusion_clock(context),
         **kwargs,
     )
+    if withheld:
+        result = GateResult(
+            name=result.name,
+            passed=result.passed,
+            failures=result.failures,
+            details={**result.details, "withheld_targets": len(withheld)},
+        )
     return _with_out_of_line(result, context, out_of_line)
 
 
@@ -1592,7 +1811,7 @@ def _target_fit_required_artifacts(
     parameters: Mapping[str, Any],
 ) -> frozenset[str]:
     if parameters.get("surface") == "local_candidate":
-        return frozenset({"local_target_diagnostics"})
+        return frozenset({"local_target_diagnostics", "exclusions_evaluated_on"})
     return frozenset({"parity_evidence", "exclusions_evaluated_on"})
 
 
@@ -2049,7 +2268,7 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
     "enum_domain": UKGateBinding(
         name="enum_domain",
         evaluator=_evaluate_enum_domain,
-        parameter_keys=frozenset({"columns"}),
+        parameter_keys=frozenset({"columns", "partition_column", "domains_by_nation"}),
     ),
     "support": UKGateBinding(
         name="support",

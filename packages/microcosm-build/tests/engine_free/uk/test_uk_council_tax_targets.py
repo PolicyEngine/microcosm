@@ -32,6 +32,13 @@ from tools.generate_uk_local_target_references import _area_signed_deferrals
 _TEST_PATHS = paths_for("microcosm-build")
 
 
+def _sha256(path: Path) -> str:
+    """The file's digest, read in chunks: the pinned feed is several GB."""
+
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
 def _crosswalk() -> dict:
     return json.loads(
         importlib_resources.files("microcosm.build.uk")
@@ -412,13 +419,14 @@ def test_support_floor_deferrals_cover_the_two_authorities_remaining_cells() -> 
     # add 25 by_area targets and retire eight, and the City's band A is no
     # longer a separate suppression. microcosm#1123 adds the higher rate
     # taxpayer cells (Scilly's is signed under the SPI coverage gap).
-    # microcosm#1240 adds the three high_value_homes local-authority legs.
-    assert len(rows) == 45
-    assert sum(len(row["area_ids"]) for row in rows) == 85
+    # microcosm#1240 adds the three high_value_homes local-authority legs, and
+    # microcosm#1207 the three DESNZ energy rows.
+    assert len(rows) == 48
+    assert sum(len(row["area_ids"]) for row in rows) == 91
     assert {
         area_id: sum(area_id in row["area_ids"] for row in rows)
         for area_id in ("E06000053", "E09000001")
-    } == {"E06000053": 40, "E09000001": 45}
+    } == {"E06000053": 43, "E09000001": 48}
     assert all(row["defer_if_compiles"] is True for row in rows)
     # The English band-H family is wholly deferred on spine support, so it
     # carries no support-floor row; the Welsh and Scottish band-H targets do
@@ -458,14 +466,15 @@ def test_a14_deferral_declarations_cover_only_currently_active_cells() -> None:
         if row.reason_id == "local_authority_support_floor_excluded"
     ]
     # microcosm#1240: the three high_value_homes local-authority legs take the
-    # same support-floor deferral on the Isles of Scilly and the City of London.
-    assert len(support) == 45
-    assert sum(len(row.area_ids) for row in support) == 85
+    # same support-floor deferral on the Isles of Scilly and the City of London;
+    # microcosm#1207's three DESNZ energy rows take it too.
+    assert len(support) == 48
+    assert sum(len(row.area_ids) for row in support) == 91
     by_area = {
         area_id: sum(area_id in row.area_ids for row in support)
         for area_id in ("E06000053", "E09000001")
     }
-    assert by_area == {"E06000053": 40, "E09000001": 45}
+    assert by_area == {"E06000053": 43, "E09000001": 48}
     assert all(row.defer_if_compiles for row in support)
     assert "mhclg.council_tax_stock.by_area.band_h" not in {
         row.target_id for row in support
@@ -521,9 +530,11 @@ def _pinned_feed_facts() -> list[dict]:
     if not feed.is_file():
         pytest.skip("pinned UK Chronicle consumer feed is not present")
     pin = load_uk_chronicle_feed()
-    assert hashlib.sha256(feed.read_bytes()).hexdigest() == pin.facts_sha256
+    assert _sha256(feed) == pin.facts_sha256
+    # Only the MHCLG rows are parsed: the compile reports every other
+    # reference unsupported, and the whole feed parses to tens of GB.
     with feed.open(encoding="utf-8") as handle:
-        return [json.loads(line) for line in handle if line.strip()]
+        return [json.loads(line) for line in handle if '"mhclg' in line]
 
 
 def test_composed_english_region_cells_sum_to_the_publisher_england_row() -> None:

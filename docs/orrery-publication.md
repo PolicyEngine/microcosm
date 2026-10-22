@@ -6,6 +6,14 @@ public-safe file inventory in the attempt directory, attempt publication before
 Hugging Face artifact staging, and register graph/evidence files and an
 `orrery.publication.json` receipt snapshot in the artifact manifest.
 
+When execution was recorded, they also write the execution overlay that
+`graph.orrery.json` embeds as `graph.execution.json` and register it in the
+same manifest. A failed build's bundle carries it too. It is not copied to the
+preserved `orrery-publication/` directory or listed in `orrery.upload.json`:
+the emitter's file roles and the runs service's contract do not admit it yet.
+Its content is already inside `graph.orrery.json`, so registering it discloses
+nothing new.
+
 Microcosm's metadata adapter starts one local emitter service with two independent
 workers: live telemetry and completed graph publication. The `microcosm-emitter` package
 owns sockets, authentication, persistence, retries and resource sampling.

@@ -75,8 +75,11 @@ class _StubFittedQRF:
     def __init__(self, record: dict[str, object]) -> None:
         self.record = record
 
-    def predict(self, table: pd.DataFrame) -> pd.DataFrame:
+    def predict_from_uniforms(
+        self, table: pd.DataFrame, *, quantiles, sign_uniforms
+    ) -> pd.DataFrame:
         self.record["predict_index"] = table.index.tolist()
+        self.record["predict_uniforms"] = (quantiles, sign_uniforms)
         draws = np.zeros(len(table), dtype=float)
         if len(draws):
             draws[0] = 250.0
