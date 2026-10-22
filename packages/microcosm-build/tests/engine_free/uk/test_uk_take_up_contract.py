@@ -85,6 +85,49 @@ def test_landed_fitting_receipt_must_name_the_engine() -> None:
     assert _entries([entry], section="programs")
 
 
+def test_nested_rate_needs_a_conditional_basis_receipt() -> None:
+    from microcosm.build.uk_runtime.take_up_contract import (
+        NESTED_RATE_MIN_TOOL_VERSION,
+        _entries,
+    )
+
+    entry = {
+        "key": "universal_childcare",
+        "output": "would_claim_universal_childcare",
+        "nested_under": "would_claim_extended_childcare",
+        "entity": "benunit",
+        "values": {"2024-04-06": 0.05},
+        "source": {"source": "fit", "status": "fitted_offline"},
+        "fitting_receipt": {
+            "engine_version": "2.134.4",
+            "tool_version": NESTED_RATE_MIN_TOOL_VERSION - 1,
+        },
+    }
+    with pytest.raises(ValueError, match="conditional basis"):
+        _entries([entry], section="programs")
+    for receipt in (None, {"engine_version": "2.134.4"}, {"tool_version": True}):
+        entry["fitting_receipt"] = receipt
+        with pytest.raises(ValueError, match="conditional basis"):
+            _entries([entry], section="programs")
+
+    entry["fitting_receipt"] = {
+        "engine_version": "2.134.4",
+        "tool_version": NESTED_RATE_MIN_TOOL_VERSION,
+    }
+    assert _entries([entry], section="programs")[0].key == "universal_childcare"
+
+    # An entry that is not nested keeps any receipt, as before.
+    del entry["nested_under"]
+    entry["fitting_receipt"] = {"engine_version": "2.134.4", "tool_version": 1}
+    assert _entries([entry], section="programs")
+
+    # The landed nested entry carries a conditional-basis receipt.
+    contract = load_uk_take_up_contract()
+    universal = contract.entry("universal_childcare").raw
+    assert universal["nested_under"] == "would_claim_extended_childcare"
+    assert universal["fitting_receipt"]["tool_version"] >= NESTED_RATE_MIN_TOOL_VERSION
+
+
 def test_year_selection_uses_latest_value_at_or_before_build_year() -> None:
     contract = load_uk_take_up_contract()
 
