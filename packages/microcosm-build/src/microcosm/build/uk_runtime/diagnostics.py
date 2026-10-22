@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import math
 import sys
+import warnings
 from collections.abc import Collection, Mapping, Sequence
 from importlib import resources as importlib_resources
 from pathlib import Path
@@ -26,6 +27,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from pydantic import ValidationError
+from scipy import linalg as scipy_linalg
 from scipy import sparse
 
 from microcosm.calibrate import (
@@ -90,7 +92,7 @@ _WITHHELD_NOTE = (
 )
 _COMPLEMENT_NOTE = (
     "model figures withheld: with the published rows they would give back a row "
-    "that fewer than 10 distinct source households carry"
+    "or a cell that fewer than 10 distinct source households carry"
 )
 
 _COUNTRY_BY_AREA_PREFIX = {
@@ -987,6 +989,15 @@ _RECOVERY_TOLERANCE = 1e-6
 #: (the eigenvectors carry errors near 1e-8). Treating a small entry as zero
 #: can only shrink a combination's support, so it errs toward withholding.
 _RECOVERY_ROUNDING = 1e-6
+#: How much work the exact residual search may do for one total: the share
+#: entries it adds up and the source households it counts, over the sets it
+#: tries, and at most ``_RESIDUAL_SEARCH_NODES`` sets. Counts, not a clock, so
+#: the same problem always gets the same answer. A total whose search stops
+#: there, or whose members times atoms pass ``_RESIDUAL_DENSE_LIMIT``, is
+#: checked over greedy groups instead, and a warning names it.
+_RESIDUAL_SEARCH_WORK = 200_000_000
+_RESIDUAL_SEARCH_NODES = 200_000
+_RESIDUAL_DENSE_LIMIT = 5_000_000
 
 
 def _row_level(geography_levels: Mapping[str, object] | None):
@@ -1109,12 +1120,13 @@ def uk_withheld_row_sets(
     withheld rows that rests on fewer source households than its rows' floor,
     the published row with the fewest carriers among those that give it back
     is withheld too (the next-smallest band beside a thin one, not its total),
-    and the span is measured again. The span sees only rows, so a total less
-    its published members, which gives back whatever they leave out, is
-    checked first (:class:`_ResidualCheck`; Vahid's second review of #1344,
-    item 17): the UC family total less its bound bands gives back the unbound
-    band above GBP 2,500 a month, which is no row and may rest on a handful of
-    households, and then the member with the fewest carriers is withheld.
+    and the span is measured again. The span sees only combinations of
+    withheld rows, so a published total less some of its published parts,
+    which gives back whatever they leave out, is checked first and on every
+    pass (:class:`_ResidualCheck`; Vahid's second review of #1344, item 17):
+    the UC family total less its bound bands gives back the unbound band
+    above GBP 2,500 a month, which is no row and may rest on a handful of
+    households. What neither check sees is set out in :class:`_ResidualCheck`.
     Constituency and authority rows stay outside, as they stay outside the
     per-row floor: whether a local row can give back a national one is part
     of the local-line ruling still owed.
@@ -1134,12 +1146,11 @@ def uk_withheld_row_sets(
     unit = matrix
     gram: np.ndarray | None = None
     for _ in range(len(names) + 1):
-        # A total less its published members gives back whatever they leave
-        # out, which need not be a row at all: the UC family total less its
-        # bound bands gives back the unbound band above GBP 2,500 a month
-        # (Vahid's second review of #1344, item 17). Withholding a total in
-        # the span check can turn its members into another total's members,
-        # so the residuals are measured again on each pass.
+        # A total less some of its published parts gives back whatever they
+        # leave out, which need not be a row at all (Vahid's second review of
+        # #1344, item 17). A row the span check withholds can change the
+        # greedy groups of a total too large to search exactly, so the
+        # residuals are measured again on each pass.
         residuals.withhold(withheld)
         held = [i for i, name in enumerate(names) if name in withheld and norms[i]]
         published = [
@@ -1177,20 +1188,61 @@ def uk_withheld_row_sets(
 
 
 class _ResidualCheck:
-    """Withholds members so no published total less its members is thin.
+    """Withholds rows until no published total less some of its parts is thin.
 
-    A row's members are the other rows that restrict it to some of its
-    units: on each of a member's households the member's entry is a share of
-    the row's (above nothing, at most all of it) and on at least half of them
-    all of it (a UC payment band within its family total; a household with two
-    benefit units in two bands holds half its total's entry in each). The
-    half rule keeps a count out of an amount on the same households. A total's
-    published members fall into groups whose shares summed stay within the
-    total's (:meth:`_groups`: the bands, apart from, say, the regions), and
-    the total less a group's figures gives back the rest. While that rest
-    rests on one source household or more but fewer than the total's floor,
-    the group's member with the fewest carriers is withheld, which adds its
-    households to the rest, and the rests are measured again.
+    A total's parts are the other rows inside it: each one's households are
+    among the total's. A part's share is its entry over the total's, household
+    by household. Households whose parts all hold the same shares form an
+    atom: every combination of the total and its parts takes one value across
+    an atom, so its rest (the households where it is not nothing) is a union
+    of atoms.
+
+    That gives a test first. An atom that rests on at least the total's
+    floor of source households can lie in no thin rest, so a thin combination
+    must vanish on every such atom. When every other atom's share column lies
+    within ``_SPAN_DISTANCE`` of the span of those atoms' columns
+    (:func:`_span_covers`), a combination with weights between minus one and
+    one that vanishes on them is within that distance of the total's entry
+    everywhere, and the total is clear (a UC family total over its payment
+    bands, a regional council-tax stock total over its bands, whenever each
+    cell rests on ten households or more).
+
+    Where the test does not clear a total (amounts, whose households mostly
+    hold shares of their own), three kinds of combination are searched, each
+    the total less some of its parts:
+
+    - less any set of members whose shares, summed, stay within one on every
+      atom (:meth:`_search` tries every such set, not only the largest). A
+      part whose share is the same on all its households (a count of children
+      beside the count of their households, a monthly band under a yearly
+      total) also stands as a part of share one. A member's shares lie above
+      nothing and at most one: a UC payment band within its family total, a
+      band holding half the entry of a household whose two benefit units sit
+      in two bands, an income component within a total-income band. A part of
+      whole numbers inside a total that is not, which holds the whole of the
+      total on none of its households, is likely a count beside an amount,
+      which multiplies the sets without partitioning anything, so the search
+      runs over the other members first and then over all of them;
+    - less any part on its own;
+    - less any two parts, which gives back, among other things, two
+      overlapping parts' overlap (claimants of either of two benefits less
+      the claimants of each).
+
+    While a combination rests on one to nine source households (fewer than
+    the total's floor), the part with the fewest carriers among those it
+    subtracts is withheld, which adds that part's households to the rest, and
+    the check runs again. A total whose search passes its work or node cap,
+    or whose members times atoms pass ``_RESIDUAL_DENSE_LIMIT`` (the UK
+    population total, whose hundreds of person and household counts each
+    hold part of its entry), is searched over greedy groups of its members
+    instead, and a warning names it. Withholding a part only removes
+    combinations, so a total found clean stays clean; a greedily searched
+    total is searched again whenever one of its members is withheld.
+
+    Not checked here: a total that is no row (a sum of published regions less
+    national bands), a part that reaches a household outside its total, and,
+    on a total the exact test does not clear, combinations at other weights
+    than these (three or more overlapping parts at once, for instance).
     """
 
     def __init__(
@@ -1201,81 +1253,93 @@ class _ResidualCheck:
         floors: np.ndarray,
         names: list[str],
     ) -> None:
-        self.sources = sources
-        self.carriers = carriers
-        self.floors = floors
+        self.carriers = np.asarray(carriers)
+        self.floors = np.asarray(floors)
         self.names = names
-        matrix = sparse.csr_matrix(matrix)
+        matrix = sparse.csr_matrix(matrix, dtype=float)
+        self.matrix = matrix
         self.size = np.diff(matrix.indptr)
+        # A missing source id counts as one source household of its own kind.
+        codes = np.asarray(
+            pd.factorize(pd.Series(np.asarray(sources)), use_na_sentinel=False)[0]
+        )
+        self.codes = codes
         support = sparse.csr_matrix(
             (np.ones_like(matrix.data), matrix.indices, matrix.indptr),
             shape=matrix.shape,
         )
         overlap = (support @ support.T).toarray()
-        # Per total: its members, their shares of it over its households,
-        # those households, and which members clash (their shares summed pass
-        # the total's somewhere).
-        self.totals: dict[
+        source_count = int(codes.max()) + 1 if len(codes) else 0
+        owner = sparse.csr_matrix(
+            (np.ones(len(codes)), (np.arange(len(codes)), codes)),
+            shape=(len(codes), source_count),
+        )
+        row_sources = sparse.csr_matrix(support @ owner)
+        row_sources.data[:] = 1.0
+        #: Distinct source households two rows share.
+        self.shared_sources = (row_sources @ row_sources.T).toarray()
+        #: Per total: its parts' rows, their shares over its households (a row
+        #: may stand twice, as itself and scaled to share one), which parts
+        #: are members, and which are counts beside an amount.
+        self.parts: dict[
             int, tuple[np.ndarray, sparse.csr_matrix, np.ndarray, np.ndarray]
         ] = {}
         for total in np.flatnonzero(self.size):
-            candidates = np.flatnonzero(overlap[:, total] == self.size)
-            candidates = candidates[(candidates != total) & (self.size[candidates] > 0)]
-            if not len(candidates):
+            inside = np.flatnonzero(overlap[:, total] == self.size)
+            inside = inside[(inside != total) & (self.size[inside] > 0)]
+            if not len(inside):
                 continue
             start, stop = matrix.indptr[total], matrix.indptr[total + 1]
             columns = matrix.indices[start:stop]
-            values = matrix.data[start:stop]
-            block = sparse.csr_matrix(matrix[candidates][:, columns])
-            block.sort_indices()
-            share = block.copy()
-            share.data = block.data / values[block.indices]
-            within = (share.data > 0) & (share.data <= 1 + _RECOVERY_ROUNDING)
-            whole = np.abs(share.data - 1) <= _RECOVERY_ROUNDING
-            rows = np.repeat(np.arange(len(candidates)), np.diff(share.indptr))
-            inside = np.bincount(rows, weights=~within, minlength=len(candidates)) == 0
-            whole_share = np.bincount(rows, weights=whole, minlength=len(candidates))
-            inside &= whole_share * 2 >= self.size[candidates]
-            if not inside.any():
-                continue
-            members = candidates[inside]
-            share = sparse.csr_matrix(share[inside])
-            self.totals[int(total)] = (members, share, columns, np.zeros(0, dtype=bool))
-        # Two rows that are each other's member are one row: the later is no
-        # member of the earlier, so the earlier stands for both.
-        for total, (members, share, columns, _) in list(self.totals.items()):
-            keep = np.array(
-                [
-                    not (
-                        member > total
-                        and member in self.totals
-                        and total in self.totals[member][0]
-                    )
-                    for member in members
-                ]
+            position = np.full(matrix.shape[1], -1)
+            position[columns] = np.arange(len(columns))
+            block = sparse.csr_matrix(matrix[inside])
+            local = position[block.indices]
+            share = sparse.csr_matrix(
+                (block.data / matrix.data[start:stop][local], local, block.indptr),
+                shape=(len(inside), len(columns)),
             )
-            members, share = members[keep], sparse.csr_matrix(share[keep])
-            if not len(members):
-                del self.totals[total]
-                continue
-            self.totals[total] = (members, share, columns, self._clashes(share))
-
-    @staticmethod
-    def _clashes(share: sparse.csr_matrix) -> np.ndarray:
-        """Which members' shares summed pass the total's on some household."""
-
-        support = share.copy()
-        support.data = np.ones_like(support.data)
-        clash = (support @ support.T).toarray() > 0
-        high = share.copy()
-        high.data = (high.data > 0.5 + _RECOVERY_ROUNDING).astype(float)
-        high.eliminate_zeros()
-        sure = (high @ high.T).toarray() > 0
-        np.fill_diagonal(clash, False)
-        for a, b in zip(*np.nonzero(np.triu(clash & ~sure, k=1)), strict=True):
-            pair = share[a] + share[b]
-            clash[a, b] = clash[b, a] = bool((pair.data > 1 + _RECOVERY_ROUNDING).any())
-        return clash
+            starts = share.indptr[:-1]
+            low = np.minimum.reduceat(share.data, starts)
+            high = np.maximum.reduceat(share.data, starts)
+            whole_share = (
+                np.add.reduceat(
+                    (np.abs(share.data - 1) <= _RECOVERY_ROUNDING).astype(int), starts
+                )
+                > 0
+            )
+            constant = (low * high > 0) & (
+                np.abs(high - low) <= _RECOVERY_ROUNDING * np.abs(high)
+            )
+            scaled = constant & (np.abs(high - 1) > _RECOVERY_ROUNDING)
+            counts = _whole_entries(block) & ~whole_share
+            if _whole_entries(matrix[total]).all():
+                counts[:] = False
+            rows, shares = [inside], [share]
+            if scaled.any():
+                ones = sparse.csr_matrix(share[scaled])
+                ones.data = np.ones_like(ones.data)
+                rows.append(inside[scaled])
+                shares.append(ones)
+                extra = int(scaled.sum())
+                low = np.concatenate([low, np.ones(extra)])
+                high = np.concatenate([high, np.ones(extra)])
+                counts = np.concatenate([counts, np.zeros(extra, dtype=bool)])
+            member = (low > 0) & (high <= 1 + _RECOVERY_ROUNDING)
+            self.parts[int(total)] = (
+                np.concatenate(rows),
+                sparse.csr_matrix(sparse.vstack(shares)),
+                member,
+                counts,
+            )
+        self._clean: set[int] = set()
+        #: Totals searched greedily: the live members their groups were last
+        #: searched over, and whether their single and paired parts are clean.
+        self._greedy_members: dict[int, bytes] = {}
+        self._parts_clean: set[int] = set()
+        #: Totals the span test did not clear (not tried again).
+        self._uncertified: set[int] = set()
+        self.capped: set[str] = set()
 
     def withhold(self, withheld: set[str]) -> None:
         """Add to ``withheld`` until no published total's rest is thin."""
@@ -1287,51 +1351,438 @@ class _ResidualCheck:
             withheld.add(self.names[pick])
 
     def _first_thin_rest(self, withheld: set[str]) -> int | None:
-        for total, (members, share, columns, clash) in self.totals.items():
-            if self.names[total] in withheld:
+        for total, (rows, _, member, _) in self.parts.items():
+            if total in self._clean or self.names[total] in withheld:
                 continue
-            live = np.array(
-                [self.names[member] not in withheld for member in members], dtype=bool
-            )
-            if not live.any():
+            live = np.array([self.names[row] not in withheld for row in rows])
+            if (
+                total in self._parts_clean
+                and self._greedy_members.get(total) == (live & member).tobytes()
+            ):
                 continue
-            local = np.flatnonzero(live)
-            for group in self._groups(members[local], clash[np.ix_(local, local)]):
-                summed = np.asarray(share[local[group]].sum(axis=0)).ravel()
-                if (summed > 1 + _RECOVERY_ROUNDING).any():
-                    continue
-                rest = summed < 1 - _RECOVERY_ROUNDING
-                carried = len(pd.unique(self.sources[columns[rest]]))
-                if 0 < carried < self.floors[total]:
-                    return min(
-                        members[local[group]],
-                        key=lambda i: (self.carriers[i], self.names[i]),
-                    )
+            pick = self._thin_rest(total, live)
+            if pick is not None:
+                return pick
+            if self.names[total] in self.capped:
+                self._greedy_members[total] = (live & member).tobytes()
+                self._parts_clean.add(total)
+            else:
+                self._clean.add(total)
         return None
 
-    def _groups(self, members: np.ndarray, clash: np.ndarray) -> list[list[int]]:
-        """Greedy sets of members that clash with none in the same set.
+    def _thin_rest(self, total: int, live: np.ndarray) -> int | None:
+        """The row to withhold so this total's rests stop being thin, or ``None``."""
 
-        Two bands of one family do not clash, even where a household with two
-        benefit units sits in both; a band and a region do. Each member seeds
-        one set, which takes the others, largest first, that clash with none
-        already in it.
+        all_rows, all_share, all_member, all_counts = self.parts[total]
+        rows = all_rows[live]
+        if not len(rows):
+            return None
+        share = sparse.csr_matrix(all_share[np.flatnonzero(live)])
+        member = all_member[live]
+        counts = all_counts[live]
+        floor = int(self.floors[total])
+        start, stop = self.matrix.indptr[total], self.matrix.indptr[total + 1]
+        _, local_codes = np.unique(
+            self.codes[self.matrix.indices[start:stop]], return_inverse=True
+        )
+        atom, first = _share_atoms(share)
+        atom_sources = sparse.csr_matrix(
+            (np.ones(len(atom)), (atom, local_codes.ravel())),
+            shape=(len(first), int(local_codes.max()) + 1),
+        )
+        atom_sources.sum_duplicates()
+        atom_sources.data[:] = 1.0
+        atom_count = np.diff(atom_sources.indptr)
+        small = atom_count < floor
+        if not small.any():
+            return None
+        atom_share = sparse.csr_matrix(share[:, first])
+        name = self.names[total]
+        if total not in self._uncertified:
+            if _span_covers(atom_share, ~small):
+                return None
+            self._uncertified.add(total)
+        spent = [0]
+
+        def carried(rest: np.ndarray) -> int:
+            """The rest's distinct source households, or ``floor`` once it has that many."""
+
+            atoms = np.flatnonzero(rest)
+            if not len(atoms):
+                return 0
+            if atom_count[atoms].max() >= floor:
+                return floor
+            # Callers only compare the count with ``floor``, so a first slice
+            # of the rest that already reaches it settles the answer.
+            for chunk in (atoms[: 4 * floor], atoms):
+                selected = atom_sources[chunk]
+                spent[0] += selected.nnz + len(chunk)
+                count = len(np.unique(selected.indices))
+                if count >= floor or len(chunk) == len(atoms):
+                    return min(count, floor)
+            return floor
+
+        def fewest(indices) -> int:
+            return min(
+                (int(rows[i]) for i in indices),
+                key=lambda row: (self.carriers[row], self.names[row]),
+            )
+
+        if name not in self.capped:
+            # The members bar the counts beside an amount first, which the
+            # search can finish where the counts would multiply its sets;
+            # then every member, with a fresh budget.
+            phases = [member & ~counts, member] if (member & counts).any() else [member]
+            for chosen in phases:
+                spent[0] = 0
+                found = self._search(
+                    atom_share, chosen, carried, floor, rows, small, spent
+                )
+                if found is _CAPPED:
+                    self._cap(name)
+                    break
+                if found is not None:
+                    return fewest(found)
+        if name in self.capped:
+            found = self._greedy(atom_share, member, carried, floor)
+            if found is not None:
+                return fewest(found)
+        if total in self._parts_clean:
+            return None
+        # One part on its own, and two parts together: shares at any value.
+        # A part (or pair) that leaves at least ``floor`` of the total's
+        # source households untouched leaves a rest of at least ``floor``.
+        uncovered = self.carriers[total] - self.carriers[rows]
+        alone = ~member | (name in self.capped)
+        for i in np.flatnonzero(alone & (uncovered < floor)):
+            row = atom_share[i].toarray().ravel()
+            count = carried(_unsettled(row))
+            if 0 < count < floor:
+                return fewest([i])
+        bound = (
+            self.carriers[total]
+            - self.carriers[rows][:, None]
+            - self.carriers[rows][None, :]
+            + self.shared_sources[np.ix_(rows, rows)]
+        )
+        for i, j in np.argwhere(np.triu(bound < floor, k=1)):
+            if rows[i] == rows[j]:
+                continue
+            pair = (atom_share[i] + atom_share[j]).toarray().ravel()
+            count = carried(_unsettled(pair))
+            if 0 < count < floor:
+                return fewest([i, j])
+        return None
+
+    def _cap(self, name: str) -> None:
+        self.capped.add(name)
+        warnings.warn(
+            f"UK diagnostics: the residual search for {name} passed its cap, "
+            "so its members are grouped greedily.",
+            stacklevel=3,
+        )
+
+    def _search(
+        self,
+        atom_share: sparse.csr_matrix,
+        member: np.ndarray,
+        carried: Any,
+        floor: int,
+        rows: np.ndarray,
+        small: np.ndarray,
+        spent: list[int],
+    ) -> object:
+        """A set of members whose total less them is thin: branch and bound.
+
+        Members join largest first while their shares, summed, stay within one
+        on every atom. Every set is tested, since a smaller set can leave a
+        thin rest that a larger one covers. A branch stops when its rest is
+        nothing, when every atom its rest could keep rests on at least
+        ``floor`` source households (a thin rest is a union of smaller
+        atoms), or when even every member it could still take leaves an atom
+        of that size uncovered. Returns the set's member indices, ``None``, or
+        ``_CAPPED`` past the work or node cap or the dense limit.
         """
 
         order = sorted(
-            range(len(members)),
-            key=lambda i: (-self.size[members[i]], self.names[members[i]]),
+            np.flatnonzero(member).tolist(),
+            key=lambda i: (-int(self.size[rows[i]]), self.names[rows[i]]),
         )
-        groups: dict[frozenset[int], list[int]] = {}
-        for seed in order:
-            chosen = [seed]
-            blocked = clash[seed].copy()
-            for other in order:
-                if other != seed and not blocked[other]:
-                    chosen.append(other)
-                    blocked |= clash[other]
-            groups.setdefault(frozenset(chosen), sorted(chosen))
-        return list(groups.values())
+        if not order:
+            return None
+        atoms = atom_share.shape[1]
+        limit = 1 + _RECOVERY_ROUNDING
+        below = 1 - _RECOVERY_ROUNDING
+        # The bound errs toward searching on: reach comes from sums that can
+        # drift by a few ulps, so an atom counts as stranded only clearly so.
+        stranded_below = below - 1e-9
+        big = ~small
+        # The root's bound, from sparse sums, before any dense block is made.
+        everything = np.asarray(atom_share[order].sum(axis=0)).ravel()
+        stranded = everything < stranded_below
+        if (stranded & big).any() or carried(stranded) >= floor:
+            return None
+        if len(order) * atoms > _RESIDUAL_DENSE_LIMIT:
+            return _CAPPED
+        dense = np.asarray(atom_share[order].todense())
+        nodes = 0
+        # Depth-first, one frame per chosen set: (chosen, summed, candidate
+        # positions into ``order``, next candidate to try, reach). ``reach``
+        # is the summed shares with every candidate from the next one on, so
+        # the atoms it leaves under one stay uncovered whatever else joins.
+        stack: list[tuple[list[int], np.ndarray, list[int], int, np.ndarray]] = [
+            ([], np.zeros(atoms), list(range(len(order))), 0, everything)
+        ]
+        while stack:
+            chosen, summed, candidates, k, reach = stack.pop()
+            if k == 0:
+                nodes += 1
+                spent[0] += (len(candidates) + 1) * atoms
+                if nodes > _RESIDUAL_SEARCH_NODES or spent[0] > _RESIDUAL_SEARCH_WORK:
+                    return _CAPPED
+                uncovered = summed < below
+                if not uncovered.any():
+                    continue
+                if not (uncovered & small).any():
+                    continue  # every rest below here keeps an atom of floor size
+                count = carried(uncovered)
+                if chosen and 0 < count < floor:
+                    return [order[i] for i in chosen]
+            if k >= len(candidates):
+                continue
+            stranded = reach < stranded_below
+            if (stranded & big).any() or carried(stranded) >= floor:
+                continue
+            head = candidates[k]
+            stack.append((chosen, summed, candidates, k + 1, reach - dense[head]))
+            joined = summed + dense[head]
+            if (joined > limit).any():
+                continue
+            tail = candidates[k + 1 :]
+            if tail:
+                spent[0] += len(tail) * atoms
+                over = (joined + dense[tail] > limit).any(axis=1)
+                tail = [c for c, bad in zip(tail, over, strict=True) if not bad]
+            reach_after = joined + dense[tail].sum(axis=0) if tail else joined.copy()
+            stack.append(([*chosen, head], joined, tail, 0, reach_after))
+        return None
+
+    def _greedy(
+        self,
+        atom_share: sparse.csr_matrix,
+        member: np.ndarray,
+        carried: Any,
+        floor: int,
+    ) -> list[int] | None:
+        """A greedy group of members whose total less them is thin, or ``None``.
+
+        For a total the exact search cannot finish. Each member seeds two
+        groups, which take the others that clash with none already in them,
+        once largest first and once those clashing with fewest others first.
+        A group's rest is wherever its shares do not sum to one, so a group
+        that passes one somewhere is still measured.
+        """
+
+        members = np.flatnonzero(member)
+        if not len(members):
+            return None
+        share = sparse.csr_matrix(atom_share[members])
+        support = share.copy()
+        support.data = np.ones_like(support.data)
+        clash = (support @ support.T).toarray() > 0
+        high = share.copy()
+        high.data = (high.data > 0.5 + _RECOVERY_ROUNDING).astype(float)
+        high.eliminate_zeros()
+        sure = (high @ high.T).toarray() > 0
+        np.fill_diagonal(clash, False)
+        csc = share.tocsc()
+        for a in range(len(members)):
+            doubt = np.flatnonzero(clash[a] & ~sure[a])
+            doubt = doubt[doubt > a]
+            if not len(doubt):
+                continue
+            # Two members clash where both hold a share and the two pass one.
+            columns = share.indices[share.indptr[a] : share.indptr[a + 1]]
+            values = share.data[share.indptr[a] : share.indptr[a + 1]]
+            block = sparse.csr_matrix(csc[:, columns][doubt])
+            hit = block.data + values[block.indices] > 1 + _RECOVERY_ROUNDING
+            row_of = np.repeat(np.arange(len(doubt)), np.diff(block.indptr))
+            over = np.zeros(len(doubt), dtype=bool)
+            over[np.unique(row_of[hit])] = True
+            clash[a, doubt] = clash[doubt, a] = over
+        size = np.diff(share.indptr)
+        orders = (
+            sorted(range(len(members)), key=lambda i: (-size[i], i)),
+            sorted(
+                range(len(members)),
+                key=lambda i: (int(clash[i].sum()), -size[i], i),
+            ),
+        )
+        tried: set[frozenset[int]] = set()
+        for order in orders:
+            for seed in order:
+                chosen = [seed]
+                blocked = clash[seed].copy()
+                for other in order:
+                    if other != seed and not blocked[other]:
+                        chosen.append(other)
+                        blocked |= clash[other]
+                key = frozenset(chosen)
+                if key in tried:
+                    continue
+                tried.add(key)
+                group = sorted(chosen)
+                summed = np.asarray(share[group].sum(axis=0)).ravel()
+                count = carried(_unsettled(summed))
+                if 0 < count < floor:
+                    return members[group].tolist()
+        return None
+
+
+#: How far a small atom's share column may lie from the span of the big
+#: atoms' columns, both as a unit column and summed over its entries as
+#: stored (where the total's share is one), for the span test to clear its
+#: total. A tenth of the rounding share, fixed: it does not grow with atoms
+#: or parts.
+_SPAN_DISTANCE = 0.1 * _RECOVERY_ROUNDING
+#: Big-atom directions weaker than this share of the strongest singular value
+#: are left out of the span, as the search counts a big atom held within the
+#: rounding share of one as covered. Leaving directions out only shrinks the
+#: span.
+_SPAN_WEAK = 10 * _RECOVERY_ROUNDING
+
+
+def _span_covers(atom_share: sparse.csr_matrix, big: np.ndarray) -> bool:
+    """Whether the big atoms' share columns, with the total's, span every atom's.
+
+    Each atom's column is the total's share (one) over the parts' shares. A
+    combination of the total and its parts that vanishes on every big atom
+    vanishes on every atom when the big columns span them all. Measured
+    directly, not through ranks: with the span taken from the big atoms' unit
+    columns by their singular vectors, every small atom's column must lie
+    within ``_SPAN_DISTANCE`` of it, as a unit column (on the shares as they
+    are, and with each row scaled to its largest share, so a part of tiny
+    shares beside one of large shares is not lost) and summed over its stored
+    entries (so a combination with weights between minus one and one, as
+    every searched one has, that vanishes on the big atoms is within that
+    distance of the total's entry on every small atom, whatever the atom's
+    largest share or the number of parts). Only all three together clear it.
+    """
+
+    if not big.any():
+        return False
+    count = atom_share.shape[1]
+    rows = sparse.vstack(
+        [sparse.csr_matrix(np.ones((1, count))), sparse.csr_matrix(atom_share)]
+    ).tocsr()
+    peak = np.maximum.reduceat(np.abs(rows.data), rows.indptr[:-1])
+    scaled = sparse.csr_matrix(sparse.diags(1.0 / peak) @ rows)
+    return _within_span(rows, big, stored=True) and _within_span(scaled, big)
+
+
+def _within_span(
+    rows: sparse.csr_matrix, big: np.ndarray, *, stored: bool = False
+) -> bool:
+    """Whether every small atom's column lies within ``_SPAN_DISTANCE`` of the
+    big atoms' span: as a unit column, and with ``stored`` also summed over its
+    entries as they are in ``rows``."""
+
+    if rows.shape[0] * int(big.sum()) > _RESIDUAL_DENSE_LIMIT:
+        return False  # too large to factor here; the search decides instead
+    norms = np.sqrt(np.asarray(rows.multiply(rows).sum(axis=0)).ravel())
+    unit = sparse.csr_matrix(rows @ sparse.diags(1.0 / norms)).tocsc()
+    block = unit[:, np.flatnonzero(big)].toarray()
+    # Singular values reveal a weak direction that pivoted QR's diagonal can
+    # miss on a graded block.
+    vectors, strength, _ = scipy_linalg.svd(block, full_matrices=False)
+    if not len(strength) or strength[0] <= 0:
+        return False
+    basis = vectors[:, strength > _SPAN_WEAK * strength[0]]
+    small = np.flatnonzero(~big)
+    for start in range(0, len(small), 4096):
+        chunk = small[start : start + 4096]
+        columns = unit[:, chunk].toarray()
+        rest = columns - basis @ (basis.T @ columns)
+        if (np.linalg.norm(rest, axis=0) > _SPAN_DISTANCE).any():
+            return False
+        if stored and (np.abs(rest).sum(axis=0) * norms[chunk] > _SPAN_DISTANCE).any():
+            return False
+    return True
+
+
+def _whole_entries(rows: sparse.csr_matrix) -> np.ndarray:
+    """Whether each row's entries are all whole numbers (a count)."""
+
+    rows = sparse.csr_matrix(rows)
+    if not rows.shape[0]:
+        return np.zeros(0, dtype=bool)
+    whole = np.abs(rows.data - np.round(rows.data)) <= _RECOVERY_ROUNDING
+    off = (
+        np.add.reduceat((~whole).astype(int), rows.indptr[:-1]) if len(rows.data) else 0
+    )
+    filled = np.diff(rows.indptr) > 0
+    return filled & (np.asarray(off) == 0)
+
+
+def _unsettled(summed: np.ndarray) -> np.ndarray:
+    """Where a total less parts summing to ``summed`` is not nothing.
+
+    One rule for every check, the search's own: a share within the rounding
+    share of one, either side, counts as covered. A convention, at the exact
+    tie: there a rest can lose a household.
+    """
+
+    return (summed < 1 - _RECOVERY_ROUNDING) | (summed > 1 + _RECOVERY_ROUNDING)
+
+
+#: What :meth:`_ResidualCheck._search` returns past its caps.
+_CAPPED = object()
+
+
+def _share_atoms(share: sparse.csr_matrix) -> tuple[np.ndarray, np.ndarray]:
+    """Group a total's households by the shares its parts hold in them.
+
+    Returns each household's atom and, per atom, one household standing for
+    it. Each household's column of shares is hashed exactly: every (part,
+    share) entry, with the share's lowest twelve mantissa bits dropped so
+    float noise does not split a column, goes through two 64-bit mixers, and
+    a column's keys are their wrapping sums with its entry count. Two
+    households share an atom only when their columns agree entry for entry
+    to within the dropped bits (about 1e-12 of each share), barring a
+    collision of both 64-bit sums; a share on the edge of the dropped bits
+    can split an atom, which only costs time.
+    """
+
+    count = share.shape[1]
+    if not count:
+        return np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.int64)
+    csc = sparse.csc_matrix(share)
+    csc.sort_indices()
+    filled = np.diff(csc.indptr)
+    column = np.repeat(np.arange(count), filled)
+    bits = np.ascontiguousarray(csc.data, dtype=np.float64).view(np.uint64)
+    bits = bits & ~np.uint64(0xFFF)
+    part = csc.indices.astype(np.uint64)
+    keys = []
+    with np.errstate(over="ignore"):
+        for salt in (np.uint64(0x9E3779B97F4A7C15), np.uint64(0xD1B54A32D192ED03)):
+            entry = _mix64(_mix64(part * salt + np.uint64(1)) ^ bits)
+            total = np.zeros(count, dtype=np.uint64)
+            np.add.at(total, column, entry)
+            keys.append(total)
+    table = np.column_stack([filled.astype(np.uint64), *keys])
+    _, first, atom = np.unique(table, axis=0, return_index=True, return_inverse=True)
+    return atom.ravel(), first
+
+
+def _mix64(values: np.ndarray) -> np.ndarray:
+    """SplitMix64's finaliser, elementwise on unsigned 64-bit integers."""
+
+    with np.errstate(over="ignore"):
+        values = values + np.uint64(0x9E3779B97F4A7C15)
+        values = (values ^ (values >> np.uint64(30))) * np.uint64(0xBF58476D1CE4E5B9)
+        values = (values ^ (values >> np.uint64(27))) * np.uint64(0x94D049BB133111EB)
+        return values ^ (values >> np.uint64(31))
 
 
 def _small_recovery(
