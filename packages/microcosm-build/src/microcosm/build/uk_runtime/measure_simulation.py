@@ -256,14 +256,16 @@ _LOSS_RELIEF_MEASURE_COMPONENTS = (
 )
 
 
-#: HMRC's income statistics count the income received over a tax year:
-#: anyone paid at any point of it, banded by what they received. The frame's
-#: incomes are current, annualised ones, and ``frs_annual_income_spells``
-#: stores beside them what each adult received over the 12 months before the
-#: interview. Each annual measure is its current measure computed on a second
-#: simulation whose inputs are each person's year, so the engine's own rules
-#: give the tax on it. Poverty, benefits and the engine's published tax keep
-#: reading current income.
+#: HMRC's income statistics count the income each taxpayer received over a
+#: tax year, banded by what they received; they cover individuals liable to UK
+#: income tax. The frame's incomes are current, annualised ones, and
+#: ``frs_annual_income_spells`` stores beside them what each adult received
+#: over the 12 months before the interview. Each annual measure is its current
+#: measure computed on a second simulation whose inputs are each person's year,
+#: so the engine's own rules give the tax on it. That year is a proxy for the
+#: tax year: the 12 months before the interview, applied to the engine's
+#: amounts at the calibration year (the stage module says how). Poverty,
+#: benefits and the engine's published tax keep reading current income.
 UK_ANNUAL_INCOME_MEASURES: Mapping[str, str] = {
     "employment_income_annual": "employment_income",
     "self_employment_income_after_loss_relief_annual": (
@@ -1390,6 +1392,9 @@ class UKMeasureResolver:
         dataset's year by the factor the engine carries the current amount by.
         The State Pension is set to the share of it paid in the fiscal year,
         and the earnings-tested carer benefits to their baseline values.
+        Pension contributions and salary sacrifice keep their current values:
+        for a part-year entrant they can be large against the year's pay,
+        which lowers the year's income tax a little.
         """
 
         if self._annual_income_simulation_cache is not None:

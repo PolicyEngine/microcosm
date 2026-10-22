@@ -1,13 +1,15 @@
 """Annual income descriptors on the UK FRS spine.
 
 HMRC's income statistics (the Survey of Personal Incomes and the Income Tax
-liabilities statistics) count income received over a tax year: anyone paid at
-any point in the year, banded by what they received. The spine's income
-columns are current, annualised incomes, the concept HBAI and policyengine-uk
-use: the usual weekly pay of the job held at interview times 365.25 / 7. A
-person who started a job during the year, left one, changed jobs or had a gap
-sits in another HMRC band than their current pay puts them in, or in none, and
-a recent leaver who paid tax in the year is no taxpayer at all.
+liabilities statistics) count the income each taxpayer received over a tax
+year, banded by what they received. They cover individuals liable to UK
+income tax, so a person who left a job counts only where the year's income
+makes them liable. The spine's income columns are current, annualised
+incomes, the concept HBAI and policyengine-uk use: the usual weekly pay of
+the job held at interview times 365.25 / 7. A person who started a job during
+the year, left one, changed jobs or had a gap sits in another HMRC band than
+their current pay puts them in, or in none, and a recent leaver who paid tax
+in the year is no taxpayer at all.
 
 This stage writes what the FRS records about the 12 months before the
 interview, for every adult, as descriptors beside the current columns, which
@@ -27,6 +29,11 @@ it never changes:
   during it.
 
 An annual amount is the current amount times its share plus the other spells.
+So the year is a proxy for HMRC's tax year, not the tax year itself: the 12
+months before each interview (interviews from April 2024 to March 2025),
+applied as shares and spells to the engine's amounts at the calibration year
+(2025), and fitted to HMRC targets for calendar 2025 (the SPI 2023-24 rows
+uprated to it, and the Income Tax liabilities rows' calendar-2025 window).
 Only the calibration's HMRC measures read the descriptors; poverty, benefits
 and the published engine's tax keep reading current income. The State Pension
 needs no descriptor: policyengine-uk's ``months_since_state_pension_age``
@@ -54,8 +61,10 @@ variable listing; every amount is GBP a week in the EUL):
   ``JOB.SEINCAMT`` (else ``PROFIT1``) and ``JOB.SELWKS`` on a ceased
   self-employed last job. ``ADULT.SEINCAM2`` is already a 12-month concept
   (accounts profit or a 12-month average) the FRS uprates by average earnings
-  to the interview, so continuing self-employment keeps its whole year and no
-  self-employed amount is uprated again.
+  to the interview, so continuing self-employment keeps its whole year and its
+  amount is not uprated again. A ceased business's SEINCAMT (else PROFIT1) is
+  the amount when it ceased, so it is uprated by average earnings for the
+  months since, as a leaver's last pay is.
 
 The rules, in order of precedence (a person in work at interview is never a
 leaver):
@@ -93,8 +102,9 @@ leaver):
   self-employed months where SAMESIT is 1 and self-employment is the activity
   today (the calendar records the main activity only, so a side business
   beside a job keeps its whole year). A ceased self-employed last job
-  pays SEINCAMT (else PROFIT1, a loss as zero) for SELWKS x 12 / 52 months,
-  else LSTYR, the calendar or the leaving date.
+  pays SEINCAMT (else PROFIT1, a loss as zero), uprated by average earnings
+  for the months since it ceased, for SELWKS x 12 / 52 months, else LSTYR, the
+  calendar or the leaving date.
 * A private pension is in payment for (months since RETIRE1 + 0.5) / 12 of the
   year after retiring in it; contributory benefits for the months not worked
   by a leaver or a ceased self-employed person.

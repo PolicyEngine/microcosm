@@ -53,7 +53,8 @@ def test_the_national_rows_fan_out_as_the_calendar_2025_window():
         assert target["value_operation"] == "calendar_year_window"
         rate = target_id.split(".")[2].removesuffix("_rate_taxpayers")
         assert target["ledger_selector"]["dimension_values"] == {"marginal_rate": rate}
-        # Each person's rate band on their income over the tax year.
+        # Each person's rate band on their year of income, a proxy for the
+        # tax year.
         assert {
             "variable": "tax_band_annual",
             "operator": "==",
