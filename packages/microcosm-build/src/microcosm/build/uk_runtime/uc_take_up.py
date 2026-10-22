@@ -326,9 +326,11 @@ def _realized_rate(
     ``residual`` clipped to [0, 1] is the share of the drawn weight that
     claims. Inside (0, 1) the drawn units claim in the order of their uniform
     until their weight is nearest ``need``, so the pool realizes DWP's count
-    to within one unit's weight rather than only in expectation; the uniform
-    just above the last claimant's is the rate the pool's Northern Ireland
-    units, which carry no weight in the solve, are drawn at too.
+    to within one unit's weight rather than only in expectation; no claimant
+    at all is a candidate too, when ``need`` sits nearer zero than the first
+    unit's weight. The uniform just above the last claimant's (the lowest
+    uniform, when none claims) is the rate the pool's Northern Ireland units,
+    which carry no weight in the solve, are drawn at too.
     """
 
     if residual <= 0.0:
@@ -340,6 +342,10 @@ def _realized_rate(
     last = min(int(np.searchsorted(cumulative, need)), len(order) - 1)
     if last > 0 and abs(cumulative[last - 1] - need) < abs(cumulative[last] - need):
         last -= 1
+    if last == 0 and abs(need) < abs(cumulative[0] - need):
+        # No claimant is nearer DWP's count than the first: a unit claims
+        # below the rate, and no uniform lies below the lowest.
+        return float(draws[order[0]])
     return float(np.nextafter(draws[order[last]], 2.0))
 
 

@@ -210,6 +210,28 @@ def test_the_draw_keeps_earlier_claimants_when_the_rate_rises() -> None:
     assert (would_claim | ~previous).all()
 
 
+def test_a_pool_nearer_zero_than_its_first_unit_draws_no_claimant() -> None:
+    # Two entitled non-reporters of weight 100 and a DWP count of 10: no
+    # claimant (0) is nearer the count than one (100), so neither claims
+    # (Vahid's review of #1344, item 15).
+    award = np.full(2, 600.0)
+    would_claim, _ = _assign(
+        award=award,
+        weights=np.asarray([100.0, 100.0]),
+        draws=np.asarray([0.2, 0.7]),
+        targets=_targets(SINGLE_0=10.0),
+    )
+    assert not would_claim.any()
+    # One unit's weight past half the count, and the first claimant is nearer.
+    would_claim, _ = _assign(
+        award=award,
+        weights=np.asarray([100.0, 100.0]),
+        draws=np.asarray([0.2, 0.7]),
+        targets=_targets(SINGLE_0=60.0),
+    )
+    assert would_claim.tolist() == [True, False]
+
+
 def test_clipped_pools_are_flagged_unreachable() -> None:
     # Band 0: reporters alone exceed DWP's count, so no drawn unit claims.
     # Band 2: DWP's count exceeds every entitled unit, so all of them claim.
