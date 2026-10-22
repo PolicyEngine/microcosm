@@ -239,14 +239,14 @@ def test_recipient_predictors_aggregate_person_entities_to_household() -> None:
     # plus the HBAI deductions, less income tax, NI, council tax and rates, so
     # a pension contribution stays in it and the direct taxes do not.
     household_level = {
-        "hbai_household_net_income",
+        "hbai_household_net_income_before_reset_to_zero",
         "council_tax",
         "domestic_rates",
         "LVT",
     }
     values = {
         "is_SP_age": np.array([0.0, 1.0, 0.0, 0.0]),
-        "hbai_household_net_income": np.array([1e4, 2e4]),
+        "hbai_household_net_income_before_reset_to_zero": np.array([1e4, 2e4]),
         "income_tax": np.array([1000.0, 500.0, 0.0, 2000.0]),
         "council_tax": np.array([1200.0, 900.0]),
         "employee_pension_contributions": np.array([300.0, 0.0, 0.0, 0.0]),

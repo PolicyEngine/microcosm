@@ -734,10 +734,14 @@ def _pair_frames(
 
 def _red_target_names(run: RowwiseRun) -> set[str]:
     gate = _mapping(_mapping(run.gates.get("gates")).get("uk_local_target_fit"))
-    failures = _mapping(_mapping(gate.get("details")).get("failing_targets"))
+    details = _mapping(gate.get("details"))
+    failures = _mapping(details.get("failing_targets"))
+    # A reviewed exclusion lifts the fence, not the breach (microcosm#1301):
+    # a signed cell is still outside the bound, so it stays on the red ledger.
+    signed = _mapping(details.get("reviewed_exclusions"))
     names: set[str] = set()
     diagnostics = run.local_diagnostics
-    for key in failures:
+    for key in (*failures, *signed):
         pieces = str(key).split("/", 2)
         if len(pieces) != 3:
             continue

@@ -354,12 +354,18 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
     if args.preflight_only:
-        prepare_release(Path(args.release_dir), **preparation_options)
+        prepared = prepare_release(Path(args.release_dir), **preparation_options)
         preflight = {"valid": True, "published": False}
         if narrowed:
             preflight["narrowed_claims"] = narrowed
         if measurement:
             preflight["claim_measurement"] = measurement
+        # The contract's warnings (the dense line's disclosure walk,
+        # microcosm#1301) never refuse, so the verdict carries them for
+        # whatever parses stdout; each names a file and paths in it, never a
+        # value. Publication's printed pointer carries them the same way.
+        if prepared.contract_warnings:
+            preflight["contract_warnings"] = list(prepared.contract_warnings)
         print(json.dumps(preflight))
         return 0
 

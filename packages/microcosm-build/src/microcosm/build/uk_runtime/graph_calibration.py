@@ -54,7 +54,11 @@ from microcosm.graph.canonical import canonical_json
 from . import dataset_size, size_checkpoint
 from .dataset_size import UKSizeDraw, UKSizeL2, UKSizeSelection
 from .graph_population import context_frame, population_slices
-from .local_doctrine import UK_LOCAL_SOLVE_EPOCHS, UK_LOCAL_TARGET_WEIGHT_RULES
+from .local_doctrine import (
+    UK_LOCAL_L0_SEARCH_FLOOR,
+    UK_LOCAL_SOLVE_EPOCHS,
+    UK_LOCAL_TARGET_WEIGHT_RULES,
+)
 
 SIZE_SEARCH_TYPE = ArtifactType("microcosm.uk.size-search", 1)
 SIZE_DRAW_TYPE = ArtifactType("microcosm.uk.size-draw", 1)
@@ -80,6 +84,10 @@ class UKGraphCalibrationConfig:
     selection_seed: int | None = None
     selection_pi_hi: float = 1.0
     selection_initial_lambda: float | None = None
+    #: microcosm#1301: the lowest L0 penalty the size search may probe, a
+    #: parameter of the search, draw and refit nodes beside the warm start
+    #: (which must lie inside its bracket). Only a sized build reads it.
+    selection_l0_search_floor: float = UK_LOCAL_L0_SEARCH_FLOOR
     baseline_pi_floor: float = 0.0
     target_weight_rule: str = "uniform"
     #: microcosm#1124: each size stage's L2 penalty (``None``: off). The
@@ -102,7 +110,8 @@ class UKGraphCalibrationConfig:
         ):
             raise ValueError("Dataset household count must be a positive integer.")
         dataset_size._check_pi_hi(self.selection_pi_hi)
-        dataset_size._check_initial_lambda(self.selection_initial_lambda)
+        floor = dataset_size._check_l0_search_floor(self.selection_l0_search_floor)
+        dataset_size._check_initial_lambda(self.selection_initial_lambda, floor=floor)
         dataset_size._check_baseline_pi_floor(self.baseline_pi_floor)
         for stage, l2 in (("selection", self.selection_l2), ("refit", self.refit_l2)):
             if l2 is None:
@@ -875,6 +884,9 @@ def uk_calibration_nodes(
             # search verifies it like any probe, so it is a parameter of the
             # search node and of the nodes that reuse its selection.
             "initial_lambda": config.selection_initial_lambda,
+            # microcosm#1301: the search's L0 floor. The doctrine module is not
+            # in the kernels' code hash, so the floor keys the nodes here.
+            "l0_search_floor": config.selection_l0_search_floor,
             **({} if config.selection_l2 is None else config.selection_l2.params()),
         }
         dense_input = ArtifactInput("dense", dense_id, "result", RESULT_TYPE)

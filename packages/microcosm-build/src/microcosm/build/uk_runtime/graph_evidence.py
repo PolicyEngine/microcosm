@@ -359,13 +359,17 @@ class UKSpineGateKernel(KernelBase):
     def implementation_hash(self) -> str:
         from microcosm.graph.canonical import canonical_json
 
-        from ..country_spec import load_country_spec
+        from .solve_scope import uk_solve_fingerprint
 
+        # The spine stages after a gate wait on its verdict, so its key is
+        # part of theirs. No spine gate reads a gate-only register, so it keys
+        # on the solve fingerprint and a sign-off between two release builds
+        # leaves an in-graph spine a cache hit (microcosm#1301).
         return hashlib.sha256(
             canonical_json(
                 {
                     "code": source_hash(type(self), gate_battery, battery_bindings),
-                    "country_resources": load_country_spec("uk").fingerprint,
+                    "country_resources": uk_solve_fingerprint(),
                 }
             )
         ).hexdigest()

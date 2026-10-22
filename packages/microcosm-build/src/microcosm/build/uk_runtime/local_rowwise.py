@@ -39,7 +39,7 @@ from microcosm.build.uk_runtime.local_doctrine import (
     UK_LOCAL_TARGET_LOSS_CAP,
     uk_local_target_loss_weights,
 )
-from microcosm.build.uk_runtime.local_targets import AREA_TYPES
+from microcosm.build.uk_runtime.local_targets import AREA_TYPES, PARTIAL_AREA_TYPES
 from microcosm.build.uk_runtime.national_frame import (
     uk_national_frame,
     uk_time_period,
@@ -47,6 +47,7 @@ from microcosm.build.uk_runtime.national_frame import (
 )
 from microcosm.build.uk_runtime.target_weights import (
     UKTargetRows,
+    assert_uk_family_loss_share_floors,
     uk_family_floored_loss_scales,
     uk_target_loss_weights_for_rows,
     uk_target_rows_from_targets,
@@ -543,16 +544,25 @@ def build_uk_rowwise_local_surface_matrix(
                 raise ValueError(
                     f"assigned_by_grain[{grain!r}] must align with metrics rows."
                 )
-        if any(not code.strip() for code in assigned.tolist()):
+        # A partial grain (Scotland's BRMAs) leaves the households outside its
+        # areas blank: they belong to no area of the grain and support none
+        # of its cells (microcosm#1262). A full grain refuses a blank.
+        blank = np.asarray([not code.strip() for code in assigned.tolist()], dtype=bool)
+        if blank.any() and grain not in PARTIAL_AREA_TYPES:
             raise ValueError(f"assigned_by_grain[{grain!r}] contains blank code(s).")
+        if blank.all():
+            raise ValueError(
+                f"assigned_by_grain[{grain!r}] assigns no household to an area."
+            )
         assigned_areas_by_grain[grain] = tuple(assigned.tolist())
+        placed = assigned[~blank]
 
         codes = tuple(str(code) for code in area_codes_by_grain[grain])
         if len(set(codes)) != len(codes):
             raise ValueError(f"area roster for {grain!r} must be unique.")
         if any(not code.strip() for code in codes):
             raise ValueError(f"area roster for {grain!r} contains blank code(s).")
-        off_roster_assignments = sorted(set(assigned.tolist()) - set(codes))
+        off_roster_assignments = sorted(set(placed.tolist()) - set(codes))
         if off_roster_assignments:
             raise ValueError(
                 f"assigned area(s) are not on the {grain!r} roster: "
@@ -574,7 +584,7 @@ def build_uk_rowwise_local_surface_matrix(
                 f"{unknown_metrics[:5]}."
             )
         covered = set(grain_surface["area_code"].astype(str))
-        uncovered = sorted(set(assigned.tolist()) - covered)
+        uncovered = sorted(set(placed.tolist()) - covered)
         if require_every_assigned_area_covered and uncovered:
             raise ValueError(
                 f"target surface does not cover assigned area(s) on {grain!r}: "
@@ -584,7 +594,7 @@ def build_uk_rowwise_local_surface_matrix(
         area_codes_normalized[grain] = codes
         code_index = {code: index for index, code in enumerate(codes)}
         household_area_index_by_grain[grain] = np.asarray(
-            [code_index[code] for code in assigned.tolist()], dtype=np.int32
+            [code_index.get(code, -1) for code in assigned.tolist()], dtype=np.int32
         )
 
     assert household_index is not None
@@ -1029,8 +1039,12 @@ def _rowwise_target_set(problem: UKRowwiseLocalMatrix) -> TargetSet:
     metric_columns: dict[tuple[str, str], np.ndarray] = {}
     for grain, codes in problem.area_codes_by_grain.items():
         code_index = {code: index for index, code in enumerate(codes)}
+        # A household outside a partial grain's areas has no index there.
         area_indices[grain] = np.asarray(
-            [code_index[code] for code in problem.assigned_areas_by_grain[grain]],
+            [
+                code_index[code] if code.strip() else -1
+                for code in problem.assigned_areas_by_grain[grain]
+            ],
             dtype=np.int32,
         )
         for index, name in enumerate(problem.metric_names_by_grain[grain]):
@@ -1137,6 +1151,10 @@ class UKPreparedFullSolve:
     #: family floors) and the receipt that names what the floors raised.
     target_loss_scales: np.ndarray | None = None
     target_loss_scale_receipt: Mapping[str, Any] | None = None
+    #: The family loss-share floors' check (microcosm#1207), run on the
+    #: row-metadata rules' weights; ``None`` under the grain rules, whose
+    #: weights carry no family.
+    family_loss_share_floor_receipt: Mapping[str, Any] | None = None
 
 
 def prepare_uk_full_solve(
@@ -1147,6 +1165,7 @@ def prepare_uk_full_solve(
     national_rows: UKRowwiseNationalRows | None = None,
     target_weight_rule: str = "uniform",
     allow_empty_local_binding: bool = False,
+    now: Any = None,
 ) -> UKPreparedFullSolve:
     """Validate the selected surface with one doctrine for every geography.
 
@@ -1154,6 +1173,11 @@ def prepare_uk_full_solve(
     family: the graph's country-only target selection passes it, because its
     local surface is empty by construction; any other caller keeps the
     refusal of a declaration that names nothing.
+
+    ``now`` is the date the local binding adjudications are evaluated on
+    (:func:`require_adjudicated_uk_local_binding`); ``None`` is today, which
+    every build uses. Tests pass a fixed date so the committed register's
+    expiry cannot fail them on a later day (microcosm#1278).
     """
 
     _require_uniform_target_surface(problem)
@@ -1167,6 +1191,7 @@ def prepare_uk_full_solve(
     binding_adjudications = require_adjudicated_uk_local_binding(
         local_bound_families,
         problem.target_frame,
+        now=now,
         allow_empty=allow_empty_local_binding,
     )
     national_families = (
@@ -1273,7 +1298,11 @@ def prepare_uk_full_solve(
         target_loss_weights = uk_target_loss_weights_for_rows(
             target_rows, rule=target_weight_rule
         )
+        family_floor_receipt = assert_uk_family_loss_share_floors(
+            target_rows, target_loss_weights
+        )
     else:
+        family_floor_receipt = None
         target_loss_weights = uk_local_target_loss_weights(
             grain_labels,
             rule=target_weight_rule,
@@ -1293,6 +1322,7 @@ def prepare_uk_full_solve(
         target_rows=target_rows,
         target_loss_scales=target_loss_scales,
         target_loss_scale_receipt=scale_receipt,
+        family_loss_share_floor_receipt=family_floor_receipt,
     )
 
 
@@ -1364,6 +1394,7 @@ def solve_uk_rowwise_weights_under_doctrine(
     progress: Callable[[str], None] | None = None,
     progress_events: Callable[[dict[str, object]], None] | None = None,
     allow_empty_local_binding: bool = False,
+    now: Any = None,
 ) -> UKRowwiseDoctrineSolve:
     """Solve rowwise household weights under the reviewed doctrine.
 
@@ -1372,6 +1403,9 @@ def solve_uk_rowwise_weights_under_doctrine(
     dict (``calibration_epoch``, ``budget_probe``, ``budget_search_done``),
     phase-tagged by the size machinery, so a build driver can publish staging
     telemetry without changing the lines a log reader follows.
+
+    ``now`` dates the binding adjudications' review, as in
+    :func:`prepare_uk_full_solve`.
 
     ``selection_seed`` (default ``seed``) seeds only the size selection —
     the informed L0 search, the exact-count draw and the refit — so two
@@ -1414,6 +1448,7 @@ def solve_uk_rowwise_weights_under_doctrine(
         national_rows=national_rows,
         target_weight_rule=target_weight_rule,
         allow_empty_local_binding=allow_empty_local_binding,
+        now=now,
     )
     doctrine = UK_LOCAL_SOLVE_DOCTRINE
     target_set = prepared.target_set
@@ -1953,12 +1988,14 @@ def rotated_uk_local_holdout(
     refit_l2_lambda: float = 0.0,
     refit_l2_anchor: str | None = None,
     refit_l2_basis: str | None = None,
+    now: Any = None,
 ) -> dict[str, object]:
     """Run five local-row rotations with national rows fixed in training.
 
     A sized fold reruns the whole size selection on its training rows;
     ``selection_initial_lambda`` starts each fold's budget search where the
-    main build's search started.
+    main build's search started. ``now`` dates every fold's binding review,
+    as in :func:`prepare_uk_full_solve`.
     """
 
     if not len(problem.targets):
@@ -2013,6 +2050,7 @@ def rotated_uk_local_holdout(
             bound_families=[*train_families, *declared_national],
             national_rows=national_rows,
             target_weight_rule=target_weight_rule,
+            now=now,
             restore=restore,
             epochs=epochs,
             learning_rate=learning_rate,

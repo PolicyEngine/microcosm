@@ -28,6 +28,7 @@ from microcosm.calibrate import (
     L0RefitResult,
     Target,
     TargetSet,
+    build_constraint_matrix,
     calibrate,
     calibrate_l0_refit,
     default_target_loss_scales,
@@ -38,6 +39,7 @@ from microcosm.calibrate import (
 )
 from microcosm.calibrate import solve as solve_module
 from microcosm.calibrate.gates import hard_concrete_open_probability_threshold
+from microcosm.calibrate.initialization import contribution_initialization
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 from test_support.paths import paths_for
 
@@ -739,6 +741,107 @@ def test_budget_search_default_preserves_legacy_optimizer_call(
     )
 
     assert len(result) == 4
+
+
+def test_budget_search_stops_when_the_bracket_narrows_onto_a_probe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """microcosm#1301: a count that jumps across the budget between two
+    penalties never settles; the bisection narrows onto the jump and stops as
+    ``bracket_exhausted`` instead of re-probing a penalty it has measured."""
+
+    jump = 10.0**-3.3
+
+    def fake_optimize(*args, **kwargs):
+        count = 10 if kwargs["l0_lambda"] < jump else 0
+        return np.concatenate((np.ones(count), np.zeros(10 - count))), np.zeros(1)
+
+    monkeypatch.setattr(solve_module, "_optimize", fake_optimize)
+    receipt: dict[str, object] = {}
+    solve_module._search_l0_lambda_for_budget(
+        None,
+        None,
+        None,
+        None,
+        10.0,
+        np.ones(10),
+        target_records=5,
+        epochs=1,
+        learning_rate=0.1,
+        conserve_mass=False,
+        max_weight_ratio=None,
+        l2_lambda=0.0,
+        init_mean=0.9,
+        temperature=0.25,
+        seed=0,
+        prune_atol=1e-6,
+        initial_lambda=None,
+        budget_iters=60,
+        search_receipt=receipt,
+    )
+
+    assert receipt["stopped_on"] == solve_module.BUDGET_STOP_BRACKET
+    assert receipt["search_bracket"] == {"lower": 1e-7, "upper": 10.0}
+    probed = np.log10([probe["l0_lambda"] for probe in receipt["probes"]])
+    assert receipt["evaluations"] == len(probed) < 60
+    gaps = np.abs(probed[:, None] - probed[None, :])[~np.eye(len(probed), dtype=bool)]
+    assert gaps.min() > solve_module._L0_SAME_PROBE_DECADES
+    assert abs(probed[-1] - np.log10(jump)) < 1e-5
+
+
+def test_open_mass_rises_as_the_penalty_falls_below_the_default_floor(
+    feasible_frame,
+) -> None:
+    """microcosm#1301 smoke: on the real optimizer, with gates seeded the way
+    the UK size search seeds them, each decade the fixed penalty falls from
+    1e-7 to 1e-10 opens more gate mass, so a search bracket below the default
+    floor still steers.
+
+    The default ``init_mean`` holds every gate near 0.999 from 1e-6 down, so
+    a monotonicity check there passes on a flat curve.
+    ``contribution_initialization`` starts the gates well below saturation
+    (open mass about 210 of 400).
+    """
+
+    frame, truths = feasible_frame(n=400)
+    targets = TargetSet(
+        (
+            _population_target(truths["population"], 0.9),
+            _income_target(truths["income"], 1.05),
+        )
+    )
+    problem = build_constraint_matrix(frame, targets)
+    gates = contribution_initialization(
+        problem.matrix, problem.initial_weights.values, problem.target_vector
+    )
+    # Each record carries about 1/400 of a target. At the default scales that
+    # pull on its gate swamps penalties this small: below 1e-7 the steps sit
+    # within seed noise, and some fall. Scales 3e5 times the targets cut the
+    # pull to about 1e-8, as a far larger pool's per-record shares do, and at
+    # the UK solve's learning rate, 0.15, fit and penalty trade off inside the
+    # bracket: open mass runs from little beyond the two protected carriers at
+    # 1e-7 to about 250 at 1e-10.
+    scales = 3e5 * default_target_loss_scales(problem.target_vector)
+    masses = []
+    for penalty in (1e-7, 1e-8, 1e-9, 1e-10):
+        result = calibrate(
+            frame,
+            targets,
+            gate_initialization=gates,
+            target_loss_scales=scales,
+            epochs=300,
+            learning_rate=0.15,
+            seed=0,
+            l0_lambda=penalty,
+        )
+        assert result.gate_open_probabilities is not None
+        assert np.isfinite(result.gate_open_probabilities).all()
+        assert np.isfinite(result.weights).all()
+        masses.append(float(result.gate_open_probabilities.sum()))
+    # At least ten records a decade, since the saturated curve rises too, by
+    # under a hundredth of a record a decade. Over 20 optimizer seeds on two
+    # fixture draws the smallest step here was 32.
+    assert np.all(np.diff(masses) >= 10.0), masses
 
 
 def test_l0_lambda_alone_is_a_fixed_penalty_pruning_control(feasible_frame) -> None:

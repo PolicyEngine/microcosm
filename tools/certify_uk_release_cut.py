@@ -44,10 +44,12 @@ from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
 from microcosm.build.uk_runtime.high_value_homes import (
     load_uk_high_value_home_stock_facts,
 )
+from microcosm.build.uk_runtime.hmrc_uprating import assert_installed_engine_is_pinned
 from microcosm.build.uk_runtime.ledger_targets import (
     compile_uk_local_target_registry,
     compile_uk_target_registry,
     load_uk_local_area_crosswalk,
+    uk_registry_on_calibration_line,
 )
 from microcosm.build.uk_runtime.measure_simulation import (
     apply_uk_calibration_measure_exclusions,
@@ -63,6 +65,11 @@ from microcosm.build.uk_runtime.release_certification import (
 )
 from microcosm.build.uk_runtime.release_input_coverage import (
     PolicyEngineUKCoverageEngine,
+)
+from microcosm.build.uk_runtime.support_floor import (
+    load_uk_support_floor_declaration,
+    narrow_uk_registry_by_support_floor,
+    uk_support_floor_from_payload,
 )
 from microcosm.build.uk_runtime.weight_year import uk_solve_year_frame
 from microcosm.build.uk_runtime.weighted_integrity import (
@@ -86,6 +93,8 @@ def _ledger_facts_size(path: Path) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
+    # The engine freeze, before either H5 is hashed (microcosm#1095).
+    assert_installed_engine_is_pinned()
     started_at = time.perf_counter()
     started_ts = datetime.now(UTC)
     code_pin = git_code_pin(_REPOSITORY)
@@ -258,12 +267,15 @@ def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
     # full build, which refuses an unresolved calibration-year reference, this
     # producer keeps the partial registry and leaves the verdict to the gates.
     ledger_unsupported = {}
+    # The high-value homes family binds Microcosm-derived facts beside the feed:
+    # its local cells (microcosm#1240) and its region rows (microcosm#1301).
+    facts = (*artifact.facts, *load_uk_high_value_home_stock_facts().rows)
     for period in _LEDGER_COMPILE_PARITY_PERIODS:
-        compilation = compile_uk_target_registry(artifact.facts, target_period=period)
+        compilation = compile_uk_target_registry(facts, target_period=period)
         ledger_registries[period] = compilation.registry
         ledger_unsupported[period] = compilation.unsupported
     local_compilation = compile_uk_local_target_registry(
-        (*artifact.facts, *load_uk_high_value_home_stock_facts().rows),
+        facts,
         target_period=_LOCAL_COMPILE_PARITY_PERIOD,
         crosswalk=load_uk_local_area_crosswalk(),
     )
@@ -276,12 +288,29 @@ def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
         reference_compiled = ledger_registries[calibration_year]
     else:
         reference_compiled = compile_uk_target_registry(
-            artifact.facts, target_period=calibration_year
+            facts, target_period=calibration_year
         ).registry
+    # The calibration reference is the national line's surface: the rows that
+    # bind on the local line only leave it as they leave the national solve
+    # (calibration_lines, microcosm#1301); compile parity keeps them.
+    reference_compiled, _line_receipt = uk_registry_on_calibration_line(
+        reference_compiled, line="national"
+    )
     evaluated_on = exclusion_evaluation_date(None)
     exclusions = load_uk_calibration_measure_exclusions()
     reference_registry, _receipt = apply_uk_calibration_measure_exclusions(
         reference_compiled, exclusions, now=evaluated_on
+    )
+    # The support floor drops rows on the candidate's spine (microcosm#1095
+    # U3). The certifier cannot recompute support, so it reads the drops the
+    # run recorded and checks them against the declared floor.
+    floor_declaration = load_uk_support_floor_declaration()
+    reference_registry = narrow_uk_registry_by_support_floor(
+        reference_registry,
+        _nested(diagnostics, "build", "measure_exclusions") or {},
+        None
+        if floor_declaration is None
+        else uk_support_floor_from_payload(floor_declaration),
     )
     append_phase(state, "registries_compiled")
 

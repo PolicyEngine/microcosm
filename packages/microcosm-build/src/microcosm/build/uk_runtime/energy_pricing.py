@@ -15,13 +15,20 @@ operation, ``price_domestic_energy``:
   electricity meters from the DESNZ subnational statistics; gas-positive
   households are disconnected in an identity-keyed uniform order until the
   region's prior-weighted share is the published one, so every group of
-  households loses the same expected share of its connected mass;
+  households loses the same expected share of its connected mass; in a
+  region whose draw falls short, zero-gas households are connected in the
+  declared ``connect_rule`` order (microcosm#1164);
 * shape: the NEED mean kWh by household income band, tenure, property type
   and region (England and Wales; Scotland by income, tenure and property),
   raked in kWh with gas over connected households;
 * level: DESNZ Energy Trends domestic consumption at actual temperature,
-  summed over the four quarters of the fiscal year, one factor per fuel on
-  the raked kWh so the frame's prior-weighted total is the published one.
+  summed over the four quarters of the declared calendar year (2024, the
+  base year of every LCFS spend column; microcosm#1113), one factor per fuel
+  on the raked kWh so the frame's prior-weighted total is the published one;
+* ceiling: each household's kWh is capped at the declared
+  ``household_kwh_ceiling`` (the NEED domestic-meter limits), the capped
+  households' own NEED cells are re-raked below it and the level is
+  restored (microcosm#1164).
 
 Every price, share, margin, factor and fit is returned in receipts the stage
 records; the ``energy_rake`` stage-health gate recomputes the published
@@ -90,6 +97,18 @@ ENERGY_TRENDS_CONCEPTS: Mapping[str, str] = {
 SUBNATIONAL_METER_CONCEPTS: Mapping[str, str] = {
     ELECTRICITY_FUEL: "desnz.subnational.domestic_electricity_meter_count",
     GAS_FUEL: "desnz.subnational.domestic_gas_meter_count",
+}
+#: The period type of each fuel's sub-national statistics. DESNZ's gas runs on
+#: gas years (gas year Y, mid-May Y to mid-May Y+1, weather-corrected) and its
+#: electricity on calendar years. Microcosm pairs gas year Y with calendar year
+#: Y, the year each opens in (microcosm#1300; PolicyEngine/chronicle#356 left
+#: the alignment to Microcosm), so the meter ratio and the Great Britain level
+#: divide like-labelled years, as they did before Chronicle stamped the gas
+#: rows' own period type; every read names its type, so a re-stamped period
+#: fails by name.
+SUBNATIONAL_PERIOD_TYPES: Mapping[str, str] = {
+    ELECTRICITY_FUEL: "calendar_year",
+    GAS_FUEL: "gas_year",
 }
 _RELATIVE_FACT_TOLERANCE = 1e-9
 
@@ -488,6 +507,7 @@ def published_gas_connected_shares(
                     resource,
                     concept=SUBNATIONAL_METER_CONCEPTS[fuel],
                     geography_id=str(area),
+                    period_type=SUBNATIONAL_PERIOD_TYPES[fuel],
                     period_value=period_value,
                     dimensions={"metric": "meter_count", "fuel": fuel},
                 ),
@@ -517,6 +537,7 @@ def published_gas_connected_shares(
         "connection_rule": rule,
         "resource": resource,
         "period_value": period_value,
+        "period_types": dict(SUBNATIONAL_PERIOD_TYPES),
         "fallback": fallback,
         "fallback_regions": sorted(fallback_regions),
         "by_region": by_region,
@@ -1020,6 +1041,106 @@ def declared_household_kwh_ceilings(
     return ceilings
 
 
+#: The declared NEED cells whose households start from the cell's NEED mean
+#: when every one of them drew no kWh (microcosm#1240). Mobile homes have no
+#: NEED property-type row and the incumbent held them at the all-dwellings
+#: mean; where every mobile home of a NEED geography drew a spend at or below
+#: the standing charge, the multiplying rake has nothing to scale and leaves
+#: the cell at zero. Any other cell with a zero current mean still fails the
+#: ``energy_rake`` gate.
+ZERO_KWH_CELLS_AT_NEED_MEAN_KEY = "zero_kwh_cells_at_need_mean"
+
+
+def declared_zero_kwh_cells_at_need_mean(
+    parameters: Mapping[str, Any],
+) -> dict[str, tuple[str, ...]] | None:
+    """The declared ``zero_kwh_cells_at_need_mean`` categories per margin, if any."""
+
+    declared = parameters.get(ZERO_KWH_CELLS_AT_NEED_MEAN_KEY)
+    if declared is None:
+        return None
+    if not isinstance(declared, Mapping) or not declared:
+        raise ValueError(
+            f"{ZERO_KWH_CELLS_AT_NEED_MEAN_KEY} must map NEED margins to categories."
+        )
+    cells: dict[str, tuple[str, ...]] = {}
+    for margin, categories in declared.items():
+        if margin not in NEED_MARGIN_DIMENSIONS:
+            raise ValueError(
+                f"{ZERO_KWH_CELLS_AT_NEED_MEAN_KEY} names {margin!r}, not a NEED "
+                f"margin ({sorted(NEED_MARGIN_DIMENSIONS)})."
+            )
+        if (
+            isinstance(categories, str)
+            or not isinstance(categories, Sequence)
+            or not categories
+            or not all(isinstance(c, str) and c for c in categories)
+        ):
+            raise ValueError(
+                f"{ZERO_KWH_CELLS_AT_NEED_MEAN_KEY}.{margin} must list NEED categories."
+            )
+        cells[str(margin)] = tuple(str(c) for c in categories)
+    return cells
+
+
+def _hold_zero_kwh_cells_at_need_mean(
+    frame: pd.DataFrame,
+    cells: Mapping[str, Sequence[str]],
+    *,
+    margins: NeedMargins,
+    connected: np.ndarray,
+    weights: np.ndarray,
+) -> list[dict[str, str]]:
+    """Start each declared cell whose every household drew no kWh at its NEED mean.
+
+    Works on the rake's own copy before the first sweep. A cell is its
+    ``_need_<margin>`` key in each NEED geography, over every row for
+    electricity and over the gas-connected rows for gas, as the rake sweeps
+    them. A cell with a positive row is left to the rake, and so is one with
+    no row or no weight. Records the cells it set, never a household.
+    """
+
+    held: list[dict[str, str]] = []
+    for margin, categories in cells.items():
+        column = f"_need_{margin}"
+        if column not in frame:
+            raise ValueError(
+                f"{ZERO_KWH_CELLS_AT_NEED_MEAN_KEY} names the {margin!r} margin, "
+                "which this rake does not sweep."
+            )
+        keys = frame[column].to_numpy().astype(str)
+        for category in categories:
+            published = {
+                geography: cell
+                for (geography, name), cell in margins.targets[margin].items()
+                if name == category
+            }
+            if not published:
+                raise ValueError(
+                    f"{ZERO_KWH_CELLS_AT_NEED_MEAN_KEY}: NEED publishes no {margin} "
+                    f"cell {category!r} for {margins.period_value}."
+                )
+            for geography, cell in sorted(published.items()):
+                key = f"{geography}:{category}"
+                for fuel, population in (
+                    (ELECTRICITY_KWH, np.ones(len(frame), dtype=bool)),
+                    (GAS_KWH, connected),
+                ):
+                    rows = (keys == key) & population
+                    if not rows.any() or float(weights[rows].sum()) <= 0.0:
+                        continue
+                    values = (
+                        pd.to_numeric(frame.loc[rows, fuel], errors="coerce")
+                        .fillna(0.0)
+                        .to_numpy(dtype=float)
+                    )
+                    if not (values == 0.0).all():
+                        continue
+                    frame.loc[rows, fuel] = float(cell[fuel])
+                    held.append({"margin": margin, "cell": key, "column": fuel})
+    return held
+
+
 def cap_household_kwh(
     values: np.ndarray,
     *,
@@ -1155,6 +1276,7 @@ def rake_energy_kwh(
     gas_connected: Sequence[bool] | None = None,
     level: Mapping[str, float] | None = None,
     ceilings: Mapping[str, float] | None = None,
+    zero_kwh_cells_at_need_mean: Mapping[str, Sequence[str]] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Rake ``electricity_kwh`` and ``gas_kwh`` to the NEED shape, then to the level.
 
@@ -1181,6 +1303,11 @@ def rake_energy_kwh(
     NEED cells, re-raking them to the levelled targets with the capped ones
     held, then restores the published total (``cap_household_kwh``;
     microcosm#1164). The fit is read after the cap.
+
+    ``zero_kwh_cells_at_need_mean`` (NEED categories per margin) starts each
+    named cell whose every household drew no kWh at the cell's NEED mean
+    before the first sweep, since a cell mean of zero cannot be scaled; the
+    receipt lists the cells it set (microcosm#1240).
     """
 
     frame = table.copy()
@@ -1248,6 +1375,22 @@ def rake_energy_kwh(
     )
     if len(connected) != len(frame):
         raise ValueError("gas_connected must align with the table.")
+    weight_values = (
+        np.ones(len(frame), dtype=float)
+        if weights is None
+        else np.asarray(weights, dtype=float)
+    )
+    held_at_need_mean = (
+        []
+        if zero_kwh_cells_at_need_mean is None
+        else _hold_zero_kwh_cells_at_need_mean(
+            frame,
+            zero_kwh_cells_at_need_mean,
+            margins=margins,
+            connected=connected,
+            weights=weight_values,
+        )
+    )
     electricity_specs = tuple(
         MarginSpec(
             spec.column,
@@ -1287,11 +1430,6 @@ def rake_energy_kwh(
     ]
     raked.loc[connected, GAS_KWH] = gas_raked[GAS_KWH].to_numpy(dtype=float)
     raked.loc[~connected, GAS_KWH] = 0.0
-    weight_values = (
-        np.ones(len(frame), dtype=float)
-        if weights is None
-        else np.asarray(weights, dtype=float)
-    )
     level_factor = {ELECTRICITY_KWH: 1.0, GAS_KWH: 1.0}
     level_receipt: dict[str, Any] | None = None
     if level is not None:
@@ -1359,6 +1497,7 @@ def rake_energy_kwh(
         "gas_connected_rows": int(connected.sum()),
         "rows": int(len(frame)),
         "zero_current_cells": zero_cells,
+        "cells_held_at_need_mean": held_at_need_mean,
         "sweep_residuals": sweep_residuals,
         "level_factor": dict(level_factor),
         "level": level_receipt,

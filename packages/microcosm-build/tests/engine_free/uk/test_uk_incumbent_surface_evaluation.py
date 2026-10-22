@@ -456,3 +456,41 @@ def test_evaluator_requires_new_chronicle_target_identity() -> None:
             },
             expected,
         )
+
+
+def test_evaluator_records_inventory_drift_beside_the_summary(capsys) -> None:
+    """The contract checks the pinned inventory apart from the measured limits
+    (microcosm#1301), so the evaluator records the drift itself."""
+    import importlib.util
+
+    from microcosm.data.contract import uk_incumbent_surface_assessment
+
+    tool = _TEST_PATHS.repository / "tools/evaluate_uk_incumbent_surface.py"
+    spec = importlib.util.spec_from_file_location("evaluate_uk_incumbent_surface", tool)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    payload = {
+        "national_rows": [
+            {
+                "incumbent_name": "synthetic_national",
+                "incumbent_target": 100.0,
+                "family": "synthetic_program",
+                "candidate_estimate": 100.0,
+                "status": "bound",
+            }
+        ],
+        "local_rows": [],
+    }
+    module._assess(payload)
+    assert payload["summary"] == uk_incumbent_surface_assessment(payload)
+    assert payload["summary"]["passed"] is True
+    assert (
+        "local rows must be a complete nonempty row list."
+        in (payload["inventory_failures"])
+    )
+    assert (
+        "national rows do not match the pinned incumbent target inventory."
+        in payload["inventory_failures"]
+    )
+    assert "warning: incumbent inventory" in capsys.readouterr().err

@@ -37,6 +37,7 @@ from microcosm.build.uk_runtime.spi_spine import (
 )
 from microcosm.build.uk_runtime.spi_support import (
     HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN,
+    SPI_LOSS_DRAW_COLUMNS,
     SPI_SYNTHETIC_SUPPORT_CHANNEL,
     UKSPISupportResult,
     build_uk_spi_support_channel,
@@ -517,7 +518,12 @@ def test_spi_income_zero_initializes_frs_charity_and_keeps_frs_dividends(
     for event in _FakeQRF.events[1:-1]:
         assert set(event[2]) <= {20.0, 10.0} and event[2]
     assert _FakeQRF.events[-1][2] == [20.0, 10.0]
-    assert set(SPI_INCOME_QRF_OUTPUT_COLUMNS) <= set(person.columns)
+    # Every stage-1 output stays, except the two loss draws the stage moves into
+    # loss_relief and drops (microcosm#1095).
+    assert set(SPI_INCOME_QRF_OUTPUT_COLUMNS) - set(SPI_LOSS_DRAW_COLUMNS) <= set(
+        person.columns
+    )
+    assert not set(SPI_LOSS_DRAW_COLUMNS) & set(person.columns)
 
 
 def test_reviewed_absent_incapacity_signal_raises(tmp_path: Path) -> None:

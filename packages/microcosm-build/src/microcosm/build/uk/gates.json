@@ -541,7 +541,8 @@
         "restored_columns": [
           "iidb_reported",
           "afcs_reported",
-          "bsp_reported"
+          "bsp_reported",
+          "war_widows_pension_reported"
         ]
       },
       "notes": "Stage-time structural gate over the SPI benefit coherence receipt (microcosm#1095, uk-data#514): no SPI-channel row keeps a zeroed legacy report, every restored report equals the FRS twin's, receives_benefits_in_own_right agrees with each person's own reports, FRS rows are unchanged, every SPI benefit unit with a Universal Credit reporter claims, and no SPI unit outside the Universal Credit age population claims without reporting."
@@ -884,7 +885,7 @@
         },
         "sum_tolerance": 0.01
       },
-      "notes": "Benunit-aggregated reported Universal Credit must imply would_claim_uc. Both recorded capitals, uc_reported_capital and pension_credit_reported_capital, are bounded below by the named -1 unavailable sentinel and may use it only where the FRS carrier frs_benunit_capital is unavailable. Otherwise each equals the carrier plus the household property the unit holds, re-derived here with the stage's own rule (microcosm#1095): the household reference person's benefit unit holds the household's property at 90% of its value, market value less 10% for the costs of sale, and no other unit holds any. UC counts other residential and non-residential property, and a unit that reports Universal Credit keeps its receipt and carries none; Pension Credit counts those and owned land. The sum may differ by GBP 0.01 plus one float32 step of the expected value, so a float32 round-trip of the export does not fail it."
+      "notes": "Benunit-aggregated reported Universal Credit must imply would_claim_uc. Both recorded capitals, uc_reported_capital and pension_credit_reported_capital, are bounded below by the named -1 unavailable sentinel and may use it only where the FRS carrier frs_benunit_capital is unavailable. Otherwise each equals the carrier plus the household property the unit holds, re-derived here with the stage's own rule (microcosm#1095): the household reference person's benefit unit holds the household's property at 90% of its value, market value less 10% for the costs of sale, and no other unit holds any. UC counts other residential and non-residential property, and a unit that reports Universal Credit keeps its receipt and carries none; Pension Credit counts those and owned land. The sum may differ by GBP 0.01 plus one float32 step of the expected value, so a float32 round-trip of the export does not fail it. No unit may sit on the -1 sentinel beside a unit that records a property share for either scheme: since policyengine-uk 2.136.1 the sentinel unit would take its own share of property the recording unit already holds, so the engine would count it twice (Vahid's review of microcosm#1333)."
     },
     {
       "id": "uk_support",
@@ -944,7 +945,9 @@
           "benunit.uc_deduction_type_random_draw",
           "benunit.uc_latent_deduction_rate",
           "benunit.uc_reported_capital",
+          "benunit.would_claim_uc_at_legacy_closure",
           "benunit.would_claim_uc_childcare",
+          "household.additional_residential_property_purchased",
           "household.atomic_area_basis",
           "household.atomic_area_code",
           "household.atomic_area_system",
@@ -953,6 +956,9 @@
           "household.cash_isa",
           "household.cgt_support_copies",
           "household.cgt_support_copy_index",
+          "household.high_value_support_copies",
+          "household.high_value_support_copy_index",
+          "household.household_is_high_value_support_copy",
           "household.household_is_cgt_residential_clone",
           "household.cgt_residential_clone_index",
           "household.household_clone_index",
@@ -978,6 +984,7 @@
           "household.lsoa_code",
           "household.mortgage_debt",
           "household.msoa_code",
+          "household.non_residential_property_purchased",
           "household.num_vehicles",
           "household.oa_code",
           "household.ons_household_type",
@@ -991,7 +998,9 @@
           "person.a_and_e_visits",
           "person.aa_category",
           "person.admitted_patient_visits",
+          "person.age_left_full_time_education",
           "person.age_started_or_accepted_current_education_or_training",
+          "person.attends_private_school",
           "person.attends_private_school_random_draw",
           "person.capital_gains_asset_type",
           "person.capital_gains_badr",
@@ -1005,6 +1014,7 @@
           "person.dla_sc_category",
           "person.employment_sector",
           "person.esa_health_condition_proxy",
+          "person.esa_includes_support_component",
           "person.esa_support_group_proxy",
           "person.gift_aid",
           "person.has_lifetime_isa",
@@ -1012,6 +1022,7 @@
           "person.is_before_universal_credit_qualifying_young_person_terminal_date",
           "person.is_blind",
           "person.is_claimant_or_partner",
+          "person.is_engaged_in_owned_company_trade",
           "person.is_hbai_dependent_child",
           "person.is_in_non_advanced_education",
           "person.is_parent",
@@ -1021,10 +1032,16 @@
           "person.local_bus_single_fare_share",
           "person.local_bus_trips",
           "person.local_bus_use_band",
+          "person.loss_relief",
+          "person.ni_class_4_losses_brought_forward",
           "person.ons_family_index",
           "person.ons_family_role",
           "person.other_local_bus_trips",
           "person.outpatient_visits",
+          "person.owned_company_carries_on_property_business",
+          "person.owned_company_carries_on_trade",
+          "person.owned_company_income_share",
+          "person.owned_company_is_main_employment",
           "person.pension_contributions_via_salary_sacrifice",
           "person.pip_dl_category",
           "person.pip_m_category",
@@ -1034,13 +1051,16 @@
           "person.rent_paid_as_boarder",
           "person.rent_paid_as_lodger",
           "person.relationship_to_head",
+          "person.reports_outstanding_student_loan",
           "person.salary_sacrifice_asked",
           "person.salary_sacrifice_reported",
           "person.sic_industry_division",
+          "person.stands_as_sole_owner_or_partner_of_company",
           "person.statutory_paternity_pay",
           "person.student_loan_balance",
           "person.student_loan_plan",
           "person.tax_free_childcare_spend_routed_share",
+          "person.trading_loss",
           "person.uc_is_in_startup_period",
           "person.uc_is_in_gainful_self_employment",
           "person.is_looked_after_by_local_authority",
@@ -1152,6 +1172,55 @@
       "notes": "The person capital_gains_asset_type value must be one of the eight values the hmrc_cgt_asset_type_spine stage declares (none, sub_aea, the Chronicle Table 7 asset-type value ids); the build supplies the declared domain as evidence because the column is a frame input, not a PolicyEngine-UK enum (microcosm#725). Evaluated at the transferred boundary, after the stage that writes the column has run."
     },
     {
+      "id": "uk_council_tax_band_domain",
+      "gate": "enum_domain",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "columns": [
+          "council_tax_band"
+        ],
+        "partition_column": "region",
+        "domains_by_nation": {
+          "ENGLAND": [
+            "A",
+            "B",
+            "C",
+            "D",
+            "E",
+            "F",
+            "G",
+            "H"
+          ],
+          "WALES": [
+            "A",
+            "B",
+            "C",
+            "D",
+            "E",
+            "F",
+            "G",
+            "H",
+            "I"
+          ],
+          "SCOTLAND": [
+            "A",
+            "B",
+            "C",
+            "D",
+            "E",
+            "F",
+            "G",
+            "H"
+          ],
+          "NORTHERN_IRELAND": [
+            "D"
+          ]
+        }
+      },
+      "notes": "Each household's council-tax band must be one its nation uses: A-H in England and Scotland, A-I in Wales, and only the FRS placeholder D in Northern Ireland, which pays domestic rates (microcosm#1278). The engine enum holds A-I for every nation, so its domain alone passes a band I in England: no English target counts that band, and a computed council tax would charge it at the Band D ratio. The nation comes from the household region through the region tier, and the declared domains must equal UK_COUNCIL_TAX_BANDS_BY_NATION. Evaluated at the transferred boundary, after spi_housing_shell, the last spine stage that writes the band."
+    },
+    {
       "id": "uk_uc_deduction_combination_enum_domain",
       "gate": "enum_domain",
       "phase": "terminal",
@@ -1174,6 +1243,55 @@
         ]
       },
       "notes": "The person student-loan plan assignment must remain inside the PolicyEngine-UK StudentLoanPlan enum domain."
+    },
+    {
+      "id": "uk_council_tax_band_domain_terminal",
+      "gate": "enum_domain",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "columns": [
+          "council_tax_band"
+        ],
+        "partition_column": "region",
+        "domains_by_nation": {
+          "ENGLAND": [
+            "A",
+            "B",
+            "C",
+            "D",
+            "E",
+            "F",
+            "G",
+            "H"
+          ],
+          "WALES": [
+            "A",
+            "B",
+            "C",
+            "D",
+            "E",
+            "F",
+            "G",
+            "H",
+            "I"
+          ],
+          "SCOTLAND": [
+            "A",
+            "B",
+            "C",
+            "D",
+            "E",
+            "F",
+            "G",
+            "H"
+          ],
+          "NORTHERN_IRELAND": [
+            "D"
+          ]
+        }
+      },
+      "notes": "The nation check of uk_council_tax_band_domain, on the frame the release ships (microcosm#1278 review). The spine entry stops at the transferred boundary, so a later step that writes council_tax_band, such as a full build's band redraw after geography derivation, is checked only here. Its parameters must equal the spine entry's."
     },
     {
       "id": "uk_calibration_reference_coverage",
@@ -1272,6 +1390,19 @@
       "notes": "The existing UK geography-ladder evaluator is rerun on the locally calibrated candidate weights and adapted through UKGateBinding; no second ladder verdict implementation is introduced."
     },
     {
+      "id": "uk_local_brma_enum_domain",
+      "gate": "enum_domain",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "columns": [
+          "brma"
+        ]
+      },
+      "notes": "The post-geography node uk.full.geography.brma rewrites household brma from the assigned LSOA or output area after the spine's assembled enum check (microcosm#1262). Recheck the local candidate against the PolicyEngine-UK brma enum domain before export: an invalid value or missing domain evidence is structural and stops even a development build. A separate local entry keeps the assembled spine declaration, and the spine checkpoint identity it feeds, unchanged."
+    },
+    {
       "id": "uk_local_area_support",
       "gate": "area_support",
       "phase": "terminal",
@@ -1287,7 +1418,7 @@
         "minimum_distinct_sources": 50,
         "exclusions_resource": "local_area_support_exclusions.json"
       },
-      "notes": "Both local grains are blocking from birth. Each declared area needs at least 50 positive-weight rows, Kish ESS 50, and 50 distinct positive-weight source households. Reviewed exclusions carry measured shortfalls; a stale exclusion fails and must be retired. The constituency K=4 receipt measured minima of 101 rows, ESS 86.4, and 97 sources; a local-authority miss reopens K or requires a separately reviewed exclusion."
+      "notes": "Both local grains are blocking from birth. Each declared area needs at least 50 positive-weight rows, Kish ESS 50, and 50 distinct positive-weight source households. A reviewed exclusion, keyed local_authority/<code> or constituency/<code>, excuses its area's floor miss and is gate-only (microcosm#1301): it defers none of the area's cells, so signing an area leaves the solve unchanged; the Isles of Scilly and City of London cell deferrals are the local reference generator's own constants, lockstep-tested against this register. An exclusion records the floors its area misses, never the area's figures; a stale, expired or not-yet-in-force exclusion fails and must be retired or renewed, and one scoped to another release line stands aside. The constituency K=4 receipt measured minima of 101 rows, ESS 86.4, and 97 sources; a local-authority miss reopens K or requires a separately reviewed exclusion."
     },
     {
       "id": "uk_local_target_fit",
@@ -1296,9 +1427,10 @@
       "criticality": "release_blocking",
       "parameters": {
         "surface": "local_candidate",
-        "max_abs_relative_error": 0.25
+        "max_abs_relative_error": 0.25,
+        "reviewed_exclusions_resource": "local_target_fit_reviewed_exclusions.json"
       },
-      "notes": "Every bound target must be within 25% absolute relative error. Release-blocking following PR #870 review; the numeric threshold is unchanged."
+      "notes": "Every bound target must be within 25% absolute relative error. Release-blocking following PR #870 review; the numeric threshold is unchanged. A breaching cell may stand on a reviewed exclusion in local_target_fit_reviewed_exclusions.json, keyed by the gate's family/area_code/metric cell name (microcosm#1301): the exclusion lifts this fence only, the cell stays bound in the solve, and a stale, expired or not-yet-in-force entry fails on the build's review date."
     },
     {
       "id": "uk_local_per_family_fit",
