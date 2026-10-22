@@ -6427,10 +6427,12 @@ def _uk_brma_floor_verdict_warnings(diagnostics: Mapping) -> list[str]:
     """BRMA rows whose ten-household verdict is missing or disagrees.
 
     microcosm#1262: every BRMA row carries ``metadata.carrier_floor_met``, and
-    a row withholds its model figures exactly when the verdict is false, so
-    the contract can see a thin row the build never flagged. María's ruling of
-    2026-10-19 on the fourth review of #1305: this is warned, not refused. The
-    warnings give counts only, never a row.
+    a row withholds its model figures exactly when the verdict is false or the
+    row is withheld beside a thin one (``metadata.complementary_withholding``,
+    Vahid's second review of #1333), so the contract can see a thin row the
+    build never flagged. María's ruling of 2026-10-19 on the fourth review of
+    #1305: this is warned, not refused. The warnings give counts only, never a
+    row.
     """
 
     missing = disagreeing = 0
@@ -6439,9 +6441,13 @@ def _uk_brma_floor_verdict_warnings(diagnostics: Mapping) -> list[str]:
         if not isinstance(metadata, Mapping) or not _uk_brma_row(metadata):
             continue
         verdict = metadata.get("carrier_floor_met")
+        withheld = bool(metadata.get("model_figures_withheld"))
+        complementary = metadata.get("complementary_withholding") is True
         if not isinstance(verdict, bool):
             missing += 1
-        elif verdict == bool(metadata.get("model_figures_withheld")):
+        elif (not verdict and (complementary or not withheld)) or (
+            verdict and withheld != complementary
+        ):
             disagreeing += 1
     warnings = []
     if missing:

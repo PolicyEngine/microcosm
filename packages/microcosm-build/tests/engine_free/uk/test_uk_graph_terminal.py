@@ -978,7 +978,9 @@ def _run_final_gate_kernel(monkeypatch, *, brma_row: bool = False, solved=None):
 
     ``brma_row`` adds a Scottish BRMA rent row far from its target: its two
     carriers sit under the ten-household floor, so its figures are withheld
-    (microcosm#1262).
+    (microcosm#1262). Its rent differs between the two households, so the
+    national count, which both carry once, does not give it back (Vahid's
+    second review of #1333: a row that did would be withheld beside it).
     """
     from dataclasses import replace
     from types import SimpleNamespace
@@ -1114,7 +1116,7 @@ def _run_final_gate_kernel(monkeypatch, *, brma_row: bool = False, solved=None):
             replace(specs[0].to_target(), measure=lambda f: np.ones(2)),
             replace(specs[1].to_target(), measure=lambda f: np.array([1.0, 0.0])),
             *(
-                [replace(specs[2].to_target(), measure=lambda f: np.ones(2))]
+                [replace(specs[2].to_target(), measure=lambda f: np.array([1.0, 0.5]))]
                 if brma_row
                 else []
             ),

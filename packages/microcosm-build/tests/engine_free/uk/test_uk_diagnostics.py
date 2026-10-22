@@ -1001,6 +1001,7 @@ def test_written_uk_diagnostics_match_the_published_json_schema(
         target_geography_levels=geography,
         target_registry=registry,
         build={"release_id": "fixture"},
+        withheld=frozenset(),
     )
 
     assert isinstance(outcome, DiagnosticsWriteSuccess)
@@ -1436,6 +1437,205 @@ def test_a_thin_local_area_row_stays_with_the_area_support_rule() -> None:
             problem, np.ones(n), frame, rows, {"thin_row@2025": level}
         )
         assert (found == {"thin_row@2025"}) is withheld, level
+
+
+def _withheld_sets(
+    rows: dict[str, list[int]], n: int, values: dict[str, float] | None = None
+) -> tuple[set[str], set[str]]:
+    """``uk_withheld_row_sets`` over rows given by the households that carry them.
+
+    Every household is its own source household and carries weight one.
+    """
+
+    from types import SimpleNamespace
+
+    from scipy import sparse
+
+    from microcosm.build.uk_runtime.diagnostics import uk_withheld_row_sets
+
+    names = list(rows)
+    dense = np.zeros((len(names), n))
+    for position, name in enumerate(names):
+        dense[position, rows[name]] = (values or {}).get(name, 1.0)
+    problem = SimpleNamespace(matrix=sparse.csr_array(dense), names=names)
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {
+                    "person_id": np.arange(n, dtype=np.int64),
+                    "person_household_id": np.arange(n, dtype=np.int64),
+                }
+            ),
+            "household": pd.DataFrame(
+                {
+                    "household_id": np.arange(n, dtype=np.int64),
+                    "source_household_id": np.arange(n, dtype=np.int64),
+                }
+            ),
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(np.ones(n), WeightKind.DESIGN)},
+    )
+    return uk_withheld_row_sets(
+        problem, np.ones(n), frame, [{"name": name} for name in names]
+    )
+
+
+def test_a_band_its_total_gives_back_withholds_the_next_smallest_band() -> None:
+    """Vahid's second review of #1333, item 10, and María's hard rule.
+
+    The total less the published bands gives the thin band back, so the
+    next-smallest band is withheld beside it, not the total. The two together
+    rest on fifteen source households, which the published rows may give back.
+    """
+
+    thin, beside = _withheld_sets(
+        {
+            "total": list(range(30)),
+            "band_a": [0, 1, 2],
+            "band_b": list(range(3, 15)),
+            "band_c": list(range(15, 30)),
+        },
+        30,
+    )
+    assert (thin, beside) == ({"band_a"}, {"band_b"})
+
+
+def test_a_row_given_back_two_ways_loses_a_giver_from_each() -> None:
+    """Two relations give the thin band back, so one giver of each is withheld.
+
+    While both stand, every giver has a stand-in and the smallest goes first
+    (the other total's rest); then the first total's bands are the only way
+    back, and the next-smallest of them goes.
+    """
+
+    thin, beside = _withheld_sets(
+        {
+            "total": list(range(30)),
+            "band_a": [0, 1, 2],
+            "band_b": list(range(3, 15)),
+            "band_c": list(range(15, 30)),
+            "other_total": [0, 1, 2, *range(30, 40)],
+            "other_rest": list(range(30, 40)),
+        },
+        40,
+    )
+    assert (thin, beside) == ({"band_a"}, {"other_rest", "band_b"})
+
+
+def test_proportional_thin_rows_are_no_recovery() -> None:
+    """A thin count and an amount on the same households differ by nothing.
+
+    The amount is twice the count everywhere, so their difference is zero and
+    no published row gives anything back by it; the total's relation alone
+    asks for one more band.
+    """
+
+    thin, beside = _withheld_sets(
+        {
+            "total": list(range(30)),
+            "band_a_count": [0, 1, 2],
+            "band_a_amount": [0, 1, 2],
+            "band_b": list(range(3, 15)),
+            "band_c": list(range(15, 30)),
+        },
+        30,
+        values={"band_a_amount": 2.0},
+    )
+    assert (thin, beside) == ({"band_a_count", "band_a_amount"}, {"band_b"})
+
+
+def test_a_thin_row_no_published_row_gives_back_withholds_nothing_more() -> None:
+    thin, beside = _withheld_sets(
+        {"band_a": [0, 1, 2], "band_b": list(range(3, 15))}, 15
+    )
+    assert (thin, beside) == ({"band_a"}, set())
+
+
+def test_a_row_withheld_beside_a_thin_one_says_so_and_meets_the_schema(
+    tmp_path: Path,
+) -> None:
+    """The written diagnostics tell a row withheld beside a thin one from it.
+
+    BRMA rows: the thin band fails the ten-household floor; the band withheld
+    beside it meets the floor and is flagged ``complementary_withholding``, as
+    the release contract reads it. The payload, with its null figures, its
+    notes and its restated totals, is valid against the published schema.
+    """
+
+    n = 30
+    members = {
+        "total": range(30),
+        "band_a": range(3),
+        "band_b": range(3, 15),
+        "band_c": range(15, 30),
+    }
+    household = pd.DataFrame(
+        {
+            "household_id": np.arange(n, dtype=np.int64),
+            "source_household_id": np.arange(n, dtype=np.int64),
+            _SPI_COLUMN: [False] * n,
+            _CG_COLUMN: [False] * n,
+        }
+    )
+    for name, carriers in members.items():
+        household[f"{name}_measure"] = 0.0
+        household.loc[list(carriers), f"{name}_measure"] = 1.0
+    specs = [
+        TargetSpec(
+            name=name,
+            entity="household",
+            value=float(len(carriers)),
+            measure=f"{name}_measure",
+            period=2023,
+            source="Synthetic UK diagnostics fixture",
+            family="fixture",
+            hierarchy=_fixture_hierarchy(name, "brma"),
+        )
+        for name, carriers in members.items()
+    ]
+    geography = {f"{spec.name}@2023": "brma" for spec in specs}
+    weights = np.ones(n)
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {
+                    "person_id": np.arange(n, dtype=np.int64),
+                    "person_household_id": np.arange(n, dtype=np.int64),
+                }
+            ),
+            "household": household,
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(weights, WeightKind.DESIGN)},
+    )
+    registry = TargetRegistry(specs, country="uk")
+    result = score_targets(frame, registry.to_target_set(), weights=weights)
+    path = tmp_path / "calibration_diagnostics.json"
+
+    outcome = write_uk_calibration_diagnostics(
+        result,
+        path,
+        frame,
+        target_geography_levels=geography,
+        target_registry=registry,
+    )
+
+    assert isinstance(outcome, DiagnosticsWriteSuccess)
+    document = load_strict_json(path.read_bytes())
+    assert published_json_schema_errors(document) == []
+    rows = {row["target_name"]: row for row in document["targets"]}
+    thin, beside = rows["band_a"]["metadata"], rows["band_b"]["metadata"]
+    assert thin["carrier_floor_met"] is False
+    assert "complementary_withholding" not in thin
+    assert beside["carrier_floor_met"] is True
+    assert beside["complementary_withholding"] is True
+    assert beside["model_figures_withheld"].startswith(
+        "model figures withheld: with the published rows"
+    )
+    assert rows["band_b"]["final_estimate"] is None
+    assert rows["total"]["final_estimate"] == pytest.approx(30.0)
+    assert document["uk_diagnostics"]["model_figures_withheld"]["targets"] == 2
 
 
 def _thin_and_wide_brma_payload(

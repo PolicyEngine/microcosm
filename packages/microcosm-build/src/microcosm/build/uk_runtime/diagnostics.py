@@ -26,6 +26,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from pydantic import ValidationError
+from scipy import sparse
 
 from microcosm.calibrate import (
     TargetRegistry,
@@ -86,6 +87,10 @@ UK_BRMA_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS = 10
 _MODEL_FIGURE_FIELDS = UK_MODEL_FIGURE_FIELDS
 _WITHHELD_NOTE = (
     "model figures withheld: fewer than 10 distinct source households carry this row"
+)
+_COMPLEMENT_NOTE = (
+    "model figures withheld: with the published rows they would give back a row "
+    "that fewer than 10 distinct source households carry"
 )
 
 _COUNTRY_BY_AREA_PREFIX = {
@@ -972,7 +977,88 @@ def _declared_target_partition(
 UK_AREA_SUPPORT_LEVELS = frozenset({"constituency", "local_authority"})
 
 
-def uk_withheld_rows(
+#: How near a combination of withheld rows may come to the published rows'
+#: span and still count as given back: the squared distance of its unit-normed
+#: row, so within 0.1% in norm, which the published figures reproduce to the
+#: same precision. Exact recoveries sit near 1e-9 and the rest above 1e-3.
+_RECOVERY_TOLERANCE = 1e-6
+#: Below this share of the largest entry, an entry of a row-reduced
+#: combination, of its values or of its published coefficients is rounding
+#: (the eigenvectors carry errors near 1e-8). Treating a small entry as zero
+#: can only shrink a combination's support, so it errs toward withholding.
+_RECOVERY_ROUNDING = 1e-6
+
+
+def _row_level(geography_levels: Mapping[str, object] | None):
+    def level(name: str) -> str:
+        raw = (geography_levels or {}).get(name, "")
+        text = str(getattr(raw, "value", raw)).strip().lower()
+        return _GEOGRAPHY_LEVEL_ALIASES.get(text, text)
+
+    return level
+
+
+def _scoped_rows(
+    problem: Any,
+    weights: Sequence[float] | np.ndarray,
+    frame: Frame,
+    target_rows: Sequence[Mapping[str, object]],
+    geography_levels: Mapping[str, object] | None,
+) -> tuple[list[str], sparse.csr_matrix, np.ndarray, np.ndarray, np.ndarray]:
+    """The rows the per-row floor governs, sorted, over the positive-weight households.
+
+    Returns their names, their problem rows (stored zeros dropped: a household
+    with a zero entry does not carry the row), those households' source ids,
+    each row's distinct source households and each row's floor.
+    """
+
+    level = _row_level(geography_levels)
+    names = sorted(
+        {
+            str(row["name"])
+            for row in target_rows
+            if level(str(row["name"])) not in UK_AREA_SUPPORT_LEVELS
+        }
+    )
+    if not names:
+        empty = np.zeros(0)
+        return [], sparse.csr_matrix((0, 0)), empty, empty, empty
+    household = frame.table("household")
+    if "source_household_id" not in household.columns:
+        raise ValueError(
+            "UK diagnostics need household source_household_id to count each "
+            "row's carriers."
+        )
+    sources = household["source_household_id"].to_numpy()
+    positive = np.asarray(weights, dtype=float) > 0
+    if positive.shape != sources.shape:
+        raise ValueError("UK row carriers need one weight per household.")
+    index = {str(name): position for position, name in enumerate(problem.names)}
+    for name in names:
+        if name not in index:
+            raise ValueError(f"UK target diagnostic {name!r} has no problem row.")
+    matrix = sparse.csr_matrix(problem.matrix)[[index[name] for name in names]]
+    matrix = sparse.csr_matrix(matrix[:, np.flatnonzero(positive)])
+    matrix.eliminate_zeros()
+    sources = sources[positive]
+    carriers = np.array(
+        [
+            len(pd.unique(sources[matrix.indices[start:stop]]))
+            for start, stop in zip(matrix.indptr[:-1], matrix.indptr[1:], strict=True)
+        ]
+    )
+    floors = np.array(
+        [
+            UK_BRMA_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS
+            if level(name) == "brma"
+            else UK_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS
+            for name in names
+        ]
+    )
+    return names, matrix, sources, carriers, floors
+
+
+def uk_thin_rows(
     problem: Any,
     weights: Sequence[float] | np.ndarray,
     frame: Frame,
@@ -993,46 +1079,193 @@ def uk_withheld_rows(
     area support counts them.
     """
 
-    def level(name: str) -> str:
-        raw = (geography_levels or {}).get(name, "")
-        text = str(getattr(raw, "value", raw)).strip().lower()
-        return _GEOGRAPHY_LEVEL_ALIASES.get(text, text)
+    names, _, _, carriers, floors = _scoped_rows(
+        problem, weights, frame, target_rows, geography_levels
+    )
+    return {
+        name
+        for name, count, floor in zip(names, carriers, floors, strict=True)
+        if count < floor
+    }
 
-    names = [
-        str(row["name"])
-        for row in target_rows
-        if level(str(row["name"])) not in UK_AREA_SUPPORT_LEVELS
-    ]
-    if not names:
-        return set()
-    household = frame.table("household")
-    if "source_household_id" not in household.columns:
-        raise ValueError(
-            "UK diagnostics need household source_household_id to count each "
-            "row's carriers."
+
+def uk_withheld_row_sets(
+    problem: Any,
+    weights: Sequence[float] | np.ndarray,
+    frame: Frame,
+    target_rows: Sequence[Mapping[str, object]],
+    geography_levels: Mapping[str, object] | None = None,
+) -> tuple[set[str], set[str]]:
+    """The thin rows (:func:`uk_thin_rows`) and the published rows withheld beside them.
+
+    A published row's model figure is its problem row times the weights, so a
+    combination of withheld rows is given back exactly when its row lies in
+    the span of the published rows over the positive-weight households (a
+    family total less its published bands gives back the bands withheld).
+    María's hard rule (UKDS CD171 section 5.2.1): no difference of published
+    figures may isolate fewer than ten cases, and where a total would give a
+    withheld cell back, one more cell is withheld (Vahid's second review of
+    #1333, item 10). While the published rows give back a combination of
+    withheld rows that rests on fewer source households than its rows' floor,
+    the published row with the fewest carriers among those that give it back
+    is withheld too (the next-smallest band beside a thin one, not its total),
+    and the span is measured again. Constituency and authority rows stay
+    outside, as they stay outside the per-row floor: whether a local row can
+    give back a national one is part of the local-line ruling still owed.
+    """
+
+    names, matrix, sources, carriers, floors = _scoped_rows(
+        problem, weights, frame, target_rows, geography_levels
+    )
+    thin = {
+        name
+        for name, count, floor in zip(names, carriers, floors, strict=True)
+        if count < floor
+    }
+    if not thin:
+        return thin, set()
+    norms = np.sqrt(np.asarray(matrix.multiply(matrix).sum(axis=1)).ravel())
+    scale = np.divide(1.0, norms, out=np.zeros_like(norms), where=norms > 0)
+    unit = sparse.csr_matrix(sparse.diags(scale) @ matrix)
+    gram = (unit @ unit.T).toarray()
+    withheld = set(thin)
+    for _ in range(len(names)):
+        held = [i for i, name in enumerate(names) if name in withheld and norms[i]]
+        published = [
+            i for i, name in enumerate(names) if name not in withheld and norms[i]
+        ]
+        if not held or not published:
+            break
+        recovery = _small_recovery(unit, gram, sources, held, published, floors)
+        if recovery is None:
+            break
+        coefficients, leverage = recovery
+        size = np.abs(coefficients)
+        givers = np.flatnonzero(size > _RECOVERY_ROUNDING * size.max())
+        if not len(givers):
+            raise ValueError(
+                "UK diagnostics found a thin combination the published rows give "
+                "back but no published row that gives it."
+            )
+        # A giver that no other published row can stand in for (it sits in no
+        # dependency among them) carries the same coefficient in every way of
+        # giving the combination back, so withholding it breaks them all. When
+        # every giver has a stand-in, two relations give the combination back,
+        # and withholding a giver breaks one of them.
+        essential = [j for j in givers if leverage[j] > 1 - _RECOVERY_TOLERANCE]
+        pick = min(
+            (published[j] for j in (essential or givers)),
+            key=lambda i: (carriers[i], names[i]),
         )
-    sources = household["source_household_id"].to_numpy()
-    positive = np.asarray(weights, dtype=float) > 0
-    if positive.shape != sources.shape:
-        raise ValueError("UK row carriers need one weight per household.")
-    matrix = problem.matrix.tocsr()
-    index = {str(name): position for position, name in enumerate(problem.names)}
-    withheld = set()
-    for name in names:
-        position = index.get(name)
-        if position is None:
-            raise ValueError(f"UK target diagnostic {name!r} has no problem row.")
-        span = slice(matrix.indptr[position], matrix.indptr[position + 1])
-        columns = matrix.indices[span][matrix.data[span] != 0]
-        columns = columns[positive[columns]]
-        floor = (
-            UK_BRMA_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS
-            if level(name) == "brma"
-            else UK_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS
-        )
-        if len(pd.unique(sources[columns])) < floor:
-            withheld.add(name)
-    return withheld
+        withheld.add(names[pick])
+    return thin, withheld - thin
+
+
+def _small_recovery(
+    unit: sparse.csr_matrix,
+    gram: np.ndarray,
+    sources: np.ndarray,
+    held: list[int],
+    published: list[int],
+    floors: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """How the published rows give back a too-small combination of held rows.
+
+    ``unit`` holds the unit-normed rows and ``gram`` their inner products. A
+    combination of the held rows is given back when what is left of it off
+    the published rows' span is a negligible share of it (its squared norm
+    under ``_RECOVERY_TOLERANCE`` of the combination's own). Each held row is
+    tried alone first (a total less its published bands gives one back); then
+    the combinations, from the generalized eigenvectors of that remainder
+    against the combination's own size, so that two proportional held rows,
+    whose difference is nothing, give nothing back. The first combination
+    that rests on fewer distinct source households than the highest floor
+    among its rows returns the minimum-norm published coefficients that give
+    it back, and each published row's leverage (1 when no other published row
+    can stand in for it); ``None`` when there is none.
+    """
+
+    epsilon = np.finfo(float).eps
+    values, vectors = np.linalg.eigh(gram[np.ix_(published, published)])
+    keep = values > values.max() * len(values) * epsilon
+    values, vectors = values[keep], vectors[:, keep]
+    cross = gram[np.ix_(published, held)]
+    reach = (vectors.T @ cross) / np.sqrt(values)[:, None]
+    own = gram[np.ix_(held, held)]
+    remainder = own - reach.T @ reach
+
+    def rests_below_floor(alpha: np.ndarray) -> bool:
+        rows = np.flatnonzero(alpha)
+        combination = np.asarray(unit[[held[i] for i in rows]].T @ alpha[rows]).ravel()
+        size = np.abs(combination)
+        if not size.any():
+            return False
+        support = size > _RECOVERY_ROUNDING * size.max()
+        floor = max(int(floors[held[i]]) for i in rows)
+        return len(pd.unique(sources[support])) < floor
+
+    def found(alpha: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        coefficients = vectors @ ((vectors.T @ (cross @ alpha)) / values)
+        return coefficients, np.sum(vectors**2, axis=1)
+
+    for row in np.flatnonzero(np.diag(remainder) < _RECOVERY_TOLERANCE):
+        alpha = np.zeros(len(held))
+        alpha[row] = 1.0
+        if rests_below_floor(alpha):
+            return found(alpha)
+    own_values, own_vectors = np.linalg.eigh(own)
+    nonzero = own_values > own_values.max() * len(own_values) * epsilon
+    lift = own_vectors[:, nonzero] / np.sqrt(own_values[nonzero])
+    share = lift.T @ remainder @ lift
+    share_values, share_vectors = np.linalg.eigh((share + share.T) / 2)
+    given_back = lift @ share_vectors[:, share_values < _RECOVERY_TOLERANCE]
+    for alpha in _reduced_basis(given_back):
+        if rests_below_floor(alpha):
+            return found(alpha)
+    return None
+
+
+def _reduced_basis(basis: np.ndarray) -> list[np.ndarray]:
+    """The reduced row echelon basis of a span given by its columns.
+
+    A vector in the span is fixed by its entries on the pivots, so separate
+    relations come out as separate vectors. Each column is scaled to a largest
+    entry of one first, so the rounding share means the same for all.
+    """
+
+    reduced = basis.T.copy()
+    largest = np.abs(reduced).max(axis=1, initial=0.0)
+    reduced = reduced[largest > 0] / largest[largest > 0, None]
+    pivot = 0
+    for column in range(reduced.shape[1]):
+        if pivot == reduced.shape[0]:
+            break
+        best = pivot + int(np.argmax(np.abs(reduced[pivot:, column])))
+        if abs(reduced[best, column]) < _RECOVERY_ROUNDING:
+            continue
+        reduced[[pivot, best]] = reduced[[best, pivot]]
+        reduced[pivot] /= reduced[pivot, column]
+        for other in range(reduced.shape[0]):
+            if other != pivot:
+                reduced[other] -= reduced[other, column] * reduced[pivot]
+        pivot += 1
+    reduced[np.abs(reduced) < _RECOVERY_ROUNDING] = 0.0
+    return [vector for vector in reduced[:pivot] if vector.any()]
+
+
+def uk_withheld_rows(
+    problem: Any,
+    weights: Sequence[float] | np.ndarray,
+    frame: Frame,
+    target_rows: Sequence[Mapping[str, object]],
+    geography_levels: Mapping[str, object] | None = None,
+) -> set[str]:
+    """Every row whose model figures stay in the build: :func:`uk_withheld_row_sets`."""
+
+    thin, complementary = uk_withheld_row_sets(
+        problem, weights, frame, target_rows, geography_levels
+    )
+    return thin | complementary
 
 
 def uk_withheld_brma_rows(
@@ -1042,15 +1275,13 @@ def uk_withheld_brma_rows(
     target_rows: Sequence[Mapping[str, object]],
     geography_levels: Mapping[str, str],
 ) -> set[str]:
-    """The BRMA rows among :func:`uk_withheld_rows` (their ``carrier_floor_met`` flag)."""
+    """The BRMA rows among :func:`uk_thin_rows` (their ``carrier_floor_met`` flag)."""
 
     brma = [
         row for row in target_rows if geography_levels.get(str(row["name"])) == "brma"
     ]
     return (
-        uk_withheld_rows(problem, weights, frame, brma, geography_levels)
-        if brma
-        else set()
+        uk_thin_rows(problem, weights, frame, brma, geography_levels) if brma else set()
     )
 
 
@@ -1164,7 +1395,8 @@ def uk_refuse_named_withheld_rows(
 
 _WITHHELD_TOTALS_NOTE = (
     "A target row resting on fewer than ten distinct source households keeps "
-    "its place without its model figures. initial_loss, final_loss, "
+    "its place without its model figures, and so does a row that, with the "
+    "published rows, would give such a row back. initial_loss, final_loss, "
     "fraction_within_10pct and past_cap_census are restated over the published "
     "rows, on the solve's own loss weights, scales and cap (initial_loss at the "
     "input weights, the rows' initial estimates); loss_trajectory, the solve's "
@@ -1393,11 +1625,20 @@ def uk_calibration_diagnostics_payload(
     declared, _, skipped = _declared_target_partition(result, target_rows, registry)
     geography = _geography_mapping(declared, target_geography_levels)
     weights = uk_weight_summary(result_weights)
-    withheld = frozenset(
-        uk_withheld_rows(result.problem, result.weights, frame, target_rows, geography)
-        if withheld is None
-        else withheld
-    )
+    if withheld is None:
+        thin, complementary = uk_withheld_row_sets(
+            result.problem, result.weights, frame, target_rows, geography
+        )
+        withheld = frozenset(thin | complementary)
+    else:
+        withheld = frozenset(withheld)
+        # The floor's own verdict, so a row the caller withholds beside a
+        # thin one is told apart from the thin row itself.
+        thin = (
+            uk_thin_rows(result.problem, result.weights, frame, target_rows, geography)
+            if withheld
+            else set()
+        )
     for row in target_rows:
         name = str(row["name"])
         if geography.get(name) == "brma":
@@ -1406,7 +1647,7 @@ def uk_calibration_diagnostics_payload(
             # 2026-10-19 on the fourth review of #1305: it warns).
             row["metadata"] = {
                 **dict(row.get("metadata") or {}),
-                "carrier_floor_met": name not in withheld,
+                "carrier_floor_met": name not in thin,
             }
         if name in withheld:
             for field in _MODEL_FIGURE_FIELDS:
@@ -1414,7 +1655,10 @@ def uk_calibration_diagnostics_payload(
                     row[field] = None
             row["metadata"] = {
                 **dict(row.get("metadata") or {}),
-                "model_figures_withheld": _WITHHELD_NOTE,
+                "model_figures_withheld": (
+                    _WITHHELD_NOTE if name in thin else _COMPLEMENT_NOTE
+                ),
+                **({} if name in thin else {"complementary_withholding": True}),
             }
     pass_rates = _target_pass_rates(target_rows, skipped, geography, withheld)
     withheld_block = (
