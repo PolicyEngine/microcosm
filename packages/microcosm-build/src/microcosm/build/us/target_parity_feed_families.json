@@ -1,6 +1,6 @@
 {
- "feed": "consumer_facts_us_51aa40f.jsonl",
- "feed_sha256": "965a29ac9458edb58a05184917ee4a19772fd3dc7b4588db6eb6da5803641aac",
+ "feed": "consumer_facts_us_9b91e8b.jsonl",
+ "feed_sha256": "e477e04aa7c73209df2bcbf484f029a2357da8c2339217d1d0518f7a8a47bcbf",
  "families": {
   "bea_nipa.business_current_transfer_receipts": 1,
   "bea_nipa.defined_contribution_actual_contributions": 1,
@@ -83,5 +83,17 @@
   "usda_snap.state_average_monthly_households": 53,
   "usda_snap.state_average_monthly_persons": 106,
   "usda_snap.state_benefits": 53
+ },
+ "dimension_value_label_variants": {
+  "age": {
+   "age_20": [
+    "Age 20",
+    "Female 20 years"
+   ],
+   "age_21": [
+    "Age 21",
+    "Female 21 years"
+   ]
+  }
  }
 }

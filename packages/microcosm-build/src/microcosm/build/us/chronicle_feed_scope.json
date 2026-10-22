@@ -2,7 +2,7 @@
  "version": 1,
  "country": "us",
  "source_repo": "PolicyEngine/chronicle",
- "source_commit": "51aa40fd28e2ca81937752515e773d123fecfb71",
+ "source_commit": "9b91e8bc61802e5fd9d5fa19a8f991828c1025f8",
  "rule": "The (record_set_id, period) pairs of the pinned feed consumer_facts_buildn_v9_4.jsonl, plus the 51 TY2023 Historic Table 2 state AGI-band record sets (irs_soi.ty2023.historic_table_2.state_agi.<st>, microcosm#940); each built from the named package with `chronicle build-bundle --year <build_year> --source <package>`.",
  "pair_count": 637,
  "runs": {

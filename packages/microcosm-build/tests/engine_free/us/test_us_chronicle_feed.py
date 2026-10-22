@@ -32,8 +32,8 @@ from test_support.paths import paths_for
 _TEST_PATHS = paths_for("microcosm-build")
 
 _ROOT = _TEST_PATHS.repository
-_CHRONICLE_COMMIT = "51aa40fd28e2ca81937752515e773d123fecfb71"
-_FACTS_SHA256 = "965a29ac9458edb58a05184917ee4a19772fd3dc7b4588db6eb6da5803641aac"
+_CHRONICLE_COMMIT = "9b91e8bc61802e5fd9d5fa19a8f991828c1025f8"
+_FACTS_SHA256 = "e477e04aa7c73209df2bcbf484f029a2357da8c2339217d1d0518f7a8a47bcbf"
 _SCHEMA_SHA256 = "bdb51e2a8115634633ba7448c4005930fd9c0bfbade5e1b079b6bc24da485d3d"
 
 
@@ -130,6 +130,36 @@ def test_parity_resources_and_generator_restate_the_pin() -> None:
     assert generator.DEFAULT_FEED_PATH.name == generator.DEFAULT_FEED_NAME
     assert manifest["reference"]["compiled_families"] == "32"
     assert manifest["reference"]["reviewed_exclusions"] == "52"
+
+
+#: The dimension values the pinned feed labels more than one way, as the
+#: generator records them in the feed-family inventory. microcosm#1343 gave
+#: adjusted gross income ``under_1`` and ``all`` and age ``85_plus`` one label
+#: each; the age_20 and age_21 pairs (Census projections against ACS B01001)
+#: select no compiled target and were left as they are.
+_REVIEWED_FEED_LABEL_VARIANTS = {
+    "age": {
+        "age_20": ["Age 20", "Female 20 years"],
+        "age_21": ["Age 21", "Female 21 years"],
+    }
+}
+
+
+def test_feed_inventory_lists_only_the_reviewed_label_variants() -> None:
+    """Runs in CI without the feed. A re-pin regenerates the inventory from its
+    feed (the inventory restates the pinned digest), so a re-pin built on a
+    Chronicle commit without the microcosm#1343 label commits lists those
+    values here again and fails, and so does any new dimension value with two
+    labels until it is reviewed."""
+    feed_families = _us_resource("target_parity_feed_families.json")
+    variants = feed_families["dimension_value_label_variants"]
+    for dimension_id, value_id in (
+        ("us:statutes/26/62#adjusted_gross_income", "under_1"),
+        ("us:statutes/26/62#adjusted_gross_income", "all"),
+        ("age", "85_plus"),
+    ):
+        assert value_id not in variants.get(dimension_id, {})
+    assert variants == _REVIEWED_FEED_LABEL_VARIANTS
 
 
 def test_scope_names_every_pinned_pair_once() -> None:

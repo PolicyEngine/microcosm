@@ -19,7 +19,11 @@ wired, not excluded.
 Derivation (from the sha-pinned feed + the deterministic registry compile):
 
 - **Feed-family inventory** = every ``namespace.concept`` family id the feed
-  carries, with fact counts (``target_parity_feed_families.json``).
+  carries, with fact counts (``target_parity_feed_families.json``), and every
+  dimension value the feed labels more than one way, with its labels
+  (``dimension_value_label_variants``; microcosm#1343). CI reads the
+  committed listing, so a re-pin that brings back a second label fails there
+  without the feed.
 - **Compiled families** = the families the one-surface registry compiles today
   (``compile_us_fiscal_target_registry(age_targets=True)`` + the reviewed CMS
   Medicaid enrollment substitution). Status ``compiled``.
@@ -62,7 +66,7 @@ US_PACKAGE_DIR = (
 MANIFEST_PATH = US_PACKAGE_DIR / "target_parity_manifest.json"
 FEED_FAMILIES_PATH = US_PACKAGE_DIR / "target_parity_feed_families.json"
 
-DEFAULT_FEED_NAME = "consumer_facts_us_51aa40f.jsonl"
+DEFAULT_FEED_NAME = "consumer_facts_us_9b91e8b.jsonl"
 DEFAULT_FEED_PATH = (
     Path.home() / "PolicyEngine" / "_buildh-runtime" / "inputs" / DEFAULT_FEED_NAME
 )
@@ -619,6 +623,43 @@ def _feed_family_counts(facts: list[dict]) -> Counter[str]:
     return counts
 
 
+def _dimension_value_label_variants(
+    facts: list[dict],
+) -> dict[str, dict[str, list[str]]]:
+    """Every (dimension, value id) the feed labels more than one way.
+
+    Labels come from each row's ``dimension_value_labels`` and, for the row's
+    group-by value, ``layout.groupby_value_label``, stripped as the ledger
+    compiler strips them. Returned as {dimension: {value id: sorted labels}}.
+    """
+    labels_by_value: dict[tuple[str, str], set[str]] = {}
+
+    def record(dimension_id: object, value_id: object, label: object) -> None:
+        text = str(label).strip() if label is not None else ""
+        if dimension_id and value_id is not None and text:
+            key = (str(dimension_id), str(value_id))
+            labels_by_value.setdefault(key, set()).add(text)
+
+    for fact in facts:
+        for dimension_id, value_labels in (
+            fact.get("dimension_value_labels") or {}
+        ).items():
+            for value_id, label in (value_labels or {}).items():
+                record(dimension_id, value_id, label)
+        layout = fact.get("layout") or {}
+        record(
+            layout.get("groupby_dimension"),
+            layout.get("groupby_value_id"),
+            layout.get("groupby_value_label"),
+        )
+
+    variants: dict[str, dict[str, list[str]]] = {}
+    for (dimension_id, value_id), labels in sorted(labels_by_value.items()):
+        if len(labels) > 1:
+            variants.setdefault(dimension_id, {})[value_id] = sorted(labels)
+    return variants
+
+
 def _compiled_families(facts: list[dict]) -> set[str]:
     # Parity is declared against the one registry every calibrated artifact
     # compiles, using the canonical source-to-current CD vintage translation.
@@ -732,6 +773,7 @@ def build_manifest(
         "feed": feed_name,
         "feed_sha256": feed_sha256,
         "families": dict(sorted(feed_counts.items())),
+        "dimension_value_label_variants": _dimension_value_label_variants(facts),
     }
     return manifest, feed_families
 
