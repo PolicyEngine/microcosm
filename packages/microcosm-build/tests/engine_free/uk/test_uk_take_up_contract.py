@@ -270,3 +270,40 @@ def test_extended_hours_usage_reproduces_dfe_additional_hours_ptes() -> None:
     )
     dfe_mean_hours = 15 + 15 * 341_988.09 / 379_000
     assert draws.mean() == pytest.approx(dfe_mean_hours, abs=0.01)
+
+
+def test_a_version_6_receipt_says_what_it_estimates_and_why_it_sits_at_a_bound() -> (
+    None
+):
+    from microcosm.build.uk_runtime.take_up_contract import (
+        ESTIMAND_MIN_TOOL_VERSION,
+        _entries,
+    )
+
+    entry = {
+        "key": "tax_free_childcare",
+        "output": "would_claim_tfc",
+        "entity": "benunit",
+        "values": {"2024-04-06": 0.99},
+        "source": {"source": "fit", "status": "fitted_offline"},
+        "fitting_receipt": {
+            "engine_version": "2.147.2",
+            "tool_version": ESTIMAND_MIN_TOOL_VERSION,
+        },
+    }
+    with pytest.raises(ValueError, match="estimand"):
+        _entries([entry], section="programs")
+    entry["fitting_receipt"]["estimand"] = "A fit to HMRC's two rows."
+    assert _entries([entry], section="programs")
+    entry["fitting_receipt"]["params_at_bound"] = ["tax_free_childcare"]
+    with pytest.raises(ValueError, match="at_bound_reason"):
+        _entries([entry], section="programs")
+    entry["fitting_receipt"]["at_bound_reason"] = "The rows ask for more than all."
+    assert _entries([entry], section="programs")
+    # Another rate at its bound needs no reason here.
+    entry["fitting_receipt"]["params_at_bound"] = ["universal_childcare"]
+    del entry["fitting_receipt"]["at_bound_reason"]
+    assert _entries([entry], section="programs")
+    # Earlier receipts are unaffected.
+    entry["fitting_receipt"] = {"engine_version": "2.134.4", "tool_version": 5}
+    assert _entries([entry], section="programs")

@@ -52,7 +52,7 @@ def test_childcare_draws_are_identity_keyed_and_hold_hours_fixed(monkeypatch) ->
         & ~first["would_claim_universal_childcare"]
     ).any()
     nested = tool.draw_childcare_inputs(
-        ids, np.array([0.5, 1.0, 0.5, 0.0]), seed=42, contract=contract
+        ids, np.array([0.5, 1.0, 0.5, 0.0, 0.5]), seed=42, contract=contract
     )
     assert nested["would_claim_universal_childcare"].all()
 
@@ -68,7 +68,7 @@ def test_childcare_fit_receipt_is_deterministic_with_seeded_runner(
 
     def runner(path: Path, params: np.ndarray, seed: int, period: int, contract):
         scale = float(params.sum()) + seed * 0.0 + len(path.read_bytes()) * 0.0
-        assert period == 2024
+        assert period == tool.DEFAULT_TARGET_PERIOD == 2025
         assert contract.resource_sha256
         return {name: value + scale * 0.0 for name, value in targets.items()}
 
@@ -93,8 +93,20 @@ def test_childcare_fit_receipt_is_deterministic_with_seeded_runner(
     assert first["input_sha256"]
     assert first["seed"] == 42
     assert set(first["params"]) == set(tool.RATE_KEYS)
-    assert len(first["params"]) == 4
+    assert len(first["params"]) == 5
     assert set(first["achieved"]) == set(tool.TARGET_IDS)
+    assert first["tool_version"] == 6
+    assert first["expectation_basis"] == "dfe_spring_term"
+    assert set(first["estimands"]) == set(tool.RATE_KEYS)
+    # Vahid's round-2 finding C: the receipt says the Tax-Free Childcare rate
+    # is a fit to HMRC's rows, not a take-up estimate for newly eligible
+    # families.
+    assert "not a take-up estimate" in first["estimands"]["tax_free_childcare"]
+    assert first["params_at_bound"] == sorted(
+        key
+        for key, value in first["params"].items()
+        if value <= tool.AT_BOUND_TOLERANCE or value >= 1 - tool.AT_BOUND_TOLERANCE
+    )
 
 
 def test_childcare_expected_counts_are_bilinear_in_the_extended_rate() -> None:
@@ -156,6 +168,41 @@ def test_childcare_expected_counts_are_bilinear_in_the_extended_rate() -> None:
     assert allocated_only["dfe.funded_childcare.early_learning_2_year_olds"] == 1.0
 
 
+def test_childcare_expected_counts_scale_under_two_children_by_their_usage() -> None:
+    """Tool version 6: a child under 2 counts only when it uses its hours, so
+    each side's under-2 part is scaled by the usage share."""
+
+    tool = _load_tool("fit_uk_childcare_takeup")
+    nine_to_eleven = "dfe.funded_childcare.working_parent_children_9_to_11_months"
+    two_to_four = "dfe.funded_childcare.working_parent_children_2_to_4"
+    # Two working-parent children: one under 2 (whole-year age 1, but 2 on
+    # 31 December, so in the 2 to 4 row) and one aged 3; and a baby.
+    with_ext = {
+        "hmrc.tfc.government_top_up": np.array([0.0, 0.0, 0.0]),
+        two_to_four: np.array([1.0, 1.0, 0.0]),
+        nine_to_eleven: np.array([0.0, 0.0, 1.0]),
+    }
+    under_two = {
+        "with_extended": {
+            two_to_four: np.array([1.0, 0.0, 0.0]),
+            nine_to_eleven: np.array([0.0, 0.0, 1.0]),
+        }
+    }
+    basis = tool.ChildcareExpectationBasis(
+        with_extended=with_ext,
+        without_extended=with_ext,
+        allocated_from_extended={},
+        rows=3,
+        under_two=under_two,
+    )
+    expected = tool.expected_childcare_counts(
+        basis, np.array([1.0, 0.8, 1.0, 1.0, 0.5])
+    )
+    assert expected[two_to_four] == pytest.approx(0.8 * (1.0 + 0.5 * 1.0))
+    assert expected[nine_to_eleven] == pytest.approx(0.8 * 0.5)
+    assert basis.total("with_extended", two_to_four, 0.0) == 1.0
+
+
 def test_the_fit_draws_extended_hours_at_the_contract_anchor() -> None:
     """The spine predates the anchor, so the fit sets the hours the take-up
     stage draws under the current contract (microcosm#1095, #1126)."""
@@ -194,6 +241,13 @@ def test_childcare_fitter_family_allow_list_excludes_entitlement_spending() -> N
         "dfe.funded_childcare.working_parent_children_2_to_4",
         "dfe.funded_childcare.early_learning_2_year_olds",
         "dfe.funded_childcare.universal_only_children",
+        "dfe.funded_childcare.working_parent_children_9_to_11_months",
+        "dfe.funded_childcare.working_parent_children_age_1",
+    )
+    assert tool.DIAGNOSTIC_IDS == (
+        "dfe.funded_childcare.working_parent_children_age_2",
+        "dfe.funded_childcare.working_parent_children_age_3",
+        "dfe.funded_childcare.universal_nursery_children_age_3",
     )
     assert not any("spending" in target_id for target_id in tool.TARGET_IDS[1:])
 

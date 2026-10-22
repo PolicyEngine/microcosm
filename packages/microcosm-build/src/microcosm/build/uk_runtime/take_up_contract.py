@@ -32,6 +32,8 @@ UK_ALLOWED_RATE_STATUSES = frozenset(
 UK_ALLOWED_RATE_ENTITIES = frozenset({"person", "benunit", "household"})
 # The childcare fitter's first version to fit a nested entry's conditional rate.
 NESTED_RATE_MIN_TOOL_VERSION = 5
+# The childcare fitter's first version to record what each rate estimates.
+ESTIMAND_MIN_TOOL_VERSION = 6
 
 
 @dataclass(frozen=True)
@@ -231,6 +233,25 @@ def _validate_fitting_receipt(key: str, receipt: object) -> None:
                 f"UK take-up contract {key!r} fitting_receipt.engine_version must "
                 "name the engine the rate was fitted on; a hermetic receipt "
                 "(engine absent) cannot be landed."
+            )
+    tool_version = receipt.get("tool_version")
+    if (
+        isinstance(tool_version, int)
+        and not isinstance(tool_version, bool)
+        and tool_version >= ESTIMAND_MIN_TOOL_VERSION
+    ):
+        estimand = receipt.get("estimand")
+        if not isinstance(estimand, str) or not estimand.strip():
+            raise ValueError(
+                f"UK take-up contract {key!r} fitting_receipt of tool version "
+                f"{tool_version} must say what the rate estimates (estimand)."
+            )
+        at_bound = receipt.get("params_at_bound") or ()
+        reason = receipt.get("at_bound_reason")
+        if key in at_bound and (not isinstance(reason, str) or not reason.strip()):
+            raise ValueError(
+                f"UK take-up contract {key!r} was fitted at a bound of [0, 1], so "
+                "its fitting_receipt must give an at_bound_reason."
             )
 
 

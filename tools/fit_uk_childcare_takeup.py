@@ -1,4 +1,4 @@
-"""Fit four UK childcare take-up rates against the declared target registry."""
+"""Fit the UK childcare take-up rates against the declared target registry."""
 
 from __future__ import annotations
 
@@ -23,6 +23,13 @@ from microcosm.build.stochastic_assignment import (
     clipped_normal_from_uniforms,
     stable_identity_uniforms,
 )
+from microcosm.build.uk_runtime.dfe_spring_term import (
+    DFE_AGE_AT_31_DECEMBER,
+    DFE_SPRING_EARLY_LEARNING_2,
+    DFE_SPRING_UNIVERSAL,
+    DFE_SPRING_WORKING_PARENT,
+    dfe_spring_term_status,
+)
 from microcosm.build.uk_runtime.frs_take_up import (
     UK_TAKE_UP_DECLARED_SEEDS,
     nest_universal_childcare,
@@ -34,22 +41,74 @@ from microcosm.build.uk_runtime.take_up_contract import (
 )
 from microcosm.calibrate import TargetRegistry
 
-TOOL_VERSION = 5
+TOOL_VERSION = 6
+#: The model year the DfE rows are measured in: its spring term (January of
+#: the next calendar year) is the term DfE's January census counts, and from
+#: it working-parent hours reach children from 9 months.
+DEFAULT_TARGET_PERIOD = 2025
+#: The share of children under 2 who use the hours their family's
+#: working-parent claim gives them (DfE registers far fewer of the youngest
+#: eligible children than of those aged 2 to 4).
+UNDER_TWO_KEY = "childcare_under_two_usage"
+#: Children of whole-year age under this take the under-2 usage draw.
+UNDER_TWO_AGE = 2
+#: The hours a child that uses its funded hours is given in the basis runs:
+#: policyengine-uk's own default for max_free_entitlement_hours_used.
+USES_HOURS = 30.0
 TARGET_IDS = (
     "hmrc.tfc.government_top_up",
     "hmrc.tfc.children_with_used_accounts",
     "dfe.funded_childcare.working_parent_children_2_to_4",
     "dfe.funded_childcare.early_learning_2_year_olds",
     "dfe.funded_childcare.universal_only_children",
+    "dfe.funded_childcare.working_parent_children_9_to_11_months",
+    "dfe.funded_childcare.working_parent_children_age_1",
+)
+#: Bound in calibration beside the fitted rows, which already fix them; the
+#: receipt reports their expectation at the fitted rates.
+DIAGNOSTIC_IDS = (
+    "dfe.funded_childcare.working_parent_children_age_2",
+    "dfe.funded_childcare.working_parent_children_age_3",
+    "dfe.funded_childcare.universal_nursery_children_age_3",
 )
 RATE_KEYS = (
     "tax_free_childcare",
     "extended_childcare",
     "targeted_childcare",
     "universal_childcare",
+    UNDER_TWO_KEY,
 )
-INITIAL_PARAMS = np.array([0.88, 0.812, 0.597, 0.563], dtype=float)
-BOUNDS = ((0.0, 1.0),) * 4
+INITIAL_PARAMS = np.array([0.88, 0.812, 0.597, 0.563, 0.6], dtype=float)
+BOUNDS = ((0.0, 1.0),) * len(RATE_KEYS)
+#: What each fitted rate estimates, as the receipt records it.
+ESTIMANDS = {
+    "tax_free_childcare": (
+        "The rate at which the spine reproduces HMRC's two Tax-Free Childcare rows "
+        "(children with used accounts and the government top-up) given the other "
+        "childcare rates: a fit across all users that trades the two rows against "
+        "each other, not a take-up estimate for families newly eligible above "
+        "£100,000, which a costing that removes the limit assumes equal to it."
+    ),
+    "extended_childcare": (
+        "The share of benefit units that claim working-parent hours, fitted to DfE's "
+        "working parent registrations aged 2 to 4 at the spring term."
+    ),
+    "targeted_childcare": (
+        "The share of qualifying benefit units that claim early learning for "
+        "2-year-olds on their own, fitted to DfE's registrations at the spring term."
+    ),
+    "universal_childcare": (
+        "The universal claim rate among benefit units that do not claim working-parent "
+        "hours (nested), fitted to DfE's universal-only registrations at the spring "
+        "term."
+    ),
+    UNDER_TWO_KEY: (
+        "The share of children under 2 (whole-year age) who use the hours their "
+        "family's working-parent claim gives them, fitted to DfE's working parent "
+        "registrations at 9 to 11 months and at age 1 at the spring term."
+    ),
+}
+AT_BOUND_TOLERANCE = 1e-4
 SimulationRunner = Callable[
     [Path, np.ndarray, int, int, UKTakeUpContract], Mapping[str, float]
 ]
@@ -65,8 +124,10 @@ def draw_childcare_inputs(
     """Identity-keyed flags with the hours distribution fixed (diagnostic helper;
     the fit itself uses the expected-count objective)."""
     ids = np.asarray(benunit_ids)
-    if np.asarray(params).shape != (4,):
-        raise ValueError("childcare fitter accepts exactly four take-up rates")
+    if np.asarray(params).shape != (len(RATE_KEYS),):
+        raise ValueError(
+            f"childcare fitter accepts exactly {len(RATE_KEYS)} take-up rates"
+        )
     outputs = {}
     names = (
         "would_claim_tfc",
@@ -74,7 +135,7 @@ def draw_childcare_inputs(
         "would_claim_targeted_childcare",
         "would_claim_universal_childcare",
     )
-    for output, rate in zip(names, params, strict=True):
+    for output, rate in zip(names, np.asarray(params)[: len(names)], strict=True):
         draws = stable_identity_uniforms(ids, seed=seed, salt=output)
         if output == "would_claim_universal_childcare":
             # Nested under the extended flag, as frs_take_up draws it: the
@@ -103,20 +164,22 @@ def compile_childcare_targets(
     target_period: int,
     vintage_overrides: Mapping[str, int],
 ) -> TargetRegistry:
-    """Compile only the five declared childcare rows, with explicit overrides."""
+    """Compile the declared childcare rows (fitted and diagnostic), with
+    explicit overrides."""
+    declared = (*TARGET_IDS, *DIAGNOSTIC_IDS)
     references = {
         r.name: r
         for r in load_country_spec("uk").target_references
-        if r.name in TARGET_IDS
+        if r.name in declared
     }
-    missing = sorted(set(TARGET_IDS) - references.keys())
+    missing = sorted(set(declared) - references.keys())
     if missing:
         raise ValueError(f"childcare target declarations are missing: {missing}")
-    unknown = sorted(set(vintage_overrides) - set(TARGET_IDS))
+    unknown = sorted(set(vintage_overrides) - set(declared))
     if unknown:
         raise ValueError(f"unknown childcare vintage override target ids: {unknown}")
     specs = []
-    for target_id in TARGET_IDS:
+    for target_id in declared:
         reference = references[target_id]
         period = vintage_overrides.get(target_id, target_period)
         restamped = LedgerTargetReference(**{**reference.__dict__, "period": period})
@@ -134,7 +197,7 @@ def fit_childcare_takeup(
     *,
     ledger_facts: Path | None = None,
     ledger_facts_sha256: str | None = None,
-    target_period: int = 2024,
+    target_period: int = DEFAULT_TARGET_PERIOD,
     vintage_overrides: Mapping[str, int] | None = None,
     seed: int = 0,
     maxiter: int = 50,
@@ -156,7 +219,9 @@ def fit_childcare_takeup(
         registry = compile_childcare_targets(
             artifact.facts, target_period=target_period, vintage_overrides=overrides
         )
-        targets = {spec.name: float(spec.value) for spec in registry.specs}
+        compiled = {spec.name: float(spec.value) for spec in registry.specs}
+        targets = {name: compiled[name] for name in TARGET_IDS}
+        diagnostic_targets = {name: compiled[name] for name in DIAGNOSTIC_IDS}
         registry_version = registry.version
         feed_sha256 = artifact.facts_sha256
         target_metadata = {
@@ -171,8 +236,10 @@ def fit_childcare_takeup(
     else:
         if set(targets) != set(TARGET_IDS):
             raise ValueError(
-                "childcare targets must contain exactly the five target ids"
+                f"childcare targets must contain exactly the {len(TARGET_IDS)} "
+                "fitted target ids"
             )
+        diagnostic_targets = {}
         feed_sha256 = ledger_facts_sha256 or "test-injected"
         registry_version = registry_version or "test-injected"
         target_metadata = {
@@ -198,6 +265,12 @@ def fit_childcare_takeup(
         options={"maxiter": maxiter, "eps": eps},
     )
     achieved = dict(runner(input_h5, result.x, seed, target_period, contract))
+    params = dict(zip(RATE_KEYS, map(float, result.x), strict=True))
+    at_bound = sorted(
+        key
+        for key, value in params.items()
+        if value <= AT_BOUND_TOLERANCE or value >= 1.0 - AT_BOUND_TOLERANCE
+    )
 
     return {
         "tool": "fit_uk_childcare_takeup",
@@ -206,6 +279,7 @@ def fit_childcare_takeup(
         "input_sha256": _sha256(input_h5),
         "seed": seed,
         "objective": "expected_count",
+        "expectation_basis": "dfe_spring_term",
         "generated_at": generated_at or datetime.now(UTC).date().isoformat(),
         "model_period": target_period,
         "vintage_overrides": overrides,
@@ -220,7 +294,9 @@ def fit_childcare_takeup(
             "success": bool(result.success),
             "loss": float(result.fun),
         },
-        "params": dict(zip(RATE_KEYS, map(float, result.x), strict=True)),
+        "params": params,
+        "params_at_bound": at_bound,
+        "estimands": dict(ESTIMANDS),
         "targets": target_metadata,
         "achieved": {
             name: {
@@ -229,6 +305,15 @@ def fit_childcare_takeup(
                 "ratio": float(achieved[name]) / float(targets[name]),
             }
             for name in TARGET_IDS
+        },
+        "diagnostic_rows": {
+            name: {
+                "value": float(achieved[name]),
+                "target": float(diagnostic_targets[name]),
+                "ratio": float(achieved[name]) / float(diagnostic_targets[name]),
+            }
+            for name in DIAGNOSTIC_IDS
+            if name in achieved and name in diagnostic_targets
         },
         "ceilings_at_rate_1": _ceilings(input_h5, target_period, targets),
     }
@@ -258,7 +343,7 @@ def _ceilings(
     basis = _BASIS_CACHE.get((str(Path(input_h5).resolve()), int(target_period)))
     if basis is None:
         return None
-    ceiling = expected_childcare_counts(basis, np.ones(4))
+    ceiling = expected_childcare_counts(basis, np.ones(len(RATE_KEYS)))
     return {
         name: {"value": ceiling[name], "ratio": ceiling[name] / float(targets[name])}
         for name in TARGET_IDS
@@ -277,6 +362,11 @@ OWN_RATE_BY_TARGET = {
     "dfe.funded_childcare.working_parent_children_2_to_4": "extended_childcare",
     "dfe.funded_childcare.early_learning_2_year_olds": "targeted_childcare",
     "dfe.funded_childcare.universal_only_children": "universal_childcare",
+    "dfe.funded_childcare.working_parent_children_9_to_11_months": "extended_childcare",
+    "dfe.funded_childcare.working_parent_children_age_1": "extended_childcare",
+    "dfe.funded_childcare.working_parent_children_age_2": "extended_childcare",
+    "dfe.funded_childcare.working_parent_children_age_3": "extended_childcare",
+    "dfe.funded_childcare.universal_nursery_children_age_3": "universal_childcare",
 }
 
 
@@ -303,14 +393,24 @@ class ChildcareExpectationBasis:
     ``r_e * sum(with_ext)``. The universal row counts universal-only children,
     so every side leaves out a child who receives extended hours; under the
     nesting a family claiming the extended hours never has the universal flag
-    off, so the row has no allocated term. The expectation is the
+    off, so the row has no allocated term. From tool version 6 the DfE rows
+    are measured at the spring term by the age on 31 December
+    (dfe_spring_term.py), and ``under_two`` holds each side's contributions
+    from children under 2, whom the under-2 usage share ``s`` scales: every
+    ``sum`` above is ``sum(rest) + s * sum(under_two)``. The expectation is the
     quantity a take-up *rate*
     controls: the spine's persisted flags are one draw from it, and later
     stages clone and re-key rows, so no re-drawn realisation can sit on the
     build's own; the expectation can.
     """
 
-    __slots__ = ("with_extended", "without_extended", "allocated_from_extended", "rows")
+    __slots__ = (
+        "with_extended",
+        "without_extended",
+        "allocated_from_extended",
+        "under_two",
+        "rows",
+    )
 
     def __init__(
         self,
@@ -319,44 +419,71 @@ class ChildcareExpectationBasis:
         without_extended: Mapping[str, np.ndarray],
         allocated_from_extended: Mapping[str, np.ndarray],
         rows: int,
+        under_two: Mapping[str, Mapping[str, np.ndarray]] | None = None,
     ) -> None:
         self.with_extended = dict(with_extended)
         self.without_extended = dict(without_extended)
         self.allocated_from_extended = dict(allocated_from_extended)
+        # Each side's contributions from children under 2: the part the
+        # under-2 usage share scales (tool version 6). Keyed by side name
+        # ("with_extended", "without_extended", "allocated_from_extended").
+        self.under_two = {
+            side: dict(values) for side, values in (under_two or {}).items()
+        }
         self.rows = int(rows)
+
+    def total(self, side: str, target: str, usage: float) -> float:
+        """A side's sum with the under-2 contributions scaled by ``usage``."""
+
+        values = getattr(self, side).get(target)
+        if values is None:
+            return 0.0
+        under_two = self.under_two.get(side, {}).get(target)
+        total = float(np.asarray(values).sum())
+        if under_two is not None:
+            total -= (1.0 - usage) * float(np.asarray(under_two).sum())
+        return total
 
 
 def expected_childcare_counts(
     basis: ChildcareExpectationBasis, params: np.ndarray
 ) -> dict[str, float]:
-    """Expected weighted aggregates at ``params`` (ordered as RATE_KEYS)."""
+    """Expected weighted aggregates at ``params`` (ordered as RATE_KEYS).
 
-    rates = dict(
-        zip(RATE_KEYS, map(float, np.asarray(params, dtype=float)), strict=True)
-    )
+    Every side's sum takes the under-2 usage share on its contributions from
+    children under 2: a child that does not use its hours is counted in no
+    DfE row, so each row is linear in the share (tool version 6).
+    """
+
+    values = np.asarray(params, dtype=float)
+    if values.shape == (len(RATE_KEYS) - 1,):
+        # A basis without under-2 contributions needs no usage share.
+        values = np.append(values, 1.0)
+    rates = dict(zip(RATE_KEYS, map(float, values), strict=True))
     extended = rates["extended_childcare"]
+    usage = rates[UNDER_TWO_KEY]
     expected: dict[str, float] = {}
     for target, own in OWN_RATE_BY_TARGET.items():
-        with_ext = basis.with_extended[target]
-        if own == "extended_childcare":
-            expected[target] = extended * float(with_ext.sum())
+        if target not in basis.with_extended:
             continue
-        without_ext = basis.without_extended[target]
+        with_ext = basis.total("with_extended", target, usage)
+        if own == "extended_childcare":
+            expected[target] = extended * with_ext
+            continue
+        without_ext = basis.total("without_extended", target, usage)
         if own == "universal_childcare":
             # Nested: an extended claimant claims the universal hours, any
             # other family at the conditional universal rate.
-            expected[target] = extended * float(with_ext.sum()) + (
-                1.0 - extended
-            ) * rates[own] * float(without_ext.sum())
-            continue
-        expected[target] = rates[own] * float(
-            (with_ext * extended + without_ext * (1.0 - extended)).sum()
-        )
-        allocated = basis.allocated_from_extended.get(target)
-        if allocated is not None:
-            expected[target] += (
-                (1.0 - rates[own]) * extended * float(np.asarray(allocated).sum())
+            expected[target] = (
+                extended * with_ext + (1.0 - extended) * rates[own] * without_ext
             )
+            continue
+        expected[target] = rates[own] * (
+            with_ext * extended + without_ext * (1.0 - extended)
+        )
+        if target in basis.allocated_from_extended:
+            allocated = basis.total("allocated_from_extended", target, usage)
+            expected[target] += (1.0 - rates[own]) * extended * allocated
     return expected
 
 
@@ -402,10 +529,17 @@ def _basis_side(
     *,
     extended: bool,
     allocated: bool = False,
-) -> dict[str, np.ndarray]:
+) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
+    """One engine run's weighted rows, and their parts from children under 2.
+
+    Every child uses its hours here (``USES_HOURS``), so the under-2 parts are
+    what those children give when they do; the usage share scales them.
+    """
+
     from policyengine_uk import Microsimulation
 
     sim = Microsimulation(dataset=str(input_h5))
+    _refuse_unplaced_birth_months(sim, target_period)
     benunit_ids = np.asarray(sim.calculate("benunit_id", target_period))
     benunit_count = benunit_ids.shape[0]
     for variable in FLAG_OUTPUTS:
@@ -423,6 +557,11 @@ def _basis_side(
             contract.rate("tax_free_childcare_spend_routed_share", target_period),
         ),
     )
+    sim.set_input(
+        "max_free_entitlement_hours_used",
+        target_period,
+        np.full(person_count, USES_HOURS),
+    )
     variables = sim.tax_benefit_system.variables
 
     def rows(variable: str, values: np.ndarray | None = None) -> np.ndarray:
@@ -434,48 +573,92 @@ def _basis_side(
         )
         return _weighted_rows(sim, raw, entity, target_period)
 
-    age = np.asarray(sim.calculate("age", target_period))
-    extended_receiving = np.asarray(
-        sim.calculate("is_child_receiving_extended_childcare", target_period)
+    status = dfe_spring_term_status(
+        _person_calculator(sim, target_period), target_period
     )
-    # DfE's January registrations leave out children in reception, so neither
-    # the working-parent nor the universal-only row counts a child in primary
-    # education (the calibration bindings carry the same filter).
-    not_in_reception = _current_education(sim, target_period) != "PRIMARY"
-    return {
+    dfe_age = status[DFE_AGE_AT_31_DECEMBER]
+    working_parent = status[DFE_SPRING_WORKING_PARENT] > 0.5
+    universal = status[DFE_SPRING_UNIVERSAL] > 0.5
+    early_learning_2 = status[DFE_SPRING_EARLY_LEARNING_2] > 0.5
+    in_england = _person_calculator(sim, target_period)("country") == "ENGLAND"
+
+    def people(mask: np.ndarray) -> np.ndarray:
+        return _weighted_rows(sim, mask & in_england, "person", target_period)
+
+    # DfE's January census at the spring term, by the age on 31 December
+    # (dfe_spring_term.py), as the calibration bindings read it.
+    result = {
         "hmrc.tfc.government_top_up": rows("tax_free_childcare"),
         "hmrc.tfc.children_with_used_accounts": rows(
             "is_child_receiving_tax_free_childcare"
         ),
-        "dfe.funded_childcare.working_parent_children_2_to_4": rows(
-            "is_child_receiving_extended_childcare",
-            extended_receiving & (age >= 2) & not_in_reception,
+        "dfe.funded_childcare.working_parent_children_2_to_4": people(
+            working_parent & (dfe_age >= 2)
         ),
-        "dfe.funded_childcare.early_learning_2_year_olds": rows(
-            "is_child_receiving_targeted_childcare"
+        "dfe.funded_childcare.early_learning_2_year_olds": people(early_learning_2),
+        # Universal-only: a working-parent child is a universal child too, and
+        # the row binds DfE's universal count less the working-parent one.
+        "dfe.funded_childcare.universal_only_children": people(
+            universal & ~working_parent
         ),
-        # Universal-only children: a child who also receives working-parent
-        # hours is not one (the target binds DfE's universal count less the
-        # working-parent registrations).
-        "dfe.funded_childcare.universal_only_children": rows(
-            "is_child_receiving_universal_childcare",
-            np.asarray(
-                sim.calculate("is_child_receiving_universal_childcare", target_period)
-            )
-            & ~extended_receiving
-            & not_in_reception,
+        "dfe.funded_childcare.working_parent_children_9_to_11_months": people(
+            working_parent & (dfe_age == 0)
+        ),
+        "dfe.funded_childcare.working_parent_children_age_1": people(
+            working_parent & (dfe_age == 1)
+        ),
+        "dfe.funded_childcare.working_parent_children_age_2": people(
+            working_parent & (dfe_age == 2)
+        ),
+        "dfe.funded_childcare.working_parent_children_age_3": people(
+            working_parent & (dfe_age == 3)
+        ),
+        "dfe.funded_childcare.universal_nursery_children_age_3": people(
+            universal & (dfe_age == 3)
         ),
     }
+    person_rows = np.asarray(sim.calculate("person_id", target_period)).shape[0]
+    under_two = np.asarray(sim.calculate("age", target_period)) < UNDER_TWO_AGE
+    under_two_rows = {
+        target: values * under_two
+        for target, values in result.items()
+        if np.asarray(values).shape[0] == person_rows and target.startswith("dfe.")
+    }
+    return result, under_two_rows
 
 
-def _current_education(sim: Any, period: int) -> np.ndarray:
-    """Each person's ``current_education`` as enum names."""
+def _person_calculator(sim: Any, period: int) -> Callable[[str], np.ndarray]:
+    """Engine variables at person grain: group values mapped to their members
+    and enums decoded to their names, as ``dfe_spring_term_status`` reads
+    them."""
 
-    values = sim.calculate("current_education", period)
-    for candidate in (values, getattr(values, "values", None)):
-        if hasattr(candidate, "decode_to_str"):
-            return np.asarray(candidate.decode_to_str()).astype(str)
-    return np.asarray(values).astype(str)
+    variables = sim.tax_benefit_system.variables
+
+    def calculate(name: str) -> np.ndarray:
+        if variables[name].entity.key == "person":
+            values = sim.calculate(name, period)
+        else:
+            values = sim.calculate(name, period, map_to="person")
+        for candidate in (values, getattr(values, "values", None)):
+            if hasattr(candidate, "decode_to_str"):
+                return np.asarray(candidate.decode_to_str()).astype(str)
+        return np.asarray(getattr(values, "values", values))
+
+    return calculate
+
+
+def _refuse_unplaced_birth_months(sim: Any, period: int) -> None:
+    """A spine stores each person's months since their birthday
+    (birth_month.py); without it the engine places birthdays by its own rule,
+    so the fit would classify DfE ages unlike the build."""
+
+    holder = sim.get_holder("months_since_last_birthday")
+    if not holder.get_known_periods():
+        raise ValueError(
+            "the childcare fit needs a spine that stores months_since_last_birthday "
+            "(uk_runtime/birth_month.py); this input has none, so the engine would "
+            "place birthdays by its own rule and classify DfE ages unlike the build."
+        )
 
 
 def compute_childcare_basis(
@@ -485,18 +668,34 @@ def compute_childcare_basis(
     extended on with the targeted and universal flags off (the targeted row's
     allocation side; the nested universal row needs none)."""
 
-    with_extended = _basis_side(input_h5, target_period, contract, extended=True)
-    without_extended = _basis_side(input_h5, target_period, contract, extended=False)
-    allocation = _basis_side(
+    with_extended, with_under_two = _basis_side(
+        input_h5, target_period, contract, extended=True
+    )
+    without_extended, without_under_two = _basis_side(
+        input_h5, target_period, contract, extended=False
+    )
+    allocation, allocation_under_two = _basis_side(
         input_h5, target_period, contract, extended=True, allocated=True
     )
+    allocated_targets = [
+        target
+        for target, own in OWN_RATE_BY_TARGET.items()
+        if own == "targeted_childcare"
+    ]
     return ChildcareExpectationBasis(
         with_extended=with_extended,
         without_extended=without_extended,
         allocated_from_extended={
-            target: allocation[target]
-            for target, own in OWN_RATE_BY_TARGET.items()
-            if own == "targeted_childcare"
+            target: allocation[target] for target in allocated_targets
+        },
+        under_two={
+            "with_extended": with_under_two,
+            "without_extended": without_under_two,
+            "allocated_from_extended": {
+                target: allocation_under_two[target]
+                for target in allocated_targets
+                if target in allocation_under_two
+            },
         },
         rows=int(with_extended["hmrc.tfc.children_with_used_accounts"].shape[0]),
     )
@@ -538,7 +737,7 @@ def main() -> None:
     parser.add_argument("--enhanced-frs-h5", type=Path, required=True)
     parser.add_argument("--ledger-facts", type=Path, required=True)
     parser.add_argument("--ledger-facts-sha256", required=True)
-    parser.add_argument("--target-period", type=int, default=2024)
+    parser.add_argument("--target-period", type=int, default=DEFAULT_TARGET_PERIOD)
     parser.add_argument("--vintage-override", action="append", default=[])
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
@@ -556,7 +755,7 @@ def main() -> None:
         type=float,
         default=1e-6,
         help=(
-            "Finite-difference step for L-BFGS-B on the four rates. The "
+            "Finite-difference step for L-BFGS-B on the rates. The "
             "expected-count objective is smooth (bilinear in the rates), so "
             "a small step is exact; recorded in the receipt."
         ),
