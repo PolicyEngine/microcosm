@@ -30,7 +30,8 @@ class _Contract:
             "universal_credit": 0.5,
             "tax_free_childcare": 0.5,
             "extended_childcare": 0.5,
-            "extended_childcare_under_2_usage": 0.5,
+            "extended_childcare_age_0_usage": 0.5,
+            "extended_childcare_age_1_usage": 0.5,
             # Conditional on not claiming the extended hours: the fixture's
             # universal flag is its extended flag, so the nested marginal is
             # 0.5 + 0.5 * 0.0.

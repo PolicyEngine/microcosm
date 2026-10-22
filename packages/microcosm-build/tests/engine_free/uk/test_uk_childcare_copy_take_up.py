@@ -339,7 +339,8 @@ def test_copies_children_redraw_their_under_two_usage_on_their_own_draws() -> No
         )
     )
     usage = after.loc[drawn, UK_UNDER_TWO_USAGE_OUTPUT].to_numpy() > 0
+    # Every under-2 child here is aged 1.
     assert usage.mean() == pytest.approx(
-        contract.rate("extended_childcare_under_2_usage"), abs=0.03
+        contract.rate("extended_childcare_age_1_usage"), abs=0.03
     )
     assert (after.loc[~under_two, UK_UNDER_TWO_USAGE_OUTPUT] == 30.0).all()

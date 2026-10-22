@@ -46,12 +46,11 @@ TOOL_VERSION = 6
 #: the next calendar year) is the term DfE's January census counts, and from
 #: it working-parent hours reach children from 9 months.
 DEFAULT_TARGET_PERIOD = 2025
-#: The share of children under 2 who use the hours their family's
-#: working-parent claim gives them (DfE registers far fewer of the youngest
-#: eligible children than of those aged 2 to 4).
-UNDER_TWO_KEY = "childcare_under_two_usage"
-#: Children of whole-year age under this take the under-2 usage draw.
-UNDER_TWO_AGE = 2
+#: The shares of children aged 0 and 1 (whole-year age) who use the hours
+#: their family's working-parent claim gives them (DfE registers far fewer of
+#: the youngest eligible children than of those aged 2 to 4, and fewer at 9 to
+#: 11 months than at age 1).
+UNDER_TWO_KEYS = {0: "childcare_age_0_usage", 1: "childcare_age_1_usage"}
 #: The hours a child that uses its funded hours is given in the basis runs:
 #: policyengine-uk's own default for max_free_entitlement_hours_used.
 USES_HOURS = 30.0
@@ -76,9 +75,9 @@ RATE_KEYS = (
     "extended_childcare",
     "targeted_childcare",
     "universal_childcare",
-    UNDER_TWO_KEY,
+    *UNDER_TWO_KEYS.values(),
 )
-INITIAL_PARAMS = np.array([0.88, 0.812, 0.597, 0.563, 0.6], dtype=float)
+INITIAL_PARAMS = np.array([0.88, 0.812, 0.597, 0.563, 0.5, 0.8], dtype=float)
 BOUNDS = ((0.0, 1.0),) * len(RATE_KEYS)
 #: What each fitted rate estimates, as the receipt records it.
 ESTIMANDS = {
@@ -102,11 +101,15 @@ ESTIMANDS = {
         "hours (nested), fitted to DfE's universal-only registrations at the spring "
         "term."
     ),
-    UNDER_TWO_KEY: (
-        "The share of children under 2 (whole-year age) who use the hours their "
-        "family's working-parent claim gives them, fitted to DfE's working parent "
-        "registrations at 9 to 11 months and at age 1 at the spring term."
-    ),
+    **{
+        key: (
+            f"The share of children of whole-year age {age} who use the hours their "
+            "family's working-parent claim gives them, fitted with the other age's "
+            "share to DfE's working parent registrations at 9 to 11 months and at "
+            "age 1 at the spring term."
+        )
+        for age, key in UNDER_TWO_KEYS.items()
+    },
 }
 AT_BOUND_TOLERANCE = 1e-4
 SimulationRunner = Callable[
@@ -434,16 +437,17 @@ class ChildcareExpectationBasis:
         }
         self.rows = int(rows)
 
-    def total(self, side: str, target: str, usage: float) -> float:
-        """A side's sum with the under-2 contributions scaled by ``usage``."""
+    def total(self, side: str, target: str, usage: Mapping[int, float]) -> float:
+        """A side's sum with each age's under-2 contributions scaled by its
+        usage share (``usage`` maps whole-year age to share)."""
 
         values = getattr(self, side).get(target)
         if values is None:
             return 0.0
-        under_two = self.under_two.get(side, {}).get(target)
         total = float(np.asarray(values).sum())
-        if under_two is not None:
-            total -= (1.0 - usage) * float(np.asarray(under_two).sum())
+        by_age = self.under_two.get(side, {}).get(target) or {}
+        for age, contribution in by_age.items():
+            total -= (1.0 - usage[int(age)]) * float(np.asarray(contribution).sum())
         return total
 
 
@@ -458,12 +462,12 @@ def expected_childcare_counts(
     """
 
     values = np.asarray(params, dtype=float)
-    if values.shape == (len(RATE_KEYS) - 1,):
+    if values.shape == (len(RATE_KEYS) - len(UNDER_TWO_KEYS),):
         # A basis without under-2 contributions needs no usage share.
-        values = np.append(values, 1.0)
+        values = np.append(values, np.ones(len(UNDER_TWO_KEYS)))
     rates = dict(zip(RATE_KEYS, map(float, values), strict=True))
     extended = rates["extended_childcare"]
-    usage = rates[UNDER_TWO_KEY]
+    usage = {age: rates[key] for age, key in UNDER_TWO_KEYS.items()}
     expected: dict[str, float] = {}
     for target, own in OWN_RATE_BY_TARGET.items():
         if target not in basis.with_extended:
@@ -531,7 +535,7 @@ def _basis_side(
     *,
     extended: bool,
     allocated: bool = False,
-) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
+) -> tuple[dict[str, np.ndarray], dict[str, dict[int, np.ndarray]]]:
     """One engine run's weighted rows, and their parts from children under 2.
 
     Every child uses its hours here (``USES_HOURS``), so the under-2 parts are
@@ -620,9 +624,9 @@ def _basis_side(
         ),
     }
     person_rows = np.asarray(sim.calculate("person_id", target_period)).shape[0]
-    under_two = np.asarray(sim.calculate("age", target_period)) < UNDER_TWO_AGE
+    whole_age = np.floor(np.asarray(sim.calculate("age", target_period), dtype=float))
     under_two_rows = {
-        target: values * under_two
+        target: {age: values * (whole_age == age) for age in UNDER_TWO_KEYS}
         for target, values in result.items()
         if np.asarray(values).shape[0] == person_rows and target.startswith("dfe.")
     }

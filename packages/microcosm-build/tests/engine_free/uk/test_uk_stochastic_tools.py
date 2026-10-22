@@ -52,7 +52,7 @@ def test_childcare_draws_are_identity_keyed_and_hold_hours_fixed(monkeypatch) ->
         & ~first["would_claim_universal_childcare"]
     ).any()
     nested = tool.draw_childcare_inputs(
-        ids, np.array([0.5, 1.0, 0.5, 0.0, 0.5]), seed=42, contract=contract
+        ids, np.array([0.5, 1.0, 0.5, 0.0, 0.5, 0.5]), seed=42, contract=contract
     )
     assert nested["would_claim_universal_childcare"].all()
 
@@ -93,7 +93,7 @@ def test_childcare_fit_receipt_is_deterministic_with_seeded_runner(
     assert first["input_sha256"]
     assert first["seed"] == 42
     assert set(first["params"]) == set(tool.RATE_KEYS)
-    assert len(first["params"]) == 5
+    assert len(first["params"]) == 6
     assert set(first["achieved"]) == set(tool.TARGET_IDS)
     assert first["tool_version"] == 6
     assert first["expectation_basis"] == "dfe_spring_term"
@@ -182,10 +182,11 @@ def test_childcare_expected_counts_scale_under_two_children_by_their_usage() -> 
         two_to_four: np.array([1.0, 1.0, 0.0]),
         nine_to_eleven: np.array([0.0, 0.0, 1.0]),
     }
+    # The first child is aged 1, the baby aged 0: each age has its share.
     under_two = {
         "with_extended": {
-            two_to_four: np.array([1.0, 0.0, 0.0]),
-            nine_to_eleven: np.array([0.0, 0.0, 1.0]),
+            two_to_four: {0: np.zeros(3), 1: np.array([1.0, 0.0, 0.0])},
+            nine_to_eleven: {0: np.array([0.0, 0.0, 1.0]), 1: np.zeros(3)},
         }
     }
     basis = tool.ChildcareExpectationBasis(
@@ -196,11 +197,11 @@ def test_childcare_expected_counts_scale_under_two_children_by_their_usage() -> 
         under_two=under_two,
     )
     expected = tool.expected_childcare_counts(
-        basis, np.array([1.0, 0.8, 1.0, 1.0, 0.5])
+        basis, np.array([1.0, 0.8, 1.0, 1.0, 0.4, 0.6])
     )
-    assert expected[two_to_four] == pytest.approx(0.8 * (1.0 + 0.5 * 1.0))
-    assert expected[nine_to_eleven] == pytest.approx(0.8 * 0.5)
-    assert basis.total("with_extended", two_to_four, 0.0) == 1.0
+    assert expected[two_to_four] == pytest.approx(0.8 * (1.0 + 0.6 * 1.0))
+    assert expected[nine_to_eleven] == pytest.approx(0.8 * 0.4)
+    assert basis.total("with_extended", two_to_four, {0: 0.0, 1: 0.0}) == 1.0
 
 
 def test_the_fit_draws_extended_hours_at_the_contract_anchor() -> None:

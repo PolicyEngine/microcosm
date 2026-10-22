@@ -42,17 +42,25 @@ FRS_TAKE_UP_OUTPUT_COLUMNS = (
     "maximum_extended_childcare_hours_usage",
 )
 # A child under 2 in a benefit unit that claims the working-parent hours uses
-# them at the contract's under-2 usage rate: DfE registers far fewer of the
-# youngest eligible children than of those aged 2 to 4, mostly for parental
-# leave, so one family rate fitted at 2 to 4 would fund too many of them. A
-# child that does not use them gets no funded hours from the engine
-# (max_free_entitlement_hours_used 0); every other person keeps the engine's
-# default of 30. The draw is keyed on the person (seed 0, salt the output);
+# them at its own age's contract rate: DfE registers far fewer of the youngest
+# eligible children than of those aged 2 to 4, and fewer at 9 to 11 months
+# than at age 1, mostly for parental leave, so one family rate fitted at 2 to 4
+# would fund too many of them. A child that does not use them gets no funded
+# hours from the engine (max_free_entitlement_hours_used 0); every other person
+# keeps the engine's default of 30. The draw is keyed on the person (seed 0,
+# salt the output) at the rate of the child's whole-year age (0 or 1);
 # ``childcare_copy_take_up`` re-draws the copies' children against their own
-# unit's flag. The stage manifest declares the operation;
-# ``assert_under_two_usage_declaration`` refuses a manifest that drops it.
+# unit's flag. The stage manifest declares one operation per age;
+# ``assert_under_two_usage_declaration`` refuses a manifest that drops either.
 UK_UNDER_TWO_USAGE_OUTPUT = "max_free_entitlement_hours_used"
-UK_UNDER_TWO_USAGE_KEY = "extended_childcare_under_2_usage"
+#: The usage rate's contract key by whole-year age.
+UK_UNDER_TWO_USAGE_KEYS = {
+    0: "extended_childcare_age_0_usage",
+    1: "extended_childcare_age_1_usage",
+}
+#: The take-up signal gate's name for the draw: its target is the population's
+#: weighted mean of the two age rates.
+UK_UNDER_TWO_USAGE_SIGNAL_KEY = "extended_childcare_under_2_usage"
 UK_UNDER_TWO_AGE = 2
 UK_ENGINE_FREE_HOURS_DEFAULT = 30.0
 FRS_TAKE_UP_PERSON_OUTPUT_COLUMNS = (UK_UNDER_TWO_USAGE_OUTPUT,)
@@ -146,7 +154,7 @@ UK_TAKE_UP_SIGNAL_OUTPUTS = (
     ("benunit", "would_claim_universal_childcare", "universal_childcare"),
     ("benunit", "would_claim_targeted_childcare", "targeted_childcare"),
     ("benunit", "would_claim_uc_childcare", "uc_childcare"),
-    ("person", UK_UNDER_TWO_USAGE_OUTPUT, UK_UNDER_TWO_USAGE_KEY),
+    ("person", UK_UNDER_TWO_USAGE_OUTPUT, UK_UNDER_TWO_USAGE_SIGNAL_KEY),
     ("person", "would_claim_marriage_allowance", "marriage_allowance"),
     ("person", "would_claim_scp", "scp"),
     ("household", "household_owns_tv", "tv_ownership_rate"),
@@ -293,16 +301,17 @@ def assert_under_two_usage_declaration(stage: SourceStageSpec) -> None:
         for op in stage.operations
         if op.parameters.get("output") == UK_UNDER_TWO_USAGE_OUTPUT
     ]
-    expected = {"rate_key": UK_UNDER_TWO_USAGE_KEY, "assignment_unit": "person"}
-    if not declared or any(
-        any(params.get(key) != value for key, value in expected.items())
-        for params in declared
+    rate_keys = sorted(str(params.get("rate_key")) for params in declared)
+    if rate_keys != sorted(UK_UNDER_TWO_USAGE_KEYS.values()) or any(
+        params.get("assignment_unit") != "person" for params in declared
     ):
         raise ValueError(
-            f"stage {stage.stage!r} must declare the {UK_UNDER_TWO_USAGE_OUTPUT!r} "
-            f"operation with {expected!r}; the code draws whether each child under "
-            f"{UK_UNDER_TWO_AGE} in a unit claiming the working-parent hours uses "
-            f"them and refuses a manifest that says otherwise (declared: {declared!r})"
+            f"stage {stage.stage!r} must declare one {UK_UNDER_TWO_USAGE_OUTPUT!r} "
+            "operation per whole-year age with assignment_unit person and the rate "
+            f"keys {sorted(UK_UNDER_TWO_USAGE_KEYS.values())!r}; the code draws "
+            f"whether each child under {UK_UNDER_TWO_AGE} in a unit claiming the "
+            "working-parent hours uses them at its age's rate and refuses a "
+            f"manifest that says otherwise (declared: {declared!r})"
         )
 
 
@@ -526,20 +535,33 @@ def under_two_children(person: pd.DataFrame) -> np.ndarray:
     return age.to_numpy(dtype=float) < UK_UNDER_TWO_AGE
 
 
+def under_two_usage_rates(
+    person: pd.DataFrame, contract: UKTakeUpContract
+) -> np.ndarray:
+    """Each person's usage rate by whole-year age (age 1's rate from 1 up)."""
+
+    age = pd.to_numeric(person["age"], errors="coerce").to_numpy(dtype=float)
+    return np.where(
+        age < 1,
+        contract.rate(UK_UNDER_TWO_USAGE_KEYS[0]),
+        contract.rate(UK_UNDER_TWO_USAGE_KEYS[1]),
+    )
+
+
 def derive_under_two_childcare_usage(
     person: pd.DataFrame, *, claiming: np.ndarray, contract: UKTakeUpContract
 ) -> np.ndarray:
     """``max_free_entitlement_hours_used`` for every person in ``person``.
 
     A child under 2 whose unit claims the working-parent hours uses them where
-    its draw (keyed on ``person_id``) falls under the contract's under-2 usage
+    its draw (keyed on ``person_id``) falls under its whole-year age's usage
     rate and gets 0 hours otherwise; every other person keeps the engine's
     default.
     """
 
     ids = person["person_id"].to_numpy()
-    uses = assign_binary_from_rate(
-        _draws(ids, UK_UNDER_TWO_USAGE_OUTPUT), contract.rate(UK_UNDER_TWO_USAGE_KEY)
+    uses = _draws(ids, UK_UNDER_TWO_USAGE_OUTPUT) < under_two_usage_rates(
+        person, contract
     )
     drawn = under_two_children(person) & np.asarray(claiming, dtype=bool)
     return np.where(drawn & ~uses, 0.0, UK_ENGINE_FREE_HOURS_DEFAULT)
@@ -610,7 +632,7 @@ def uk_take_up_signal_gate(
                 "instant": policy.instant,
                 "source": policy.source,
             }
-        if key == UK_UNDER_TWO_USAGE_KEY:
+        if key == UK_UNDER_TWO_USAGE_SIGNAL_KEY:
             # The rate is a share of the children under 2 in units that claim
             # the working-parent hours; every other person keeps 30 hours.
             benunit_table = frame.table("benunit")
@@ -628,7 +650,16 @@ def uk_take_up_signal_gate(
         share = float(
             np.average(values[population].astype(float), weights=weights[population])
         )
-        target = _target_share(table, key, resolved, weights)
+        if key == UK_UNDER_TWO_USAGE_SIGNAL_KEY:
+            # Each child's rate is its age's: the target is their weighted mean.
+            target = float(
+                np.average(
+                    under_two_usage_rates(table, resolved)[population],
+                    weights=weights[population],
+                )
+            )
+        else:
+            target = _target_share(table, key, resolved, weights)
         details[f"{entity}.{output}"] = {
             "weighted_share": share,
             "target": target,

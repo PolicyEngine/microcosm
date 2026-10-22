@@ -28,7 +28,8 @@ class _Contract:
         "extended_childcare": 0.5,
         "universal_childcare": 0.2,
         "targeted_childcare": 0.6,
-        "extended_childcare_under_2_usage": 0.7,
+        "extended_childcare_age_0_usage": 0.5,
+        "extended_childcare_age_1_usage": 0.7,
     }
 
     def rate(self, key: str, build_year: int | None = None) -> float:
@@ -87,9 +88,10 @@ def test_realised_take_up_reports_shares_beside_the_contract_rates() -> None:
     assert universal["cells"]["units_with_a_child_under_5_and_pay_over_100k"] == {
         "source_households": "<10"
     }
-    usage = receipt["flags"]["max_free_entitlement_hours_used"]
-    assert usage["contract_key"] == "extended_childcare_under_2_usage"
-    children = usage["cells"]["children_under_2_in_claiming_units"]
+    usage = receipt["flags"]["max_free_entitlement_hours_used.age_1"]
+    assert usage["contract_key"] == "extended_childcare_age_1_usage"
+    assert usage["contract_rate"] == 0.7
+    children = usage["cells"]["children_aged_1_in_claiming_units"]
     claiming = benunit["would_claim_extended_childcare"].to_numpy()
     assert children["source_households"] == int(claiming.sum())
     odd = (benunit["benunit_id"].to_numpy() % 2 == 1) & claiming

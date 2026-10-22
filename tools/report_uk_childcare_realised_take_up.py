@@ -15,8 +15,8 @@ unweighted and weighted, over:
   self-employment income exceeds £100,000 (a pay proxy, not adjusted net
   income);
 
-and the under-2 usage share over the children under 2 in units that claim the
-working-parent hours. Every cell names its carriers as distinct source
+and each age's under-2 usage share over the children of that age in units that
+claim the working-parent hours. Every cell names its carriers as distinct source
 households and reads "<10" in place of its shares when fewer than 10 carry it
 (UKDS disclosure control). The receipt belongs in the run tree; it is never
 written into the take-up contract, a hashed build input.
@@ -38,7 +38,7 @@ import pandas as pd
 from microcosm.build.uk_runtime.frs_take_up import (
     UK_CHILDCARE_TAKE_UP_FLAGS,
     UK_EXTENDED_CHILDCARE_OUTPUT,
-    UK_UNDER_TWO_USAGE_KEY,
+    UK_UNDER_TWO_USAGE_KEYS,
     UK_UNDER_TWO_USAGE_OUTPUT,
     person_unit_flag,
     under_two_children,
@@ -145,18 +145,20 @@ def realised_childcare_take_up(
         person, benunit, benunit[UK_EXTENDED_CHILDCARE_OUTPUT].to_numpy()
     )
     uses = person[UK_UNDER_TWO_USAGE_OUTPUT].to_numpy(dtype=float) > 0
-    flags[UK_UNDER_TWO_USAGE_OUTPUT] = {
-        "contract_key": UK_UNDER_TWO_USAGE_KEY,
-        "contract_rate": contract.rate(UK_UNDER_TWO_USAGE_KEY),
-        "cells": {
-            "children_under_2_in_claiming_units": _cell(
-                uses,
-                person_weights,
-                person_sources,
-                under_two_children(person) & claiming,
-            )
-        },
-    }
+    whole_age = np.floor(age)
+    for child_age, key in UK_UNDER_TWO_USAGE_KEYS.items():
+        flags[f"{UK_UNDER_TWO_USAGE_OUTPUT}.age_{child_age}"] = {
+            "contract_key": key,
+            "contract_rate": contract.rate(key),
+            "cells": {
+                f"children_aged_{child_age}_in_claiming_units": _cell(
+                    uses,
+                    person_weights,
+                    person_sources,
+                    under_two_children(person) & claiming & (whole_age == child_age),
+                )
+            },
+        }
     return {
         "minimum_carriers": MINIMUM_CARRIERS,
         "weights": "final household weights of the built file",
