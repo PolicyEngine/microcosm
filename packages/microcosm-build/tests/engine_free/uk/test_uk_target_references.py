@@ -72,7 +72,7 @@ from tools.generate_uk_target_references import (
 
 _TEST_PATHS = paths_for("microcosm-build")
 
-ACTIVE_REFERENCE_COUNT = 1333
+ACTIVE_REFERENCE_COUNT = 1340
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 
 
@@ -537,6 +537,13 @@ def test_childcare_and_bus_references_compile_with_declared_provenance() -> None
         "dfe.funded_childcare.working_parent_children_2_to_4": 621_482.0,
         "dfe.funded_childcare.early_learning_2_year_olds": 95_031.0,
         "dfe.funded_childcare.universal_only_children": 396_965.0,
+        "dfe.funded_childcare.working_parent_children_age_1": 195_104.0,
+        "dfe.funded_childcare.working_parent_children_age_2": 242_453.0,
+        "dfe.funded_childcare.working_parent_children_age_3": 278_640.0,
+        "dfe.funded_childcare.working_parent_children_age_4": 100_389.0,
+        "dfe.funded_childcare.universal_nursery_children_age_3": 565_954.0,
+        "dfe.funded_childcare.universal_nursery_children_age_4": 210_040.0,
+        "dfe.funded_childcare.universal_reception_children_age_4": 379_308.0,
         "dft.bus_fare_receipts.england": pytest.approx(
             3_417_388_656.43538 * 204.125 / 193.125
         ),
@@ -557,6 +564,7 @@ def test_childcare_and_bus_references_compile_with_declared_provenance() -> None
         "dfe.funded_childcare.working_parent_children_2_to_4": "person",
         "dfe.funded_childcare.early_learning_2_year_olds": "person",
         "dfe.funded_childcare.universal_only_children": "person",
+        **{name: "person" for name in DFE_SINGLE_AGE_IDS},
         "dft.bus_fare_receipts.england": "institutional_sector",
         "dft.bus_net_support.england": "institutional_sector",
         "dft.bus_fare_receipts.london": "institutional_sector",
@@ -599,6 +607,20 @@ def test_childcare_and_bus_references_compile_with_declared_provenance() -> None
             "ledger_value_formula"
         ]
         == "minuend - subtrahend"
+    )
+    # The nested rows reconcile on the facts: the 2 to 4 row is the sum of the
+    # working parent ages 2 to 4, and universal-only is the nursery ages 3 and
+    # 4 less the working parent ages 3 and 4.
+    value = {name: spec.value for name, spec in specs.items()}
+    prefix = "dfe.funded_childcare."
+    assert value[prefix + "working_parent_children_2_to_4"] == sum(
+        value[prefix + f"working_parent_children_age_{age}"] for age in (2, 3, 4)
+    )
+    assert value[prefix + "universal_only_children"] == (
+        value[prefix + "universal_nursery_children_age_3"]
+        + value[prefix + "universal_nursery_children_age_4"]
+        - value[prefix + "working_parent_children_age_3"]
+        - value[prefix + "working_parent_children_age_4"]
     )
 
 
@@ -732,6 +754,48 @@ def test_ons_single_year_age_references_pin_the_uk_and_england() -> None:
             assert reference["family"] == "ons_population"
             assert reference["entity"] == "person"
             assert reference["expected_member_count"] == 1
+
+
+DFE_SINGLE_AGE_IDS = (
+    *(
+        f"dfe.funded_childcare.working_parent_children_age_{age}"
+        for age in (1, 2, 3, 4)
+    ),
+    "dfe.funded_childcare.universal_nursery_children_age_3",
+    "dfe.funded_childcare.universal_nursery_children_age_4",
+    "dfe.funded_childcare.universal_reception_children_age_4",
+)
+
+
+def test_dfe_single_age_references_pin_england_at_the_january_2025_census() -> None:
+    """The seven DfE single-age rows resolve one England fact each.
+
+    The ``dfe.`` prefix pins every DfE row to England (E92000001); each new
+    row selects one age cell of its census table, January 2025, held to the
+    2025 calibration year (María's ruling, 2026-10-21).
+    """
+
+    references = {
+        reference["name"]: reference
+        for reference in _load_uk_resource("target_references.json")[
+            "target_references"
+        ]
+    }
+    membership = _load_uk_resource("target_reference_membership.json")
+    for target_id in DFE_SINGLE_AGE_IDS:
+        reference = references[target_id]
+        selector = reference["ledger_selector"]
+        assert selector["geography_level"] == "country"
+        assert selector["geography_id"] == "E92000001"
+        assert reference["family"] == "dfe_funded_childcare"
+        assert reference["entity"] == "person"
+        assert reference["period"] == 2025
+        assert reference["uprating_from_period"] == "2025-01"
+        assert reference["uprating_to_period"] == 2025
+        assert reference["metadata"]["observation_basis"] == "january_stock"
+        assert membership["targets"][target_id]["status"] == "active"
+        (candidate,) = membership["targets"][target_id]["candidates"]
+        assert candidate["resolved_fact_period"] == "2025-01"
 
 
 UC_ELEMENT_TARGET_IDS = frozenset(
@@ -932,7 +996,7 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
     assert membership["status_counts"] == {
-        "active": 1333,
+        "active": 1340,
         "no_fact_at_or_before_period": 5,
         "signed_excluded": 17,
     }
