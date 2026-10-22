@@ -986,6 +986,11 @@ class TestUsSources:
             # never import or execute the retired data package.
             "packages/microcosm-build/src/microcosm/build/uk/efrs_parity_reference.json",
             "packages/microcosm-build/src/microcosm/build/uk/frs_release.json",
+            # The UK cut runner's input locations name the gated repository
+            # that hosts the licensed UKDS archives and the sha-pinned
+            # incumbent, as frs_release.json does: download locations
+            # verified against committed pins, never an import.
+            "tools/uk_cut_inputs.json",
             # The UK population contract's registry-parity accounting names the
             # retired data package by necessity: 651 rows at pinned ref ebf733c
             # = 609 mapped + 42 signed exclusions + 3 unmapped declarations.
