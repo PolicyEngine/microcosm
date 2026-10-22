@@ -93,6 +93,25 @@ of a run (runbook §1).
   `origin/main`, unless you pass `--allow-off-main "<who agreed and why>"` for
   a pushed commit.
 
+### When the build Mac can't: Modal
+
+`tools/modal_uk_cut.py` runs the same command in a Modal container, for when
+the Mac is busy, short of disk or asleep. The container:
+
+- clones a pushed commit on main;
+- syncs that commit's own lock with the `uk` extra;
+- keeps the work directory, with its inputs and every step's outputs, on the
+  `microcosm-uk-cuts` volume, so a rerun resumes.
+
+`HF_TOKEN` and the signing key are passed to that run only, never stored as
+Modal secrets. **Processing UKDS microdata on Modal needs the data owners'
+OK before first use.** Until then, run only the plan:
+
+```bash
+modal run tools/modal_uk_cut.py --commit <sha on main> --label sat24                    # plan, free
+modal run --detach tools/modal_uk_cut.py --commit <sha> --label sat24 --run [--publish] # paid
+```
+
 ## Inputs
 
 `tools/uk_cut_inputs.json` says only *where* each input lives. Every expected
