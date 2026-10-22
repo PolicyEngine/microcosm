@@ -294,6 +294,7 @@
       "key": "universal_childcare",
       "output": "would_claim_universal_childcare",
       "entity": "benunit",
+      "nested_under": "would_claim_extended_childcare",
       "values": {
         "2015-01-01": 0.563,
         "2024-04-06": 0.4353
@@ -301,7 +302,7 @@
       "source": {
         "source": "FRS empirical fit",
         "agency": "PolicyEngine",
-        "citation": "Incumbent offline FRS childcare take-up fit.",
+        "citation": "Incumbent offline FRS childcare take-up fit. Conditional rate, nested under the working-parent flag: the share of benefit units not claiming the extended hours that claim the universal hours. A unit that claims the extended hours claims the universal hours with them, so would_claim_universal_childcare = would_claim_extended_childcare OR u < rate and its expected share is r_e + (1 - r_e) * rate. Independent draws let a working-parent unit over the 100k limit hold extended-yes and universal-no, whose child's first 15 hours policyengine-uk then allocates to the universal entitlement only once the limit is removed. The 2024 value below was fitted as an unconditional rate (tool version 4) and is carried unchanged until the childcare fitter refits it on the conditional basis.",
         "status": "fitted_offline"
       },
       "fitting_receipt": {

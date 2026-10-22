@@ -76,6 +76,34 @@ UK_UC_AGE_ELIGIBLE_METHOD = "any_uc_claimant_aged_18_under_pension_credit_age"
 UK_UC_AGE_ELIGIBLE_SOURCE = "age"
 UK_UC_AGE_ELIGIBLE_ROLE = "is_uc_claimant"
 UK_UC_TAKE_UP_OUTPUT = "would_claim_uc"
+# The universal 15 hours are nested under the working-parent entitlement: a
+# benefit unit that claims the extended (working-parent) hours claims the
+# universal hours with them, and a unit that does not claims them at the
+# contract's universal_childcare rate, which is the rate conditional on not
+# claiming the extended hours. policyengine-uk allocates a working-parent
+# child's first 15 hours to the universal entitlement when the unit's
+# standalone universal flag is false, so two independent draws let a unit over
+# the £100k limit gain universal hours when the limit is removed. The stage
+# manifest declares the nesting on the universal operation
+# (``nested_under``); ``assert_universal_childcare_nesting_declaration``
+# refuses a manifest that stops saying so. ``childcare_copy_take_up``
+# re-draws the copies through the same helper.
+UK_EXTENDED_CHILDCARE_OUTPUT = "would_claim_extended_childcare"
+UK_UNIVERSAL_CHILDCARE_OUTPUT = "would_claim_universal_childcare"
+UK_UNIVERSAL_CHILDCARE_NESTED_UNDER = UK_EXTENDED_CHILDCARE_OUTPUT
+# The childcare draws, in the order they are drawn: the flag outputs with
+# their contract keys, then the extended-hours usage distribution.
+UK_CHILDCARE_TAKE_UP_FLAGS = (
+    ("would_claim_tfc", "tax_free_childcare"),
+    (UK_EXTENDED_CHILDCARE_OUTPUT, "extended_childcare"),
+    (UK_UNIVERSAL_CHILDCARE_OUTPUT, "universal_childcare"),
+    ("would_claim_targeted_childcare", "targeted_childcare"),
+)
+UK_CHILDCARE_HOURS_OUTPUT = "maximum_extended_childcare_hours_usage"
+UK_CHILDCARE_TAKE_UP_OUTPUTS = (
+    *(output for output, _ in UK_CHILDCARE_TAKE_UP_FLAGS),
+    UK_CHILDCARE_HOURS_OUTPUT,
+)
 # The Universal Credit childcare element is claimed at one rate per family
 # type (DWP publishes the single / couple split of the households receiving
 # it); the couple rate applies where the benefit unit is a couple (#882).
@@ -214,6 +242,27 @@ def assert_take_up_stage_population_declaration(stage: SourceStageSpec) -> None:
         )
 
 
+def assert_universal_childcare_nesting_declaration(stage: SourceStageSpec) -> None:
+    """Refuse a manifest that does not nest universal under extended take-up."""
+
+    declared = [
+        dict(op.parameters)
+        for op in stage.operations
+        if op.parameters.get("output") == UK_UNIVERSAL_CHILDCARE_OUTPUT
+    ]
+    if not declared or any(
+        params.get("nested_under") != UK_UNIVERSAL_CHILDCARE_NESTED_UNDER
+        for params in declared
+    ):
+        raise ValueError(
+            f"stage {stage.stage!r} must declare "
+            f"nested_under={UK_UNIVERSAL_CHILDCARE_NESTED_UNDER!r} on the "
+            f"{UK_UNIVERSAL_CHILDCARE_OUTPUT!r} operation; the code draws "
+            "universal take-up as extended OR (u < the conditional universal "
+            f"rate) and refuses a manifest that says otherwise (declared: {declared!r})"
+        )
+
+
 @dataclass(frozen=True)
 class UKFRSTakeUpStageTransform:
     """Whole-stage callable for UK benefit-unit take-up assignments."""
@@ -224,6 +273,7 @@ class UKFRSTakeUpStageTransform:
 
     def __call__(self, frame: Frame) -> Frame:
         assert_take_up_stage_population_declaration(self.stage)
+        assert_universal_childcare_nesting_declaration(self.stage)
         policy = self.population_policy or uk_take_up_population_policy(
             uk_time_period(frame)
         )
@@ -338,27 +388,73 @@ def derive_frs_take_up(
         anchors["universal_credit_reported_anchor"].to_numpy(dtype=bool),
         population=population,
     )
-    for output, key in (
-        ("would_claim_tfc", "tax_free_childcare"),
-        ("would_claim_extended_childcare", "extended_childcare"),
-        ("would_claim_universal_childcare", "universal_childcare"),
-        ("would_claim_targeted_childcare", "targeted_childcare"),
-    ):
-        values[output] = assign_binary_from_rate(
-            _draws(ids, output), contract.rate(key)
-        )
+    childcare = derive_childcare_take_up(ids, contract=contract)
+    for output, _ in UK_CHILDCARE_TAKE_UP_FLAGS:
+        values[output] = childcare[output]
     values["would_claim_uc_childcare"] = _draws(
         ids, "would_claim_uc_childcare"
     ) < uc_childcare_rates(benunit, contract)
-    distribution = contract.continuous_entry("maximum_extended_childcare_hours_usage")
-    values["maximum_extended_childcare_hours_usage"] = clipped_normal_from_uniforms(
-        _draws(ids, "maximum_extended_childcare_hours_usage"),
+    values[UK_CHILDCARE_HOURS_OUTPUT] = childcare[UK_CHILDCARE_HOURS_OUTPUT]
+    return values
+
+
+def nest_universal_childcare(
+    extended: np.ndarray, draws: np.ndarray, conditional_rate: float
+) -> np.ndarray:
+    """Universal take-up nested under the working-parent flag.
+
+    A unit that claims the extended hours claims the universal hours; any
+    other unit claims them where its universal draw falls under
+    ``conditional_rate``, the universal rate among units not claiming the
+    extended hours. P(universal | extended) is 1 by construction.
+    """
+
+    return np.asarray(extended, dtype=bool) | assign_binary_from_rate(
+        draws, conditional_rate
+    )
+
+
+def derive_childcare_take_up(
+    ids: np.ndarray, *, contract: UKTakeUpContract
+) -> dict[str, np.ndarray]:
+    """The childcare take-up flags and extended-hours usage keyed on ``ids``.
+
+    Each output draws its own identity stream (seed 0, salt the output name):
+    Tax-Free Childcare, extended and targeted at their contract rates, the
+    universal flag nested under the extended one (``nest_universal_childcare``)
+    and the extended-hours usage from the contract's clipped normal. Both
+    ``frs_take_up`` (keyed on FRS benefit units) and ``childcare_copy_take_up``
+    (keyed on the copies' own benefit units) draw through it.
+    """
+
+    values: dict[str, np.ndarray] = {}
+    for output, key in UK_CHILDCARE_TAKE_UP_FLAGS:
+        if output == UK_UNIVERSAL_CHILDCARE_OUTPUT:
+            values[output] = nest_universal_childcare(
+                values[UK_UNIVERSAL_CHILDCARE_NESTED_UNDER],
+                _draws(ids, output),
+                contract.rate(key),
+            )
+        else:
+            values[output] = assign_binary_from_rate(
+                _draws(ids, output), contract.rate(key)
+            )
+    distribution = contract.continuous_entry(UK_CHILDCARE_HOURS_OUTPUT)
+    values[UK_CHILDCARE_HOURS_OUTPUT] = clipped_normal_from_uniforms(
+        _draws(ids, UK_CHILDCARE_HOURS_OUTPUT),
         mean=float(distribution["mean"]),
         sd=float(distribution["sd"]),
         lower=float(distribution["lower"]),
         upper=float(distribution["upper"]),
     )
     return values
+
+
+def universal_childcare_marginal_rate(contract: UKTakeUpContract) -> float:
+    """The universal flag's expected share: r_e + (1 - r_e) * r_u_cond."""
+
+    extended = contract.rate("extended_childcare")
+    return extended + (1.0 - extended) * contract.rate("universal_childcare")
 
 
 def uc_childcare_rates(benunit: pd.DataFrame, contract: UKTakeUpContract) -> np.ndarray:
@@ -436,6 +532,25 @@ def uk_take_up_signal_gate(
             "unique_count": unique_count,
             "population_units": int(population.sum()),
         }
+        if (
+            output == UK_UNIVERSAL_CHILDCARE_OUTPUT
+            and UK_UNIVERSAL_CHILDCARE_NESTED_UNDER in table.columns
+        ):
+            # Nested draw: P(universal | extended) = 1, so no benefit unit
+            # claims the extended hours without the universal ones.
+            extended = np.asarray(
+                table[UK_UNIVERSAL_CHILDCARE_NESTED_UNDER], dtype=bool
+            )
+            violations = int((extended & ~values).sum())
+            details[f"{entity}.{output}"]["extended_without_universal_units"] = (
+                violations
+            )
+            if violations:
+                failures.append(
+                    f"{entity}.{output}: {violations} benefit unit(s) claim the "
+                    "extended hours without the universal hours; the universal "
+                    "flag is nested under would_claim_extended_childcare."
+                )
         if unique_count < 2:
             failures.append(
                 f"{entity}.{output}: constant column; stochastic take-up "
@@ -463,6 +578,10 @@ def _target_share(
 ) -> float:
     if key == "uc_childcare":
         return float(np.average(uc_childcare_rates(table, contract), weights=weights))
+    if key == "universal_childcare":
+        # The contract rate is conditional on not claiming the extended
+        # hours; the flag's share is the nested draw's marginal.
+        return universal_childcare_marginal_rate(contract)
     if key != "scp":
         return contract.rate(key)
     age = pd.to_numeric(table["age"], errors="coerce").fillna(0).to_numpy()

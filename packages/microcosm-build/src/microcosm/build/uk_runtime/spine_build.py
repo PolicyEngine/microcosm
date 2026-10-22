@@ -90,6 +90,9 @@ from microcosm.build.uk_runtime.cgt_support import UKCGTSupportSplitStageTransfo
 from microcosm.build.uk_runtime.child_benefit_take_up import (
     UKChildBenefitTakeUpStageTransform,
 )
+from microcosm.build.uk_runtime.childcare_copy_take_up import (
+    UKChildcareCopyTakeUpStageTransform,
+)
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.etb_services import UKETBServicesStageTransform
 from microcosm.build.uk_runtime.etb_vat import UKETBVATStageTransform
@@ -1793,6 +1796,11 @@ def prepare_uk_spine_execution(
                 engine=engine,
                 calibration_year=frs_release.calibration_year,
             )
+        )
+    if "childcare_copy_take_up" in stage_names:
+        implementations["childcare_copy_take_up"] = UKChildcareCopyTakeUpStageTransform(
+            contract=stochastic_contract,
+            stage=stages_by_name["childcare_copy_take_up"],
         )
     if "age_tail" in stage_names:
         implementations["age_tail"] = UKAgeTailStageTransform(

@@ -52,6 +52,7 @@ from . import (
     frs_hmrc_source,
     frs_take_up,
     hmrc_property_rental,
+    household_lineage,
     ledger_fact_vendoring,
     property_localisation,
     receipt_counts,
@@ -125,6 +126,7 @@ _STAGE_MODULES = {
     "salary_sacrifice": "salary_sacrifice",
     "student_loans": "student_loans",
     "private_school_attendance": "private_school_attendance",
+    "childcare_copy_take_up": "childcare_copy_take_up",
     "age_tail": "age_tail",
 }
 
@@ -184,6 +186,9 @@ _STAGE_HELPER_MODULES = {
     "carers_allowance_take_up": (uk_engine_adapter, receipt_counts),
     # The stored attendance is one engine materialization (microcosm#1095).
     "private_school_attendance": (uk_engine_adapter,),
+    # The copies' childcare re-draw draws through frs_take_up's childcare
+    # helper and reads each household's clone path.
+    "childcare_copy_take_up": (frs_take_up, household_lineage),
 }
 
 _COMPUTE = Capabilities(
@@ -493,6 +498,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     )
     from .cgt_support import UKCGTSupportSplitStageTransform
     from .child_benefit_take_up import UKChildBenefitTakeUpStageTransform
+    from .childcare_copy_take_up import UKChildcareCopyTakeUpStageTransform
     from .etb_services import UKETBServicesStageTransform
     from .etb_vat import UKETBVATStageTransform
     from .frs_brma import UKFRSBRMAStageTransform
@@ -781,6 +787,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
                 stage=stages["private_school_attendance"],
                 engine=engine,
                 calibration_year=calibration_year,
+            ),
+            "childcare_copy_take_up": UKChildcareCopyTakeUpStageTransform(
+                contract=contract, stage=stages["childcare_copy_take_up"]
             ),
             "age_tail": UKAgeTailStageTransform(stage=stages["age_tail"]),
         }

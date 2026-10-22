@@ -796,6 +796,7 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                         {
                             "kind": "assign_binary_from_rate",
                             "output": "would_claim_universal_childcare",
+                            "nested_under": "would_claim_extended_childcare",
                             "seed": 0,
                         },
                         {
