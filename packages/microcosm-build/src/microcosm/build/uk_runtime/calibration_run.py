@@ -80,6 +80,7 @@ UK_CALIBRATION_GATE_SCOPE = (
 
 UK_LOCAL_GATE_SCOPE = (
     "uk_local_geography_ladder_post_calibration",
+    "uk_local_brma_enum_domain",
     "uk_local_area_support",
     "uk_local_target_fit",
     "uk_local_per_family_fit",
@@ -137,6 +138,10 @@ UK_SPINE_GATE_SCOPE = (
     # onward, so it is checked at the transferred boundary, and its domain is
     # declared by the stage module (microcosm#725).
     "uk_capital_gains_asset_type_enum_domain",
+    # Weight-independent; spi_housing_shell is the last spine stage that writes
+    # the band, so the transferred boundary checks every row's nation
+    # (microcosm#1278).
+    "uk_council_tax_band_domain",
     # Weight-independent, and its column exists from frs_brma onward, so the
     # spine checks it at the assembled boundary instead of the release end.
     "uk_brma_enum_domain",
@@ -162,6 +167,10 @@ UK_NATIONAL_GATE_SCOPE = (
     "uk_export_surface",
     "uk_take_up_signal",
     "uk_student_loan_plan_enum_domain",
+    # The spine checks council_tax_band at the transferred boundary; this
+    # instance checks the release frame, after any later step that writes the
+    # band (microcosm#1278).
+    "uk_council_tax_band_domain_terminal",
     "uk_target_surface",
     "uk_input_mass_parity",
     "uk_weights_audit",
@@ -257,7 +266,7 @@ def uk_local_gate_scope_exclusions() -> dict[str, str]:
         elif gate_id in UK_LOCAL_DIAGNOSTIC_GATE_SCOPE:
             reason = (
                 "local diagnostic gate; evaluated by the dense battery but outside "
-                "the six-gate local release contract (microcosm#1240)."
+                "the seven-gate local release contract (microcosm#1240, #1262)."
             )
         else:  # pragma: no cover - _scope_exclusions enforces closed-world ownership
             raise RuntimeError(f"UK gate {gate_id!r} belongs to no declared scope.")
@@ -333,6 +342,29 @@ def load_bound_spine_sidecar(path: Path, frame: Frame) -> dict[str, object]:
     return sidecar
 
 
+def _assert_spine_engine_is_pinned(sidecar: Mapping[str, object]) -> None:
+    """Refuse a spine built on a policyengine-uk other than the pinned one.
+
+    The engine freeze holds the build's own engine (microcosm#1095); this
+    holds the spine it binds. A sidecar that records no engine version, or
+    "unavailable" as a synthetic one does, is left to the preflight's stage
+    roster, which already refuses a spine built before the freeze.
+    """
+
+    from microcosm.build.uk_runtime.hmrc_uprating import pinned_engine_version
+
+    recorded = sidecar.get("rules_engine")
+    version = recorded.get("version") if isinstance(recorded, Mapping) else None
+    if version in (None, "", "unavailable"):
+        return
+    pinned = pinned_engine_version()
+    if str(version) != pinned:
+        raise ValueError(
+            f"Spine checkpoint was built on policyengine-uk {version}, but the UK "
+            f"build is pinned to {pinned}: rebuild the spine on the pinned engine."
+        )
+
+
 def load_bound_spine_checkpoint(
     path: Path,
     frame: Frame,
@@ -359,6 +391,7 @@ def load_bound_spine_checkpoint(
     if not isinstance(sidecar, dict):
         raise ValueError(f"input H5 build sidecar must be a JSON object: {path}")
     _assert_spine_sidecar_binds_frame(sidecar, frame)
+    _assert_spine_engine_is_pinned(sidecar)
     recorded = sidecar.get("output")
     if (
         input_sha256 is not None

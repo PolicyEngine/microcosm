@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 from scipy import sparse
 
+from microcosm.build.uk_runtime.local_doctrine import UK_LOCAL_L0_SEARCH_FLOOR
 from microcosm.build.uk_runtime.target_weights import UKStageTargetWeighting
 from microcosm.calibrate import (
     CalibrationResult,
@@ -25,6 +26,7 @@ from microcosm.calibrate import (
 from microcosm.calibrate.initialization import contribution_initialization
 from microcosm.calibrate.solve import (
     BUDGET_BASIS_OPEN_PROBABILITY_MASS,
+    DEFAULT_L0_SEARCH_BRACKET,
     L2_BASIS_CHI_SQUARE,
 )
 from microcosm.frame import Frame
@@ -215,8 +217,44 @@ def _check_baseline_pi_floor(value: object) -> float:
     return floor
 
 
-def _check_initial_lambda(value: object) -> float | None:
-    """``None`` (cold search) or a positive finite warm-start penalty."""
+def _check_l0_search_floor(value: object) -> float:
+    """A positive finite L0 search floor below the solver's search ceiling."""
+    ceiling = DEFAULT_L0_SEARCH_BRACKET[1]
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int | float)
+        or not np.isfinite(value)
+        or not (0.0 < float(value) < ceiling)
+    ):
+        raise ValueError(
+            f"l0_search_floor must be a finite number in (0, {ceiling!r}), "
+            f"got {value!r}."
+        )
+    return float(value)
+
+
+def uk_size_search_bracket(
+    floor: float = UK_LOCAL_L0_SEARCH_FLOOR,
+) -> tuple[float, float]:
+    """The UK size search's L0 bracket: ``floor`` up to the solver's ceiling.
+
+    microcosm#1301: the solver's default floor of 1e-7 leaves the K=15 pool
+    short of a 150,000-household draw, so the size search runs down to
+    :data:`~microcosm.build.uk_runtime.local_doctrine.UK_LOCAL_L0_SEARCH_FLOOR`
+    and keeps the solver's ceiling.
+    """
+    return (_check_l0_search_floor(floor), DEFAULT_L0_SEARCH_BRACKET[1])
+
+
+def _check_initial_lambda(
+    value: object, *, floor: float = UK_LOCAL_L0_SEARCH_FLOOR
+) -> float | None:
+    """``None`` (cold search) or a warm-start penalty inside the size bracket.
+
+    A penalty outside :func:`uk_size_search_bracket` is refused, never
+    clamped: the solver would otherwise probe a penalty nobody asked for
+    while the receipt recorded the one requested (microcosm#1301).
+    """
     if value is None:
         return None
     if (
@@ -226,6 +264,12 @@ def _check_initial_lambda(value: object) -> float | None:
         or float(value) <= 0.0
     ):
         raise ValueError("initial_lambda must be None or a positive finite number.")
+    lower, upper = uk_size_search_bracket(floor)
+    if not (lower <= float(value) <= upper):
+        raise ValueError(
+            f"initial_lambda {value!r} lies outside the size search's L0 bracket "
+            f"[{lower!r}, {upper!r}]; it is refused, never clamped."
+        )
     return float(value)
 
 
@@ -429,6 +473,7 @@ def select_uk_dataset_size(
     seed: int,
     pi_hi: float = 1.0,
     initial_lambda: float | None = None,
+    l0_search_floor: float = UK_LOCAL_L0_SEARCH_FLOOR,
     selection_l2_lambda: float = 0.0,
     selection_l2_anchor: str | None = None,
     selection_l2_basis: str | None = None,
@@ -451,6 +496,14 @@ def select_uk_dataset_size(
     whose draw lands inside the budget window is a valid stop, so a warm and a
     cold search can settle on different penalties and select different rows.
 
+    ``l0_search_floor`` is the lowest penalty the search may probe
+    (microcosm#1301); its bracket, :func:`uk_size_search_bracket`, runs from
+    there to the solver's ceiling and is recorded in the search's receipt. It
+    defaults to the doctrine's
+    :data:`~microcosm.build.uk_runtime.local_doctrine.UK_LOCAL_L0_SEARCH_FLOOR`,
+    so every size search, a holdout fold's included, runs under it unless a
+    caller says otherwise. A warm start outside the bracket is refused.
+
     ``selection_l2_*`` add a chi-square L2 penalty on the search's pre-gate
     weights (microcosm#1124; see :func:`uk_size_l2`); off by default, and an
     off penalty passes no L2 keyword to the solver. ``target_weighting``
@@ -459,7 +512,8 @@ def select_uk_dataset_size(
     """
     n = _check_size_inputs(frame, dense, households)
     pi_hi = _check_pi_hi(pi_hi)
-    initial_lambda = _check_initial_lambda(initial_lambda)
+    search_bracket = uk_size_search_bracket(l0_search_floor)
+    initial_lambda = _check_initial_lambda(initial_lambda, floor=search_bracket[0])
     selection_l2 = uk_size_l2(
         "selection",
         l2_lambda=selection_l2_lambda,
@@ -502,6 +556,7 @@ def select_uk_dataset_size(
         gate_initialization=init,
         mass_reason=dense.options["mass_reason"],
         budget_basis=BUDGET_BASIS_OPEN_PROBABILITY_MASS,
+        budget_search_bracket=search_bracket,
         feasible_draw_pi_hi=pi_hi,
         l0_lambda=0.0 if initial_lambda is None else initial_lambda,
         progress_callback=_phased(progress_callback, "size_search"),
@@ -538,6 +593,7 @@ def refit_uk_dataset_size(
     seed: int,
     pi_hi: float = 1.0,
     initial_lambda: float | None = None,
+    l0_search_floor: float = UK_LOCAL_L0_SEARCH_FLOOR,
     baseline_pi_floor: float = 0.0,
     selection_l2_lambda: float = 0.0,
     selection_l2_anchor: str | None = None,
@@ -591,12 +647,18 @@ def refit_uk_dataset_size(
     normalized Horvitz–Thompson baseline, floored by ``baseline_pi_floor``.
     ``selection_target_weighting`` and ``refit_target_weighting`` run a stage
     under a named rule other than the dense solve's weights (the
-    size-experiment seam; graph builds never pass them). Every new setting is
-    off by default and then leaves the call, its solver options and its
-    receipt exactly as before.
+    size-experiment seam; graph builds never pass them). Each of these is off
+    by default and then leaves the call and its solver options as they were.
+
+    ``l0_search_floor`` is the search's (see :func:`select_uk_dataset_size`);
+    a reused selection is not searched again, so it keeps the bracket it was
+    searched in, and the receipt's ``selection_search_bracket`` reports that
+    bracket from the search's own receipt (``None`` for a selection searched
+    before microcosm#1301 recorded one).
     """
     n = _check_size_inputs(frame, dense, households)
     pi_hi = _check_pi_hi(pi_hi)
+    _check_l0_search_floor(l0_search_floor)
     baseline_pi_floor = _check_baseline_pi_floor(baseline_pi_floor)
     selection_l2 = uk_size_l2(
         "selection",
@@ -642,6 +704,7 @@ def refit_uk_dataset_size(
             seed=seed,
             pi_hi=pi_hi,
             initial_lambda=initial_lambda,
+            l0_search_floor=l0_search_floor,
             selection_l2_lambda=selection_l2_lambda,
             selection_l2_anchor=selection_l2_anchor,
             selection_l2_basis=selection_l2_basis,
@@ -805,6 +868,12 @@ def refit_uk_dataset_size(
             "selection_reused": reused,
             "selection_budget_basis": BUDGET_BASIS_OPEN_PROBABILITY_MASS,
             "selection_budget_search": search_result.options.get("budget_search"),
+            # The bracket the search actually ran under, read from its own
+            # receipt, so a reused selection reports the one it was searched
+            # in (microcosm#1301); the pre-flight checks it on a release.
+            "selection_search_bracket": (
+                search_result.options.get("budget_search") or {}
+            ).get("search_bracket"),
             "selection_feasibility": feasibility,
             "selection_l0_lambda": search_result.l0_lambda,
             "selection_epochs": epochs,

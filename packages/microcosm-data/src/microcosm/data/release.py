@@ -259,7 +259,12 @@ def _hf_api():
 
 @dataclass(frozen=True)
 class PreparedRelease:
-    """Validated local paths and upload destinations, prepared without Hub activity."""
+    """Validated local paths and upload destinations, prepared without Hub activity.
+
+    ``contract_warnings`` are the release contract's warnings, which never
+    refuse a release: the dense UK line's disclosure walk names where a
+    shipped JSON document may carry a per-area support figure (microcosm#1301).
+    """
 
     release_dir: Path
     artifact_root: Path | None
@@ -270,6 +275,7 @@ class PreparedRelease:
     line: str | None
     pointer_path: str
     calibration_diagnostics_available: bool
+    contract_warnings: tuple[str, ...] = ()
 
 
 def prepare_release(
@@ -309,17 +315,22 @@ def prepare_release(
             raise ValueError(
                 "parent_h5 and compatibility_wheels require a source_enrichment release."
             )
+    contract_warnings: list[str] = []
     if evidence:
         validate_evidence_release_dir(release_dir)
     elif parent_h5 is not None or compatibility_wheels:
-        validate_release_dir(
+        contract_warnings = validate_release_dir(
             release_dir,
             parent_h5=parent_h5,
             artifact_root=artifact_root,
             compatibility_wheels=compatibility_wheels,
         )
     else:
-        validate_release_dir(release_dir, artifact_root=artifact_root)
+        contract_warnings = validate_release_dir(
+            release_dir, artifact_root=artifact_root
+        )
+    for contract_warning in contract_warnings:
+        warnings.warn(f"release contract: {contract_warning}", stacklevel=2)
     release_id = release_dir.name
     role = release_dataset_role(release_dir)
     if line is not None:
@@ -522,6 +533,7 @@ def prepare_release(
         line=line,
         pointer_path=pointer_path,
         calibration_diagnostics_available=calibration_diagnostics_available,
+        contract_warnings=tuple(contract_warnings),
     )
 
 
@@ -619,7 +631,11 @@ def publish_release(
     Returns:
         The release's pointer payload (``latest.json`` shape, plus ``tier`` at
         the evidence tier or ``line`` and ``revision`` for a line promotion).
-        It is uploaded only when ``update_latest=True``.
+        It is uploaded only when ``update_latest=True``. When the release
+        contract warned, the returned payload also lists the warnings under
+        ``contract_warnings``; the uploaded pointer never carries them, and
+        the message of the tag this call creates records only how many there
+        were (microcosm#1301).
 
     Raises:
         ReleaseContractError: If the release directory violates its tier's
@@ -683,6 +699,17 @@ def publish_release(
             "create_commit, create_tag, and delete_branch support so release "
             "publication is immutable-first and atomic."
         )
+    # The tag records that the release was published past the contract's
+    # warnings, and how many, but not the warnings themselves, which name
+    # paths in the shipped files (microcosm#1301).
+    warned = len(prepared.contract_warnings)
+    tag_message = (
+        f"Release {release_id}, published past {warned} release contract "
+        "warning(s) (microcosm#1301). The publisher printed them; none is "
+        "recorded here."
+        if warned
+        else None
+    )
     _publish_atomic(
         api,
         release_dir=prepared.release_dir,
@@ -698,6 +725,7 @@ def publish_release(
         tag_only=tag_only,
         pointer_path=prepared.pointer_path,
         pointer_label=pointer_label,
+        tag_message=tag_message,
     )
     # The pointer is live: announce it. Best-effort and coupled to the promotion
     # so every publish path alerts; warn (don't fail) if the webhook is unset.
@@ -711,6 +739,8 @@ def publish_release(
             notify_kwargs["line"] = prepared.line
             notify_kwargs["revision"] = prepared.tag
         notify_release(repo_id, release_id, payload.get("updated_at"), **notify_kwargs)
+    if prepared.contract_warnings:
+        return {**payload, "contract_warnings": list(prepared.contract_warnings)}
     return payload
 
 
@@ -792,6 +822,7 @@ def _publish_atomic(
     tag_only: bool = False,
     pointer_path: str,
     pointer_label: str,
+    tag_message: str | None = None,
 ) -> None:
     staging_branch = f"release-staging/{release_id}"
     main_revision = _repo_revision(api, repo_id=repo_id)
@@ -844,6 +875,7 @@ def _publish_atomic(
                 repo_id=repo_id,
                 tag=tag,
                 revision=immutable_revision,
+                message=tag_message,
             )
         api.delete_branch(
             repo_id=repo_id,
@@ -1097,7 +1129,14 @@ def _require_tag_describes_release(
         )
 
 
-def _create_release_tag(api: object, *, repo_id: str, tag: str, revision: str | None):
+def _create_release_tag(
+    api: object,
+    *,
+    repo_id: str,
+    tag: str,
+    revision: str | None,
+    message: str | None = None,
+):
     kwargs = {
         "repo_id": repo_id,
         "tag": tag,
@@ -1105,6 +1144,8 @@ def _create_release_tag(api: object, *, repo_id: str, tag: str, revision: str | 
     }
     if revision is not None:
         kwargs["revision"] = revision
+    if message is not None:
+        kwargs["tag_message"] = message
     create_tag = getattr(api, "create_tag", None)
     if create_tag is None:
         raise TypeError(

@@ -213,13 +213,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "214b09ea87bc37ac832c73e59fc04ff507b1f45db132906aeb75210480f4b598"
+    "3e9896aa61e9d9340a3cf6ce4a7b85626288b4312f59b795a7aef77fb4c111d6"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "9b597286621f1c0e4eb4e4f0c197bb4c38afa663ae456205483a082a6aac73fa"
+    "2054ed4194fac38952f51832c7a30ca81abfec177dff0f22c3d34acf4e63a779"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "91d8d1a660a3823a95d2d13935f1af9a6927d8d647c9a24dc8c0511c104fcd3d"
+    "a6d9b3f1dcaeea839af81fda2388e60736fd41c1c7b2e9d23af9b9dbca4e8886"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "6a179222c6b6058ad9caacfd347f7bdb8cb98a62237b50d1fc1136df09337251"
@@ -384,12 +384,18 @@ UK_GATE_BATTERY_ENTRIES = {
         "transferred",
         "enum_domain",
     ),
+    "uk_council_tax_band_domain": ("enum_domain", "transferred", "enum_domain"),
     "uk_uc_deduction_combination_enum_domain": (
         "enum_domain",
         "terminal",
         "enum_domain",
     ),
     "uk_student_loan_plan_enum_domain": (
+        "enum_domain",
+        "terminal",
+        "enum_domain",
+    ),
+    "uk_council_tax_band_domain_terminal": (
         "enum_domain",
         "terminal",
         "enum_domain",
@@ -408,6 +414,7 @@ UK_GATE_BATTERY_ENTRIES = {
         "terminal",
         None,
     ),
+    "uk_local_brma_enum_domain": ("enum_domain", "terminal", "enum_domain"),
     "uk_local_area_support": ("area_support", "terminal", None),
     "uk_local_target_fit": ("target_fit", "terminal", None),
     "uk_local_per_family_fit": ("per_family_fit", "terminal", None),

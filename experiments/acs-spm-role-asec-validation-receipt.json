@@ -1,0 +1,404 @@
+{
+  "acs": {
+    "composition_check": {
+      "n_units": 1531614,
+      "n_units_without_classified_adult": 1946,
+      "status": "FAIL"
+    },
+    "loader": {
+      "household_rows": 1531614,
+      "person_rows": 3422888,
+      "vacant_household_rows_dropped": 100355
+    },
+    "receipt": {
+      "adult_rule": "age >= 18 OR (age >= 15 AND is_spm_independent_minor_role)",
+      "asec_rule": "SPM_HEAD == 1 OR (A_FAMTYP in {1,4} AND A_FAMREL in {1,2})",
+      "column": "is_spm_independent_minor_role",
+      "entity": "person",
+      "group_quarters_units_without_classified_adult": 1946,
+      "housing_units_classified_only_by_role": 117,
+      "independent_minor_persons": 3570,
+      "partition": "household (ACS PUMS carries no SPM_ID)",
+      "persons": 3422888,
+      "persons_aged_15_to_17": 122658,
+      "provenance": "acs_2024_1yr_native",
+      "role_branches": {
+        "group_quarters_sole_person": 183206,
+        "reference_person": 1348408,
+        "spouse_of_reference_person": 684566
+      },
+      "role_true_persons": 2216180,
+      "rule": "RELSHIPP == 20 OR RELSHIPP in {21, 23} OR RELSHIPP in {37, 38}, on the one-SPM-unit-per-household ACS partition",
+      "source_columns": [
+        "RELSHIPP"
+      ],
+      "spm_units": 1531614,
+      "weighted_minor_role_share": 0.010027256279517846,
+      "weighted_role_share": 0.6075357973866783
+    },
+    "source": {
+      "household": {
+        "sha256": "8281008e53de98f0ef81e7a2ee5a8725991dda1ecfd2713ead73246425e515d0",
+        "url": "https://www2.census.gov/programs-surveys/acs/data/pums/2024/1-Year/csv_hus.zip"
+      },
+      "person": {
+        "sha256": "afdc6d90c6e2f0bab365ed32d95ba4c4d8ac651162f46ac7861295b2dc469894",
+        "url": "https://www2.census.gov/programs-surveys/acs/data/pums/2024/1-Year/csv_pus.zip"
+      }
+    }
+  },
+  "acs_analog_in_cps_codes": "A_EXPRRP in {1, 2, 3, 4}",
+  "artifact_kind": "acs_spm_independence_role_validation",
+  "asec": [
+    {
+      "analog_true_where_rule_false_all_households": 0,
+      "census_adult_counts_one_unit": {
+        "acs_analog": {
+          "units": 55076,
+          "units_matching_census_counts": 55076
+        },
+        "asec_rule": {
+          "units": 55076,
+          "units_matching_census_counts": 55076
+        }
+      },
+      "households": 56839,
+      "income_year": 2022,
+      "one_unit_agreement": {
+        "persons_agree": 140531,
+        "teens_aged_15_to_17": 6518,
+        "teens_agree": 6518,
+        "weighted_agreement": 0.9992998602725968
+      },
+      "one_unit_disagreements": [
+        {
+          "A_EXPRRP": 12,
+          "A_FAMREL": 1,
+          "A_FAMTYP": 4,
+          "analog": 0,
+          "persons": 116,
+          "rule": 1
+        },
+        {
+          "A_EXPRRP": 12,
+          "A_FAMREL": 2,
+          "A_FAMTYP": 4,
+          "analog": 0,
+          "persons": 2,
+          "rule": 1
+        }
+      ],
+      "one_unit_households": 55076,
+      "one_unit_households_whose_spm_head_is_the_reference_person": 55076,
+      "one_unit_persons": 140649,
+      "persons": 146133,
+      "source": {
+        "archive_sha256": "d2e000250782adfbdd7f29c82b66d866591a30f0d330496698ec19f9c784ce11",
+        "csv_sha256": "19b56537e50e7663f954361ef2bb5ce9cef8d9d45f156fe1a69a99b654198ffe",
+        "official_archive_url": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asecpub23csv.zip"
+      },
+      "teens_holding_the_rule_but_not_reference_or_spouse": {
+        "by_relationship": [
+          {
+            "A_EXPRRP": 12,
+            "A_FAMTYP": 4,
+            "multi_unit_household": 1,
+            "persons": 1
+          },
+          {
+            "A_EXPRRP": 12,
+            "A_FAMTYP": 5,
+            "multi_unit_household": 1,
+            "persons": 17
+          },
+          {
+            "A_EXPRRP": 13,
+            "A_FAMTYP": 5,
+            "multi_unit_household": 1,
+            "persons": 2
+          },
+          {
+            "A_EXPRRP": 14,
+            "A_FAMTYP": 5,
+            "multi_unit_household": 1,
+            "persons": 16
+          }
+        ],
+        "persons": 36
+      },
+      "weighted_role_shares": {
+        "analog_all": 0.5862823709422594,
+        "analog_one_unit": 0.5969730924628028,
+        "analog_teens_all": 0.010144177478181379,
+        "analog_teens_one_unit": 0.010332281342635967,
+        "rule_all": 0.6072927718992405,
+        "rule_one_unit": 0.5976732321902062,
+        "rule_teens_all": 0.01508119124590718,
+        "rule_teens_one_unit": 0.010332281342635967
+      }
+    },
+    {
+      "analog_true_where_rule_false_all_households": 0,
+      "census_adult_counts_one_unit": {
+        "acs_analog": {
+          "units": 54455,
+          "units_matching_census_counts": 54455
+        },
+        "asec_rule": {
+          "units": 54455,
+          "units_matching_census_counts": 54455
+        }
+      },
+      "households": 56251,
+      "income_year": 2023,
+      "one_unit_agreement": {
+        "persons_agree": 138521,
+        "teens_aged_15_to_17": 6351,
+        "teens_agree": 6351,
+        "weighted_agreement": 0.9992134634367575
+      },
+      "one_unit_disagreements": [
+        {
+          "A_EXPRRP": 12,
+          "A_FAMREL": 1,
+          "A_FAMTYP": 4,
+          "analog": 0,
+          "persons": 120,
+          "rule": 1
+        },
+        {
+          "A_EXPRRP": 12,
+          "A_FAMREL": 2,
+          "A_FAMTYP": 4,
+          "analog": 0,
+          "persons": 4,
+          "rule": 1
+        }
+      ],
+      "one_unit_households": 54455,
+      "one_unit_households_whose_spm_head_is_the_reference_person": 54455,
+      "one_unit_persons": 138645,
+      "persons": 144265,
+      "source": {
+        "archive_sha256": "cdb39cdac34bef99dd0940ab28e306f692404c2eea44d85dfd634214872a0a09",
+        "csv_sha256": "21a2b9e0e4b08534563578a45acad77868af4ae9a7d46f23776b707d4a559aa7",
+        "official_archive_url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asecpub24csv.zip"
+      },
+      "teens_holding_the_rule_but_not_reference_or_spouse": {
+        "by_relationship": [
+          {
+            "A_EXPRRP": 12,
+            "A_FAMTYP": 5,
+            "multi_unit_household": 1,
+            "persons": 15
+          },
+          {
+            "A_EXPRRP": 13,
+            "A_FAMTYP": 5,
+            "multi_unit_household": 1,
+            "persons": 8
+          },
+          {
+            "A_EXPRRP": 14,
+            "A_FAMTYP": 5,
+            "multi_unit_household": 1,
+            "persons": 16
+          }
+        ],
+        "persons": 39
+      },
+      "weighted_role_shares": {
+        "analog_all": 0.5857898257880129,
+        "analog_one_unit": 0.5965327386147777,
+        "analog_teens_all": 0.011514052545748601,
+        "analog_teens_one_unit": 0.011436747662723446,
+        "rule_all": 0.6069045523305707,
+        "rule_one_unit": 0.5973192751780202,
+        "rule_teens_all": 0.017362069875943974,
+        "rule_teens_one_unit": 0.011436747662723446
+      }
+    },
+    {
+      "analog_true_where_rule_false_all_households": 0,
+      "census_adult_counts_one_unit": {
+        "acs_analog": {
+          "units": 54015,
+          "units_matching_census_counts": 54014
+        },
+        "asec_rule": {
+          "units": 54015,
+          "units_matching_census_counts": 54015
+        }
+      },
+      "households": 55762,
+      "income_year": 2024,
+      "one_unit_agreement": {
+        "persons_agree": 136566,
+        "teens_aged_15_to_17": 6284,
+        "teens_agree": 6283,
+        "weighted_agreement": 0.9992398151890913
+      },
+      "one_unit_disagreements": [
+        {
+          "A_EXPRRP": 12,
+          "A_FAMREL": 1,
+          "A_FAMTYP": 4,
+          "analog": 0,
+          "persons": 99,
+          "rule": 1
+        },
+        {
+          "A_EXPRRP": 12,
+          "A_FAMREL": 2,
+          "A_FAMTYP": 4,
+          "analog": 0,
+          "persons": 2,
+          "rule": 1
+        }
+      ],
+      "one_unit_households": 54015,
+      "one_unit_households_whose_spm_head_is_the_reference_person": 54015,
+      "one_unit_persons": 136667,
+      "persons": 142125,
+      "source": {
+        "archive_sha256": "318845a2b5e0034eb2973898de1738f4df0025727de38499e7669cb9c0deef0b",
+        "csv_sha256": "06921fe83fc66c907e6c7b86b82255dc70458ee7d76258fc48297cb34f0c06b5",
+        "official_archive_url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asecpub25csv.zip"
+      },
+      "teens_holding_the_rule_but_not_reference_or_spouse": {
+        "by_relationship": [
+          {
+            "A_EXPRRP": 12,
+            "A_FAMTYP": 4,
+            "multi_unit_household": 0,
+            "persons": 1
+          },
+          {
+            "A_EXPRRP": 12,
+            "A_FAMTYP": 4,
+            "multi_unit_household": 1,
+            "persons": 6
+          },
+          {
+            "A_EXPRRP": 12,
+            "A_FAMTYP": 5,
+            "multi_unit_household": 1,
+            "persons": 20
+          },
+          {
+            "A_EXPRRP": 13,
+            "A_FAMTYP": 5,
+            "multi_unit_household": 1,
+            "persons": 1
+          },
+          {
+            "A_EXPRRP": 14,
+            "A_FAMTYP": 5,
+            "multi_unit_household": 1,
+            "persons": 12
+          }
+        ],
+        "persons": 40
+      },
+      "weighted_role_shares": {
+        "analog_all": 0.5858222870866249,
+        "analog_one_unit": 0.5967380030750077,
+        "analog_teens_all": 0.013563535449187073,
+        "analog_teens_one_unit": 0.013082577656808094,
+        "rule_all": 0.6075231727161917,
+        "rule_one_unit": 0.5974981878859165,
+        "rule_teens_all": 0.01959530956976914,
+        "rule_teens_one_unit": 0.013355997064479715
+      }
+    },
+    {
+      "analog_true_where_rule_false_all_households": 0,
+      "census_adult_counts_one_unit": {
+        "acs_analog": {
+          "units": 51797,
+          "units_matching_census_counts": 51797
+        },
+        "asec_rule": {
+          "units": 51797,
+          "units_matching_census_counts": 51797
+        }
+      },
+      "households": 53344,
+      "income_year": 2025,
+      "one_unit_agreement": {
+        "persons_agree": 129838,
+        "teens_aged_15_to_17": 5798,
+        "teens_agree": 5798,
+        "weighted_agreement": 0.9994541464568595
+      },
+      "one_unit_disagreements": [
+        {
+          "A_EXPRRP": 12,
+          "A_FAMREL": 1,
+          "A_FAMTYP": 4,
+          "analog": 0,
+          "persons": 80,
+          "rule": 1
+        },
+        {
+          "A_EXPRRP": 12,
+          "A_FAMREL": 2,
+          "A_FAMTYP": 4,
+          "analog": 0,
+          "persons": 3,
+          "rule": 1
+        }
+      ],
+      "one_unit_households": 51797,
+      "one_unit_households_whose_spm_head_is_the_reference_person": 51797,
+      "one_unit_persons": 129921,
+      "persons": 134729,
+      "source": {
+        "archive_sha256": "fe819d0d2fc4470c282e76c247b8aa8b6054811619730307e9f2fe6186707d93",
+        "csv_sha256": "f78920699bf671cc211cb720ff8c6274392524a22138aedaf9e3954f91ba4334",
+        "official_archive_url": "https://www2.census.gov/programs-surveys/cps/datasets/2026/march/asecpub26csv.zip"
+      },
+      "teens_holding_the_rule_but_not_reference_or_spouse": {
+        "by_relationship": [
+          {
+            "A_EXPRRP": 12,
+            "A_FAMTYP": 4,
+            "multi_unit_household": 1,
+            "persons": 1
+          },
+          {
+            "A_EXPRRP": 12,
+            "A_FAMTYP": 5,
+            "multi_unit_household": 1,
+            "persons": 2
+          },
+          {
+            "A_EXPRRP": 13,
+            "A_FAMTYP": 5,
+            "multi_unit_household": 1,
+            "persons": 3
+          },
+          {
+            "A_EXPRRP": 14,
+            "A_FAMTYP": 5,
+            "multi_unit_household": 1,
+            "persons": 18
+          }
+        ],
+        "persons": 24
+      },
+      "weighted_role_shares": {
+        "analog_all": 0.5962195541744584,
+        "analog_one_unit": 0.6053872284500112,
+        "analog_teens_all": 0.009523992328868658,
+        "analog_teens_one_unit": 0.008885292663019803,
+        "rule_all": 0.6140185267044125,
+        "rule_one_unit": 0.6059330819931518,
+        "rule_teens_all": 0.014646097062096962,
+        "rule_teens_one_unit": 0.008885292663019803
+      }
+    }
+  ],
+  "asec_rule": "SPM_HEAD == 1 OR (A_FAMTYP in {1,4} AND A_FAMREL in {1,2})",
+  "code_commit": "fe8a19cbe593b6213dd12885d51bc3ed9d1cebd9"
+}

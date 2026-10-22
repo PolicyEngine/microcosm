@@ -1199,7 +1199,9 @@ class StagingRunBundleWriterV2:
         self._persist_bundle()
         # Make the verified state visible to authenticated consumers. This is
         # best effort because read-back has already established that the core
-        # run files are present and valid.
+        # run files are present and valid: a failed refresh cannot change the
+        # verified local state (``_upload_path``), and the remote copy may then
+        # still show the delivery as it was before read-back.
         self._maybe_upload(force=True)
 
     def _require_running(self, action: str) -> None:
@@ -1358,8 +1360,15 @@ class StagingRunBundleWriterV2:
         self._delivery["upload_successes"] = self._upload_session.successes
         self._consecutive_upload_failures = self._upload_session.consecutive_failures
         self._remote_disabled = not self._upload_session.enabled
+        # Once read-back has given its verdict, the verdict owns the error
+        # code: the delivery contract ties a passed read-back to no error and
+        # a failed one to READ_BACK_FAILED, so a later refresh upload, failed
+        # or not, cannot rewrite it (microcosm#1301). A failed refresh stays
+        # visible as an attempt without a success.
+        owns_error = self._delivery["read_back"] == "not_requested"
         if not result.succeeded:
-            self._delivery["last_error_code"] = "UPLOAD_FAILED"
+            if owns_error:
+                self._delivery["last_error_code"] = "UPLOAD_FAILED"
             print(
                 f"warning: staging upload failed for {remote_path}",
                 file=sys.stderr,
@@ -1371,7 +1380,8 @@ class StagingRunBundleWriterV2:
                     file=sys.stderr,
                 )
         else:
-            self._delivery["last_error_code"] = None
+            if owns_error:
+                self._delivery["last_error_code"] = None
             return True
         return False
 

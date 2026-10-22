@@ -62,6 +62,9 @@ NATIONAL_SELECTOR_KEYS = {
     "period_value",
     "layout_groupby_value_id",
     "source_measure_id_by_opening_year",
+    # microcosm#1301: the high-value homes region rows select the derived
+    # stock's record set, as its local cells do.
+    "record_set_spec_id",
 }
 LOCAL_SELECTOR_KEYS = {
     "source_name",
@@ -201,6 +204,7 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
         "linear_combination",
         "scaled_by_ratio",
         "calendar_year_window",
+        "calendar_year_window_scaled_by_ratio",
         "rolled_forward_by_ratio",
     ]
     assert resource["resolution_defaults"] == {
@@ -225,8 +229,15 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # Government, NI); microcosm#1095 splits the two national 15_19 sex
     # bands into ages 15, 16-17 and 18-19 (uk-data#563), six rows for two;
     # microcosm#1240 adds the three Microcosm-derived high-value homes local
-    # targets.
-    assert len(resource["targets"]) == 403
+    # targets; microcosm#1207 adds the three DESNZ local-authority energy
+    # targets and DfT BUS01a journeys for London and the eight other English
+    # regions; microcosm#1095 keeps DWP's five-or-more-children count as a
+    # diagnostic beside the two-child-limit rows; microcosm#1301 adds the three
+    # high-value homes region rows, bound on the local line only, and
+    # microcosm#1262 binds Scotland's PIPR rents at BRMA grain; microcosm#1278
+    # adds the ONS single years 0, 1 and 2 for all persons inside the 0_4 sex
+    # bands.
+    assert len(resource["targets"]) == 421
 
     providers = resource["hierarchy"]["providers"]
     categories = resource["hierarchy"]["categories"]
@@ -240,10 +251,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     target_ids = [target["target_id"] for target in resource["targets"]]
     registry_scope = resource["registry_parity"]["scope_target_ids"]
     profile_scope = resource["profile_parity"]["scope_target_ids"]
-    assert len(registry_scope) == 348
-    assert len(profile_scope) == 55
-    assert target_ids[:348] == registry_scope
-    assert target_ids[348:] == profile_scope
+    assert len(registry_scope) == 362
+    assert len(profile_scope) == 59
+    assert target_ids[:362] == registry_scope
+    assert target_ids[362:] == profile_scope
 
     parity = resource["registry_parity"]
     assert parity["pinned_ref"] == "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3"
@@ -256,11 +267,14 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     assert set(mapped_target_ids).isdisjoint(unmapped_declarations)
     assert mapped_target_ids | set(unmapped_declarations) == set(registry_scope)
     assert all(reason for reason in unmapped_declarations.values())
-    # microcosm#1095: obr/ni and the two PIP daily-living caseload rows leave
-    # the mapped rows for diagnostics, and the two incumbent 15_19 sex bands
-    # leave them for the six rows that partition them.
-    assert len(mapped_target_ids) == 187
-    assert len(unmapped_declarations) == 161
+    # microcosm#1095: obr/ni, the two PIP daily-living caseload rows and the
+    # five-or-more-children UC count leave the mapped rows for diagnostics,
+    # and the two incumbent 15_19 sex bands leave them for the six rows that
+    # partition them; microcosm#1207's nine BUS01a journey rows and
+    # microcosm#1301's three high-value homes region rows have no uk-data
+    # metric, nor do microcosm#1278's three single years of age.
+    assert len(mapped_target_ids) == 186
+    assert len(unmapped_declarations) == 176
     suppressed_ancestors = parity["suppressed_ancestors"]
     assert len(suppressed_ancestors) == 5
     assert set(suppressed_ancestors).isdisjoint(parity["mapped"])
@@ -279,9 +293,9 @@ def test_uk_population_targets_profile_accounting_and_local_renames() -> None:
     parity = resource["profile_parity"]
     assert parity["source_profile_id"] == "uk_local_geography"
     assert parity["source_target_count"] == 25
-    assert parity["contract_target_count"] == 55
+    assert parity["contract_target_count"] == 59
     assert parity["corrected_rows"] == len(parity["corrected"]) == 25
-    assert parity["activation_added_rows"] == len(parity["activation_additions"]) == 30
+    assert parity["activation_added_rows"] == len(parity["activation_additions"]) == 34
 
     targets = {target["target_id"]: target for target in resource["targets"]}
     corrected_ids = {entry["target_id"] for entry in parity["corrected"]}
@@ -427,11 +441,59 @@ def test_uk_population_targets_split_the_15_19_sex_bands() -> None:
     assert "partition" in parity["accounting_notes"]["ons_15_19_sex_band_split"]
 
 
+def test_uk_population_targets_bind_single_years_0_to_2_inside_the_0_4_bands() -> None:
+    """Ages 0, 1 and 2 bind for all persons beside the 0_4 sex bands.
+
+    The 0_4 sex bands left the single years inside them free to move, so the
+    contract binds the three youngest single years too (microcosm#1278,
+    #1095). Unlike the 15_19 split the bands stay mapped and bound: the new
+    rows cover both sexes and only ages 0 to 2, so neither band is their sum.
+    """
+
+    resource = _load()
+    parity = resource["registry_parity"]
+    target_ids = [target["target_id"] for target in resource["targets"]]
+    new_ids = [f"ons.population.age_{age}" for age in (0, 1, 2)]
+
+    for sex in ("female", "male"):
+        assert parity["mapped"][f"ons/{sex}_0_4"] == f"ons.population.{sex}_0_4"
+        assert f"ons.population.{sex}_0_4" in target_ids
+    # In scope order, just before the national sex bands.
+    first = target_ids.index(new_ids[0])
+    assert target_ids[first : first + 4] == [*new_ids, "ons.population.female_0_4"]
+
+    for age, target_id in zip((0, 1, 2), new_ids, strict=True):
+        target = _target_by_id(resource, target_id)
+        assert target_id in parity["unmapped_declarations"]
+        assert target_id not in set(parity["mapped"].values())
+        assert target["family"] == "ons_population"
+        assert target["geography_levels"] == ["country"]
+        assert target["ledger_selector"] == {
+            "source_name": "ons",
+            "source_concept": "ons.mid_year_population_estimate",
+            "dimension_values": {"age": [age]},
+        }
+        # All persons: no sex or region filter, and a half-open single year.
+        assert target["measurement"]["filters"] == [
+            {"concept": "uk.demographics.age", "operator": ">=", "value": age},
+            {"concept": "uk.demographics.age", "operator": "<", "value": age + 1},
+        ]
+        binding = target["bindings"]["policyengine"]
+        assert binding["metric_name"] == f"ons/age_{age}"
+        assert binding["filters"] == [
+            {"variable": "age", "operator": ">=", "value": age},
+            {"variable": "age", "operator": "<", "value": age + 1},
+        ]
+        assert binding["value_variable"] == "person_count"
+        assert binding["map_to"] == "household"
+    assert "stay bound" in parity["accounting_notes"]["ons_single_year_ages_0_2"]
+
+
 def test_uk_population_targets_have_unique_target_ids() -> None:
     resource = _load()
 
     target_ids = [target["target_id"] for target in resource["targets"]]
-    assert len(target_ids) == 403
+    assert len(target_ids) == 421
     assert len(target_ids) == len(set(target_ids))
 
 
@@ -640,7 +702,7 @@ def test_uk_population_targets_declare_chronicle_loader_guarantees() -> None:
         _target_by_id(resource, "obr.esa")["bindings"]["policyengine"][
             "value_expression"
         ]
-        == "esa_income + esa_contrib"
+        == "esa_income + esa_contrib + incapacity_benefit + sda"
     )
 
 
@@ -657,19 +719,38 @@ def test_uk_population_targets_use_corrected_local_selector_vocabulary() -> None
         "uk.local_geography.population.age_70_80.v1"
     )
     # microcosm#1123: the calendar-2025 mean of DWP's monthly series, the
-    # three-plus band summed from its three published child counts.
+    # three-plus band summed from its three published child counts; paid
+    # claims only, as the national rows count (microcosm#1300).
     assert targets["dwp.uc.households_by_area_children_3plus"]["ledger_selector"] == {
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "source_measure_id": "universal_credit_households_by_children",
-        "dimensions": ["number_of_children"],
-        "dimension_values": {"number_of_children": [3, 4, "5 or more"]},
+        "dimensions": ["number_of_children", "payment_indicator"],
+        "dimension_values": {
+            "number_of_children": [3, 4, "5 or more"],
+            "payment_indicator": "Yes",
+        },
         "period_type": "month",
         "period_value": [f"2025-{month:02d}" for month in range(1, 13)],
     }
     assert targets["dwp.uc.households_by_area_children_3plus"]["value_operation"] == (
         "monthly_window_sum_average"
     )
+    # Each summed cell names every dimension its facts carry.
+    assert targets["dwp.uc.households_by_area_children_3plus"]["value_operands"] == [
+        {
+            "dimension_values": {
+                "number_of_children": children,
+                "payment_indicator": "Yes",
+            }
+        }
+        for children in (3, 4, "5 or more")
+    ]
+    for target_id, target in targets.items():
+        if target_id.startswith("dwp.uc.households_by_area"):
+            selector = target["ledger_selector"]
+            assert "payment_indicator" in selector["dimensions"], target_id
+            assert selector["dimension_values"]["payment_indicator"] == "Yes"
     assert (
         targets["dwp.uc.households_by_area_children_3plus"]["bindings"]["policyengine"][
             "metric_name"
@@ -704,7 +785,7 @@ def test_uk_population_targets_preserve_local_metric_ordering_contract() -> None
     )
     assert metric_names_from_target_profile(resource, "la") == metric_names("la")
     assert len(metric_names_from_target_profile(resource, "constituency")) == 22
-    assert len(metric_names_from_target_profile(resource, "la")) == 35
+    assert len(metric_names_from_target_profile(resource, "la")) == 38
 
 
 def test_uk_population_uc_households_target_counts_benunits() -> None:
@@ -777,7 +858,6 @@ def test_uk_uc_composition_and_disability_children_targets_are_rebound() -> None
         "dwp.uc.households_children_2",
         "dwp.uc.households_children_3",
         "dwp.uc.households_children_4",
-        "dwp.uc.households_children_5_or_more",
         "dwp.uc.households_single_no_children",
         "dwp.uc.households_single_with_children",
         "dwp.uc.households_couple_no_children",
@@ -841,7 +921,9 @@ def test_paid_uc_targets_preserve_entitlement_margins_and_exact_calendar_months(
             "dwp.uc.households_couple_with_children",
         }
     ]
-    assert len(paid_targets) == 10
+    # microcosm#1095: the five-or-more-children count is a diagnostic, not a
+    # target.
+    assert len(paid_targets) == 9
     for target in paid_targets:
         selector = target["ledger_selector"]
         assert target["measurement"]["source_months"] == months
@@ -912,7 +994,7 @@ def test_uc_payment_bands_share_administrative_family_but_keep_source_window() -
 
 def test_paid_joint_diagnostics_do_not_add_active_targets() -> None:
     targets = _load()["targets"]
-    assert len(targets) == 403
+    assert len(targets) == 421
     assert not any(
         f.get("variable") == "uc_calibration_child_entitlement"
         for target in targets
@@ -934,7 +1016,7 @@ def test_uc_gb_bindings_match_the_committed_source_geography_and_finite_bands():
         if row["metadata"]["contract_target_id"].startswith("dwp.uc.")
         and row["ledger_selector"]["geography_id"] == "K03000001"
     }
-    assert len(gb_ids) == 36
+    assert len(gb_ids) == 35
     for target_id in gb_ids:
         binding = _target_by_id(resource, target_id)["bindings"]["policyengine"]
         geographic = [

@@ -44,6 +44,7 @@ from microcosm.frame.concept_mapping import (
     Scale,
     ScaledSum,
     Share,
+    SignedPart,
     Sum,
     TakeUpThreshold,
     coverage_report,
@@ -1082,6 +1083,8 @@ TRANSFORMS = [
     Scale(factor=1 / 52),
     Positive(),
     Sum(),
+    SignedPart(sign="positive"),
+    SignedPart(sign="negative"),
     Product(),
     AllocateToReferencePerson(),
     Predicate(clauses=(("fact:person.sex", ("female",)),)),
@@ -1111,6 +1114,8 @@ class TestTransforms:
             ({"kind": "scale", "factor": True}, "number"),
             ({"kind": "coresident_child_count", "max_age": "17"}, "integer"),
             ({"kind": "take_up_threshold"}, "lacks"),
+            ({"kind": "signed_part"}, "lacks"),
+            ({"kind": "signed_part", "sign": "up"}, "'positive' or 'negative'"),
         ],
     )
     def test_malformed_transforms_are_refused(self, data, message) -> None:
@@ -1169,7 +1174,7 @@ class TestTransforms:
 
 #: The transforms that do arithmetic on a year's amount, and so read annual
 #: flows only.
-_ARITHMETIC = (Scale, Sum, ScaledSum, Share, Fraction)
+_ARITHMETIC = (Scale, Sum, ScaledSum, SignedPart, Share, Fraction)
 _NOT_FLOWS = tuple(
     basis for basis in TemporalBasis if basis is not TemporalBasis.ANNUAL_FLOW
 )
@@ -1205,6 +1210,7 @@ _EXAMPLE_TRANSFORMS = {
     Scale: Scale(factor=1 / 52),
     Sum: Sum(),
     ScaledSum: ScaledSum(factor=1 / 52),
+    SignedPart: SignedPart(sign="negative"),
     Share: Share(parameter="p"),
     Fraction: Fraction(parameter="f"),
 }
@@ -1220,6 +1226,10 @@ def _arithmetic(kind: type):
         return st.builds(Share, parameter=_parameter_names, complement=st.booleans())
     if kind is Fraction:
         return st.builds(Fraction, parameter=_parameter_names)
+    if kind is SignedPart:
+        return st.sampled_from(("positive", "negative")).map(
+            lambda sign: SignedPart(sign=sign)
+        )
     return st.just(Sum())
 
 

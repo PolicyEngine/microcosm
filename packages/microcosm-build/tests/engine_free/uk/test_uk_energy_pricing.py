@@ -20,6 +20,7 @@ from microcosm.build.uk_runtime.energy_pricing import (
     SCOTLAND_GEOGRAPHY_ID,
     cap_household_kwh,
     declared_household_kwh_ceilings,
+    declared_zero_kwh_cells_at_need_mean,
     fiscal_year_quarters,
     impose_gas_connection,
     income_band_ids,
@@ -1348,3 +1349,161 @@ def test_the_energy_rake_gate_checks_the_declared_household_ceilings() -> None:
     failures = run(lost).failures
     assert any("total after the cap" in f for f in failures)
     assert any("left below the electricity_kwh ceiling" in f for f in failures)
+
+
+def test_the_stage_starts_only_the_mobile_home_cells_at_the_need_mean() -> None:
+    # microcosm#1240: mobile homes are the one FRS dwelling type NEED has no
+    # row for; the declaration names the all-dwellings mean they map to.
+    declared = declared_zero_kwh_cells_at_need_mean(_declared())
+    assert declared == {"accommodation": ("all_dwellings",)}
+    for mapping in NEED_PROPERTY_TYPE_IDS_BY_GEOGRAPHY.values():
+        assert mapping["MOBILE"] == "all_dwellings"
+    assert declared_zero_kwh_cells_at_need_mean({}) is None
+    for bad in (
+        [],
+        {},
+        {"dwelling": ["all_dwellings"]},
+        {"accommodation": "all_dwellings"},
+        {"accommodation": []},
+        {"accommodation": [""]},
+    ):
+        with pytest.raises(ValueError, match="zero_kwh_cells_at_need_mean"):
+            declared_zero_kwh_cells_at_need_mean({"zero_kwh_cells_at_need_mean": bad})
+
+
+def _mobile_home_table(n: int = 60):
+    """England and Wales rows in one income band, every third a mobile home
+    that drew no kWh (so the mobile-home cell is the only one with no kWh)."""
+
+    rng = np.random.default_rng(17)
+    accommodation = np.array(["HOUSE_DETACHED", "FLAT", "MOBILE"], dtype=object)[
+        np.arange(n) % 3
+    ]
+    mobile = accommodation == "MOBILE"
+    table = pd.DataFrame(
+        {
+            ELECTRICITY_KWH: np.where(mobile, 0.0, rng.uniform(1000.0, 5000.0, n)),
+            GAS_KWH: np.where(mobile, 0.0, rng.uniform(5000.0, 20000.0, n)),
+        }
+    )
+    arguments = {
+        "margins": need_margins_from_facts(period_value=NEED_PERIOD),
+        "frs_region": np.full(n, "LONDON", dtype=object),
+        "income": rng.uniform(21e3, 29e3, n),
+        "weights": rng.uniform(0.5, 2.0, n),
+        "iterations": 50,
+        "accommodation": accommodation,
+        "gas_connected": ~mobile,
+    }
+    return table, mobile, arguments
+
+
+def test_a_declared_cell_that_drew_no_kwh_starts_at_its_need_mean() -> None:
+    table, mobile, arguments = _mobile_home_table()
+    cell = f"{ENGLAND_AND_WALES_GEOGRAPHY_ID}:all_dwellings"
+    # Undeclared, the cell has nothing to scale and stays at zero.
+    plain, plain_receipt = rake_energy_kwh(table, **arguments)
+    assert {
+        (zero["margin"], zero["category"], zero["column"])
+        for zero in plain_receipt["zero_current_cells"]
+    } == {("_need_accommodation", cell, ELECTRICITY_KWH)}
+    assert plain_receipt["cells_held_at_need_mean"] == []
+    assert (plain.loc[mobile, ELECTRICITY_KWH] == 0.0).all()
+    # Declared, its households start at the NEED mean and the rake fits it.
+    raked, receipt = rake_energy_kwh(
+        table,
+        **arguments,
+        zero_kwh_cells_at_need_mean={"accommodation": ("all_dwellings",)},
+    )
+    assert receipt["zero_current_cells"] == []
+    assert receipt["cells_held_at_need_mean"] == [
+        {"margin": "accommodation", "cell": cell, "column": ELECTRICITY_KWH}
+    ]
+    assert (raked.loc[mobile, ELECTRICITY_KWH] > 0.0).all()
+    fitted = receipt["fit"]["accommodation"]["cells"][cell][ELECTRICITY_KWH]
+    assert abs(fitted["relative_deviation"]) < 0.05
+    # The mobile homes have no gas connection, so gas has no cell to start
+    # and its rake runs as it did undeclared.
+    assert (raked.loc[mobile, GAS_KWH] == 0.0).all()
+    assert (
+        receipt["sweep_residuals"][GAS_KWH] == plain_receipt["sweep_residuals"][GAS_KWH]
+    )
+    # A cell with one positive row is left to the rake.
+    drawn = table.copy()
+    drawn.loc[np.flatnonzero(mobile)[0], ELECTRICITY_KWH] = 500.0
+    _, kept = rake_energy_kwh(
+        drawn,
+        **arguments,
+        zero_kwh_cells_at_need_mean={"accommodation": ("all_dwellings",)},
+    )
+    assert kept["cells_held_at_need_mean"] == []
+    assert kept["zero_current_cells"] == []
+
+
+def test_a_held_cell_must_be_a_published_cell_of_a_swept_margin() -> None:
+    table, _, arguments = _mobile_home_table()
+    with pytest.raises(ValueError, match="NEED publishes no accommodation cell"):
+        rake_energy_kwh(
+            table,
+            **arguments,
+            zero_kwh_cells_at_need_mean={"accommodation": ("park_homes",)},
+        )
+    with pytest.raises(ValueError, match="does not sweep"):
+        rake_energy_kwh(
+            table,
+            **arguments,
+            zero_kwh_cells_at_need_mean={"tenure": ("owner_occupied",)},
+        )
+
+
+def test_the_energy_rake_gate_takes_only_the_declared_held_cells() -> None:
+    from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
+
+    gates = json.loads(
+        (
+            _TEST_PATHS.repository
+            / "packages/microcosm-build/src/microcosm/build/uk/gates.json"
+        ).read_text("utf-8")
+    )
+    by_id = {gate["id"]: gate for gate in gates["gates"]}
+    parameters = {
+        **by_id["uk_stage_lcfs_consumption_energy_rake"]["parameters"],
+        "maximum_relative_deviation": 1.0,
+    }
+    _, _, _, _, receipt = _synthetic_rake_receipt()
+
+    def run(energy_rake):
+        return uk_stage_health_gate(
+            evidence={"stage": "lcfs_consumption", "energy_rake": energy_rake},
+            stage="lcfs_consumption",
+            check="energy_rake",
+            parameters=parameters,
+        )
+
+    passed = run(receipt)
+    assert passed.passed, passed.failures
+    assert passed.details["cells_held_at_need_mean"] == 0
+    held = copy.deepcopy(receipt)
+    held["cells_held_at_need_mean"] = [
+        {
+            "margin": "accommodation",
+            "cell": f"{SCOTLAND_GEOGRAPHY_ID}:all_dwellings",
+            "column": ELECTRICITY_KWH,
+        }
+    ]
+    declared = run(held)
+    assert declared.passed, declared.failures
+    # The details count the cells and never name one.
+    assert declared.details["cells_held_at_need_mean"] == 1
+    assert "all_dwellings" not in json.dumps(declared.details)
+    undeclared = copy.deepcopy(receipt)
+    undeclared["cells_held_at_need_mean"] = [
+        {
+            "margin": "accommodation",
+            "cell": f"{ENGLAND_AND_WALES_GEOGRAPHY_ID}:detached",
+            "column": ELECTRICITY_KWH,
+        }
+    ]
+    assert any("does not declare" in f for f in run(undeclared).failures)
+    missing = {k: v for k, v in receipt.items() if k != "cells_held_at_need_mean"}
+    assert any("carries no cells_held_at_need_mean" in f for f in run(missing).failures)
