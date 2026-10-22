@@ -56,8 +56,9 @@ from microcosm.frame import EntitySchema, Frame, MassChange, WeightKind, Weights
 # microcosm#1301: the references include the high-value homes region cells (30
 # less the two signed out below the small-cell floor), which
 # load_uk_national_target_inputs drops after the compile; microcosm#1278 adds
-# the ONS single years 0, 1 and 2 for all persons.
-ACTIVE_REFERENCE_COUNT = 1322
+# the ONS single years 0, 1 and 2 for all persons, and the childcare costing
+# fixes (item 6) the UK's single years 3 to 6 and England's 0 to 6.
+ACTIVE_REFERENCE_COUNT = 1333
 
 
 def _uc_reference(**overrides) -> LedgerTargetReference:

@@ -236,8 +236,9 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # high-value homes region rows, bound on the local line only, and
     # microcosm#1262 binds Scotland's PIPR rents at BRMA grain; microcosm#1278
     # adds the ONS single years 0, 1 and 2 for all persons inside the 0_4 sex
-    # bands.
-    assert len(resource["targets"]) == 421
+    # bands, and the childcare costing fixes (item 6) the UK's single years 3
+    # to 6 and England's 0 to 6.
+    assert len(resource["targets"]) == 432
 
     providers = resource["hierarchy"]["providers"]
     categories = resource["hierarchy"]["categories"]
@@ -251,10 +252,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     target_ids = [target["target_id"] for target in resource["targets"]]
     registry_scope = resource["registry_parity"]["scope_target_ids"]
     profile_scope = resource["profile_parity"]["scope_target_ids"]
-    assert len(registry_scope) == 362
+    assert len(registry_scope) == 373
     assert len(profile_scope) == 59
-    assert target_ids[:362] == registry_scope
-    assert target_ids[362:] == profile_scope
+    assert target_ids[:373] == registry_scope
+    assert target_ids[373:] == profile_scope
 
     parity = resource["registry_parity"]
     assert parity["pinned_ref"] == "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3"
@@ -272,9 +273,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # and the two incumbent 15_19 sex bands leave them for the six rows that
     # partition them; microcosm#1207's nine BUS01a journey rows and
     # microcosm#1301's three high-value homes region rows have no uk-data
-    # metric, nor do microcosm#1278's three single years of age.
+    # metric, nor do microcosm#1278's three single years of age or the eleven
+    # the childcare costing fixes add (UK 3 to 6, England 0 to 6).
     assert len(mapped_target_ids) == 186
-    assert len(unmapped_declarations) == 176
+    assert len(unmapped_declarations) == 187
     suppressed_ancestors = parity["suppressed_ancestors"]
     assert len(suppressed_ancestors) == 5
     assert set(suppressed_ancestors).isdisjoint(parity["mapped"])
@@ -441,28 +443,36 @@ def test_uk_population_targets_split_the_15_19_sex_bands() -> None:
     assert "partition" in parity["accounting_notes"]["ons_15_19_sex_band_split"]
 
 
-def test_uk_population_targets_bind_single_years_0_to_2_inside_the_0_4_bands() -> None:
-    """Ages 0, 1 and 2 bind for all persons beside the 0_4 sex bands.
+def test_uk_population_targets_bind_single_years_0_to_6_inside_the_sex_bands() -> None:
+    """The UK's ages 0 to 6 bind for all persons beside the sex bands.
 
     The 0_4 sex bands left the single years inside them free to move, so the
     contract binds the three youngest single years too (microcosm#1278,
-    #1095). Unlike the 15_19 split the bands stay mapped and bound: the new
-    rows cover both sexes and only ages 0 to 2, so neither band is their sum.
+    #1095), and the childcare costing fixes (item 6) carry the UK rows on to
+    age 6, inside the 5_9 bands. Unlike the 15_19 split the bands stay mapped
+    and bound: the new rows cover both sexes, so no row replaces a band.
     """
 
     resource = _load()
     parity = resource["registry_parity"]
     target_ids = [target["target_id"] for target in resource["targets"]]
-    new_ids = [f"ons.population.age_{age}" for age in (0, 1, 2)]
+    ages = range(7)
+    new_ids = [f"ons.population.age_{age}" for age in ages]
+    england_ids = [f"ons.population.england_age_{age}" for age in ages]
 
-    for sex in ("female", "male"):
-        assert parity["mapped"][f"ons/{sex}_0_4"] == f"ons.population.{sex}_0_4"
-        assert f"ons.population.{sex}_0_4" in target_ids
-    # In scope order, just before the national sex bands.
+    for band in ("female_0_4", "male_0_4", "female_5_9", "male_5_9"):
+        assert parity["mapped"][f"ons/{band}"] == f"ons.population.{band}"
+        assert f"ons.population.{band}" in target_ids
+    # In scope order, the UK rows then England's, just before the national
+    # sex bands.
     first = target_ids.index(new_ids[0])
-    assert target_ids[first : first + 4] == [*new_ids, "ons.population.female_0_4"]
+    assert target_ids[first : first + 15] == [
+        *new_ids,
+        *england_ids,
+        "ons.population.female_0_4",
+    ]
 
-    for age, target_id in zip((0, 1, 2), new_ids, strict=True):
+    for age, target_id in zip(ages, new_ids, strict=True):
         target = _target_by_id(resource, target_id)
         assert target_id in parity["unmapped_declarations"]
         assert target_id not in set(parity["mapped"].values())
@@ -487,13 +497,64 @@ def test_uk_population_targets_bind_single_years_0_to_2_inside_the_0_4_bands() -
         assert binding["value_variable"] == "person_count"
         assert binding["map_to"] == "household"
     assert "stay bound" in parity["accounting_notes"]["ons_single_year_ages_0_2"]
+    assert "stays bound" in parity["accounting_notes"]["ons_single_year_ages_0_6"]
+
+
+def test_uk_population_targets_bind_england_single_years_0_to_6() -> None:
+    """England's ages 0 to 6 bind for all persons on England's own series.
+
+    England's funded childcare is costed on England's children, so the
+    childcare costing fixes (item 6) bind England's single years 0 to 6 beside
+    the UK rows. Each row reads the ONS estimate the UK rows read, scoped by
+    the target id to England, and counts persons in English households. The
+    other nations get no single-year rows; Scotland's age 0 keeps its own row.
+    """
+
+    resource = _load()
+    parity = resource["registry_parity"]
+    target_ids = {target["target_id"] for target in resource["targets"]}
+
+    for age in range(7):
+        target_id = f"ons.population.england_age_{age}"
+        target = _target_by_id(resource, target_id)
+        assert target_id in parity["unmapped_declarations"]
+        assert target_id not in set(parity["mapped"].values())
+        assert target["family"] == "ons_population"
+        assert target["category_id"] == "ons.population"
+        assert target["geography_levels"] == ["country"]
+        assert target["ledger_selector"] == {
+            "source_name": "ons",
+            "source_concept": "ons.mid_year_population_estimate",
+            "dimension_values": {"age": [age]},
+        }
+        assert target["measurement"]["filters"] == [
+            {"concept": "uk.geography.country", "equals": "england"},
+            {"concept": "uk.demographics.age", "operator": ">=", "value": age},
+            {"concept": "uk.demographics.age", "operator": "<", "value": age + 1},
+        ]
+        binding = target["bindings"]["policyengine"]
+        assert binding["metric_name"] == f"ons/england_age_{age}"
+        assert binding["filters"] == [
+            {"variable": "country", "equals": "ENGLAND"},
+            {"variable": "age", "operator": ">=", "value": age},
+            {"variable": "age", "operator": "<", "value": age + 1},
+        ]
+        assert binding["value_variable"] == "person_count"
+        assert binding["from_entity"] == "person"
+        assert binding["map_to"] == "household"
+    for nation in ("wales", "scotland", "northern_ireland"):
+        assert not any(
+            target_id.startswith(f"ons.population.{nation}_age_")
+            for target_id in target_ids
+        )
+    assert "ons.population.scotland_babies_under_1" in target_ids
 
 
 def test_uk_population_targets_have_unique_target_ids() -> None:
     resource = _load()
 
     target_ids = [target["target_id"] for target in resource["targets"]]
-    assert len(target_ids) == 421
+    assert len(target_ids) == 432
     assert len(target_ids) == len(set(target_ids))
 
 
@@ -994,7 +1055,7 @@ def test_uc_payment_bands_share_administrative_family_but_keep_source_window() -
 
 def test_paid_joint_diagnostics_do_not_add_active_targets() -> None:
     targets = _load()["targets"]
-    assert len(targets) == 421
+    assert len(targets) == 432
     assert not any(
         f.get("variable") == "uc_calibration_child_entitlement"
         for target in targets
