@@ -380,14 +380,14 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 3612036036.2194014,
+   "ledger_value": 3678026476.522709,
    "name": "dft.bus_fare_receipts.england",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 1347434943.01459,
+   "ledger_value": 1347446557.7536979,
    "name": "dft.bus_fare_receipts.london",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."

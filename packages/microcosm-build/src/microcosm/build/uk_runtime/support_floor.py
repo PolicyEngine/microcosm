@@ -1,18 +1,22 @@
-"""The sparse-band support floor (microcosm#1095; María's ruling of 2026-10-16).
+"""The zero-support floor (microcosm#1095; María's rulings of 2026-10-16 and 2026-10-21).
 
-A target row the spine supports with only a few source households cannot be
-fitted honestly: the solve reaches it by stretching those few weights, and a
-fit that rests on fewer than ten source households is the kind of cell the
-release must never report. The UC payment-distribution bands at the edges of
-each family are such rows, and before this floor each was held out by a
-per-row exclusion with its own expiry (uk-data#452, microcosm#736).
+A target row that no source household carries cannot be fitted by any
+weights: the solver's initialiser refuses a nonzero target with no support. A
+row that some households carry stays bound however few they are: a cell that
+rests on fewer than ten records is no reason to leave a row out, and only a
+measured distortion of the calibration is (María's rule of 2026-10-21, which
+replaced the floor of ten she signed on 2026-10-16). What the licence asks of
+such a row is that its model figures stay in the build: the diagnostics, the
+gate evidence and every written surface withhold the figures of a row that
+fewer than ten distinct source households carry
+(:func:`microcosm.build.uk_runtime.diagnostics.uk_withheld_rows`).
 
 The floor is declared once, in the ``support_floor`` block of
-``uk/calibration_measure_exclusions.json`` (schema 3), and signed there. On a
-built frame, a row in its scope whose matrix row reaches fewer than ``floor``
-distinct source households (``household_source_id``) with a positive prior
-weight is dropped, not pooled; each target's dropped published total is
-reported. The run refuses outside the block's approval window, when the
+``uk/calibration_measure_exclusions.json`` (schema 3), and signed there; its
+``floor`` is 1, the only value it may take. On a built frame, a row in its
+scope whose matrix row reaches no source household (``household_source_id``)
+with a positive prior weight is dropped, not pooled; each target's dropped
+published total is reported. The run refuses outside the block's approval window, when the
 dropped rows pass either declared ceiling, and when a per-row exclusion names
 a row the floor would drop (the floor covers it, so the entry must retire).
 The dropped set joins the calibration's measure exclusions as
@@ -37,6 +41,10 @@ from scipy import sparse
 from microcosm.calibrate import TargetRegistry
 
 UK_SUPPORT_FLOOR_KEY = "support_floor"
+#: The one floor the register may sign: a row that any source household
+#: carries stays bound (María's rule of 2026-10-21), so the floor leaves out
+#: only the rows no weights can reach.
+UK_SUPPORT_FLOOR_VALUE = 1
 UK_SUPPORT_FLOOR_KIND = "support_floor"
 UK_SUPPORT_FLOOR_METRIC = "distinct_source_households_with_positive_prior_weight"
 #: The spine household each row was built from; every clone shares it.
@@ -137,9 +145,15 @@ def uk_support_floor_from_payload(block: Mapping[str, Any]) -> UKSupportFloor:
     floor = block["floor"]
     rows = block["max_dropped_rows"]
     share = block["max_dropped_published_share"]
-    if not isinstance(floor, int) or isinstance(floor, bool) or floor < 3:
+    if (
+        not isinstance(floor, int)
+        or isinstance(floor, bool)
+        or floor != UK_SUPPORT_FLOOR_VALUE
+    ):
         raise ValueError(
-            "UK support floor must be an integer of at least 3, CD171's floor."
+            f"UK support floor must be {UK_SUPPORT_FLOOR_VALUE}: a row that any source "
+            "household carries stays bound however few they are (María's rule of "
+            "2026-10-21), and the figures of a thin row are withheld, not the row."
         )
     if not isinstance(rows, int) or isinstance(rows, bool) or rows < 0:
         raise ValueError("UK support floor max_dropped_rows must be a count.")

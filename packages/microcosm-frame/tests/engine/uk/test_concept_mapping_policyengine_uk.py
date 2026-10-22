@@ -122,11 +122,11 @@ def test_the_liquid_asset_reason_holds(engine) -> None:
     # Financial wealth is a household input. The person-level GBP stocks are a
     # debt, a car's list price and the Lifetime ISA balance, which the engine
     # documents as already inside the household's financial wealth.
-    # uc_reported_capital is formula-owned since policyengine-uk 2.124.0: unless
-    # set directly it is benunit_reported_capital, a benefit-unit input unset at
-    # -1. The uc_assessable_capital formula reads it in place of both a
-    # household proxy apportioned by claimant and partner count and the
-    # person-level sources.
+    # uc_reported_capital defaults to -1 since policyengine-uk 2.136.1: set to
+    # zero or more it is a unit's complete capital. benunit_reported_capital,
+    # a benefit-unit input unset at -1, replaces the household financial proxy
+    # apportioned by claimant and partner count and the person-level sources;
+    # property is valued apart, in uc_property_capital.
     inputs = set(engine.variables())
     person_stocks = {
         name
@@ -155,12 +155,14 @@ def test_the_liquid_asset_reason_holds(engine) -> None:
     assert engine.variable_metadata("uc_reported_capital").entity == "benunit"
     assert engine._variable("uc_reported_capital").default_value == -1
     reported = inspect.getsource(engine._variable("uc_reported_capital").get_formula())
-    assert 'benunit("benunit_reported_capital", period)' in reported
+    assert "return -1" in reported
     assert "uc_assessable_capital" not in inputs
     source = inspect.getsource(engine._variable("uc_assessable_capital").get_formula())
     assert "uc_reported_capital" in source
-    assert 'add(benunit, period, ["is_uc_claimant"])' in source
-    assert "p.capital.person_sources" in source
+    assert 'benunit("benunit_reported_capital", period)' in source
+    assert 'benunit.members("is_uc_claimant", period)' in source
+    assert "p.person_sources" in source
+    assert 'benunit("uc_property_capital", period)' in source
     assert "loan" in engine._variable("student_loan_balance").label.lower()
     duty = engine._variable("car_vehicle_excise_duty").get_formula()
     assert 'person("car_list_price", period)' in inspect.getsource(duty)
@@ -182,7 +184,7 @@ def test_the_liquid_asset_reason_names_the_household_wealth_inputs(engine) -> No
     person_sources = universal_credit.means_test.capital.person_sources("2026-01-01")
     assert list(person_sources) == ["lifetime_isa_countable_capital"]
     source = inspect.getsource(engine._variable("uc_assessable_capital").get_formula())
-    assert "p.capital.sources" in source
+    assert "for source in p.sources" in source
     for name in (
         "savings",
         "corporate_wealth",

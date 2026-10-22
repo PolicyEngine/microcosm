@@ -1002,7 +1002,9 @@ def _nts_donors() -> tuple[
     household = pd.DataFrame(
         {
             "HouseholdID": 1000 + rows,
-            "SurveyYear": 2022 + rows % 3,
+            # Every region in every survey year: the single-fare share reads
+            # the cap years only, which must hold London donors too.
+            "SurveyYear": 2022 + (rows // 9) % 3,
             "HHoldGOR_B02ID": 1 + rows % 9,
             "HHIncome2002_B02ID": 1 + rows % 3,
             "NumCarVan": rows % 4,

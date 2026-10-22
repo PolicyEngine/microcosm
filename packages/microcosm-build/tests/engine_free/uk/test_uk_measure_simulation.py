@@ -636,8 +636,11 @@ _PACKAGED_EXCLUSION_CENSUS = {
     # re-adjudicated the same day on the mechanism receipts.
     "dwp.hb.": 3,
     # Two amount bands (200.01-300, 400.01-500) retired 2026-09-21 on the
-    # v20 measurement (-10.1 % and -3.8 % unbound); the tail bands stay out.
-    "dwp.benefit_cap.capped_households_": 11,
+    # v20 measurement (-10.1 % and -3.8 % unbound); the eleven tail bands
+    # retired 2026-10-21 under María's rule that thin support alone leaves no
+    # row out: the zero-support floor drops any band no household carries,
+    # and the rest are bound and measured.
+    "dwp.benefit_cap.capped_households_": 0,
     # microcosm#1113 and #1123 item 3 (2026-10-08): rows whose level the
     # engine, a published-source residual or a scope the frame doesn't hold
     # sets, held out and measured with tools/diagnose_uk_consumption_taxes.py.
@@ -681,8 +684,11 @@ def test_packaged_exclusions_load():
     names = [entry["name"] for entry in exclusions]
     # 65 less the nine payment bands the support floor covers (microcosm#1095 U3),
     # plus the employer NICs diagnostic (microcosm#1301) and the rail-support
-    # hold-out (microcosm#1278).
-    assert len(names) == len(set(names)) == 58
+    # hold-out (microcosm#1278), less the thirteen rows bound again under
+    # María's rule of 2026-10-21 (the eleven benefit-cap amount bands and the
+    # HMRC £500k to £1m dividend and property-income-count rows).
+    assert len(names) == len(set(names)) == 45
+    assert not [name for name in names if name.startswith("dwp.benefit_cap.")]
     band_h_region_cells = [
         entry
         for entry in exclusions
@@ -703,16 +709,15 @@ def test_packaged_exclusions_load():
     # The sparse HMRC band cells are whatever remains: hmrc/ band cells
     # that are not the 1m+ channel cells. After the #807 revision three
     # genuinely thin 500k-1m cells stayed excluded; the self-employment one
-    # retired 2026-09-21 on the v20 measurement (+0.0 % unbound).
+    # retired 2026-09-21 on the v20 measurement (+0.0 % unbound), and the
+    # dividend and property-income-count ones on 2026-10-21, bound again
+    # under María's rule that thin support alone leaves no row out.
     sparse = [
         name
         for name in names
         if name.startswith("hmrc/") and "_1_000_000_to_inf" not in name
     ]
-    assert sorted(sparse) == [
-        "hmrc/dividend_income_income_band_500_000_to_1_000_000",
-        "hmrc/property_income_count_income_band_500_000_to_1_000_000",
-    ], sparse
+    assert sparse == [], sparse
 
     # The 2026-08-26 tranche carries the uk_target_fit disposition
     # adjudication and a uniform three-month window. Its three ONS
@@ -723,9 +728,10 @@ def test_packaged_exclusions_load():
     # the obr.fuel_duties entry (2026-09-11): the all-road-users row is
     # signed out of the reference surface and the cars receipts bind instead.
     tranche = [e for e in exclusions if e["approved_on"] == "2026-08-26"]
-    # Three 2026-08-26 rows retired 2026-09-21 on the v20 measurement, and
-    # three payment bands retired 2026-10-16 under the support floor.
-    assert len(tranche) == 29
+    # Three 2026-08-26 rows retired 2026-09-21 on the v20 measurement, three
+    # payment bands retired 2026-10-16 under the support floor, and the two
+    # thin HMRC 500k-1m cells retired 2026-10-21, bound again.
+    assert len(tranche) == 27
     for entry in tranche:
         assert "5427936411" in entry["adjudication"], entry["name"]
         assert entry["expires_on"] == "2026-11-26", entry["name"]
@@ -867,15 +873,17 @@ def test_packaged_exclusions_load():
         assert "hmrc.spi.savings_interest_income" in entry["reason"], name
         assert "never fitted" in entry["reason"], name
 
-    # The 2026-09-16 tranche also carries the Housing Benefit caseload rows
+    # The 2026-09-16 tranche also carried the Housing Benefit caseload rows
     # (tracked on #867 like the spend row) and the benefit-cap amount bands
-    # outside the bound (tracked on #882); every entry names its tool.
+    # outside the bound (tracked on #882); every entry names its tool. The
+    # bands retired 2026-10-21, bound again (María's rule of that day), so
+    # the caseload rows remain.
     repairs = [
         e
         for e in exclusions
         if e["approved_on"] == "2026-09-16" and e["name"] not in _A16_READJUDICATED_ROWS
     ]
-    assert len(repairs) == 14
+    assert len(repairs) == 3
     for entry in repairs:
         assert entry["expires_on"] == "2026-12-08", entry["name"]
         # Every entry of the tranche points at the ruling that exists (the

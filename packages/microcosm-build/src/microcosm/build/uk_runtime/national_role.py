@@ -215,6 +215,10 @@ def national_dry_run(
 _national_dry_run = national_dry_run
 
 
+def _optional_float(value: object) -> float | None:
+    return None if value is None else float(value)
+
+
 def national_fit_by_family(
     diagnostics: Mapping[str, Any], registry: TargetRegistry
 ) -> list[dict[str, object]]:
@@ -339,8 +343,10 @@ def national_manifest(
             },
             "n_households": int(solve["n_households"]),
             "pool_households": int(solve["n_households"]),
-            "initial_loss": float(solve["initial_loss"]),
-            "final_loss": float(solve["final_loss"]),
+            # Restated over the published rows when a row is withheld, and
+            # null where the solve cannot restate (microcosm#1262).
+            "initial_loss": _optional_float(solve["initial_loss"]),
+            "final_loss": _optional_float(solve["final_loss"]),
             "n_nonzero": int(solve["n_nonzero"]),
             "max_abs_relative_error": (
                 float(abs_errors.max()) if abs_errors.size else None

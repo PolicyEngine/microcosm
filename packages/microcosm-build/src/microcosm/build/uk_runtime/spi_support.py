@@ -182,6 +182,7 @@ FRS_ONLY_SPI_FILL_PERSON_COLUMNS = (
     "iidb_reported",
     "afcs_reported",
     "bsp_reported",
+    "war_widows_pension_reported",
     "incapacity_benefit_reported",
     "maternity_allowance_reported",
     "winter_fuel_allowance_reported",

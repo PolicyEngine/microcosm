@@ -452,13 +452,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "a326d26c249b8b359284f739fe4327180a7c86b9c21b8994cf270b9c0e27787f"
+    "3e9896aa61e9d9340a3cf6ce4a7b85626288b4312f59b795a7aef77fb4c111d6"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "5bed933d2e261e3c4f0bfaa3ae949e9623a5a70c968eaaf4194e70b72df0b728"
+    "2054ed4194fac38952f51832c7a30ca81abfec177dff0f22c3d34acf4e63a779"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "2009911edabae63ab2b31d9d50588754fc40129aac952d4a2be6f17e1a8a736b"
+    "a6d9b3f1dcaeea839af81fda2388e60736fd41c1c7b2e9d23af9b9dbca4e8886"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -932,10 +932,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "a52d74be5d8a8af05cb37b6d3643038de8d8491761a79d7bdbea1048aaee710d"
+            "39295b40f70be77bb59e2aa70c9429be512e5af4ea78b0189f15687fb8ef3e36"
         ),
         "policy_sha256": (
-            "e258e8712b7ada5796f7e7e446698a5ddabc6c793f7633093d07bd5d3197631b"
+            "53a7eb6d9e52eb54fe5d123e1f4393535d0e218d5cf5d9383b9ebf50d367cd1e"
         ),
     },
     "calibration_seam": {
@@ -948,7 +948,7 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "3c876c1d8927a5b31b1a3373ee6ea09c005322838efff967d7148531caf05594"
+            "da420e28423aa685d82d65ff3367401b63be7dd37edcc4574bdd7d38faac5c19"
         ),
         "policy_sha256": (
             "939309226c43641ded9402ab47b7b12b0c46fa5165f73da5ced9d97a38985d02"
@@ -6452,10 +6452,12 @@ def _uk_brma_floor_verdict_warnings(diagnostics: Mapping) -> list[str]:
     """BRMA rows whose ten-household verdict is missing or disagrees.
 
     microcosm#1262: every BRMA row carries ``metadata.carrier_floor_met``, and
-    a row withholds its model figures exactly when the verdict is false, so
-    the contract can see a thin row the build never flagged. María's ruling of
-    2026-10-19 on the fourth review of #1305: this is warned, not refused. The
-    warnings give counts only, never a row.
+    a row withholds its model figures exactly when the verdict is false or the
+    row is withheld beside a thin one (``metadata.complementary_withholding``,
+    Vahid's second review of #1333), so the contract can see a thin row the
+    build never flagged. María's ruling of 2026-10-19 on the fourth review of
+    #1305: this is warned, not refused. The warnings give counts only, never a
+    row.
     """
 
     missing = disagreeing = 0
@@ -6464,9 +6466,13 @@ def _uk_brma_floor_verdict_warnings(diagnostics: Mapping) -> list[str]:
         if not isinstance(metadata, Mapping) or not _uk_brma_row(metadata):
             continue
         verdict = metadata.get("carrier_floor_met")
+        withheld = bool(metadata.get("model_figures_withheld"))
+        complementary = metadata.get("complementary_withholding") is True
         if not isinstance(verdict, bool):
             missing += 1
-        elif verdict == bool(metadata.get("model_figures_withheld")):
+        elif (not verdict and (complementary or not withheld)) or (
+            verdict and withheld != complementary
+        ):
             disagreeing += 1
     warnings = []
     if missing:

@@ -242,6 +242,7 @@ def uk_release_parity_evidence(
     """
 
     target_relative_errors: dict[str, float] = {}
+    withheld: set[str] = set()
     for row in diagnostics_targets:
         name = str(row["name"])
         if "@" not in name:
@@ -250,6 +251,13 @@ def uk_release_parity_evidence(
                 "grain; the reference side is keyed name@period, so a "
                 "bare-name row would silently fall out of the comparison."
             )
+        metadata = row.get("metadata")
+        if isinstance(metadata, Mapping) and metadata.get("model_figures_withheld"):
+            # Fewer than ten source households carry it (María's rule of
+            # 2026-10-21): bound, published without its figures, and outside
+            # the fit gate's verdict.
+            withheld.add(name)
+            continue
         target_relative_errors[name] = float(row["relative_error"])
     return SimpleNamespace(
         candidate_columns=uk_export_candidate_columns(frame),
@@ -257,11 +265,12 @@ def uk_release_parity_evidence(
             f"{entity}.{name}"
             for name, entity in parity_reference.input_entities.items()
         },
-        candidate_targets=set(target_relative_errors),
+        candidate_targets=set(target_relative_errors) | withheld,
         reference_targets={
             f"{spec.name}@{spec.period}" for spec in reference_registry.specs
         },
         target_relative_errors=target_relative_errors,
+        withheld_targets=frozenset(withheld),
     )
 
 
@@ -374,6 +383,16 @@ def run_uk_release_cut_battery(
         terminal_artifacts["spine_frame"] = spine_frame
     battery.run_phase(
         "terminal", EvidenceContext(frame=frame, artifacts=terminal_artifacts)
+    )
+    from microcosm.build.uk_runtime.diagnostics import uk_refuse_named_withheld_rows
+
+    # The gates decide on the published rows and count the withheld ones
+    # (María's rule of 2026-10-21 binds a thin national row); a report that
+    # names one stops before the certification uses it.
+    uk_refuse_named_withheld_rows(
+        battery.report_payload(),
+        names=frozenset(parity_evidence.withheld_targets),
+        keys=frozenset(),
     )
     battery.enforce("terminal", mode=BlockingMode.BLOCKS_ARTIFACT)
     payload = battery.report_payload()

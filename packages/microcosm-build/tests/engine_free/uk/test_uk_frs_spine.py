@@ -1846,6 +1846,37 @@ def test_benefit_code_splits_are_ported(tmp_path: Path) -> None:
     assert adult["bsp_reported"] == pytest.approx(6 * WEEKS_IN_YEAR)
 
 
+def test_war_widows_pension_leaves_bereavement_support(tmp_path: Path) -> None:
+    """FRS code 9, War Widow's or Widower's Pension, goes to its own input
+    (pe-uk#2382), and Bereavement Support Payment keeps code 6 alone (#1222)."""
+
+    tables = _fixture_tables()
+    tables["benefits"].append(
+        {
+            "SERNUM": 1,
+            "BENUNIT": 1,
+            "PERSON": 1,
+            "BENEFIT": 9,
+            "VAR2": 0,
+            "BENAMT": 8.0,
+            "UCSTART": "",
+            "UCHOUSEL": "",
+        }
+    )
+    stage = _write_fixture(tmp_path, tables)
+    person = (
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
+        .table("person")
+        .set_index("person_id")
+    )
+
+    assert person.loc[1001, "bsp_reported"] == pytest.approx(6 * WEEKS_IN_YEAR)
+    assert person.loc[1001, "war_widows_pension_reported"] == pytest.approx(
+        8 * WEEKS_IN_YEAR
+    )
+    assert person.drop(index=1001)["war_widows_pension_reported"].eq(0.0).all()
+
+
 def test_scottish_disability_payments_land_in_the_pip_and_dla_columns() -> None:
     """ADP and CDP rows map to the columns of the benefits they replace (uk-data#500).
 
