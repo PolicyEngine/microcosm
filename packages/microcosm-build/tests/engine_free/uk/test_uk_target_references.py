@@ -72,7 +72,7 @@ from tools.generate_uk_target_references import (
 
 _TEST_PATHS = paths_for("microcosm-build")
 
-ACTIVE_REFERENCE_COUNT = 1337
+ACTIVE_REFERENCE_COUNT = 1338
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 
 
@@ -537,6 +537,7 @@ def test_childcare_and_bus_references_compile_with_declared_provenance() -> None
         "dfe.funded_childcare.working_parent_children_2_to_4": 621_482.0,
         "dfe.funded_childcare.early_learning_2_year_olds": 95_031.0,
         "dfe.funded_childcare.universal_only_children": 396_965.0,
+        "dfe.funded_childcare.working_parent_children_9_to_11_months": 29_155.0,
         "dfe.funded_childcare.working_parent_children_age_1": 195_104.0,
         "dfe.funded_childcare.working_parent_children_age_2": 242_453.0,
         "dfe.funded_childcare.working_parent_children_age_3": 278_640.0,
@@ -760,6 +761,7 @@ def test_ons_single_year_age_references_pin_the_uk_and_england() -> None:
 
 
 DFE_SINGLE_AGE_IDS = (
+    "dfe.funded_childcare.working_parent_children_9_to_11_months",
     *(f"dfe.funded_childcare.working_parent_children_age_{age}" for age in (1, 2, 3)),
     "dfe.funded_childcare.universal_nursery_children_age_3",
 )
@@ -771,13 +773,14 @@ DFE_SIGNED_OUT_AGE_4_IDS = (
 
 
 def test_dfe_single_age_references_pin_england_at_the_january_2025_census() -> None:
-    """The four DfE single-age rows resolve one England fact each.
+    """The five DfE single-age rows resolve one England fact each.
 
     The ``dfe.`` prefix pins every DfE row to England (E92000001); each new
     row selects one age cell of its census table, January 2025, held to the
-    2025 calibration year (María's ruling, 2026-10-21). The age-4 cells are
-    signed out for their 31 December reference date, so they have no
-    reference and no membership entry.
+    2025 calibration year (María's rulings, 2026-10-21 and 2026-10-22, the
+    9 to 11 months row with its own hold). The age-4 cells are signed out, as
+    the bound rows fix them, so they have no reference and no membership
+    entry.
     """
 
     references = {
@@ -1004,7 +1007,7 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
     assert membership["status_counts"] == {
-        "active": 1337,
+        "active": 1338,
         "no_fact_at_or_before_period": 5,
         "signed_excluded": 17,
     }

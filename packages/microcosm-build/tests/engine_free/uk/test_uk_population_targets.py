@@ -241,10 +241,11 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # microcosm#1262 binds Scotland's PIPR rents at BRMA grain; microcosm#1278
     # adds the ONS single years 0, 1 and 2 for all persons inside the 0_4 sex
     # bands, and the childcare costing fixes (item 6) the UK's single years 3
-    # to 6 and England's 0 to 6, and the DfE single-age rows four more
-    # funded-childcare counts (working parent ages 1-3, nursery age 3; the
-    # age-4 cells are signed out for their 31 December reference date).
-    assert len(resource["targets"]) == 436
+    # to 6 and England's 0 to 6, and the DfE single-age rows five more
+    # funded-childcare counts (working parent 9 to 11 months and ages 1-3,
+    # nursery age 3; the age-4 cells are signed out, as the bound rows fix
+    # them).
+    assert len(resource["targets"]) == 437
 
     providers = resource["hierarchy"]["providers"]
     categories = resource["hierarchy"]["categories"]
@@ -258,10 +259,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     target_ids = [target["target_id"] for target in resource["targets"]]
     registry_scope = resource["registry_parity"]["scope_target_ids"]
     profile_scope = resource["profile_parity"]["scope_target_ids"]
-    assert len(registry_scope) == 377
+    assert len(registry_scope) == 378
     assert len(profile_scope) == 59
-    assert target_ids[:377] == registry_scope
-    assert target_ids[377:] == profile_scope
+    assert target_ids[:378] == registry_scope
+    assert target_ids[378:] == profile_scope
 
     parity = resource["registry_parity"]
     assert parity["pinned_ref"] == "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3"
@@ -281,9 +282,9 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # microcosm#1301's three high-value homes region rows have no uk-data
     # metric, nor do microcosm#1278's three single years of age or the eleven
     # the childcare costing fixes add (UK 3 to 6, England 0 to 6), nor the
-    # four DfE funded-childcare single-age rows.
+    # five DfE funded-childcare single-age rows.
     assert len(mapped_target_ids) == 186
-    assert len(unmapped_declarations) == 191
+    assert len(unmapped_declarations) == 192
     suppressed_ancestors = parity["suppressed_ancestors"]
     assert len(suppressed_ancestors) == 5
     assert set(suppressed_ancestors).isdisjoint(parity["mapped"])
@@ -558,24 +559,43 @@ def test_uk_population_targets_bind_england_single_years_0_to_6() -> None:
 
 
 DFE_SINGLE_AGE_IDS = (
+    "dfe.funded_childcare.working_parent_children_9_to_11_months",
     *(f"dfe.funded_childcare.working_parent_children_age_{age}" for age in (1, 2, 3)),
     "dfe.funded_childcare.universal_nursery_children_age_3",
 )
-# María's ruling (2026-10-21): the age-4 cells are signed out, not bound.
+# The age-4 cells stay signed out: the bound 2 to 4 and universal-only rows,
+# less the bound ages 2 and 3, already fix them.
 DFE_SIGNED_OUT_AGE_4_IDS = (
     "dfe.funded_childcare.working_parent_children_age_4",
     "dfe.funded_childcare.universal_nursery_children_age_4",
     "dfe.funded_childcare.universal_reception_children_age_4",
 )
-_DFE_AGE_LABEL = {1: "1 year", 2: "2 years", 3: "3 years"}
+_DFE_AGE_LABEL = {0: "9 to 11 months", 1: "1 year", 2: "2 years", 3: "3 years"}
+#: The spring-term measures every DfE row binds through (dfe_spring_term.py).
+_DFE_SPRING_MEASURES = {
+    "dfe_age_at_31_december",
+    "dfe_spring_working_parent",
+    "dfe_spring_universal",
+    "dfe_spring_early_learning_2",
+}
 
 
-def _dfe_age_filters(key: str, age: int) -> list[dict]:
-    name = "uk.demographics.age" if key == "concept" else "age"
-    return [
-        {key: name, "operator": ">=", "value": age},
-        {key: name, "operator": "<", "value": age + 1},
-    ]
+def _dfe_age(target_id: str) -> int:
+    if target_id.endswith("_9_to_11_months"):
+        return 0
+    return int(target_id.rsplit("_", 1)[1])
+
+
+def _dfe_age_filters(key: str, lower: int, upper: int | None = None) -> list[dict]:
+    name = (
+        "uk.childcare.dfe_age_at_31_december"
+        if key == "concept"
+        else "dfe_age_at_31_december"
+    )
+    filters = [{key: name, "operator": ">=", "value": lower}]
+    if upper is not None:
+        filters.append({key: name, "operator": "<", "value": upper})
+    return filters
 
 
 def _dfe_country(key: str) -> dict:
@@ -583,47 +603,52 @@ def _dfe_country(key: str) -> dict:
     return {key: name, "equals": "ENGLAND"}
 
 
-def _dfe_not_primary(key: str) -> dict:
-    name = "uk.education.current_education" if key == "concept" else "current_education"
-    return {key: name, "operator": "!=", "value": "PRIMARY"}
-
-
-def _dfe_flag(key: str, variable: str) -> dict:
-    name = f"uk.childcare.{variable}" if key == "concept" else variable
-    return {key: name, "equals": True}
+def _dfe_flag(key: str, measure: str, value: bool = True) -> dict:
+    name = f"uk.childcare.{measure}" if key == "concept" else measure
+    return {key: name, "equals": value}
 
 
 def _dfe_expected_filters(target_id: str, key: str) -> list[dict]:
-    age = int(target_id.rsplit("_", 1)[1])
-    if "working_parent" in target_id:
+    slug = target_id.removeprefix("dfe.funded_childcare.")
+    if slug == "working_parent_children_2_to_4":
         return [
-            _dfe_flag(key, "is_child_receiving_extended_childcare"),
-            *_dfe_age_filters(key, age),
-            *([_dfe_not_primary(key)] if age >= 2 else []),
+            _dfe_flag(key, "dfe_spring_working_parent"),
+            *_dfe_age_filters(key, 2),
             _dfe_country(key),
         ]
+    if slug == "early_learning_2_year_olds":
+        return [_dfe_flag(key, "dfe_spring_early_learning_2"), _dfe_country(key)]
+    if slug == "universal_only_children":
+        return [
+            _dfe_flag(key, "dfe_spring_universal"),
+            _dfe_flag(key, "dfe_spring_working_parent", False),
+            _dfe_country(key),
+        ]
+    age = _dfe_age(target_id)
+    measure = (
+        "dfe_spring_working_parent"
+        if "working_parent" in slug
+        else "dfe_spring_universal"
+    )
     return [
-        _dfe_flag(key, "is_child_receiving_universal_childcare"),
-        *_dfe_age_filters(key, age),
-        _dfe_not_primary(key),
+        _dfe_flag(key, measure),
+        *_dfe_age_filters(key, age, age + 1),
         _dfe_country(key),
     ]
 
 
 def test_uk_population_targets_bind_dfe_funded_childcare_by_single_age() -> None:
-    """DfE's January census binds by single year of age beside the 2 to 4 row.
+    """DfE's January census binds by single age beside the 2 to 4 row.
 
     María's ruling (2026-10-21) binds every DfE funded-childcare count the
     model can carry, even on few records, and signs out only those with a real
-    reason: working parent registrations at ages 1, 2 and 3, and universal
-    nursery registrations at age 3, are bound. The working parent 2 to 4 row,
-    the take-up fitter's anchor, and the universal-only row stay bound. Each
-    row counts persons in English households with whole-year age ``k``,
-    outside reception (``current_education != PRIMARY``) from age 2, as DfE's
-    registrations leave reception out. The three age-4 cells are signed out:
-    DfE's ages are as at 31 December, the model's are interview ages, so
-    binding them would move weight between 4-year-olds in school and in
-    nursery because of the reference date, not the data.
+    reason: working parent registrations at 9 to 11 months and at ages 1, 2
+    and 3, and universal nursery registrations at age 3, are bound beside the
+    working parent 2 to 4, early learning and universal-only rows. Her ruling
+    of 2026-10-22 counts every row at the spring term, by the age on 31
+    December, through the spring-term measures (Vahid's round-2 finding A);
+    the under-2 rows take their own take-up. The three age-4 cells stay
+    signed out: the bound rows fix them.
     """
 
     resource = _load()
@@ -643,7 +668,7 @@ def test_uk_population_targets_bind_dfe_funded_childcare_by_single_age() -> None
         )
         assert target_id not in set(parity["mapped"].values())
         target = _target_by_id(resource, target_id)
-        age = int(target_id.rsplit("_", 1)[1])
+        age = _dfe_age(target_id)
         assert target["family"] == "dfe_funded_childcare"
         assert target["category_id"] == "dfe.funded_childcare"
         assert target["geography_levels"] == ["country"]
@@ -691,7 +716,19 @@ def test_uk_population_targets_bind_dfe_funded_childcare_by_single_age() -> None
         assert target_id not in parity["scope_target_ids"]
         assert target_id not in parity["unmapped_declarations"]
 
-    # The combined row and the universal-only difference stay as they were.
+    # The three earlier rows keep their facts and move to the spring term.
+    for slug in (
+        "working_parent_children_2_to_4",
+        "early_learning_2_year_olds",
+        "universal_only_children",
+    ):
+        target = _target_by_id(resource, f"dfe.funded_childcare.{slug}")
+        assert target["measurement"]["filters"] == _dfe_expected_filters(
+            target["target_id"], "concept"
+        )
+        assert target["bindings"]["policyengine"]["filters"] == (
+            _dfe_expected_filters(target["target_id"], "variable")
+        )
     combined = _target_by_id(
         resource, "dfe.funded_childcare.working_parent_children_2_to_4"
     )
@@ -702,39 +739,59 @@ def test_uk_population_targets_bind_dfe_funded_childcare_by_single_age() -> None
     note = parity["accounting_notes"]["dfe_funded_childcare_single_ages"]
     assert note.startswith("Requested by María on 2026-10-21")
     for reason in (
+        "measures every DfE row at the spring term",
+        "by their age on the preceding 31 December",
+        "No row reads current_education",
+        "one birth cohort earlier",
         "the three age-4 cells",
-        "as at 31 December",
-        "because of the reference date, not the data",
-        "9 to 11 months",
+        "already fix them",
         "reception at age 3",
         "survey-based inputs",
         "registered percentages",
+        "their own take-up",
     ):
-        assert reason in note
+        assert reason in note, reason
+
+
+def test_dfe_rows_read_the_spring_term_measures_only() -> None:
+    """The January-stock label is backed by the measure (finding A)."""
+
+    for target in _load()["targets"]:
+        if target["family"] != "dfe_funded_childcare":
+            continue
+        assert target["measurement"]["observation_basis"] == "january_stock"
+        binding = target["bindings"]["policyengine"]
+        names = {predicate["variable"] for predicate in binding["filters"]}
+        assert names - {"country"} <= _DFE_SPRING_MEASURES, target["target_id"]
+        assert names & (_DFE_SPRING_MEASURES - {"dfe_age_at_31_december"})
+        assert not names & {"age", "current_education"}, target["target_id"]
 
 
 def test_dfe_single_age_rows_hold_the_january_2025_census() -> None:
-    """The four rows read the January 2025 census, a signed in-year snapshot."""
+    """The rows read the January 2025 census, signed in-year snapshots."""
 
     holds = load_uk_uprating_holds()["holds"]
-    (entry,) = [
+    entries = [
         entry for entry in holds if set(DFE_SINGLE_AGE_IDS) & set(entry["target_ids"])
     ]
-    assert sorted(entry["target_ids"]) == sorted(DFE_SINGLE_AGE_IDS)
+    assert sorted(
+        target_id for entry in entries for target_id in entry["target_ids"]
+    ) == sorted(DFE_SINGLE_AGE_IDS)
     assert not any(
         set(DFE_SIGNED_OUT_AGE_4_IDS) & set(hold["target_ids"]) for hold in holds
     )
-    assert entry["scope"] == "national"
-    assert entry["kind"] == "in_year_snapshot"
-    assert uk_hold_is_signed(entry)
-    assert entry["approved_on"] == "2026-10-21"
+    for entry in entries:
+        assert entry["scope"] == "national"
+        assert entry["kind"] == "in_year_snapshot"
+        assert uk_hold_is_signed(entry)
+    assert {entry["approved_on"] for entry in entries} == {"2026-10-21", "2026-10-22"}
 
 
 def test_uk_population_targets_have_unique_target_ids() -> None:
     resource = _load()
 
     target_ids = [target["target_id"] for target in resource["targets"]]
-    assert len(target_ids) == 436
+    assert len(target_ids) == 437
     assert len(target_ids) == len(set(target_ids))
 
 
@@ -847,8 +904,8 @@ def test_childcare_bus_observation_basis_and_entity_pins_are_closed_world() -> N
         if target["family"] == "dfe_funded_childcare"
     ]
     # The working parent 2 to 4, early learning 2-year-olds and universal-only
-    # rows, and the four single-age rows of the DfE single-age binding.
-    assert len(childcare) == 7
+    # rows, and the five single-age rows of the DfE single-age binding.
+    assert len(childcare) == 8
     assert all(
         not target["measurement"]["concept"].endswith(".amount") for target in childcare
     )
@@ -1237,7 +1294,7 @@ def test_uc_payment_bands_share_administrative_family_but_keep_source_window() -
 
 def test_paid_joint_diagnostics_do_not_add_active_targets() -> None:
     targets = _load()["targets"]
-    assert len(targets) == 436
+    assert len(targets) == 437
     assert not any(
         f.get("variable") == "uc_calibration_child_entitlement"
         for target in targets
