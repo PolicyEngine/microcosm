@@ -2,9 +2,10 @@
 
 The fixture ``us_fsa_portfolio_chronicle_347_facts.jsonl.gz`` holds, byte for
 byte, 244 of the 461 rows ``chronicle build-bundle --year 2026`` writes for the
-six ``packages/ed_fsa`` source packages of draft PolicyEngine/chronicle#347
-(DTrim99/chronicle ``4448a7c``; the export at ``81e3f98``, after Chronicle
-main was merged in and the raw files reached R2, is byte-identical): every
+six ``packages/ed_fsa`` source packages of PolicyEngine/chronicle#347 (first
+drafted at ``4448a7c``; the exports at the PR head ``81e3f98``, which reads
+the raw files from R2, and at its merge commit ``acbedb5`` on Chronicle main
+are byte-identical): every
 portfolio-summary, location, age, debt-size and loan-type row, and the FY2026
 Q2 Direct Loan repayment-plan dollars. The tests pin the plan's reference quarter, its one in-scope control,
 each family's reconciled values, every fact's disposition, the release

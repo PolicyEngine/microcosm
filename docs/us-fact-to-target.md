@@ -210,9 +210,9 @@ borrower is a person whose federal balance is positive.
   balances do not record. Loan-type recipient counts: loan-level, so a person
   with two loan types counts twice. Stafford (Combined): a subtotal.
 - **The reference date.** The latest quarter every bound table publishes, FY2026
-  Q2 (31 March 2026) in the draft packages: the location workbook publishes
-  only that date, so the age, debt-size and loan-type tables bind at it too, and
-  every family describes one portfolio on one day. The facts are stocks the
+  Q2 (31 March 2026) in the chronicle#347 packages: the location workbook
+  publishes only that date, so the age, debt-size and loan-type tables bind at
+  it too, and every family describes one portfolio on one day. The facts are stocks the
   build carries as they stand at that date, unaged at the 2024 build period
   (`period_alignment = stock_at_source_reference_date`, factor policy 5 in
   `target_aging`): no income-growth series describes a loan stock, and the
@@ -225,7 +225,7 @@ borrower is a person whose federal balance is positive.
   listed states and territories) are outside the host universe, the 50 states
   and DC the CPS samples, and leave with their share. The 51 allocated state
   levels sum to the **in-scope control**: $1,679.1B and 44.31M borrowers at the
-  draft packages, against $1,696.3B and 44.76M in the table.
+  chronicle#347 packages, against $1,696.3B and 44.76M in the table.
 - **One control.** FSA's tables disagree slightly (the borrower tables total
   $1,696.3B, the recipient-based loan-type table $1,723.8B). The age and
   debt-size bands and the two loan-type rows bind as their table's share of the
@@ -243,25 +243,31 @@ borrower is a person whose federal balance is positive.
   target-parity contract (`_without_opt_in_student_loan_targets`).
 - **Known limits, measured.** The receipt
   (`experiments/1074-fsa-calibration-receipts.md`) refits the published
-  default with and without the family. The stage gives balances only to
-  reference persons and spouses (and Parent PLUS to the reference person), so
-  the host holds about half of FSA's borrowers ($0.86T and 21.2M at the
-  published weights). Calibration closes that by reweighting: borrower
-  households' weight doubles and their share of household weight goes from
-  16.4% to 33.0%, against 18.2% of SCF families. Borrowers under 25 stay about
-  40% short, because the host has few young reference persons with a balance.
-  FSA's Parent PLUS row counts only unconsolidated Parent PLUS loans (a
+  default with and without the family. The stage gives balances to reference
+  persons, spouses and co-resident adult children (a loan for a child's
+  education is the adult child's own unless only a parent could have borrowed
+  it), and Parent PLUS to the reference person. The SCF misses independent
+  adults who live on their own or in someone else's household, so the host
+  holds about half of FSA's borrowers ($0.86T and 21.2M at the published
+  weights). Calibration closes that by reweighting: borrower households'
+  weight doubles and their share of household weight goes from 16.4% to
+  33.7%, against 18.2% of SCF families. Routing child loans to adult children
+  moved balances between people in the same households, not into new ones, so
+  it did not shrink that doubling; it did give the host young borrowers (1,246
+  borrower records under 25, from 561), and the under-25 borrower band now
+  fits. FSA's Parent PLUS row counts only unconsolidated Parent PLUS loans (a
   consolidated one sits in "Consolidation"), while the SCF's loans for a
   child's education include consolidated ones, so that target is a lower bound
-  on the concept it binds; it pulls the Parent PLUS share from 16.8% to 6.8%.
+  on the concept it binds; it pulls the Parent PLUS share from 10.7% to 6.8%.
 - **When the facts reach the pin.** The US pin moves to a Chronicle commit that
   carries the six `packages/ed_fsa` packages: add their (record set, period)
   pairs to `us/chronicle_feed_scope.json` (build year 2026), rebuild the feed,
   re-pin `us/chronicle_feed.json`, and regenerate the two parity resources with
   the FSA families declared as reviewed exclusions that bind only with
   `--scf-education-debt`. The fixture
-  `tests/fixtures/us_fsa_portfolio_chronicle_347_facts.jsonl.gz` is the draft
-  export the tests pin; refresh it from the merged packages.
+  `tests/fixtures/us_fsa_portfolio_chronicle_347_facts.jsonl.gz` holds rows of
+  the chronicle#347 export the tests pin, byte-identical at its merge commit
+  (`acbedb5`); refresh it if a later Chronicle commit restates the facts.
 
 ## 4. Keep the exclusion register honest
 
