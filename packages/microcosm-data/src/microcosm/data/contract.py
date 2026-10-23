@@ -6762,6 +6762,31 @@ def validate_release_dir(
                     compatibility_wheels=compatibility_wheels,
                 )
                 return []
+            from microcosm.data.compatibility_recertification import (
+                RECERTIFICATION_RELEASE_TYPE,
+                validate_recertification_candidate,
+            )
+
+            if manifest_probe["release_type"] == RECERTIFICATION_RELEASE_TYPE:
+                # A published parent's bytes, re-measured under a newer
+                # engine: its own contract replays the parent's on the
+                # carried files. The child's H5 is the parent's, so it takes
+                # no parent_h5.
+                if parent_h5 is not None:
+                    raise ReleaseContractError(
+                        release_dir,
+                        [
+                            "a compatibility recertification republishes its "
+                            "parent's H5 unchanged and takes no parent_h5"
+                        ],
+                    )
+                validate_recertification_candidate(
+                    release_dir,
+                    artifact_root=artifact_root,
+                    require_compatibility=True,
+                    compatibility_wheels=compatibility_wheels,
+                )
+                return []
             if manifest_probe["release_type"] != "calibration":
                 raise ReleaseContractError(
                     release_dir,
