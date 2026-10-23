@@ -466,6 +466,20 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(envs["snapshots"], {"PE_UPDATE_SNAPSHOTS": "1"})
         self.assertEqual(envs["tests"], {})
 
+    def test_stall_diagnostic_is_fullsuite_only_and_does_not_request_exit(self):
+        details = []
+        self.run_mock_pipeline(call_details=details)
+        steps = {kwargs.get("step"): argv for argv, kwargs in details}
+        fullsuite = steps["tests"]
+        overrides = [
+            fullsuite[index + 1]
+            for index, option in enumerate(fullsuite)
+            if option == "-o"
+        ]
+        self.assertIn("faulthandler_timeout=300", overrides)
+        self.assertFalse(any("exit_on_timeout" in option for option in fullsuite))
+        self.assertFalse(any("faulthandler" in option for option in steps["snapshots"]))
+
 
 if __name__ == "__main__":
     unittest.main()

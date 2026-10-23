@@ -830,7 +830,8 @@ def certify(args: argparse.Namespace) -> int:
             )
         tests = run(
             [python, "-m", "pytest", "-n", str(args.test_workers), "-vv",
-             "--durations=20", "-p", "no:cacheprovider"],
+             "--durations=20", "-o", "faulthandler_timeout=300",
+             "-p", "no:cacheprovider"],
             check=False,
             step="tests",
         )  # fmt: skip
