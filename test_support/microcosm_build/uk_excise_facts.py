@@ -17,9 +17,10 @@ TOBACCO = "synthetic.tobacco_clearances"
 ON_TRADE = "synthetic.alcohol_on_trade_share"
 
 
-def _row(concept: str, product: str, value: float) -> dict[str, Any]:
+def _row(concept: str, product: str, value: float, unit: str) -> dict[str, Any]:
     return {
         "concept": concept,
+        "unit": unit,
         "period": {"type": "fiscal_year", "value": 2024},
         "period_coverage": {"start_date": "2024-04-01", "end_date": "2025-03-31"},
         "geography": {"id": "K02000001"},
@@ -29,16 +30,16 @@ def _row(concept: str, product: str, value: float) -> dict[str, Any]:
     }
 
 
-#: Thousand hectolitres of alcohol, million sticks, thousand kilograms, and a
+#: In the units Chronicle stores (litres of pure alcohol, sticks, kilograms) and a
 #: share: round numbers no publisher printed.
 EXCISE_FACT_ROWS: list[dict[str, Any]] = [
-    _row(ALCOHOL, "beer_and_cider", 2.0),
-    _row(ALCOHOL, "wine", 1.0),
-    _row(ALCOHOL, "spirits", 0.5),
-    _row(TOBACCO, "cigarettes", 100.0),
-    _row(TOBACCO, "hand_rolling", 0.5),
-    _row(TOBACCO, "other", 0.1),
-    _row(ON_TRADE, "all_alcohol", 0.25),
+    _row(ALCOHOL, "beer_and_cider", 2.0e5, "litre_of_pure_alcohol"),
+    _row(ALCOHOL, "wine", 1.0e5, "litre_of_pure_alcohol"),
+    _row(ALCOHOL, "spirits", 0.5e5, "litre_of_pure_alcohol"),
+    _row(TOBACCO, "cigarettes", 1.0e8, "stick"),
+    _row(TOBACCO, "hand_rolling", 500.0, "kilogram"),
+    _row(TOBACCO, "other", 100.0, "kilogram"),
+    _row(ON_TRADE, "all_alcohol", 0.25, "ratio"),
 ]
 
 
@@ -46,7 +47,7 @@ def _alcohol(product: str, strength: float, parameter: str) -> dict[str, Any]:
     return {
         "concept": ALCOHOL,
         "dimensions": {"product": product},
-        "unit": "thousand_hectolitres_of_alcohol",
+        "unit": "litre_of_pure_alcohol",
         "strength": {
             "value": strength,
             "parameter_path": f"household.consumption.alcohol.{parameter}",
@@ -71,11 +72,9 @@ EXCISE_DECLARATION: dict[str, Any] = {
         "beer_litres": _alcohol("beer_and_cider", 0.04, "beer_abv"),
         "wine_litres": _alcohol("wine", 0.12, "wine_abv"),
         "spirits_litres": _alcohol("spirits", 0.40, "spirits_abv"),
-        "cigarettes_per_week": _tobacco("cigarettes", "million_sticks"),
-        "hand_rolling_tobacco_grams_per_week": _tobacco(
-            "hand_rolling", "thousand_kilograms"
-        ),
-        "other_tobacco_grams_per_week": _tobacco("other", "thousand_kilograms"),
+        "cigarettes_per_week": _tobacco("cigarettes", "stick"),
+        "hand_rolling_tobacco_grams_per_week": _tobacco("hand_rolling", "kilogram"),
+        "other_tobacco_grams_per_week": _tobacco("other", "kilogram"),
     },
 }
 

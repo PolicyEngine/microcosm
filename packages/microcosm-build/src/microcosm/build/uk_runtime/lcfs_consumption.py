@@ -382,25 +382,28 @@ UK_LCFS_EXCISE_OUTPUT_COLUMNS = (
     *UK_LCFS_EXCISE_ALCOHOL_OUTPUTS,
     *UK_LCFS_EXCISE_TOBACCO_OUTPUTS,
 )
-#: The published units the excise step reads, as engine units per published
-#: unit: litres (of alcohol, which the declared strength turns into litres of
-#: the product, or of the product itself), cigarettes, grams.
-UK_LCFS_EXCISE_ALCOHOL_UNIT = "thousand_hectolitres_of_alcohol"
+#: The units Chronicle stores the clearances in (it applies the publisher's
+#: scale, so OBR's thousand hectolitres of alcohol arrive as litres and keep
+#: the published unit only as a dimension; PolicyEngine/chronicle#381), as
+#: engine units per stored unit: litres (of pure alcohol, which the declared
+#: strength turns into litres of the product, or of the product itself),
+#: cigarettes, grams. Each row's own unit must be the declared one.
+UK_LCFS_EXCISE_ALCOHOL_UNIT = "litre_of_pure_alcohol"
 UK_LCFS_EXCISE_UNITS: Mapping[str, float] = {
-    UK_LCFS_EXCISE_ALCOHOL_UNIT: 1.0e5,
-    "thousand_hectolitres": 1.0e5,
-    "million_sticks": 1.0e6,
-    "thousand_kilograms": 1.0e6,
+    UK_LCFS_EXCISE_ALCOHOL_UNIT: 1.0,
+    "litre": 1.0,
+    "stick": 1.0,
+    "kilogram": 1.0e3,
 }
 #: The units each engine input may be declared in.
 UK_LCFS_EXCISE_OUTPUT_UNITS: Mapping[str, tuple[str, ...]] = {
     **{
-        column: (UK_LCFS_EXCISE_ALCOHOL_UNIT, "thousand_hectolitres")
+        column: (UK_LCFS_EXCISE_ALCOHOL_UNIT, "litre")
         for column in UK_LCFS_EXCISE_ALCOHOL_OUTPUTS
     },
-    "cigarettes_per_week": ("million_sticks",),
+    "cigarettes_per_week": ("stick",),
     **{
-        column: ("thousand_kilograms",)
+        column: ("kilogram",)
         for column in UK_LCFS_EXCISE_TOBACCO_OUTPUTS
         if column != "cigarettes_per_week"
     },
@@ -2026,8 +2029,13 @@ def _one_vendored_value(
     declared: Mapping[str, Any],
     *,
     what: str,
+    unit: str | None = None,
 ) -> tuple[float, dict[str, Any]]:
-    """The one published value a declaration names, for the step's fiscal year."""
+    """The one published value a declaration names, for the step's fiscal year.
+
+    With ``unit``, the row must be stored in it: a value read in another unit
+    would be off by the publisher's scale.
+    """
 
     concept = str(declared.get("concept") or "")
     dimensions = declared.get("dimensions") or {}
@@ -2050,6 +2058,11 @@ def _one_vendored_value(
             f"{resource}: expected one {concept} row {dict(dimensions)} for fiscal "
             f"{parameters['period_value']}, found {len(rows)}."
         )
+    if unit is not None and rows[0].get("unit") != unit:
+        raise ValueError(
+            f"{resource}: {what}'s row is stored in {rows[0].get('unit')!r}, not the "
+            f"declared {unit!r}."
+        )
     value = float(rows[0]["value"])
     receipt = {
         "concept": concept,
@@ -2066,9 +2079,9 @@ def excise_levels(
     """Resolve each declared engine input's national quantity from the vendored rows.
 
     Each output names its published row (concept and dimensions, for the
-    declared fiscal year and geography), the row's unit, the share of the row
-    it takes and, for hectolitres of alcohol, the strength that turns them
-    into litres of the product: the declared value, with the engine
+    declared fiscal year and geography), the unit the row is stored in, the
+    share of the row it takes and, for litres of pure alcohol, the strength
+    that turns them into litres of the product: the declared value, with the engine
     parameter it mirrors, which policyengine-uk multiplies back. Outputs that
     share a row must take all of it between them. ``alcohol_volume_weights``
     declares how off- and on-trade spending share the alcohol volume.
@@ -2124,7 +2137,7 @@ def excise_levels(
         if (unit == UK_LCFS_EXCISE_ALCOHOL_UNIT) != (strength is not None):
             raise ValueError(
                 f"{LEVEL_EXCISE_QUANTITIES_KIND}: {column} needs a strength exactly "
-                "when it is declared in hectolitres of alcohol."
+                "when it is declared in litres of pure alcohol."
             )
         divisor = 1.0
         if strength is not None:
@@ -2140,7 +2153,7 @@ def excise_levels(
                     "is outside (0, 1]."
                 )
         published, receipt = _one_vendored_value(
-            resource, parameters, declared, what=column
+            resource, parameters, declared, what=column, unit=unit
         )
         if not np.isfinite(published) or published <= 0:
             raise ValueError(

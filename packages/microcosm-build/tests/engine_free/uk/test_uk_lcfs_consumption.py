@@ -3525,8 +3525,8 @@ def test_excise_levels_turn_published_rows_into_engine_units(monkeypatch) -> Non
     patch_excise_facts(monkeypatch)
     levels, volume = excise_levels(excise_declaration())
 
-    # Thousand hectolitres of alcohol over the strength are litres of the
-    # product; million sticks are cigarettes, thousand kilograms grams.
+    # Litres of pure alcohol over the strength are litres of the product;
+    # sticks are cigarettes and kilograms a thousand grams each.
     assert levels["beer_litres"].annual == pytest.approx(2.0e5 / 0.04)
     assert levels["spirits_litres"].annual == pytest.approx(0.5e5 / 0.40)
     assert levels["cigarettes_per_week"].annual == pytest.approx(100.0e6)
@@ -3564,10 +3564,18 @@ def test_excise_levels_turn_published_rows_into_engine_units(monkeypatch) -> Non
             "cannot write",
         ),
         (
-            lambda d: d["outputs"]["cigarettes_per_week"].update(
-                unit="thousand_kilograms"
-            ),
+            lambda d: d["outputs"]["cigarettes_per_week"].update(unit="kilogram"),
             "declared in",
+        ),
+        # A row stored in another unit than the declared one is refused: read
+        # as litres of the product, litres of pure alcohol would skip the
+        # strength.
+        (
+            lambda d: (
+                d["outputs"]["wine_litres"].update(unit="litre"),
+                d["outputs"]["wine_litres"].pop("strength"),
+            ),
+            "is stored in",
         ),
         (lambda d: d["outputs"]["wine_litres"].pop("strength"), "needs a strength"),
         (
