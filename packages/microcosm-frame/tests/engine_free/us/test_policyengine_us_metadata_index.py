@@ -21,7 +21,7 @@ _EXPECTED_STATE_MFS = frozenset(
     "de_taxable_income de_agi ia_standard_deduction ia_itemized_deductions "
     "ia_taxable_income ia_agi ky_standard_deduction ky_itemized_deductions "
     "ky_taxable_income ms_standard_deduction ms_itemized_deductions "
-    "ms_taxable_income mt_standard_deduction mt_itemized_deductions "
+    "ms_taxable_income mt_agi mt_standard_deduction mt_itemized_deductions "
     "mt_taxable_income".split()
 )
 # policyengine-us 2.x installs spm-calculator's measurement variables into the
@@ -181,7 +181,7 @@ def test_generated_snapshot_covers_the_pinned_default_system() -> None:
     )
 
     assert set(generated) == formula_owned | _EXPECTED_PUF | _EXPECTED_SPM_INPUTS
-    assert len(generated) == 119
+    assert len(generated) == 120
     assert {name for name, item in generated.items() if item.formula_owned} == (
         formula_owned
     )
@@ -207,9 +207,9 @@ def test_generated_snapshot_covers_the_pinned_default_system() -> None:
         assert (metadata.entity, metadata.dtype, metadata.period) == expected
 
     index = module.PolicyEngineUSVariableMetadataIndex()
-    assert len(index._definitions) == 6_167
-    assert len(index.variables()) == 926
-    assert len(index.formula_owned_outputs(index._definitions)) == 5_241
+    assert len(index._definitions) == 6_797
+    assert len(index.variables()) == 1_074
+    assert len(index.formula_owned_outputs(index._definitions)) == 5_723
     assert index.formula_owned_outputs(["AK", "e00700", "ar_agi", "mi_surtax"]) == {
         "AK",
         "ar_agi",
