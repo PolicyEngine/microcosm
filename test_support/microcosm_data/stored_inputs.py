@@ -155,9 +155,13 @@ def _column_strategies(st):
 
 #: Register entries that postdate the files examined for #1026 and rest on a
 #: live producer instead: the parent ids (microcosm#884), bound to
-#: eligibility_inputs.US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS by
+#: eligibility_inputs.US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS, and the
+#: auxiliary attainment class (microcosm#297), bound to
+#: educational_attainment.US_CPS_EDUCATIONAL_ATTAINMENT_COLUMN, both by
 #: test_us_stored_input_register.py (microcosm-data cannot import the build).
-_PRODUCER_BOUND_ENTRIES = frozenset({"parent_1_id", "parent_2_id"})
+_PRODUCER_BOUND_ENTRIES = frozenset(
+    {"parent_1_id", "parent_2_id", "cps_educational_attainment"}
+)
 
 
 #: The role columns policyengine-core's ``build_from_dataset`` reads to build

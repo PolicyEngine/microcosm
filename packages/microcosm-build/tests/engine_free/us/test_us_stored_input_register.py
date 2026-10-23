@@ -30,7 +30,7 @@ def test_every_register_entry_is_a_named_producer_column():
     base-spine tag of every US entity, the pooled-source provenance columns,
     microunit's two tax-unit construction columns, the PUF capital-gains tail
     provenance columns, the ACS-native acs_ amounts and acs_pums's puma_geoid
-    alias."""
+    alias, plus the pending parent ids and the auxiliary attainment class."""
 
     support = {
         column(entity)
@@ -61,9 +61,10 @@ def test_every_register_entry_is_a_named_producer_column():
         | _ACS_NATIVE_AMOUNTS
         | {"puma_geoid"}
         | set(US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS)
+        | {US_CPS_EDUCATIONAL_ATTAINMENT_COLUMN}
     )
     assert len(_ACS_NATIVE_AMOUNTS) == 6
-    assert len(US_STORED_NON_VARIABLE_COLUMNS) == 30 + 6 + 6 + 6 + 1 + 2
+    assert len(US_STORED_NON_VARIABLE_COLUMNS) == 30 + 6 + 6 + 6 + 1 + 2 + 1
 
 
 def test_every_register_reason_names_where_its_column_comes_from():
@@ -96,6 +97,9 @@ def test_every_register_reason_names_where_its_column_comes_from():
             column: "US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS"
             for column in US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS
         },
+        US_CPS_EDUCATIONAL_ATTAINMENT_COLUMN: (
+            "microcosm.build.us_runtime.educational_attainment"
+        ),
     }
     for column, owner in expected_owner.items():
         assert owner in US_STORED_NON_VARIABLE_COLUMNS[column], column
@@ -725,4 +729,22 @@ def test_an_ungraded_gate_names_its_reason_even_without_a_message(
             payload, engine_label="policyengine-us 2.2.1", evidence_tier=True
         )
         == []
+    )
+
+
+def test_the_auxiliary_columns_are_flagged_and_registered():
+    """microcosm#297: an auxiliary column is a register entry whose reason says
+    so, and the attainment class is the only one."""
+
+    assert set(US_AUXILIARY_STORED_COLUMNS) == {US_CPS_EDUCATIONAL_ATTAINMENT_COLUMN}
+    for column, reason in US_AUXILIARY_STORED_COLUMNS.items():
+        assert US_STORED_NON_VARIABLE_COLUMNS[column] == reason
+        assert reason.startswith("Auxiliary: ")
+        assert "no rule reads it" in reason
+    non_auxiliary = set(US_STORED_NON_VARIABLE_COLUMNS) - set(
+        US_AUXILIARY_STORED_COLUMNS
+    )
+    assert not any(
+        US_STORED_NON_VARIABLE_COLUMNS[column].startswith("Auxiliary")
+        for column in non_auxiliary
     )

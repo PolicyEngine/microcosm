@@ -239,6 +239,14 @@ from microcosm.build.us_runtime.demographics import (
     population_by_age_from_sim,
     write_demographics,
 )
+from microcosm.build.us_runtime.educational_attainment import (
+    US_CPS_EDUCATIONAL_ATTAINMENT_COLUMN,
+    US_EDUCATIONAL_ATTAINMENT_TARGET_MATERIALIZER,
+    attainment_target_person_indicator,
+    load_asec_attainment_sources,
+    us_cps_educational_attainment_signal_gate,
+    with_us_cps_educational_attainment,
+)
 from microcosm.build.us_runtime.engine_lifecycle import release_engine_simulation
 from microcosm.build.us_runtime.exact_k_ladder import (
     ExactKLadderCalibration,
@@ -861,15 +869,23 @@ RESTATED_AGE_BAND_COMPILED_KEYS = {
 }
 
 #: Materializers that apply the compiled age band, and so the only ones for
-#: which ignoring an agreeing age restatement changes nothing. Both are read
-#: in :func:`_materialize_target_frame`: ``population_age`` through
-#: :func:`_population_age_household_values`, and ``policyengine_variable``
+#: which ignoring an agreeing age restatement changes nothing. All three are
+#: read in :func:`_materialize_target_frame`: ``population_age`` through
+#: :func:`_population_age_household_values`, ``policyengine_variable``
 #: through its age-banded branch, entered whenever either compiled age key is
-#: present. Every other materializer (the ``irs_soi`` slice, the direct
+#: present, and the ACS S1501 attainment counts (``population_attainment``,
+#: microcosm#297) through :func:`_population_attainment_household_values`,
+#: which applies the same half-open band. Every other materializer (the ``irs_soi`` slice, the direct
 #: household-variable measures) never reads an age bound, so a restated age
 #: bound there would be silently ignored however well it agreed with metadata
 #: the materializer also ignores; it is refused instead.
-RESTATED_AGE_BAND_MATERIALIZERS = frozenset({"population_age", "policyengine_variable"})
+RESTATED_AGE_BAND_MATERIALIZERS = frozenset(
+    {
+        "population_age",
+        "policyengine_variable",
+        US_EDUCATIONAL_ATTAINMENT_TARGET_MATERIALIZER,
+    }
+)
 
 #: The exact-value age key the dimension stamp writes when ``age`` is itself
 #: a dimension of the fact.
@@ -1600,6 +1616,30 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "Optional path to the Federal Reserve SCF 2022 full public Stata "
             "extract (p22i6.dta) used for household auto-loan balance and "
             "interest. When omitted, scf2022s.zip is fetched and cached."
+        ),
+    )
+    parser.add_argument(
+        "--cps-educational-attainment",
+        action="store_true",
+        help=(
+            "Carry the auxiliary person column cps_educational_attainment "
+            "(and the raw Census A_HGA it is classified from) by an exact "
+            "(income year, PERIDNUM) join to the pinned official CPS ASEC "
+            "person members (microcosm#297). Auxiliary: no rule reads it; it "
+            "conditions imputation and lets ACS S1501 state attainment targets "
+            "bind. Refuses ACS-spine rows, which carry no PERIDNUM."
+        ),
+    )
+    parser.add_argument(
+        "--asec-attainment-source",
+        action="append",
+        default=[],
+        metavar="YEAR=PATH",
+        help=(
+            "Optional INCOME_YEAR=PATH mapping to a local copy of the pinned "
+            "official ASEC person archive (asecpubYYcsv.zip) or its person "
+            "CSV, for --cps-educational-attainment. Unmapped income years are "
+            "fetched from census.gov and verified against the same pins."
         ),
     )
     parser.add_argument(
@@ -5752,6 +5792,44 @@ def _population_age_household_values(
     return values
 
 
+def _population_attainment_household_values(
+    *,
+    frame: Frame,
+    household: pd.DataFrame,
+    age: np.ndarray,
+    metadata: Mapping[str, str],
+) -> np.ndarray:
+    """Household counts of the persons an ACS S1501 attainment cell counts.
+
+    The cell counts persons in its half-open age band whose auxiliary
+    ``cps_educational_attainment`` class is one the target names
+    (microcosm#297), in its state. A frame without the column cannot
+    materialize the target, so it refuses rather than binding zeros.
+    """
+
+    person = frame.table("person")
+    if US_CPS_EDUCATIONAL_ATTAINMENT_COLUMN not in person.columns:
+        raise RuntimeError(
+            "ACS S1501 attainment targets require the auxiliary person column "
+            f"{US_CPS_EDUCATIONAL_ATTAINMENT_COLUMN}; build with "
+            "--cps-educational-attainment."
+        )
+    indicator = attainment_target_person_indicator(
+        person[US_CPS_EDUCATIONAL_ATTAINMENT_COLUMN].to_numpy(),
+        age,
+        metadata,
+    )
+    values = _collapse_person(frame, indicator)
+    state_fips = metadata.get("state_fips")
+    if not state_fips:
+        raise RuntimeError("ACS S1501 attainment targets are state-grain.")
+    return np.where(
+        household["state_fips"].to_numpy() == int(state_fips),
+        values,
+        0.0,
+    )
+
+
 def _restated_ledger_filter_concept(key: str) -> tuple[str, str | None]:
     """Split a ``ledger_filter_*`` key into its concept and bound side.
 
@@ -6274,6 +6352,21 @@ def _base_simulation_household_columns(
                 household_congressional_district_geoid=(
                     household_congressional_district_geoid
                 ),
+            )
+    attainment_target_specs = [
+        spec
+        for spec in target_specs
+        if spec.metadata.get("materializer")
+        == US_EDUCATIONAL_ATTAINMENT_TARGET_MATERIALIZER
+    ]
+    if attainment_target_specs:
+        person_age = np.asarray(_calculate_array(simulation, "age"), dtype=np.float64)
+        for spec in attainment_target_specs:
+            columns[spec.measure] = _population_attainment_household_values(
+                frame=frame,
+                household=household,
+                age=person_age,
+                metadata=spec.metadata,
             )
     direct_target_specs = [
         spec
@@ -12485,6 +12578,93 @@ def _check_committed_us_ledger_feed_pin(
         )
 
 
+def _asec_attainment_source_paths(entries: Sequence[str]) -> dict[int, Path]:
+    """Map each --asec-attainment-source INCOME_YEAR=PATH; refuse bad or repeated."""
+
+    paths: dict[int, Path] = {}
+    for entry in entries:
+        year, separator, path = str(entry).partition("=")
+        if not separator or not year.strip().isdigit() or not path:
+            raise SystemExit(
+                f"error: --asec-attainment-source must be INCOME_YEAR=PATH, got {entry!r}"
+            )
+        income_year = int(year)
+        if income_year in paths:
+            raise SystemExit(
+                f"error: --asec-attainment-source repeats income year {income_year}"
+            )
+        paths[income_year] = Path(path)
+    return paths
+
+
+def _with_cps_educational_attainment_stage(
+    base_frame: Frame,
+    *,
+    args: argparse.Namespace,
+    telemetry: Any,
+    receipt_path: Path | None,
+) -> Frame:
+    """Join the auxiliary attainment class and run its signal gate (#297)."""
+
+    if telemetry is not None:
+        telemetry.stage(
+            "cps_educational_attainment",
+            message=(
+                "Joining CPS ASEC A_HGA by (income year, PERIDNUM) and carrying "
+                "the auxiliary cps_educational_attainment class."
+            ),
+        )
+    person = base_frame.table("person")
+    if "source_year" not in person.columns:
+        raise RuntimeError(
+            "--cps-educational-attainment requires the person source_year column."
+        )
+    sources = load_asec_attainment_sources(
+        pd.to_numeric(person["source_year"], errors="raise").astype(int).unique(),
+        _asec_attainment_source_paths(args.asec_attainment_source),
+    )
+    base_frame, record = with_us_cps_educational_attainment(base_frame, sources=sources)
+    gate = us_cps_educational_attainment_signal_gate(base_frame)
+    if not gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "cps_educational_attainment_gate",
+                status="failed",
+                message="CPS educational-attainment signal gate failed.",
+                failures=list(gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"CPS educational-attainment signal failed: {failure}"
+                for failure in gate.failures
+            )
+        )
+    if receipt_path is not None:
+        receipt_path.parent.mkdir(parents=True, exist_ok=True)
+        receipt_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "column": US_CPS_EDUCATIONAL_ATTAINMENT_COLUMN,
+                    "column_role": "auxiliary",
+                    "derivation": record,
+                    "signal_gate": {
+                        "passed": gate.passed,
+                        "details": dict(gate.details),
+                    },
+                },
+                indent=2,
+                sort_keys=True,
+                default=float,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+    return base_frame
+
+
 def _main(argv: Sequence[str] | None = None) -> int | None:
     global _ACTIVE_EMITTER, _ACTIVE_PROGRESS
     _ACTIVE_EMITTER = None
@@ -13686,6 +13866,19 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 f"Education-input signal failed: {failure}"
                 for failure in education_inputs_gate.failures
             )
+        )
+    if args.cps_educational_attainment:
+        # microcosm#297: auxiliary attainment class for conditioning and the
+        # ACS S1501 state attainment targets; no rule reads it.
+        base_frame = _with_cps_educational_attainment_stage(
+            base_frame,
+            args=args,
+            telemetry=telemetry,
+            receipt_path=(
+                artifact_root / "us_cps_educational_attainment.json"
+                if dry_run is None
+                else None
+            ),
         )
     if telemetry is not None:
         telemetry.stage(
