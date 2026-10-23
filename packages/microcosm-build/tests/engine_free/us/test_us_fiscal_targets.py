@@ -1081,12 +1081,16 @@ def test_target_registry_is_identical_across_artifact_record_counts() -> None:
         spec.metadata.get("ledger_geography_level") == "congressional_district"
         for spec in registries["sparse"].specs
     )
+    # No knob reads the artifact's record count. student_loan_targets says
+    # whether the build carries the SCF education-debt columns the FSA
+    # family binds (microcosm#1074), which is the same at every scale.
     assert set(inspect.signature(compile_us_fiscal_target_registry).parameters) == {
         "facts",
         "target_period",
         "congressional_district_vintage_crosswalk",
         "age_targets",
         "allow_unaged_dollar_targets",
+        "student_loan_targets",
     }
 
 

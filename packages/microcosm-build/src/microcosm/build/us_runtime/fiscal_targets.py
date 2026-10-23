@@ -29,6 +29,11 @@ from microcosm.build.ledger_targets import (
 from microcosm.build.us_runtime.congressional_district_vintage import (
     translate_congressional_district_facts_to_current_vintage,
 )
+from microcosm.build.us_runtime.fsa_student_loan_targets import (
+    FSA_SOURCE_NAME,
+    apply_fsa_student_loan_plan,
+    plan_fsa_student_loan_targets,
+)
 from microcosm.build.us_runtime.target_aging import (
     age_us_dollar_targets,
     enforce_period_contract,
@@ -1011,6 +1016,7 @@ def compile_us_fiscal_target_registry(
     congressional_district_vintage_crosswalk: object | None = None,
     age_targets: bool = False,
     allow_unaged_dollar_targets: bool = False,
+    student_loan_targets: bool = False,
 ) -> TargetRegistry:
     """Resolve US fiscal targets from an external Ledger fact feed.
 
@@ -1032,6 +1038,13 @@ def compile_us_fiscal_target_registry(
             unless aging transformed it. Set this to record an explicit,
             auditable waiver instead of raising; every waived target carries
             ``period_contract_waiver`` metadata in diagnostics.
+        student_loan_targets: Bind Federal Student Aid's portfolio facts
+            (``ed_fsa``) to the SCF education-debt stage's person balances
+            (microcosm#1074; see
+            :mod:`microcosm.build.us_runtime.fsa_student_loan_targets`). Only
+            a build that carries those columns can materialize the targets,
+            so the release tool sets this with ``--scf-education-debt``;
+            otherwise the facts are inert.
     """
     materialized_facts = tuple(facts)
     if congressional_district_vintage_crosswalk is not None:
@@ -1039,6 +1052,11 @@ def compile_us_fiscal_target_registry(
             materialized_facts,
             congressional_district_vintage_crosswalk,
         )
+    student_loan_plan = (
+        plan_fsa_student_loan_targets(materialized_facts, target_period=target_period)
+        if student_loan_targets
+        else None
+    )
     references = (
         *_dynamic_us_fiscal_target_references(
             materialized_facts,
@@ -1048,12 +1066,20 @@ def compile_us_fiscal_target_registry(
             US_JCT_TAX_EXPENDITURE_TARGET_REFERENCES,
             target_period=target_period,
         ),
+        *(student_loan_plan.references if student_loan_plan is not None else ()),
     )
     registry = compile_ledger_target_references(
         materialized_facts,
         references,
         country="us",
     )
+    if student_loan_plan is not None:
+        # FSA references resolve at their own reference quarter; the plan
+        # moves them to the build period at their reconciled values
+        # (microcosm#1074), before any pass that reads periods or ages.
+        registry = apply_fsa_student_loan_plan(
+            registry, student_loan_plan, target_period=target_period
+        )
     registry = _uprate_cross_period_eitc_decompositions(registry)
     registry = _with_derived_chip_enrollment_targets(registry)
     registry = _without_m_chip_state_chip_enrollment_targets(registry)
@@ -3118,6 +3144,11 @@ def _reference_from_ledger_fact(
         return _ssa_ssi_reference_from_fact(fact, target_period=target_period)
     if source_name == "bea":
         return _bea_reference_from_fact(fact, target_period=target_period)
+    if source_name == FSA_SOURCE_NAME:
+        # Federal Student Aid portfolio facts bind only through
+        # plan_fsa_student_loan_targets, which reconciles the tables to one
+        # in-scope control at one reference quarter (microcosm#1074).
+        return None
     if source_name == "jct":
         # JCT facts never bind through dynamic dispatch: tax-expenditure rows
         # compile only as declared SimpleTaxExpenditureReform references

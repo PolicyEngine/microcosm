@@ -258,6 +258,14 @@ from microcosm.build.us_runtime.fiscal_targets import (
     AGE_BOUND_STAMP_SOURCE_KEY,
     SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE,
 )
+from microcosm.build.us_runtime.fsa_student_loan_targets import (
+    FSA_BALANCE_LOWER_BOUND_KEY,
+    FSA_BALANCE_UPPER_BOUND_KEY,
+    FSA_MATERIALIZER,
+    FSA_TARGET_FAMILY,
+    fsa_student_loan_household_values,
+    fsa_student_loan_target_receipt,
+)
 from microcosm.build.us_runtime.h5_io import (
     AuthenticatedPoolH5,
     assert_h5_unchanged,
@@ -794,6 +802,7 @@ RESTATED_LEDGER_FILTER_CONCEPTS = {
     "us:statutes/26/62#adjusted_gross_income": "agi_band",
     "us.tax.earned_income_credit_qualifying_children": "eitc_child_count",
     "age": "age_band",
+    "federal_student_loan_balance": "student_loan_balance_band",
 }
 
 #: Bound-side suffixes a restated constraint key may carry. A key with no
@@ -876,7 +885,20 @@ RESTATED_AGE_BAND_COMPILED_KEYS = {
 #: household-variable measures) never reads an age bound, so a restated age
 #: bound there would be silently ignored however well it agreed with metadata
 #: the materializer also ignores; it is refused instead.
-RESTATED_AGE_BAND_MATERIALIZERS = frozenset({"population_age", "policyengine_variable"})
+RESTATED_AGE_BAND_MATERIALIZERS = frozenset(
+    {"population_age", "policyengine_variable", FSA_MATERIALIZER}
+)
+
+#: Compiled edges of a Federal Student Aid debt-size band, by bound side, and
+#: the one materializer that slices on them
+#: (:func:`microcosm.build.us_runtime.fsa_student_loan_targets.fsa_student_loan_household_values`,
+#: ``lower <= balance < upper`` on the person's own plus Parent PLUS balance,
+#: microcosm#1074). A restated ``federal_student_loan_balance`` bound on any
+#: other materializer would be ignored, so it refuses.
+RESTATED_STUDENT_LOAN_BALANCE_BAND_COMPILED_KEYS = {
+    "lower": FSA_BALANCE_LOWER_BOUND_KEY,
+    "upper": FSA_BALANCE_UPPER_BOUND_KEY,
+}
 
 #: The exact-value age key the dimension stamp writes when ``age`` is itself
 #: a dimension of the fact.
@@ -899,6 +921,7 @@ FISCAL_TARGET_SOURCE_KEYS = {
     "cms_aca": "CMS ACA marketplace enrollment public use files",
     "cms_medicaid": "CMS Medicaid enrollment and expenditure sources",
     "cms_medicare": "CMS Medicare Trustees Report Part B premium income",
+    "ed_fsa": "Federal Student Aid federal student loan portfolio",
     "hhs_acf_tanf": "HHS ACF TANF administrative data",
     "irs_soi": "IRS Statistics of Income public tables",
     "jct": "Joint Committee on Taxation tax expenditure estimates",
@@ -5905,6 +5928,32 @@ def _restated_age_band_refusal(
     )
 
 
+def _restated_student_loan_balance_band_refusal(
+    key: str,
+    value: str,
+    metadata: Mapping[str, str],
+    *,
+    side: str | None,
+) -> str | None:
+    if side is None:
+        return (
+            f"{key}={value} restates an exact federal student loan balance, but "
+            "the materializer slices a half-open balance band"
+        )
+    materializer = metadata.get("materializer")
+    if materializer != FSA_MATERIALIZER:
+        return (
+            f"{key}={value} restates a federal student loan balance bound on a "
+            f"spec whose materializer ({materializer!r}) applies no balance band"
+        )
+    return _restated_band_edge_refusal(
+        key,
+        value,
+        metadata,
+        compiled_key=RESTATED_STUDENT_LOAN_BALANCE_BAND_COMPILED_KEYS[side],
+    )
+
+
 def _restated_eitc_child_count_refusal(
     key: str,
     value: str,
@@ -6006,6 +6055,10 @@ def _restated_ledger_filter_refusal(
         return _restated_eitc_child_count_refusal(key, value, metadata, side=side)
     if rule == "age_band":
         return _restated_age_band_refusal(key, value, metadata, side=side)
+    if rule == "student_loan_balance_band":
+        return _restated_student_loan_balance_band_refusal(
+            key, value, metadata, side=side
+        )
     raise ValueError(
         f"RESTATED_LEDGER_FILTER_CONCEPTS maps {concept!r} to rule {rule!r}, "
         "which has no comparison implemented."
@@ -6294,6 +6347,17 @@ def _base_simulation_household_columns(
         variable="state_income_tax",
         tax_unit_positions=tax_unit_positions,
     )
+    # Federal Student Aid portfolio targets (microcosm#1074) read the SCF
+    # education-debt stage's stored person balances, not an engine variable:
+    # the pinned engine does not define them yet, and a stored input is what
+    # the engine would read anyway. A frame without the columns materializes
+    # nothing, so the targets report as dropped.
+    for spec in target_specs:
+        if spec.metadata.get("materializer") != FSA_MATERIALIZER:
+            continue
+        fsa_values = fsa_student_loan_household_values(frame, spec.metadata)
+        if fsa_values is not None:
+            columns[spec.measure] = fsa_values
     population_age_target_specs = [
         spec
         for spec in target_specs
@@ -10081,6 +10145,9 @@ US_RELEASE_GATE_EVIDENCE_FILES: dict[str, str] = {
 #: reference it by file sha and key; ``present`` stays false until the
 #: compiler writes the receipt.
 US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY = "fiscal_target_exclusion_receipt"
+#: us_source_coverage.json key of the FSA portfolio receipt, written only by a
+#: build that compiles those targets (``--scf-education-debt``, microcosm#1074).
+US_FSA_STUDENT_LOAN_TARGET_RECEIPT_KEY = "fsa_student_loan_target_receipt"
 
 
 def _gate_evidence_artifacts(release_dir: Path, *, revision: str) -> dict[str, dict]:
@@ -12483,6 +12550,22 @@ def main(argv: Sequence[str] | None = None) -> None:
         _ACTIVE_EMITTER.complete()
 
 
+def _without_opt_in_student_loan_targets(registry: TargetRegistry) -> TargetRegistry:
+    """The registry the target-parity contract reads: no FSA portfolio rows.
+
+    The parity manifest describes one target surface for every build, but the
+    FSA family compiles only with ``--scf-education-debt`` (microcosm#1074):
+    the rows bind columns a default build does not carry. Until that stage is
+    default the family is outside the contract, and the manifest may declare
+    it a reviewed exclusion without either build failing the other.
+    """
+
+    return TargetRegistry(
+        tuple(spec for spec in registry.specs if spec.family != FSA_TARGET_FAMILY),
+        country=registry.country,
+    )
+
+
 def _check_committed_us_ledger_feed_pin(
     facts_sha256: str,
     *,
@@ -12822,6 +12905,16 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         ),
         age_targets=args.age_targets,
         allow_unaged_dollar_targets=args.allow_unaged_dollar_targets,
+        # FSA's portfolio binds the stage's balances, so only a build that
+        # imputes them compiles the targets (microcosm#1074).
+        student_loan_targets=args.scf_education_debt,
+    )
+    # Every FSA fact's disposition (bound, allocated, out of scope,
+    # diagnostic) and the in-scope controls, for us_source_coverage.json.
+    fsa_target_receipt = (
+        fsa_student_loan_target_receipt(ledger_artifact.facts, target_period=PERIOD)
+        if args.scf_education_debt
+        else None
     )
     # The exclusion register's keys do not say which feed facts a compile
     # dropped or let through by vintage (microcosm#956), so record the concrete
@@ -12853,8 +12946,12 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # diagnostic JCT skip — so the gate sees the true family surface, and
     # hard-fails the build on a silently dropped family or a rotted manifest,
     # exactly like the release input-coverage gate on the export frame.
-    assert_target_parity_manifest_current(registry=target_registry)
-    target_parity_gate = us_release_target_parity_gate(target_registry)
+    # The FSA portfolio family is opt-in (it binds only the
+    # --scf-education-debt stage's balances, microcosm#1074), so it stays off
+    # the one-surface parity contract until that stage is default.
+    parity_registry = _without_opt_in_student_loan_targets(target_registry)
+    assert_target_parity_manifest_current(registry=parity_registry)
+    target_parity_gate = us_release_target_parity_gate(parity_registry)
     if not target_parity_gate.passed:
         raise RuntimeError(
             "Release gates failed: "
@@ -16088,6 +16185,8 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         )
     ]
     coverage[US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY] = fiscal_target_exclusion_receipt
+    if fsa_target_receipt is not None:
+        coverage[US_FSA_STUDENT_LOAN_TARGET_RECEIPT_KEY] = fsa_target_receipt
     write_us_source_coverage_diagnostics(
         coverage, release_dir / "us_source_coverage.json"
     )

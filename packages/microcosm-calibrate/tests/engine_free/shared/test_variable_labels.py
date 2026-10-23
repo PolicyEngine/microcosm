@@ -38,6 +38,10 @@ cms_medicaid|total_medicaid_chip_enrollment
 cms_medicaid|total_medicaid_enrollment
 cms_medicare|cms_medicare
 cms_medicare|part_b_premium_income
+ed_fsa|federal_student_loan_balance
+ed_fsa|federal_student_loan_borrowers
+ed_fsa|loan_balance_excluding_parent_plus
+ed_fsa|parent_plus_loan_balance
 federal_reserve|federal_reserve
 federal_reserve_z1|federal_reserve.z1.households_nonprofits_net_worth
 hhs_acf_liheap|hhs_acf_liheap
