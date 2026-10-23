@@ -190,6 +190,7 @@ def test_stage_declares_the_unmapped_code_refusal() -> None:
 
 TOBACCO_SHARE = "tobacco_share_of_alcohol_and_tobacco"
 ON_TRADE_SHARE = "on_trade_alcohol_share_of_restaurants_and_hotels"
+GAMBLING_SHARE = "gambling_stakes_share_of_recreation"
 
 
 def _excise_household() -> pd.DataFrame:
@@ -202,6 +203,7 @@ def _excise_household() -> pd.DataFrame:
     """
 
     from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_GAMBLING_STAKE_CODES,
         UK_LCFS_OFF_TRADE_ALCOHOL_CODES,
         UK_LCFS_ON_TRADE_ALCOHOL_CODES,
         UK_LCFS_TOBACCO_CODES,
@@ -220,6 +222,9 @@ def _excise_household() -> pd.DataFrame:
     household["c21211"] = [0.0, 2.0, 0.0, 0.0]
     household["cb111i"] = [0.5, 0.0, 0.0, 0.0]
     household["cb111d"] = [0.0, 2.03, 0.0, 0.0]
+    for code in UK_LCFS_GAMBLING_STAKE_CODES:
+        household[code] = 0.0
+    household["c94319"] = [0.5, 0.0, 0.0, 0.0]
     return household
 
 
@@ -283,6 +288,7 @@ def test_stage_draws_the_declared_excise_shares_after_its_spend_targets() -> Non
         *UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
         TOBACCO_SHARE,
         ON_TRADE_SHARE,
+        GAMBLING_SHARE,
     )
 
 
@@ -411,8 +417,10 @@ def test_excise_spending_splits_each_drawn_total() -> None:
         {
             "alcohol_and_tobacco_consumption": [100.0, 50.0, 0.0],
             "restaurants_and_hotels_consumption": [200.0, 0.0, 30.0],
+            "recreation_consumption": [400.0, 80.0, 0.0],
             TOBACCO_SHARE: [0.25, 1.0, 0.4],
             ON_TRADE_SHARE: [0.1, 0.5, 1.0],
+            GAMBLING_SHARE: [0.05, 0.0, 0.3],
         }
     )
 
@@ -421,6 +429,7 @@ def test_excise_spending_splits_each_drawn_total() -> None:
     assert spending["tobacco_spending"].tolist() == [25.0, 50.0, 0.0]
     assert spending["off_trade_alcohol_spending"].tolist() == [75.0, 0.0, 0.0]
     assert spending["on_trade_alcohol_spending"].tolist() == [20.0, 0.0, 30.0]
+    assert spending["gambling_stakes"].tolist() == [20.0, 0.0, 0.0]
     np.testing.assert_allclose(
         spending["tobacco_spending"] + spending["off_trade_alcohol_spending"],
         draws["alcohol_and_tobacco_consumption"],
@@ -433,13 +442,19 @@ def test_clip_holds_drawn_shares_to_the_unit_interval() -> None:
         clip_excise_shares,
     )
 
-    draws = pd.DataFrame({TOBACCO_SHARE: [0.2, 1.2, -0.1], ON_TRADE_SHARE: [0.5] * 3})
+    draws = pd.DataFrame(
+        {
+            TOBACCO_SHARE: [0.2, 1.2, -0.1],
+            ON_TRADE_SHARE: [0.5] * 3,
+            GAMBLING_SHARE: [0.1] * 3,
+        }
+    )
 
     held, outside = clip_excise_shares(draws, UK_LCFS_EXCISE_SHARES)
 
     assert held[TOBACCO_SHARE].tolist() == [0.2, 1.0, 0.0]
     assert held[ON_TRADE_SHARE].tolist() == [0.5] * 3
-    assert outside == {TOBACCO_SHARE: "<10", ON_TRADE_SHARE: 0}
+    assert outside == {TOBACCO_SHARE: "<10", ON_TRADE_SHARE: 0, GAMBLING_SHARE: 0}
 
 
 def test_energy_split_sums_each_fuels_labelled_parts() -> None:
@@ -1331,17 +1346,19 @@ def test_post_imputation_rake_fits_all_four_need_margins_in_kwh() -> None:
 
 
 def _excise_lines(
-    rows: np.ndarray, p602: np.ndarray, p611: np.ndarray
+    rows: np.ndarray, p602: np.ndarray, p611: np.ndarray, p609: np.ndarray
 ) -> dict[str, np.ndarray]:
-    """The alcohol and tobacco diary lines inside P602 and P611 (microcosm#1359).
+    """The excise diary lines inside P602, P611 and P609 (microcosm#1359).
 
     Deterministic, so a donor's random draws keep their stream: tobacco on one
     donor in four, all of P602 on one in twelve, the rest alcohol brought
     home; drinks away from home on one donor in three, a few pennies past
-    P611 on one in thirty-seven, as the tab's rounding of P611 allows.
+    P611 on one in thirty-seven, as the tab's rounding of P611 allows; and
+    gambling stakes, a twentieth of P609, on one donor in five.
     """
 
     from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_GAMBLING_STAKE_CODES,
         UK_LCFS_OFF_TRADE_ALCOHOL_CODES,
         UK_LCFS_ON_TRADE_ALCOHOL_CODES,
     )
@@ -1368,6 +1385,13 @@ def _excise_lines(
         {
             code: on_trade / len(UK_LCFS_ON_TRADE_ALCOHOL_CODES)
             for code in UK_LCFS_ON_TRADE_ALCOHOL_CODES
+        }
+    )
+    stakes = np.where(rows % 5 == 0, 0.05 * np.asarray(p609, dtype=float), 0.0)
+    lines.update(
+        {
+            code: stakes / len(UK_LCFS_GAMBLING_STAKE_CODES)
+            for code in UK_LCFS_GAMBLING_STAKE_CODES
         }
     )
     return lines
@@ -1433,7 +1457,9 @@ def _synthetic_lcfs_donor(
             b017=np.where(rows % 20 == 3, 5.0, 0.0),
         )
     )
-    household.update(_excise_lines(rows, household["p602"], household["p611"]))
+    household.update(
+        _excise_lines(rows, household["p602"], household["p611"], household["p609"])
+    )
     person = pd.DataFrame(
         {
             "case": rows + 1,
@@ -1588,19 +1614,20 @@ def test_stage_transform_prices_bus_fares_from_journeys() -> None:
     out = result.table("household")
     assert set(UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS) <= set(out.columns)
     # The 20 chain targets (the heating fuels after the spend targets,
-    # pe-uk#2572) and the two excise shares (microcosm#1359), the road-fuel
+    # pe-uk#2572) and the three excise shares (microcosm#1359), the road-fuel
     # redraw's total and petrol share, the prepayment-meter flag
     # (microcosm#1110), then the gas-payer classifier and amount model the
     # connection walk reads (microcosm#1164).
-    assert len(transform.fit_weight_records) == 27
+    assert len(transform.fit_weight_records) == 28
     assert [
         record.fit_name.rsplit(":", 1)[1]
-        for record in transform.fit_weight_records[18:22]
+        for record in transform.fit_weight_records[18:23]
     ] == [
         "liquid_fuel_consumption",
         "solid_fuel_consumption",
         "tobacco_share_of_alcohol_and_tobacco",
         "on_trade_alcohol_share_of_restaurants_and_hotels",
+        "gambling_stakes_share_of_recreation",
     ]
     assert transform.fit_weight_records[-4].fit_name.endswith(
         ":petrol_share_of_road_fuel"
@@ -1646,6 +1673,7 @@ def test_stage_transform_prices_bus_fares_from_journeys() -> None:
         "tobacco_spending",
         "off_trade_alcohol_spending",
         "on_trade_alcohol_spending",
+        "gambling_stakes",
     }
     assert not scratch & set(out.columns)
     assert not scratch & set(evidence["support_clip"]["columns"])
@@ -1666,6 +1694,10 @@ def test_stage_transform_prices_bus_fares_from_journeys() -> None:
     # Seven donors' drinks pass P611 by pennies and are held at one.
     assert on_trade["donor"]["clipped_at_one"] == "<10"
     assert "total_beside_lines" not in on_trade["donor"]
+    gambling = shares["gambling_stakes_share_of_recreation"]
+    assert gambling["total"] == "recreation_consumption"
+    assert gambling["frame"]["draws_outside_unit_interval"] == 0
+    assert gambling["donor"]["positive_support"] == "30+"
     assert evidence["energy_pricing"]["payment_method"] == "all"
     assert evidence["energy_pricing"]["vat_treatment"] == "including_vat"
     assert evidence["energy_pricing"]["gas_connection"]["rule"] == (
@@ -3501,15 +3533,18 @@ def _excise_draws() -> tuple[pd.DataFrame, np.ndarray]:
     """Drawn totals and excise shares of four households (microcosm#1359).
 
     Tobacco spending is 250, 500, 0 and 0; off-trade alcohol 750, 0, 0 and
-    800; on-trade alcohol 200, 0, 300 and 0.
+    800; on-trade alcohol 200, 0, 300 and 0; gambling stakes 60, 0, 0 and
+    100.
     """
 
     draws = pd.DataFrame(
         {
             "alcohol_and_tobacco_consumption": [1000.0, 500.0, 0.0, 800.0],
             "restaurants_and_hotels_consumption": [2000.0, 0.0, 600.0, 400.0],
+            "recreation_consumption": [3000.0, 1000.0, 0.0, 2000.0],
             TOBACCO_SHARE: [0.25, 1.0, 0.0, 0.0],
             ON_TRADE_SHARE: [0.1, 0.0, 0.5, 0.0],
+            GAMBLING_SHARE: [0.02, 0.0, 0.0, 0.05],
         }
     )
     return draws, np.array([1.0e3, 2.0e3, 3.0e3, 4.0e3])

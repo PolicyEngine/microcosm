@@ -3430,6 +3430,18 @@ stages:
         - cb111j
         denominator:
         - p611
+      gambling_stakes_share_of_recreation:
+        total: recreation_consumption
+        numerator:
+        - c94311
+        - c94312
+        - c94313
+        - c94314
+        - c94315
+        - c94316
+        - c94319
+        denominator:
+        - p609
   - kind: uprate_donor_columns
     from_period: 2024
     to_period: 2024
@@ -3602,6 +3614,7 @@ stages:
     - solid_fuel_consumption
     - tobacco_share_of_alcohol_and_tobacco
     - on_trade_alcohol_share_of_restaurants_and_hotels
+    - gambling_stakes_share_of_recreation
     categorical_predictors:
     - region
     - tenure_type
