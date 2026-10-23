@@ -307,7 +307,7 @@ def calibration_bindings():
         },
         "columns": columns,
         "citations": [
-            "microcosm.frame.concepts:TENURE_DOMAIN",
+            "packages/microcosm-frame/src/microcosm/frame/concepts.py TENURE_DOMAIN",
             "d1598",
             "g8r-hub-rulings:2026-10-22",
             "design-g8r:Prepared-column requirements",
