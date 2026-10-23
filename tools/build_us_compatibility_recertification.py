@@ -535,7 +535,7 @@ def _pypi_wheel_sha256(name: str, version: str, filename: str) -> str | None:
 
 
 def scoring_runtime(compatibility_wheels: Sequence[Path]) -> dict:
-    """The four packages' identities, each wheel checked against PyPI's digest.
+    """The three packages' identities, each wheel checked against PyPI's digest.
 
     ``runtime_identities`` proves every installed byte against its wheel;
     this adds that the wheel is the one PyPI publishes for that version, so a
@@ -573,14 +573,19 @@ def score_candidate(
 ) -> dict:
     """Score the candidate's H5 under the installed engine; write the document.
 
-    The runtime is proven against the four wheels, and they against PyPI,
+    The runtime is proven against the three wheels, and they against PyPI,
     before any engine is built, so a long run cannot end on an unprovable
-    runtime.
+    runtime. The engine then compiles from those sources into an isolated
+    bytecode cache, and every module it loaded is checked against the
+    verified trees before the document is written.
     """
 
     if type(batch_households) is not int or batch_households <= 0:
         raise ValueError("--batch-households must be a positive integer")
     runtime = scoring_runtime(compatibility_wheels)
+    # Before any engine import: compile the verified sources, never install-tree
+    # bytecode (Sol r2 finding 2).
+    recert.isolate_bytecode()
 
     import numpy as np
     from policyengine_us.data import USSingleYearDataset
@@ -691,6 +696,7 @@ def score_candidate(
                 "metrics": len(selected),
             }
         )
+    recert.verify_loaded_modules()
     document = {
         "schema_version": recert.SCORES_SCHEMA_VERSION,
         "kind": recert.SCORES_KIND,
@@ -765,7 +771,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="append",
         type=Path,
         required=True,
-        help="the installed country, Core, wrapper and calculator wheels (all four)",
+        help="the installed country, Core and calculator wheels (all three)",
     )
     args = parser.parse_args(argv)
     try:

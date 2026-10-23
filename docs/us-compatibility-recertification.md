@@ -2,19 +2,30 @@
 
 A `compatibility_recertification` release lets a published, certified US
 calibration release carry a measured `compatible_model_packages` claim for a
-newer policyengine-us without a rebuild. The child republishes the parent's
-H5, calibration weights and every release file byte for byte under a new id
-and tag. It transforms no data and never recalibrates. What it adds is
-evidence about the newer engine:
+newer policyengine-us without a rebuild. The child republishes byte for byte,
+under a new id and tag, every artifact the parent's release manifest declares
+(the H5, the calibration weights and every declared release file) and both
+parent manifests. A file the parent tag carries without a manifest entry is
+not bound by the manifest and is not carried. The child transforms no data
+and never recalibrates. What it adds is evidence about the newer engine:
 
-- **a loader replay** under the four tested wheels (country, Core, wrapper,
-  calculator);
+- **a loader replay** under the tested country, Core and calculator wheels;
 - **the engine's column changes**: what the newer engine ignores that the
   built-with one read, and what it reads that no engine read before;
 - **the drift**: the 18 exact critical rows, the scorable national SOI Table
   1.4 dollar rows and the headline totals, scored on the same H5 under both
   engines;
 - **a claim**, declared by a named person after reading the drift.
+
+**The wrapper loader is not attested here.** policyengine.py imports its
+bundled country model at `import policyengine`, and certifies the bundle's
+data release against the installed country version as it does.
+policyengine 6.10.1 under policyengine-us 2.60.4 raises "Data release
+manifest is not certified for the runtime model version 2.60.4" before any
+loader exists. So the first wrapper that can load this child is one whose
+bundle certifies it, which is the downstream policyengine.py certification
+step; that step runs the wrapper's own suite on the pinned pair. The receipt
+records `wrapper_loader: not_attested` with this reason.
 
 The module is `microcosm.data.compatibility_recertification`; the tool is
 `tools/build_us_compatibility_recertification.py`.
@@ -45,9 +56,18 @@ checks two things at the parent's tag:
 
 Offline, which artifacts count as release files rests on where the files sit
 locally. This check is what stops a root artifact moved into the release
-directory from publishing at the wrong path. Preflight stays offline. A
-parent artifact key the child uses for its own evidence (`build_manifest`,
-`compatibility_drift`, ...) is refused outright.
+directory from publishing at the wrong path. Each artifact must sit at exactly
+one of the two places: a parent that publishes a file at both its root and its
+release-file location is refused as ambiguous. Offline, the validator also
+replays the publisher's own upload plan on the child directory, and requires it
+to write every carried artifact to its manifest path.
+
+Preflight stays offline. A parent artifact is refused outright when:
+
+- its key is one the child uses for its own evidence (`build_manifest`,
+  `compatibility_drift`, ...); or
+- its path is not one the publisher writes (anything under `releases/`, or
+  not a clean relative path).
 
 The parent must be a US calibration release (`release_type` absent or
 `calibration`) with `dataset_role` `national_default`. A recertification of a
@@ -66,8 +86,8 @@ passes as `passed_with_stored_input_evidence_replaced`, the replaced failure
 lines are recorded verbatim, and certification requires the baseline verdict
 to pass. The substitution covers absent evidence only. It applies when the
 parent carries no stored-input evidence anywhere and its two manifests agree
-on every other `gate_evidence` field. Any other contract failure refuses the
-child.
+on every other `gate_evidence` field (compared as written: `[]` and `{}`
+disagree). Any other contract failure refuses the child.
 
 ## What the newer engine reads differently
 
@@ -129,12 +149,21 @@ them. Every score document must:
 - cover all households of the H5, in both its household and its state pass;
 - score the carried `calibration_diagnostics.json` (by digest) under the
   parent's post-export SPM selection;
-- run on a runtime proven against the four wheels, every installed byte
-  included (parameter YAML, not only Python), each wheel's SHA-256 matching
-  the digest PyPI publishes for that version.
+- run on a runtime proven against the three wheels:
+  - every installed file is included (parameter YAML, not only Python);
+  - the files on disk under each package are exactly the recorded ones, so an
+    unrecorded module cannot ride along;
+  - each import resolves to the installed package, not to something earlier
+    on the path;
+  - each wheel's SHA-256 matches the digest PyPI publishes for that version.
+
+The scorer and the loader replay also compile the packages from source into a
+fresh, empty bytecode cache (`sys.pycache_prefix`), so a replaced `.pyc` in the
+install tree is never run. After the run they check that every loaded module
+came from the verified tree and was compiled into that cache.
 
 The tested runs must be exactly the runtime the loader replay certified:
-version, content digest and wheel digest of all four packages. The baseline
+version, content digest and wheel digest of all three packages. The baseline
 run must be the parent's built-with policyengine-us and policyengine-core.
 
 ## Steps
@@ -164,7 +193,7 @@ recorded commit.
 
 3. **Score** in two isolated environments, each with this checkout's
    `microcosm-data` installed editable. One has the parent's built-with
-   wheels, the other the four tested wheels:
+   wheels, the other the three tested wheels:
 
    ```bash
    BASE/bin/python tools/build_us_compatibility_recertification.py score \
@@ -175,7 +204,7 @@ recorded commit.
      --variant without_newly_read_inputs --output counterfactual.json
    ```
 
-   Each run also takes the four `--compatibility-wheel` files its environment
+   Each run also takes the three `--compatibility-wheel` files its environment
    was installed from. Before building any engine, the scorer proves the
    install against them and checks them against PyPI.
 
@@ -216,7 +245,7 @@ recorded commit.
    microcosm-publish-release /path/certified/releases/CHILD_ID \
      --repo-id policyengine/populace-us \
      --artifact-root /path/candidate/artifacts \
-     --compatibility-wheel ... (four) \
+     --compatibility-wheel ... (three) \
      --no-latest --tag-only --preflight-only
    ```
 

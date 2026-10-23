@@ -79,6 +79,9 @@ def _write_h5(path):
 
 @pytest.fixture
 def scorable(tmp_path, monkeypatch):
+    # The scorer compiles the engine into an isolated cache; this module runs
+    # in its own process, so isolate before anything imports the engine.
+    recert.isolate_bytecode()
     artifact_root = tmp_path / "artifacts"
     artifact_root.mkdir()
     h5 = artifact_root / "populace_us_2024.h5"

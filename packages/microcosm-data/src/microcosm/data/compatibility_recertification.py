@@ -57,6 +57,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import posixpath
 import re
 import shutil
 import tempfile
@@ -113,12 +114,34 @@ CERTIFIED_ARTIFACT_KEYS = {
     "compatibility_recertification_loader": RECEIPT_FILE,
     "compatibility_drift": DRIFT_FILE,
 }
-COMPATIBILITY_PACKAGES = (
-    "policyengine-us",
-    "policyengine-core",
-    "policyengine",
-    "spm-calculator",
+#: The runtime a recertification proves: the country model, its Core and the
+#: calculator that registers the native SPM role, by import name.
+IMPORT_NAMES = MappingProxyType(
+    {
+        "policyengine-us": "policyengine_us",
+        "policyengine-core": "policyengine_core",
+        "spm-calculator": "spm_calculator",
+    }
 )
+COMPATIBILITY_PACKAGES = tuple(IMPORT_NAMES)
+#: The wrapper is not part of it. policyengine.py imports its bundled country
+#: model at ``import policyengine`` and certifies the bundle's data release
+#: against the installed country version there: policyengine 6.10.1 under
+#: policyengine-us 2.60.4 raises "Data release manifest is not certified for
+#: the runtime model version 2.60.4" before any loader exists. A wrapper that
+#: loads this child is one whose bundle certifies this child, which is the
+#: downstream policyengine.py certification step; that step runs the
+#: wrapper's own suite on the pinned pair. The receipt records this.
+WRAPPER_LOADER_STATUS = {
+    "status": "not_attested",
+    "package": "policyengine",
+    "reason": (
+        "policyengine.py certifies its bundled data release against the "
+        "installed country model at import, so no released wrapper imports "
+        "under a country version its bundle does not certify; the wrapper "
+        "loader is proven when a policyengine.py bundle certifies this child"
+    ),
+}
 #: The producer inventory the release assembler, scorer and certifier run
 #: from. Publication authenticates every file against the recorded commit and
 #: the checkout (``source_enrichment._check_producer_source_identity``).
@@ -375,25 +398,63 @@ def _canonical_package(name: str) -> str:
     return name.lower().replace("_", "-").replace(".", "-")
 
 
+def _package_tree_files(dist, identity_files: Sequence[str]) -> set[str]:
+    """Every file on disk under the distribution's top-level packages.
+
+    ``dist.files`` is the installer's record, not the tree: a module dropped
+    into an installed package after installation is absent from it yet
+    importable, and Core loads every variable module it finds. So the tree is
+    listed from disk and must equal the record (bytecode caches aside).
+    """
+
+    roots = {
+        relative.split("/", 1)[0]
+        for relative in identity_files
+        if "/" in relative and not relative.split("/", 1)[0].endswith(".dist-info")
+    }
+    found = set()
+    for root in roots:
+        base = Path(dist.locate_file(root))
+        for path in base.rglob("*"):
+            if path.is_dir():
+                continue
+            relative = f"{root}/{path.relative_to(base).as_posix()}"
+            if _identity_file(relative):
+                found.add(relative)
+    return found
+
+
 def runtime_identities(
     compatibility_wheels: Sequence[Path | str] = (), *, require_wheels: bool
 ) -> dict:
-    """Every installed byte of the four packages, bound to their wheels.
+    """The three packages' installed contents, bound to their wheels.
 
-    For each of :data:`COMPATIBILITY_PACKAGES`, the digest covers every file
-    the distribution installed (``_identity_file``), parameters and data as
-    well as Python. With a wheel for the package, the installed inventory
-    must equal the wheel's members and every installed file the member's
-    bytes, so ``content_sha256`` then identifies the wheel's contents and
-    ``wheel_sha256`` the wheel itself. ``require_wheels`` demands all four
+    For each of :data:`COMPATIBILITY_PACKAGES`:
+
+    - the digest covers every file the distribution installed
+      (``_identity_file``), parameters and data as well as Python;
+    - the files on disk under its packages must be exactly the recorded ones,
+      so an unrecorded module cannot ride along (:func:`_package_tree_files`);
+    - the package an import resolves to must be the installed one, so nothing
+      earlier on the path (``PYTHONPATH``, a ``.pth`` entry) shadows it.
+
+    With a wheel for the package, the installed inventory must equal the
+    wheel's members and every installed file the member's bytes, so
+    ``content_sha256`` then identifies the wheel's contents and
+    ``wheel_sha256`` the wheel itself. ``require_wheels`` demands all three
     wheels and refuses an editable install. Nothing here depends on where a
     wheel was installed from, so honest replays in two environments agree.
 
+    This proves the files; :func:`isolate_bytecode` and
+    :func:`verify_loaded_modules` prove that what ran was compiled from them.
+
     Raises:
         ValueError: A wheel is unknown, duplicated, or differs from the
-            installed package; or ``require_wheels`` and a wheel is missing.
+            installed package; the tree holds unrecorded files; an import
+            resolves elsewhere; or ``require_wheels`` and a wheel is missing.
     """
 
+    import importlib.util
     from email.parser import BytesParser
     from importlib import metadata
     from zipfile import ZipFile
@@ -416,13 +477,13 @@ def runtime_identities(
         name = _canonical_package(parsed["Name"])
         if name not in COMPATIBILITY_PACKAGES or name in wheels:
             raise ValueError(
-                "compatibility wheels must uniquely name the country, Core, wrapper "
-                "and calculator packages"
+                "compatibility wheels must uniquely name the country, Core and "
+                f"calculator packages ({', '.join(COMPATIBILITY_PACKAGES)})"
             )
         wheels[name] = (path, parsed["Version"], members)
     if require_wheels and set(wheels) != set(COMPATIBILITY_PACKAGES):
         raise ValueError(
-            "the runtime must be proven against all four wheels: "
+            "the runtime must be proven against all three wheels: "
             f"{', '.join(COMPATIBILITY_PACKAGES)}"
         )
     identities = {}
@@ -442,6 +503,23 @@ def runtime_identities(
         )
         if not files:
             raise ValueError(f"cannot list the installed files of {name}")
+        unrecorded = _package_tree_files(dist, files) - set(files)
+        if unrecorded:
+            raise ValueError(
+                f"{name} has files on disk its installation never recorded: "
+                f"{sorted(unrecorded)[:5]}"
+            )
+        spec = importlib.util.find_spec(IMPORT_NAMES[name])
+        installed_root = Path(dist.locate_file(IMPORT_NAMES[name])).resolve()
+        if (
+            spec is None
+            or spec.origin is None
+            or not Path(spec.origin).resolve().is_relative_to(installed_root)
+        ):
+            raise ValueError(
+                f"import {IMPORT_NAMES[name]} does not resolve to the installed "
+                f"{name} at {installed_root}"
+            )
         digest = hashlib.sha256()
         for relative in files:
             digest.update(relative.encode() + b"\0")
@@ -470,6 +548,95 @@ def runtime_identities(
             identity["wheel_sha256"] = sha256_file(path)
         identities[name] = identity
     return identities
+
+
+#: The empty bytecode cache this process compiles the packages into
+#: (:func:`isolate_bytecode`); ``None`` until it is created.
+_ISOLATED_PYCACHE: str | None = None
+
+
+def _loaded_package_modules() -> list:
+    import sys
+
+    roots = set(IMPORT_NAMES.values())
+    return [
+        module
+        for name, module in list(sys.modules.items())
+        if name.split(".", 1)[0] in roots and module is not None
+    ]
+
+
+def isolate_bytecode() -> str:
+    """Compile the packages from source into a fresh, empty bytecode cache.
+
+    CPython runs a cached ``.pyc`` whose header matches its source's size and
+    timestamp without reading the source, so a replaced cache payload would
+    run code the authenticated source does not contain. Pointing
+    ``sys.pycache_prefix`` at a new empty directory before the packages are
+    imported means every module they load is compiled from its source.
+    Call it before importing any of the packages; it refuses if one is
+    already loaded under another cache.
+
+    Raises:
+        RuntimeError: A package module was imported before isolation.
+    """
+
+    import sys
+
+    global _ISOLATED_PYCACHE
+    if _ISOLATED_PYCACHE is not None and sys.pycache_prefix == _ISOLATED_PYCACHE:
+        return _ISOLATED_PYCACHE
+    loaded = [module.__name__ for module in _loaded_package_modules()]
+    if loaded:
+        raise RuntimeError(
+            "the country, Core or calculator package was imported before its "
+            f"bytecode was isolated ({sorted(loaded)[:3]}); run the replay or "
+            "scorer in a fresh process"
+        )
+    _ISOLATED_PYCACHE = tempfile.mkdtemp(prefix="recertification-pycache-")
+    sys.pycache_prefix = _ISOLATED_PYCACHE
+    return _ISOLATED_PYCACHE
+
+
+def verify_loaded_modules() -> int:
+    """Every loaded module of the packages came from their verified trees.
+
+    Each must have been read from a file :func:`runtime_identities` covers,
+    under its installed package, and compiled into the isolated cache. Returns
+    how many modules were checked.
+
+    Raises:
+        RuntimeError: A module was loaded from elsewhere or from install-tree
+            bytecode.
+    """
+
+    from importlib import metadata
+
+    if _ISOLATED_PYCACHE is None:
+        raise RuntimeError("isolate_bytecode() must run before the packages load")
+    roots = {
+        import_name: Path(
+            metadata.distribution(package).locate_file(import_name)
+        ).resolve()
+        for package, import_name in IMPORT_NAMES.items()
+    }
+    prefix = Path(_ISOLATED_PYCACHE).resolve()
+    checked = 0
+    for module in _loaded_package_modules():
+        origin = getattr(module, "__file__", None)
+        if origin is None:
+            continue
+        root = roots[module.__name__.split(".", 1)[0]]
+        cached = getattr(module, "__cached__", None)
+        if not Path(origin).resolve().is_relative_to(root) or (
+            cached is not None and not Path(cached).resolve().is_relative_to(prefix)
+        ):
+            raise RuntimeError(
+                f"{module.__name__} was loaded from {origin} (bytecode {cached}), "
+                "not compiled from the verified installation"
+            )
+        checked += 1
+    return checked
 
 
 def is_recertification(release_dir: Path | str) -> bool:
@@ -555,6 +722,20 @@ def describe_parent(
         path, sha = entry.get("path"), entry.get("sha256")
         if not isinstance(path, str) or not isinstance(sha, str):
             raise ValueError(f"parent artifact {key!r} has no path and sha256")
+        # The publisher writes a release file to releases/<id>/<name> and a
+        # root artifact to its own path; it writes nothing to another
+        # release's directory. A path it would not resolve to one of those two
+        # places cannot be republished faithfully, so it is refused.
+        if (
+            path.startswith("/")
+            or "\\" in path
+            or posixpath.normpath(path) != path
+            or path.split("/", 1)[0] == "releases"
+        ):
+            raise ValueError(
+                f"parent artifact {key!r} path {path!r} is not a release file or "
+                "root artifact path the publisher would write"
+            )
         if entry.get("revision") != parent_id or entry.get("repo_id") != REPO_ID:
             raise ValueError(
                 f"parent artifact {key!r} must pin {REPO_ID} at the parent tag"
@@ -627,6 +808,7 @@ def _reconstructed_parent(release_dir: Path, parent: Mapping, staging: Path) -> 
 #: stored-input evidence, which the recertification re-measures itself under
 #: both engines (the baseline scores' and the loader replay's verdicts).
 PARENT_CONTRACT_PASSED = "passed"
+_ABSENT = object()
 PARENT_CONTRACT_STORED_INPUT_EVIDENCE_REPLACED = (
     "passed_with_stored_input_evidence_replaced"
 )
@@ -679,17 +861,22 @@ def replay_parent_contract(
             parent_dir / contract.US_STORED_INPUTS_EVIDENCE_FILE
         ).exists()
     manifest_build = _mapping(manifest.get("build"))
-    gate_blocks = [
-        _mapping(holder.get("gate_evidence"))
+    raw_blocks = [
+        holder.get("gate_evidence", _ABSENT)
         for holder in (_mapping(build), manifest_build)
     ]
+    gate_blocks = [_mapping(block) for block in raw_blocks]
     evidence_absent = (
         not evidence_file_present
         and key not in _mapping(manifest.get("artifacts"))
         and all(key not in holder for holder in (_mapping(build), manifest_build))
         and all(key not in block for block in gate_blocks)
     )
-    other_gates_agree = gate_blocks[0] == gate_blocks[1]
+    # Compared as written, not as normalised: [] and {} disagree, as the
+    # evidence check itself says.
+    other_gates_agree = raw_blocks[0] == raw_blocks[1] and all(
+        block is _ABSENT or isinstance(block, Mapping) for block in raw_blocks
+    )
     replaceable = (
         set(evidence_failures) if evidence_absent and other_gates_agree else set()
     )
@@ -727,6 +914,24 @@ def _h5_values(table, column):
     return values
 
 
+def _check_source_ownership(
+    source_paths: Mapping[str, str | None], packages: Mapping[str, str]
+) -> None:
+    """Each named source file lies in the installed tree of its package."""
+
+    from importlib import metadata
+
+    for label, package in packages.items():
+        root = Path(
+            metadata.distribution(package).locate_file(IMPORT_NAMES[package])
+        ).resolve()
+        source = source_paths.get(label)
+        if source is None or not Path(source).resolve().is_relative_to(root):
+            raise ValueError(
+                f"tested {label} source does not come from the installed {package}"
+            )
+
+
 def run_recertification_loader_replay(
     candidate_h5: Path | str,
     *,
@@ -738,14 +943,17 @@ def run_recertification_loader_replay(
     The receipt this returns is replayed at every later gate, so it holds only
     what is deterministic for the H5 and the installed runtime:
 
-    1. Every installed byte of the four packages, parameters included, bound
-       to the four wheels when ``require_wheels`` (:func:`runtime_identities`).
+    1. The three packages' installed contents, parameters included, bound to
+       the three wheels when ``require_wheels`` (:func:`runtime_identities`),
+       compiled from source into an isolated cache (:func:`isolate_bytecode`)
+       and, after the run, every loaded module from the verified trees
+       (:func:`verify_loaded_modules`).
     2. The stored-input classification (:func:`stored_column_changes`) and
        the register digests. An unreviewed change refuses the replay.
-    3. Both native loaders (country ``USSingleYearDataset``, wrapper
-       ``PolicyEngineUSDataset``) return every stored column the tested engine
-       defines with the H5's exact values, and every id, membership and weight
-       column too.
+    3. The country loader (``USSingleYearDataset``) returns every stored
+       column the tested engine defines with the H5's exact values, and every
+       id, membership and weight column too. The wrapper loader is recorded as
+       not attested (:data:`WRAPPER_LOADER_STATUS`).
     4. When the H5 stores the native SPM role, its source comes from the
        calculator wheel and a complete household's supplied role reaches Core
        unchanged (``source_enrichment._check_native_input_precedence``).
@@ -754,11 +962,12 @@ def run_recertification_loader_replay(
     step, outside the receipt.
     """
 
+    isolate_bytecode()
+
     import inspect
 
     import h5py
     import numpy as np
-    from policyengine.tax_benefit_models.us.datasets import PolicyEngineUSDataset
     from policyengine_us.data import USSingleYearDataset
     from policyengine_us.system import system
 
@@ -778,14 +987,8 @@ def run_recertification_loader_replay(
         raise ValueError(" ".join(failures))
     role = source_enrichment.ROLE_VARIABLE
     stores_role = role in tables.get("person", ())
-    source_paths = {
-        "country_loader": inspect.getsourcefile(USSingleYearDataset),
-        "wrapper_loader": inspect.getsourcefile(PolicyEngineUSDataset),
-    }
-    loaded_source_packages = {
-        "country_loader": "policyengine-us",
-        "wrapper_loader": "policyengine",
-    }
+    source_paths = {"country_loader": inspect.getsourcefile(USSingleYearDataset)}
+    loaded_source_packages = {"country_loader": "policyengine-us"}
     if stores_role:
         variable = system.variables.get(role)
         if (
@@ -796,17 +999,8 @@ def run_recertification_loader_replay(
             raise ValueError(f"tested country must register {role} as a person bool")
         source_paths["native_role"] = inspect.getsourcefile(type(variable))
         loaded_source_packages["native_role"] = "spm-calculator"
-    if require_wheels:
-        source_enrichment._check_loaded_source_ownership(
-            source_paths, loaded_source_packages
-        )
+    _check_source_ownership(source_paths, loaded_source_packages)
     country = USSingleYearDataset(file_path=str(candidate_h5))
-    wrapper = PolicyEngineUSDataset(
-        name="compatibility_recertification",
-        description="Read-only compatibility recertification loader replay",
-        filepath=str(candidate_h5),
-        year=SCORING_PERIOD,
-    )
     checked = 0
     with h5py.File(candidate_h5, "r") as h5:
         for entity in _ENTITIES:
@@ -826,10 +1020,7 @@ def run_recertification_loader_replay(
                 if column not in engine.variables and column not in structural:
                     continue
                 expected = _h5_values(table, column)
-                for loader, frame in (
-                    ("country", getattr(country, entity)),
-                    ("wrapper", getattr(wrapper.data, entity)),
-                ):
+                for loader, frame in (("country", getattr(country, entity)),):
                     if column not in frame.columns:
                         raise ValueError(
                             f"{loader} native loader dropped {entity}.{column}"
@@ -848,13 +1039,15 @@ def run_recertification_loader_replay(
                 checked += 1
     checks = [
         "country:every_stored_change_reviewed",
-        "country_and_wrapper:every_engine_variable_column_loaded_unchanged",
+        "country:every_engine_variable_column_loaded_unchanged",
     ]
     if stores_role:
         source_enrichment._check_native_input_precedence(
             country, native_inputs={role: "person"}
         )
         checks.append("country:complete_household_native_role_overrides_default")
+    verify_loaded_modules()
+    checks.append("runtime:every_loaded_module_compiled_from_the_verified_tree")
     columns = {column for names in tables.values() for column in names}
     return {
         "schema_version": RECEIPT_SCHEMA_VERSION,
@@ -867,6 +1060,7 @@ def run_recertification_loader_replay(
             "source_enrichment": sha256_file(source_enrichment.__file__),
         },
         "packages": packages,
+        "wrapper_loader": dict(WRAPPER_LOADER_STATUS),
         "loaded_source_packages": loaded_source_packages,
         "loaded_source_sha256": {
             key: sha256_file(path) for key, path in source_paths.items()
@@ -1856,7 +2050,7 @@ def validate_recertification_candidate(
     passed, the loader replay, the claim and the drift, each recomputed. With
     ``require_compatibility`` (certification output, publish preflight and
     publication) a pending child is refused, the loader replay must bind the
-    four wheels, and every producer is authenticated against this checkout.
+    three wheels, and every producer is authenticated against this checkout.
     """
 
     from microcosm.data.contract import _check_release_manifest
@@ -2001,6 +2195,28 @@ def validate_recertification_candidate(
             f"child's own; unexpected {sorted(present - expected_files)}, missing "
             f"{sorted(expected_files - present)}"
         )
+    elif not failures:
+        # The publisher decides from the same directory what it uploads where.
+        # Every carried artifact must land at its manifest-resolved path in
+        # the child: release files under releases/<child>/, root artifacts at
+        # their root paths.
+        from microcosm.data import release as publisher
+
+        planned_root = publisher._release_manifest_root_artifacts(release_dir)
+        planned_release = {
+            *publisher._release_manifest_release_artifacts(release_dir),
+            *required_release_files(release_id),
+        }
+        if (
+            planned_root != dict(_mapping(parent.get("root_artifacts")))
+            or not set(_mapping(parent.get("release_files"))) <= planned_release
+        ):
+            failures.append(
+                "the publisher would not upload every carried artifact to its "
+                "manifest path: root "
+                f"{sorted(planned_root)} against "
+                f"{sorted(_mapping(parent.get('root_artifacts')))}"
+            )
 
     # 3. The parent passes today's contract on the carried bytes.
     parent_contract = replay_parent_contract(
@@ -2272,7 +2488,7 @@ def certify_recertification(
 ) -> Path:
     """Write a certified child next to the pending candidate, or raise.
 
-    The loader replay runs under the installed runtime with the four wheels;
+    The loader replay runs under the installed runtime with the three wheels;
     the three score documents must be the ones the drift recomputes from. The
     claim is declared here and recorded as the declarer's, with the drift
     summary beside it. The candidate and its H5 are left unchanged.
@@ -2463,20 +2679,33 @@ def require_parent_publication(
             "to authenticate where the parent's artifacts are published"
         )
     expected = {}
+    forbidden = set()
     for name, sha in _mapping(parent.get("release_files")).items():
         expected[f"releases/{parent_id}/{name}"] = (sha, release_dir / name)
+        forbidden.add(name)
     root = Path(artifact_root) if artifact_root is not None else None
     for path, sha in _mapping(parent.get("root_artifacts")).items():
         expected[path] = (sha, None if root is None else root / path)
+        if "/" not in path:
+            forbidden.add(f"releases/{parent_id}/{path}")
     published = {
         getattr(info, "path", None): info
         for info in get_paths_info(
             repo_id=repo_id,
-            paths=sorted(expected),
+            paths=sorted({*expected, *forbidden}),
             revision=revision,
             repo_type="dataset",
         )
     }
+    # One location per artifact: a parent that publishes an artifact at both
+    # its release-file and its root location leaves the child's placement
+    # ambiguous, and the publisher would upload only one of them.
+    doubled = sorted(path for path in forbidden if path in published)
+    if doubled:
+        raise ValueError(
+            f"parent {parent_id!r} publishes {doubled} at both a release-file and "
+            "a root location; the child's placement of them is ambiguous"
+        )
     for path_in_repo, (sha, local) in sorted(expected.items()):
         info = published.get(path_in_repo)
         if info is None:

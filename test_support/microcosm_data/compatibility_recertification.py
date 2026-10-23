@@ -40,13 +40,11 @@ def _identity(version, digit):
 TESTED_PACKAGES = {
     "policyengine-us": _identity("2.60.4", "1"),
     "policyengine-core": _identity("3.33.3", "3"),
-    "policyengine": _identity("6.10.1", "5"),
     "spm-calculator": _identity("1.0.0", "7"),
 }
 BASELINE_PACKAGES = {
     "policyengine-us": _identity("1.729.0", "a"),
     "policyengine-core": _identity("3.19.0", "c"),
-    "policyengine": _identity("6.10.1", "5"),
     "spm-calculator": _identity("1.0.0", "7"),
 }
 HOUSEHOLDS = 3

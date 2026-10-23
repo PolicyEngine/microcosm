@@ -258,6 +258,23 @@ def test_describe_parent_refuses_a_key_the_child_writes_its_evidence_under(paren
         recert.describe_parent(release_dir, artifact_root)
 
 
+@pytest.mark.parametrize(
+    "path", ["releases/legacy/evidence.json", "./populace_us_2024.h5", "/abs.h5"]
+)
+def test_describe_parent_refuses_paths_the_publisher_does_not_write(parent, path):
+    """Sol r2 finding 4: a releases/ root artifact is never uploaded."""
+
+    release_dir, artifact_root = parent
+    _rewrite_json(
+        release_dir / "release_manifest.json",
+        lambda manifest: manifest["artifacts"]["populace_us_2024_calibration"].update(
+            path=path
+        ),
+    )
+    with pytest.raises(ValueError, match="not a release file or root artifact path"):
+        recert.describe_parent(release_dir, artifact_root)
+
+
 def test_describe_parent_refuses_an_artifact_that_differs_from_its_pin(parent):
     release_dir, artifact_root = parent
     (artifact_root / "populace_us_2024.h5").write_bytes(b"other bytes")
@@ -333,6 +350,32 @@ def test_the_substitution_does_not_excuse_an_unrelated_gate_disagreement(
     tool = load_tool()
     monkeypatch.setattr(tool, "_producer_identity", lambda: dict(FIXTURE_PRODUCER))
     with pytest.raises(ValueError, match="different gate_evidence blocks"):
+        tool.build_candidate(
+            parent_release_dir=release_dir,
+            parent_artifact_root=artifact_root,
+            output_dir=tmp_path / "out",
+            release_id=CHILD_ID,
+        )
+
+
+def test_the_substitution_compares_gate_blocks_as_written(
+    parent, tmp_path, monkeypatch
+):
+    """Sol r2 finding 5: [] and {} disagree, as the evidence check says."""
+
+    release_dir, artifact_root = parent
+    _strip_stored_input_evidence(release_dir)
+    _rewrite_json(
+        release_dir / "build_manifest.json",
+        lambda build: build.update(gate_evidence=[]),
+    )
+    _rewrite_json(
+        release_dir / "release_manifest.json",
+        lambda manifest: manifest["build"].update(gate_evidence={}),
+    )
+    tool = load_tool()
+    monkeypatch.setattr(tool, "_producer_identity", lambda: dict(FIXTURE_PRODUCER))
+    with pytest.raises(ValueError, match="fails the release contract"):
         tool.build_candidate(
             parent_release_dir=release_dir,
             parent_artifact_root=artifact_root,
@@ -802,7 +845,24 @@ def test_publication_refuses_a_root_artifact_moved_into_the_release_directory(
         ),
     )
     seed_published_parent(paths_hub, parent_dir, parent_root)
-    with pytest.raises(ValueError, match="publishes no"):
+    with pytest.raises(ValueError, match="at both a release-file and a root"):
+        _publish(paths_hub, output, artifact_root, monkeypatch)
+    assert paths_hub.events == []
+
+
+def test_publication_refuses_a_parent_that_publishes_an_artifact_twice(
+    paths_hub, parent, candidate, tmp_path, monkeypatch
+):
+    """Sol r2 finding 3: a duplicate release-dir copy of a root artifact."""
+
+    parent_dir, parent_root = parent
+    output, artifact_root = certify(candidate, tmp_path, monkeypatch)
+    seed_published_parent(paths_hub, parent_dir, parent_root)
+    npz = "populace_us_2024_calibration.npz"
+    paths_hub._commits["commit-parent"][f"releases/{parent_dir.name}/{npz}"] = (
+        artifact_root / npz
+    ).read_bytes()
+    with pytest.raises(ValueError, match="at both a release-file and a root"):
         _publish(paths_hub, output, artifact_root, monkeypatch)
     assert paths_hub.events == []
 
@@ -898,6 +958,10 @@ def test_preflight_prints_the_recertification_measurement(
 # ---------------------------------------------------------------------------
 
 
+import importlib.util  # noqa: E402
+from types import SimpleNamespace  # noqa: E402
+
+
 def _fake_install(root, name, version):
     """An installed distribution and its wheel, sharing every package byte."""
 
@@ -936,7 +1000,6 @@ def fake_runtime(tmp_path, monkeypatch):
         for name, version in (
             ("policyengine-us", "2.60.4"),
             ("policyengine-core", "3.33.3"),
-            ("policyengine", "6.10.1"),
             ("spm-calculator", "1.0.0"),
         )
     }
@@ -945,7 +1008,13 @@ def fake_runtime(tmp_path, monkeypatch):
         "distribution",
         lambda name: metadata.PathDistribution(installs[name][0]),
     )
-    return tmp_path / "site", tuple(wheel for _, wheel in installs.values())
+    site = tmp_path / "site"
+    monkeypatch.setattr(
+        importlib.util,
+        "find_spec",
+        lambda name: SimpleNamespace(origin=str(site / name / "__init__.py")),
+    )
+    return site, tuple(wheel for _, wheel in installs.values())
 
 
 def test_runtime_identity_covers_parameters_and_ignores_installer_files(fake_runtime):
@@ -977,10 +1046,78 @@ def test_a_patched_parameter_file_is_not_the_wheels_runtime(fake_runtime):
     assert unbound["policyengine-us"]["wheel_sha256"] is None
 
 
-def test_the_runtime_needs_all_four_wheels(fake_runtime):
+def test_the_runtime_needs_all_three_wheels(fake_runtime):
     _, wheels = fake_runtime
-    with pytest.raises(ValueError, match="all four wheels"):
-        recert.runtime_identities(wheels[:3], require_wheels=True)
+    with pytest.raises(ValueError, match="all three wheels"):
+        recert.runtime_identities(wheels[:2], require_wheels=True)
+
+
+def test_an_unrecorded_module_in_the_package_tree_is_refused(fake_runtime):
+    """Sol r2 finding 1: Core imports every variable module it finds."""
+
+    site, wheels = fake_runtime
+    (site / "policyengine_us" / "z_extra.py").write_text("VALUE = 2\n")
+    with pytest.raises(ValueError, match="never recorded"):
+        recert.runtime_identities(wheels, require_wheels=True)
+
+
+def test_an_import_that_resolves_elsewhere_is_refused(
+    fake_runtime, monkeypatch, tmp_path
+):
+    _, wheels = fake_runtime
+    monkeypatch.setattr(
+        importlib.util,
+        "find_spec",
+        lambda name: SimpleNamespace(
+            origin=str(tmp_path / "shadow" / name / "__init__.py")
+        ),
+    )
+    with pytest.raises(ValueError, match="does not resolve to the installed"):
+        recert.runtime_identities(wheels, require_wheels=True)
+
+
+def test_bytecode_is_isolated_before_the_packages_load(monkeypatch):
+    """Sol r2 finding 2: a replaced .pyc would run instead of the source."""
+
+    import sys
+    import types
+
+    monkeypatch.setattr(recert, "_ISOLATED_PYCACHE", None)
+    monkeypatch.setattr(sys, "pycache_prefix", None)
+    monkeypatch.setitem(
+        sys.modules, "policyengine_us", types.ModuleType("policyengine_us")
+    )
+    with pytest.raises(RuntimeError, match="imported before its bytecode"):
+        recert.isolate_bytecode()
+    monkeypatch.delitem(sys.modules, "policyengine_us")
+    for name in list(sys.modules):
+        if name.split(".", 1)[0] in recert.IMPORT_NAMES.values():
+            monkeypatch.delitem(sys.modules, name)
+    prefix = recert.isolate_bytecode()
+    assert sys.pycache_prefix == prefix and not os.listdir(prefix)
+    assert recert.isolate_bytecode() == prefix
+
+
+def test_a_module_compiled_outside_the_isolated_cache_is_refused(
+    fake_runtime, monkeypatch, tmp_path
+):
+    import sys
+    import types
+
+    site, _ = fake_runtime
+    monkeypatch.setattr(recert, "_ISOLATED_PYCACHE", str(tmp_path / "isolated"))
+    (tmp_path / "isolated").mkdir()
+    module = types.ModuleType("policyengine_us.rates")
+    module.__file__ = str(site / "policyengine_us" / "__init__.py")
+    module.__cached__ = str(site / "policyengine_us" / "__pycache__" / "x.pyc")
+    for name in list(sys.modules):
+        if name.split(".", 1)[0] in recert.IMPORT_NAMES.values():
+            monkeypatch.delitem(sys.modules, name)
+    monkeypatch.setitem(sys.modules, "policyengine_us.rates", module)
+    with pytest.raises(RuntimeError, match="not compiled from the verified"):
+        recert.verify_loaded_modules()
+    module.__cached__ = str(tmp_path / "isolated" / "x.pyc")
+    assert recert.verify_loaded_modules() == 1
 
 
 def test_the_scorer_refuses_a_nonpositive_batch_size_before_any_work(
