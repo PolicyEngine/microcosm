@@ -14,6 +14,8 @@ import h5py
 import numpy as np
 import pandas as pd
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from microcosm.build.us_runtime import h5_io as builder_h5_io
 from microcosm.calibrate import (
@@ -16989,6 +16991,40 @@ def test_ecps_reference_layers_drop_the_retired_mortgage_legs() -> None:
         "first_home_mortgage_interest": "home_mortgage_interest",
         "second_home_mortgage_interest": "home_mortgage_interest",
     }
+
+
+@settings(max_examples=50, deadline=None)
+@given(
+    shares=st.dictionaries(
+        st.sampled_from(
+            [
+                "first_home_mortgage_interest",
+                "second_home_mortgage_interest",
+                "home_mortgage_interest",
+                "employment_income",
+                "would_claim_wic",
+            ]
+        ),
+        st.floats(min_value=0.0, max_value=1.0, allow_nan=False),
+    )
+)
+def test_ecps_reference_retirement_partitions_every_layer(shares) -> None:
+    """Property: every layer is kept or retired, never both, and only a
+    registered layer is retired, onto its registered successor."""
+
+    builder = _load_builder_module()
+    kept, retired = builder._retire_ecps_reference_layers(
+        shares, {"home_mortgage_interest", "employment_income", "takes_up_wic"}
+    )
+
+    assert set(kept) | set(retired) == set(shares)
+    assert not set(kept) & set(retired)
+    assert retired == {
+        name: builder.REFERENCE_ECPS_RETIRED_LAYERS[name]
+        for name in shares
+        if name in builder.REFERENCE_ECPS_RETIRED_LAYERS
+    }
+    assert all(kept[name] == shares[name] for name in kept)
 
 
 @pytest.mark.parametrize(

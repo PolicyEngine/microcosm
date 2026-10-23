@@ -5,6 +5,8 @@ from pathlib import Path
 from textwrap import dedent, indent
 
 import pytest
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 
 from microcosm.frame.adapters import policyengine_us as module
 
@@ -1262,3 +1264,46 @@ def test_helper_return_of_an_engine_value_still_fails_closed(
                 "leaves.py": _variables("selector"),
             },
         )
+
+
+_NAMES = st.lists(
+    st.from_regex(r"leaf_[a-z]{2,6}", fullmatch=True),
+    min_size=1,
+    max_size=5,
+    unique=True,
+)
+
+
+@settings(
+    max_examples=25,
+    deadline=None,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
+@given(first=_NAMES, middle=_NAMES, last=_NAMES)
+def test_starred_display_reads_exactly_the_union_of_its_parts(
+    tmp_path_factory: pytest.TempPathFactory,
+    first: list[str],
+    middle: list[str],
+    last: list[str],
+) -> None:
+    """Property: ``[*FIRST, literal..., *LAST]`` reads every item and nothing else."""
+
+    root = tmp_path_factory.mktemp("starred")
+    module = _clean(
+        f"""
+        FIRST = {first!r}
+        LAST = {last!r}
+
+        class spliced(Variable):
+            value_type = float
+            entity = Person
+            definition_period = YEAR
+
+            def formula(person, period, parameters):
+                return add(person, period, [*FIRST, {", ".join(map(repr, middle))}, *LAST])
+        """
+    )
+    leaves = sorted({*first, *middle, *last})
+    index = _index(root, {"spliced.py": module, "leaves.py": _variables(*leaves)})
+
+    assert _receipt_targets(index) == set(leaves)
