@@ -392,6 +392,10 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "household.itl2_code",
     "household.itl3_code",
     "household.ward_code",
+    # War Widow's or Widower's Pension, split out of bsp_reported (#1222,
+    # pe-uk#2382). The enhanced FRS still adds FRS benefit code 9 into
+    # bsp_reported, so its surface has no such input.
+    "person.war_widows_pension_reported",
 )
 
 UK_KNOWN_MISSING_REFERENCE_EXPORT_COLUMNS: tuple[str, ...] = (

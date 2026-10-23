@@ -102,6 +102,54 @@ def test_declared_export_surface_preserves_claimants_and_matches_runtime(uk_gate
     assert outcome.status is GateStatus.PASSED
 
 
+def test_spine_export_surface_is_reference_or_allow_listed(uk_gates):
+    """Every column the spine declares leaves through the release boundary as
+    an enhanced-FRS input, an allow-listed extra or a reviewed drop.
+
+    The export-surface gate runs only at release-cut certification, on a built
+    file; war_widows_pension_reported (#1222) reached main without an
+    allow-list entry and blocked the first certification after it. This runs
+    the same gate on the spine's declared surface through the production
+    export path, against the checked-in enhanced-FRS reference.
+    """
+
+    from microcosm.build.uk_runtime.graph import uk_spine_endpoint, uk_spine_graph
+    from microcosm.build.uk_runtime.national_frame import (
+        uk_national_frame,
+        uk_release_export_frame,
+    )
+    from microcosm.build.uk_runtime.parity_reference import (
+        load_efrs_parity_reference,
+    )
+    from microcosm.build.uk_runtime.terminal_gates import (
+        uk_export_candidate_columns,
+        uk_export_surface_gate,
+    )
+
+    columns = {
+        "person": ["person_id", "person_benunit_id", "person_household_id"],
+        "benunit": ["benunit_id"],
+        "household": ["household_id"],
+    }
+    for cells in uk_spine_endpoint(uk_spine_graph()).inputs:
+        columns[cells.entity] = list(
+            dict.fromkeys([*columns[cells.entity], *cells.columns])
+        )
+    tables = {
+        entity: pd.DataFrame({column: np.array([1]) for column in names})
+        for entity, names in columns.items()
+    }
+    frame = uk_national_frame(**tables, time_period="2024", household_weights=[1.0])
+    candidate = uk_export_candidate_columns(uk_release_export_frame(frame))
+    reference = {
+        f"{entity}.{name}"
+        for name, entity in load_efrs_parity_reference().input_entities.items()
+    }
+    entry = next(entry for entry in uk_gates.gates if entry.id == "uk_export_surface")
+    result = uk_export_surface_gate(candidate, reference, **dict(entry.parameters))
+    assert result.passed, result.failures
+
+
 def _tables(*, n: int = 4, weights=None):
     if weights is None:
         weights = np.ones(n, dtype=float)
