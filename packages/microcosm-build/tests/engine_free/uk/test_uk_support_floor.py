@@ -374,7 +374,15 @@ def test_the_packaged_floor_drops_only_unsupported_bands_and_binds_thin_ones():
     # covers the ones no household carries.
     named = {entry["name"] for entry in load_uk_calibration_measure_exclusions()}
     assert not {name for name in named if name.startswith("dwp.benefit_cap.")}
-    assert not {name for name in named if "income_band_1_000_000_to_inf" in name}
+    # The HMRC £1m-and-over cells were bound on arm 1 and distorted their
+    # neighbours, so they are held on that measurement, not for thin support.
+    held_top = [
+        entry
+        for entry in load_uk_calibration_measure_exclusions()
+        if "income_band_1_000_000_to_inf" in entry["name"]
+    ]
+    assert len(held_top) == 10
+    assert all(entry["reason"].startswith("Measured distortion") for entry in held_top)
     assert not {name for name in named if name.startswith("mhclg.council_tax_stock.")}
     assert not named & {
         "hmrc/dividend_income_income_band_500_000_to_1_000_000",

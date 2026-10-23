@@ -593,13 +593,14 @@ _PACKAGED_EXCLUSION_CENSUS = {
     # a band test that reads the Scottish bands; microcosm#1095 binds them by
     # rate class, so no salary-sacrifice entry remains.
     "hmrc.salary_sacrifice.": 0,
-    # The next policyengine-uk bump (María's ruling of 2026-10-22): every HMRC
-    # £1m-and-over cell has carriers on #1333's 2.145.0 spine, so the ten
-    # entries retire and the cells bind under the zero-support floor's HMRC
-    # scopes. Of the five SLC rows, the postgraduate repayments row retired
-    # from the targets (the stage assigns no postgraduate plan) and Plan 5's
-    # liable stock binds; the Plan 5 repayments and the two Plan 2 stocks stay.
-    "_1_000_000_to_inf": 0,
+    # The next policyengine-uk bump: every HMRC £1m-and-over cell has carriers
+    # on #1333's 2.145.0 spine, so arm 1 bound the ten; bound, they distorted
+    # their SPI-channel neighbours, so they stay held on that measurement
+    # (María's rule of 2026-10-21), re-signed on 2026-10-23. Of the five SLC
+    # rows, the postgraduate repayments row retired from the targets (the
+    # stage assigns no postgraduate plan) and Plan 5's liable stock binds; the
+    # Plan 5 repayments and the two Plan 2 stocks stay.
+    "_1_000_000_to_inf": 10,
     "slc.": 3,
     # microcosm#1095 (2026-10-07): two bands whose few supporting awards
     # policyengine-uk 2.122.2 moves out join the uk-data#452 class.
@@ -697,11 +698,22 @@ def test_packaged_exclusions_load():
     # hold-out (microcosm#1278), less the thirteen rows bound again under
     # María's rule of 2026-10-21 (the eleven benefit-cap amount bands and the
     # HMRC £500k to £1m dividend and property-income-count rows), less the
-    # seventeen the next policyengine-uk bump retires: the ten HMRC £1m-and-over
-    # cells, the three band-H region cells and Plan 5's liable stock bind, and
-    # the OBR welfare-cap split and the postgraduate repayments leave the
-    # targets; and obr.vat binds again with it (ruling D3).
-    assert len(names) == len(set(names)) == 27
+    # seven the next policyengine-uk bump retires: the three band-H region
+    # cells and Plan 5's liable stock bind, and the OBR welfare-cap split and
+    # the postgraduate repayments leave the targets; and obr.vat binds again
+    # with it (ruling D3). The ten HMRC £1m-and-over cells it bound on arm 1
+    # are held again on that arm's measured distortion.
+    assert len(names) == len(set(names)) == 37
+    rehold = [entry for entry in exclusions if "_1_000_000_to_inf" in entry["name"]]
+    assert {(e["approved_on"], e["expires_on"], e["tracking"]) for e in rehold} == {
+        ("2026-10-23", "2027-01-23", "microcosm#1095")
+    }
+    for entry in rehold:
+        assert entry["reason"].startswith("Measured distortion"), entry["name"]
+        assert "arm 1" in entry["adjudication"], entry["name"]
+        # The cells rest on the SPI Public Use Tape: no figure of theirs or
+        # their neighbours' enters the register.
+        assert "%" not in entry["reason"], entry["name"]
     assert not [name for name in names if name.startswith("dwp.benefit_cap.")]
     # The band-H region cells bind under the floor's band-H scope.
     assert not [name for name in names if name.startswith("mhclg.council_tax_stock.")]
