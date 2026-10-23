@@ -51,6 +51,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -179,6 +180,23 @@ def resource_guard(root: Path) -> dict[str, float | int]:
             f"free={free / 1e9:.2f} GB (minimum 55 decimal GB)."
         )
     return {"load1": load1, "free_bytes": free}
+
+
+def check_test_temp_directory(directory: Path | None = None) -> Path:
+    """Refuse a full suite whose temporary fixtures inherit an ancestor Git repo."""
+    directory = Path(directory or tempfile.gettempdir()).expanduser().resolve()
+    for ancestor in (directory, *directory.parents):
+        if (ancestor / ".git").exists():
+            raise CertifyError(
+                f"Full-suite temporary directory {directory} is inside Git "
+                f"repository {ancestor}. Version fixtures would inherit its tags "
+                "and private disclosure audit fixtures correctly refuse Git paths. "
+                "Set TMPDIR to a private writable directory outside every Git "
+                "repository before certification. If workspace-only execution "
+                "prevents that, report full-suite validation blocked; --skip-tests "
+                "records a mechanical handoff only and does not qualify the cut."
+            )
+    return directory
 
 
 def record_timing(path: Path, record: dict[str, Any]) -> None:
@@ -609,6 +627,9 @@ def certify(args: argparse.Namespace) -> int:
     worktree = args.worktree or repo.parent / "_worktrees" / f"pepy-{branch}"
     log = worktree.parent / f"{worktree.name}.certify.log"
     timings = log.with_suffix(".timings.jsonl")
+    if not args.skip_tests and not args.dry_run:
+        with timed_step("test-temp-preflight", timings) as timing:
+            timing["temporary_directory"] = str(check_test_temp_directory())
     base_ref = args.base_ref
     if base_ref.startswith("origin/"):
         remote_branch = base_ref.removeprefix("origin/")

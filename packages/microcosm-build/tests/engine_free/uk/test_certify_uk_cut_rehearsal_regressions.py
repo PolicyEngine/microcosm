@@ -135,6 +135,75 @@ class RunnerTests(unittest.TestCase):
                 runner.model_surface("2.147.2")
             spawn.assert_not_called()
 
+    def test_temp_preflight_rejects_git_directory_or_worktree_file(self):
+        for marker_is_directory in (True, False):
+            with self.subTest(marker_is_directory=marker_is_directory):
+                with tempfile.TemporaryDirectory() as tmp:
+                    repository = Path(tmp) / "repository"
+                    repository.mkdir()
+                    marker = repository / ".git"
+                    if marker_is_directory:
+                        marker.mkdir()
+                    else:
+                        marker.write_text("gitdir: /unused/worktree-metadata\n")
+                    directory = repository / "private-temp"
+                    directory.mkdir()
+                    with self.assertRaisesRegex(
+                        runner.CertifyError, "Set TMPDIR.*outside every Git"
+                    ) as refusal:
+                        runner.check_test_temp_directory(directory)
+                    self.assertIn(str(repository), str(refusal.exception))
+
+    def test_temp_preflight_resolves_symlinks_before_checking_ancestors(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repository = Path(tmp) / "repository"
+            repository.mkdir()
+            (repository / ".git").mkdir()
+            directory = repository / "private-temp"
+            directory.mkdir()
+            alias = Path(tmp) / "alias"
+            alias.symlink_to(directory, target_is_directory=True)
+            with self.assertRaisesRegex(runner.CertifyError, "inside Git"):
+                runner.check_test_temp_directory(alias)
+
+    def test_temp_preflight_accepts_an_outside_git_location_without_writing(self):
+        external = Path("/external-private-temp")
+        with (
+            patch.object(runner.tempfile, "gettempdir", return_value=str(external)),
+            patch.object(Path, "exists", return_value=False),
+        ):
+            self.assertEqual(runner.check_test_temp_directory(), external)
+
+    def test_temp_preflight_refuses_before_network_or_model_work(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            args = runner.parse(
+                [
+                    "--national-tag",
+                    TAG,
+                    "--drop-regional-release",
+                    "--pepy-repo",
+                    tmp,
+                ]
+            )
+            with (
+                patch.object(
+                    runner.subprocess, "check_output", return_value="microcosm"
+                ),
+                patch.object(
+                    runner,
+                    "check_test_temp_directory",
+                    side_effect=runner.CertifyError("temporary directory inside Git"),
+                ),
+                patch.object(runner, "read_cut") as manifest,
+                patch.object(runner, "model_surface") as surface,
+                patch.object(runner.subprocess, "run") as spawn,
+            ):
+                with self.assertRaisesRegex(runner.CertifyError, "inside Git"):
+                    runner.certify(args)
+            manifest.assert_not_called()
+            surface.assert_not_called()
+            spawn.assert_not_called()
+
     def test_model_surface_pins_core_and_records_intended_pair(self):
         surface = {"all": ["x"], "inputs": ["x"]}
         with tempfile.TemporaryDirectory() as tmp:
@@ -374,6 +443,11 @@ class RunnerTests(unittest.TestCase):
                 return_value=runner.CutVersions(TAG, "2.147.2", "3.0", ()),
             ),
             patch.object(runner.Shell, "__call__", side_effect=shell),
+            patch.object(
+                runner,
+                "check_test_temp_directory",
+                return_value=root / "isolated-test-temp",
+            ),
         ):
             result = runner.certify(args)
         return result, calls, root
