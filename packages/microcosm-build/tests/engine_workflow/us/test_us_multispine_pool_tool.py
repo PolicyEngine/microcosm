@@ -343,7 +343,9 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # retain_best_objective and microcosm#1301's budget_search_bracket
             # move it. It covers microcosm.fit.qrf's attested bytes too, so
             # fit_draw_next's caller-owned uniforms (microcosm#1332) move it.
-            "spec_sha256": "19460fc168a6f9ed44e580d0e36777cce78bb33cb52b75630ee86203fa795684",
+            # The policyengine-us 2.60.4 lock (microcosm#1365) moves the take-up
+            # programs, engine ABI lock and PUF QRF outputs it binds.
+            "spec_sha256": "5ff97a0bc4b029e69a0ba8be98ad00cab0b267a4239fa1f7a2d1ebde0f7f9283",
         },
     }
 

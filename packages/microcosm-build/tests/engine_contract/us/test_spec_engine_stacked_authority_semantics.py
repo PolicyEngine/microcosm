@@ -70,7 +70,7 @@ def test_authority_projection_is_field_and_byte_identical_to_live_generation_zer
     assert projected == live
     assert stacked_identity_bytes(projected) == _canonical_bytes(live)
     assert projected["sha256"] == (
-        "9d4a9672a0f03039b1fe874b9fe21ed575be0d29f14afc396d03cdf5c809bdd2"
+        "69cb10a9668fe1a4f3b7b1ab447ee6664e869bc56f6b51dc8fe545c952e8aa14"
     )
     assert {
         name: component["sha256"] for name, component in projected["components"].items()
@@ -188,7 +188,7 @@ def test_checkpoint_projection_is_field_and_byte_identical_to_live_oracle(
     ]
     assert (
         projected["pool_code"]["late_producer_schedule"]["schedule_sha256"]
-        == "e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f"
+        == "50aa8412d99ec92b1638885d6b45a838b23d990fe1cbf3f0d4d3b21426496d16"
     )
 
 

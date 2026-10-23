@@ -4,9 +4,9 @@
     "version": 1
   },
   "country": "us",
-  "documentation_sha256": "0931cbd3aae2abcd8c072b78eba40c1c006b1bf7fa23c6a6681f9a895e47070e",
+  "documentation_sha256": "aa635575ebfe22a1bf73925b7950ec0b401b624097e3a70bce0818b29fe82bb2",
   "field_usage": {
-    "authored_normative_field_count": 32404,
+    "authored_normative_field_count": 32352,
     "claim_count": 49,
     "claims": [
       {
@@ -108,8 +108,8 @@
         ],
         "mode": "legacy_behavior",
         "pointer_class": "all",
-        "pointer_count": 312,
-        "pointer_sha256": "9bad55b4945af1c4213c510942e7b9d22d104bf75b0d9804e4a183e1656c8393",
+        "pointer_count": 310,
+        "pointer_sha256": "1613348de424bfd47f793cece1976dc64339dc485f9fe7fe3cce9c392ae36691",
         "rationale": null,
         "relative_sink_prefix": "/calibration_contract",
         "source_prefix": "/authored/spec~1calibration.yaml",
@@ -136,8 +136,8 @@
         "legacy_sinks": [],
         "mode": "compiler_semantic",
         "pointer_class": "all",
-        "pointer_count": 1673,
-        "pointer_sha256": "a983c0d68e980a31bd1ad41e7ef3c0cb3db9a7ee4d73454ae46f81eb6d1bb427",
+        "pointer_count": 1662,
+        "pointer_sha256": "10352728d0b1d6091139cc447a5263e199b324e5bf8ef13f96a0abf7bf40c3fc",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/spec~1catalogs.yaml/columns",
@@ -274,8 +274,8 @@
         ],
         "mode": "compiler_semantic",
         "pointer_class": "all",
-        "pointer_count": 24488,
-        "pointer_sha256": "6382a3ed07016414c31462b8bedb24590d92b792405a89c927d85fa1bd2a8347",
+        "pointer_count": 24462,
+        "pointer_sha256": "25c07cab582ab669822c0a1210fcd9465c859789fd3f4edf06550c8c6856a516",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/spec~1imputation.yaml/producer_graph",
@@ -334,8 +334,8 @@
         ],
         "mode": "legacy_behavior",
         "pointer_class": "family_execution",
-        "pointer_count": 1769,
-        "pointer_sha256": "cd395f41c1cc425c734dc344607de043f3506b4ec2e727a29130fc4304f351e3",
+        "pointer_count": 1751,
+        "pointer_sha256": "e83d661d80149b7b7c565305f5b51eed7628c7dbd12dd42648c0a6311fef5bec",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/spec~1imputation.yaml/families",
@@ -514,8 +514,8 @@
         ],
         "mode": "legacy_behavior",
         "pointer_class": "all",
-        "pointer_count": 1716,
-        "pointer_sha256": "3e808ed9f5a791c0dfb85be0c59adf803366bf6e8c7a9f5a58f92974e044b607",
+        "pointer_count": 1712,
+        "pointer_sha256": "6754aafccb56f2e64cd032311e2222367f93993b32f02471762993d536bea57e",
         "rationale": null,
         "relative_sink_prefix": "/source_manifest/stages",
         "source_prefix": "/authored/spec~1sources.yaml/stages",
@@ -691,8 +691,8 @@
         ],
         "mode": "legacy_behavior",
         "pointer_class": "all",
-        "pointer_count": 328,
-        "pointer_sha256": "d53096196db4c34da260cce2f35af8e7ba67f978448656c602ee5e17529dc4e0",
+        "pointer_count": 337,
+        "pointer_sha256": "80df2502ccf0b69cbaab4e157709c2b1dbf5243ff1dd54f78b8e9442eae09a08",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/spec~1take_up.yaml",
@@ -722,8 +722,8 @@
         ],
         "mode": "legacy_behavior",
         "pointer_class": "all",
-        "pointer_count": 8614,
-        "pointer_sha256": "66eec1216f404e43f7605fba0016d1cd666e71ebe3e35278d14a944d8b48b619",
+        "pointer_count": 10156,
+        "pointer_sha256": "d26f85da85bd17105f979375750c92c3d80c2e227c60fac63fc5a62bd9228c4d",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/resolved/generated_authorities",
@@ -772,21 +772,21 @@
         "verifier": "vintages"
       }
     ],
-    "configuration_field_count": 42184,
-    "consumed_field_count": 42184,
+    "configuration_field_count": 43674,
+    "consumed_field_count": 43674,
     "generation0_effect_counts": {
-      "legacy_behavior": 38498,
-      "no_generation0_effect": 3686
+      "legacy_behavior": 39999,
+      "no_generation0_effect": 3675
     },
     "mode_counts": {
-      "compiler_semantic": 27717,
+      "compiler_semantic": 27680,
       "front_end_validation": 354,
       "identity_only": 103,
-      "legacy_behavior": 14010
+      "legacy_behavior": 15537
     },
     "multiple_primary_use_field_count": 0,
-    "pointer_inventory_sha256": "8f655670b9794adae905ede64bdceba6395eeb8d642b6c5896d5c516f1f6a6a7",
-    "resolved_binding_field_count": 9780,
+    "pointer_inventory_sha256": "946f05fe2aa2948749a8a955b7f0d90a6cb610f6078e0b0a2553cb500338c82d",
+    "resolved_binding_field_count": 11322,
     "unused_field_count": 0
   },
   "inventory_coverage": {
@@ -803,14 +803,14 @@
       "itemization_batches": 5,
       "itemization_targets": 37,
       "late_groups": 19,
-      "late_targets": 70,
+      "late_targets": 69,
       "ownership_rows": 18,
-      "primary_effective_predictor_tuples": 65,
+      "primary_effective_predictor_tuples": 63,
       "primary_families": 1,
-      "primary_targets": 65,
+      "primary_targets": 63,
       "producer_authored_outputs": 92,
-      "producer_compiled_outputs": 227,
-      "producer_inputs": 2744,
+      "producer_compiled_outputs": 224,
+      "producer_inputs": 2741,
       "producer_nodes": 38,
       "producer_virtual_resources": 75,
       "release_rungs": 5,
@@ -824,11 +824,11 @@
       "stacked_checkpoint_full_components": 13,
       "stacked_checkpoint_pool_code_components": 19,
       "stacked_checkpoint_static_components": 10,
-      "tail_control_fields": 934,
-      "take_up_pipeline_steps": 28,
-      "take_up_programs": 17,
+      "tail_control_fields": 930,
+      "take_up_pipeline_steps": 29,
+      "take_up_programs": 18,
       "typed_artifacts": 84,
-      "typed_columns": 176,
+      "typed_columns": 175,
       "typed_entities": 8,
       "typed_scopes": 7
     },
@@ -917,13 +917,13 @@
           "legacy_adapter.stacked_checkpoint_static_components"
         ],
         "expected": {
-          "sha256": "ac92829c88a1a4fb6460d61190918d5d99c6c377fc8dd8f62f02b332d09bf59c",
-          "terminal_fields": 934
+          "sha256": "ad46f09b94d4ef798db09f4b56ef0ad81453a718d556358c9a2d3ce30be2d206",
+          "terminal_fields": 930
         },
         "failures": [],
         "observed": {
-          "sha256": "ac92829c88a1a4fb6460d61190918d5d99c6c377fc8dd8f62f02b332d09bf59c",
-          "terminal_fields": 934
+          "sha256": "ad46f09b94d4ef798db09f4b56ef0ad81453a718d556358c9a2d3ce30be2d206",
+          "terminal_fields": 930
         },
         "status": "covered"
       },
@@ -1074,11 +1074,11 @@
           "legacy_adapter.stacked_checkpoint_static_components"
         ],
         "expected": {
-          "schedule_sha256": "e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f"
+          "schedule_sha256": "50aa8412d99ec92b1638885d6b45a838b23d990fe1cbf3f0d4d3b21426496d16"
         },
         "failures": [],
         "observed": {
-          "schedule_sha256": "e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f"
+          "schedule_sha256": "50aa8412d99ec92b1638885d6b45a838b23d990fe1cbf3f0d4d3b21426496d16"
         },
         "status": "covered"
       },
@@ -1096,14 +1096,14 @@
         ],
         "expected": {
           "groups": 19,
-          "sha256": "d91f9ff0eb52f43e7b6eed3d5c58c37abe1620c3a11021da15dae9c10e16d382",
-          "targets": 70
+          "sha256": "243a1a2668cc29c64cd5bc19c890ff798ba81bd22ee2d3e16b7ba8db46c362a9",
+          "targets": 69
         },
         "failures": [],
         "observed": {
           "groups": 19,
-          "sha256": "d91f9ff0eb52f43e7b6eed3d5c58c37abe1620c3a11021da15dae9c10e16d382",
-          "targets": 70
+          "sha256": "243a1a2668cc29c64cd5bc19c890ff798ba81bd22ee2d3e16b7ba8db46c362a9",
+          "targets": 69
         },
         "status": "covered"
       },
@@ -1224,13 +1224,13 @@
           "legacy_adapter.imputation.primary_qrf"
         ],
         "expected": {
-          "sha256": "fdf23da429f8c501e198a2f5b719763d523a41565c2153fdf17b0344f21bcd7c",
-          "tuples": 65
+          "sha256": "9cbb3f38a518298655973537f9cce481e8d75d619f9c717e905651e5efd30464",
+          "tuples": 63
         },
         "failures": [],
         "observed": {
-          "sha256": "fdf23da429f8c501e198a2f5b719763d523a41565c2153fdf17b0344f21bcd7c",
-          "tuples": 65
+          "sha256": "9cbb3f38a518298655973537f9cce481e8d75d619f9c717e905651e5efd30464",
+          "tuples": 63
         },
         "status": "covered"
       },
@@ -1250,14 +1250,14 @@
         "expected": {
           "edges": 71,
           "nodes": 38,
-          "schedule_sha256": "e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f",
+          "schedule_sha256": "50aa8412d99ec92b1638885d6b45a838b23d990fe1cbf3f0d4d3b21426496d16",
           "waves": 6
         },
         "failures": [],
         "observed": {
           "edges": 71,
           "nodes": 38,
-          "schedule_sha256": "e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f",
+          "schedule_sha256": "50aa8412d99ec92b1638885d6b45a838b23d990fe1cbf3f0d4d3b21426496d16",
           "waves": 6
         },
         "status": "covered"
@@ -1275,11 +1275,11 @@
         ],
         "expected": {
           "relation": "source rows preserved exactly",
-          "rows": 2744
+          "rows": 2741
         },
         "failures": [],
         "observed": {
-          "rows": 2744
+          "rows": 2741
         },
         "status": "covered"
       },
@@ -1298,13 +1298,13 @@
         ],
         "expected": {
           "authored_rows": 92,
-          "compiled_rows": 227,
+          "compiled_rows": 224,
           "relation": "typed closure exact"
         },
         "failures": [],
         "observed": {
           "authored_rows": 92,
-          "compiled_rows": 227
+          "compiled_rows": 224
         },
         "status": "covered"
       },
@@ -1338,12 +1338,12 @@
         ],
         "expected": {
           "nodes": 38,
-          "sha256": "40cd51ffdfe2e9d9d08d48c08e8ded9de1e4b134783bab05c4abc6ad5c72ca1e"
+          "sha256": "b907d7badefcabbd533fa5ba0b2b26e73a69fc074e73ba2f229715fd06b1ca6c"
         },
         "failures": [],
         "observed": {
           "nodes": 38,
-          "sha256": "40cd51ffdfe2e9d9d08d48c08e8ded9de1e4b134783bab05c4abc6ad5c72ca1e"
+          "sha256": "b907d7badefcabbd533fa5ba0b2b26e73a69fc074e73ba2f229715fd06b1ca6c"
         },
         "status": "covered"
       },
@@ -1361,12 +1361,12 @@
         ],
         "expected": {
           "producer_count": 38,
-          "sha256": "cc34ba11288d01145fc2dc1a669df3f7c4ef2019d73afb02dd8eeee852b16d20"
+          "sha256": "468f25da9ff8f195e7c640f471f5b7f0e6d96a480cb18f484cbcd45d248c260d"
         },
         "failures": [],
         "observed": {
           "producer_count": 38,
-          "sha256": "cc34ba11288d01145fc2dc1a669df3f7c4ef2019d73afb02dd8eeee852b16d20"
+          "sha256": "468f25da9ff8f195e7c640f471f5b7f0e6d96a480cb18f484cbcd45d248c260d"
         },
         "status": "covered"
       },
@@ -1656,13 +1656,13 @@
           "compiler_ir.node_slices"
         ],
         "expected": {
-          "map_sha256": "0db599df419dd16779097361dc72afdefb8df2abf8b134078da9c52d31d8e017",
-          "protocol_sha256": "2b7bdc1d6b0da1bdaf54b4cac29f10f2d3c8bed2e177729c2c89e6b33a099cc5"
+          "map_sha256": "124830b988e409d1c103585937fd9d8f04c8920fd9166d782472a5164088b1b6",
+          "protocol_sha256": "12112b4cc185a9c07c032fe652b0b26cac52b5da2a2e44ba729e3d4e2fe62d7d"
         },
         "failures": [],
         "observed": {
-          "map_sha256": "0db599df419dd16779097361dc72afdefb8df2abf8b134078da9c52d31d8e017",
-          "protocol_sha256": "2b7bdc1d6b0da1bdaf54b4cac29f10f2d3c8bed2e177729c2c89e6b33a099cc5"
+          "map_sha256": "124830b988e409d1c103585937fd9d8f04c8920fd9166d782472a5164088b1b6",
+          "protocol_sha256": "12112b4cc185a9c07c032fe652b0b26cac52b5da2a2e44ba729e3d4e2fe62d7d"
         },
         "status": "covered"
       },
@@ -1677,7 +1677,7 @@
           "compiler_ir.seed_stream_map"
         ],
         "expected": {
-          "implementation_sha256": "2b7bdc1d6b0da1bdaf54b4cac29f10f2d3c8bed2e177729c2c89e6b33a099cc5",
+          "implementation_sha256": "12112b4cc185a9c07c032fe652b0b26cac52b5da2a2e44ba729e3d4e2fe62d7d",
           "protocol": "legacy-v1",
           "streams": [
             "build_model",
@@ -1698,7 +1698,7 @@
         },
         "failures": [],
         "observed": {
-          "implementation_sha256": "2b7bdc1d6b0da1bdaf54b4cac29f10f2d3c8bed2e177729c2c89e6b33a099cc5",
+          "implementation_sha256": "12112b4cc185a9c07c032fe652b0b26cac52b5da2a2e44ba729e3d4e2fe62d7d",
           "protocol": "legacy-v1",
           "streams": [
             "build_model",
@@ -1775,12 +1775,12 @@
           "legacy_adapter.imputation.late_producer_resource_semantics"
         ],
         "expected": {
-          "sha256": "f4f8bfeb79268a4043a843b47cec1d1c0e58e9f5dd6bc23417ada95446dd7b8e",
+          "sha256": "de655e314f05f510a451223debeda93971115f94d3a1dc23492acb8693b5cd52",
           "stages": 37
         },
         "failures": [],
         "observed": {
-          "sha256": "f4f8bfeb79268a4043a843b47cec1d1c0e58e9f5dd6bc23417ada95446dd7b8e",
+          "sha256": "de655e314f05f510a451223debeda93971115f94d3a1dc23492acb8693b5cd52",
           "stages": 38
         },
         "status": "covered"
@@ -1840,11 +1840,11 @@
           "legacy_adapter.stacked_checkpoint_static_components"
         ],
         "expected": {
-          "sha256": "9d4a9672a0f03039b1fe874b9fe21ed575be0d29f14afc396d03cdf5c809bdd2"
+          "sha256": "69cb10a9668fe1a4f3b7b1ab447ee6664e869bc56f6b51dc8fe545c952e8aa14"
         },
         "failures": [],
         "observed": {
-          "sha256": "9d4a9672a0f03039b1fe874b9fe21ed575be0d29f14afc396d03cdf5c809bdd2"
+          "sha256": "69cb10a9668fe1a4f3b7b1ab447ee6664e869bc56f6b51dc8fe545c952e8aa14"
         },
         "status": "covered"
       },
@@ -1887,7 +1887,7 @@
             "alpha",
             "zeta"
           ],
-          "sha256": "3db095ce2d1ef89028d3862f0edc827d704f099c5b3323f9b115642a3c27e007"
+          "sha256": "216a5ee369aedc84627a0dac14aa6b30d0a3e8c93ee69e99c86e6568023e3401"
         },
         "failures": [],
         "observed": {
@@ -1911,7 +1911,7 @@
             "alpha",
             "zeta"
           ],
-          "sha256": "3db095ce2d1ef89028d3862f0edc827d704f099c5b3323f9b115642a3c27e007"
+          "sha256": "216a5ee369aedc84627a0dac14aa6b30d0a3e8c93ee69e99c86e6568023e3401"
         },
         "status": "covered"
       },
@@ -1975,7 +1975,7 @@
             "take_up_contract",
             "us_qbi_reconciliation_contract"
           ],
-          "sha256": "61a5484eab9fae1d6651b3ae15f1793d4934ea2f6ed2c08d05716b745c221014"
+          "sha256": "6f58685e2e594cb0be4ce8a62b9e129fee422e1f9419aad01c48d373ed0b459a"
         },
         "status": "covered"
       },
@@ -2071,11 +2071,11 @@
           "legacy_adapter.stacked_checkpoint_static_components"
         ],
         "expected": {
-          "resource_sha256": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35"
+          "resource_sha256": "24bdfcd795e973e0345ae68020ab7dbceda0d95cb673bc9da95460bd239a1451"
         },
         "failures": [],
         "observed": {
-          "resource_sha256": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35"
+          "resource_sha256": "24bdfcd795e973e0345ae68020ab7dbceda0d95cb673bc9da95460bd239a1451"
         },
         "status": "covered"
       },
@@ -2094,17 +2094,17 @@
           "legacy_adapter.take_up_contract"
         ],
         "expected": {
-          "sha256": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35"
+          "sha256": "24bdfcd795e973e0345ae68020ab7dbceda0d95cb673bc9da95460bd239a1451"
         },
         "failures": [],
         "observed": {
-          "sha256": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35"
+          "sha256": "24bdfcd795e973e0345ae68020ab7dbceda0d95cb673bc9da95460bd239a1451"
         },
         "status": "covered"
       },
       "take_up_pipeline_steps_exact": {
         "bundle_home_match_counts": {
-          "/take_up/programs/*/pipeline": 16,
+          "/take_up/programs/*/pipeline": 17,
           "/take_up/programs/*/segments": 1
         },
         "bundle_homes": [
@@ -2160,6 +2160,9 @@
             "medicare": [
               "measured_map"
             ],
+            "medicare_part_d": [
+              "engine_default"
+            ],
             "nm_premium_assistance": [
               "engine_default"
             ],
@@ -2179,7 +2182,7 @@
               "probability_seed"
             ]
           },
-          "steps": 28
+          "steps": 29
         },
         "failures": [],
         "observed": {
@@ -2228,6 +2231,9 @@
             "medicare": [
               "measured_map"
             ],
+            "medicare_part_d": [
+              "engine_default"
+            ],
             "nm_premium_assistance": [
               "engine_default"
             ],
@@ -2247,7 +2253,7 @@
               "probability_seed"
             ]
           },
-          "steps": 28
+          "steps": 29
         },
         "status": "covered"
       },
@@ -2356,6 +2362,13 @@
               ],
               "out_of_scope"
             ],
+            "medicare_part_d": [
+              "engine",
+              [
+                "engine_default"
+              ],
+              "rate_unsourced"
+            ],
             "nm_premium_assistance": [
               "engine",
               [
@@ -2491,6 +2504,13 @@
               ],
               "out_of_scope"
             ],
+            "medicare_part_d": [
+              "engine",
+              [
+                "engine_default"
+              ],
+              "rate_unsourced"
+            ],
             "nm_premium_assistance": [
               "engine",
               [
@@ -2552,6 +2572,7 @@
             "chip",
             "basic_health_program",
             "medicare",
+            "medicare_part_d",
             "ssi",
             "dc_ptc",
             "head_start",
@@ -2574,6 +2595,7 @@
             "chip",
             "basic_health_program",
             "medicare",
+            "medicare_part_d",
             "ssi",
             "dc_ptc",
             "head_start",
@@ -2599,7 +2621,7 @@
       "country": "us",
       "schema_id": "country_spec",
       "schema_version": 1,
-      "spec_sha256": "19460fc168a6f9ed44e580d0e36777cce78bb33cb52b75630ee86203fa795684"
+      "spec_sha256": "5ff97a0bc4b029e69a0ba8be98ad00cab0b267a4239fa1f7a2d1ebde0f7f9283"
     }
   },
   "report_schema_version": 3,
@@ -2609,7 +2631,7 @@
     "country": "us",
     "schema_id": "country_spec",
     "schema_version": 1,
-    "spec_sha256": "19460fc168a6f9ed44e580d0e36777cce78bb33cb52b75630ee86203fa795684"
+    "spec_sha256": "5ff97a0bc4b029e69a0ba8be98ad00cab0b267a4239fa1f7a2d1ebde0f7f9283"
   },
   "status": "pass"
 }

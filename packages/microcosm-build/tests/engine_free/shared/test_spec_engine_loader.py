@@ -14,9 +14,11 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # protocol inside it attests microcosm.calibrate.solve's bytes, so
     # microcosm#1124's opt-in retain_best_objective and microcosm#1301's
     # budget_search_bracket move it, and the fit kernels' bytes, so the QRF
-    # chain step's caller-owned uniforms move it too.
+    # chain step's caller-owned uniforms move it too. It also attests the US
+    # source runtimes (puf_support, puf_qrf_chain, acs_transfer), which the
+    # policyengine-us 2.60.4 lock edits (microcosm#1365).
     assert first.spec_sha256 == (
-        "4f71334334c67cc17d1aab5b02a838def57bcc54ac4413b89b70b8ae3086d9ee"
+        "a5e0f37f557917ec8ec388fecb20a868bc3d4def8abdceb90888ef27ab595817"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")

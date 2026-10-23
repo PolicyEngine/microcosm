@@ -98,7 +98,7 @@ def test_imputation_projector_matches_live_plans_and_graph_receipts(
     for key, expected in live.items():
         assert canonical_json_bytes(projected[key]) == canonical_json_bytes(expected)
     assert projected["late_producer_schedule_receipt"]["schedule_sha256"] == (
-        "e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f"
+        "50aa8412d99ec92b1638885d6b45a838b23d990fe1cbf3f0d4d3b21426496d16"
     )
     assert projected["overlap_ownership"]["sha256"] == (
         "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356"
@@ -119,7 +119,7 @@ def test_imputation_projector_matches_live_primary_chain(
         "checkpoint_schema_version": PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION,
     }
     tuples = derive_primary_effective_predictor_tuples(us_domains["imputation"])
-    assert len(tuples) == 65
+    assert len(tuples) == 63
     preceding: list[str] = []
     for row, target in zip(tuples, PRIMARY_QRF_TARGET_ORDER, strict=True):
         assert row["target"] == target
