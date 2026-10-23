@@ -91,6 +91,8 @@ def uk_stage_health_gate(
         return _road_fuel_incidence_gate(stage, evidence, parameters)
     if check == "road_fuel_level":
         return _road_fuel_level_gate(stage, evidence, parameters)
+    if check == "excise_quantities":
+        return _excise_quantities_gate(stage, evidence, parameters)
     if check == "bus_support_pricing":
         return _bus_support_pricing_gate(stage, evidence, parameters)
     if check == "property_components":
@@ -3476,6 +3478,164 @@ def _road_fuel_level_gate(
         "level": level.level,
         "factor": factor,
         "petrol_share_of_level": receipt.get("petrol_share_of_level"),
+    }
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
+
+
+def _excise_quantities_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """The excise step gave the frame the published quantities (microcosm#1359).
+
+    Fact checks on the ``excise_quantities`` and ``excise_shares`` receipts:
+    each engine input's published quantity is recomputed here from the
+    vendored row through the stage's own declaration (never taken from the
+    receipt) and must equal the receipt's, its frame total at prior weights
+    must equal it and the factor must reproduce it from the household
+    spending, to ``maximum_relative_deviation``; an input is positive exactly
+    where its spending is; the basis is the declared fiscal year over the
+    engine's 52 weeks. The shares the spending comes from must have stayed in
+    [0, 1] on the frame, each must rest on ``required_support_band`` donors,
+    and the donor share whose published total sits beside its diary lines
+    must be at most ``maximum_parent_residual_share`` (a share withheld for
+    resting on under ten donors is under it).
+    """
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_EXCISE_SHARES,
+        UK_PE_UK_WEEKS_IN_YEAR,
+        excise_levels,
+        excise_quantities_operation,
+    )
+
+    check = "excise_quantities"
+    receipt = _mapping(
+        evidence.get("excise_quantities"), label=f"{stage}.excise_quantities"
+    )
+    shares = _mapping(evidence.get("excise_shares"), label=f"{stage}.excise_shares")
+    tolerance = _finite_number(
+        parameters.get("maximum_relative_deviation"),
+        label=f"{stage}.maximum_relative_deviation",
+    )
+    maximum_residual = _finite_number(
+        parameters.get("maximum_parent_residual_share"),
+        label=f"{stage}.maximum_parent_residual_share",
+    )
+    required_support = parameters.get("required_support_band")
+    declared = excise_quantities_operation(
+        load_country_spec("uk").sources.stage_map()[stage]
+    )
+    if declared is None:
+        raise ValueError(f"{stage}: declares no level_excise_quantities operation.")
+    levels, volume = excise_levels(declared)
+
+    def _close(observed: object, value: float) -> bool:
+        return isinstance(observed, int | float) and abs(float(observed) - value) <= (
+            tolerance * max(1.0, abs(value))
+        )
+
+    failures: list[str] = []
+    for key, value in (
+        ("period_type", "fiscal_year"),
+        ("period_value", int(declared["period_value"])),
+        ("weeks_per_year", UK_PE_UK_WEEKS_IN_YEAR),
+    ):
+        if receipt.get(key) != value:
+            failures.append(
+                f"{stage}: the excise receipt's {key} {receipt.get(key)!r} is not "
+                f"{value!r}."
+            )
+    if receipt.get("alcohol_volume_weights") != dict(volume.receipt):
+        failures.append(
+            f"{stage}: the alcohol volume weights {receipt.get('alcohol_volume_weights')!r} "
+            f"are not the declared {dict(volume.receipt)!r}."
+        )
+    outputs = _mapping(
+        receipt.get("outputs"), label=f"{stage}.excise_quantities.outputs"
+    )
+    if set(outputs) != set(levels):
+        failures.append(
+            f"{stage}: the excise receipt levels {sorted(outputs)}, not the declared "
+            f"{sorted(levels)}."
+        )
+    keys = _mapping(receipt.get("keys"), label=f"{stage}.excise_quantities.keys")
+    for column, level in levels.items():
+        entry = outputs.get(column)
+        if not isinstance(entry, Mapping):
+            continue
+        for key, value in (
+            ("published", float(level.receipt["published"])),
+            ("annual_level", level.annual),
+        ):
+            if not _close(entry.get(key), value):
+                failures.append(
+                    f"{stage}: {column} {key} {entry.get(key)!r} is not the vendored "
+                    f"{value}."
+                )
+        if entry.get("source_record_id") != level.receipt["source_record_id"]:
+            failures.append(
+                f"{stage}: {column} names {entry.get('source_record_id')!r}, not the "
+                f"declared row {level.receipt['source_record_id']!r}."
+            )
+        if not _close(entry.get("frame_annual_total"), level.annual):
+            failures.append(
+                f"{stage}: the frame's {column} {entry.get('frame_annual_total')!r} is "
+                f"not the level {level.annual}."
+            )
+        before, factor = entry.get("key_total"), entry.get("factor")
+        if not (
+            isinstance(before, int | float)
+            and isinstance(factor, int | float)
+            and _close(float(before) * float(factor), level.annual)
+        ):
+            failures.append(
+                f"{stage}: {column}'s factor {factor!r} times its spending {before!r} "
+                f"does not reproduce the level {level.annual}."
+            )
+        spenders = keys.get(str(entry.get("key")))
+        if not (
+            isinstance(spenders, Mapping)
+            and entry.get("positive_share") == spenders.get("positive_share")
+        ):
+            failures.append(
+                f"{stage}: {column} is positive on a share {entry.get('positive_share')!r} "
+                "of households, not exactly where its spending is."
+            )
+    if set(shares) != set(UK_LCFS_EXCISE_SHARES):
+        failures.append(
+            f"{stage}: the excise_shares receipt names {sorted(shares)}, not "
+            f"{sorted(UK_LCFS_EXCISE_SHARES)}."
+        )
+    for name in UK_LCFS_EXCISE_SHARES:
+        entry = shares.get(name)
+        if not isinstance(entry, Mapping):
+            continue
+        frame = entry.get("frame") or {}
+        donor = entry.get("donor") or {}
+        if frame.get("draws_outside_unit_interval") != 0:
+            failures.append(f"{stage}: some {name} draws left [0, 1].")
+        if donor.get("positive_support") != required_support:
+            failures.append(
+                f"{stage}: {name} rests on {donor.get('positive_support')!r} donors, "
+                f"not {required_support!r}."
+            )
+        residual = donor.get("total_beside_lines")
+        if isinstance(residual, int | float) and residual > maximum_residual:
+            failures.append(
+                f"{stage}: a weighted {residual} of donors carry a published total "
+                f"beside {name}'s lines, above {maximum_residual}."
+            )
+    details = {
+        "maximum_relative_deviation": tolerance,
+        "levels": {column: level.annual for column, level in levels.items()},
+        "alcohol_volume_weights": dict(volume.receipt),
     }
     return (
         _fail(stage, check, failures, details)

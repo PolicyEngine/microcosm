@@ -333,6 +333,9 @@ UK_LCFS_ROAD_FUEL_LEVEL_RESOURCE = UK_LCFS_ONS_EXPENDITURE_RESOURCE
 #: DESNZ sub-national road transport fuel consumption by vehicle and fuel (ktoe),
 #: the litres audit's per-fuel cars share.
 UK_LCFS_ROAD_FUEL_BY_VEHICLE_RESOURCE = "desnz_road_fuel_by_vehicle.json"
+#: The excise clearances the ``level_excise_quantities`` step levels to
+#: (microcosm#1359; PolicyEngine/chronicle#381).
+UK_LCFS_EXCISE_FACTS_RESOURCE = "obr_excise_facts.json"
 UK_LCFS_VENDORED_RESOURCES = (
     UK_LCFS_ROAD_FUEL_RESOURCE,
     UK_LCFS_LICENSED_CARS_RESOURCE,
@@ -344,6 +347,7 @@ UK_LCFS_VENDORED_RESOURCES = (
     UK_QEP_ENERGY_PRICES_RESOURCE,
     UK_LCFS_ROAD_FUEL_LEVEL_RESOURCE,
     UK_LCFS_ROAD_FUEL_BY_VEHICLE_RESOURCE,
+    UK_LCFS_EXCISE_FACTS_RESOURCE,
 )
 #: The household road-fuel columns the ``level_road_fuel`` step scales.
 UK_LCFS_ROAD_FUEL_COLUMNS = ("petrol_spending", "diesel_spending")
@@ -361,6 +365,64 @@ UK_LCFS_RAKED_COLUMNS = frozenset(
     }
 )
 LEVEL_ROAD_FUEL_KIND = "level_road_fuel"
+LEVEL_EXCISE_QUANTITIES_KIND = "level_excise_quantities"
+#: policyengine-uk annualises its weekly tobacco inputs over policyengine-core's
+#: 52 weeks (``WEEKS_IN_YEAR``), not the diary's 365.25 / 7.
+UK_PE_UK_WEEKS_IN_YEAR = 52
+#: The policyengine-uk household inputs the excise step can write
+#: (policyengine-uk 2.145.0, ``variables/input/consumption/alcohol`` and
+#: ``tobacco``): litres a year of each alcohol product, cigarettes a week and
+#: grams a week of the other tobacco products (microcosm#1359).
+UK_LCFS_EXCISE_ALCOHOL_OUTPUTS = (
+    "beer_litres",
+    "cider_litres",
+    "sparkling_cider_litres",
+    "wine_litres",
+    "spirits_litres",
+    "other_fermented_litres",
+)
+UK_LCFS_EXCISE_TOBACCO_OUTPUTS = (
+    "cigarettes_per_week",
+    "hand_rolling_tobacco_grams_per_week",
+    "cigars_grams_per_week",
+    "other_tobacco_grams_per_week",
+    "heated_tobacco_grams_per_week",
+)
+UK_LCFS_EXCISE_OUTPUT_COLUMNS = (
+    *UK_LCFS_EXCISE_ALCOHOL_OUTPUTS,
+    *UK_LCFS_EXCISE_TOBACCO_OUTPUTS,
+)
+#: The published units the excise step reads, as engine units per published
+#: unit: litres (of alcohol, which the declared strength turns into litres of
+#: the product, or of the product itself), cigarettes, grams.
+UK_LCFS_EXCISE_ALCOHOL_UNIT = "thousand_hectolitres_of_alcohol"
+UK_LCFS_EXCISE_UNITS: Mapping[str, float] = {
+    UK_LCFS_EXCISE_ALCOHOL_UNIT: 1.0e5,
+    "thousand_hectolitres": 1.0e5,
+    "million_sticks": 1.0e6,
+    "thousand_kilograms": 1.0e6,
+}
+#: The units each engine input may be declared in.
+UK_LCFS_EXCISE_OUTPUT_UNITS: Mapping[str, tuple[str, ...]] = {
+    **{
+        column: (UK_LCFS_EXCISE_ALCOHOL_UNIT, "thousand_hectolitres")
+        for column in UK_LCFS_EXCISE_ALCOHOL_OUTPUTS
+    },
+    "cigarettes_per_week": ("million_sticks",),
+    **{
+        column: ("thousand_kilograms",)
+        for column in UK_LCFS_EXCISE_TOBACCO_OUTPUTS
+        if column != "cigarettes_per_week"
+    },
+}
+#: How alcohol's off- and on-trade spending become each household's part of
+#: the national volume: in proportion to the two together, as if a pound
+#: bought as much alcohol in a pub as in a shop, or each channel's published
+#: share of the volume to that channel's spenders.
+UK_LCFS_ALCOHOL_VOLUME_BY_SPENDING = "spending"
+UK_LCFS_ALCOHOL_VOLUME_BY_CHANNEL = "published_on_trade_share"
+#: The excise step's receipt key in the stage evidence.
+UK_LCFS_EXCISE_QUANTITIES_RECEIPT = "excise_quantities"
 #: The LCFS diary lines inside COICOP 07.2.2 beside petrol (c72211) and diesel
 #: (c72212): other motor fuels and oils, which ONS's 07.2.2 also carries.
 UK_LCFS_OTHER_ROAD_FUEL_CODES = ("c72213",)
@@ -574,6 +636,7 @@ class UKLCFSConsumptionResult:
     recomposed_totals: Mapping[str, Any] | None = None
     division_capture: Mapping[str, Any] | None = None
     excise_shares: Mapping[str, Any] | None = None
+    excise_quantities: Mapping[str, Any] | None = None
 
     def evidence(self) -> dict[str, object]:
         evidence: dict[str, object] = {
@@ -608,6 +671,8 @@ class UKLCFSConsumptionResult:
             evidence["division_capture"] = dict(self.division_capture)
         if self.excise_shares is not None:
             evidence[UK_LCFS_EXCISE_SHARES_RECEIPT] = dict(self.excise_shares)
+        if self.excise_quantities is not None:
+            evidence[UK_LCFS_EXCISE_QUANTITIES_RECEIPT] = dict(self.excise_quantities)
         return evidence
 
 
@@ -805,9 +870,15 @@ class UKLCFSConsumptionStageTransform:
             if shares
             else None
         )
+        quantities, excise_quantities = lcfs_excise_quantities(
+            self.stage, household_draws, weights=weights, shares=shares
+        )
         household = frame.table("household").copy()
         for column in UK_LCFS_CONSUMPTION_TARGET_COLUMNS:
             household[column] = household_draws[column].to_numpy()
+        if quantities is not None:
+            for column in quantities.columns:
+                household[column] = quantities[column].to_numpy(dtype=float)
         household["has_fuel_consumption"] = recipient["has_fuel_consumption"].to_numpy(
             dtype=bool
         )
@@ -851,6 +922,7 @@ class UKLCFSConsumptionStageTransform:
             recomposed_totals=recomposed_totals_receipt,
             division_capture=capture,
             excise_shares=excise_shares,
+            excise_quantities=excise_quantities,
         )
         return result
 
@@ -1879,12 +1951,11 @@ def level_road_fuel(
     columns = list(UK_LCFS_ROAD_FUEL_COLUMNS)
     weight_values = np.asarray(weights, dtype=float)
     spend = household_draws[columns].to_numpy(dtype=float)
-    before = float(np.dot(weight_values, spend.sum(axis=1)))
-    if not np.isfinite(before) or before <= 0:
-        raise ValueError("the frame draws no road-fuel spend to level.")
-    factor = level.level / before
+    scaled, before, factor = _scale_to_level(
+        spend, weight_values, level.level, what="road-fuel spend"
+    )
     result = household_draws.copy()
-    result[columns] = spend * factor
+    result[columns] = scaled
     after = result[columns].to_numpy(dtype=float)
     petrol = float(np.dot(weight_values, after[:, 0]))
     receipt = {
@@ -1913,6 +1984,342 @@ def lcfs_road_fuel_level(
         parameters, other_fuels_share=lcfs_other_road_fuel_share(lcfs_household)
     )
     return level_road_fuel(household_draws, level=level, weights=weights)
+
+
+def _scale_to_level(
+    values: np.ndarray, weights: np.ndarray, level: float, *, what: str
+) -> tuple[np.ndarray, float, float]:
+    """Scale ``values`` by the one factor that takes their weighted total to ``level``.
+
+    ``values`` is one column, or several scaled together by the same factor
+    so their mix is kept. Returns the scaled values, the weighted total before
+    and the factor; a frame with nothing to scale is refused.
+    """
+
+    before = float(np.dot(weights, values if values.ndim == 1 else values.sum(axis=1)))
+    if not np.isfinite(before) or before <= 0:
+        raise ValueError(f"the frame draws no {what} to level.")
+    factor = level / before
+    return values * factor, before, factor
+
+
+@dataclass(frozen=True)
+class ExciseQuantityLevel:
+    """One engine input's national quantity a year, from its published row.
+
+    ``annual`` is in the engine's units a year: litres of the product, or
+    cigarettes, or grams; the step divides the weekly tobacco inputs by
+    ``UK_PE_UK_WEEKS_IN_YEAR`` after levelling.
+    """
+
+    column: str
+    annual: float
+    receipt: Mapping[str, Any]
+
+
+@dataclass(frozen=True)
+class AlcoholVolumeWeights:
+    """How off- and on-trade alcohol spending share the national volume."""
+
+    rule: str
+    on_trade_share: float | None
+    receipt: Mapping[str, Any]
+
+
+def excise_quantities_operation(stage: SourceStageSpec) -> Mapping[str, Any] | None:
+    """The stage's declared ``level_excise_quantities`` parameters, if any."""
+
+    for operation in stage.operations:
+        if operation.kind == LEVEL_EXCISE_QUANTITIES_KIND:
+            return {"kind": operation.kind, **operation.parameters}
+    return None
+
+
+def _one_vendored_value(
+    resource: str,
+    parameters: Mapping[str, Any],
+    declared: Mapping[str, Any],
+    *,
+    what: str,
+) -> tuple[float, dict[str, Any]]:
+    """The one published value a declaration names, for the step's fiscal year."""
+
+    concept = str(declared.get("concept") or "")
+    dimensions = declared.get("dimensions") or {}
+    if not concept or not isinstance(dimensions, Mapping):
+        raise ValueError(
+            f"{LEVEL_EXCISE_QUANTITIES_KIND}: {what} must name a concept and "
+            "its dimensions."
+        )
+    rows = vendored_rows(
+        resource,
+        fiscal_start=str(parameters["fiscal_start"]),
+        concept=concept,
+        period_type="fiscal_year",
+        period_value=int(parameters["period_value"]),
+        geography_id=str(parameters["geography_id"]),
+        dimensions=dict(dimensions),
+    )
+    if len(rows) != 1:
+        raise ValueError(
+            f"{resource}: expected one {concept} row {dict(dimensions)} for fiscal "
+            f"{parameters['period_value']}, found {len(rows)}."
+        )
+    value = float(rows[0]["value"])
+    receipt = {
+        "concept": concept,
+        "dimensions": dict(dimensions),
+        "source_record_id": str(rows[0].get("source_record_id", "")),
+        "published": value,
+    }
+    return value, receipt
+
+
+def excise_levels(
+    parameters: Mapping[str, Any],
+) -> tuple[dict[str, ExciseQuantityLevel], AlcoholVolumeWeights]:
+    """Resolve each declared engine input's national quantity from the vendored rows.
+
+    Each output names its published row (concept and dimensions, for the
+    declared fiscal year and geography), the row's unit, the share of the row
+    it takes and, for hectolitres of alcohol, the strength that turns them
+    into litres of the product: the declared value, with the engine
+    parameter it mirrors, which policyengine-uk multiplies back. Outputs that
+    share a row must take all of it between them. ``alcohol_volume_weights``
+    declares how off- and on-trade spending share the alcohol volume.
+    """
+
+    resource = str(parameters.get("resource") or "")
+    if resource != UK_LCFS_EXCISE_FACTS_RESOURCE:
+        raise ValueError(
+            f"{LEVEL_EXCISE_QUANTITIES_KIND} must read "
+            f"{UK_LCFS_EXCISE_FACTS_RESOURCE!r}, not {resource!r}."
+        )
+    if str(parameters.get("period_type")) != "fiscal_year":
+        raise ValueError(
+            f"{LEVEL_EXCISE_QUANTITIES_KIND} levels to fiscal-year clearances, the "
+            "year policyengine-uk charges excise over."
+        )
+    if parameters.get("weeks_per_year") != UK_PE_UK_WEEKS_IN_YEAR:
+        raise ValueError(
+            f"{LEVEL_EXCISE_QUANTITIES_KIND} must declare weeks_per_year: "
+            f"{UK_PE_UK_WEEKS_IN_YEAR}, policyengine-uk's own."
+        )
+    for key in ("period_value", "fiscal_start", "geography_id"):
+        if parameters.get(key) in (None, ""):
+            raise ValueError(f"{LEVEL_EXCISE_QUANTITIES_KIND} must declare {key}.")
+    outputs = parameters.get("outputs")
+    if not isinstance(outputs, Mapping) or not outputs:
+        raise ValueError(f"{LEVEL_EXCISE_QUANTITIES_KIND} declares no outputs.")
+    levels: dict[str, ExciseQuantityLevel] = {}
+    taken: dict[str, float] = {}
+    for column, declared in outputs.items():
+        if column not in UK_LCFS_EXCISE_OUTPUT_UNITS:
+            raise ValueError(
+                f"{LEVEL_EXCISE_QUANTITIES_KIND} cannot write {column!r}; it writes "
+                f"the policyengine-uk inputs {UK_LCFS_EXCISE_OUTPUT_COLUMNS}."
+            )
+        if not isinstance(declared, Mapping):
+            raise ValueError(
+                f"{LEVEL_EXCISE_QUANTITIES_KIND}: {column} is not a mapping."
+            )
+        unit = str(declared.get("unit") or "")
+        if unit not in UK_LCFS_EXCISE_OUTPUT_UNITS[column]:
+            raise ValueError(
+                f"{LEVEL_EXCISE_QUANTITIES_KIND}: {column} is declared in {unit!r}, "
+                f"not one of {UK_LCFS_EXCISE_OUTPUT_UNITS[column]}."
+            )
+        share = float(declared.get("share", 1.0))
+        if not 0.0 < share <= 1.0:
+            raise ValueError(
+                f"{LEVEL_EXCISE_QUANTITIES_KIND}: {column} takes a share {share} "
+                "outside (0, 1]."
+            )
+        strength = declared.get("strength")
+        if (unit == UK_LCFS_EXCISE_ALCOHOL_UNIT) != (strength is not None):
+            raise ValueError(
+                f"{LEVEL_EXCISE_QUANTITIES_KIND}: {column} needs a strength exactly "
+                "when it is declared in hectolitres of alcohol."
+            )
+        divisor = 1.0
+        if strength is not None:
+            if not isinstance(strength, Mapping) or not strength.get("parameter_path"):
+                raise ValueError(
+                    f"{LEVEL_EXCISE_QUANTITIES_KIND}: {column}'s strength must give "
+                    "its value and the engine parameter it mirrors."
+                )
+            divisor = float(strength.get("value"))
+            if not 0.0 < divisor <= 1.0:
+                raise ValueError(
+                    f"{LEVEL_EXCISE_QUANTITIES_KIND}: {column}'s strength {divisor} "
+                    "is outside (0, 1]."
+                )
+        published, receipt = _one_vendored_value(
+            resource, parameters, declared, what=column
+        )
+        if not np.isfinite(published) or published <= 0:
+            raise ValueError(
+                f"{resource}: {column}'s published quantity must be positive."
+            )
+        row = receipt["source_record_id"]
+        taken[row] = taken.get(row, 0.0) + share
+        annual = published * UK_LCFS_EXCISE_UNITS[unit] * share / divisor
+        levels[column] = ExciseQuantityLevel(
+            column,
+            annual,
+            {
+                **receipt,
+                "unit": unit,
+                "share": share,
+                "strength": None if strength is None else dict(strength),
+                "annual_level": annual,
+            },
+        )
+    partial = {row: total for row, total in taken.items() if abs(total - 1.0) > 1e-9}
+    if partial:
+        raise ValueError(
+            f"{LEVEL_EXCISE_QUANTITIES_KIND}: the outputs take {partial} of their "
+            "published rows, not all of each."
+        )
+    return levels, alcohol_volume_weights(resource, parameters)
+
+
+def alcohol_volume_weights(
+    resource: str, parameters: Mapping[str, Any]
+) -> AlcoholVolumeWeights:
+    """The declared rule that shares alcohol volume between the two channels."""
+
+    declared = parameters.get("alcohol_volume_weights")
+    if not isinstance(declared, Mapping):
+        raise ValueError(
+            f"{LEVEL_EXCISE_QUANTITIES_KIND} must declare alcohol_volume_weights."
+        )
+    rule = str(declared.get("rule") or "")
+    if rule == UK_LCFS_ALCOHOL_VOLUME_BY_SPENDING:
+        return AlcoholVolumeWeights(rule, None, {"rule": rule})
+    if rule != UK_LCFS_ALCOHOL_VOLUME_BY_CHANNEL:
+        raise ValueError(
+            f"unsupported {LEVEL_EXCISE_QUANTITIES_KIND} alcohol_volume_weights "
+            f"rule {rule!r}."
+        )
+    share, receipt = _one_vendored_value(
+        resource, parameters, declared, what="the on-trade share"
+    )
+    if not 0.0 < share < 1.0:
+        raise ValueError(f"{resource}: the on-trade share {share} is outside (0, 1).")
+    return AlcoholVolumeWeights(rule, share, {"rule": rule, **receipt})
+
+
+def level_excise_quantities(
+    household_draws: pd.DataFrame,
+    *,
+    levels: Mapping[str, ExciseQuantityLevel],
+    volume: AlcoholVolumeWeights,
+    weights: Sequence[float],
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Give each household its part of each national quantity, by its spending.
+
+    Each household's alcohol inputs are the national volumes in proportion to
+    its alcohol spending, and its tobacco inputs the national clearances in
+    proportion to its tobacco spending, both at prior weights: one factor per
+    input, the ``level_road_fuel`` scaling, so the frame's weighted total is
+    the published quantity. Under the published on-trade share each channel's
+    volume goes to that channel's spenders. Weekly inputs are the annual
+    quantity over the engine's 52 weeks. The spending is the drawn shares of
+    the drawn totals, so no total moves (microcosm#1359).
+    """
+
+    weight_values = np.asarray(weights, dtype=float)
+    mass = float(weight_values.sum())
+    spending = excise_spending(household_draws)
+    off_trade = spending[UK_LCFS_OFF_TRADE_ALCOHOL_SPENDING].to_numpy(dtype=float)
+    on_trade = spending[UK_LCFS_ON_TRADE_ALCOHOL_SPENDING].to_numpy(dtype=float)
+    tobacco = spending[UK_LCFS_TOBACCO_SPENDING].to_numpy(dtype=float)
+    if volume.rule == UK_LCFS_ALCOHOL_VOLUME_BY_SPENDING:
+        alcohol = off_trade + on_trade
+    else:
+        totals = (float(weight_values @ off_trade), float(weight_values @ on_trade))
+        if min(totals) <= 0:
+            raise ValueError("the frame draws no alcohol in one of the two channels.")
+        share = float(volume.on_trade_share)
+        alcohol = (1.0 - share) * off_trade / totals[0] + share * on_trade / totals[1]
+    keys = {"alcohol": alcohol, "tobacco": tobacco}
+    quantities = pd.DataFrame(index=household_draws.index)
+    outputs: dict[str, Any] = {}
+    for column, level in levels.items():
+        key = "alcohol" if column in UK_LCFS_EXCISE_ALCOHOL_OUTPUTS else "tobacco"
+        annual, before, factor = _scale_to_level(
+            keys[key], weight_values, level.annual, what=f"{key} spending"
+        )
+        weekly = column in UK_LCFS_EXCISE_TOBACCO_OUTPUTS
+        quantities[column] = annual / UK_PE_UK_WEEKS_IN_YEAR if weekly else annual
+        stored = quantities[column].to_numpy(dtype=float)
+        outputs[column] = {
+            **dict(level.receipt),
+            "key": key,
+            "key_total": before,
+            "factor": float(factor),
+            "stored_per": "week" if weekly else "year",
+            "frame_annual_total": float(weight_values @ stored)
+            * (UK_PE_UK_WEEKS_IN_YEAR if weekly else 1.0),
+            "positive_share": float(weight_values[stored > 0].sum() / mass),
+        }
+    components = {
+        name: {
+            "weighted_total": float(weight_values @ values),
+            "positive_share": float(weight_values[values > 0].sum() / mass),
+        }
+        for name, values in (
+            (UK_LCFS_TOBACCO_SPENDING, tobacco),
+            (UK_LCFS_OFF_TRADE_ALCOHOL_SPENDING, off_trade),
+            (UK_LCFS_ON_TRADE_ALCOHOL_SPENDING, on_trade),
+        )
+    }
+    receipt = {
+        "operation": LEVEL_EXCISE_QUANTITIES_KIND,
+        "keys": {
+            key: {"positive_share": float(weight_values[values > 0].sum() / mass)}
+            for key, values in keys.items()
+        },
+        "components": components,
+        "alcohol_volume_weights": dict(volume.receipt),
+        "outputs": outputs,
+    }
+    return quantities, receipt
+
+
+def lcfs_excise_quantities(
+    stage: SourceStageSpec,
+    household_draws: pd.DataFrame,
+    *,
+    weights: Sequence[float],
+    shares: Mapping[str, object],
+) -> tuple[pd.DataFrame | None, dict[str, Any] | None]:
+    """Apply the declared ``level_excise_quantities`` step (none if undeclared)."""
+
+    parameters = excise_quantities_operation(stage)
+    if parameters is None:
+        return None, None
+    if set(shares) != set(UK_LCFS_EXCISE_SHARES):
+        raise ValueError(
+            f"{stage.stage}: {LEVEL_EXCISE_QUANTITIES_KIND} needs the derive step's "
+            f"excise shares {tuple(UK_LCFS_EXCISE_SHARES)}."
+        )
+    levels, volume = excise_levels(parameters)
+    quantities, receipt = level_excise_quantities(
+        household_draws, levels=levels, volume=volume, weights=weights
+    )
+    receipt = {
+        "operation": LEVEL_EXCISE_QUANTITIES_KIND,
+        "resource": str(parameters["resource"]),
+        "period_type": "fiscal_year",
+        "period_value": int(parameters["period_value"]),
+        "fiscal_start": str(parameters["fiscal_start"]),
+        "geography_id": str(parameters["geography_id"]),
+        "weeks_per_year": UK_PE_UK_WEEKS_IN_YEAR,
+        **receipt,
+    }
+    return quantities, receipt
 
 
 def recompose_from_remainder_operation(
