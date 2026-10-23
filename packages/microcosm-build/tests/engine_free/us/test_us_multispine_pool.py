@@ -1071,9 +1071,9 @@ def test_remaining_stage_manifest_enumerates_every_simulation_projection_input()
 def test_remaining_stage_manifest_is_unique_complete_and_stable() -> None:
     manifest = pool_remaining_stage_input_manifest(_installed_variable_metadata_index())
 
-    assert len(manifest) == 1059
+    assert len(manifest) == 1250
     assert Counter(entry.stage for entry in manifest) == Counter(
-        {"derive": 34, "seed": 33, "simulate": 992}
+        {"derive": 34, "seed": 34, "simulate": 1182}
     )
     assert len(
         {
@@ -1086,16 +1086,16 @@ def test_remaining_stage_manifest_is_unique_complete_and_stable() -> None:
     receipt = pool_remaining_stage_input_manifest_receipt(
         _installed_variable_metadata_index()
     )
-    assert receipt["entry_count"] == 1059
+    assert receipt["entry_count"] == 1250
     assert receipt["stage_counts"] == {
         "derive": 34,
-        "seed": 33,
-        "simulate": 992,
+        "seed": 34,
+        "simulate": 1182,
     }
     assert receipt["engine_input_projection_contract"] == {
-        "engine_version": "2.2.1",
-        "input_count": 926,
-        "default_count": 925,
+        "engine_version": "2.60.4",
+        "input_count": 1074,
+        "default_count": 1073,
         "sha256": POOL_ENGINE_INPUT_PROJECTION_CONTRACT.sha256,
         "defaults_sha256": POOL_ENGINE_INPUT_PROJECTION_CONTRACT.defaults_sha256,
     }
