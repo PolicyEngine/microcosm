@@ -58,6 +58,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "calibration_bindings.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "chronicle_feed.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
@@ -89,6 +94,11 @@
     },
     {
       "path": "precal_references.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "reference_inventory.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },
