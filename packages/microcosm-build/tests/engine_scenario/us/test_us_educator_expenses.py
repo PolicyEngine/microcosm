@@ -97,7 +97,7 @@ def test_weighted_qrf_writes_only_puf_channel_and_allocates_by_employment(
 def test_policyengine_us_17646_contract_is_person_year_input_in_ald_graph() -> None:
     from policyengine_us import CountryTaxBenefitSystem
 
-    assert version("policyengine-us") == "2.2.1"
+    assert version("policyengine-us") == "2.60.4"
     system = CountryTaxBenefitSystem()
     variable = system.variables["educator_expense"]
 

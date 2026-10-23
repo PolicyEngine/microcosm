@@ -29,7 +29,7 @@ def test_policyengine_us_live_housing_take_up_neutralization() -> None:
 
     from microcosm.build.us_runtime.reform_coverage_smoke import _build_reform
 
-    assert version("policyengine-us") == "2.2.1"
+    assert version("policyengine-us") == "2.60.4"
     situation = {
         "people": {
             "adult": {

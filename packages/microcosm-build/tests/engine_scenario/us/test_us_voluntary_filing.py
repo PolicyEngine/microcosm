@@ -9,7 +9,7 @@ def test_policyengine_2_2_1_contract_and_aca_ptc_neutralization() -> None:
 
     from microcosm.build.us_runtime.reform_coverage_smoke import _build_reform
 
-    assert version("policyengine-us") == "2.2.1"
+    assert version("policyengine-us") == "2.60.4"
     variable = CountryTaxBenefitSystem().variables[_OUTPUT]
     assert variable.is_input_variable()
     assert variable.entity.key == "tax_unit"

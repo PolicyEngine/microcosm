@@ -24,8 +24,12 @@ def test_the_naming_convention_holds_for_the_installed_engine():
         assert variable.entity.key == "household"
         assert variable.value_type is bool
         assert variable.formulas
-    if metadata.version("policyengine-us") == "2.2.1":
-        assert (len(names), outside) == (6167, _US_POSTAL_CODES)
+    measured = {"2.2.1": 6167, "2.60.4": 6797}
+    if metadata.version("policyengine-us") in measured:
+        assert (len(names), outside) == (
+            measured[metadata.version("policyengine-us")],
+            _US_POSTAL_CODES,
+        )
 
 
 def test_the_register_is_consistent_with_the_installed_engine():

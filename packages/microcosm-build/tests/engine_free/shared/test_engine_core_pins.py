@@ -3,8 +3,8 @@
 Nothing imports both engines and CI installs one country extra per job, so
 every extra that installs policyengine-us is declared in conflict with every
 extra that installs policyengine-uk, and uv locks the two sides in separate
-forks. The US side stays on the core the certified US default was built with
-until its next certified build. The UK side resolves the locked policyengine-uk
+forks. The US side pins the engine and core the next certified US build is
+built with. The UK side resolves the locked policyengine-uk
 and the core that release brings, and a lock change that moves either has to
 move the pin below with it. The resolution checks read the committed
 ``uv.lock`` through ``uv export --frozen``, uv's own reading of what an install
@@ -23,10 +23,11 @@ from packaging.requirements import Requirement
 
 from test_support.paths import REPOSITORY_ROOT
 
-#: What every US install path resolves until the next certified US build.
+#: What every US install path resolves: the engine the next certified US
+#: build is built with, on the core policyengine.py's bundle pins.
 US_ENGINE = {
-    "policyengine-core": "3.32.5",
-    "policyengine-us": "2.2.1",
+    "policyengine-core": "3.33.3",
+    "policyengine-us": "2.60.4",
     "spm-calculator": "1.0.0",
 }
 #: What every UK install path resolves: the locked policyengine-uk and the

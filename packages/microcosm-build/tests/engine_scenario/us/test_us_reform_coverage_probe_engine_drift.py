@@ -34,7 +34,7 @@ _REMOVED_ITEM = {
     "child_support_expense_snap_deduction_abolition": "snap_child_support_deduction",
     "disability_benefits_snap_exclusion": "disability_benefits",
     "workers_compensation_snap_exclusion": "workers_compensation",
-    "educator_expense_ald_abolition": "educator_expense",
+    "educator_expense_ald_abolition": "educator_expense_ald",
     "alimony_expense_ald_abolition": "alimony_expense_ald",
 }
 _ADDED_ITEM = {"domestic_production_ald_reactivation": "domestic_production_ald"}

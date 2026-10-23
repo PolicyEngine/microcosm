@@ -21,10 +21,10 @@ def test_checked_in_us_lock_is_fresh_schema_valid_and_not_authored() -> None:
     )
     assert payload["engine"] == {
         "package": "policyengine-us",
-        "version": "2.2.1",
+        "version": "2.60.4",
     }
-    assert len(payload["programs"]) == 17
-    assert len({row["variable"] for row in payload["programs"].values()}) == 17
+    assert len(payload["programs"]) == 18
+    assert len({row["variable"] for row in payload["programs"].values()}) == 18
     assert all(
         set(row)
         == {

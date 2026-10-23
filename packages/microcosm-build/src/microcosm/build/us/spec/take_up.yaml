@@ -592,8 +592,8 @@ legacy_contract_metadata:
     #312.'
   asserted_engine:
     package: policyengine-us
-    constraint: '>=2.2.1,<3'
-    inventory_built_against: 2.2.1
+    constraint: '>=2.60.4,<3'
+    inventory_built_against: 2.60.4
     note: engine_class, entity, value_type, and default below are asserted against the installed engine
       by test. inventory_built_against records the version the curated treatments were reviewed against;
       the pin constraint is the contract the build honors.

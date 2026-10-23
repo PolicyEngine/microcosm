@@ -81,7 +81,7 @@
           "FFINVAL": {"entity": "family", "label": "Financial assistance amount - Family"}
         },
         "policyengine_variable": {
-          "version": "2.2.1",
+          "version": "2.60.4",
           "entity": "person",
           "definition_period": "year",
           "documentation": "Cash financial assistance from friends or relatives outside the household."
@@ -247,7 +247,7 @@
           "scope": "all participant categories"
         },
         "policyengine_variable": {
-          "version": "2.2.1",
+          "version": "2.60.4",
           "entity": "person",
           "definition_period": "month",
           "value_type": "bool",
@@ -321,7 +321,7 @@
           "household": ["HSURVAL", "HSUR_YN"]
         },
         "policyengine_variable": {
-          "version": "2.2.1",
+          "version": "2.60.4",
           "entity": "person",
           "definition_period": "year",
           "documentation": "Survivor benefits other than Social Security survivor benefits."
@@ -410,7 +410,7 @@
           "SPM_STTAX": "SPM unit's state tax"
         },
         "policyengine_variable": {
-          "version": "2.2.1",
+          "version": "2.60.4",
           "entity": "tax_unit",
           "definition_period": "year",
           "value_type": "bool",
@@ -482,7 +482,7 @@
           "key": "takes_up_early_head_start_if_eligible"
         },
         "policyengine_variable": {
-          "version": "2.2.1",
+          "version": "2.60.4",
           "entity": "person",
           "definition_period": "year",
           "value_type": "bool",

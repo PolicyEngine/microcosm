@@ -16969,6 +16969,49 @@ def test_ecps_reference_projection_refuses_to_merge_two_layers() -> None:
         )
 
 
+def test_ecps_reference_layers_drop_the_retired_mortgage_legs() -> None:
+    """policyengine-us 2.60 removed the tax-unit first/second home mortgage
+    interest inputs; the person-level layer is graded in their place."""
+
+    builder = _load_builder_module()
+    shares = {
+        "first_home_mortgage_interest": 0.13,
+        "second_home_mortgage_interest": 0.0,
+        "home_mortgage_interest": 0.09,
+    }
+
+    kept, retired = builder._retire_ecps_reference_layers(
+        shares, {"home_mortgage_interest", "employment_income"}
+    )
+
+    assert kept == {"home_mortgage_interest": 0.09}
+    assert retired == {
+        "first_home_mortgage_interest": "home_mortgage_interest",
+        "second_home_mortgage_interest": "home_mortgage_interest",
+    }
+
+
+@pytest.mark.parametrize(
+    ("engine_inputs", "message"),
+    [
+        (
+            {"first_home_mortgage_interest", "home_mortgage_interest"},
+            "still defines it",
+        ),
+        ({"employment_income"}, "lacks the successor"),
+    ],
+)
+def test_ecps_reference_retirement_refuses_an_engine_it_does_not_describe(
+    engine_inputs: set[str], message: str
+) -> None:
+    builder = _load_builder_module()
+
+    with pytest.raises(ValueError, match=message):
+        builder._retire_ecps_reference_layers(
+            {"first_home_mortgage_interest": 0.13}, engine_inputs
+        )
+
+
 def _parity_reference(builder, shares):
     from microcosm.build.us_runtime.parity_reference import (
         EcpsParityReference,
