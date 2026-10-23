@@ -203,6 +203,21 @@ UK_LCFS_ON_TRADE_ALCOHOL_CODES = (
     "cb111i",
     "cb111j",
 )
+#: Gambling stakes, COICOP 09.4.3 games of chance (rows 1631-1649): football
+#: pools, bingo, lotteries other than the National and Irish ones, bookmaker
+#: and tote betting (with gaming machines, which Volume D files there), the
+#: Irish Lottery, and National Lottery scratchcards and draws; seven of the
+#: lines P609 sums (sheet "Part 3", row 1162). The winnings lines beside
+#: them sit in no total.
+UK_LCFS_GAMBLING_STAKE_CODES = (
+    "c94311",
+    "c94312",
+    "c94313",
+    "c94314",
+    "c94315",
+    "c94316",
+    "c94319",
+)
 #: LCFS fuel, light and power (p537) by fuel, from the LCF 2024-25 User Guide
 #: Volume F (SN 9603, ``9603_volume_f_derived_variables_2024_25.xlsx``):
 #: the variable labels on sheet "Part 2" (rows cited below) and the P537
@@ -551,10 +566,12 @@ UK_LCFS_CONSUMPTION_TARGET_COLUMNS = (
 #: off-trade alcohol is the rest of that total. On-trade alcohol is a share of
 #: restaurants and hotels (P611), whose published total the 2024-25 tab stores
 #: to one decimal place, so its lines can pass it by pennies and the share is
-#: clipped at one. Each maps to the total it splits, the diary lines over it
-#: and the diary lines (or published total) under it.
+#: clipped at one. Gambling stakes are a share of recreation (P609), stored
+#: the same way. Each maps to the total it splits, the diary lines over it and
+#: the diary lines (or published total) under it.
 UK_LCFS_TOBACCO_SHARE = "tobacco_share_of_alcohol_and_tobacco"
 UK_LCFS_ON_TRADE_ALCOHOL_SHARE = "on_trade_alcohol_share_of_restaurants_and_hotels"
+UK_LCFS_GAMBLING_SHARE = "gambling_stakes_share_of_recreation"
 UK_LCFS_EXCISE_SHARES: Mapping[str, tuple[str, tuple[str, ...], tuple[str, ...]]] = {
     UK_LCFS_TOBACCO_SHARE: (
         "alcohol_and_tobacco_consumption",
@@ -566,11 +583,17 @@ UK_LCFS_EXCISE_SHARES: Mapping[str, tuple[str, tuple[str, ...], tuple[str, ...]]
         UK_LCFS_ON_TRADE_ALCOHOL_CODES,
         ("p611",),
     ),
+    UK_LCFS_GAMBLING_SHARE: (
+        "recreation_consumption",
+        UK_LCFS_GAMBLING_STAKE_CODES,
+        ("p609",),
+    ),
 }
 #: The spending the shares give, scratch columns no table carries.
 UK_LCFS_TOBACCO_SPENDING = "tobacco_spending"
 UK_LCFS_OFF_TRADE_ALCOHOL_SPENDING = "off_trade_alcohol_spending"
 UK_LCFS_ON_TRADE_ALCOHOL_SPENDING = "on_trade_alcohol_spending"
+UK_LCFS_GAMBLING_SPENDING = "gambling_stakes"
 #: ``UKLCFSConsumptionResult`` evidence key of the shares' report-only receipt.
 UK_LCFS_EXCISE_SHARES_RECEIPT = "excise_shares"
 RECOMPOSE_FROM_REMAINDER_KIND = "recompose_from_remainder"
@@ -3531,18 +3554,21 @@ def excise_spending(draws: pd.DataFrame) -> pd.DataFrame:
 
     Tobacco and off-trade alcohol split the drawn alcohol and tobacco total
     between them, so together they are that total; on-trade alcohol is its
-    share of restaurants and hotels.
+    share of restaurants and hotels, and gambling stakes theirs of recreation.
     """
 
     tobacco = draws[UK_LCFS_TOBACCO_SHARE].to_numpy(dtype=float)
     alcohol_and_tobacco = draws["alcohol_and_tobacco_consumption"].to_numpy(dtype=float)
     on_trade = draws[UK_LCFS_ON_TRADE_ALCOHOL_SHARE].to_numpy(dtype=float)
+    gambling = draws[UK_LCFS_GAMBLING_SHARE].to_numpy(dtype=float)
     return pd.DataFrame(
         {
             UK_LCFS_TOBACCO_SPENDING: tobacco * alcohol_and_tobacco,
             UK_LCFS_OFF_TRADE_ALCOHOL_SPENDING: (1.0 - tobacco) * alcohol_and_tobacco,
             UK_LCFS_ON_TRADE_ALCOHOL_SPENDING: on_trade
             * draws["restaurants_and_hotels_consumption"].to_numpy(dtype=float),
+            UK_LCFS_GAMBLING_SPENDING: gambling
+            * draws["recreation_consumption"].to_numpy(dtype=float),
         },
         index=draws.index,
     )
@@ -3589,6 +3615,7 @@ def excise_shares_receipt(
     parts = {
         UK_LCFS_TOBACCO_SHARE: spending[UK_LCFS_TOBACCO_SPENDING],
         UK_LCFS_ON_TRADE_ALCOHOL_SHARE: spending[UK_LCFS_ON_TRADE_ALCOHOL_SPENDING],
+        UK_LCFS_GAMBLING_SHARE: spending[UK_LCFS_GAMBLING_SPENDING],
     }
     receipt: dict[str, Any] = {}
     for name, (total, _numerator, _denominator) in shares.items():

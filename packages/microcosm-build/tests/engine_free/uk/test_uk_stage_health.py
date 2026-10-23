@@ -2888,16 +2888,19 @@ def test_excise_quantities_gate_recomputes_every_level_from_the_vendored_rows(
     declaration = excise_declaration()
     patch_excise_facts(monkeypatch, declaration)
     levels, volume = excise_levels(declaration)
-    tobacco, on_trade = (
+    tobacco, on_trade, gambling = (
         "tobacco_share_of_alcohol_and_tobacco",
         "on_trade_alcohol_share_of_restaurants_and_hotels",
+        "gambling_stakes_share_of_recreation",
     )
     draws = pd.DataFrame(
         {
             "alcohol_and_tobacco_consumption": [1000.0, 500.0, 0.0, 800.0],
             "restaurants_and_hotels_consumption": [2000.0, 0.0, 600.0, 400.0],
+            "recreation_consumption": [3000.0, 1000.0, 0.0, 2000.0],
             tobacco: [0.25, 1.0, 0.0, 0.0],
             on_trade: [0.1, 0.0, 0.5, 0.0],
+            gambling: [0.02, 0.0, 0.0, 0.05],
         }
     )
     _, quantities = level_excise_quantities(
@@ -2917,7 +2920,7 @@ def test_excise_quantities_gate_recomputes_every_level_from_the_vendored_rows(
             "frame": {"draws_outside_unit_interval": 0},
             "donor": {"positive_support": "30+", "total_beside_lines": residual},
         }
-        for name, residual in ((tobacco, 0.004), (on_trade, None))
+        for name, residual in ((tobacco, 0.004), (on_trade, None), (gambling, None))
     }
     parameters = {
         "stage": "lcfs_consumption",
