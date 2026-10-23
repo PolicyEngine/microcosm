@@ -479,7 +479,21 @@ class RunnerTests(unittest.TestCase):
                 )
                 original = path.read_bytes()
 
-                def output(argv, *, cwd, **kwargs):
+                def output(
+                    argv,
+                    *,
+                    cwd,
+                    problem=problem,
+                    root=root,
+                    repo=repo,
+                    worktree=worktree,
+                    branch=branch,
+                    base=base,
+                    relative=relative,
+                    **kwargs,
+                ):
+                    # The loop variables are bound as defaults: each subtest's fake
+                    # answers for its own repository.
                     if argv[1:3] == ["worktree", "list"]:
                         location = (
                             root / "elsewhere"

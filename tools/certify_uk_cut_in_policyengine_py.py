@@ -167,17 +167,24 @@ def regional_tag(flags: list[str]) -> str | None:
     )
 
 
+#: The shared build host's limits (UK hub rehearsal, 2026-10-23). Another
+#: machine sets its own with --max-load1 and --min-free-gb.
+RESOURCE_LIMITS = {"max_load1": 110.0, "min_free_bytes": 55_000_000_000}
+
+
 def resource_guard(root: Path) -> dict[str, float | int]:
     """Refuse work before spawning a process on an overloaded or full host."""
 
+    max_load1 = RESOURCE_LIMITS["max_load1"]
+    min_free = RESOURCE_LIMITS["min_free_bytes"]
     load1 = os.getloadavg()[0]
     while not root.exists():
         root = root.parent
     free = shutil.disk_usage(root).free
-    if load1 > 110 or free < 55_000_000_000:
+    if load1 > max_load1 or free < min_free:
         raise CertifyError(
-            f"resource guard: load1={load1:.2f} (maximum 110), "
-            f"free={free / 1e9:.2f} GB (minimum 55 decimal GB)."
+            f"resource guard: load1={load1:.2f} (maximum {max_load1:g}), "
+            f"free={free / 1e9:.2f} GB (minimum {min_free / 1e9:g} decimal GB)."
         )
     return {"load1": load1, "free_bytes": free}
 
@@ -746,6 +753,18 @@ def parse(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--skip-writer-check", metavar="WHY")
     parser.add_argument("--skip-tests", action="store_true")
     parser.add_argument("--test-workers", type=int, default=4)
+    parser.add_argument(
+        "--max-load1",
+        type=float,
+        default=RESOURCE_LIMITS["max_load1"],
+        help="refuse each heavy step above this 1-minute load (default %(default)s)",
+    )
+    parser.add_argument(
+        "--min-free-gb",
+        type=float,
+        default=RESOURCE_LIMITS["min_free_bytes"] / 1e9,
+        help="refuse each heavy step below this free disk (default %(default)s GB)",
+    )
     parser.add_argument("--push", action="store_true")
     parser.add_argument(
         "--pr-base",
@@ -765,6 +784,9 @@ def parse(argv: list[str] | None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse(argv)
+    RESOURCE_LIMITS.update(
+        max_load1=args.max_load1, min_free_bytes=int(args.min_free_gb * 1e9)
+    )
     try:
         return certify(args)
     except CertifyError as error:

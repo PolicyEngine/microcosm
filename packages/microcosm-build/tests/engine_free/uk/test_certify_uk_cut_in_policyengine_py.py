@@ -7,6 +7,7 @@ import argparse
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
+
 from tools import certify_uk_cut_in_policyengine_py as handoff
 
 NATIONAL = "microcosm-uk-2024-25-national-20261021T195620Z-a858c100"
@@ -281,3 +282,17 @@ def test_the_pr_body_lists_the_area_input_surface():
     )
     assert "built on 2.132.6" in body
     assert "local_bus_uncapped_single_fare" in body
+
+
+def test_the_resource_limits_are_the_operators_to_set(monkeypatch, tmp_path):
+    """The shared build host's limits are defaults, not constants."""
+
+    monkeypatch.setattr(handoff, "RESOURCE_LIMITS", dict(handoff.RESOURCE_LIMITS))
+    monkeypatch.setattr(handoff.os, "getloadavg", lambda: (12.0, 0.0, 0.0))
+    monkeypatch.setattr(handoff, "certify", lambda args: 0)
+    args = ["--national-tag", NATIONAL, "--drop-regional-release"]
+    assert handoff.main([*args, "--max-load1", "20", "--min-free-gb", "0"]) == 0
+    assert handoff.resource_guard(tmp_path)["load1"] == 12.0
+    assert handoff.main([*args, "--max-load1", "8", "--min-free-gb", "0"]) == 0
+    with pytest.raises(handoff.CertifyError, match="maximum 8"):
+        handoff.resource_guard(tmp_path)
