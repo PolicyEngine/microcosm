@@ -5,8 +5,10 @@ Three measurements, all weighted, all against the 2025 SCF:
 
 1. **Source checks.** The loader's education debt against the Fed's published
    Alternate Table 13 (19.92% of families hold education debt, median
-   $25,500), and how the federal flag, X7179 and the whose-education codes
-   split the balances the X7179 and holder rules act on.
+   $25,500), how the federal flag, X7179 and the whose-education codes split
+   the balances the X7179 and holder rules act on, the X8000 degree test for
+   loans 4 and 6, and the Parent PLUS share and borrowers under each reading
+   of a loan for a child's education.
 2. **Hold-out fit and predictor ablation.** Families are split into five folds
    by ``yy1`` (all implicates of a family stay together). Each fold is drawn
    from the stage's two QRFs fit on the other four, and the drawn table is
@@ -18,7 +20,9 @@ Three measurements, all weighted, all against the 2025 SCF:
    predictor, and the build (that definition without the two shifted income
    predictors).
 
-Nothing here is a gate or a calibration target. The committed receipts are
+Federal Student Aid's portfolio tables (``FSA``) are the benchmark for the
+Parent PLUS share, borrower counts and borrower bands. Nothing here is a gate
+or a calibration target. The committed receipts are
 produced on Modal by ``experiments/modal_1073.py`` (step ``receipt``), which
 clones a pushed commit and verifies every input's SHA-256; the receipt records
 that commit and the run id. A local run needs about 4 GB:
@@ -41,9 +45,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+import microcosm.build.us_runtime.scf_education_debt as education_debt
 from microcosm.build.us_runtime.scf_education_debt import (
     SCF_2025_FULL_EXTRACT,
     SCF_2025_SUMMARY_EXTRACT,
+    SCF_EDUCATION_DEBT_ADULT_CHILDREN_PREDICTOR,
     SCF_EDUCATION_DEBT_BALANCE_BANDS,
     SCF_EDUCATION_DEBT_BORROWER_AGE_BANDS,
     SCF_EDUCATION_DEBT_CANDIDATE_PREDICTORS,
@@ -51,13 +57,20 @@ from microcosm.build.us_runtime.scf_education_debt import (
     SCF_EDUCATION_DEBT_PREDICTORS,
     SCF_EDUCATION_DEBT_RECIPIENT_DEFINITION,
     SCF_EDUCATION_DEBT_TOTAL_TARGET,
+    SCF_EDUCATION_LOAN_AMOUNT_BORROWED_COLUMNS,
     SCF_EDUCATION_LOAN_BALANCE_COLUMNS,
     SCF_EDUCATION_LOAN_FEDERAL_COLUMNS,
+    SCF_EDUCATION_LOAN_PROGRAM_COLUMNS,
     SCF_EDUCATION_LOAN_REMAINING_BALANCE_COLUMN,
     SCF_EDUCATION_LOAN_WHOSE_COLUMNS,
+    SCF_EDUCATION_LOAN_YEAR_COLUMNS,
+    SCF_HOUSEHOLD_LISTING_AGE_COLUMNS,
+    SCF_HOUSEHOLD_LISTING_RELATIONSHIP_COLUMNS,
+    SCF_REVERSED_COLUMN,
     RecipientDefinition,
     ScfPublicFile,
     _read_stata_columns,
+    derive_scf_education_debt_targets,
     draw_scf_education_debt_households,
     fetch_scf_public_file,
     impute_us_scf_education_debt,
@@ -78,6 +91,71 @@ FED_ALT_TABLE_13 = {
     ),
     "share_of_families_with_education_debt_pct": 19.92,
     "median_among_holders": 25_500.0,
+}
+#: Federal Student Aid portfolio tables, as published (the chronicle#347 source
+#: packages). Downloaded from
+#: https://studentaid.gov/sites/default/files/fsawg/datacenter/library/<file>;
+#: the SHA-256 of each file read is listed. Recipients are students, so a
+#: Parent PLUS loan counts the child; the by-age and by-debt-size tables count
+#: borrowers, so they count the parent.
+FSA = {
+    "files": {
+        "PortfolioSummary.xls": (
+            "11606d4b93ceea969fcae0f790f3a4e1c2999b62050559ce89bdc269810a62ee"
+        ),
+        "PortfoliobyLoanType.xls": (
+            "e64e9d2945dfe703d42d383a7f65fbd4b044d134565ea77a0bd194f366becd33"
+        ),
+        "Portfolio-by-Age.xls": (
+            "c2027d277bb88e31c5a8c0f8fc6d81422f45d60e0306f79e63a0c25c7286e2ef"
+        ),
+        "Portfolio-by-Debt-Size.xls": (
+            "881bd8bbd257da5f5b906b0f0923cf246de6e3d28ee35e8be1cd23d841e88a4d"
+        ),
+    },
+    "total_dollars_fy2026_q3": 1_724.5e9,
+    "unduplicated_recipients_fy2026_q3": 42.3e6,
+    "parent_plus_dollars_fy2026_q3": 115.0e9,
+    "parent_plus_recipients_fy2026_q3": 3.5e6,
+    "borrowers_by_age_fy2026_q2": {
+        "24_and_younger": 6.2e6,
+        "25_to_34": 14.0e6,
+        "35_to_49": 15.0e6,
+        "50_to_61": 6.4e6,
+        "62_and_older": 3.2e6,
+        "not_reported": 0.1e6,
+    },
+    "borrowers_by_debt_size_fy2026_q2": {
+        "under_5k": 6.9e6,
+        "5k_to_10k": 7.2e6,
+        "10k_to_20k": 9.2e6,
+        "20k_to_40k": 9.5e6,
+        "40k_to_60k": 4.2e6,
+        "60k_to_80k": 2.6e6,
+        "80k_to_100k": 1.4e6,
+        "100k_to_200k": 2.6e6,
+        "200k_plus": 1.2e6,
+    },
+}
+#: The build's host fit in the previous receipt (before loans for a child's
+#: education were routed to co-resident children and Parent PLUS was drawn
+#: for itself), for the before/after table. The SCF's own "before" column is
+#: recomputed here from the old rule.
+PREVIOUS_RECEIPT = {
+    "commit": "2a6e65a739b79a8232e1177610d11928fe92e26c",
+    "run": "20261022T153020Z-2a6e65a73",
+    "host_build": {
+        "parent_plus_share_of_total": 0.16758194869071996,
+        "federal_education_debt_total": 858421208954.9309,
+        "borrower_weight": 21223403.433088087,
+        "age_bands": {
+            "24_and_younger": 0.049988325664619956,
+            "25_to_34": 0.2917790224346921,
+            "35_to_49": 0.3780495021343625,
+            "50_to_61": 0.20778027670943267,
+            "62_and_older": 0.07240287305689257,
+        },
+    },
 }
 #: The published default the host fit imputes onto, and its release-manifest
 #: SHA-256 (releases/populace-us-2024-spm-20260915/release_manifest.json).
@@ -264,6 +342,187 @@ def source_checks(donor: pd.DataFrame, full: pd.DataFrame) -> dict[str, object]:
     }
 
 
+_COMPLETED_COLUMNS = ("x7881", "x7886", "x7891", "x7896", "x7901", "x7996")
+_CONSOLIDATED_COLUMNS = ("x9320", "x9321", "x9322", "x9323", "x9324", "x9325")
+_DEGREE_LEVEL = {10: 1, 11: 1, 12: 2, 13: 3, 14: 4, 15: 4}
+FULL_FILE_RECEIPT_COLUMNS = (
+    "y1",
+    "yy1",
+    "x42001",
+    "x5931",
+    "x6111",
+    SCF_REVERSED_COLUMN,
+    *SCF_EDUCATION_LOAN_BALANCE_COLUMNS,
+    SCF_EDUCATION_LOAN_REMAINING_BALANCE_COLUMN,
+    *SCF_EDUCATION_LOAN_FEDERAL_COLUMNS,
+    *SCF_EDUCATION_LOAN_WHOSE_COLUMNS,
+    *SCF_EDUCATION_LOAN_YEAR_COLUMNS,
+    *SCF_EDUCATION_LOAN_PROGRAM_COLUMNS,
+    *SCF_EDUCATION_LOAN_AMOUNT_BORROWED_COLUMNS,
+    *_COMPLETED_COLUMNS,
+    *_CONSOLIDATED_COLUMNS,
+    *SCF_HOUSEHOLD_LISTING_RELATIONSHIP_COLUMNS,
+    *SCF_HOUSEHOLD_LISTING_AGE_COLUMNS,
+)
+
+
+def _matrix(full: pd.DataFrame, columns: Sequence[str]) -> np.ndarray:
+    return np.column_stack(
+        [pd.to_numeric(full[c], errors="coerce").fillna(0).to_numpy() for c in columns]
+    )
+
+
+def x8000_degree_check(full: pd.DataFrame) -> list[dict[str, object]]:
+    """Do loans' whose-education codes match the coded person's degree?
+
+    Completed loans coded 1 or 2 that financed a degree (programs 10-15), in
+    families with a spouse or partner (X6111 recorded). A loan is consistent
+    with a person whose highest degree (X5931 for the reference person, X6111
+    for the spouse or partner) is at least the program's level; it
+    discriminates when it is consistent with exactly one of them. Raw codes,
+    before the stage's correction; counts pool the five implicates.
+    """
+
+    level = np.vectorize(lambda code: _DEGREE_LEVEL.get(int(code), 0))
+    balance = _matrix(full, SCF_EDUCATION_LOAN_BALANCE_COLUMNS)
+    whose = _matrix(full, SCF_EDUCATION_LOAN_WHOSE_COLUMNS)
+    completed = _matrix(full, _COMPLETED_COLUMNS)
+    program_level = level(_matrix(full, SCF_EDUCATION_LOAN_PROGRAM_COLUMNS))
+    reference = level(pd.to_numeric(full["x5931"]).fillna(0).to_numpy())
+    spouse_degree = pd.to_numeric(full["x6111"]).fillna(0).to_numpy()
+    spouse = level(spouse_degree)
+    reversed_family = pd.to_numeric(full[SCF_REVERSED_COLUMN]).to_numpy() == 1
+    implicate = pd.to_numeric(full["y1"]).astype(int).to_numpy() % 10
+    rows = []
+    for loans, positions in (("1, 2, 3, 5", (0, 1, 2, 4)), ("4, 6", (3, 5))):
+        for family, label in ((False, "not reversed"), (True, "reversed")):
+            for code in (1, 2):
+                counts = {"all": [0, 0], "implicate_1": [0, 0]}
+                for position in positions:
+                    loan = (
+                        (balance[:, position] > 0)
+                        & (whose[:, position] == code)
+                        & (completed[:, position] == 1)
+                        & (program_level[:, position] > 0)
+                        & (spouse_degree != 0)
+                        & (reversed_family == family)
+                    )
+                    fits_reference = reference >= program_level[:, position]
+                    fits_spouse = spouse >= program_level[:, position]
+                    discriminating = loan & (fits_reference != fits_spouse)
+                    coded = fits_reference if code == 1 else fits_spouse
+                    for key, mask in (
+                        ("all", discriminating),
+                        ("implicate_1", discriminating & (implicate == 1)),
+                    ):
+                        counts[key][0] += int(mask.sum())
+                        counts[key][1] += int((mask & coded).sum())
+                rows.append(
+                    {
+                        "loans": loans,
+                        "x8000": label,
+                        "code": code,
+                        "discriminating": counts["all"][0],
+                        "consistent_with_coded_person": counts["all"][1],
+                        "discriminating_implicate_1": counts["implicate_1"][0],
+                        "consistent_implicate_1": counts["implicate_1"][1],
+                    }
+                )
+    return rows
+
+
+def _derive_reading(full: pd.DataFrame, reading: str) -> pd.DataFrame:
+    """Donor targets under one reading of the whose-education codes.
+
+    ``before`` is the previous rule: no X8000 correction and every loan for a
+    child's education the head's Parent PLUS loan (as if no child were
+    listed). ``x8000_only`` adds the correction. ``build`` is the stage.
+    ``within_limit_parent_plus`` reads an undergraduate loan within the
+    dependent limit for a child of dependent age as Parent PLUS too.
+    """
+
+    frame = full.copy()
+    if reading in {"before", "x8000_only"}:
+        for column in SCF_HOUSEHOLD_LISTING_RELATIONSHIP_COLUMNS:
+            frame[column] = 0
+    if reading == "before":
+        frame[SCF_REVERSED_COLUMN] = 5
+    if reading != "within_limit_parent_plus":
+        return derive_scf_education_debt_targets(frame)
+    limit = education_debt._DEPENDENT_UNDERGRADUATE_AGGREGATE_LIMIT
+    education_debt._DEPENDENT_UNDERGRADUATE_AGGREGATE_LIMIT = -1.0
+    try:
+        return derive_scf_education_debt_targets(frame)
+    finally:
+        education_debt._DEPENDENT_UNDERGRADUATE_AGGREGATE_LIMIT = limit
+
+
+READINGS = ("before", "x8000_only", "build", "within_limit_parent_plus")
+
+
+def child_education_readings(full: pd.DataFrame) -> dict[str, dict[str, float]]:
+    """Parent PLUS share and borrowers (people) under each reading."""
+
+    weight = full["wgt"].to_numpy(dtype=np.float64)
+    result = {}
+    for reading in READINGS:
+        targets = _derive_reading(full, reading)
+        total = float(np.dot(targets[SCF_EDUCATION_DEBT_TOTAL_TARGET], weight))
+        plus = targets["federal_parent_plus_loan_balance"].to_numpy()
+        head = targets["head_federal_student_loan_balance"].to_numpy() + plus
+        spouse = targets["spouse_federal_student_loan_balance"].to_numpy()
+        child = targets["child_federal_student_loan_balance"].to_numpy()
+        result[reading] = {
+            "parent_plus_share_of_federal": float(np.dot(plus, weight)) / total,
+            "child_own_share_of_federal": float(np.dot(child, weight)) / total,
+            "parent_plus_dollars": float(np.dot(plus, weight)),
+            "borrowers": float(
+                weight[head > 0].sum()
+                + weight[spouse > 0].sum()
+                + weight[child > 0].sum()
+            ),
+            "parent_plus_holders": float(weight[plus > 0].sum()),
+            "child_borrowers": float(weight[child > 0].sum()),
+        }
+    return result
+
+
+def consolidated_share_of_new_loans(full: pd.DataFrame) -> float:
+    """Share of federal balances dated 2014 or later on a consolidated loan."""
+
+    weight = full["wgt"].to_numpy(dtype=np.float64)[:, None]
+    balance = _matrix(full, SCF_EDUCATION_LOAN_BALANCE_COLUMNS)
+    federal = (_matrix(full, SCF_EDUCATION_LOAN_FEDERAL_COLUMNS) == 1) & (balance > 0)
+    new = _matrix(full, SCF_EDUCATION_LOAN_YEAR_COLUMNS) >= 2014
+    consolidated = _matrix(full, _CONSOLIDATED_COLUMNS) == 1
+    dated_new = np.where(federal & new, balance, 0.0) * weight
+    return float(np.where(consolidated, dated_new, 0.0).sum() / dated_new.sum())
+
+
+def donor_under_reading(
+    donor: pd.DataFrame, full: pd.DataFrame, reading: str
+) -> pd.DataFrame:
+    """The donor with its targets derived under another reading."""
+
+    targets = _derive_reading(full, reading)
+    keys = pd.MultiIndex.from_arrays(
+        [
+            pd.to_numeric(full["yy1"]).to_numpy(),
+            pd.to_numeric(full["y1"]).astype(int).to_numpy() % 10,
+        ]
+    )
+    targets.index = keys
+    aligned = targets.reindex(
+        pd.MultiIndex.from_arrays(
+            [donor["yy1"].to_numpy(), donor["implicate"].to_numpy()]
+        )
+    )
+    result = donor.copy()
+    for column in targets.columns:
+        result[column] = aligned[column].to_numpy()
+    return result
+
+
 def _fold_of_family(families: np.ndarray, *, folds: int, seed: int) -> np.ndarray:
     unique = np.unique(families)
     rng = np.random.default_rng(np.random.SeedSequence([seed, 1073, 5]))
@@ -286,7 +545,9 @@ def holdout_draws(
     for k in range(folds):
         held_out = fold == k
         drawn = draw_scf_education_debt_households(
-            donor.loc[held_out, list(predictors)],
+            donor.loc[
+                held_out, [*predictors, SCF_EDUCATION_DEBT_ADULT_CHILDREN_PREDICTOR]
+            ],
             donor.loc[~held_out],
             seed=seed + k,
             predictors=predictors,
@@ -464,8 +725,10 @@ def markdown(receipt: Mapping[str, object]) -> str:
         "setting's income unit, the income concept that setting conditions on. "
         "Borrower figures count "
         "people with a federal balance (own plus Parent PLUS), in Federal Student "
-        "Aid's balance and age bands; SCF borrowers are the reference person and "
-        "spouse. Nothing here is a gate or a calibration target.",
+        "Aid's balance and age bands; SCF borrowers are the reference person, the "
+        "spouse or partner and an adult child holding a loan for their own "
+        "education, whose public-file age band (18-27 reads 25) is spread evenly "
+        "over its years. Nothing here is a gate or a calibration target.",
         "",
         "## Source checks",
         "",
@@ -488,11 +751,163 @@ def markdown(receipt: Mapping[str, object]) -> str:
         lines.append(f"| {key.replace('_', ' ')} | {_pct(value)} |")
     lines += [
         "",
-        "| Federal balances on loans 1-6, by whose education | Share |",
+        "| Federal balances on loans 1-6, by whose education (codes as published) "
+        "| Share |",
         "|---|---:|",
     ]
     for key, value in checks["federal_balance_share_by_whose_education_code"].items():
         lines.append(f"| {key} | {_pct(value)} |")
+    lines += [
+        "",
+        "### X8000: are the whose-education codes reversed?",
+        "",
+        "Completed degree loans coded 1 or 2 in families with a spouse or partner. "
+        "A loan discriminates when it is consistent with exactly one partner's "
+        "highest degree (X5931, X6111: at least the program's level); the last "
+        "columns count those consistent with the coded person (code 1 the "
+        "reference person, code 2 the spouse or partner), as published, before "
+        "the stage swaps codes 1 and 2 of loans 4 and 6 in reversed families. "
+        "Counts pool the five implicates (implicate 1 in brackets).",
+        "",
+        "| Loans | X8000 | Code | Discriminating | Consistent with the coded person |",
+        "|---|---|---:|---:|---:|",
+    ]
+    for entry in checks["x8000_degree_check"]:
+        lines.append(
+            f"| {entry['loans']} | {entry['x8000']} | {entry['code']} | "
+            f"{entry['discriminating']} ({entry['discriminating_implicate_1']}) | "
+            f"{entry['consistent_with_coded_person']} "
+            f"({entry['consistent_implicate_1']}) |"
+        )
+    readings = checks["child_education_readings"]
+    reading_labels = {
+        "before": "Before: every code-3 loan Parent PLUS, codes as published",
+        "x8000_only": "X8000 correction only",
+        "build": "Build: co-resident adult child unless only a parent could borrow",
+        "within_limit_parent_plus": (
+            "Alternative: within-limit undergraduate loans for a dependent-age "
+            "child also Parent PLUS"
+        ),
+    }
+    lines += [
+        "",
+        "### Loans for a child's education (SCF 2025, weighted)",
+        "",
+        "FSA's Direct Parent PLUS balance is "
+        f"{_pct(FSA['parent_plus_dollars_fy2026_q3'] / FSA['total_dollars_fy2026_q3'])}"
+        " of its portfolio at FY2026 Q3, a floor, since consolidated Parent PLUS "
+        "loans sit in the consolidation total.",
+        "",
+        "| Reading | Parent PLUS share | Child's own share | Parent PLUS holders "
+        "| Child borrowers | Borrowers |",
+        "|---|---:|---:|---:|---:|---:|",
+    ]
+    for reading, label in reading_labels.items():
+        entry = readings[reading]
+        lines.append(
+            f"| {label} | {_pct(entry['parent_plus_share_of_federal'])} | "
+            f"{_pct(entry['child_own_share_of_federal'])} | "
+            f"{entry['parent_plus_holders'] / 1e6:,.1f}M | "
+            f"{entry['child_borrowers'] / 1e6:,.1f}M | "
+            f"{entry['borrowers'] / 1e6:,.1f}M |"
+        )
+    lines += [
+        "",
+        "IBR new-borrower status is an upper bound: the SCF sees only loans still "
+        "owed, so paid-off pre-2014 loans are missed, and a consolidated loan is "
+        "dated by its most recent underlying loan. "
+        f"{_pct(checks['consolidated_share_of_federal_balances_dated_2014_or_later'])}"
+        " of federal balances dated 2014 or later are on a loan that has been "
+        "consolidated or refinanced (X9320-X9325).",
+    ]
+    before = receipt["scf_2025_observed_before"]
+    previous = receipt["previous_receipt"]["host_build"]
+    build = settings.get(BUILD_SETTING, {}).get("fit")
+    by_age_fsa = {
+        k: v
+        for k, v in FSA["borrowers_by_age_fy2026_q2"].items()
+        if k != "not_reported"
+    }
+    fsa_age_total = sum(by_age_fsa.values())
+    fsa_borrowers = sum(FSA["borrowers_by_age_fy2026_q2"].values())
+    compare = [
+        ("SCF 2025, before", {
+            "pp": before["households"]["parent_plus_share_of_total"],
+            "pp_dollars": before["households"]["parent_plus_share_of_total"]
+            * before["households"]["federal_education_debt_total"],
+            "total": before["households"]["federal_education_debt_total"],
+            "borrowers": before["borrowers"]["borrower_weight"],
+            "ages": before["borrowers"]["age_bands"],
+        }),
+        ("SCF 2025", {
+            "pp": observed["households"]["parent_plus_share_of_total"],
+            "pp_dollars": observed["households"]["parent_plus_share_of_total"]
+            * observed["households"]["federal_education_debt_total"],
+            "total": observed["households"]["federal_education_debt_total"],
+            "borrowers": observed["borrowers"]["borrower_weight"],
+            "ages": observed["borrowers"]["age_bands"],
+        }),
+        ("Host: Build, before", {
+            "pp": previous["parent_plus_share_of_total"],
+            "pp_dollars": previous["parent_plus_share_of_total"]
+            * previous["federal_education_debt_total"],
+            "total": previous["federal_education_debt_total"],
+            "borrowers": previous["borrower_weight"],
+            "ages": previous["age_bands"],
+        }),
+    ]  # fmt: skip
+    if build is not None:
+        compare.append(
+            (
+                "Host: Build",
+                {
+                    "pp": build["households"]["parent_plus_share_of_total"],
+                    "pp_dollars": build["households"]["parent_plus_share_of_total"]
+                    * build["households"]["federal_education_debt_total"],
+                    "total": build["households"]["federal_education_debt_total"],
+                    "borrowers": build["borrowers"]["borrower_weight"],
+                    "ages": build["borrowers"]["age_bands"],
+                },
+            )
+        )
+    lines += [
+        "",
+        "## Parent PLUS and borrowers against Federal Student Aid",
+        "",
+        "Before is the previous rule (every loan for a child's education the "
+        "head's Parent PLUS loan, the residual of the composition draw); the "
+        "host's before column is the build in the previous receipt (commit "
+        f"`{receipt['previous_receipt']['commit'][:9]}`, Modal run "
+        f"`{receipt['previous_receipt']['run']}`). FSA's Parent PLUS share is a "
+        "floor; its dollars are the whole federal portfolio, of which household "
+        "surveys capture part, so the shares compare and the levels do not. FSA "
+        "borrowers come from its by-age table (FY2026 Q2), which counts the "
+        "parent on a Parent PLUS loan; its "
+        f"{FSA['unduplicated_recipients_fy2026_q3'] / 1e6:.1f}M unduplicated "
+        "recipients (FY2026 Q3) count the student instead.",
+        "",
+        "| | FSA | " + " | ".join(label for label, _ in compare) + " |",
+        "|---|---:|" + "---:|" * len(compare),
+        "| Parent PLUS share of federal balances | "
+        f"{_pct(FSA['parent_plus_dollars_fy2026_q3'] / FSA['total_dollars_fy2026_q3'])}"
+        " (floor) | " + " | ".join(_pct(c["pp"]) for _, c in compare) + " |",
+        f"| Parent PLUS balances | ${FSA['parent_plus_dollars_fy2026_q3'] / 1e9:,.1f}B | "
+        + " | ".join(f"${c['pp_dollars'] / 1e9:,.1f}B" for _, c in compare)
+        + " |",
+        f"| Federal balances | ${FSA['total_dollars_fy2026_q3'] / 1e9:,.1f}B | "
+        + " | ".join(f"${c['total'] / 1e9:,.1f}B" for _, c in compare)
+        + " |",
+        f"| Borrowers (people) | {fsa_borrowers / 1e6:,.1f}M | "
+        + " | ".join(f"{c['borrowers'] / 1e6:,.1f}M" for _, c in compare)
+        + " |",
+    ]
+    for label, _, _ in SCF_EDUCATION_DEBT_BORROWER_AGE_BANDS:
+        lines.append(
+            f"| Borrowers aged {label.replace('_', ' ')} | "
+            f"{_pct(by_age_fsa[label] / fsa_age_total)} | "
+            + " | ".join(_pct(c["ages"][label]) for _, c in compare)
+            + " |"
+        )
     lines += [
         "",
         "## Fit",
@@ -540,7 +955,7 @@ def markdown(receipt: Mapping[str, object]) -> str:
             _dollars,
         ),
         row(
-            "IBR new borrowers among borrowers",
+            "IBR new borrowers among borrowers (upper bound)",
             lambda t: t["borrowers"]["ibr_new_borrower_share"],
             _pct,
         ),
@@ -552,17 +967,35 @@ def markdown(receipt: Mapping[str, object]) -> str:
         "",
         "### Borrowers by FSA balance band",
         "",
-        header,
-        rule,
+        "FSA: borrowers by debt size, FY2026 Q2.",
+        "",
+        header + " FSA |",
+        rule + "---:|",
     ]
+    by_size = FSA["borrowers_by_debt_size_fy2026_q2"]
     for label, _, _ in SCF_EDUCATION_DEBT_BALANCE_BANDS:
         lines.append(
             row(label, lambda t, k=label: t["borrowers"]["balance_bands"][k], _pct)
+            + f" {_pct(by_size[label] / sum(by_size.values()))} |"
         )
-    lines += ["", "### Borrowers by FSA age band", "", header, rule]
+    by_age = {
+        k: v
+        for k, v in FSA["borrowers_by_age_fy2026_q2"].items()
+        if k != "not_reported"
+    }
+    lines += [
+        "",
+        "### Borrowers by FSA age band",
+        "",
+        "FSA: borrowers by age, FY2026 Q2, of those with an age reported.",
+        "",
+        header + " FSA |",
+        rule + "---:|",
+    ]
     for label, _, _ in SCF_EDUCATION_DEBT_BORROWER_AGE_BANDS:
         lines.append(
             row(label, lambda t, k=label: t["borrowers"]["age_bands"][k], _pct)
+            + f" {_pct(by_age[label] / sum(by_age.values()))} |"
         )
     for section, title in (
         (
@@ -724,20 +1157,13 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     donor = load_scf_2025_education_debt_donor(summary_path, full_path)
     full = _read_stata_columns(
-        full_path,
-        (
-            "y1",
-            "yy1",
-            "x42001",
-            *SCF_EDUCATION_LOAN_BALANCE_COLUMNS,
-            SCF_EDUCATION_LOAN_REMAINING_BALANCE_COLUMN,
-            *SCF_EDUCATION_LOAN_FEDERAL_COLUMNS,
-            *SCF_EDUCATION_LOAN_WHOSE_COLUMNS,
-        ),
-        label="2025 full file",
+        full_path, FULL_FILE_RECEIPT_COLUMNS, label="2025 full file"
     )
     full["wgt"] = full["x42001"] / 5.0
     observed = scf_education_debt_donor_fit_table(donor)
+    observed_before = scf_education_debt_donor_fit_table(
+        donor_under_reading(donor, full, "before")
+    )
     receipt: dict[str, object] = {
         "schema_version": 1,
         "issue": ISSUE,
@@ -751,8 +1177,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             }
             for public_file in (SCF_2025_SUMMARY_EXTRACT, SCF_2025_FULL_EXTRACT)
         },
-        "source_checks": source_checks(donor, full),
+        "source_checks": {
+            **source_checks(donor, full),
+            "x8000_degree_check": x8000_degree_check(full),
+            "child_education_readings": child_education_readings(full),
+            "consolidated_share_of_federal_balances_dated_2014_or_later": (
+                consolidated_share_of_new_loans(full)
+            ),
+        },
+        "fsa": FSA,
+        "previous_receipt": PREVIOUS_RECEIPT,
         "scf_2025_observed": observed,
+        "scf_2025_observed_before": observed_before,
         "holdout": {
             "folds": args.folds,
             "seed": args.seed,

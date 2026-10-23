@@ -36,21 +36,56 @@ X7951). Loans beyond the sixth are one total, X7179, with none of these items.
   in the same proportions as loans 1-6. A family with X7179 but no balance on
   loans 1-6 contributes nothing (none in the public files read).
 - **Whose-education rule** (:data:`SCF_WHOSE_EDUCATION_HOLDER`). Code 1
-  (respondent; the public file swaps respondent and spouse codes so code 1 is
-  the SCF reference person) is the head's own loan, and code 2 (spouse or
-  partner) the spouse's own loan; both go to ``federal_student_loan_balance``.
-  Code 3 (child or stepchild; the public file folds grandchild and other
-  relative into 3) is a loan for a child's education and goes to the head's
-  ``federal_parent_plus_loan_balance``. Code 6 (multiple people), code 7
-  (unrelated person) and code -7 (other) go to the head's own balance: none can
-  be a Parent PLUS loan for one dependent student, and the SCF reference person
-  is the household's default borrower. Any other code (the public file folds 4
-  and 5 into 3, so none is expected) also goes to the head.
+  (respondent) is the head's own loan and code 2 (spouse or partner) the
+  spouse's; both go to ``federal_student_loan_balance``. Where X8000 = 1 the
+  public file reverses every respondent and spouse/partner variable so that
+  code 1 is the SCF reference person, but it left the codes of loans 4 and 6
+  (X7893, X7993) unreversed. The test: a completed loan for a degree should
+  be consistent with the coded person's highest degree (X5931 for the
+  reference person, X6111 for the spouse or partner). Of the loans consistent
+  with exactly one partner's degree, loans 1, 2, 3 and 5 match the coded person
+  in reversed and other families alike, and loans 4 and 6 match in all 25 such
+  loans (five implicates) of families that were not reversed, but in none of
+  the 54 of reversed families (10 in implicate 1). So in a reversed family
+  codes 1 and 2 of loans 4 and 6 are swapped back
+  (:data:`SCF_WHOSE_EDUCATION_UNREVERSED_LOANS`); the receipt reruns the test.
+  The codebook names no such exception, so the correction is tied to the
+  pinned member SHA-256. Code 6 (multiple people), code 7 (unrelated person)
+  and code -7 (other) go to the head's own balance: none can be a Parent PLUS
+  loan for one dependent student, and the SCF reference person is the
+  household's default borrower. Any other code (the public file folds 4 and 5
+  into 3, so none is expected) also goes to the head.
+- **Loans for a child's education** (code 3, child or stepchild; the public
+  file folds grandchild and other relative into it). The survey asks about
+  the loans of the family living in the household, and the screener (X7801)
+  leaves out loans of people who live elsewhere, so a code-3 loan is a
+  co-resident child's own loan or the parent's Parent PLUS loan. It is the child's own
+  (``child_federal_student_loan_balance``) when the household listing
+  (persons 3-12, X108-X226) has a child (code 4) aged 18 or over who could
+  have been in school when it was borrowed (16 or older in that year, at the
+  oldest age the child's public-file age band allows: the file bands listed
+  ages, so 18-27 all read 25), unless only a parent could have borrowed it:
+  an undergraduate or certificate loan whose amount borrowed exceeds the
+  $31,000 aggregate limit on a dependent undergraduate's own Direct Loans
+  (34 CFR 685.203(e)(1)), borrowed while the child could still have been
+  under 24, and so dependent (20 U.S.C. 1087vv(d)(1)(A)). Parent PLUS
+  finances only a dependent undergraduate (34 CFR 685.200(c)(2)(i)), so a
+  graduate loan, or one borrowed after every fitting child turned 24, is
+  never Parent PLUS. Every other code-3 loan is the head's
+  ``federal_parent_plus_loan_balance``: no listed adult child could have
+  borrowed it, so the student lives elsewhere and only the parent's loan is
+  reported, or it exceeds the dependent limit. An undergraduate loan within
+  the limit for a child of dependent age could be either, and is read as the
+  child's own, the household member the listing names; the receipt reports
+  the Parent PLUS share under the other reading too.
 - **IBR new-borrower status** is true when the person holds a federal loan and
-  every federal loan the person holds (own and Parent PLUS) was borrowed in
-  2014 or later. The item records a year only, so 2014 counts as after July 1,
-  2014. For a consolidated loan the year is that of the most recent underlying
-  loan.
+  every federal loan the person holds (own, and for the head Parent PLUS too,
+  since 34 CFR 685.209(b)(13)(ii) looks at any outstanding Direct or FFEL
+  balance) was borrowed in 2014 or later. The item records a year only, so
+  2014 counts as after July 1, 2014. The share is an upper bound: the SCF sees
+  only loans still owed, so a borrower whose pre-2014 loans have been paid
+  off reads as new, and a consolidated loan is dated by its most recent
+  underlying loan, so a consolidation of pre-2014 loans can read as new too.
 - **Graduate share** is the share of the original amount of the person's own
   federal loans (Parent PLUS excluded) that financed a master's, professional
   or doctoral program (codes 13-15), weighted by the amount borrowed (falling
@@ -62,11 +97,15 @@ condition on the same predictors (:data:`SCF_EDUCATION_DEBT_PREDICTORS`): the
 reference person's age, sex and race, whether a spouse or partner is present,
 the number of children, wages, and income excluding capital gains. The first
 draws each recipient household's federal education debt from every SCF family.
-The second, fit on borrower families only and conditioning also on that total,
-draws the chained composition: the head's and spouse's shares of the total,
-their graduate shares, and their new-borrower flags. Shares are clipped to
-[0, 1] and rescaled when the two own shares exceed one; the remainder is the
-head's Parent PLUS balance.
+The second, fit on borrower families only, conditions also on that total and
+on the number of adult children (children of the reference person or partner
+aged 18 or over), and draws the chained composition: the Parent PLUS, adult
+child's, head's and spouse's shares of the total, in that order, then the
+three graduate shares and the three new-borrower flags. The four shares are
+clipped to [0, 1] and normalized to sum to one, and a borrower drawn with no
+share holds its own loan. Parent PLUS is therefore drawn for itself, first: a
+family that resembles donors without Parent PLUS draws none, instead of
+receiving whatever the own shares leave.
 
 Two of the shared SCF predictors are left out
 (:data:`SCF_EDUCATION_DEBT_CANDIDATE_PREDICTORS` keeps the full list for the
@@ -88,22 +127,30 @@ CPS householder or, when a spouse or cohabiting partner is present, the man of
 a mixed-sex couple or else the older partner: the SCF's ordering of its
 economically dominant couple. ``is_married`` counts a cohabiting partner, as
 SCF ``MARRIED`` does, and children count those of the reference person or
-partner, as SCF ``KIDS`` does. Incomes sum over the reference person, spouse or
-partner and their children: the SCF primary economic unit, which leaves out a
-financially independent co-resident relative or roommate. The spouse is the
-member whose line number is the reference person's ``A_SPOUSE``, or else its
-``PECOHAB`` partner when that column is present. A household drawn with a
-spouse's balance but no spouse or partner present gives that balance to the
-reference person, whose graduate share becomes the balance-weighted mean of
-the two and whose new-borrower flag requires both. Everyone else gets zero.
+partner, as SCF ``KIDS`` does; adult children are the ones aged 18 or over,
+as listing code 4 aged 18 or over counts them. Incomes sum over the reference
+person, spouse or partner and their children: the SCF primary economic unit,
+which leaves out a financially independent co-resident relative or roommate.
+The spouse is the member whose line number is the reference person's
+``A_SPOUSE``, or else its ``PECOHAB`` partner when that column is present. A
+household drawn with a spouse's balance but no spouse or partner present
+gives that balance to the reference person, whose graduate share becomes the
+balance-weighted mean of the two and whose new-borrower flag requires both.
+The child's draw goes to the youngest child of the reference person or
+partner aged 18 or over (``PEPAR1``/``PEPAR2``). A household without one
+cannot use it, and the draw makes it the head's Parent PLUS loan, the SCF
+side's rule for a loan whose student lives elsewhere. Everyone else gets zero.
 :data:`SCF_EDUCATION_DEBT_FIRST_RECEIPT_DEFINITION` keeps the first receipt's
 construction (oldest adult, ``A_MARITL`` marriage, own children, whole
 household) for its before/after table.
 
-**Known limits.** The SCF records the debts of the primary economic unit, so a
-financially independent adult living in someone else's household is missed,
-and an adult child's own loan in the unit is coded 3 and lands on the parent as
-Parent PLUS. The SCF federal flag includes FFEL and Perkins loans that
+**Known limits.** The SCF asks about the loans of the family living in the
+household (its primary economic unit), so a financially independent adult in
+someone else's household is missed unless the family reports the loan as one
+for a child's education. No education-loan item names the listed person a
+loan financed, and the public file bands listed ages, so the child rule works
+from age bands, and with two or more adult children the youngest holds the
+loan. The SCF federal flag includes FFEL and Perkins loans that
 ``federal_student_loan_balance`` excludes until consolidated. Balances are
 2025 survey-date dollars. The FSA calibration (microcosm#1074) pins totals.
 """
@@ -135,12 +182,16 @@ from microcosm.frame.units import US_SCHEMA
 __all__ = [
     "SCF_2025_FULL_EXTRACT",
     "SCF_2025_SUMMARY_EXTRACT",
+    "SCF_EDUCATION_DEBT_ADULT_CHILDREN_PREDICTOR",
     "SCF_EDUCATION_DEBT_BALANCE_BANDS",
     "SCF_EDUCATION_DEBT_BORROWER_AGE_BANDS",
     "SCF_EDUCATION_DEBT_CANDIDATE_PREDICTORS",
-    "SCF_EDUCATION_DEBT_EXCLUDED_PREDICTORS",
     "SCF_EDUCATION_DEBT_COMPOSITION_TARGETS",
+    "SCF_EDUCATION_DEBT_EXCLUDED_PREDICTORS",
+    "SCF_EDUCATION_DEBT_FIRST_RECEIPT_DEFINITION",
+    "SCF_EDUCATION_DEBT_HOLDER_SHARE_TARGETS",
     "SCF_EDUCATION_DEBT_PREDICTORS",
+    "SCF_EDUCATION_DEBT_RECIPIENT_DEFINITION",
     "SCF_EDUCATION_DEBT_TOTAL_TARGET",
     "SCF_EDUCATION_DEBT_VINTAGE",
     "SCF_EDUCATION_LOAN_AMOUNT_BORROWED_COLUMNS",
@@ -150,19 +201,22 @@ __all__ = [
     "SCF_EDUCATION_LOAN_REMAINING_BALANCE_COLUMN",
     "SCF_EDUCATION_LOAN_WHOSE_COLUMNS",
     "SCF_EDUCATION_LOAN_YEAR_COLUMNS",
+    "SCF_HOUSEHOLD_LISTING_AGE_COLUMNS",
+    "SCF_HOUSEHOLD_LISTING_RELATIONSHIP_COLUMNS",
+    "SCF_REVERSED_COLUMN",
     "SCF_WHOSE_EDUCATION_HOLDER",
-    "RecipientDefinition",
-    "SCF_EDUCATION_DEBT_FIRST_RECEIPT_DEFINITION",
-    "SCF_EDUCATION_DEBT_RECIPIENT_DEFINITION",
-    "ScfPublicFile",
+    "SCF_WHOSE_EDUCATION_UNREVERSED_LOANS",
     "US_SCF_EDUCATION_DEBT_BALANCE_COLUMNS",
     "US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS",
+    "RecipientDefinition",
+    "ScfPublicFile",
     "derive_scf_education_debt_targets",
     "draw_scf_education_debt_households",
     "education_debt_fit_table",
     "fetch_scf_public_file",
     "impute_us_scf_education_debt",
     "load_scf_2025_education_debt_donor",
+    "scf_education_debt_composition_predictors",
     "scf_education_debt_donor_fit_table",
     "us_scf_education_debt_fit_table",
     "us_scf_education_debt_signal_gate",
@@ -276,6 +330,64 @@ SCF_EDUCATION_LOAN_AMOUNT_BORROWED_COLUMNS: tuple[str, ...] = (
     "x7951",
 )
 _SCF_FULL_EXTRACT_SPOUSE_AGE_COLUMN = "x19"
+#: "Original respondent and spouse/partner variables reversed": 1 = reversed.
+SCF_REVERSED_COLUMN = "x8000"
+_SCF_REVERSED = 1
+#: Loans (1-6) whose whose-education code the 2025 public file did not reverse
+#: with the rest of a reversed record: loans 4 and 6 (X7893, X7993). See the
+#: module docstring for the evidence.
+SCF_WHOSE_EDUCATION_UNREVERSED_LOANS: tuple[int, ...] = (4, 6)
+#: Household listing, persons 3-12: relationship to the respondent and age.
+SCF_HOUSEHOLD_LISTING_RELATIONSHIP_COLUMNS: tuple[str, ...] = (
+    "x108",
+    "x114",
+    "x120",
+    "x126",
+    "x132",
+    "x202",
+    "x208",
+    "x214",
+    "x220",
+    "x226",
+)
+SCF_HOUSEHOLD_LISTING_AGE_COLUMNS: tuple[str, ...] = (
+    "x110",
+    "x116",
+    "x122",
+    "x128",
+    "x134",
+    "x204",
+    "x210",
+    "x216",
+    "x222",
+    "x228",
+)
+#: Listing relationship code 4: child (or child-in-law) of R or spouse/partner.
+_SCF_LISTING_CHILD = 4
+#: The public file codes listed members' ages in bands (codebook X110): 1-3 as
+#: 3, 4-6 as 6, 7-12 as 12, 13-17 as 17, 18-25 as 25, and older ages rounded
+#: to the nearest 5 (so 26-27 also read 25), top-coded at 95. Code -> the
+#: youngest and oldest age it can stand for.
+_SCF_LISTING_AGE_BANDS: Mapping[int, tuple[float, float]] = {
+    3: (0.0, 3.0),
+    6: (4.0, 6.0),
+    12: (7.0, 12.0),
+    17: (13.0, 17.0),
+    25: (18.0, 27.0),
+    95: (93.0, 120.0),
+}
+#: The first listing age code that is certainly an adult (18-27).
+_SCF_LISTING_FIRST_ADULT_CODE = 25
+#: The survey year that ages and years borrowed are counted from.
+_SCF_SURVEY_YEAR = 2025
+#: Youngest age at which a loan can have financed a listed child's schooling.
+_EARLIEST_STUDENT_AGE = 16.0
+#: A student 24 or older by December 31 of the award year is independent
+#: (20 U.S.C. 1087vv(d)(1)(A)), so a parent cannot borrow Parent PLUS for them.
+_INDEPENDENT_STUDENT_AGE = 24.0
+#: Aggregate limit on a dependent undergraduate's own Direct Subsidized and
+#: Unsubsidized Loans (34 CFR 685.203(e)(1)).
+_DEPENDENT_UNDERGRADUATE_AGGREGATE_LIMIT = 31_000.0
 
 _FEDERAL_LOAN_YES = 1
 #: Programs counted as graduate or professional: master's (13), professional
@@ -287,13 +399,16 @@ _IBR_NEW_BORROWER_FIRST_YEAR = 2014
 
 _HEAD = "head"
 _SPOUSE = "spouse"
+_CHILD = "child"
 _PARENT_PLUS = "parent_plus"
-#: Whose-education code -> who holds the loan in the build. See the module
-#: docstring for the rule and its reasons.
+_CHILD_EDUCATION = "child_education"
+#: Whose-education code -> who holds the loan in the build. A loan for a
+#: child's education is a co-resident child's own loan or the head's Parent
+#: PLUS loan, by the rule in the module docstring.
 SCF_WHOSE_EDUCATION_HOLDER: Mapping[int, str] = {
     1: _HEAD,
     2: _SPOUSE,
-    3: _PARENT_PLUS,
+    3: _CHILD_EDUCATION,
     6: _HEAD,
     7: _HEAD,
     -7: _HEAD,
@@ -301,14 +416,26 @@ SCF_WHOSE_EDUCATION_HOLDER: Mapping[int, str] = {
 
 #: Household-total target of the first QRF.
 SCF_EDUCATION_DEBT_TOTAL_TARGET = "federal_education_debt"
-#: Chained targets of the second (borrower-family) QRF.
-SCF_EDUCATION_DEBT_COMPOSITION_TARGETS: tuple[str, ...] = (
+#: The second QRF's extra predictor: children of the reference person or
+#: partner aged 18 or over in the household (SCF listing code 4).
+SCF_EDUCATION_DEBT_ADULT_CHILDREN_PREDICTOR = "adult_children_in_household"
+#: Each holder's share of the household total, drawn first in this order and
+#: then normalized to sum to one.
+SCF_EDUCATION_DEBT_HOLDER_SHARE_TARGETS: tuple[str, ...] = (
+    "parent_plus_share",
+    "child_own_share",
     "head_own_share",
     "spouse_own_share",
+)
+#: Chained targets of the second (borrower-family) QRF.
+SCF_EDUCATION_DEBT_COMPOSITION_TARGETS: tuple[str, ...] = (
+    *SCF_EDUCATION_DEBT_HOLDER_SHARE_TARGETS,
     "head_graduate_share",
     "spouse_graduate_share",
+    "child_graduate_share",
     "head_is_ibr_new_borrower",
     "spouse_is_ibr_new_borrower",
+    "child_is_ibr_new_borrower",
 )
 #: Every predictor both sides build: the shared SCF predictors plus income
 #: excluding capital gains. The diagnostics and ablations compare all of them.
@@ -341,6 +468,19 @@ SCF_EDUCATION_DEBT_PREDICTORS: tuple[str, ...] = tuple(
     for predictor in SCF_EDUCATION_DEBT_CANDIDATE_PREDICTORS
     if predictor not in SCF_EDUCATION_DEBT_EXCLUDED_PREDICTORS
 )
+
+
+def scf_education_debt_composition_predictors(
+    predictors: Sequence[str] = SCF_EDUCATION_DEBT_PREDICTORS,
+) -> tuple[str, ...]:
+    """The second QRF's predictors: the first's, adult children and the total."""
+
+    return (
+        *predictors,
+        SCF_EDUCATION_DEBT_ADULT_CHILDREN_PREDICTOR,
+        SCF_EDUCATION_DEBT_TOTAL_TARGET,
+    )
+
 
 US_SCF_EDUCATION_DEBT_BALANCE_COLUMNS: tuple[str, ...] = (
     "federal_student_loan_balance",
@@ -449,6 +589,9 @@ _REQUIRED_RECIPIENT_PERSON_COLUMNS: tuple[str, ...] = (
     "employment_income_before_lsr",
 )
 _OPTIONAL_PARTNER_COLUMN = "PECOHAB"
+
+#: Age from which a CPS child of the reference person or partner is an adult.
+_ADULT_AGE = 18.0
 
 #: Weighted share of households holding federal education debt allowed by the
 #: signal gate. The SCF 2025 share holding any education debt is 19.9%.
@@ -563,22 +706,87 @@ def _numeric(table: pd.DataFrame, column: str) -> np.ndarray:
     )
 
 
+def _listing_age_range(code: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """The youngest and oldest age each public-file listing age code stands for.
+
+    Codes 30-90 are ages rounded to the nearest 5, so ``code - 2`` to
+    ``code + 2``; zero or negative (no such person) gives NaN.
+    """
+
+    code = np.asarray(code, dtype=np.float64)
+    youngest = code - 2.0
+    oldest = code + 2.0
+    for band_code, (low, high) in _SCF_LISTING_AGE_BANDS.items():
+        youngest = np.where(code == band_code, low, youngest)
+        oldest = np.where(code == band_code, high, oldest)
+    missing = code <= 0
+    return np.where(missing, np.nan, youngest), np.where(missing, np.nan, oldest)
+
+
+def _scf_whose_education_codes(full: pd.DataFrame) -> np.ndarray:
+    """Whose-education codes of loans 1-6, with the X8000 correction applied.
+
+    In a reversed family (X8000 = 1) the public file swaps every respondent and
+    spouse/partner code so that code 1 is the reference person, except on
+    loans 4 and 6, whose codes still name the original respondent: those two
+    codes are swapped here.
+    """
+
+    whose = np.column_stack(
+        [_numeric(full, c) for c in SCF_EDUCATION_LOAN_WHOSE_COLUMNS]
+    ).reshape(len(full), len(SCF_EDUCATION_LOAN_WHOSE_COLUMNS))
+    reversed_family = _numeric(full, SCF_REVERSED_COLUMN) == _SCF_REVERSED
+    for loan in SCF_WHOSE_EDUCATION_UNREVERSED_LOANS:
+        column = whose[:, loan - 1]
+        whose[:, loan - 1] = np.where(
+            reversed_family & (column == 1),
+            2.0,
+            np.where(reversed_family & (column == 2), 1.0, column),
+        )
+    return whose
+
+
+def _scf_adult_children(full: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+    """Listed children aged 18 or over: a (rows x 10) mask and the age codes."""
+
+    shape = (len(full), len(SCF_HOUSEHOLD_LISTING_RELATIONSHIP_COLUMNS))
+    relationship = np.column_stack(
+        [_numeric(full, c) for c in SCF_HOUSEHOLD_LISTING_RELATIONSHIP_COLUMNS]
+    ).reshape(shape)
+    age_code = np.column_stack(
+        [_numeric(full, c) for c in SCF_HOUSEHOLD_LISTING_AGE_COLUMNS]
+    ).reshape(shape)
+    adult_child = (relationship == _SCF_LISTING_CHILD) & (
+        age_code >= _SCF_LISTING_FIRST_ADULT_CODE
+    )
+    return adult_child, age_code
+
+
 def derive_scf_education_debt_targets(full: pd.DataFrame) -> pd.DataFrame:
     """Derive household federal education-debt targets from per-loan items.
 
     Pure and row-preserving: one output row per input (family, implicate) row.
-    See the module docstring for the federal, X7179, whose-education, IBR and
-    graduate-share rules this applies.
+    See the module docstring for the federal, X7179, X8000, whose-education,
+    co-resident child, IBR and graduate-share rules this applies.
 
     Returns columns:
         ``federal_education_debt``: federal balance after the X7179 rule.
         ``head_federal_student_loan_balance``,
         ``spouse_federal_student_loan_balance``,
+        ``child_federal_student_loan_balance``,
         ``federal_parent_plus_loan_balance``: its split by holder.
-        ``head_own_share``, ``spouse_own_share``: the two own balances over the
-        total (zero for a family without federal education debt).
-        ``head_is_ibr_new_borrower``, ``spouse_is_ibr_new_borrower``: 0/1.
-        ``head_graduate_share``, ``spouse_graduate_share``: in [0, 1].
+        ``head_own_share``, ``spouse_own_share``, ``child_own_share``,
+        ``parent_plus_share``: each part over the total (zero for a family
+        without federal education debt).
+        ``head_is_ibr_new_borrower``, ``spouse_is_ibr_new_borrower``,
+        ``child_is_ibr_new_borrower``: 0/1.
+        ``head_graduate_share``, ``spouse_graduate_share``,
+        ``child_graduate_share``: in [0, 1].
+        ``adult_children_in_household``: listed children aged 18 or over.
+        ``youngest_adult_child_age_code``: the youngest one's listing age code
+        (0 when there is none).
+        ``child_borrower_age_code``: the listing age code of the youngest
+        child a child-own loan fits (0 when there is none).
         ``education_debt``: every education loan, federal or not (EDN_INST
         without the education-coded installment loans).
         ``federal_status_unrecorded_balance``: loans 1-6 balances whose federal
@@ -595,6 +803,9 @@ def derive_scf_education_debt_targets(full: pd.DataFrame) -> pd.DataFrame:
         *SCF_EDUCATION_LOAN_YEAR_COLUMNS,
         *SCF_EDUCATION_LOAN_PROGRAM_COLUMNS,
         *SCF_EDUCATION_LOAN_AMOUNT_BORROWED_COLUMNS,
+        SCF_REVERSED_COLUMN,
+        *SCF_HOUSEHOLD_LISTING_RELATIONSHIP_COLUMNS,
+        *SCF_HOUSEHOLD_LISTING_AGE_COLUMNS,
     )
     missing = [column for column in required if column not in full.columns]
     if missing:
@@ -610,9 +821,7 @@ def derive_scf_education_debt_targets(full: pd.DataFrame) -> pd.DataFrame:
     federal_code = np.column_stack(
         [_numeric(full, c) for c in SCF_EDUCATION_LOAN_FEDERAL_COLUMNS]
     ).reshape(balances.shape)
-    whose = np.column_stack(
-        [_numeric(full, c) for c in SCF_EDUCATION_LOAN_WHOSE_COLUMNS]
-    ).reshape(balances.shape)
+    whose = _scf_whose_education_codes(full)
     year = np.column_stack(
         [_numeric(full, c) for c in SCF_EDUCATION_LOAN_YEAR_COLUMNS]
     ).reshape(balances.shape)
@@ -639,14 +848,43 @@ def derive_scf_education_debt_targets(full: pd.DataFrame) -> pd.DataFrame:
     holder = np.full(balances.shape, _HEAD, dtype=object)
     for code, role in SCF_WHOSE_EDUCATION_HOLDER.items():
         holder[whose == code] = role
-    is_head_own = federal & (holder == _HEAD)
-    is_spouse_own = federal & (holder == _SPOUSE)
-    is_parent_plus = federal & (holder == _PARENT_PLUS)
+    graduate = np.isin(program, list(_GRADUATE_PROGRAM_CODES))
 
-    head_own = np.where(is_head_own, federal_balance, 0.0).sum(axis=1)
-    spouse_own = np.where(is_spouse_own, federal_balance, 0.0).sum(axis=1)
-    parent_plus = np.where(is_parent_plus, federal_balance, 0.0).sum(axis=1)
-    total = head_own + spouse_own + parent_plus
+    # A loan for a child's education is a co-resident child's own loan when a
+    # listed child aged 18 or over could have been in school when it was
+    # borrowed, unless only a parent could have borrowed it: an undergraduate
+    # amount above a dependent student's own aggregate limit, borrowed while
+    # the child could still have been dependent. Ages are the public file's
+    # bands; the arrays are (families x 10 listed persons x 6 loans).
+    adult_child, age_code = _scf_adult_children(full)
+    youngest_age, oldest_age = _listing_age_range(age_code)
+    years_ago = (_SCF_SURVEY_YEAR - year)[:, None, :]
+    # NaN ages (no such person) compare false, and adult_child excludes them.
+    fits = adult_child[:, :, None] & (
+        oldest_age[:, :, None] - years_ago >= _EARLIEST_STUDENT_AGE
+    )
+    could_be_dependent = (
+        fits & (youngest_age[:, :, None] - years_ago < _INDEPENDENT_STUDENT_AGE)
+    ).any(axis=1)
+    parents_only = (
+        could_be_dependent
+        & ~graduate
+        & (borrowed > _DEPENDENT_UNDERGRADUATE_AGGREGATE_LIMIT)
+    )
+    child_education = holder == _CHILD_EDUCATION
+    childs_own = child_education & fits.any(axis=1) & ~parents_only
+    holder[child_education] = _PARENT_PLUS
+    holder[childs_own] = _CHILD
+
+    held = {
+        role: federal & (holder == role)
+        for role in (_HEAD, _SPOUSE, _CHILD, _PARENT_PLUS)
+    }
+    amount = {
+        role: np.where(mask, federal_balance, 0.0).sum(axis=1)
+        for role, mask in held.items()
+    }
+    total = amount[_HEAD] + amount[_SPOUSE] + amount[_CHILD] + amount[_PARENT_PLUS]
 
     def _share(numerator: np.ndarray) -> np.ndarray:
         return np.divide(
@@ -664,7 +902,6 @@ def derive_scf_education_debt_targets(full: pd.DataFrame) -> pd.DataFrame:
         )
 
     weight = np.where(borrowed > 0, borrowed, balances)
-    graduate = np.isin(program, list(_GRADUATE_PROGRAM_CODES))
 
     def _graduate_share(holds: np.ndarray) -> np.ndarray:
         denominator = np.where(holds, weight, 0.0).sum(axis=1)
@@ -676,17 +913,37 @@ def derive_scf_education_debt_targets(full: pd.DataFrame) -> pd.DataFrame:
             where=denominator > 0,
         )
 
+    youngest_adult = np.where(adult_child, age_code, np.inf).min(axis=1)
+    fitted_codes = np.where(fits, age_code[:, :, None], np.inf).min(axis=1)
+    child_borrower = np.where(held[_CHILD], fitted_codes, np.inf).min(axis=1)
+
     result = pd.DataFrame(index=full.index)
     result[SCF_EDUCATION_DEBT_TOTAL_TARGET] = total
-    result["head_federal_student_loan_balance"] = head_own
-    result["spouse_federal_student_loan_balance"] = spouse_own
-    result["federal_parent_plus_loan_balance"] = parent_plus
-    result["head_own_share"] = _share(head_own)
-    result["spouse_own_share"] = _share(spouse_own)
-    result["head_graduate_share"] = _graduate_share(is_head_own)
-    result["spouse_graduate_share"] = _graduate_share(is_spouse_own)
-    result["head_is_ibr_new_borrower"] = _new_borrower(is_head_own | is_parent_plus)
-    result["spouse_is_ibr_new_borrower"] = _new_borrower(is_spouse_own)
+    result["head_federal_student_loan_balance"] = amount[_HEAD]
+    result["spouse_federal_student_loan_balance"] = amount[_SPOUSE]
+    result["child_federal_student_loan_balance"] = amount[_CHILD]
+    result["federal_parent_plus_loan_balance"] = amount[_PARENT_PLUS]
+    result["parent_plus_share"] = _share(amount[_PARENT_PLUS])
+    result["child_own_share"] = _share(amount[_CHILD])
+    result["head_own_share"] = _share(amount[_HEAD])
+    result["spouse_own_share"] = _share(amount[_SPOUSE])
+    result["head_graduate_share"] = _graduate_share(held[_HEAD])
+    result["spouse_graduate_share"] = _graduate_share(held[_SPOUSE])
+    result["child_graduate_share"] = _graduate_share(held[_CHILD])
+    # The head's flag covers Parent PLUS loans too: 34 CFR 685.209(b)(13)(ii)
+    # looks at any outstanding Direct or FFEL balance.
+    result["head_is_ibr_new_borrower"] = _new_borrower(held[_HEAD] | held[_PARENT_PLUS])
+    result["spouse_is_ibr_new_borrower"] = _new_borrower(held[_SPOUSE])
+    result["child_is_ibr_new_borrower"] = _new_borrower(held[_CHILD])
+    result[SCF_EDUCATION_DEBT_ADULT_CHILDREN_PREDICTOR] = adult_child.sum(
+        axis=1
+    ).astype(np.float64)
+    result["youngest_adult_child_age_code"] = np.where(
+        np.isfinite(youngest_adult), youngest_adult, 0.0
+    )
+    result["child_borrower_age_code"] = np.where(
+        np.isfinite(child_borrower), child_borrower, 0.0
+    )
     result["education_debt"] = loans_1_6 + remaining
     result["federal_status_unrecorded_balance"] = np.where(
         has_balance & (federal_code == 0), balances, 0.0
@@ -708,9 +965,10 @@ def load_scf_2025_education_debt_donor(
     check, for test fixtures), and the per-loan balances must reproduce the
     summary extract's ``edn_inst``. Returns one row per (family, implicate)
     with a positive weight: the predictors, the targets of
-    :func:`derive_scf_education_debt_targets`, the ``scf_weight`` donor weight
-    and the fit-table covariates (``racecl4``, ``income``, ``educ``,
-    ``spouse_age``, ``yy1``, ``implicate``).
+    :func:`derive_scf_education_debt_targets` (which include the second QRF's
+    ``adult_children_in_household``), the ``scf_weight`` donor weight and the
+    fit-table covariates (``racecl4``, ``income``, ``educ``, ``spouse_age``,
+    ``yy1``, ``implicate``).
     """
 
     summary_columns = (
@@ -740,6 +998,9 @@ def load_scf_2025_education_debt_donor(
         *SCF_EDUCATION_LOAN_YEAR_COLUMNS,
         *SCF_EDUCATION_LOAN_PROGRAM_COLUMNS,
         *SCF_EDUCATION_LOAN_AMOUNT_BORROWED_COLUMNS,
+        SCF_REVERSED_COLUMN,
+        *SCF_HOUSEHOLD_LISTING_RELATIONSHIP_COLUMNS,
+        *SCF_HOUSEHOLD_LISTING_AGE_COLUMNS,
     )
     summary = _read_stata_columns(
         summary_extract_path, summary_columns, label="2025 summary extract"
@@ -867,11 +1128,12 @@ SCF_EDUCATION_DEBT_FIRST_RECEIPT_DEFINITION = RecipientDefinition(
 
 @dataclass(frozen=True)
 class _Recipients:
-    """Household-ordered predictors and each household's head and spouse rows."""
+    """Household-ordered predictors and each household's recipient rows."""
 
     features: pd.DataFrame
     head_position: np.ndarray
     spouse_position: np.ndarray  # -1 where no spouse or partner is present
+    child_position: np.ndarray  # the youngest adult child; -1 where none
 
 
 def _line_lookup(person: pd.DataFrame) -> dict[tuple[object, int], int]:
@@ -981,6 +1243,52 @@ def _children_counts(
         if owners:
             counts[next(iter(owners))] += 1.0
     return counts
+
+
+def _adult_children(
+    person: pd.DataFrame,
+    head_position: np.ndarray,
+    spouse_position: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Children of the head or partner aged 18 or over, and the youngest one.
+
+    A child is a member whose CPS parent pointer (``PEPAR1``/``PEPAR2``) names
+    the head or the spouse or partner, as SCF listing code 4 counts children of
+    the respondent or spouse/partner. Returns the count per household and the
+    positional row of the youngest (lowest line number on a tie), or -1.
+    """
+
+    household = person[_HOUSEHOLD_ID_COLUMN].to_numpy()
+    line = pd.to_numeric(person["A_LINENO"], errors="coerce").fillna(-1).to_numpy()
+    age = pd.to_numeric(person["age"], errors="coerce").fillna(0.0).to_numpy()
+    parent_of: dict[tuple[object, int], int] = {
+        (household[head], int(line[head])): index
+        for index, head in enumerate(head_position)
+    }
+    for index, spouse in enumerate(spouse_position):
+        if spouse >= 0:
+            parent_of.setdefault((household[spouse], int(line[spouse])), index)
+    pointers = [
+        pd.to_numeric(person[column], errors="coerce").fillna(-1).to_numpy()
+        for column in ("PEPAR1", "PEPAR2")
+    ]
+    counts = np.zeros(len(head_position), dtype=np.float64)
+    youngest = np.full(len(head_position), -1, dtype=np.int64)
+    for row in np.flatnonzero(age >= _ADULT_AGE):
+        owners = {
+            parent_of.get((household[row], int(pointer[row])))
+            for pointer in pointers
+            if pointer[row] > 0
+        }
+        owners.discard(None)
+        if not owners:
+            continue
+        owner = next(iter(owners))
+        counts[owner] += 1.0
+        current = youngest[owner]
+        if current < 0 or (age[row], line[row]) < (age[current], line[current]):
+            youngest[owner] = row
+    return counts, youngest
 
 
 def _income_unit_owner(
@@ -1117,11 +1425,22 @@ def _recipients(
         sums = np.zeros(len(head_position), dtype=np.float64)
         np.add.at(sums, owner[member], values[member])
         features[column] = sums
+    adult_children, child_position = _adult_children(
+        person, head_position, spouse_position
+    )
+    features[SCF_EDUCATION_DEBT_ADULT_CHILDREN_PREDICTOR] = adult_children
     features.index = household.index
     return _Recipients(
-        features=features.loc[:, list(SCF_EDUCATION_DEBT_CANDIDATE_PREDICTORS)],
+        features=features.loc[
+            :,
+            [
+                *SCF_EDUCATION_DEBT_CANDIDATE_PREDICTORS,
+                SCF_EDUCATION_DEBT_ADULT_CHILDREN_PREDICTOR,
+            ],
+        ],
         head_position=head_position,
         spouse_position=spouse_position,
+        child_position=child_position,
     )
 
 
@@ -1149,6 +1468,20 @@ def _fit_frame(donor: pd.DataFrame, columns: Sequence[str]) -> pd.DataFrame:
     return fit
 
 
+def _split_whole_dollars(total: np.ndarray, shares: np.ndarray) -> np.ndarray:
+    """Split whole-dollar totals by row shares; a zero share stays zero.
+
+    Each part is the floor of its share of the total, and the few dollars of
+    remainder go to the row's largest share, so the parts sum to the total.
+    """
+
+    parts = np.floor(total[:, None] * shares)
+    remainder = total - parts.sum(axis=1)
+    largest = np.argmax(shares, axis=1)
+    parts[np.arange(len(total)), largest] += remainder
+    return parts
+
+
 def draw_scf_education_debt_households(
     features: pd.DataFrame,
     donor: pd.DataFrame,
@@ -1159,11 +1492,20 @@ def draw_scf_education_debt_households(
 ) -> pd.DataFrame:
     """Draw household totals and their composition for recipient rows.
 
-    ``features`` carries the predictor columns, one row per recipient
-    household (or held-out SCF family). Returns, on the same index, the drawn
-    total and the normalized composition: the head's and spouse's own
-    balances, the head's Parent PLUS balance, both graduate shares and both
-    new-borrower flags. Used by the build and by the SCF hold-out fit check.
+    ``features`` carries the predictor columns and
+    ``adult_children_in_household``, one row per recipient household (or
+    held-out SCF family). Returns, on the same index, the drawn total and the
+    normalized composition: the head's, spouse's and adult child's own
+    balances, the head's Parent PLUS balance, the three graduate shares and the
+    three new-borrower flags. Used by the build and by the SCF hold-out fit
+    check.
+
+    The four holder shares are drawn in turn (Parent PLUS first, so a family
+    unlike any Parent PLUS donor draws none) and normalized to sum to one; a
+    borrower whose every share is drawn zero holds its own loan. A child's
+    share drawn for a household without an adult child is the head's Parent
+    PLUS loan: as on the SCF side, a loan for a child who is not in the
+    household is the parent's.
     """
 
     from microcosm.fit import QRF
@@ -1195,7 +1537,9 @@ def draw_scf_education_debt_households(
         result[column] = 0.0
     borrowers = drawn_total > 0
     if borrowers.any():
-        composition_predictors = [*predictors, SCF_EDUCATION_DEBT_TOTAL_TARGET]
+        composition_predictors = list(
+            scf_education_debt_composition_predictors(predictors)
+        )
         borrower_donor = donor.loc[
             pd.to_numeric(donor[SCF_EDUCATION_DEBT_TOTAL_TARGET], errors="coerce") > 0
         ]
@@ -1215,39 +1559,66 @@ def draw_scf_education_debt_households(
             targets=list(SCF_EDUCATION_DEBT_COMPOSITION_TARGETS),
             weights=_DONOR_WEIGHT_COLUMN,
         )
-        recipients = features.loc[borrowers, predictors].copy()
+        recipients = features.loc[borrowers, composition_predictors[:-1]].copy()
         recipients[SCF_EDUCATION_DEBT_TOTAL_TARGET] = drawn_total[borrowers]
         drawn = composition_model.predict(recipients, release_models=True)
         for column in SCF_EDUCATION_DEBT_COMPOSITION_TARGETS:
             result.loc[borrowers, column] = np.asarray(drawn[column], dtype=np.float64)
 
-    head_share = result["head_own_share"].clip(0.0, 1.0).to_numpy()
-    spouse_share = result["spouse_own_share"].clip(0.0, 1.0).to_numpy()
-    own = head_share + spouse_share
-    scale = np.where(own > 1.0, 1.0 / np.where(own > 0, own, 1.0), 1.0)
-    head_share = head_share * scale
-    spouse_share = spouse_share * scale
-    head_own = np.round(drawn_total * head_share)
-    # Whole dollars that never exceed the drawn total once rounded.
-    spouse_own = np.minimum(
-        np.round(drawn_total * spouse_share), drawn_total - head_own
+    shares = np.column_stack(
+        [
+            result[column].clip(0.0, 1.0).to_numpy(dtype=np.float64)
+            for column in SCF_EDUCATION_DEBT_HOLDER_SHARE_TARGETS
+        ]
     )
-    parent_plus = np.maximum(drawn_total - head_own - spouse_own, 0.0)
-    result["head_federal_student_loan_balance"] = head_own
-    result["spouse_federal_student_loan_balance"] = spouse_own
-    result["federal_parent_plus_loan_balance"] = parent_plus
-    for prefix, own_balance in (("head", head_own), ("spouse", spouse_own)):
+    plus, child, head, spouse = range(len(SCF_EDUCATION_DEBT_HOLDER_SHARE_TARGETS))
+    shares[~borrowers] = 0.0
+    shares[borrowers & (shares.sum(axis=1) <= 0), head] = 1.0
+    no_adult_child = (
+        pd.to_numeric(
+            features[SCF_EDUCATION_DEBT_ADULT_CHILDREN_PREDICTOR], errors="coerce"
+        )
+        .fillna(0.0)
+        .to_numpy()
+        <= 0
+    )
+    child_new = result["child_is_ibr_new_borrower"].to_numpy() >= 0.5
+    head_new = result["head_is_ibr_new_borrower"].to_numpy() >= 0.5
+    moved = no_adult_child & (shares[:, child] > 0)
+    # The head then holds Parent PLUS for that child too: new only when every
+    # loan the head holds is.
+    head_held = (shares[:, head] + shares[:, plus]) > 0
+    head_new = np.where(
+        moved, np.where(head_held, head_new, True) & child_new, head_new
+    )
+    shares[moved, plus] += shares[moved, child]
+    shares[moved, child] = 0.0
+    sums = shares.sum(axis=1)
+    shares = np.divide(
+        shares, sums[:, None], out=np.zeros_like(shares), where=sums[:, None] > 0
+    )
+    parts = _split_whole_dollars(drawn_total, shares)
+    result["head_federal_student_loan_balance"] = parts[:, head]
+    result["spouse_federal_student_loan_balance"] = parts[:, spouse]
+    result["child_federal_student_loan_balance"] = parts[:, child]
+    result["federal_parent_plus_loan_balance"] = parts[:, plus]
+    for prefix, column in (("head", head), ("spouse", spouse), ("child", child)):
         graduate = result[f"{prefix}_graduate_share"].clip(0.0, 1.0).to_numpy()
-        result[f"{prefix}_graduate_share"] = np.where(own_balance > 0, graduate, 0.0)
-    head_holds = (head_own + parent_plus) > 0
+        result[f"{prefix}_graduate_share"] = np.where(
+            parts[:, column] > 0, graduate, 0.0
+        )
     result["head_is_ibr_new_borrower"] = (
-        head_holds & (result["head_is_ibr_new_borrower"].to_numpy() >= 0.5)
+        ((parts[:, head] + parts[:, plus]) > 0) & head_new
     ).astype(np.float64)
     result["spouse_is_ibr_new_borrower"] = (
-        (spouse_own > 0) & (result["spouse_is_ibr_new_borrower"].to_numpy() >= 0.5)
+        (parts[:, spouse] > 0)
+        & (result["spouse_is_ibr_new_borrower"].to_numpy() >= 0.5)
     ).astype(np.float64)
-    result["head_own_share"] = head_share
-    result["spouse_own_share"] = spouse_share
+    result["child_is_ibr_new_borrower"] = ((parts[:, child] > 0) & child_new).astype(
+        np.float64
+    )
+    for index, column in enumerate(SCF_EDUCATION_DEBT_HOLDER_SHARE_TARGETS):
+        result[column] = shares[:, index]
     return result
 
 
@@ -1263,11 +1634,11 @@ def impute_us_scf_education_debt(
     """Impute the four person columns onto a US frame.
 
     Returns a DataFrame indexed like the person table with
-    :data:`US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS`; only reference persons and
-    their spouses or partners can be nonzero. ``definition`` selects the CPS
-    construction of the SCF predictors and ``predictors`` the subset the QRFs
-    condition on; the receipts pass the first receipt's choices for their
-    before/after table.
+    :data:`US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS`; only reference persons,
+    their spouses or partners, and the youngest child of either aged 18 or
+    over can be nonzero. ``definition`` selects the CPS construction of the
+    SCF predictors and ``predictors`` the subset the QRFs condition on; the
+    receipts pass the first receipt's choices for their before/after table.
     """
 
     recipients = _recipients(frame, definition)
@@ -1287,13 +1658,26 @@ def impute_us_scf_education_debt(
 
     head = recipients.head_position
     spouse = recipients.spouse_position
+    child = recipients.child_position
     has_spouse = spouse >= 0
+    has_child = child >= 0
     head_own = drawn["head_federal_student_loan_balance"].to_numpy()
     spouse_own = drawn["spouse_federal_student_loan_balance"].to_numpy()
+    child_own = drawn["child_federal_student_loan_balance"].to_numpy()
+    head_plus = drawn["federal_parent_plus_loan_balance"].to_numpy()
     head_graduate = drawn["head_graduate_share"].to_numpy()
     spouse_graduate = drawn["spouse_graduate_share"].to_numpy()
+    child_graduate = drawn["child_graduate_share"].to_numpy()
     head_new = drawn["head_is_ibr_new_borrower"].to_numpy() >= 0.5
     spouse_new = drawn["spouse_is_ibr_new_borrower"].to_numpy() >= 0.5
+    child_new = drawn["child_is_ibr_new_borrower"].to_numpy() >= 0.5
+    # The draw gives a child's balance only to households with an adult child,
+    # which is exactly where the youngest one was found.
+    if ((child_own > 0) & ~has_child).any():
+        raise ValueError(
+            "SCF education-debt draw gave a child's balance to a household "
+            "without an adult child."
+        )
 
     # Without a spouse or partner present, the reference person holds the
     # spouse's draw too: a balance-weighted graduate share, and new-borrower
@@ -1310,22 +1694,24 @@ def impute_us_scf_education_debt(
         ),
         head_graduate,
     )
-    head_holds_any = (
-        head_own + drawn["federal_parent_plus_loan_balance"].to_numpy()
-    ) > 0
+    head_holds_any = (head_own + head_plus) > 0
     combined_new = np.where(
         moved,
         np.where(head_holds_any, head_new, True) & spouse_new,
         head_new,
     )
     own[head] = combined_own
-    parent_plus[head] = drawn["federal_parent_plus_loan_balance"].to_numpy()
+    parent_plus[head] = head_plus
     graduate[head] = combined_graduate
     new_borrower[head] = combined_new
     spouse_rows = spouse[has_spouse]
     own[spouse_rows] = spouse_own[has_spouse]
     graduate[spouse_rows] = spouse_graduate[has_spouse]
     new_borrower[spouse_rows] = spouse_new[has_spouse]
+    child_rows = child[has_child]
+    own[child_rows] = child_own[has_child]
+    graduate[child_rows] = child_graduate[has_child]
+    new_borrower[child_rows] = child_new[has_child]
 
     holds_any = (own + parent_plus) > 0
     result = pd.DataFrame(index=person.index)
@@ -1433,7 +1819,7 @@ def us_scf_education_debt_stage_spec() -> SourceStageSpec:
             (SCF_EDUCATION_DEBT_TOTAL_TARGET,),
         ),
         "scf_2025_education_debt_borrowers": (
-            (*SCF_EDUCATION_DEBT_PREDICTORS, SCF_EDUCATION_DEBT_TOTAL_TARGET),
+            scf_education_debt_composition_predictors(),
             SCF_EDUCATION_DEBT_COMPOSITION_TARGETS,
         ),
     }
@@ -1620,6 +2006,33 @@ def education_debt_fit_table(
     }
 
 
+def _spread_listing_ages(
+    codes: np.ndarray, weights: np.ndarray, balances: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Spread each listing age code's weight evenly over the ages it stands for.
+
+    The public file bands listed members' ages (18-27 read 25), so a child
+    borrower's weight is split evenly across the whole years of the band for
+    the borrower age table. Returns ages, weights and balances, one row per
+    (borrower, year of age).
+    """
+
+    youngest, oldest = _listing_age_range(codes)
+    ages: list[np.ndarray] = []
+    spread: list[np.ndarray] = []
+    values: list[np.ndarray] = []
+    for low, high, weight, balance in zip(
+        youngest, oldest, weights, balances, strict=True
+    ):
+        years = np.arange(low, min(high, 99.0) + 1.0)
+        ages.append(years)
+        spread.append(np.full(len(years), weight / len(years)))
+        values.append(np.full(len(years), balance))
+    if not ages:
+        return np.zeros(0), np.zeros(0), np.zeros(0)
+    return np.concatenate(ages), np.concatenate(spread), np.concatenate(values)
+
+
 def scf_education_debt_donor_fit_table(
     donor: pd.DataFrame,
     *,
@@ -1631,45 +2044,72 @@ def scf_education_debt_donor_fit_table(
     donor's index) replaces the observed targets, so a hold-out draw and the
     observed SCF are tabulated identically. Implicates are pooled with
     ``wgt`` (each implicate carries one fifth of the population), as the Fed
-    pools them for medians.
+    pools them for medians. Borrowers are the reference person, the spouse or
+    partner and the adult child holding a child-own balance, whose age is the
+    child's listing age band (the child the loan fits when observed, the
+    youngest adult child when drawn), spread evenly over the band.
     """
 
     source = donor if imputed is None else imputed
     weight = donor[_DONOR_WEIGHT_COLUMN].to_numpy(dtype=np.float64)
-    head_own = source["head_federal_student_loan_balance"].to_numpy(dtype=np.float64)
-    spouse_own = source["spouse_federal_student_loan_balance"].to_numpy(
-        dtype=np.float64
-    )
-    parent_plus = source["federal_parent_plus_loan_balance"].to_numpy(dtype=np.float64)
+
+    def _column(name: str) -> np.ndarray:
+        return source[name].to_numpy(dtype=np.float64)
+
+    head_own = _column("head_federal_student_loan_balance")
+    spouse_own = _column("spouse_federal_student_loan_balance")
+    child_own = _column("child_federal_student_loan_balance")
+    parent_plus = _column("federal_parent_plus_loan_balance")
     head_balance = head_own + parent_plus
     head_holds = head_balance > 0
     spouse_holds = spouse_own > 0
+    child_holds = child_own > 0
     head_age = donor["age"].to_numpy(dtype=np.float64)
     spouse_age = donor["spouse_age"].to_numpy(dtype=np.float64)
-    head_graduate = source["head_graduate_share"].to_numpy(dtype=np.float64)
-    spouse_graduate = source["spouse_graduate_share"].to_numpy(dtype=np.float64)
-    head_new = source["head_is_ibr_new_borrower"].to_numpy(dtype=np.float64) >= 0.5
-    spouse_new = source["spouse_is_ibr_new_borrower"].to_numpy(dtype=np.float64) >= 0.5
+    child_age_code = donor[
+        "child_borrower_age_code"
+        if imputed is None
+        else "youngest_adult_child_age_code"
+    ].to_numpy(dtype=np.float64)
+    child_ages, child_weights, child_balances = _spread_listing_ages(
+        child_age_code[child_holds], weight[child_holds], child_own[child_holds]
+    )
+    head_graduate = _column("head_graduate_share")
+    spouse_graduate = _column("spouse_graduate_share")
+    child_graduate = _column("child_graduate_share")
+    head_new = _column("head_is_ibr_new_borrower") >= 0.5
+    spouse_new = _column("spouse_is_ibr_new_borrower") >= 0.5
+    child_new = _column("child_is_ibr_new_borrower") >= 0.5
     income = donor["household_income"].to_numpy(dtype=np.float64)
     return education_debt_fit_table(
-        household_debt=head_own + spouse_own + parent_plus,
+        household_debt=head_own + spouse_own + child_own + parent_plus,
         household_weight=weight,
         head_age=head_age,
         race_group=donor["racecl4"].to_numpy(),
         income_quintile=_income_quintiles(income, weight),
         borrower_balance=np.concatenate(
-            [head_balance[head_holds], spouse_own[spouse_holds]]
+            [head_balance[head_holds], spouse_own[spouse_holds], child_balances]
         ),
-        borrower_age=np.concatenate([head_age[head_holds], spouse_age[spouse_holds]]),
-        borrower_weight=np.concatenate([weight[head_holds], weight[spouse_holds]]),
+        borrower_age=np.concatenate(
+            [head_age[head_holds], spouse_age[spouse_holds], child_ages]
+        ),
+        borrower_weight=np.concatenate(
+            [weight[head_holds], weight[spouse_holds], child_weights]
+        ),
         parent_plus_total=float(np.dot(parent_plus, weight)),
         graduate_numerator=float(
-            np.dot(head_own * head_graduate + spouse_own * spouse_graduate, weight)
+            np.dot(
+                head_own * head_graduate
+                + spouse_own * spouse_graduate
+                + child_own * child_graduate,
+                weight,
+            )
         ),
-        graduate_denominator=float(np.dot(head_own + spouse_own, weight)),
+        graduate_denominator=float(np.dot(head_own + spouse_own + child_own, weight)),
         new_borrower_weight=float(
             weight[head_holds & head_new].sum()
             + weight[spouse_holds & spouse_new].sum()
+            + weight[child_holds & child_new].sum()
         ),
     )
 

@@ -20,7 +20,9 @@ import microcosm.build.us_runtime.scf_education_debt as education_debt
 from microcosm.build.us_runtime.scf_education_debt import (
     SCF_2025_FULL_EXTRACT,
     SCF_2025_SUMMARY_EXTRACT,
+    SCF_EDUCATION_DEBT_ADULT_CHILDREN_PREDICTOR,
     SCF_EDUCATION_DEBT_COMPOSITION_TARGETS,
+    SCF_EDUCATION_DEBT_HOLDER_SHARE_TARGETS,
     SCF_EDUCATION_DEBT_PREDICTORS,
     SCF_EDUCATION_DEBT_TOTAL_TARGET,
     SCF_EDUCATION_LOAN_AMOUNT_BORROWED_COLUMNS,
@@ -30,6 +32,8 @@ from microcosm.build.us_runtime.scf_education_debt import (
     SCF_EDUCATION_LOAN_REMAINING_BALANCE_COLUMN,
     SCF_EDUCATION_LOAN_WHOSE_COLUMNS,
     SCF_EDUCATION_LOAN_YEAR_COLUMNS,
+    SCF_HOUSEHOLD_LISTING_AGE_COLUMNS,
+    SCF_HOUSEHOLD_LISTING_RELATIONSHIP_COLUMNS,
     US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS,
     ScfPublicFile,
     derive_scf_education_debt_targets,
@@ -38,6 +42,7 @@ from microcosm.build.us_runtime.scf_education_debt import (
     fetch_scf_public_file,
     impute_us_scf_education_debt,
     load_scf_2025_education_debt_donor,
+    scf_education_debt_composition_predictors,
     scf_education_debt_donor_fit_table,
     us_scf_education_debt_fit_table,
     us_scf_education_debt_signal_gate,
@@ -60,11 +65,29 @@ _LOAN_ITEMS = {
 }
 
 
-def _family(*loans: dict[str, float], remaining: float = 0.0) -> dict[str, float]:
-    """One full-file row: up to six loans given as item dictionaries."""
+def _family(
+    *loans: dict[str, float],
+    remaining: float = 0.0,
+    reversed_codes: bool = False,
+    listed: tuple[tuple[int, int], ...] = (),
+) -> dict[str, float]:
+    """One full-file row: up to six loans given as item dictionaries.
+
+    ``listed`` gives household-listing persons 3-12 as (relationship, public
+    age code) pairs; ``reversed_codes`` sets X8000 = 1.
+    """
 
     row = {column: 0.0 for columns in _LOAN_ITEMS.values() for column in columns}
     row[SCF_EDUCATION_LOAN_REMAINING_BALANCE_COLUMN] = remaining
+    row["x8000"] = 1.0 if reversed_codes else 5.0
+    for column in (
+        *SCF_HOUSEHOLD_LISTING_RELATIONSHIP_COLUMNS,
+        *SCF_HOUSEHOLD_LISTING_AGE_COLUMNS,
+    ):
+        row[column] = 0.0
+    for index, (relationship, age_code) in enumerate(listed):
+        row[SCF_HOUSEHOLD_LISTING_RELATIONSHIP_COLUMNS[index]] = float(relationship)
+        row[SCF_HOUSEHOLD_LISTING_AGE_COLUMNS[index]] = float(age_code)
     for index, loan in enumerate(loans):
         for item, value in loan.items():
             row[_LOAN_ITEMS[item][index]] = value
@@ -196,6 +219,111 @@ def test_derivation_refuses_a_missing_loan_item() -> None:
     frame = pd.DataFrame.from_records([_family(_loan(1_000))]).drop(columns="x9338")
     with pytest.raises(ValueError, match="x9338"):
         derive_scf_education_debt_targets(frame)
+    listing = pd.DataFrame.from_records([_family(_loan(1_000))]).drop(columns="x8000")
+    with pytest.raises(ValueError, match="x8000"):
+        derive_scf_education_debt_targets(listing)
+
+
+def test_reversed_families_swap_the_codes_of_loans_4_and_6_back() -> None:
+    loans = [_loan(1_000.0 * (index + 1), whose=1) for index in range(6)]
+    reversed_row, unreversed_row = _derive(
+        _family(*loans, reversed_codes=True), _family(*loans)
+    ).to_dict("records")
+
+    # Loans 4 and 6 (4,000 and 6,000) still name the original respondent, now
+    # the spouse or partner, in a reversed family; loans 1, 2, 3 and 5 do not.
+    assert reversed_row["head_federal_student_loan_balance"] == 11_000
+    assert reversed_row["spouse_federal_student_loan_balance"] == 10_000
+    assert unreversed_row["head_federal_student_loan_balance"] == 21_000
+    assert unreversed_row["spouse_federal_student_loan_balance"] == 0.0
+    spouse_coded = _derive(
+        _family(
+            _loan(1_000, whose=2),
+            _loan(1_000, whose=2),
+            _loan(1_000, whose=2),
+            _loan(4_000, whose=2),
+            _loan(1_000, whose=3),
+            _loan(6_000, whose=2),
+            reversed_codes=True,
+        )
+    ).iloc[0]
+    assert spouse_coded["head_federal_student_loan_balance"] == 10_000
+    assert spouse_coded["spouse_federal_student_loan_balance"] == 3_000
+    # Code 3 names neither partner, so it is never swapped.
+    assert spouse_coded["federal_parent_plus_loan_balance"] == 1_000
+
+
+_CHILD = 4
+_GRANDCHILD = 5
+
+
+@pytest.mark.parametrize(
+    ("listed", "loan", "holder"),
+    [
+        # A child aged 18-27 (code 25) who could have borrowed it in 2022.
+        (((_CHILD, 25),), _loan(9_000, whose=3, year=2022), "child"),
+        # No listed child: the student lives elsewhere.
+        ((), _loan(9_000, whose=3, year=2022), "parent_plus"),
+        # Only a 13-17-year-old (code 17) and a grandchild.
+        (((_CHILD, 17), (_GRANDCHILD, 25)), _loan(9_000, whose=3, year=2022),
+         "parent_plus"),
+        # At most 27 now, so at most 2 when a 2000 loan was borrowed.
+        (((_CHILD, 25),), _loan(9_000, whose=3, year=2000), "parent_plus"),
+        # Above the $31,000 dependent limit while possibly dependent.
+        (((_CHILD, 25),), _loan(9_000, whose=3, year=2022, borrowed=40_000),
+         "parent_plus"),
+        # At the limit itself, which the child's own loans can reach.
+        (((_CHILD, 25),), _loan(9_000, whose=3, year=2022, borrowed=31_000),
+         "child"),
+        # A graduate loan is never Parent PLUS, whatever its size.
+        (((_CHILD, 25),),
+         _loan(9_000, whose=3, year=2022, program=13, borrowed=80_000), "child"),
+        # A child aged 38-42 (code 40) was at least 28 in 2015: independent.
+        (((_CHILD, 40),), _loan(9_000, whose=3, year=2015, borrowed=50_000),
+         "child"),
+        # Aged 28-32 (code 30), so possibly 23 in 2018: possibly dependent.
+        (((_CHILD, 30),), _loan(9_000, whose=3, year=2018, borrowed=50_000),
+         "parent_plus"),
+    ],
+)  # fmt: skip
+def test_loans_for_a_child_go_to_a_co_resident_adult_child_who_fits(
+    listed, loan, holder
+) -> None:
+    row = _derive(_family(loan, listed=listed)).iloc[0]
+
+    child = row["child_federal_student_loan_balance"]
+    parent_plus = row["federal_parent_plus_loan_balance"]
+    expected = (9_000, 0.0) if holder == "child" else (0.0, 9_000)
+    assert (child, parent_plus) == expected
+    assert row["child_own_share"] + row["parent_plus_share"] == 1.0
+    assert row["head_federal_student_loan_balance"] == 0.0
+
+
+def test_child_targets_carry_the_childs_flags_shares_and_ages() -> None:
+    row = _derive(
+        _family(
+            _loan(10_000, whose=1, year=2010),
+            _loan(6_000, whose=3, year=2020, program=12),
+            _loan(4_000, whose=3, year=2023, program=13, borrowed=12_000),
+            _loan(2_000, whose=3, year=2001),
+            listed=((_CHILD, 30), (_CHILD, 25), (_CHILD, 12)),
+        )
+    ).iloc[0]
+
+    assert row["child_federal_student_loan_balance"] == 10_000
+    # The 2001 loan fits no listed adult child (at most 32 now, 8 then).
+    assert row["federal_parent_plus_loan_balance"] == 2_000
+    assert row[SCF_EDUCATION_DEBT_TOTAL_TARGET] == 22_000
+    assert row["child_own_share"] == pytest.approx(10_000 / 22_000)
+    assert row["child_graduate_share"] == pytest.approx(12_000 / 18_000)
+    assert row["child_is_ibr_new_borrower"] == 1.0
+    # The head holds a 2010 loan and the 2001 Parent PLUS loan.
+    assert row["head_is_ibr_new_borrower"] == 0.0
+    assert row[SCF_EDUCATION_DEBT_ADULT_CHILDREN_PREDICTOR] == 2.0
+    assert row["youngest_adult_child_age_code"] == 25.0
+    assert row["child_borrower_age_code"] == 25.0
+    shares = [f"{holder}_own_share" for holder in ("head", "spouse", "child")]
+    assert row[[*shares, "parent_plus_share"]].sum() == pytest.approx(1.0)
 
 
 # --------------------------------------------------------------------------- #
@@ -304,7 +432,7 @@ def test_stage_declares_the_person_outputs_and_pinned_2025_files() -> None:
     assert spec.artifacts[1]["vintage"] == "2022"
     assert spec.artifacts[2]["member"] == "pu2023.csv"
     # Both QRFs condition on the production predictors; the borrower fit adds
-    # the drawn total.
+    # the adult children and the drawn total.
     fits = {
         operation.parameters["donor"]: operation.parameters
         for operation in spec.operations
@@ -316,8 +444,17 @@ def test_stage_declares_the_person_outputs_and_pinned_2025_files() -> None:
     )
     assert tuple(fits["scf_2025_education_debt_borrowers"]["predictors"]) == (
         *SCF_EDUCATION_DEBT_PREDICTORS,
+        SCF_EDUCATION_DEBT_ADULT_CHILDREN_PREDICTOR,
         SCF_EDUCATION_DEBT_TOTAL_TARGET,
     )
+    assert scf_education_debt_composition_predictors() == tuple(
+        fits["scf_2025_education_debt_borrowers"]["predictors"]
+    )
+    assert tuple(fits["scf_2025_education_debt_borrowers"]["targets"]) == (
+        SCF_EDUCATION_DEBT_COMPOSITION_TARGETS
+    )
+    # Parent PLUS is drawn first, for itself, not left as a residual.
+    assert SCF_EDUCATION_DEBT_COMPOSITION_TARGETS[0] == "parent_plus_share"
 
 
 def test_production_predictors_drop_only_the_reviewed_exclusions() -> None:
@@ -406,32 +543,56 @@ def _ready_donor(n: int = 600) -> pd.DataFrame:
     donor["interest_dividend_income"] = rng.gamma(1.0, 800.0, n)
     donor["social_security_pension_income"] = rng.gamma(1.0, 5_000.0, n)
     donor["household_income"] = donor["employment_income"] + rng.gamma(1.0, 5_000.0, n)
+    donor[SCF_EDUCATION_DEBT_ADULT_CHILDREN_PREDICTOR] = np.where(
+        donor["age"] >= 40, rng.integers(0, 3, n), 0
+    ).astype(np.float64)
     borrower = (rng.random(n) < 0.2) & (donor["age"] < 65)
     total = np.where(borrower, rng.gamma(1.5, 25_000.0, n).round(), 0.0)
-    holder = rng.choice(3, n, p=[0.6, 0.25, 0.15])
-    head_share = np.where(borrower, (holder == 0).astype(float), 0.0)
-    spouse_share = np.where(borrower, (holder == 1).astype(float), 0.0)
+    # Holders: 0 head, 1 spouse, 2 Parent PLUS, 3 an adult child.
+    holder = rng.choice(4, n, p=[0.55, 0.25, 0.1, 0.1])
+    holder = np.where(
+        (holder == 3) & (donor[SCF_EDUCATION_DEBT_ADULT_CHILDREN_PREDICTOR] == 0),
+        0,
+        holder,
+    )
+    for index, column in enumerate(
+        ("head_own_share", "spouse_own_share", "parent_plus_share", "child_own_share")
+    ):
+        donor[column] = np.where(borrower, (holder == index).astype(float), 0.0)
     donor[SCF_EDUCATION_DEBT_TOTAL_TARGET] = total
-    donor["head_own_share"] = head_share
-    donor["spouse_own_share"] = spouse_share
-    donor["head_graduate_share"] = np.where(
-        head_share > 0, rng.choice([0.0, 0.5, 1.0], n), 0.0
-    )
-    donor["spouse_graduate_share"] = np.where(
-        spouse_share > 0, rng.choice([0.0, 1.0], n), 0.0
-    )
-    donor["head_is_ibr_new_borrower"] = np.where(
-        borrower & (holder != 1), (rng.random(n) < 0.5).astype(float), 0.0
-    )
-    donor["spouse_is_ibr_new_borrower"] = np.where(
-        spouse_share > 0, (rng.random(n) < 0.5).astype(float), 0.0
-    )
+    for prefix, choices in (
+        ("head", [0.0, 0.5, 1.0]),
+        ("spouse", [0.0, 1.0]),
+        ("child", [0.0, 1.0]),
+    ):
+        donor[f"{prefix}_graduate_share"] = np.where(
+            donor[f"{prefix}_own_share"] > 0, rng.choice(choices, n), 0.0
+        )
+    head_holds = (donor["head_own_share"] + donor["parent_plus_share"]) > 0
+    for prefix, holds in (
+        ("head", head_holds),
+        ("spouse", donor["spouse_own_share"] > 0),
+        ("child", donor["child_own_share"] > 0),
+    ):
+        donor[f"{prefix}_is_ibr_new_borrower"] = np.where(
+            holds, (rng.random(n) < 0.5).astype(float), 0.0
+        )
     donor[_DONOR_WEIGHT_COLUMN] = rng.uniform(500.0, 2_000.0, n)
     return donor
 
 
-def _person_rows(n_households: int = 150) -> pd.DataFrame:
-    """Couples (A_SPOUSE pointers) and single adults with a child."""
+def _features(donor: pd.DataFrame) -> pd.DataFrame:
+    return donor.loc[
+        :, [*SCF_EDUCATION_DEBT_PREDICTORS, SCF_EDUCATION_DEBT_ADULT_CHILDREN_PREDICTOR]
+    ]
+
+
+def _person_rows(n_households: int = 150, *, adult_children: bool = False):
+    """Couples (A_SPOUSE pointers) and single adults with a child.
+
+    With ``adult_children``, every couple's child is 19 to 24 and every fourth
+    couple also has a 30-year-old child (line 4).
+    """
 
     rng = np.random.default_rng(97)
     records: list[dict[str, object]] = []
@@ -443,8 +604,16 @@ def _person_rows(n_households: int = 150) -> pd.DataFrame:
             if couple
             else [(1, 0, 7, 0), (2, 0, 7, 1)]
         )
+        if adult_children and couple and household_id % 4 == 0:
+            members.append((4, 0, 7, 1))
         for line, spouse, marital, female in members:
-            child = line == 3 or (not couple and line == 2)
+            child = line >= 3 or (not couple and line == 2)
+            if not child:
+                age = float(rng.integers(24, 60))
+            elif adult_children and couple:
+                age = 30.0 if line == 4 else float(rng.integers(19, 25))
+            else:
+                age = float(rng.integers(5, 17))
             records.append(
                 {
                     "person_id": person_id,
@@ -452,9 +621,7 @@ def _person_rows(n_households: int = 150) -> pd.DataFrame:
                     "PH_SEQ": household_id,
                     "A_LINENO": line,
                     "A_SPOUSE": spouse,
-                    "age": float(
-                        rng.integers(5, 17) if child else rng.integers(24, 60)
-                    ),
+                    "age": age,
                     "is_female": bool(female),
                     "PRDTRACE": int(rng.integers(1, 5)),
                     "PRDTHSP": int(rng.integers(0, 2)),
@@ -501,7 +668,7 @@ def _us_frame(person: pd.DataFrame) -> Frame:
 
 def test_household_draws_are_seeded_coherent_and_nonnegative() -> None:
     donor = _ready_donor()
-    features = donor.loc[:, list(SCF_EDUCATION_DEBT_PREDICTORS)].iloc[:200]
+    features = _features(donor).iloc[:200]
     first = draw_scf_education_debt_households(features, donor, seed=3, n_estimators=15)
     second = draw_scf_education_debt_households(
         features, donor, seed=3, n_estimators=15
@@ -512,18 +679,59 @@ def test_household_draws_are_seeded_coherent_and_nonnegative() -> None:
     parts = (
         first["head_federal_student_loan_balance"]
         + first["spouse_federal_student_loan_balance"]
+        + first["child_federal_student_loan_balance"]
         + first["federal_parent_plus_loan_balance"]
     ).to_numpy()
     assert (total >= 0).all() and (total > 0).any()
     np.testing.assert_array_equal(parts, total)
-    assert (first["head_own_share"] + first["spouse_own_share"] <= 1 + 1e-9).all()
     borrowers = total > 0
+    shares = first[list(SCF_EDUCATION_DEBT_HOLDER_SHARE_TARGETS)].sum(axis=1)
+    np.testing.assert_allclose(shares[borrowers], 1.0)
     assert not first.loc[~borrowers, list(SCF_EDUCATION_DEBT_COMPOSITION_TARGETS)].any(
         axis=None
     )
+    # A household without an adult child holds no child balance.
+    no_adult_child = features[SCF_EDUCATION_DEBT_ADULT_CHILDREN_PREDICTOR] == 0
+    assert (first.loc[no_adult_child, "child_federal_student_loan_balance"] == 0).all()
 
 
-def test_imputation_reaches_only_reference_persons_and_their_spouses() -> None:
+def test_a_donor_family_without_parent_plus_rarely_draws_one() -> None:
+    """Parent PLUS is drawn for itself, not left over by the own shares.
+
+    Own debt splits between the two partners in fractions, and only families
+    with a reference person 55 or older hold Parent PLUS. The draw for every
+    donor family's own predictors gives Parent PLUS to few of the others.
+    """
+
+    rng = np.random.default_rng(1074)
+    donor = _ready_donor(1_500)
+    borrower = donor[SCF_EDUCATION_DEBT_TOTAL_TARGET] > 0
+    older = donor["age"] >= 55
+    head_share = rng.uniform(0.2, 0.8, len(donor))
+    donor["head_own_share"] = np.where(borrower & ~older, head_share, 0.0)
+    donor["spouse_own_share"] = np.where(borrower & ~older, 1.0 - head_share, 0.0)
+    donor["parent_plus_share"] = np.where(borrower & older, 1.0, 0.0)
+    donor["child_own_share"] = 0.0
+    donor["child_graduate_share"] = 0.0
+    donor["child_is_ibr_new_borrower"] = 0.0
+    drawn = draw_scf_education_debt_households(
+        _features(donor), donor, seed=8, n_estimators=20
+    )
+    with_debt = drawn[SCF_EDUCATION_DEBT_TOTAL_TARGET] > 0
+    draws_plus = drawn["federal_parent_plus_loan_balance"] > 0
+    assert draws_plus[with_debt & ~older].mean() < 0.02
+    assert draws_plus[with_debt & older].mean() > 0.9
+    # A donor with no Parent PLUS at all never draws it.
+    donor["parent_plus_share"] = 0.0
+    donor["head_own_share"] = np.where(borrower, head_share, 0.0)
+    donor["spouse_own_share"] = np.where(borrower, 1.0 - head_share, 0.0)
+    none = draw_scf_education_debt_households(
+        _features(donor), donor, seed=9, n_estimators=20
+    )
+    assert (none["federal_parent_plus_loan_balance"] == 0).all()
+
+
+def test_imputation_reaches_only_reference_persons_spouses_and_adult_children() -> None:
     frame = _us_frame(_person_rows())
     imputed = impute_us_scf_education_debt(
         frame, _ready_donor(), seed=5, n_estimators=15
@@ -563,7 +771,9 @@ def test_a_spouse_draw_without_a_spouse_moves_to_the_reference_person() -> None:
     donor[SCF_EDUCATION_DEBT_TOTAL_TARGET] = np.maximum(
         donor[SCF_EDUCATION_DEBT_TOTAL_TARGET], 1_000.0
     )
-    donor["head_own_share"] = np.where(donor[SCF_EDUCATION_DEBT_TOTAL_TARGET] > 0, 0, 0)
+    donor["head_own_share"] = 0.0
+    donor["parent_plus_share"] = 0.0
+    donor["child_own_share"] = 0.0
     donor["spouse_own_share"] = np.where(
         donor[SCF_EDUCATION_DEBT_TOTAL_TARGET] > 0, 1.0, 0.0
     )
@@ -581,6 +791,68 @@ def test_a_spouse_draw_without_a_spouse_moves_to_the_reference_person() -> None:
     assert (own[~single & reference] == 0).all()
     assert (own[couple_spouse] > 0).any()
     assert (imputed["federal_parent_plus_loan_balance"] == 0).all()
+
+
+def test_a_childs_draw_goes_to_the_youngest_adult_child() -> None:
+    frame = _us_frame(_person_rows(40, adult_children=True))
+    donor = _ready_donor()
+    donor[SCF_EDUCATION_DEBT_TOTAL_TARGET] = np.maximum(
+        donor[SCF_EDUCATION_DEBT_TOTAL_TARGET], 1_000.0
+    )
+    for column in ("head_own_share", "spouse_own_share", "parent_plus_share"):
+        donor[column] = 0.0
+    donor["child_own_share"] = 1.0
+    donor["child_graduate_share"] = 1.0
+    donor["child_is_ibr_new_borrower"] = 1.0
+    donor["head_is_ibr_new_borrower"] = 0.0
+    donor[SCF_EDUCATION_DEBT_ADULT_CHILDREN_PREDICTOR] = 1.0
+    imputed = impute_us_scf_education_debt(frame, donor, seed=4, n_estimators=10)
+    person = frame.table("person")
+
+    single = person["person_household_id"] % 3 == 0
+    youngest_child = ~single & (person["A_LINENO"] == 3)
+    older_child = person["A_LINENO"] == 4
+    own = imputed["federal_student_loan_balance"]
+    plus = imputed["federal_parent_plus_loan_balance"]
+    # Couples have an adult child, who holds the whole draw as an own loan.
+    assert (own[youngest_child] > 0).all()
+    assert (own[~youngest_child & ~single] == 0).all()
+    assert (own[older_child] == 0).all()
+    assert (
+        imputed.loc[youngest_child, "federal_student_loan_graduate_share"] == 1
+    ).all()
+    assert imputed.loc[youngest_child, "is_income_based_repayment_new_borrower"].all()
+    # Single parents' children are minors: the child's draw is the head's
+    # Parent PLUS loan there, and nobody else in the household holds any.
+    single_head = single & (person["A_LINENO"] == 1)
+    assert (plus[single_head] > 0).all()
+    assert (plus[~single_head] == 0).all()
+    assert (own[single] == 0).all()
+
+
+def test_adult_children_count_children_of_either_partner_aged_18_or_over() -> None:
+    frame = _us_frame(
+        pd.DataFrame.from_records(
+            _household(
+                [
+                    {"age": 50.0, "A_SPOUSE": 2, "A_MARITL": 1},
+                    {"age": 48.0, "A_SPOUSE": 1, "A_MARITL": 1, "is_female": True},
+                    {"age": 25.0, "PEPAR1": 2},
+                    {"age": 19.0, "PEPAR1": 1, "PEPAR2": 2},
+                    {"age": 19.0, "PEPAR1": 1},
+                    {"age": 12.0, "PEPAR1": 1},
+                    {"age": 22.0},
+                ]
+            )
+        )
+    )
+    recipients = education_debt._recipients(frame)
+
+    assert recipients.features[
+        SCF_EDUCATION_DEBT_ADULT_CHILDREN_PREDICTOR
+    ].tolist() == [3.0]
+    # The youngest adult child, the lower line number on a tie.
+    assert recipients.child_position.tolist() == [3]
 
 
 def test_with_inputs_is_idempotent_and_passes_its_gate() -> None:
@@ -693,13 +965,19 @@ def test_donor_fit_table_tabulates_observed_and_imputed_rows_alike() -> None:
     donor["spouse_federal_student_loan_balance"] = (
         donor[SCF_EDUCATION_DEBT_TOTAL_TARGET] * donor["spouse_own_share"]
     )
+    donor["child_federal_student_loan_balance"] = (
+        donor[SCF_EDUCATION_DEBT_TOTAL_TARGET] * donor["child_own_share"]
+    )
     donor["federal_parent_plus_loan_balance"] = (
         donor[SCF_EDUCATION_DEBT_TOTAL_TARGET]
         - donor["head_federal_student_loan_balance"]
         - donor["spouse_federal_student_loan_balance"]
+        - donor["child_federal_student_loan_balance"]
     )
     donor["racecl4"] = (np.arange(len(donor)) % 4 + 1).astype(float)
     donor["spouse_age"] = donor["age"]
+    donor["child_borrower_age_code"] = np.where(donor["child_own_share"] > 0, 25.0, 0.0)
+    donor["youngest_adult_child_age_code"] = donor["child_borrower_age_code"]
     observed = scf_education_debt_donor_fit_table(donor)
     same = scf_education_debt_donor_fit_table(donor, imputed=donor)
     assert json.dumps(observed, sort_keys=True) == json.dumps(same, sort_keys=True)
@@ -711,6 +989,17 @@ def test_donor_fit_table_tabulates_observed_and_imputed_rows_alike() -> None:
     )
     assert observed["households"]["share_with_federal_education_debt"] == (
         pytest.approx(expected_share)
+    )
+    # Each child borrower counts once, its weight spread over ages 18-27.
+    children = donor["child_own_share"] > 0
+    assert children.any()
+    head_or_spouse = (
+        (donor["head_own_share"] + donor["parent_plus_share"] > 0).astype(float)
+        + (donor["spouse_own_share"] > 0)
+        + children
+    )
+    assert observed["borrowers"]["borrower_weight"] == pytest.approx(
+        float(np.dot(head_or_spouse, donor[_DONOR_WEIGHT_COLUMN]))
     )
 
 
@@ -792,9 +1081,11 @@ def test_default_definition_follows_the_scf_definitions() -> None:
     # Income sums over the couple and their children; the mother's wages are
     # outside the SCF primary economic unit.
     assert features["employment_income"].tolist() == [90_000.0, 0.0]
-    assert list(features.columns) == list(
-        education_debt.SCF_EDUCATION_DEBT_CANDIDATE_PREDICTORS
-    )
+    assert list(features.columns) == [
+        *education_debt.SCF_EDUCATION_DEBT_CANDIDATE_PREDICTORS,
+        SCF_EDUCATION_DEBT_ADULT_CHILDREN_PREDICTOR,
+    ]
+    assert features[SCF_EDUCATION_DEBT_ADULT_CHILDREN_PREDICTOR].tolist() == [0.0, 0.0]
 
 
 def test_first_receipt_definition_reproduces_the_oldest_adult_rule() -> None:
