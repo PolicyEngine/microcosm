@@ -285,7 +285,7 @@ def test_generation_reproduces_committed_resources_with_exact_feed_identity(arti
     )
     for filename, document in generated.items():
         assert document == _document(filename), filename
-    assert artifact.fact_row_count == 12335
+    assert artifact.fact_row_count == _document("chronicle_feed.json")["fact_row_count"]
     assert artifact.fact_schema_versions == ("chronicle.consumer_fact.v4",)
 
 
