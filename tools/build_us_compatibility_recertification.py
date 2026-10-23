@@ -110,6 +110,10 @@ def fetch_parent(
 
     from huggingface_hub import HfApi, hf_hub_download
 
+    # Validated before anything is created, so an id cannot place directories
+    # outside output_dir (Sol r5 note).
+    if recert._PARENT_ID.fullmatch(release_id) is None:
+        raise ValueError(f"{release_id!r} is not a US release id")
     if output_dir.exists():
         raise FileExistsError(f"{output_dir} exists; choose a new directory")
     release_dir = output_dir / "releases" / release_id

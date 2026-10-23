@@ -168,9 +168,15 @@ the source, so the proof also covers what actually ran:
   `PYTHONPYCACHEPREFIX` pointing at a new empty directory. The loader replay
   and the scorer refuse a process in which any such module ran from other
   bytecode.
-- **Verified files.** After a run, every module loaded from the engine trees,
-  matched by file rather than name (Core registers variable modules under
-  synthetic names), must be a `.py` file of the verified inventory.
+- **Verified files.** After a run, every loaded engine module is checked
+  twice. By file: any module whose file lies in an engine tree, whatever its
+  name (Core registers variable modules under synthetic names), must be a
+  `.py` file of the verified inventory. By name: every module of the three
+  engine packages, and each package's search path, must lie inside its
+  installed tree as written, with no symlink on the way, so an overlay
+  package earlier on the path is refused. The runtime is authenticated before
+  the first engine import, because Core executes every variable source when
+  the country system is built.
 - **Trusted startup.** The interpreter, the standard library and site
   configuration (`.pth` files, import hooks) are assumed trustworthy.
 

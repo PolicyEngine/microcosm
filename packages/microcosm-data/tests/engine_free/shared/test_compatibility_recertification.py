@@ -1292,3 +1292,11 @@ def test_the_scorer_refuses_a_nonpositive_batch_size_before_any_work(
                 compatibility_wheels=(),
                 batch_households=size,
             )
+
+
+@pytest.mark.parametrize("release_id", ["/tmp/outside", "../outside", "not-us"])
+def test_fetch_parent_refuses_an_id_before_creating_anything(tmp_path, release_id):
+    tool = load_tool()
+    with pytest.raises(ValueError, match="is not a US release id"):
+        tool.fetch_parent(release_id=release_id, output_dir=tmp_path / "parent")
+    assert not (tmp_path / "parent").exists()
