@@ -259,7 +259,13 @@ def test_describe_parent_refuses_a_key_the_child_writes_its_evidence_under(paren
 
 
 @pytest.mark.parametrize(
-    "path", ["releases/legacy/evidence.json", "./populace_us_2024.h5", "/abs.h5"]
+    "path",
+    [
+        "releases/legacy/evidence.json",
+        "./populace_us_2024.h5",
+        "/abs.h5",
+        "../../escaped.npz",
+    ],
 )
 def test_describe_parent_refuses_paths_the_publisher_does_not_write(parent, path):
     """Sol r2 finding 4: a releases/ root artifact is never uploaded."""
@@ -1076,48 +1082,98 @@ def test_an_import_that_resolves_elsewhere_is_refused(
         recert.runtime_identities(wheels, require_wheels=True)
 
 
-def test_bytecode_is_isolated_before_the_packages_load(monkeypatch):
-    """Sol r2 finding 2: a replaced .pyc would run instead of the source."""
-
-    import sys
-    import types
-
-    monkeypatch.setattr(recert, "_ISOLATED_PYCACHE", None)
-    monkeypatch.setattr(sys, "pycache_prefix", None)
-    monkeypatch.setitem(
-        sys.modules, "policyengine_us", types.ModuleType("policyengine_us")
-    )
-    with pytest.raises(RuntimeError, match="imported before its bytecode"):
-        recert.isolate_bytecode()
-    monkeypatch.delitem(sys.modules, "policyengine_us")
-    for name in list(sys.modules):
-        if name.split(".", 1)[0] in recert.IMPORT_NAMES.values():
-            monkeypatch.delitem(sys.modules, name)
-    prefix = recert.isolate_bytecode()
-    assert sys.pycache_prefix == prefix and not os.listdir(prefix)
-    assert recert.isolate_bytecode() == prefix
-
-
-def test_a_module_compiled_outside_the_isolated_cache_is_refused(
-    fake_runtime, monkeypatch, tmp_path
+def test_bytecode_isolation_requires_a_prefix_and_modules_compiled_under_it(
+    monkeypatch, tmp_path
 ):
+    """Sol r2/r3: a replaced .pyc would run instead of the authenticated source."""
+
     import sys
     import types
 
-    site, _ = fake_runtime
-    monkeypatch.setattr(recert, "_ISOLATED_PYCACHE", str(tmp_path / "isolated"))
-    (tmp_path / "isolated").mkdir()
-    module = types.ModuleType("policyengine_us.rates")
-    module.__file__ = str(site / "policyengine_us" / "__init__.py")
-    module.__cached__ = str(site / "policyengine_us" / "__pycache__" / "x.pyc")
+    monkeypatch.setattr(sys, "pycache_prefix", None)
+    assert recert.bytecode_isolation_status()["isolated"] is False
+    with pytest.raises(RuntimeError, match="PYTHONPYCACHEPREFIX"):
+        recert.require_trusted_bytecode()
+
+    prefix = tmp_path / "prefix"
+    prefix.mkdir()
+    monkeypatch.setattr(sys, "pycache_prefix", str(prefix))
     for name in list(sys.modules):
-        if name.split(".", 1)[0] in recert.IMPORT_NAMES.values():
+        if name.split(".", 1)[0] in {
+            "microcosm",
+            "tools",
+            *recert.IMPORT_NAMES.values(),
+        }:
             monkeypatch.delitem(sys.modules, name)
-    monkeypatch.setitem(sys.modules, "policyengine_us.rates", module)
-    with pytest.raises(RuntimeError, match="not compiled from the verified"):
+    module = types.ModuleType("microcosm.data.fake")
+    module.__file__ = str(tmp_path / "fake.py")
+    module.__cached__ = str(tmp_path / "__pycache__" / "fake.cpython-313.pyc")
+    monkeypatch.setitem(sys.modules, "microcosm.data.fake", module)
+    status = recert.bytecode_isolation_status()
+    assert status == {"isolated": False, "offending": ["microcosm.data.fake"]}
+    module.__cached__ = str(prefix / "fake.cpython-313.pyc")
+    assert recert.bytecode_isolation_status()["isolated"] is True
+    module.__file__ = str(tmp_path / "fake.pyc")
+    assert recert.bytecode_isolation_status()["isolated"] is False
+
+
+def test_the_bootstrap_keeps_a_startup_prefix_and_otherwise_makes_one(monkeypatch):
+    import sys
+
+    monkeypatch.setattr(sys, "pycache_prefix", "/already/set")
+    assert recert.bootstrap_bytecode_isolation() == "/already/set"
+    monkeypatch.setattr(sys, "pycache_prefix", None)
+    prefix = recert.bootstrap_bytecode_isolation()
+    assert sys.pycache_prefix == prefix and not os.listdir(prefix)
+
+
+def test_loaded_engine_modules_are_matched_by_file_not_name(fake_runtime, monkeypatch):
+    """Sol r3 finding 1: Core registers variable modules under synthetic names."""
+
+    import sys
+    import types
+
+    site, wheels = fake_runtime
+    recert.runtime_identities(wheels, require_wheels=True)
+    verified = types.ModuleType("us_system.variables.rate")
+    verified.__file__ = str(site / "policyengine_us" / "__init__.py")
+    monkeypatch.setitem(sys.modules, "us_system.variables.rate", verified)
+    assert recert.verify_loaded_modules() >= 1
+    stray = types.ModuleType("us_system.variables.extra")
+    stray.__file__ = str(site / "policyengine_us" / "extra.py")
+    monkeypatch.setitem(sys.modules, "us_system.variables.extra", stray)
+    with pytest.raises(RuntimeError, match="not a verified policyengine-us source"):
         recert.verify_loaded_modules()
-    module.__cached__ = str(tmp_path / "isolated" / "x.pyc")
-    assert recert.verify_loaded_modules() == 1
+
+
+def test_source_hidden_in_pycache_is_unrecorded(fake_runtime):
+    """Sol r3 finding 1: Core's directory glob descends into __pycache__/."""
+
+    site, wheels = fake_runtime
+    cache = site / "policyengine_us" / "__pycache__"
+    cache.mkdir()
+    (cache / "__init__.cpython-313.pyc").write_bytes(b"real bytecode is excluded")
+    recert.runtime_identities(wheels, require_wheels=True)
+    (cache / "extra.py").write_text("VALUE = 3\n")
+    with pytest.raises(ValueError, match="never recorded"):
+        recert.runtime_identities(wheels, require_wheels=True)
+
+
+def test_a_pyc_beside_the_sources_is_unrecorded(fake_runtime):
+    site, wheels = fake_runtime
+    (site / "policyengine_us" / "extra.pyc").write_bytes(b"sourceless module")
+    with pytest.raises(ValueError, match="never recorded"):
+        recert.runtime_identities(wheels, require_wheels=True)
+
+
+def test_a_symlink_in_the_package_tree_is_refused(fake_runtime, tmp_path):
+    site, wheels = fake_runtime
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "extra.py").write_text("VALUE = 4\n")
+    (site / "policyengine_us" / "linked").symlink_to(outside, target_is_directory=True)
+    with pytest.raises(ValueError, match="symlink in the installed package tree"):
+        recert.runtime_identities(wheels, require_wheels=True)
 
 
 def test_the_scorer_refuses_a_nonpositive_batch_size_before_any_work(

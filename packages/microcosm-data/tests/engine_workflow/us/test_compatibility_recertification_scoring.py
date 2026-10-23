@@ -79,9 +79,14 @@ def _write_h5(path):
 
 @pytest.fixture
 def scorable(tmp_path, monkeypatch):
-    # The scorer compiles the engine into an isolated cache; this module runs
-    # in its own process, so isolate before anything imports the engine.
-    recert.isolate_bytecode()
+    # The tool's script bootstrap isolates bytecode before any Microcosm
+    # import; a pytest process imported Microcosm long before, so the trust
+    # checks are stubbed here and tested on synthetic modules engine-free.
+    monkeypatch.setattr(recert, "require_trusted_bytecode", lambda: None)
+    monkeypatch.setattr(recert, "verify_loaded_modules", lambda: 0)
+    monkeypatch.setattr(
+        recert, "bytecode_isolation_status", lambda: {"isolated": True, "offending": []}
+    )
     artifact_root = tmp_path / "artifacts"
     artifact_root.mkdir()
     h5 = artifact_root / "populace_us_2024.h5"

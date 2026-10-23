@@ -330,6 +330,7 @@ def score_document(
         },
         "filing_status": {},
         "tax_unit_roles": {},
+        "bytecode": {"isolated": True},
         "code": dict(FIXTURE_PRODUCER),
     }
 

@@ -351,7 +351,7 @@ default.
 A [compatibility recertification](docs/us-compatibility-recertification.md)
 republishes a published US calibration release byte for byte under a new id,
 with a measured `compatible_model_packages` claim for a newer policyengine-us:
-a loader replay under the four tested wheels, the engine's reviewed column
+a loader replay under the tested country, Core and calculator wheels, the engine's reviewed column
 changes, and the drift of the critical rows and headline totals between the
 built-with and tested engines. It never recalibrates. Publication refuses a
 child whose parent tag on the Hub does not serve the carried manifest bytes.

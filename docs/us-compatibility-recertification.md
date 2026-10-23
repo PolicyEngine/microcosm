@@ -157,10 +157,22 @@ them. Every score document must:
     on the path;
   - each wheel's SHA-256 matches the digest PyPI publishes for that version.
 
-The scorer and the loader replay also compile the packages from source into a
-fresh, empty bytecode cache (`sys.pycache_prefix`), so a replaced `.pyc` in the
-install tree is never run. After the run they check that every loaded module
-came from the verified tree and was compiled into that cache.
+CPython runs a cached `.pyc` whose header matches its source without reading
+the source, so the proof also covers what actually ran:
+
+- **Isolated cache.** Every Microcosm and engine module must be compiled from
+  source into a fresh, empty bytecode cache (`sys.pycache_prefix`), set before
+  the first Microcosm import. The tool does this at the top of its script.
+  Every other entry point (`python -m microcosm.data.compatibility_recertification`,
+  `microcosm-publish-release` / `tools/publish_release.sh`) must be started with
+  `PYTHONPYCACHEPREFIX` pointing at a new empty directory. The loader replay
+  and the scorer refuse a process in which any such module ran from other
+  bytecode.
+- **Verified files.** After a run, every module loaded from the engine trees,
+  matched by file rather than name (Core registers variable modules under
+  synthetic names), must be a `.py` file of the verified inventory.
+- **Trusted startup.** The interpreter, the standard library and site
+  configuration (`.pth` files, import hooks) are assumed trustworthy.
 
 The tested runs must be exactly the runtime the loader replay certified:
 version, content digest and wheel digest of all three packages. The baseline
@@ -215,12 +227,12 @@ recorded commit.
 5. **Certify** in the tested environment with the declarer's ruling:
 
    ```bash
-   TESTED/bin/python -m microcosm.data.compatibility_recertification --certify \
+   PYTHONPYCACHEPREFIX="$(mktemp -d)" TESTED/bin/python -m microcosm.data.compatibility_recertification --certify \
      --release-dir /path/candidate/releases/CHILD_ID \
      --artifact-root /path/candidate/artifacts \
      --output-dir /path/certified/releases/CHILD_ID \
      --compatibility-wheel policyengine_us-X.whl --compatibility-wheel policyengine_core-Y.whl \
-     --compatibility-wheel policyengine-Z.whl --compatibility-wheel spm_calculator-W.whl \
+     --compatibility-wheel spm_calculator-W.whl \
      --baseline-scores baseline.json --tested-scores tested.json \
      --counterfactual-scores counterfactual.json \
      --compatible-model-specifier 'policyengine-us==X' \
@@ -242,15 +254,15 @@ recorded commit.
 6. **Preflight**, offline, and then **publish** on the owner's go:
 
    ```bash
-   microcosm-publish-release /path/certified/releases/CHILD_ID \
+   PYTHONPYCACHEPREFIX="$(mktemp -d)" microcosm-publish-release /path/certified/releases/CHILD_ID \
      --repo-id policyengine/populace-us \
      --artifact-root /path/candidate/artifacts \
-     --compatibility-wheel ... (three) \
+     --compatibility-wheel ... (the three tested wheels) \
      --no-latest --tag-only --preflight-only
    ```
 
-   Publication is the same command through `tools/publish_release.sh` without
-   `--preflight-only`. Whether the child should also become `latest.json` is
+   Publication is the same command through `tools/publish_release.sh`, still
+   with a fresh `PYTHONPYCACHEPREFIX` and without `--preflight-only`. Whether the child should also become `latest.json` is
    a separate decision; the commands above leave the pointer alone.
 
 7. **Certify the bundle downstream.** policyengine.py certifies the child on

@@ -37,8 +37,14 @@ from collections.abc import Sequence
 from importlib import metadata
 from pathlib import Path
 
-from microcosm.data import compatibility_recertification as recert
-from microcosm.data import contract, source_enrichment, stored_inputs
+# Before any Microcosm import, so every Microcosm and engine module this
+# process runs compiles from source into a fresh, empty bytecode cache
+# (compatibility_recertification.bootstrap_bytecode_isolation; Sol r3).
+if __name__ == "__main__" and sys.pycache_prefix is None:
+    sys.pycache_prefix = tempfile.mkdtemp(prefix="recertification-pycache-")
+
+from microcosm.data import compatibility_recertification as recert  # noqa: E402
+from microcosm.data import contract, source_enrichment, stored_inputs  # noqa: E402
 
 _PRODUCER_FILES = recert.PRODUCER_SOURCE_FILES
 _ROOT = Path(__file__).resolve().parents[1]
@@ -209,6 +215,11 @@ def build_candidate(
         artifact_root.mkdir(mode=0o700)
         for path in parent["root_artifacts"]:
             destination = artifact_root / path
+            # describe_parent refuses '..'; containment is checked again here,
+            # before anything is created, so no path can place a file outside
+            # the staging directory (Sol r3 finding 3).
+            if not destination.resolve().is_relative_to(artifact_root.resolve()):
+                raise ValueError(f"root artifact {path!r} escapes the artifact root")
             destination.parent.mkdir(parents=True, exist_ok=True)
             _place(parent_artifact_root / path, destination)
         for name in parent["release_files"]:
@@ -583,9 +594,9 @@ def score_candidate(
     if type(batch_households) is not int or batch_households <= 0:
         raise ValueError("--batch-households must be a positive integer")
     runtime = scoring_runtime(compatibility_wheels)
-    # Before any engine import: compile the verified sources, never install-tree
-    # bytecode (Sol r2 finding 2).
-    recert.isolate_bytecode()
+    # Before any engine import: Microcosm's own modules must already have run
+    # from source compiled here (the bootstrap above), and the engine will too.
+    recert.require_trusted_bytecode()
 
     import numpy as np
     from policyengine_us.data import USSingleYearDataset
@@ -697,6 +708,9 @@ def score_candidate(
             }
         )
     recert.verify_loaded_modules()
+    bytecode = recert.bytecode_isolation_status()
+    if not bytecode["isolated"]:
+        raise RuntimeError(f"modules ran from untrusted bytecode: {bytecode}")
     document = {
         "schema_version": recert.SCORES_SCHEMA_VERSION,
         "kind": recert.SCORES_KIND,
@@ -732,6 +746,7 @@ def score_candidate(
         "metrics": {metric_id: {"value": value} for metric_id, value in totals.items()},
         "filing_status": filing_status,
         "tax_unit_roles": roles,
+        "bytecode": {"isolated": True},
         "code": producer,
     }
     if not all(np.isfinite(value) for value in totals.values()):

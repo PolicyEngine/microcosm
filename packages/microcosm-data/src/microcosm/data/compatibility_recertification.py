@@ -22,8 +22,9 @@ Hub must serve exactly the carried manifest bytes.
 **What is measured, and how it is bound.**
 
 - *Loader replay* (:func:`run_recertification_loader_replay`). Under the
-  tested country, Core, wrapper and calculator wheels, both native loaders read
-  the H5. Every stored column is classified against the tested engine and the
+  tested country, Core and calculator wheels, the country loader reads the H5
+  (the wrapper's loader is the downstream policyengine.py certification's to
+  prove; :data:`WRAPPER_LOADER_STATUS`). Every stored column is classified against the tested engine and the
   stored-input register (:mod:`microcosm.data.stored_inputs`). A column the
   built-with engine read and the tested engine ignores, or one the register
   says no engine reads and the tested engine now reads, must have an entry in
@@ -125,8 +126,10 @@ IMPORT_NAMES = MappingProxyType(
 )
 COMPATIBILITY_PACKAGES = tuple(IMPORT_NAMES)
 #: The wrapper is not part of it. policyengine.py imports its bundled country
-#: model at ``import policyengine`` and certifies the bundle's data release
-#: against the installed country version there: policyengine 6.10.1 under
+#: model with its US package (``import policyengine`` does so unless
+#: ``POLICYENGINE_SKIP_COUNTRY_IMPORTS`` is set, and the US dataset loader
+#: always does) and certifies the bundle's data release against the installed
+#: country version there: policyengine 6.10.1 under
 #: policyengine-us 2.60.4 raises "Data release manifest is not certified for
 #: the runtime model version 2.60.4" before any loader exists. A wrapper that
 #: loads this child is one whose bundle certifies this child, which is the
@@ -137,9 +140,10 @@ WRAPPER_LOADER_STATUS = {
     "package": "policyengine",
     "reason": (
         "policyengine.py certifies its bundled data release against the "
-        "installed country model at import, so no released wrapper imports "
-        "under a country version its bundle does not certify; the wrapper "
-        "loader is proven when a policyengine.py bundle certifies this child"
+        "installed country model when its US package is imported, so no "
+        "released wrapper loads US data under a country version its bundle "
+        "does not certify; the wrapper loader is proven when a policyengine.py "
+        "bundle certifies this child"
     ),
 }
 #: The producer inventory the release assembler, scorer and certifier run
@@ -382,14 +386,20 @@ _INSTALLER_FILES = frozenset(
 def _identity_file(name: str) -> bool:
     """Whether an installed or wheel path belongs to the package's identity.
 
-    Bytecode caches and installer bookkeeping are excluded; so are paths the
-    installer generates outside the package (console scripts, ``../bin``).
+    Bytecode in ``__pycache__`` and installer bookkeeping are excluded; so are
+    paths the installer generates outside the package (console scripts,
+    ``../bin``).
     Everything else counts, parameter YAML and data files included, because
     every byte of it can change what the engine computes.
     """
 
     parts = name.split("/")
-    if ".." in parts or "__pycache__" in parts or name.endswith(".pyc"):
+    if ".." in parts:
+        return False
+    # Only bytecode CPython writes into a __pycache__ directory is excluded. A
+    # source file there, or a .pyc beside the sources (which an import loads
+    # without any source), counts and so must be recorded.
+    if len(parts) > 1 and parts[-2] == "__pycache__" and parts[-1].endswith(".pyc"):
         return False
     return not (parts[0].endswith(".dist-info") and parts[-1] in _INSTALLER_FILES)
 
@@ -404,7 +414,8 @@ def _package_tree_files(dist, identity_files: Sequence[str]) -> set[str]:
     ``dist.files`` is the installer's record, not the tree: a module dropped
     into an installed package after installation is absent from it yet
     importable, and Core loads every variable module it finds. So the tree is
-    listed from disk and must equal the record (bytecode caches aside).
+    listed from disk and must equal the record (bytecode caches aside), and
+    a symlink anywhere in it is refused.
     """
 
     roots = {
@@ -412,15 +423,24 @@ def _package_tree_files(dist, identity_files: Sequence[str]) -> set[str]:
         for relative in identity_files
         if "/" in relative and not relative.split("/", 1)[0].endswith(".dist-info")
     }
+    import os
+
     found = set()
     for root in roots:
         base = Path(dist.locate_file(root))
-        for path in base.rglob("*"):
-            if path.is_dir():
-                continue
-            relative = f"{root}/{path.relative_to(base).as_posix()}"
-            if _identity_file(relative):
-                found.add(relative)
+        for directory, subdirectories, filenames in os.walk(base, followlinks=False):
+            for name in (*subdirectories, *filenames):
+                path = Path(directory) / name
+                if path.is_symlink():
+                    # Core globs every subdirectory; a link would bring files
+                    # from outside the verified tree into it.
+                    raise ValueError(f"symlink in the installed package tree: {path}")
+            for name in filenames:
+                relative = (
+                    f"{root}/{(Path(directory) / name).relative_to(base).as_posix()}"
+                )
+                if _identity_file(relative):
+                    found.add(relative)
     return found
 
 
@@ -445,7 +465,7 @@ def runtime_identities(
     wheels and refuses an editable install. Nothing here depends on where a
     wheel was installed from, so honest replays in two environments agree.
 
-    This proves the files; :func:`isolate_bytecode` and
+    This proves the files; :func:`require_trusted_bytecode` and
     :func:`verify_loaded_modules` prove that what ran was compiled from them.
 
     Raises:
@@ -547,95 +567,142 @@ def runtime_identities(
                     )
             identity["wheel_sha256"] = sha256_file(path)
         identities[name] = identity
+        _VERIFIED_TREES[name] = (
+            Path(dist.locate_file(IMPORT_NAMES[name])).resolve(),
+            Path(dist.locate_file("")).resolve(),
+            frozenset(files),
+        )
     return identities
 
 
-#: The empty bytecode cache this process compiles the packages into
-#: (:func:`isolate_bytecode`); ``None`` until it is created.
-_ISOLATED_PYCACHE: str | None = None
+#: package -> (import root, site directory, verified files), as the last
+#: :func:`runtime_identities` call in this process proved them.
+_VERIFIED_TREES: dict[str, tuple[Path, Path, frozenset[str]]] = {}
 
 
-def _loaded_package_modules() -> list:
-    import sys
-
-    roots = set(IMPORT_NAMES.values())
-    return [
-        module
-        for name, module in list(sys.modules.items())
-        if name.split(".", 1)[0] in roots and module is not None
-    ]
+#: The environment variable that points CPython's bytecode cache somewhere
+#: else at interpreter start (``sys.pycache_prefix``).
+PYCACHE_PREFIX_ENVIRONMENT = "PYTHONPYCACHEPREFIX"
 
 
-def isolate_bytecode() -> str:
-    """Compile the packages from source into a fresh, empty bytecode cache.
+def bootstrap_bytecode_isolation() -> str:
+    """Point this process's bytecode cache at a fresh empty directory.
 
     CPython runs a cached ``.pyc`` whose header matches its source's size and
-    timestamp without reading the source, so a replaced cache payload would
-    run code the authenticated source does not contain. Pointing
-    ``sys.pycache_prefix`` at a new empty directory before the packages are
-    imported means every module they load is compiled from its source.
-    Call it before importing any of the packages; it refuses if one is
-    already loaded under another cache.
-
-    Raises:
-        RuntimeError: A package module was imported before isolation.
+    timestamp without reading the source, so a replaced cache payload runs
+    code the authenticated source does not contain. A trusted entry point
+    calls this before it imports any Microcosm module or engine package, so
+    every module after it compiles from source. An interpreter started with
+    :data:`PYCACHE_PREFIX_ENVIRONMENT` already has a prefix, which is kept.
+    Returns the prefix.
     """
 
     import sys
 
-    global _ISOLATED_PYCACHE
-    if _ISOLATED_PYCACHE is not None and sys.pycache_prefix == _ISOLATED_PYCACHE:
-        return _ISOLATED_PYCACHE
-    loaded = [module.__name__ for module in _loaded_package_modules()]
-    if loaded:
+    if sys.pycache_prefix is None:
+        sys.pycache_prefix = tempfile.mkdtemp(prefix="recertification-pycache-")
+    return sys.pycache_prefix
+
+
+def _trusted_module(name: str, origin: object) -> bool:
+    """Whether a loaded module's bytecode must come from the isolated cache."""
+
+    roots = {"microcosm", "tools", *IMPORT_NAMES.values()}
+    if name.split(".", 1)[0] in roots:
+        return True
+    if not isinstance(origin, str):
+        return False
+    resolved = Path(origin).resolve()
+    return any(resolved.is_relative_to(root) for root, _, _ in _VERIFIED_TREES.values())
+
+
+def bytecode_isolation_status() -> dict:
+    """Whether every Microcosm and engine module ran from source compiled here.
+
+    Each loaded module of the ``microcosm`` namespace, the ``tools`` package
+    and the three engine packages (by name, or by file under a verified
+    package tree, which covers the variable modules Core loads under
+    synthetic names) must either carry no ``__cached__`` (a script, a
+    namespace) or have it under ``sys.pycache_prefix``. A module read from
+    install-tree bytecode, or any module when no prefix is set, is reported.
+    """
+
+    import sys
+
+    prefix = sys.pycache_prefix
+    offending = []
+    for name, module in list(sys.modules.items()):
+        if module is None:
+            continue
+        origin = getattr(module, "__file__", None)
+        if not _trusted_module(name, origin):
+            continue
+        if isinstance(origin, str) and origin.endswith(".pyc"):
+            offending.append(name)
+            continue
+        cached = getattr(module, "__cached__", None)
+        if cached is None:
+            continue
+        if prefix is None or not Path(cached).resolve().is_relative_to(
+            Path(prefix).resolve()
+        ):
+            offending.append(name)
+    return {
+        "isolated": prefix is not None and not offending,
+        "offending": sorted(offending)[:10],
+    }
+
+
+def require_trusted_bytecode() -> None:
+    """Refuse unless :func:`bytecode_isolation_status` is isolated.
+
+    Raises:
+        RuntimeError: Some Microcosm or engine module ran from bytecode the
+            process did not compile from its source.
+    """
+
+    status = bytecode_isolation_status()
+    if not status["isolated"]:
         raise RuntimeError(
-            "the country, Core or calculator package was imported before its "
-            f"bytecode was isolated ({sorted(loaded)[:3]}); run the replay or "
-            "scorer in a fresh process"
+            "Microcosm and engine modules must run from source compiled into a "
+            "fresh bytecode cache: run through "
+            "tools/build_us_compatibility_recertification.py, or start Python "
+            f"with {PYCACHE_PREFIX_ENVIRONMENT} set to a new empty directory "
+            f"(read from other bytecode: {status['offending']})"
         )
-    _ISOLATED_PYCACHE = tempfile.mkdtemp(prefix="recertification-pycache-")
-    sys.pycache_prefix = _ISOLATED_PYCACHE
-    return _ISOLATED_PYCACHE
 
 
 def verify_loaded_modules() -> int:
-    """Every loaded module of the packages came from their verified trees.
+    """Every loaded module from the engine trees is a verified source file.
 
-    Each must have been read from a file :func:`runtime_identities` covers,
-    under its installed package, and compiled into the isolated cache. Returns
-    how many modules were checked.
+    Matched by file, not name, so the variable modules Core loads under
+    synthetic names are covered. Each must be a ``.py`` file of the inventory
+    :func:`runtime_identities` verified. Returns how many were checked.
 
     Raises:
-        RuntimeError: A module was loaded from elsewhere or from install-tree
-            bytecode.
+        RuntimeError: No inventory was verified in this process, or a module
+            came from a file outside it.
     """
 
-    from importlib import metadata
+    import sys
 
-    if _ISOLATED_PYCACHE is None:
-        raise RuntimeError("isolate_bytecode() must run before the packages load")
-    roots = {
-        import_name: Path(
-            metadata.distribution(package).locate_file(import_name)
-        ).resolve()
-        for package, import_name in IMPORT_NAMES.items()
-    }
-    prefix = Path(_ISOLATED_PYCACHE).resolve()
+    if set(_VERIFIED_TREES) != set(COMPATIBILITY_PACKAGES):
+        raise RuntimeError("runtime_identities() must verify the packages first")
     checked = 0
-    for module in _loaded_package_modules():
-        origin = getattr(module, "__file__", None)
-        if origin is None:
+    for name, module in list(sys.modules.items()):
+        origin = getattr(module, "__file__", None) if module is not None else None
+        if not isinstance(origin, str):
             continue
-        root = roots[module.__name__.split(".", 1)[0]]
-        cached = getattr(module, "__cached__", None)
-        if not Path(origin).resolve().is_relative_to(root) or (
-            cached is not None and not Path(cached).resolve().is_relative_to(prefix)
-        ):
-            raise RuntimeError(
-                f"{module.__name__} was loaded from {origin} (bytecode {cached}), "
-                "not compiled from the verified installation"
-            )
-        checked += 1
+        path = Path(origin)
+        for package, (root, site, files) in _VERIFIED_TREES.items():
+            if not path.resolve().is_relative_to(root):
+                continue
+            relative = path.resolve().relative_to(site).as_posix()
+            if path.suffix != ".py" or relative not in files:
+                raise RuntimeError(
+                    f"{name} was loaded from {origin}, not a verified {package} source"
+                )
+            checked += 1
     return checked
 
 
@@ -730,6 +797,7 @@ def describe_parent(
             path.startswith("/")
             or "\\" in path
             or posixpath.normpath(path) != path
+            or ".." in path.split("/")
             or path.split("/", 1)[0] == "releases"
         ):
             raise ValueError(
@@ -909,6 +977,10 @@ def _h5_values(table, column):
     import numpy as np
 
     values = table[column]
+    # PyTables stores a pandas bool column as a one-byte bitfield, which h5py
+    # reads as uint8, and records the logical type in ``<column>_dtype``.
+    if table.attrs.get(f"{column}_dtype") in (b"bool", "bool"):
+        return np.asarray(values).astype(bool)
     if values.dtype.kind == "S":
         return np.asarray([value.decode() for value in values], dtype=object)
     return values
@@ -945,9 +1017,11 @@ def run_recertification_loader_replay(
 
     1. The three packages' installed contents, parameters included, bound to
        the three wheels when ``require_wheels`` (:func:`runtime_identities`),
-       compiled from source into an isolated cache (:func:`isolate_bytecode`)
-       and, after the run, every loaded module from the verified trees
-       (:func:`verify_loaded_modules`).
+       run from source compiled into this process's isolated bytecode cache
+       (:func:`require_trusted_bytecode`, which the caller's trusted entry
+       point set up with :func:`bootstrap_bytecode_isolation` or
+       ``PYTHONPYCACHEPREFIX``) and, after the run, every module loaded from
+       the engine trees a verified source file (:func:`verify_loaded_modules`).
     2. The stored-input classification (:func:`stored_column_changes`) and
        the register digests. An unreviewed change refuses the replay.
     3. The country loader (``USSingleYearDataset``) returns every stored
@@ -962,7 +1036,7 @@ def run_recertification_loader_replay(
     step, outside the receipt.
     """
 
-    isolate_bytecode()
+    require_trusted_bytecode()
 
     import inspect
 
@@ -1047,6 +1121,7 @@ def run_recertification_loader_replay(
         )
         checks.append("country:complete_household_native_role_overrides_default")
     verify_loaded_modules()
+    require_trusted_bytecode()
     checks.append("runtime:every_loaded_module_compiled_from_the_verified_tree")
     columns = {column for names in tables.values() for column in names}
     return {
@@ -1529,6 +1604,11 @@ def _score_document_failures(
         failures.append(
             f"{label} scores must cover all {expected_households} households of "
             "the H5 in both their household and their state passes"
+        )
+    if _mapping(scores.get("bytecode")).get("isolated") is not True:
+        failures.append(
+            f"{label} scores must have run from source compiled into an isolated "
+            "bytecode cache"
         )
     packages = _mapping(_mapping(scores.get("runtime")).get("packages"))
     for package in COMPATIBILITY_PACKAGES:
