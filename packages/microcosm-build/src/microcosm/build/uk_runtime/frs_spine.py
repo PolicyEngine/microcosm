@@ -242,6 +242,7 @@ OUTPUT_COLUMNS = (
     "property_income",
     "reports_rent_from_other_property",
     "maintenance_income",
+    "spousal_maintenance_income",
     "miscellaneous_income",
     "private_transfer_income",
     "lump_sum_income",
@@ -815,6 +816,34 @@ def _add_person_income(
     pe_person["maintenance_income"] = (
         maintenance_to_self + _positive(person, "mntamt2").to_numpy()
     ) * WEEKS_IN_YEAR
+    # Maintenance a spouse or civil partner, present or former, pays for the
+    # adult's own keep, which Universal Credit (UC Regulations 2013 reg.
+    # 66(1)(d)), Pension Credit and Housing Benefit count, unlike the child
+    # maintenance above (pe-uk#2572; microcosm#1320, María's rulings of
+    # 2026-10-22 and 2026-10-23). ALIAMT is alimony or an allowance from a
+    # previous partner on the adult's own behalf, at its usual amount ALUAMT
+    # where ALIUS says the last was not usual; APAMT is the allowances from a
+    # husband or wife who lives away, which the FRS asks only of married
+    # adults. A tab without the three refuses, rather than set nobody's.
+    missing_alimony = sorted(
+        column for column in ("aliamt", "aluamt", "alius") if column not in person
+    )
+    if missing_alimony:
+        raise KeyError(
+            f"The FRS adult tab has no {', '.join(missing_alimony).upper()} "
+            "column, so spousal maintenance cannot be set."
+        )
+    alimony = np.maximum(
+        np.where(
+            _number(person, "alius") == 2,
+            _number(person, "aluamt"),
+            _number(person, "aliamt"),
+        ),
+        0,
+    )
+    pe_person["spousal_maintenance_income"] = (
+        alimony + _positive(person, "apamt").to_numpy()
+    ) * WEEKS_IN_YEAR
     # ALLPAY2, "Amount of allowance: organisation", is one amount, so it is
     # miscellaneous income alone and not also a private transfer
     # (microcosm#1320, uk-data#627; María's ruling of 2026-10-20).
@@ -824,10 +853,12 @@ def _add_person_income(
             person, ("allpay2", "royyr2", "royyr3", "royyr4", "chamtern", "chamttst")
         )
     ) * WEEKS_IN_YEAR
+    # APAMT is spousal maintenance (above). APDAMT, the household bills a
+    # husband or wife who lives away pays directly, goes to third parties, not
+    # to the adult, so it stays a private transfer (María's ruling of
+    # 2026-10-23).
     pe_person["private_transfer_income"] = (
-        _sum_positive_fields(
-            person, ("apamt", "apdamt", "pareamt", "allpay3", "allpay4")
-        )
+        _sum_positive_fields(person, ("apdamt", "pareamt", "allpay3", "allpay4"))
         * WEEKS_IN_YEAR
     )
     pe_person["lump_sum_income"] = _number(person, "redamt")

@@ -419,6 +419,7 @@ stages:
   - property_income
   - reports_rent_from_other_property
   - maintenance_income
+  - spousal_maintenance_income
   - miscellaneous_income
   - private_transfer_income
   - lump_sum_income
@@ -510,6 +511,7 @@ stages:
   - dividend_income
   - owned_company_income_share
   - maintenance_income
+  - spousal_maintenance_income
   - miscellaneous_income
   - student_loan_repayments
   - statutory_sick_pay

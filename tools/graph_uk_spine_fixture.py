@@ -506,6 +506,11 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
             "CHAMTTST": 10.0,
             "APAMT": 11.0,
             "APDAMT": 12.0,
+            # Alimony for the adult's own keep, the usual amount differing
+            # from the last (#1320).
+            "ALIUS": 2,
+            "ALUAMT": 3.0,
+            "ALIAMT": 4.0,
             "PAREAMT": 13.0,
             "REDAMT": 20.0,
             "SLREPAMT": 2.0,

@@ -1152,8 +1152,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "8d1d7b4195081f9f24543e051484b563fcbc35044e8f93b39e4887a4d0a54500",
-          "size_bytes": 33996,
+          "sha256": "20d3343a77d6896cea4b786568b8fc5d869b5bf8594360d610ce9e85a63fd271",
+          "size_bytes": 35366,
           "table": "adult",
           "vintage": "synthetic-h2"
         },
@@ -1378,8 +1378,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "8d1d7b4195081f9f24543e051484b563fcbc35044e8f93b39e4887a4d0a54500",
-          "size_bytes": 33996,
+          "sha256": "20d3343a77d6896cea4b786568b8fc5d869b5bf8594360d610ce9e85a63fd271",
+          "size_bytes": 35366,
           "table": "adult",
           "vintage": "synthetic-h2"
         },
@@ -1497,8 +1497,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "8d1d7b4195081f9f24543e051484b563fcbc35044e8f93b39e4887a4d0a54500",
-          "size_bytes": 33996,
+          "sha256": "20d3343a77d6896cea4b786568b8fc5d869b5bf8594360d610ce9e85a63fd271",
+          "size_bytes": 35366,
           "table": "adult",
           "vintage": "synthetic-h2"
         }
@@ -1540,8 +1540,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "8d1d7b4195081f9f24543e051484b563fcbc35044e8f93b39e4887a4d0a54500",
-          "size_bytes": 33996,
+          "sha256": "20d3343a77d6896cea4b786568b8fc5d869b5bf8594360d610ce9e85a63fd271",
+          "size_bytes": 35366,
           "table": "adult",
           "vintage": "synthetic-h2"
         },
@@ -1758,8 +1758,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "8d1d7b4195081f9f24543e051484b563fcbc35044e8f93b39e4887a4d0a54500",
-          "size_bytes": 33996,
+          "sha256": "20d3343a77d6896cea4b786568b8fc5d869b5bf8594360d610ce9e85a63fd271",
+          "size_bytes": 35366,
           "table": "adult",
           "vintage": "synthetic-h2"
         }
@@ -1869,8 +1869,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "8d1d7b4195081f9f24543e051484b563fcbc35044e8f93b39e4887a4d0a54500",
-          "size_bytes": 33996,
+          "sha256": "20d3343a77d6896cea4b786568b8fc5d869b5bf8594360d610ce9e85a63fd271",
+          "size_bytes": 35366,
           "table": "adult",
           "vintage": "synthetic-h2"
         },
@@ -2100,8 +2100,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "8d1d7b4195081f9f24543e051484b563fcbc35044e8f93b39e4887a4d0a54500",
-          "size_bytes": 33996,
+          "sha256": "20d3343a77d6896cea4b786568b8fc5d869b5bf8594360d610ce9e85a63fd271",
+          "size_bytes": 35366,
           "table": "adult",
           "vintage": "synthetic-h2"
         },
@@ -2256,6 +2256,7 @@
         "dividend_income",
         "owned_company_income_share",
         "maintenance_income",
+        "spousal_maintenance_income",
         "miscellaneous_income",
         "student_loan_repayments",
         "statutory_sick_pay",
@@ -2356,6 +2357,7 @@
         "property_income",
         "reports_rent_from_other_property",
         "maintenance_income",
+        "spousal_maintenance_income",
         "miscellaneous_income",
         "private_transfer_income",
         "lump_sum_income",

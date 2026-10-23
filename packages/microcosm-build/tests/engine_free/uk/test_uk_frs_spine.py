@@ -307,6 +307,10 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "APAMT": 11.0,
         "APDAMT": 12.0,
         "PAREAMT": 13.0,
+        # The last alimony was not the usual amount (ALIUS 2): ALUAMT counts.
+        "ALIUS": 2,
+        "ALUAMT": 3.0,
+        "ALIAMT": 4.0,
         "REDAMT": 100.0,
         "SLREPAMT": 2.0,
         # A repayer answers no to SLOS; EDUCLEFT dates the course (#868).
@@ -1202,9 +1206,11 @@ def test_direct_person_mapping_values_are_ported(tmp_path: Path) -> None:
     assert adult["maintenance_income"] == pytest.approx(3 * WEEKS_IN_YEAR)
     # Odd jobs 4, ALLPAY2 6, ROYYR2-4 3 + 4 + 5, CHAMTERN 9 and CHAMTTST 10.
     assert adult["miscellaneous_income"] == pytest.approx(41 * WEEKS_IN_YEAR)
-    # APAMT 11, APDAMT 12, PAREAMT 13, ALLPAY3 7 and ALLPAY4 8: ALLPAY2 is
-    # miscellaneous income alone (#1320).
-    assert adult["private_transfer_income"] == pytest.approx(51 * WEEKS_IN_YEAR)
+    # ALUAMT 3 (ALIUS 2) and APAMT 11 (#1320).
+    assert adult["spousal_maintenance_income"] == pytest.approx(14 * WEEKS_IN_YEAR)
+    # APDAMT 12, PAREAMT 13, ALLPAY3 7 and ALLPAY4 8: ALLPAY2 is miscellaneous
+    # income alone and APAMT spousal maintenance (#1320).
+    assert adult["private_transfer_income"] == pytest.approx(40 * WEEKS_IN_YEAR)
     assert adult["lump_sum_income"] == pytest.approx(100)
     assert adult["student_loan_repayments"] == pytest.approx(2 * WEEKS_IN_YEAR)
     assert adult["statutory_sick_pay"] == pytest.approx(WEEKS_IN_YEAR)
@@ -1240,6 +1246,7 @@ _PERSON_INCOME_COLUMNS = (
     "dividend_income",
     "property_income",
     "maintenance_income",
+    "spousal_maintenance_income",
     "miscellaneous_income",
     "private_transfer_income",
     "lump_sum_income",
@@ -1313,7 +1320,11 @@ def test_no_frs_field_feeds_two_income_columns(tmp_path: Path) -> None:
     } == {}
     # The comparison sees a field's own column.
     assert moved[("adult", "ALLPAY2")] == {"miscellaneous_income"}
-    assert moved[("adult", "APAMT")] == {"private_transfer_income"}
+    assert moved[("adult", "APAMT")] == {"spousal_maintenance_income"}
+    assert moved[("adult", "APDAMT")] == {"private_transfer_income"}
+    assert moved[("adult", "ALUAMT")] == {"spousal_maintenance_income"}
+    # ALIUS 2 reads the usual amount, so the last one moves nothing.
+    assert moved[("adult", "ALIAMT")] == set()
     assert moved[("adult", "INEARNS")] == {"employment_income"}
     assert moved[("househol", "CTREBAMT")] == {"council_tax_benefit_reported"}
     assert moved[("oddjob", "OJAMT")] == {"miscellaneous_income"}
@@ -1443,6 +1454,43 @@ def test_household_subrent_column_floors_missing_value_codes(
 
     assert household.loc[1, "subrent"] == 0
     assert household.loc[2, "subrent"] == pytest.approx(6 * WEEKS_IN_YEAR)
+
+
+@pytest.mark.parametrize(
+    ("alius", "expected"),
+    [(1, 4.0), (2, 3.0), (3, 4.0)],
+    ids=["usual", "not_usual", "no_usual"],
+)
+def test_spousal_maintenance_reads_the_usual_alimony_where_the_last_was_not(
+    tmp_path: Path, alius: int, expected: float
+) -> None:
+    """ALIUS 2 (the last amount was not the usual one) reads ALUAMT; any other
+    answer reads ALIAMT, beside APAMT (#1320; María's ruling of 2026-10-22)."""
+
+    tables = _fixture_tables()
+    for row in tables["adult"]:
+        row.update(ALIUS=alius, ALUAMT=3.0, ALIAMT=4.0, APAMT=0.0)
+    stage = _write_fixture(tmp_path, tables)
+    person = build_uk_frs_spine_frame(tmp_path, stage=stage).table("person")
+    adults = person[person["age"] >= 16]
+    assert adults["spousal_maintenance_income"].to_numpy() == pytest.approx(
+        expected * WEEKS_IN_YEAR
+    )
+
+
+@pytest.mark.parametrize("column", ["ALIAMT", "ALUAMT", "ALIUS"])
+def test_frs_spine_refuses_an_adult_tab_without_alimony(
+    tmp_path: Path, column: str
+) -> None:
+    """A vintage without the alimony columns refuses; it never sets nobody's
+    spousal maintenance."""
+
+    tables = _fixture_tables()
+    for row in tables["adult"]:
+        row.pop(column)
+    stage = _write_fixture(tmp_path, tables)
+    with pytest.raises(KeyError, match=column):
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
 
 
 def test_frs_spine_refuses_an_adult_tab_without_sppadj(tmp_path: Path) -> None:

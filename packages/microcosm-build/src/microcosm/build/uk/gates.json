@@ -1226,7 +1226,8 @@
           "household.itl3_code",
           "household.ward_code",
           "person.war_widows_pension_reported",
-          "person.widowed_parents_allowance_reported"
+          "person.widowed_parents_allowance_reported",
+          "person.spousal_maintenance_income"
         ],
         "reviewed_exclusions": {
           "person.incapacity_benefit_reported": "The enhanced FRS stores this legacy reported-benefit input as an all-zero layer; the candidate must drop dead zero layers.",

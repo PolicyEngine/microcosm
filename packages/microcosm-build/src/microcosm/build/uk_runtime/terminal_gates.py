@@ -405,6 +405,9 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     # Widowed Parent's Allowance, split out of FRS code 6 by rate (#1222,
     # pe-uk#2572). The enhanced FRS keeps the whole code in bsp_reported.
     "person.widowed_parents_allowance_reported",
+    # Spousal maintenance (ALIAMT or ALUAMT, and APAMT; #1320, pe-uk#2572).
+    # The enhanced FRS reads no alimony and keeps APAMT a private transfer.
+    "person.spousal_maintenance_income",
 )
 
 UK_KNOWN_MISSING_REFERENCE_EXPORT_COLUMNS: tuple[str, ...] = (
