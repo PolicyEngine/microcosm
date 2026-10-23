@@ -25,7 +25,7 @@ def test_source_surface_classification_is_complete() -> None:
     }
     assert normative["stage_asset"] == {
         "id": "source_stages",
-        "sha256": "e75217c0db3075bf2664492167d31ce7ee82c2c5f6a70e3b67e8bb6f4ddd7ecf",
+        "sha256": "5588726fa6dc5e216faff42392e0e39d75f1a58b1ea14921f36abdffafbcb36b",
     }
     assert operational["stage_asset"] == {
         "path": "microcosm.build.us/source_stages.json"
@@ -168,7 +168,7 @@ def test_all_us_vintages_have_reciprocal_reviewed_compatibility() -> None:
     sources = build_sources()
     vintages = build_vintages()
     records = vintages["records"]
-    assert len(records) == 16
+    assert len(records) == 17
     by_id = {record["id"]: record for record in records}
     assert set(by_id) == {
         "acs_2022",
@@ -184,6 +184,7 @@ def test_all_us_vintages_have_reciprocal_reviewed_compatibility() -> None:
         "puma_2020",
         "release_us_2024",
         "scf_2022",
+        "scf_2025",
         "sipp_2023",
         "target_2024",
         "tax_2015",
@@ -204,7 +205,7 @@ def test_all_us_vintages_have_reciprocal_reviewed_compatibility() -> None:
         }
     )
     resolved_wire = thaw_json(resolved.vintage_authorities)
-    assert len(resolved_wire["records"]) == 16
+    assert len(resolved_wire["records"]) == 17
     assert (
         resolved_wire["records"]["policyengine_us_surface"]["value"]
         == (ENGINE_LOCK["engine"]["version"])

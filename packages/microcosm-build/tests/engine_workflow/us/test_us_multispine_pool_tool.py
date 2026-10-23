@@ -343,7 +343,9 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # retain_best_objective and microcosm#1301's budget_search_bracket
             # move it. It covers microcosm.fit.qrf's attested bytes too, so
             # fit_draw_next's caller-owned uniforms (microcosm#1332) move it.
-            "spec_sha256": "19460fc168a6f9ed44e580d0e36777cce78bb33cb52b75630ee86203fa795684",
+            # microcosm#1073's scf_wealth education-debt declaration moves it
+            # through the bundle's source stages.
+            "spec_sha256": "eee022d2e258e9e7dfe6b87b80f4b731e3a679486a36abe016db5ec7515dfe10",
         },
     }
 

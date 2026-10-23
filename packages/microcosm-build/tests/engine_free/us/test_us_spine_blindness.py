@@ -308,6 +308,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "release_input_coverage.py",
         "release_target_parity.py",
         "scf_auto_loans.py",
+        # SCF 2025 federal student loan inputs (microcosm#1073); a donor-model
+        # stage shaped like scf_auto_loans.
+        "scf_education_debt.py",
         "scf_wealth.py",
         "sipp_financial_assets.py",
         "sipp_tips.py",

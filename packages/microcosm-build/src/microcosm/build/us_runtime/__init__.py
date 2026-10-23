@@ -764,6 +764,28 @@ from microcosm.build.us_runtime.scf_auto_loans import (
     us_scf_auto_loans_summary,
     with_us_scf_auto_loan_inputs,
 )
+from microcosm.build.us_runtime.scf_education_debt import (
+    SCF_2025_FULL_EXTRACT,
+    SCF_2025_SUMMARY_EXTRACT,
+    SCF_EDUCATION_DEBT_CANDIDATE_PREDICTORS,
+    SCF_EDUCATION_DEBT_EXCLUDED_PREDICTORS,
+    SCF_EDUCATION_DEBT_PREDICTORS,
+    SCF_EDUCATION_DEBT_RECIPIENT_DEFINITION,
+    SCF_EDUCATION_DEBT_VINTAGE,
+    SCF_WHOSE_EDUCATION_HOLDER,
+    US_SCF_EDUCATION_DEBT_BALANCE_COLUMNS,
+    US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS,
+    derive_scf_education_debt_targets,
+    fetch_scf_public_file,
+    impute_us_scf_education_debt,
+    load_scf_2025_education_debt_donor,
+    scf_education_debt_donor_fit_table,
+    us_scf_education_debt_fit_table,
+    us_scf_education_debt_signal_gate,
+    us_scf_education_debt_stage_spec,
+    us_scf_education_debt_summary,
+    with_us_scf_education_debt_inputs,
+)
 from microcosm.build.us_runtime.scf_wealth import (
     FINANCIAL_ASSET_BLEND_AUDIT_KEY,
     FINANCIAL_ASSET_SOURCE_SCF_PROBABILITY,
@@ -1575,6 +1597,26 @@ __all__ = [
     "us_scf_auto_loans_stage_spec",
     "us_scf_auto_loans_summary",
     "with_us_scf_auto_loan_inputs",
+    "SCF_2025_FULL_EXTRACT",
+    "SCF_2025_SUMMARY_EXTRACT",
+    "SCF_EDUCATION_DEBT_CANDIDATE_PREDICTORS",
+    "SCF_EDUCATION_DEBT_EXCLUDED_PREDICTORS",
+    "SCF_EDUCATION_DEBT_PREDICTORS",
+    "SCF_EDUCATION_DEBT_RECIPIENT_DEFINITION",
+    "SCF_EDUCATION_DEBT_VINTAGE",
+    "SCF_WHOSE_EDUCATION_HOLDER",
+    "US_SCF_EDUCATION_DEBT_BALANCE_COLUMNS",
+    "US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS",
+    "derive_scf_education_debt_targets",
+    "fetch_scf_public_file",
+    "impute_us_scf_education_debt",
+    "load_scf_2025_education_debt_donor",
+    "scf_education_debt_donor_fit_table",
+    "us_scf_education_debt_fit_table",
+    "us_scf_education_debt_signal_gate",
+    "us_scf_education_debt_stage_spec",
+    "us_scf_education_debt_summary",
+    "with_us_scf_education_debt_inputs",
     "FINANCIAL_ASSET_BLEND_AUDIT_KEY",
     "FINANCIAL_ASSET_SOURCE_SCF_PROBABILITY",
     "SCF_FINANCIAL_ASSET_TARGET_COMPONENTS",
@@ -2082,13 +2124,14 @@ class BuildConfig:
 #: the observatory's sources diagram and the dataset card derive from it.
 US_DONORS: Mapping[str, DonorSpec] = {
     "scf_wealth": DonorSpec(
-        survey="Fed SCF 2022 + Census SIPP 2023",
+        survey="Fed SCF 2022 + Fed SCF 2025 + Census SIPP 2023",
         source="https://www.federalreserve.gov/econres/scfindex.htm",
         notes=(
             "SCF anchors signed net worth and one half of household liquid-asset "
             "vectors; the immutable SIPP 2023 public-use donor supplies the "
             "other half and restores low liquid-asset mass. Auto loans use the "
-            "full SCF separately."
+            "full SCF separately. Federal education debt reads the 2025 SCF "
+            "(microcosm#1073) while every other output stays on 2022."
         ),
     ),
     US_SSI_DISABILITY_CRITERIA_STAGE_NAME: DonorSpec(

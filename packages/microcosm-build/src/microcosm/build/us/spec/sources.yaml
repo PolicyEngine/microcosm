@@ -99,7 +99,7 @@ sources:
 stage_asset:
   id: source_stages
   path: microcosm.build.us/source_stages.json
-  sha256: e75217c0db3075bf2664492167d31ce7ee82c2c5f6a70e3b67e8bb6f4ddd7ecf
+  sha256: 5588726fa6dc5e216faff42392e0e39d75f1a58b1ea14921f36abdffafbcb36b
 stage_manifest:
   version: 1
   country: us
@@ -954,7 +954,7 @@ stages:
   nonnegative_outputs:
   - schedule_d_capital_gain_distributions
 - stage: scf_wealth
-  survey: Fed SCF 2022 + Census SIPP 2023
+  survey: Fed SCF 2022 + Fed SCF 2025 + Census SIPP 2023
   source: https://www.federalreserve.gov/econres/scfindex.htm
   grain: household
   artifacts:
@@ -989,6 +989,22 @@ stages:
     revision: 21280dca5995e978d706740a8a4b9b7860cfd7b6
     sha256: 5c30439e365fc26483318ef61d1d8f4bb2f0e9d6bb47c22c06756a7698733ee2
     size_bytes: 3726010471
+  - kind: public_microdata
+    format: stata_in_zip
+    vintage: '2025'
+    locator: https://www.federalreserve.gov/econres/files/scfp2025s.zip
+    member: rscfp2025.dta
+    sha256: 32dcf86be48b20fb5fd9e659f79fa22a4d9cccf456e44b6ca9b1329e9869bbeb
+    member_sha256: 454a287f188bf13f94efc09820fa878482d897db1d2a16ac63bec14eb580d2dd
+    expected_rows: 21800
+  - kind: public_microdata
+    format: stata_in_zip
+    vintage: '2025'
+    locator: https://www.federalreserve.gov/econres/files/scf2025s.zip
+    member: p25i6.dta
+    sha256: c4010bd5decaa13d5d027862ed4b6c41b4106925089290f879749f8f5a467741
+    member_sha256: 38926275dfb8f00ea843b80ced7a9412ad4653d39c7fab8fe24c3bdf912902ad
+    expected_rows: 21800
   operations:
   - kind: read_tables
     tables:
@@ -1200,6 +1216,164 @@ stages:
     - bank_account_assets
     - bond_assets
     - stock_assets
+  - kind: read_tables
+    tables:
+    - scf_2025_summary_extract
+    - scf_2025_full_extract
+    weight: wgt
+  - kind: join
+    left: scf_2025_summary_extract
+    right: scf_2025_full_extract
+    keys:
+    - y1
+    - yy1
+    validation: one_to_one_all_five_implicates
+  - kind: derive
+    outputs:
+    - federal_education_debt
+    - head_federal_student_loan_balance
+    - spouse_federal_student_loan_balance
+    - child_federal_student_loan_balance
+    - federal_parent_plus_loan_balance
+    - parent_plus_share
+    - child_own_share
+    - head_own_share
+    - spouse_own_share
+    - head_graduate_share
+    - spouse_graduate_share
+    - child_graduate_share
+    - head_is_ibr_new_borrower
+    - spouse_is_ibr_new_borrower
+    - child_is_ibr_new_borrower
+    - adult_children_in_household
+    method: scf_federal_education_loans_by_holder
+    inputs:
+    - x7824
+    - x7847
+    - x7870
+    - x7924
+    - x7947
+    - x7970
+    - x7179
+    - x7879
+    - x7884
+    - x7889
+    - x7894
+    - x7899
+    - x7994
+    - x7978
+    - x7883
+    - x7888
+    - x7893
+    - x7898
+    - x7993
+    - x9332
+    - x9333
+    - x9334
+    - x9335
+    - x9336
+    - x9337
+    - x9338
+    - x9339
+    - x9340
+    - x9341
+    - x9342
+    - x9343
+    - x7805
+    - x7828
+    - x7851
+    - x7905
+    - x7928
+    - x7951
+    - x8000
+    - x108
+    - x114
+    - x120
+    - x126
+    - x132
+    - x202
+    - x208
+    - x214
+    - x220
+    - x226
+    - x110
+    - x116
+    - x122
+    - x128
+    - x134
+    - x204
+    - x210
+    - x216
+    - x222
+    - x228
+    allocation: x7179_in_proportion_to_loans_1_6
+    source: scf_2025_full_extract
+  - kind: fit_weighted_qrf
+    donor: scf_2025_education_debt
+    predictors:
+    - age
+    - is_female
+    - cps_race
+    - is_married
+    - own_children_in_household
+    - employment_income
+    - household_income
+    targets:
+    - federal_education_debt
+    weight: wgt
+    n_estimators: 100
+    seed_from_build_config: true
+  - kind: fit_weighted_qrf
+    donor: scf_2025_education_debt_borrowers
+    predictors:
+    - age
+    - is_female
+    - cps_race
+    - is_married
+    - own_children_in_household
+    - employment_income
+    - household_income
+    - adult_children_in_household
+    - federal_education_debt
+    targets:
+    - parent_plus_share
+    - child_own_share
+    - head_own_share
+    - spouse_own_share
+    - head_graduate_share
+    - spouse_graduate_share
+    - child_graduate_share
+    - head_is_ibr_new_borrower
+    - spouse_is_ibr_new_borrower
+    - child_is_ibr_new_borrower
+    weight: wgt
+    response_filter: federal_education_debt > 0
+    n_estimators: 100
+    seed_from_build_config: true
+  - kind: derive
+    outputs:
+    - federal_student_loan_balance
+    - federal_parent_plus_loan_balance
+    - is_income_based_repayment_new_borrower
+    - federal_student_loan_graduate_share
+    method: allocate_household_education_debt_to_reference_person_spouse_and_adult_child
+    inputs:
+    - federal_education_debt
+    - parent_plus_share
+    - child_own_share
+    - head_own_share
+    - spouse_own_share
+    - head_graduate_share
+    - spouse_graduate_share
+    - child_graduate_share
+    - head_is_ibr_new_borrower
+    - spouse_is_ibr_new_borrower
+    - child_is_ibr_new_borrower
+    - A_SPOUSE
+    - PECOHAB
+    - PEPAR1
+    - PEPAR2
+    - age
   - kind: support_clip
     range: donor_realized
   outputs:
@@ -1229,6 +1403,10 @@ stages:
   - bank_account_assets
   - bond_assets
   - stock_assets
+  - federal_student_loan_balance
+  - federal_parent_plus_loan_balance
+  - is_income_based_repayment_new_borrower
+  - federal_student_loan_graduate_share
   nonnegative_outputs:
   - auto_loan_balance
   - auto_loan_interest
@@ -1236,6 +1414,9 @@ stages:
   - bank_account_assets
   - bond_assets
   - stock_assets
+  - federal_student_loan_balance
+  - federal_parent_plus_loan_balance
+  - federal_student_loan_graduate_share
   notes: 'Microcosm #374 restores the retired 50/50 SIPP/SCF financial-asset blend: a seeded recipient-household
     draw selects one complete three-leaf vector, and the reference person carries it while all other people
     receive zero. The SIPP mapping matches archived commit 42ed5d45''s final 13-predictor asset QRF, while
@@ -1251,7 +1432,52 @@ stages:
     leaves are head-carried to Person. The OBBBA qualifying-interest proxy uses Treasury/IRS''s approximately
     six million qualifying loans issued annually and is bounded by total auto-loan interest. Negative
     amount/rate codes are floored at the source boundary for the nonnegative auto outputs; signed net_worth
-    is never clipped.'
+    is never clipped. Federal education debt (microcosm#1073) reads the 2025 SCF while every other output
+    stays on 2022. For education loans 1-6 the full file records the amount owed, the federal flag (X7879/X7884/X7889/X7894/X7899/X7994
+    = 1), whose education the loan paid for (X7978/X7883/X7888/X7893/X7898/X7993), the year borrowed (X9332-X9337),
+    the program (X9338-X9343) and the amount borrowed (X7805/X7828/X7851/X7905/X7928/X7951); only federal
+    loans count, and a blank federal flag counts as non-federal. X7179, the total owed on loans beyond
+    the sixth, carries none of these items, so every loan 1-6 is scaled by 1 + X7179 / (balance on loans
+    1-6): X7179 takes the family''s federal share and holder split of loans 1-6. Whose education: code
+    1 (the reference person) and code 2 (spouse or partner) are each person''s own federal_student_loan_balance.
+    Where X8000 = 1 the public file reverses respondent and spouse/partner codes, but not those of loans
+    4 and 6 (X7893, X7993): completed degree loans consistent with exactly one partner''s highest degree
+    (X5931, X6111) match the coded person on loans 1, 2, 3 and 5 and on loans 4 and 6 of unreversed families
+    (25 of 25), but on loans 4 and 6 of reversed families match in none of 54 (all implicates), so codes
+    1 and 2 of those two loans are swapped back in reversed families. Code 3 (child, with grandchild and
+    other relative folded in by the public file) is a co-resident child''s own federal_student_loan_balance
+    when the household listing (X108-X226) has a child aged 18 or over who could have been in school in
+    the year borrowed (16 or older then, at the oldest age of the public file''s age band), unless only
+    a parent could have borrowed it: an undergraduate or certificate loan above the $31,000 aggregate
+    limit on a dependent undergraduate''s own Direct Loans (34 CFR 685.203(e)(1)) borrowed while the child
+    could still have been under 24 and so dependent (20 U.S.C. 1087vv(d)(1)(A)). Graduate loans and loans
+    borrowed after the child turned 24 are never Parent PLUS, which finances only a dependent undergraduate
+    (34 CFR 685.200(c)(2)(i)). Every other code-3 loan is the reference person''s federal_parent_plus_loan_balance:
+    the screener (X7801) leaves out loans of people living elsewhere, so a loan for a child not in the
+    household is the parent''s. Codes 6 (multiple people), 7 (unrelated person) and -7 (other) are the
+    reference person''s own balance, since none can be a Parent PLUS loan for one dependent student. is_income_based_repayment_new_borrower
+    is true when every federal loan the person holds (for the reference person, Parent PLUS too, as 34
+    CFR 685.209(b)(13)(ii) looks at any Direct or FFEL balance) was borrowed in 2014 or later (the item
+    records a year only, so 2014 counts as after July 1, 2014); the share is an upper bound, because paid-off
+    pre-2014 loans are not observed and a consolidated loan is dated by its most recent underlying loan.
+    federal_student_loan_graduate_share is the amount-borrowed-weighted share of the person''s own federal
+    loans that financed a master''s, professional or doctoral program (codes 13-15). One weighted QRF
+    draws the household total from all families; a second, fit on borrower families and conditioning also
+    on the total and the number of adult children, draws the Parent PLUS, adult child''s, reference person''s
+    and spouse''s shares in that order, normalized to sum to one, then the three graduate shares and new-borrower
+    flags. Both condition on the reference person''s age, sex and race, a spouse or partner being present
+    (SCF MARRIED counts partners), the children of the reference person or partner (SCF KIDS), and the
+    wages and income less capital gains of the reference person, spouse or partner and their children
+    (the CPS counterpart of the SCF primary economic unit). The shared interest-dividend and Social Security-pension
+    predictors are left out: the CPS host carries tax-record imputations of both, so at reference ages
+    25-34 42% and 18% of host households report some against 16% and 6% of SCF families, and mapping them
+    to the SCF distribution moves the host''s borrower share most of any predictor (experiments/receipts/1073-predictor-shift-diagnosis.json).
+    The reference person is the CPS householder or, with a spouse or partner present, the man of a mixed-sex
+    couple or else the older partner; that person, the member named by its A_SPOUSE (else PECOHAB) pointer,
+    and the youngest child of either aged 18 or over (PEPAR1/PEPAR2) receive the balances. Without a spouse
+    or partner present the spouse''s draw goes to the reference person, and a child''s draw in a household
+    without an adult child is the reference person''s Parent PLUS loan. Balances are 2025 survey-date
+    dollars; the FSA calibration (microcosm#1074) pins totals.'
 - stage: ssi_disability_criteria
   survey: Census SIPP
   source: https://www.census.gov/programs-surveys/sipp.html
