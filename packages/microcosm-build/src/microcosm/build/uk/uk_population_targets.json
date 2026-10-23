@@ -29953,12 +29953,12 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/self_employment_income/amount",
-          "value_variable": "self_employment_income_after_loss_relief",
+          "value_variable": "self_employment_income_after_loss_relief_annual",
           "from_entity": "person",
           "map_to": "household",
           "filters": [
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             }
@@ -29981,7 +29981,7 @@
           "uk.local_geography.spi_income.by_local_authority.v1"
         ]
       },
-      "selector_note": "The area amount is the published count times the published mean (count_x_mean). SPI 2023-24 area Tables 3.14 (constituency) and 3.15 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (total income, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge). The bridge is gated on source agreement at each grain: the bands over the area cells before either side's index, within 2% (microcosm#1123).",
+      "selector_note": "The area amount is the published count times the published mean (count_x_mean). SPI 2023-24 area Tables 3.15 (constituency) and 3.14 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (total income, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge). The bridge is gated on source agreement at each grain: the bands over the area cells before either side's index, within 2% (microcosm#1123).",
       "category_id": "hmrc.tax_statistics",
       "label": "Amount",
       "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands"
@@ -30018,12 +30018,12 @@
           "map_to": "household",
           "filters": [
             {
-              "variable": "self_employment_income_after_loss_relief",
+              "variable": "self_employment_income_after_loss_relief_annual",
               "operator": "!=",
               "value": 0
             },
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             }
@@ -30046,7 +30046,7 @@
       "category_id": "hmrc.tax_statistics",
       "label": "Count",
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
-      "selector_note": "SPI 2023-24 area Tables 3.14 (constituency) and 3.15 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (taxpayer counts, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge). The bridge is gated on source agreement at each grain: the bands over the area cells before either side's index, within 2% (microcosm#1123)."
+      "selector_note": "SPI 2023-24 area Tables 3.15 (constituency) and 3.14 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (taxpayer counts, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge). The bridge is gated on source agreement at each grain: the bands over the area cells before either side's index, within 2% (microcosm#1123). HMRC counts every taxpayer with a self-employment source, while this row counts nonzero profit after loss relief, so a taxpayer whose losses brought forward wipe out the year's profit is in HMRC's cell and not the model's; the amount row is unaffected."
     },
     {
       "target_id": "hmrc.employment_income.amount",
@@ -30070,12 +30070,12 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/employment_income/amount",
-          "value_variable": "employment_income",
+          "value_variable": "employment_income_annual",
           "from_entity": "person",
           "map_to": "household",
           "filters": [
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             }
@@ -30098,7 +30098,7 @@
           "uk.local_geography.spi_income.by_local_authority.v1"
         ]
       },
-      "selector_note": "The area amount is the published count times the published mean (count_x_mean). SPI 2023-24 area Tables 3.14 (constituency) and 3.15 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (total income, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge). The bridge is gated on source agreement at each grain: the bands over the area cells before either side's index, within 2% (microcosm#1123).",
+      "selector_note": "The area amount is the published count times the published mean (count_x_mean). SPI 2023-24 area Tables 3.15 (constituency) and 3.14 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (total income, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge). The bridge is gated on source agreement at each grain: the bands over the area cells before either side's index, within 2% (microcosm#1123). HMRC's employment income also includes taxable benefits in kind and Incapacity Benefit, contribution-based Employment and Support Allowance and Jobseeker's Allowance, which employment_income_annual leaves out.",
       "category_id": "hmrc.tax_statistics",
       "label": "Amount",
       "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands"
@@ -30135,12 +30135,12 @@
           "map_to": "household",
           "filters": [
             {
-              "variable": "employment_income",
+              "variable": "employment_income_annual",
               "operator": "!=",
               "value": 0
             },
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             }
@@ -30163,7 +30163,7 @@
       "category_id": "hmrc.tax_statistics",
       "label": "Count",
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
-      "selector_note": "SPI 2023-24 area Tables 3.14 (constituency) and 3.15 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (taxpayer counts, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge). The bridge is gated on source agreement at each grain: the bands over the area cells before either side's index, within 2% (microcosm#1123)."
+      "selector_note": "SPI 2023-24 area Tables 3.15 (constituency) and 3.14 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (taxpayer counts, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge). The bridge is gated on source agreement at each grain: the bands over the area cells before either side's index, within 2% (microcosm#1123). HMRC's employment income also includes taxable benefits in kind and Incapacity Benefit, contribution-based Employment and Support Allowance and Jobseeker's Allowance, which employment_income_annual leaves out."
     },
     {
       "target_id": "ons.age.0_10",
@@ -30655,7 +30655,21 @@
       "bindings": {
         "policyengine": {
           "metric_name": "uc_hh_0_children",
-          "value_variable": "household_count"
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "universal_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "uc_calibration_child_count",
+              "operator": "==",
+              "value": 0
+            }
+          ]
         },
         "axiom": {
           "metric_name": "uc_hh_0_children",
@@ -30734,7 +30748,21 @@
       "bindings": {
         "policyengine": {
           "metric_name": "uc_hh_1_child",
-          "value_variable": "household_count"
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "universal_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "uc_calibration_child_count",
+              "operator": "==",
+              "value": 1
+            }
+          ]
         },
         "axiom": {
           "metric_name": "uc_hh_1_child",
@@ -30813,7 +30841,21 @@
       "bindings": {
         "policyengine": {
           "metric_name": "uc_hh_2_children",
-          "value_variable": "household_count"
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "universal_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "uc_calibration_child_count",
+              "operator": "==",
+              "value": 2
+            }
+          ]
         },
         "axiom": {
           "metric_name": "uc_hh_2_children",
@@ -30892,7 +30934,21 @@
       "bindings": {
         "policyengine": {
           "metric_name": "uc_hh_3plus_children",
-          "value_variable": "household_count"
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "universal_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "uc_calibration_child_count",
+              "operator": ">=",
+              "value": 3
+            }
+          ]
         },
         "axiom": {
           "metric_name": "uc_hh_3plus_children",
@@ -31243,8 +31299,6 @@
         "policyengine": {
           "metric_name": "rent/private_rent",
           "value_variable": "benunit_rent",
-          "from_entity": "benunit",
-          "map_to": "household",
           "filters": [
             {
               "variable": "tenure_type",
@@ -31282,8 +31336,6 @@
         "policyengine": {
           "metric_name": "rent/private_rent_brma",
           "value_variable": "benunit_rent",
-          "from_entity": "benunit",
-          "map_to": "household",
           "filters": [
             {
               "variable": "tenure_type",
@@ -33111,12 +33163,12 @@
           "map_to": "household",
           "filters": [
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             },
             {
-              "variable": "tax_band",
+              "variable": "tax_band_annual",
               "operator": "==",
               "value": "HIGHER"
             }
@@ -33138,7 +33190,7 @@
       },
       "category_id": "hmrc.tax_statistics",
       "label": "Higher rate taxpayers",
-      "selector_note": "SPI 2023-24 area Tables 3.14 (constituency) and 3.15 (local authority), higher rate taxpayers, the latest edition (2024-25 due early 2027). England, Wales and Northern Ireland only (area_scope): the Scottish cells of 2023-24 predate the Scottish advanced rate, which HMRC counts as additional from 2024-25, so their split cannot be carried to 2025. Each region or nation's Table 2.2 row for calendar 2025 (hmrc.itl.higher_rate_taxpayers) sets the level of its area cells through a per-geography bridge; the cells keep their 2023-24 shares within it (a control_rescaled hold). At source the area cells sum to within 1.2% of each Table 2.2 row for 2023-24, at both grains (microcosm#1123). The additional-rate area cells are not bound: rounded to the thousand and suppressed in 85 constituencies, they cannot sum to their controls."
+      "selector_note": "SPI 2023-24 area Tables 3.15 (constituency) and 3.14 (local authority), higher rate taxpayers, the latest edition (2024-25 due early 2027). England, Wales and Northern Ireland only (area_scope): the Scottish cells of 2023-24 predate the Scottish advanced rate, which HMRC counts as additional from 2024-25, so their split cannot be carried to 2025. Each region or nation's Table 2.2 row for calendar 2025 (hmrc.itl.higher_rate_taxpayers) sets the level of its area cells through a per-geography bridge; the cells keep their 2023-24 shares within it (a control_rescaled hold). At source the area cells sum to within 1.2% of each Table 2.2 row for 2023-24, at both grains (microcosm#1123). The additional-rate area cells are not bound: rounded to the thousand and suppressed in 85 constituencies, they cannot sum to their controls."
     },
     {
       "target_id": "microcosm.high_value_homes.over_1m",
@@ -33169,23 +33221,7 @@
       "bindings": {
         "policyengine": {
           "metric_name": "high_value_homes/over_1m",
-          "value_variable": "household_count",
-          "filters": [
-            {
-              "variable": "tenure_type",
-              "in": [
-                "OWNED_OUTRIGHT",
-                "OWNED_WITH_MORTGAGE"
-              ]
-            },
-            {
-              "variable": "main_residence_value",
-              "operator": ">",
-              "value": 1000000,
-              "price_basis": "2026-04",
-              "input_period": "dataset"
-            }
-          ]
+          "value_variable": "owner_occupied_home_over_gbp_1m"
         },
         "axiom": {
           "metric_name": "high_value_homes/over_1m",
@@ -33245,23 +33281,7 @@
       "bindings": {
         "policyengine": {
           "metric_name": "high_value_homes/over_1_5m",
-          "value_variable": "household_count",
-          "filters": [
-            {
-              "variable": "tenure_type",
-              "in": [
-                "OWNED_OUTRIGHT",
-                "OWNED_WITH_MORTGAGE"
-              ]
-            },
-            {
-              "variable": "main_residence_value",
-              "operator": ">",
-              "value": 1500000,
-              "price_basis": "2026-04",
-              "input_period": "dataset"
-            }
-          ]
+          "value_variable": "owner_occupied_home_over_gbp_1_5m"
         },
         "axiom": {
           "metric_name": "high_value_homes/over_1_5m",
@@ -33321,23 +33341,7 @@
       "bindings": {
         "policyengine": {
           "metric_name": "high_value_homes/over_2m",
-          "value_variable": "household_count",
-          "filters": [
-            {
-              "variable": "tenure_type",
-              "in": [
-                "OWNED_OUTRIGHT",
-                "OWNED_WITH_MORTGAGE"
-              ]
-            },
-            {
-              "variable": "main_residence_value",
-              "operator": ">",
-              "value": 2000000,
-              "price_basis": "2026-04",
-              "input_period": "dataset"
-            }
-          ]
+          "value_variable": "owner_occupied_home_over_gbp_2m"
         },
         "axiom": {
           "metric_name": "high_value_homes/over_2m",
@@ -33465,15 +33469,7 @@
       "bindings": {
         "policyengine": {
           "metric_name": "energy/gas_connected_households",
-          "value_variable": "household_count",
-          "filters": [
-            {
-              "variable": "gas_consumption",
-              "operator": ">",
-              "value": 0,
-              "input_period": "dataset"
-            }
-          ]
+          "value_variable": "domestic_gas_connected"
         },
         "axiom": {
           "metric_name": "energy/gas_connected_households",

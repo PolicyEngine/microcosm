@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.uk_runtime.local_targets import compute_household_metrics
 from microcosm.build.uk_runtime.measure_simulation import (
     UK_ANNUAL_INCOME_MEASURES,
     UKMeasureResolver,
@@ -39,11 +40,14 @@ def _frame(**descriptors):
         "private_pension_income": [0.0, 0.0, 0.0, 9_000.0, 6_000.0],
         "state_pension_reported": [0.0, 0.0, 0.0, 11_500.0, 11_500.0],
         "esa_contrib_reported": [0.0, 4_000.0, 0.0, 0.0, 0.0],
+        # Each lives alone: the FRS roles of five single-adult benefit units.
+        "is_benunit_head": [True] * 5,
+        "is_parent": [False] * 5,
         **descriptors,
     }
     return uk_national_frame(
         person=pd.DataFrame(person),
-        benunit=pd.DataFrame({"benunit_id": ids}),
+        benunit=pd.DataFrame({"benunit_id": ids, "dependent_children": 0}),
         household=pd.DataFrame(
             {
                 "household_id": ids,
@@ -52,6 +56,7 @@ def _frame(**descriptors):
                 "council_tax": 0.0,
                 "rent": 0.0,
                 "tenure_type": "OWNED_OUTRIGHT",
+                "main_residence_value": 250_000.0,
             }
         ),
         time_period="2024",
@@ -125,6 +130,30 @@ def test_the_annual_measures_tax_each_persons_year(tmp_path) -> None:
     factors = receipt["other_spells_engine_factors"]
     assert factors["employment_income_before_lsr"] == pytest.approx(factor, rel=1e-6)
     assert set(receipt["computed_measures"]) == set(UK_ANNUAL_INCOME_MEASURES)
+
+
+def test_the_local_hmrc_rows_count_each_persons_year(tmp_path) -> None:
+    resolver = UKMeasureResolver(
+        simulation_source=None,
+        frame=_frame(**_DESCRIPTORS),
+        scratch_dir=tmp_path,
+        year=2025,
+    )
+
+    metrics = compute_household_metrics(resolver, "constituency", period=2025)
+
+    # The leaver is paid nothing now and pays no tax on it, but pays tax on
+    # the year's spell, so their area counts an employee taxpayer and the
+    # year's pay (each person is a household of their own).
+    tax, _ = resolver.compute("person", "income_tax")
+    annual_tax, _ = resolver.compute("person", "income_tax_annual")
+    annual_pay, _ = resolver.compute("person", "employment_income_annual")
+    assert np.asarray(tax, dtype=float)[1] == 0.0
+    assert np.asarray(annual_tax, dtype=float)[1] > 0.0
+    assert metrics["hmrc/employment_income/count"].iloc[1] == 1.0
+    assert metrics["hmrc/employment_income/amount"].iloc[1] == pytest.approx(
+        float(np.asarray(annual_pay)[1])
+    )
 
 
 def test_a_frame_without_descriptors_refuses_unless_it_is_the_incumbent(
