@@ -307,7 +307,9 @@ class RunnerTests(unittest.TestCase):
                 ],
             )
 
-    def run_mock_pipeline(self, *, pytest_code=0, uc_code=0, receipt=None):
+    def run_mock_pipeline(
+        self, *, pytest_code=0, uc_code=0, receipt=None, call_details=None
+    ):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         root = Path(tmp.name)
@@ -340,6 +342,8 @@ class RunnerTests(unittest.TestCase):
 
         def shell(argv, **kwargs):
             calls.append(argv)
+            if call_details is not None:
+                call_details.append((argv, kwargs))
             if "constant-rewrite" == kwargs.get("step"):
                 return subprocess.CompletedProcess(argv, 0, "[]", "")
             if "UC-floor" == kwargs.get("step"):
@@ -411,6 +415,19 @@ class RunnerTests(unittest.TestCase):
             "this script waives no gate",
         ):
             self.assertIn(expected, body)
+
+    def test_country_import_skip_is_scoped_to_constants_and_uc_floor(self):
+        details = []
+        self.run_mock_pipeline(call_details=details)
+        envs = {kwargs.get("step"): kwargs.get("env", {}) for _, kwargs in details}
+        skipped = {
+            step
+            for step, env in envs.items()
+            if env.get("POLICYENGINE_SKIP_COUNTRY_IMPORTS") == "1"
+        }
+        self.assertEqual(skipped, {"constant-rewrite", "UC-floor"})
+        self.assertEqual(envs["snapshots"], {"PE_UPDATE_SNAPSHOTS": "1"})
+        self.assertEqual(envs["tests"], {})
 
 
 if __name__ == "__main__":

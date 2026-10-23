@@ -746,6 +746,7 @@ def certify(args: argparse.Namespace) -> int:
             "print(json.dumps(w(Path('.'), r(old, new))))",
             json.dumps(record), json.dumps(new_record),
         ], step="constant-rewrite",
+        env={"POLICYENGINE_SKIP_COUNTRY_IMPORTS": "1"},
     )  # fmt: skip
     constants = json.loads(rewrite.stdout.strip().splitlines()[-1] or "[]")
     with timed_step("regional-constant-rewrite", timings):
@@ -767,6 +768,7 @@ def certify(args: argparse.Namespace) -> int:
          new_record["default_dataset"], "--year", "2025", "--output", str(uc_path)],
         check=False,
         step="UC-floor",
+        env={"POLICYENGINE_SKIP_COUNTRY_IMPORTS": "1"},
     )  # fmt: skip
     if uc.returncode and not uc_path.exists():
         raise CertifyError(
