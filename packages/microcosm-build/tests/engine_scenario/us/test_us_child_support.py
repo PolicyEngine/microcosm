@@ -54,6 +54,15 @@ def test_policyengine_us_graph_uses_positive_annual_received_and_expense() -> No
         active.calculate("spm_unit_spm_expenses", 2024)[0]
         - baseline.calculate("spm_unit_spm_expenses", 2024)[0]
     ) == pytest.approx(2_400.0)
-    assert active.calculate("snap_child_support_deduction", "2024-01")[
+    # The $200 monthly payment reaches SNAP exactly once. policyengine-us 2.60
+    # treats California as a state that excludes child support paid from gross
+    # income, so it lands in the gross-income exclusion rather than the
+    # net-income deduction 2.2.1 used; the two together count it once.
+    assert active.calculate("snap_countable_child_support_expense", "2024-01")[
         0
     ] == pytest.approx(200.0)
+    assert active.calculate("snap_child_support_gross_income_deduction", "2024-01")[
+        0
+    ] + active.calculate("snap_child_support_deduction", "2024-01")[0] == (
+        pytest.approx(200.0)
+    )

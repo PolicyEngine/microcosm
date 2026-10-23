@@ -5058,7 +5058,7 @@ def validate_stacked_post_puf_transfer_receipt(
     if not isinstance(targets, Mapping) or set(targets) != expected_target_labels:
         raise ValueError(
             f"{boundary}: stacked post-PUF transfer target surface is not the "
-            "canonical 70-target surface; production manifest emission is "
+            "canonical 69-target surface; production manifest emission is "
             "forbidden."
         )
     for name, group in expected_groups.items():
@@ -5091,7 +5091,7 @@ def validate_stacked_post_puf_transfer_receipt(
     if completion != {
         "status": "complete",
         "group_count": 19,
-        "target_count": 70,
+        "target_count": 69,
         "residual_null_rows": 0,
     }:
         raise ValueError(
@@ -11133,7 +11133,7 @@ def _aggregate_late_transfer_result(
     ],
     execution_order: Sequence[str],
 ) -> StackedPostPufTransferResult:
-    """Bind all bounded group outcomes into the canonical 70-target receipt."""
+    """Bind all bounded group outcomes into the canonical 69-target receipt."""
 
     expected_groups = tuple(group.name for group in CANONICAL_US_LATE_TRANSFER_GROUPS)
     if set(group_results) != set(expected_groups):
