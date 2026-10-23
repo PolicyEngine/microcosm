@@ -1,6 +1,11 @@
 """Tests split from packages/microcosm-build/tests/test_release_input_coverage.py."""
 
 # ruff: noqa: F403, F405
+import dataclasses
+
+from microcosm.build.us_runtime.release_input_coverage import (
+    installed_list_parameter_baseline,
+)
 from test_support.microcosm_build.release_input_coverage import *
 
 
@@ -440,3 +445,90 @@ class TestAsecReportedReceiptInputGuarantee:
         )
         assert not failing.passed
         assert failing.details["degenerate_required"] == sorted(names)
+
+
+def _manifest_with_list_edit(probe_id: str, **changes) -> ReleaseInputCoverageManifest:
+    """The shipped manifest with one probe's list edit changed by ``changes``."""
+    manifest = load_release_input_coverage_manifest()
+    probes = []
+    for probe in manifest.probes:
+        if probe.id == probe_id:
+            ((path, edit),) = probe.list_edits.items()
+            probe = dataclasses.replace(
+                probe, list_edits={path: dataclasses.replace(edit, **changes)}
+            )
+        probes.append(probe)
+    assert probe_id in {probe.id for probe in probes}
+    return ReleaseInputCoverageManifest(
+        reference=manifest.reference,
+        columns=manifest.columns,
+        probes=tuple(probes),
+        schema_version=manifest.schema_version,
+    )
+
+
+_STALE_LIST_EDITS = [
+    (
+        "child_support_received_snap_exclusion",
+        {"remove": ("not_a_snap_source",)},
+        r"removes \['not_a_snap_source'\], which the baseline lacks",
+    ),
+    (
+        "domestic_production_ald_reactivation",
+        {"add": ("educator_expense",)},
+        r"adds \['educator_expense'\], which the baseline already has",
+    ),
+    (
+        "educator_expense_ald_abolition",
+        {"period": "2017-01-01.2018-12-31"},
+        r"the list changes at 2018-01-01",
+    ),
+]
+
+
+class TestShippedListEditsOnTheInstalledEngine:
+    """The manifest check resolves every probe's list edits on the live engine,
+    so an edit that no longer fits the installed PolicyEngine-US fails before
+    calibration rather than in the post-export reform-coverage smoke."""
+
+    def test_shipped_manifest_is_current_against_the_live_engine(self) -> None:
+        # With no engine given, the check discovers the installed
+        # PolicyEngine-US, so the engine-graph half runs and every shipped list
+        # edit resolves against the installed baseline lists.
+        assert_release_input_coverage_manifest_current()
+
+    @pytest.mark.parametrize(
+        ("probe_id", "changes", "failure"),
+        _STALE_LIST_EDITS,
+        ids=["removed-item-missing", "added-item-present", "baseline-changes"],
+    )
+    def test_list_edit_that_no_longer_fits_fails_the_live_check(
+        self, probe_id: str, changes: dict, failure: str
+    ) -> None:
+        drifted = _manifest_with_list_edit(probe_id, **changes)
+
+        with pytest.raises(ValueError, match=failure) as drift:
+            assert_release_input_coverage_manifest_current(manifest=drifted)
+        message = str(drift.value)
+        assert f"reform-coverage probe '{probe_id}'" in message
+        # The shipped manifest is otherwise current, so this is the only drift.
+        assert message.count("\n  - ") == 1
+
+    def test_injected_engine_resolves_list_edits_through_the_given_baseline(
+        self,
+    ) -> None:
+        from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
+
+        drifted = _manifest_with_list_edit(
+            "child_support_received_snap_exclusion", remove=("not_a_snap_source",)
+        )
+
+        with pytest.raises(
+            ValueError,
+            match=r"'child_support_received_snap_exclusion'.*not_a_snap_source",
+        ):
+            assert_release_input_coverage_manifest_current(
+                engine=PolicyEngineUSEngine(),
+                manifest=drifted,
+                list_baseline=installed_list_parameter_baseline,
+            )
