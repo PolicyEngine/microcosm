@@ -4125,7 +4125,7 @@ def test_restated_concept_rules_all_have_a_comparison() -> None:
 
     Adding a concept to ``RESTATED_LEDGER_FILTER_CONCEPTS`` without a rule
     would raise at compile time on the first spec carrying it; this pins the
-    three rules that exist instead.
+    four rules that exist instead.
     """
 
     builder = _load_builder_module()
@@ -4134,7 +4134,12 @@ def test_restated_concept_rules_all_have_a_comparison() -> None:
         "agi_band",
         "eitc_child_count",
         "age_band",
+        "student_loan_balance_band",
     }
+    # The FSA debt-size band (microcosm#1074) reads the person's federal balance.
+    assert builder._restated_ledger_filter_concept(
+        "ledger_filter_federal_student_loan_balance_lower_bound"
+    ) == ("federal_student_loan_balance", "lower")
     assert builder._restated_ledger_filter_concept(_RESTATED_AGE_UPPER) == (
         "age",
         "upper",

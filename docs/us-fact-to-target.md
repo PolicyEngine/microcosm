@@ -186,6 +186,83 @@ binds them:
   band. `experiments/940-state-agi-bands/` measures pre-calibration support
   per state and band on the #982 fix's offline outputs.
 
+### Federal Student Aid's portfolio binds the student loan balances (microcosm#1074)
+
+Federal Student Aid publishes its federal student loan portfolio quarterly.
+Chronicle stores each table as published (PolicyEngine/chronicle#310); the
+alignment across tables is Microcosm's, in
+`us_runtime/fsa_student_loan_targets.py`. The targets bind the person columns
+the SCF education-debt stage writes (microcosm#1073):
+`federal_student_loan_balance` (own loans) and
+`federal_parent_plus_loan_balance`. A person's federal balance is the sum, and a
+borrower is a person whose federal balance is positive.
+
+- **Which rows.** The borrower-based tables: by location (the 50 states and DC,
+  balance and borrowers), by age (five bands on the person's age) and by debt
+  size (nine bands on the person's federal balance, lower edge inclusive). From
+  the loan-type table, the Parent PLUS balance and the balance of every other
+  loan type. Each fact's disposition, bound or not, is in
+  `fsa_student_loan_target_receipt` and in a release's
+  `us_source_coverage.json` (`fsa_student_loan_target_receipt`).
+- **Diagnostic only.** Repayment plans: the SCF records only an income-driven
+  yes/no, the build has no plan column, and FSA counts plan recipients loan by
+  loan. The portfolio summary: recipient totals by loan program, which the
+  balances do not record. Loan-type recipient counts: loan-level, so a person
+  with two loan types counts twice. Stafford (Combined): a subtotal.
+- **The reference date.** The latest quarter every bound table publishes, FY2026
+  Q2 (31 March 2026) in the draft packages: the location workbook publishes
+  only that date, so the age, debt-size and loan-type tables bind at it too, and
+  every family describes one portfolio on one day. The facts are stocks the
+  build carries as they stand at that date, unaged at the 2024 build period
+  (`period_alignment = stock_at_source_reference_date`, factor policy 5 in
+  `target_aging`): no income-growth series describes a loan stock, and the
+  analysis reads the columns in 2026.
+- **Not Reported, Puerto Rico and Other.** The location table has no total row.
+  Its "Not Reported" row ($52.2B, 1.95M borrowers) holds FFEL and Perkins loans
+  whose commercial lenders need not report an address. It is allocated to every
+  reported location in proportion to that location's reported balance (or
+  borrowers, for the count). Puerto Rico and "Other" (an address outside the
+  listed states and territories) are outside the host universe, the 50 states
+  and DC the CPS samples, and leave with their share. The 51 allocated state
+  levels sum to the **in-scope control**: $1,679.1B and 44.31M borrowers at the
+  draft packages, against $1,696.3B and 44.76M in the table.
+- **One control.** FSA's tables disagree slightly (the borrower tables total
+  $1,696.3B, the recipient-based loan-type table $1,723.8B). The age and
+  debt-size bands and the two loan-type rows bind as their table's share of the
+  in-scope control, `control x row / partition`, the state AGI band pattern. A
+  table's own "not reported" age row is in no partition, which allocates it
+  across the reported bands. So the state, age, debt-size and loan-type families
+  each sum to the same total.
+- **Opt-in.** `compile_us_fiscal_target_registry(student_loan_targets=True)`
+  binds the facts; the release tool sets it with `--scf-education-debt`, the
+  only builds that carry the columns. The release materializes the rows from
+  the stored person columns (`fsa_student_loan_household_values`), because the
+  pinned policyengine-us does not define them yet. The release's
+  restated-filter guard accepts the age and balance bands only on that
+  materializer. While the stage is opt-in the family stays off the one-surface
+  target-parity contract (`_without_opt_in_student_loan_targets`).
+- **Known limits, measured.** The receipt
+  (`experiments/1074-fsa-calibration-receipts.md`) refits the published
+  default with and without the family. The stage gives balances only to
+  reference persons and spouses (and Parent PLUS to the reference person), so
+  the host holds about half of FSA's borrowers ($0.86T and 21.2M at the
+  published weights). Calibration closes that by reweighting: borrower
+  households' weight doubles and their share of household weight goes from
+  16.4% to 33.0%, against 18.2% of SCF families. Borrowers under 25 stay about
+  40% short, because the host has few young reference persons with a balance.
+  FSA's Parent PLUS row counts only unconsolidated Parent PLUS loans (a
+  consolidated one sits in "Consolidation"), while the SCF's loans for a
+  child's education include consolidated ones, so that target is a lower bound
+  on the concept it binds; it pulls the Parent PLUS share from 16.8% to 6.8%.
+- **When the facts reach the pin.** The US pin moves to a Chronicle commit that
+  carries the six `packages/ed_fsa` packages: add their (record set, period)
+  pairs to `us/chronicle_feed_scope.json` (build year 2026), rebuild the feed,
+  re-pin `us/chronicle_feed.json`, and regenerate the two parity resources with
+  the FSA families declared as reviewed exclusions that bind only with
+  `--scf-education-debt`. The fixture
+  `tests/fixtures/us_fsa_portfolio_chronicle_347_facts.jsonl.gz` is the draft
+  export the tests pin; refresh it from the merged packages.
+
 ## 4. Keep the exclusion register honest
 
 `US_FISCAL_TARGET_SUPPORT_EXCLUSIONS` is keyed by `source_record_id` and its

@@ -268,6 +268,10 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "engine_lifecycle.py",
         "exact_k_ladder.py",  # Calibration/selection seam; no source treatment.
         "fiscal_targets.py",
+        # Federal Student Aid portfolio targets (microcosm#1074): compiles FSA
+        # facts into target specs and sums the stored person balances for
+        # them; no population treatment.
+        "fsa_student_loan_targets.py",
         "geography_ladder.py",
         "hours_worked.py",
         "h5_io.py",  # US artifact I/O; no population treatment.
