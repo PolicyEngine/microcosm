@@ -108,9 +108,9 @@ def test_the_1026_premises_hold_for_the_installed_engine():
 @pytest.mark.parametrize("name", sorted(_EXPECTED_VERDICTS))
 def test_each_examined_file_gets_its_expected_verdict(name):
     """The examined files, by their stored-column inventories, against the
-    installed engine: each refusal names exactly the stale inputs, one person
-    table line each, and every other model-named non-variable column the file
-    stores is a register entry."""
+    installed engine: each refusal names exactly the stale inputs, one line
+    each on the table that stores it, and every other model-named non-variable
+    column the file stores is a register entry."""
 
     engine = stored_inputs.installed_us_engine()
     tables = _inventories()[name]["tables"]
@@ -121,7 +121,10 @@ def test_each_examined_file_gets_its_expected_verdict(name):
     assert [_QUOTED.findall(line) for line in failures] == [
         [column] for column in refused
     ]
-    assert all("(person table)" in line for line in failures)
+    assert all(
+        f"({_REFUSED_COLUMN_TABLE[column]} table)" in line
+        for column, line in zip(refused, failures, strict=True)
+    )
     registered = {
         column
         for columns in tables.values()

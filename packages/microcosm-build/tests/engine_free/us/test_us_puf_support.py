@@ -241,16 +241,6 @@ def test_puf_tax_unit_donor_quarantines_only_mortgage_fields() -> None:
                 800_000_000.0,
             ],
             "domestic_production_ald": [900_000_000.0, 700.0, 800_000_000.0],
-            "first_home_mortgage_interest": [
-                8_000_000.0,
-                4_000_000.0,
-                7_000_000.0,
-            ],
-            "second_home_mortgage_interest": [
-                2_000_000.0,
-                1_000_000.0,
-                3_500_000.0,
-            ],
         },
         adjusted_gross_income=[0.0, 0.0, 10_000_000.0],
         person_outputs=(
@@ -260,11 +250,9 @@ def test_puf_tax_unit_donor_quarantines_only_mortgage_fields() -> None:
             "short_term_capital_gains",
             "long_term_capital_gains_before_response",
         ),
-        tax_unit_outputs=(
-            "domestic_production_ald",
-            "first_home_mortgage_interest",
-            "second_home_mortgage_interest",
-        ),
+        # policyengine-us 2.60 retired the tax-unit first/second home
+        # mortgage interest legs; the person-level column carries the amount.
+        tax_unit_outputs=("domestic_production_ald",),
         donor_build_summary=summary,
     )
 
@@ -294,16 +282,9 @@ def test_puf_tax_unit_donor_quarantines_only_mortgage_fields() -> None:
         raw_total,
         np.asarray([0.0, 0.0, 10_000_000.0]),
     )
-    share = mortgage / raw_total
     expected_before_quarantine = {
         "home_mortgage_interest": mortgage,
         "investment_interest_expense": investment,
-        "first_home_mortgage_interest": (
-            np.asarray([8_000_000.0, 4_000_000.0, 7_000_000.0]) * share
-        ),
-        "second_home_mortgage_interest": (
-            np.asarray([2_000_000.0, 1_000_000.0, 3_500_000.0]) * share
-        ),
     }
     for column, expected in expected_before_quarantine.items():
         np.testing.assert_allclose(
@@ -364,8 +345,6 @@ def test_puf_tax_unit_donor_quarantines_only_mortgage_fields() -> None:
     assert puf_support_module.US_PUF_DONOR_MORTGAGE_QUARANTINE_FIELDS == (
         "home_mortgage_interest",
         "investment_interest_expense",
-        "first_home_mortgage_interest",
-        "second_home_mortgage_interest",
         "interest_deduction",
     )
     np.testing.assert_allclose(
@@ -399,8 +378,6 @@ def test_puf_e19200_split_scales_only_lineage_and_populates_residual() -> None:
     # future nonzero column.
     assert puf_support_module._US_PUF_E19200_LINEAGE_DONOR_COLUMNS == (
         "home_mortgage_interest",
-        "first_home_mortgage_interest",
-        "second_home_mortgage_interest",
         "interest_deduction",
     )
     grouped_person = (
@@ -423,8 +400,6 @@ def test_puf_e19200_split_scales_only_lineage_and_populates_residual() -> None:
     donor = pd.DataFrame(
         {
             "home_mortgage_interest": [100.0, 200.0],
-            "first_home_mortgage_interest": [75.0, 150.0],
-            "second_home_mortgage_interest": [25.0, 50.0],
             "interest_deduction": interest_deduction,
             "real_estate_taxes": [8.0, 16.0],
             "first_home_mortgage_balance": [250_000.0, 500_000.0],
@@ -503,8 +478,11 @@ def test_puf_tax_detail_default_person_outputs_are_engine_leaves() -> None:
     assert "medical_expense_deduction" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     assert "interest_deduction" not in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
     assert "domestic_production_ald" in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
-    assert "first_home_mortgage_interest" in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
-    assert "second_home_mortgage_interest" in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+    # policyengine-us 2.60 retired the tax-unit interest legs.
+    assert "first_home_mortgage_interest" not in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+    assert (
+        "second_home_mortgage_interest" not in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+    )
     assert "first_home_mortgage_balance" in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
     assert "second_home_mortgage_balance" in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
     assert (
@@ -1350,8 +1328,6 @@ def test_puf_tax_unit_donor_carries_structural_mortgage_leaves() -> None:
             "home_mortgage_interest": [10_000.0, 25_000.0],
             "first_home_mortgage_balance": [250_000.0, 500_000.0],
             "second_home_mortgage_balance": [0.0, 125_000.0],
-            "first_home_mortgage_interest": [10_000.0, 20_000.0],
-            "second_home_mortgage_interest": [0.0, 5_000.0],
             "first_home_mortgage_origination_year": [2018, 2016],
             "second_home_mortgage_origination_year": [0, 2020],
             "health_savings_account_ald": [1_500.0, 0.0],
@@ -1368,28 +1344,9 @@ def test_puf_tax_unit_donor_carries_structural_mortgage_leaves() -> None:
     assert donor["unrecaptured_section_1250_gain"].tolist() == [500.0, 0.0]
     assert donor["first_home_mortgage_balance"].tolist() == [250_000.0, 500_000.0]
     assert donor["second_home_mortgage_balance"].tolist() == [0.0, 125_000.0]
-    np.testing.assert_allclose(
-        donor["first_home_mortgage_interest"].to_numpy(),
-        np.asarray([10_000.0, 20_000.0])
-        * (
-            split_us_puf_e19200_by_agi_band(
-                np.asarray([10_000.0, 25_000.0]),
-                np.asarray([0.0, 10_000_000.0]),
-            )[0]
-            / np.asarray([10_000.0, 25_000.0])
-        ),
-    )
-    np.testing.assert_allclose(
-        donor["second_home_mortgage_interest"].to_numpy(),
-        np.asarray([0.0, 5_000.0])
-        * (
-            split_us_puf_e19200_by_agi_band(
-                np.asarray([10_000.0, 25_000.0]),
-                np.asarray([0.0, 10_000_000.0]),
-            )[0]
-            / np.asarray([10_000.0, 25_000.0])
-        ),
-    )
+    # The retired interest legs are no longer donor outputs.
+    assert "first_home_mortgage_interest" not in donor
+    assert "second_home_mortgage_interest" not in donor
     assert donor["first_home_mortgage_origination_year"].tolist() == [
         2018.0,
         2016.0,
