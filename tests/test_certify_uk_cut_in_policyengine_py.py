@@ -310,6 +310,15 @@ class RunnerTests(unittest.TestCase):
     def run_mock_pipeline(
         self, *, pytest_code=0, uc_code=0, receipt=None, call_details=None
     ):
+        if receipt is None and uc_code == 0:
+            receipt = {
+                "check": "uk_uc_floor",
+                "passed": True,
+                "measures": [
+                    {"name": "benefit_units", "ratio": 0.92524521, "passed": True},
+                    {"name": "spend", "ratio": 0.95781282, "passed": True},
+                ],
+            }
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         root = Path(tmp.name)
@@ -394,13 +403,47 @@ class RunnerTests(unittest.TestCase):
             receipt={
                 "check": "uk_uc_floor",
                 "passed": False,
-                "measures": [{"name": "spend", "passed": False}],
+                "measures": [
+                    {"name": "benefit_units", "ratio": 0.8, "passed": False},
+                    {"name": "spend", "ratio": 0.95, "passed": True},
+                ],
             },
         )
         self.assertEqual(result, 0)
         self.assertIn(
             "UC floor acceptance", (root / "certification.pr-body.md").read_text()
         )
+        self.assertIn(
+            "FAILED; measured/benchmark ratios: benefit_units=0.800000, spend=0.950000",
+            (root / "certification.pr-body.md").read_text(),
+        )
+
+    def test_passed_uc_floor_reports_ratios_without_acceptance_request(self):
+        result, _, root = self.run_mock_pipeline()
+        self.assertEqual(result, 0)
+        body = (root / "certification.pr-body.md").read_text()
+        self.assertIn(
+            "passed; measured/benchmark ratios: benefit_units=0.925245, spend=0.957813",
+            body,
+        )
+        self.assertNotIn("UC floor acceptance", body)
+
+    def test_incomplete_uc_floor_receipt_refuses_even_after_zero_exit(self):
+        with self.assertRaisesRegex(runner.CertifyError, "failed operationally"):
+            self.run_mock_pipeline(receipt={})
+
+    def test_uc_floor_rejects_contradictory_measure_status(self):
+        with self.assertRaisesRegex(runner.CertifyError, "failed operationally"):
+            self.run_mock_pipeline(
+                receipt={
+                    "check": "uk_uc_floor",
+                    "passed": True,
+                    "measures": [
+                        {"name": "benefit_units", "ratio": 0.8, "passed": False},
+                        {"name": "spend", "ratio": 0.95, "passed": True},
+                    ],
+                }
+            )
 
     def test_handoff_marks_wrapper_qualification_pending(self):
         _, _, root = self.run_mock_pipeline()
