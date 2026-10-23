@@ -122,13 +122,12 @@ def derive_frs_person_draws(
     person: pd.DataFrame,
     *,
     contract: UKTakeUpContract,
-    person_weights: np.ndarray | None = None,
+    person_weights: np.ndarray,
 ) -> pd.DataFrame:
     """Return the stage's person draws.
 
-    ``person_weights`` are each person's household weight; the stage passes
-    the frame's. Without them every person weighs one, which keeps the draws
-    themselves identity-keyed for callers that only check their stability.
+    ``person_weights`` are each person's household weight, which set
+    ``is_apprentice``'s rate among eligible employees.
     """
 
     ids = person["person_id"].to_numpy()
