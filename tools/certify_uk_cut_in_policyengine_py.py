@@ -334,6 +334,27 @@ def record_timing(path: Path, record: dict[str, Any]) -> None:
         handle.write(json.dumps(record) + "\n")
 
 
+def pytest_command(
+    python: str, arguments: list[str], *, startup_timeout: float = 300.0
+) -> list[str]:
+    """Diagnose imports before pytest's session/per-test clocks can start."""
+    if not math.isfinite(startup_timeout) or startup_timeout <= 0:
+        raise ValueError("pytest startup timeout must be positive and finite")
+    bootstrap = (
+        "import faulthandler, os, sys\n"
+        "diagnostic_stream = os.fdopen(os.dup(2), 'w')\n"
+        f"faulthandler.dump_traceback_later({startup_timeout!r}, "
+        "repeat=True, file=diagnostic_stream)\n"
+        "try:\n"
+        "    import pytest\n"
+        "    raise SystemExit(pytest.main(sys.argv[1:]))\n"
+        "finally:\n"
+        "    faulthandler.cancel_dump_traceback_later()\n"
+        "    diagnostic_stream.close()\n"
+    )
+    return [python, "-c", bootstrap, *arguments]
+
+
 @contextmanager
 def timed_step(name: str, path: Path):
     """Make network preflight and local Python work visible, including failures."""
@@ -951,7 +972,7 @@ def certify(args: argparse.Namespace) -> int:
     with timed_step("regional-constant-rewrite", timings):
         constants += rewrite_regional_constants(worktree, old_regional, new_regional)
     run(
-        [python, "-m", "pytest", "tests/test_household_calculator_snapshot.py", "-q"],
+        pytest_command(python, ["tests/test_household_calculator_snapshot.py", "-q"]),
         env={"PE_UPDATE_SNAPSHOTS": "1"},
         step="snapshots",
     )
@@ -997,9 +1018,9 @@ def certify(args: argparse.Namespace) -> int:
                 step="install-pytest-xdist",
             )
         tests = run(
-            [python, "-m", "pytest", "-n", str(args.test_workers), "-vv",
+            pytest_command(python, ["-n", str(args.test_workers), "-vv",
              "--durations=20", "-o", "faulthandler_timeout=300",
-             "-p", "no:cacheprovider"],
+             "-p", "no:cacheprovider"]),
             check=False,
             step="tests",
         )  # fmt: skip

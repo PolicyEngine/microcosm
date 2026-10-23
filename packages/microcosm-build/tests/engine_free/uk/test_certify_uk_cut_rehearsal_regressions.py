@@ -1,5 +1,6 @@
 """Offline regression tests for the certification orchestration safeguards."""
 
+import faulthandler
 import io
 import json
 import os
@@ -67,6 +68,52 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(record["step"], "failure")
             self.assertEqual(record["returncode"], 2)
             self.assertGreaterEqual(record["elapsed_seconds"], 0)
+
+    def test_pytest_bootstrap_preserves_arguments_and_exit_status(self):
+        arguments = ["tests/snapshot.py", "-q"]
+        argv = runner.pytest_command("python", arguments)
+        self.assertEqual(argv[:2], ["python", "-c"])
+        self.assertEqual(argv[3:], arguments)
+        for exit_status in (0, 4):
+            with self.subTest(exit_status=exit_status):
+                stream = Mock()
+                pytest = types.SimpleNamespace(main=Mock(return_value=exit_status))
+                with (
+                    patch.dict(sys.modules, {"pytest": pytest}),
+                    patch.object(sys, "argv", ["-c", *arguments]),
+                    patch.object(os, "dup", return_value=123) as duplicate,
+                    patch.object(os, "fdopen", return_value=stream) as opened,
+                    patch.object(faulthandler, "dump_traceback_later") as timer,
+                    patch.object(faulthandler, "cancel_dump_traceback_later") as cancel,
+                ):
+                    with self.assertRaises(SystemExit) as result:
+                        exec(argv[2], {})
+                self.assertEqual(result.exception.code, exit_status)
+                pytest.main.assert_called_once_with(arguments)
+                duplicate.assert_called_once_with(2)
+                opened.assert_called_once_with(123, "w")
+                timer.assert_called_once_with(300.0, repeat=True, file=stream)
+                cancel.assert_called_once_with()
+                stream.close.assert_called_once_with()
+
+    def test_pytest_bootstrap_cleans_up_after_pytest_exception(self):
+        stream = Mock()
+        pytest = types.SimpleNamespace(
+            main=Mock(side_effect=RuntimeError("pytest failed"))
+        )
+        argv = runner.pytest_command("python", ["tests/test_x.py"])
+        with (
+            patch.dict(sys.modules, {"pytest": pytest}),
+            patch.object(sys, "argv", ["-c", "tests/test_x.py"]),
+            patch.object(os, "dup", return_value=123),
+            patch.object(os, "fdopen", return_value=stream),
+            patch.object(faulthandler, "dump_traceback_later"),
+            patch.object(faulthandler, "cancel_dump_traceback_later") as cancel,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "pytest failed"):
+                exec(argv[2], {})
+        cancel.assert_called_once_with()
+        stream.close.assert_called_once_with()
 
     def test_guard_prevents_process_and_records_refusal(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -679,7 +726,15 @@ class RunnerTests(unittest.TestCase):
         ]
         self.assertIn("faulthandler_timeout=300", overrides)
         self.assertFalse(any("exit_on_timeout" in option for option in fullsuite))
-        self.assertFalse(any("faulthandler" in option for option in steps["snapshots"]))
+        snapshot = steps["snapshots"]
+        snapshot_overrides = [
+            snapshot[index + 1]
+            for index, option in enumerate(snapshot)
+            if option == "-o"
+        ]
+        self.assertFalse(
+            any("faulthandler_timeout" in option for option in snapshot_overrides)
+        )
 
 
 if __name__ == "__main__":
