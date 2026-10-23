@@ -817,6 +817,7 @@ class TestE3ManifestLockstep:
             UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS,
             UK_LCFS_CONSUMPTION_PREDICTORS,
             UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
+            UK_LCFS_EXCISE_SHARES,
         )
         from microcosm.build.uk_runtime.uc_reporter_redraw import (
             UC_REPORTER_AGGREGATES,
@@ -887,10 +888,13 @@ class TestE3ManifestLockstep:
             tuple(lcfs_ops["fit_weighted_qrf_chain"].parameters["predictors"])
             == UK_LCFS_CONSUMPTION_PREDICTORS
         )
-        assert (
-            tuple(lcfs_ops["fit_weighted_qrf_chain"].parameters["targets"])
-            == UK_LCFS_CONSUMPTION_TARGET_COLUMNS
+        # The spend targets, then the excise shares, which are scratch and no
+        # output (microcosm#1359).
+        assert tuple(lcfs_ops["fit_weighted_qrf_chain"].parameters["targets"]) == (
+            *UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
+            *UK_LCFS_EXCISE_SHARES,
         )
+        assert not set(UK_LCFS_EXCISE_SHARES) & set(UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS)
         assert UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS == (
             *UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
             "has_fuel_consumption",

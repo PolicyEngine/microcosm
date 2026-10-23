@@ -1069,6 +1069,33 @@ def _lcfs_donors() -> tuple[pd.DataFrame, pd.DataFrame]:
     # Other motor fuels (c72213): the level_road_fuel step nets the donor's own
     # share of them from ONS 07.2.2 (microcosm#1113), so a few diaries buy some.
     household["c72213"] = np.where(rows.astype(int) % 5 == 0, 0.5, 0.0)
+    # The alcohol and tobacco lines P602 sums and the drinks inside P611, which
+    # the excise shares read (microcosm#1359): P602 is its ten lines, with
+    # tobacco on a quarter of the diaries (all of P602 on a twelfth), and a
+    # third of the diaries buy drinks away from home.
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_OFF_TRADE_ALCOHOL_CODES,
+        UK_LCFS_ON_TRADE_ALCOHOL_CODES,
+        UK_LCFS_TOBACCO_CODES,
+    )
+
+    p602 = np.asarray(household["p602"], dtype=float)
+    tobacco = np.where(
+        rows.astype(int) % 12 == 0,
+        p602,
+        np.where(rows.astype(int) % 4 == 0, 0.3 * p602, 0.0),
+    )
+    for code, share in zip(UK_LCFS_TOBACCO_CODES, (0.7, 0.0, 0.3), strict=True):
+        household[code] = share * tobacco
+    for code in UK_LCFS_OFF_TRADE_ALCOHOL_CODES:
+        household[code] = (p602 - tobacco) / len(UK_LCFS_OFF_TRADE_ALCOHOL_CODES)
+    on_trade = np.where(
+        rows.astype(int) % 3 == 1,
+        0.25 * np.asarray(household["p611"], dtype=float),
+        0.0,
+    )
+    for code in UK_LCFS_ON_TRADE_ALCOHOL_CODES:
+        household[code] = on_trade / len(UK_LCFS_ON_TRADE_ALCOHOL_CODES)
     person = pd.DataFrame(
         {
             "case": np.arange(1, _DONOR_ROWS + 1),
