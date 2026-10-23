@@ -2308,6 +2308,17 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
     } <= set(frame.table("household"))
     sidecar = json.loads(output.with_suffix(".build.json").read_text())
     assert sidecar["pipeline"] == "uk-frs-spine"
+    # The build record says which of its stages read the SPI Public Use Tape
+    # (microcosm#1095), from the artifacts the run's spec declares. This
+    # synthetic spec's SPI stage reads a fabricated tab, not the tape.
+    from microcosm.build.uk_runtime.spi_dependency import (
+        uk_spi_public_use_tape_marker,
+    )
+
+    assert sidecar["spi_public_use_tape"] == uk_spi_public_use_tape_marker(
+        _synthetic_spec(stage).sources.stages
+    )
+    assert sidecar["spi_public_use_tape"]["dependent"] is False
     for name in (
         "graph_declaration",
         "graph_manifest",

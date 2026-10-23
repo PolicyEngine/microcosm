@@ -616,6 +616,9 @@ def spine_provenance_from_sidecar(
         "rules_engine": dict(sidecar.get("rules_engine", {})),
         "source_vintages": dict(sidecar.get("source_vintages", {})),
         "stochastic_contract_sha256": sidecar.get("stochastic_contract_sha256"),
+        # Empty for a spine built before the marker; the release assemblers
+        # rederive it from the stages either way (microcosm#1095).
+        "spi_public_use_tape": dict(sidecar.get("spi_public_use_tape") or {}),
     }
 
 

@@ -185,6 +185,10 @@ from microcosm.build.uk_runtime.spi_band_donors import (
 from microcosm.build.uk_runtime.spi_benefit_coherence import (
     UKSPIBenefitCoherenceStageTransform,
 )
+from microcosm.build.uk_runtime.spi_dependency import (
+    UK_SPI_PUBLIC_USE_TAPE_KEY,
+    uk_spi_public_use_tape_marker,
+)
 from microcosm.build.uk_runtime.spi_housing_shell import (
     UKSPIHousingShellStageTransform,
 )
@@ -847,6 +851,9 @@ def _build_sidecar(
         "spine_gate_report": spine_gate_report,
         "stochastic_contract_sha256": stochastic_contract_sha256,
         "rules_engine": _rules_engine_provenance(),
+        # Which stages read the SPI Public Use Tape, whose Special Conditions
+        # reach every output built on them (microcosm#1095).
+        UK_SPI_PUBLIC_USE_TAPE_KEY: uk_spi_public_use_tape_marker(stages),
     }
 
 
