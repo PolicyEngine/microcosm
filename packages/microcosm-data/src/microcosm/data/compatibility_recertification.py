@@ -772,7 +772,11 @@ class DriftMetric:
     ``variables`` are summed per unit of ``entity`` (a person variable over a
     tax-unit metric is first summed to the tax unit), except ``combine =
     "nonrefundable_ctc"``, which is ``max(min(ctc, ctc_limiting_tax_liability),
-    0)`` as the release tool scores the SOI CTC rows. ``itemizers_only`` masks
+    0)`` as the release tool scores the SOI CTC rows, and ``combine =
+    "part_b_irmaa"``, which is ``(gross_medicare_part_b_premium_if_enrolled -
+    base_part_b_premium) * medicare_enrolled``. ``entity =
+    "household_members"`` sums a person variable over each household, as the
+    release tool's ``policyengine_variable`` rows do. ``itemizers_only`` masks
     by ``tax_unit_itemizes``. The weight is the H5's household weight of the
     unit's household, so both engines weigh the same rows identically.
     """
@@ -873,6 +877,40 @@ HEADLINE_METRICS = (
         "state income tax",
         "tax_unit",
         ("state_income_tax",),
+        STATISTIC_SUM,
+        "usd",
+    ),
+    # policyengine-us#10106 (in 2.60.4, not 2.2.1) lets IRMAA fall back to the
+    # earliest input year's income, so a single-year H5 gets payers; 2.60.4
+    # also adds takes_up_medicare_part_d_if_eligible (default true). Part B
+    # IRMAA is the release's held-out definition (agent guide, microcosm#1206):
+    # gross premium if enrolled minus the base premium, over enrollees.
+    DriftMetric(
+        "medicare_part_b_irmaa_total",
+        "Medicare Part B income-related premium (IRMAA)",
+        "person",
+        (
+            "gross_medicare_part_b_premium_if_enrolled",
+            "base_part_b_premium",
+            "medicare_enrolled",
+        ),
+        STATISTIC_SUM,
+        "usd",
+        combine="part_b_irmaa",
+    ),
+    DriftMetric(
+        "medicare_part_d_irmaa_total",
+        "Medicare Part D income-related surcharge",
+        "person",
+        ("income_adjusted_part_d_premium_surcharge",),
+        STATISTIC_SUM,
+        "usd",
+    ),
+    DriftMetric(
+        "medicare_cost_total",
+        "Medicare benefit cost",
+        "person",
+        ("medicare_cost",),
         STATISTIC_SUM,
         "usd",
     ),
@@ -1296,6 +1334,8 @@ SUMMARY_METRICS = (
     "snap_total",
     "medicaid_total",
     "medicaid_enrollment",
+    "medicare_part_b_irmaa_total",
+    "medicare_part_d_irmaa_total",
 )
 
 
@@ -1433,6 +1473,21 @@ def claim_entries(
         version=model_version,
         declared_by=declared_by,
     )
+    # The parent's own entries already cover what it was built with. A claim
+    # that also reaches back to that version spans every release between the
+    # two, none of which this recertification measured.
+    built_with = _mapping(
+        _mapping(parent_manifest.get("build")).get("built_with_model_package")
+    ).get("version")
+    if isinstance(built_with, str) and Version(built_with) in SpecifierSet(
+        model["specifier"]
+    ):
+        raise ValueError(
+            f"publisher compatibility claim {model['specifier']!r} reaches back to "
+            f"the built-with policyengine-us {built_with}; claim the measured "
+            f"version {model_version} (or a range above the built-with one), and "
+            "let the parent's entries carry the built-with version"
+        )
     claims = {"model": model}
     if not covered(cores, "policyengine-core", core_version):
         claims["core"] = {
@@ -1669,6 +1724,8 @@ def validate_recertification_candidate(
             failures.append(
                 f"build.{field} must stay the parent's: the H5 was built with it"
             )
+    if _mapping(manifest.get("build")).get("built_at") != parent_build.get("built_at"):
+        failures.append("build.built_at must stay the parent's: the H5 was built then")
     if _mapping(manifest.get("build")).get("recertified_from") != parent_id:
         failures.append("build.recertified_from must name the parent")
     for field in (
