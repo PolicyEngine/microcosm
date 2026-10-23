@@ -103,6 +103,7 @@ EXPECTED_PROGRAM_IDS = (
     "chip",
     "basic_health_program",
     "medicare",
+    "medicare_part_d",
     "ssi",
     "dc_ptc",
     "head_start",
@@ -135,6 +136,7 @@ EXPECTED_TAKE_UP_MECHANISMS: Mapping[str, tuple[str, tuple[str, ...], str]] = {
         "rate_unsourced",
     ),
     "medicare": ("measured", ("measured_map",), "out_of_scope"),
+    "medicare_part_d": ("engine", ("engine_default",), "rate_unsourced"),
     "ssi": (
         "modeled",
         ("probability_seed", "delivery_gate"),
@@ -1263,7 +1265,8 @@ def build_inventory_coverage(
         "take_up_program_order_exact",
         clauses={
             "program order differs": program_ids == EXPECTED_PROGRAM_IDS,
-            "legacy program count differs": len(legacy_programs) == 17,
+            "legacy program count differs": len(legacy_programs)
+            == len(EXPECTED_PROGRAM_IDS),
             "legacy variable order differs": [
                 _mapping(value, "legacy program")["variable"]
                 for value in legacy_programs

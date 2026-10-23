@@ -144,6 +144,12 @@ def _unknown(*origins: str) -> _UnknownValue:
     return _UnknownValue(tuple(dict.fromkeys(origins)))
 
 
+#: ``None`` as the evaluator spells a ``None`` constant. It is opaque, so it
+#: still fails closed at a sink; ``is None`` tests and one-argument
+#: ``dict.get`` misses resolve against it exactly.
+_NONE_VALUE = _OpaqueValue("None")
+
+
 def _contains_unknown(value: _ExactValue) -> bool:
     """Return whether an exact value contains any unresolved component."""
 
@@ -526,26 +532,60 @@ def _inventory_modules(variables_root: Path) -> dict[str, _ModuleIR]:
     return modules
 
 
+def _is_none(left: _ExactValue, right: _ExactValue) -> bool | None:
+    """``left is right`` when one side is None and the other is decidable."""
+
+    exact = (_StringValue, _SequenceValue, _MapValue, _BoolValue, _IntValue)
+    for value, other in ((left, right), (right, left)):
+        if value == _NONE_VALUE:
+            if other == _NONE_VALUE:
+                return True
+            if isinstance(other, exact):
+                return False
+    return None
+
+
 def _sequence_display(
     node: ast.List | ast.Tuple | ast.Set,
     evaluate: Callable[[ast.expr], _ExactValue],
+    materialize: Callable[[_ExactValue], _ExactValue] | None = None,
 ) -> _ExactValue:
     """Evaluate a list, tuple or set display, splicing ``*name`` items.
 
-    A starred item contributes its items only when it evaluates to an exact
-    sequence (policyengine-us 2.60 writes ``["adjusted_gross_income",
-    *TAX_UNIT_ADDITIONS]``); anything else leaves the display unknown.
+    A starred item contributes its items only when it evaluates to exact
+    sequences (policyengine-us 2.60 writes ``["adjusted_gross_income",
+    *TAX_UNIT_ADDITIONS]`` and ``["ssi_earned_income", *ssi_sources.unearned]``);
+    ``materialize`` resolves a parameter list first. A starred value with
+    several exact alternatives gives one display per alternative; anything
+    else leaves the display unknown.
     """
-    items: list[_ExactValue] = []
+    displays: list[list[_ExactValue]] = [[]]
     for element in node.elts:
         if isinstance(element, ast.Starred):
             spliced = evaluate(element.value)
-            if not isinstance(spliced, _SequenceValue):
+            if materialize is not None:
+                spliced = materialize(spliced)
+            alternatives = _alternatives(spliced)
+            if _contains_unknown(spliced) or not all(
+                isinstance(value, _SequenceValue) for value in alternatives
+            ):
                 return _unknown(f"starred:{node.lineno}")
-            items.extend(spliced.items)
+            displays = [
+                [*display, *value.items]
+                for display in displays
+                for value in alternatives
+                if isinstance(value, _SequenceValue)
+            ]
+            if len(displays) > _STATE_CAP:
+                return _unknown(f"starred-cap:{node.lineno}")
         else:
-            items.append(evaluate(element))
-    return _SequenceValue(tuple(items), set_like=isinstance(node, ast.Set))
+            item = evaluate(element)
+            for display in displays:
+                display.append(item)
+    set_like = isinstance(node, ast.Set)
+    return _make_alternative(
+        tuple(_SequenceValue(tuple(display), set_like=set_like) for display in displays)
+    )
 
 
 def _eval_module_value(
@@ -876,7 +916,9 @@ class _ExactEvaluator:
             )
         if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
             return _sequence_display(
-                node, lambda item: self.evaluate(item, local_env, frame)
+                node,
+                lambda item: self.evaluate(item, local_env, frame),
+                lambda value: _materialize_value(value, frame=frame, line=node.lineno),
             )
         if isinstance(node, ast.Dict):
             items: list[tuple[str, _ExactValue]] = []
@@ -999,6 +1041,9 @@ class _ExactEvaluator:
                 key = self.evaluate(node.args[0], local_env, frame)
                 default = self.evaluate(node.args[1], local_env, frame)
                 return self._mapping_get(base, key, default, node.lineno)
+            if method == "get" and len(node.args) == 1 and not node.keywords:
+                key = self.evaluate(node.args[0], local_env, frame)
+                return self._mapping_get(base, key, _NONE_VALUE, node.lineno)
         # Engine reads and numerical/model-api calls do not themselves produce
         # a string domain; sink scanning authenticates their arguments.
         return _OpaqueValue(function_name or "call")
@@ -1119,10 +1164,11 @@ class _ExactEvaluator:
 
         This is :meth:`_subscript`'s mapping arm with the missing-key case
         replaced by the caller's explicit default instead of an unknown, which
-        is exactly what the two-argument form means.  Only that form is
-        resolved: the one-argument ``get`` yields ``None`` on a miss, a value
-        this lattice does not model, so it keeps falling through to the opaque
-        result that fails closed at a sink.
+        is exactly what the two-argument form means.  The one-argument form
+        passes :data:`_NONE_VALUE`, which stays opaque at a sink; an ``is
+        None`` test on it is exact (policyengine-us 2.60's
+        ``de_itemized_deductions_indv`` skips a deduction whose
+        ``EXPENSE_SOURCES.get(deduction)`` is ``None``).
 
         PolicyEngine-US 2.2.1 reaches this through
         ``snap_individual_utility_allowance``, whose loop over the
@@ -1242,6 +1288,17 @@ class _ExactEvaluator:
         if isinstance(node.slice, ast.Slice):
             return self._slice(base, node.slice, local_env, frame, node.lineno)
         key = self.evaluate(node.slice, local_env, frame)
+        if (
+            _contains_unknown(key)
+            and isinstance(base, _MapValue)
+            and base.items
+            and all(isinstance(value, _StringValue) for _key, value in base.items)
+        ):
+            # The key is decided at run time (policyengine-us 2.60's
+            # ``CAPITAL_GAINS_RESPONSE_FORM_VARIABLES[form]``, where ``form``
+            # depends on parameter values), but the result is one of the
+            # map's values or a KeyError, so every value is a possible read.
+            return _make_alternative(tuple(value for _key, value in base.items))
         if _contains_unknown(base) or _contains_unknown(key):
             return _unknown(f"subscript:{node.lineno}")
         results: list[_ExactValue] = []
@@ -1410,6 +1467,17 @@ class _ExactEvaluator:
                     if isinstance(node.ops[0], ast.NotEq):
                         result = not result
                     results.append(_BoolValue(result))
+                elif isinstance(node.ops[0], (ast.Is, ast.IsNot)):
+                    # Only identity with None is decidable: None is the one
+                    # opaque value this lattice names, and an exact string,
+                    # number, Boolean or collection is never None.
+                    result = _is_none(left_value, right_value)
+                    if result is None:
+                        results.append(_unknown(f"identity:{node.lineno}"))
+                        continue
+                    if isinstance(node.ops[0], ast.IsNot):
+                        result = not result
+                    results.append(_BoolValue(result))
                 else:
                     results.append(_unknown(f"compare:{node.lineno}"))
         return _make_alternative(tuple(results))
@@ -1549,6 +1617,30 @@ def _bind_target(
             _bind_target(element, item, env)
             for element, item in zip(target.elts, value.items, strict=True)
         )
+    if isinstance(target, (ast.Tuple, ast.List)) and isinstance(
+        value, _AlternativeValue
+    ):
+        # Each position takes the alternatives of that position; this keeps
+        # every possible value of each name, not which ones occur together.
+        if not all(
+            isinstance(item, _SequenceValue) and len(item.items) == len(target.elts)
+            for item in value.values
+        ):
+            return False
+        return all(
+            _bind_target(
+                element,
+                _make_alternative(
+                    tuple(
+                        item.items[position]
+                        for item in value.values
+                        if isinstance(item, _SequenceValue)
+                    )
+                ),
+                env,
+            )
+            for position, element in enumerate(target.elts)
+        )
     return False
 
 
@@ -1596,6 +1688,8 @@ class _FunctionContext:
 class _Flow:
     env: dict[str, _ExactValue]
     signal: str = "normal"
+    # What a ``return`` flow returns; None on every other flow.
+    value: _ExactValue | None = None
 
 
 def _function_parameters(
@@ -1687,6 +1781,8 @@ class _ConsumerInterpreter:
         self._receipts: dict[str, set[ConsumerReceipt]] = {}
         self._queue: list[_FunctionContext] = []
         self._seen_contexts: set[_FunctionContext] = set()
+        self._return_values: dict[_FunctionContext, _ExactValue] = {}
+        self._returning: set[_FunctionContext] = set()
 
     def run(self) -> Mapping[str, tuple[ConsumerReceipt, ...]]:
         for module_name in sorted(self._modules):
@@ -1820,7 +1916,7 @@ class _ConsumerInterpreter:
         keywords: tuple[tuple[str, _ExactValue], ...],
         defer_unresolved_sinks: bool = False,
         enqueue_helpers: bool = True,
-    ) -> None:
+    ) -> list[_Flow]:
         env: dict[str, _ExactValue] = {}
         parameters = _function_parameters(function)
         keyword_values = dict(keywords)
@@ -1843,7 +1939,7 @@ class _ConsumerInterpreter:
             defer_unresolved_sinks=defer_unresolved_sinks,
             enqueue_helpers=enqueue_helpers,
         )
-        self._analyze_block(
+        return self._analyze_block(
             function.body,
             [_Flow(env)],
             frame=frame,
@@ -1891,6 +1987,10 @@ class _ConsumerInterpreter:
                 return [flow]
             self._scan_expression(expression, env, frame, owner_name)
             value = self._evaluator.evaluate(expression, env, frame)
+            if isinstance(expression, ast.Call) and isinstance(value, _OpaqueValue):
+                returned = self._helper_return_value(expression, env, frame)
+                if returned is not None:
+                    value = returned
             updated = dict(env)
             targets = (
                 statement.targets
@@ -1970,7 +2070,14 @@ class _ConsumerInterpreter:
             value = getattr(statement, "value", None)
             if value is not None:
                 self._scan_expression(value, env, frame, owner_name)
-            return [_Flow(dict(env), "return")]
+            returned = (
+                self._evaluator.evaluate(value, env, frame)
+                if value is not None
+                else _NONE_VALUE
+            )
+            if not isinstance(statement, ast.Return):
+                returned = _unknown(f"yield:{statement.lineno}")
+            return [_Flow(dict(env), "return", returned)]
         if isinstance(statement, ast.Break):
             return [_Flow(dict(env), "break")]
         if isinstance(statement, ast.Continue):
@@ -2274,6 +2381,81 @@ class _ConsumerInterpreter:
             self._seen_contexts.add(context)
             self._queue.append(context)
 
+    def _helper_return_value(
+        self,
+        call: ast.Call,
+        env: Mapping[str, _ExactValue],
+        frame: _EvaluationFrame,
+    ) -> _ExactValue | None:
+        """What a source helper returns for this call's exact arguments.
+
+        policyengine-us 2.60 formulas unpack helper results before reading
+        them (``income, deductions = dependent_income_and_deductions(...)``).
+        The helper body is interpreted with the call's arguments, once per
+        distinct context, and its ``return`` values (``None`` when it can
+        fall off the end) become the assigned value's alternatives. A
+        recursive context is unknown. Returns None for a call that names no
+        source helper, which keeps the evaluator's opaque result.
+        """
+
+        identifier = self._helper_identifier(call, frame)
+        if identifier is None or identifier not in self._functions:
+            return None
+        if any(isinstance(argument, ast.Starred) for argument in call.args) or any(
+            keyword.arg is None for keyword in call.keywords
+        ):
+            return _unknown(f"helper-unpack:{call.lineno}")
+        context = _FunctionContext(
+            identifier=identifier,
+            args=tuple(
+                self._evaluator.evaluate(argument, env, frame) for argument in call.args
+            ),
+            keywords=tuple(
+                sorted(
+                    (keyword.arg, self._evaluator.evaluate(keyword.value, env, frame))
+                    for keyword in call.keywords
+                    if keyword.arg is not None
+                )
+            ),
+        )
+        if context in self._return_values:
+            return self._return_values[context]
+        if context in self._returning:
+            return _unknown(f"helper-recursion:{identifier.function_name}")
+        self._returning.add(context)
+        try:
+            function = self._functions[identifier]
+            # Only the value is wanted here. The helper's own receipts and
+            # its strict sink checks belong to the context the call enqueues
+            # (when its frame enqueues helpers), so this pass defers
+            # unresolved sinks and enqueues nothing.
+            flows = self._analyze_function(
+                module=function.module,
+                function=function.node,
+                consumer=function.node.name,
+                owner_name=None,
+                args=context.args,
+                keywords=context.keywords,
+                defer_unresolved_sinks=True,
+                enqueue_helpers=False,
+            )
+        finally:
+            self._returning.discard(context)
+        values = [
+            flow.value
+            for flow in flows
+            if flow.signal == "return" and flow.value is not None
+        ]
+        if any(flow.signal == "normal" for flow in flows):
+            values.append(_NONE_VALUE)
+        result = (
+            _make_alternative(tuple(values))
+            if values
+            else _unknown(f"helper-no-return:{identifier.function_name}")
+        )
+        self._return_values[context] = result
+        return result
+
     def _helper_identifier(
         self,
         call: ast.Call,
@@ -2480,9 +2662,11 @@ class _ConsumerInterpreter:
         flows: list[_Flow],
         frame: _EvaluationFrame,
     ) -> list[_Flow]:
-        unique: dict[tuple[str, tuple[tuple[str, _ExactValue], ...]], _Flow] = {}
+        unique: dict[
+            tuple[str, tuple[tuple[str, _ExactValue], ...], _ExactValue | None], _Flow
+        ] = {}
         for flow in flows:
-            key = (flow.signal, tuple(sorted(flow.env.items())))
+            key = (flow.signal, tuple(sorted(flow.env.items())), flow.value)
             unique[key] = flow
         if len(unique) > _STATE_CAP:
             raise RuntimeError(

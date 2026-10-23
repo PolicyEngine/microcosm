@@ -63,6 +63,7 @@ _TAKE_UP_PROGRAM_VARIABLES = (
     ("chip", "takes_up_chip_if_eligible"),
     ("basic_health_program", "takes_up_basic_health_program_if_eligible"),
     ("medicare", "takes_up_medicare_if_eligible"),
+    ("medicare_part_d", "takes_up_medicare_part_d_if_eligible"),
     ("ssi", "takes_up_ssi_if_eligible"),
     ("dc_ptc", "takes_up_dc_ptc"),
     ("head_start", "takes_up_head_start_if_eligible"),

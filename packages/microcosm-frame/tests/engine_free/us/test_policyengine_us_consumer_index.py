@@ -982,3 +982,283 @@ def test_single_argument_get_still_fails_closed(tmp_path: Path) -> None:
                 "leaves.py": _variables("leaf_a", "selector"),
             },
         )
+
+
+@_REQUIRES_YAML
+def test_starred_items_splice_module_and_parameter_lists(tmp_path: Path) -> None:
+    """``[*CONSTANT]`` and ``[*parameter_list]`` displays resolve exactly.
+
+    policyengine-us 2.60 writes ``add(tax_unit, period, ["adjusted_gross_income",
+    *TAX_UNIT_ADDITIONS])`` and loops over ``["ssi_earned_income",
+    *ssi_sources.unearned]``.
+    """
+
+    index = _index(
+        tmp_path,
+        {
+            "starred.py": _clean(
+                """
+                ADDITIONS = ["addition_a", "addition_b"]
+
+                class module_starred(Variable):
+                    value_type = float
+                    entity = Person
+                    definition_period = YEAR
+
+                    def formula(person, period, parameters):
+                        return add(person, period, ["base_income", *ADDITIONS])
+
+                class parameter_starred(Variable):
+                    value_type = float
+                    entity = Person
+                    definition_period = YEAR
+
+                    def formula(person, period, parameters):
+                        sources = parameters(period).group.sources
+                        total = 0
+                        for source in ["earned", *sources]:
+                            total += person(source, period)
+                        return total
+                """
+            ),
+            "leaves.py": _variables(
+                "base_income",
+                "addition_a",
+                "addition_b",
+                "earned",
+                "unearned_a",
+                "unearned_b",
+            ),
+        },
+        parameters={
+            "group.sources": """
+                values:
+                  2020-01-01:
+                    - unearned_a
+                  2024-01-01:
+                    - unearned_a
+                    - unearned_b
+            """,
+        },
+    )
+
+    assert {
+        target
+        for target in _receipt_targets(index)
+        if any(r[0] == "module_starred" for r in _receipt_identities(index, target))
+    } == {"base_income", "addition_a", "addition_b"}
+    assert {
+        target
+        for target in _receipt_targets(index)
+        if any(r[0] == "parameter_starred" for r in _receipt_identities(index, target))
+    } == {"earned", "unearned_a", "unearned_b"}
+
+
+@_REQUIRES_YAML
+def test_single_argument_get_resolves_an_is_none_skip_exactly(
+    tmp_path: Path,
+) -> None:
+    """A miss of ``mapping.get(key)`` is None, and ``is None`` decides it.
+
+    This is ``de_itemized_deductions_indv``'s shape in policyengine-us 2.60:
+    deductions without an ``EXPENSE_SOURCES`` entry are skipped.
+    """
+
+    index = _index(
+        tmp_path,
+        {
+            "get_none.py": _clean(
+                """
+                EXPENSE_SOURCES = {
+                    "deduction_a": ["expense_a"],
+                    "deduction_b": ["expense_b1", "expense_b2"],
+                }
+
+                class allocated(Variable):
+                    value_type = float
+                    entity = Person
+                    definition_period = YEAR
+
+                    def formula(person, period, parameters):
+                        total = 0
+                        for deduction in parameters(period).group.deductions:
+                            expense_sources = EXPENSE_SOURCES.get(deduction)
+                            if expense_sources is None:
+                                continue
+                            total += add(person, period, expense_sources)
+                        return total
+                """
+            ),
+            "leaves.py": _variables(
+                "expense_a", "expense_b1", "expense_b2", "expense_unused"
+            ),
+        },
+        parameters={
+            "group.deductions": """
+                values:
+                  2020-01-01:
+                    - deduction_a
+                    - deduction_b
+                    - deduction_without_sources
+            """,
+        },
+    )
+
+    assert _receipt_targets(index) == {"expense_a", "expense_b1", "expense_b2"}
+
+
+def test_unknown_key_on_an_exact_string_map_reads_every_value(
+    tmp_path: Path,
+) -> None:
+    """A run-time key into a fully known name table may read any of its values.
+
+    This is ``capital_gains_behavioral_response``'s shape in policyengine-us
+    2.60: the form comes from parameter values, so every form's variable is a
+    possible read.
+    """
+
+    index = _index(
+        tmp_path,
+        {
+            "forms.py": _clean(
+                """
+                FORM_VARIABLES = {"a": "form_a_parameter", "b": "form_b_parameter"}
+
+                def selected_form(values):
+                    nonzero = {form: value for form, value in values if value}
+                    if not nonzero:
+                        return None
+                    form, value = next(iter(nonzero.items()))
+                    return form
+
+                class response(Variable):
+                    value_type = float
+                    entity = Person
+                    definition_period = YEAR
+
+                    def formula(person, period, parameters):
+                        form = selected_form(parameters(period).group.forms)
+                        if form is None:
+                            return 0
+                        return person(FORM_VARIABLES[form], period)
+                """
+            ),
+            "leaves.py": _variables("form_a_parameter", "form_b_parameter"),
+        },
+    )
+
+    assert _receipt_targets(index) == {"form_a_parameter", "form_b_parameter"}
+
+
+@_REQUIRES_YAML
+def test_helper_tuple_return_flows_into_the_callers_sink(tmp_path: Path) -> None:
+    """``income, deductions = helper(...)`` binds the helper's returned list.
+
+    This is the policyengine-us 2.60 ``dependent_income_and_deductions``
+    shape: the helper maps a parameter list through a module table, and one
+    caller filters itself out before summing the rest.
+    """
+
+    index = _index(
+        tmp_path,
+        {
+            "helper.py": _clean(
+                """
+                PERSON_DEDUCTIONS = {
+                    "deduction_a": "deduction_a_person",
+                    "own_deduction": "own_deduction_person",
+                }
+
+                def income_and_deductions(person, period, parameters):
+                    listed = parameters(period).group.deductions
+                    deductions = [
+                        PERSON_DEDUCTIONS[item]
+                        for item in listed
+                        if item in PERSON_DEDUCTIONS
+                    ]
+                    return person("gross_income", period), deductions
+                """
+            ),
+            "consumers.py": _clean(
+                """
+                from policyengine_us.variables.helper import income_and_deductions
+
+                class all_deductions(Variable):
+                    value_type = float
+                    entity = Person
+                    definition_period = YEAR
+
+                    def formula(person, period, parameters):
+                        income, deductions = income_and_deductions(
+                            person, period, parameters
+                        )
+                        return income - add(person, period, deductions)
+
+                class own_deduction_person(Variable):
+                    value_type = float
+                    entity = Person
+                    definition_period = YEAR
+
+                    def formula(person, period, parameters):
+                        income, deductions = income_and_deductions(
+                            person, period, parameters
+                        )
+                        others = [d for d in deductions if d != "own_deduction_person"]
+                        return income - add(person, period, others)
+                """
+            ),
+            "leaves.py": _variables("gross_income", "deduction_a_person"),
+        },
+        parameters={
+            "group.deductions": """
+                values:
+                  2020-01-01:
+                    - deduction_a
+                    - own_deduction
+                    - deduction_without_person_leaf
+            """,
+        },
+    )
+
+    def consumed_by(consumer: str) -> set[str]:
+        return {
+            target
+            for target in _receipt_targets(index)
+            if any(r[0] == consumer for r in _receipt_identities(index, target))
+        }
+
+    assert consumed_by("all_deductions") >= {
+        "deduction_a_person",
+        "own_deduction_person",
+    }
+    assert "own_deduction_person" not in consumed_by("own_deduction_person")
+    assert "deduction_a_person" in consumed_by("own_deduction_person")
+
+
+def test_helper_return_of_an_engine_value_still_fails_closed(
+    tmp_path: Path,
+) -> None:
+    """A helper that returns a run-time value cannot name a variable."""
+
+    with pytest.raises(RuntimeError, match="Unresolved dynamic"):
+        _index(
+            tmp_path,
+            {
+                "passthrough.py": _clean(
+                    """
+                    def pick(name):
+                        return name
+
+                    class picked(Variable):
+                        value_type = float
+                        entity = Person
+                        definition_period = YEAR
+
+                        def formula(person, period, parameters):
+                            name = pick(person("selector", period))
+                            return person(name, period)
+                    """
+                ),
+                "leaves.py": _variables("selector"),
+            },
+        )
