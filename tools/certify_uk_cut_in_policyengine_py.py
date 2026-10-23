@@ -51,6 +51,7 @@ import shutil
 import subprocess
 import sys
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -98,6 +99,9 @@ class CutVersions:
 
 
 def read_cut(tag: str, release: str) -> CutVersions:
+    # Set before importing the hub: its HTTP timeout constants are import-time.
+    os.environ.setdefault("HF_HUB_DOWNLOAD_TIMEOUT", "120")
+    os.environ.setdefault("HF_HUB_ETAG_TIMEOUT", "60")
     from huggingface_hub import hf_hub_download
 
     path = hf_hub_download(
@@ -106,6 +110,7 @@ def read_cut(tag: str, release: str) -> CutVersions:
         repo_type="dataset",
         revision=tag,
         token=os.environ.get("HUGGING_FACE_TOKEN") or os.environ.get("HF_TOKEN"),
+        etag_timeout=60,
     )
     manifest = json.loads(Path(path).read_text())
     build = manifest.get("build") or {}
@@ -181,11 +186,58 @@ def record_timing(path: Path, record: dict[str, Any]) -> None:
         handle.write(json.dumps(record) + "\n")
 
 
+@contextmanager
+def timed_step(name: str, path: Path):
+    """Make network preflight and local Python work visible, including failures."""
+    started = time.monotonic()
+    record = {"step": name, "started_at": datetime.now(UTC).isoformat()}
+    print(f"[start] {name}", flush=True)
+    try:
+        yield record
+        record.setdefault("returncode", 0)
+    except Exception as error:
+        record["returncode"] = getattr(error, "returncode", None)
+        record["error"] = str(error)
+        raise
+    finally:
+        record["elapsed_seconds"] = time.monotonic() - started
+        record_timing(path, record)
+        print(
+            f"[done] {name}: {record['elapsed_seconds']:.3f}s "
+            f"(exit {record.get('returncode')})",
+            flush=True,
+        )
+
+
+def run_logged(argv: list[str], *, cwd: Path, env: dict[str, str], handle):
+    """Stream child output into the diagnostic log while retaining its result."""
+    output = []
+    with subprocess.Popen(
+        argv,
+        cwd=cwd,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    ) as process:
+        for line in process.stdout:
+            handle.write(line)
+            handle.flush()
+            output.append(line)
+        returncode = process.wait()
+    return subprocess.CompletedProcess(argv, returncode, "".join(output), "")
+
+
 class Shell:
     """Runs commands in the policyengine.py worktree and records each one."""
 
     def __init__(
-        self, cwd: Path, log: Path, *, dry_run: bool = False,
+        self,
+        cwd: Path,
+        log: Path,
+        *,
+        dry_run: bool = False,
         timings: Path | None = None,
     ) -> None:
         self.cwd = cwd
@@ -195,7 +247,11 @@ class Shell:
         self.commands: list[str] = []
 
     def __call__(
-        self, argv: list[str], *, env: dict[str, str] | None = None, check=True,
+        self,
+        argv: list[str],
+        *,
+        env: dict[str, str] | None = None,
+        check=True,
         step: str | None = None,
     ) -> subprocess.CompletedProcess:
         line = shlex.join(argv)
@@ -205,24 +261,22 @@ class Shell:
             return subprocess.CompletedProcess(argv, 0, "", "")
         started = time.monotonic()
         timing = {
-            "step": step or line, "command": line,
-            "started_at": datetime.now(UTC).isoformat(), "returncode": None,
+            "step": step or line,
+            "command": line,
+            "started_at": datetime.now(UTC).isoformat(),
+            "returncode": None,
         }
         try:
             timing.update(resource_guard(self.cwd))
             with self.log.open("a") as handle:
                 handle.write(f"\n# {datetime.now(UTC):%Y-%m-%dT%H:%M:%SZ} $ {line}\n")
                 handle.flush()
-                result = subprocess.run(
+                result = run_logged(
                     argv,
                     cwd=self.cwd,
                     env={**os.environ, **(env or {})},
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    check=False,
+                    handle=handle,
                 )
-                handle.write(result.stdout)
             timing["returncode"] = result.returncode
         except Exception as error:
             timing["error"] = str(error)
@@ -230,6 +284,11 @@ class Shell:
         finally:
             timing["elapsed_seconds"] = time.monotonic() - started
             record_timing(self.timings, timing)
+            print(
+                f"[done] {step or line}: {timing['elapsed_seconds']:.3f}s "
+                f"(exit {timing.get('returncode')})",
+                flush=True,
+            )
         if check and result.returncode != 0:
             tail = "\n".join(result.stdout.splitlines()[-25:])
             raise CertifyError(f"{line} exited {result.returncode}:\n{tail}")
@@ -248,6 +307,7 @@ def writer_check(national_tag: str, pepy_repo: Path) -> list[str]:
         capture_output=True,
         text=True,
         check=False,
+        timeout=120,
     )  # fmt: skip
     if result.returncode != 0:
         raise CertifyError(
@@ -263,6 +323,7 @@ def writer_check(national_tag: str, pepy_repo: Path) -> list[str]:
         capture_output=True,
         text=True,
         check=False,
+        timeout=120,
     )
     if remote.stdout.strip():
         found.append(f"branch {branch} exists on origin")
@@ -303,8 +364,10 @@ def model_surface(
     started = time.monotonic()
     timing = {
         "step": f"model_surface:{version}",
-        "started_at": datetime.now(UTC).isoformat(), "returncode": None,
+        "started_at": datetime.now(UTC).isoformat(),
+        "returncode": None,
     }
+    print(f"[start] model_surface:{version}", flush=True)
     try:
         timing.update(resource_guard(resource_root or Path.cwd()))
         result = subprocess.run(
@@ -326,6 +389,11 @@ def model_surface(
         timing["elapsed_seconds"] = time.monotonic() - started
         if timings:
             record_timing(timings, timing)
+        print(
+            f"[done] model_surface:{version}: {timing['elapsed_seconds']:.3f}s "
+            f"(exit {timing.get('returncode')})",
+            flush=True,
+        )
     return json.loads(result.stdout.strip().splitlines()[-1])
 
 
@@ -447,7 +515,8 @@ def parse(argv: list[str] | None) -> argparse.Namespace:
     )
     parser.add_argument("--worktree", type=Path, help="default: beside the repo")
     parser.add_argument(
-        "--base-ref", default="origin/main",
+        "--base-ref",
+        default="origin/main",
         help="base branch/ref for both the old bundle and the new worktree",
     )
     parser.add_argument("--skip-writer-check", metavar="WHY")
@@ -487,20 +556,31 @@ def certify(args: argparse.Namespace) -> int:
     base_ref = args.base_ref
     if base_ref.startswith("origin/"):
         remote_branch = base_ref.removeprefix("origin/")
-        subprocess.run(
-            ["git", "fetch", "--quiet", "origin",
-             f"+refs/heads/{remote_branch}:refs/remotes/origin/{remote_branch}"],
-            cwd=repo, check=True,
-        )
-    base_commit = subprocess.check_output(
-        ["git", "rev-parse", "--verify", f"{base_ref}^{{commit}}"],
-        cwd=repo, text=True,
-    ).strip()
+        with timed_step("git-fetch", timings):
+            subprocess.run(
+                [
+                    "git",
+                    "fetch",
+                    "--quiet",
+                    "origin",
+                    f"+refs/heads/{remote_branch}:refs/remotes/origin/{remote_branch}",
+                ],
+                cwd=repo,
+                check=True,
+                timeout=300,
+            )
+    with timed_step("resolve-base", timings):
+        base_commit = subprocess.check_output(
+            ["git", "rev-parse", "--verify", f"{base_ref}^{{commit}}"],
+            cwd=repo,
+            text=True,
+        ).strip()
 
     if args.skip_writer_check:
         print(f"writer check skipped: {args.skip_writer_check}")
     else:
-        others = writer_check(args.national_tag, repo)
+        with timed_step("writer-check", timings):
+            others = writer_check(args.national_tag, repo)
         if others:
             raise CertifyError(
                 "this cut is already being certified: "
@@ -508,7 +588,8 @@ def certify(args: argparse.Namespace) -> int:
                 + ". Coordinate with its owner instead of opening a second PR."
             )
 
-    national = read_cut(args.national_tag, NATIONAL_RELEASE)
+    with timed_step("national-manifest", timings):
+        national = read_cut(args.national_tag, NATIONAL_RELEASE)
     model = args.model_version or national.model
     core = args.core_version or national.core
     if not covers(national, model):
@@ -516,20 +597,26 @@ def certify(args: argparse.Namespace) -> int:
             f"the national cut was built with policyengine-uk {national.model} and "
             f"claims {list(national.claims)}; it cannot be certified for {model}."
         )
-    old_bundle = json.loads(
-        subprocess.check_output(
-            ["git", "show", f"{base_commit}:src/policyengine/data/bundle/manifest.json"],
-            cwd=repo,
-            text=True,
+    with timed_step("old-bundle", timings):
+        old_bundle = json.loads(
+            subprocess.check_output(
+                [
+                    "git",
+                    "show",
+                    f"{base_commit}:src/policyengine/data/bundle/manifest.json",
+                ],
+                cwd=repo,
+                text=True,
+            )
         )
-    )
     record = old_bundle["data_releases"]["uk"]
     flags = regional_flags(args, record)
     new_regional = regional_tag(flags)
     regional_summary = shlex.join(flags)
     dense, surface = None, None
     if new_regional is not None:
-        dense = read_cut(new_regional, DENSE_RELEASE)
+        with timed_step("regional-manifest", timings):
+            dense = read_cut(new_regional, DENSE_RELEASE)
         if not covers(dense, model):
             if not args.accept_regional_model_mismatch:
                 raise CertifyError(
@@ -577,20 +664,21 @@ def certify(args: argparse.Namespace) -> int:
         return 0
     if worktree.exists():
         raise CertifyError(f"{worktree} exists; remove it or pass --worktree.")
-    subprocess.run(
-        [
-            "git",
-            "worktree",
-            "add",
-            "--quiet",
-            "-b",
-            branch,
-            str(worktree),
-            base_commit,
-        ],
-        cwd=repo,
-        check=True,
-    )
+    with timed_step("git-worktree", timings):
+        subprocess.run(
+            [
+                "git",
+                "worktree",
+                "add",
+                "--quiet",
+                "-b",
+                branch,
+                str(worktree),
+                base_commit,
+            ],
+            cwd=repo,
+            check=True,
+        )
     run = Shell(worktree, log, timings=timings)
     python = str(worktree / ".venv/bin/python")
     sync = ["uv", "sync", "--frozen", "--extra", "uk", "--extra", "dev",
@@ -633,7 +721,8 @@ def certify(args: argparse.Namespace) -> int:
         ], step="constant-rewrite",
     )  # fmt: skip
     constants = json.loads(rewrite.stdout.strip().splitlines()[-1] or "[]")
-    constants += rewrite_regional_constants(worktree, old_regional, new_regional)
+    with timed_step("regional-constant-rewrite", timings):
+        constants += rewrite_regional_constants(worktree, old_regional, new_regional)
     run(
         [python, "-m", "pytest", "tests/test_household_calculator_snapshot.py", "-q"],
         env={"PE_UPDATE_SNAPSHOTS": "1"},
@@ -660,8 +749,10 @@ def certify(args: argparse.Namespace) -> int:
     if uc_path.exists():
         receipt = json.loads(uc_path.read_text())
         if uc.returncode and not (
-            uc.returncode == 1 and receipt.get("check") == "uk_uc_floor"
-            and receipt.get("passed") is False and receipt.get("measures")
+            uc.returncode == 1
+            and receipt.get("check") == "uk_uc_floor"
+            and receipt.get("passed") is False
+            and receipt.get("measures")
         ):
             raise CertifyError(
                 f"UC floor failed operationally (exit {uc.returncode}); "
