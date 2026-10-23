@@ -1386,12 +1386,12 @@ def test_a_thin_national_row_keeps_its_place_but_not_its_model_figures() -> None
     assert payload["loss_trajectory"] == []
 
 
-def test_a_thin_local_area_row_stays_with_the_area_support_rule() -> None:
-    """Constituency and authority rows keep the local line's area-support rule.
+def test_a_thin_row_is_withheld_at_every_level() -> None:
+    """María's rule of 2026-10-21, and her ruling of 2026-10-23 on the local line.
 
-    María's rule of 2026-10-21 on thin rows reaches national, regional and
-    BRMA rows; whether it reaches the local line is still hers to rule, and
-    the report guard matches a withheld local row by its bare area code.
+    A row resting on fewer than ten source households keeps its place without
+    its figures at every level; the area-support rule still decides which
+    constituency and authority rows bind.
     """
 
     from types import SimpleNamespace
@@ -1404,7 +1404,7 @@ def test_a_thin_local_area_row_stays_with_the_area_support_rule() -> None:
     matrix = sparse.csr_array(
         (np.ones(3), (np.zeros(3, dtype=int), np.arange(3))), shape=(1, n)
     )
-    problem = SimpleNamespace(matrix=matrix, names=["thin_row@2025"])
+    problem = SimpleNamespace(matrix=matrix, names=["thin_row@E14000001@2025"])
     frame = Frame(
         {
             "person": pd.DataFrame(
@@ -1423,20 +1423,20 @@ def test_a_thin_local_area_row_stays_with_the_area_support_rule() -> None:
         EntitySchema(group_entities=("household",)),
         {"household": Weights(np.ones(n), WeightKind.DESIGN)},
     )
-    rows = [{"name": "thin_row@2025"}]
+    rows = [{"name": "thin_row@E14000001@2025"}]
     for level, withheld in (
         ("national", True),
         ("region", True),
         ("brma", True),
         ("statistical_scope", True),
-        ("constituency", False),
-        ("local_authority", False),
-        ("la", False),
+        ("constituency", True),
+        ("local_authority", True),
+        ("la", True),
     ):
         found = uk_withheld_rows(
-            problem, np.ones(n), frame, rows, {"thin_row@2025": level}
+            problem, np.ones(n), frame, rows, {"thin_row@E14000001@2025": level}
         )
-        assert (found == {"thin_row@2025"}) is withheld, level
+        assert (found == {"thin_row@E14000001@2025"}) is withheld, level
 
 
 def _withheld_sets(
@@ -1444,6 +1444,7 @@ def _withheld_sets(
     n: int,
     values: dict[str, float | list[float]] | None = None,
     sources: list[float] | None = None,
+    levels: dict[str, str] | None = None,
 ) -> tuple[set[str], set[str]]:
     """``uk_withheld_row_sets`` over rows given by the households that carry them.
 
@@ -1486,7 +1487,7 @@ def _withheld_sets(
         {"household": Weights(np.ones(n), WeightKind.DESIGN)},
     )
     return uk_withheld_row_sets(
-        problem, np.ones(n), frame, [{"name": name} for name in names]
+        problem, np.ones(n), frame, [{"name": name} for name in names], levels
     )
 
 
@@ -2511,7 +2512,9 @@ def test_the_report_guard_refuses_any_mention_of_a_withheld_row(capsys) -> None:
     (key,) = keys
 
     def guard(report):
-        uk_refuse_named_withheld_rows(report, names=names, keys=keys)
+        uk_refuse_named_withheld_rows(
+            report, names=names, keys=keys, areas=frozenset({"S33999999"})
+        )
 
     # Counts, published rows and other areas pass.
     guard(
@@ -2602,3 +2605,80 @@ def test_an_explicit_zero_in_a_brma_row_carries_nothing() -> None:
     assert uk_withheld_brma_rows(problem, weights, frame, rows, levels) == {
         "brma_row@2025"
     }
+
+
+def test_the_local_line_withholds_one_grain_and_area_at_a_time() -> None:
+    """María's ruling of 2026-10-23: thin local rows are withheld, by block.
+
+    In one constituency a family total less its published band gives a thin
+    band back, so the next-smallest band is withheld beside it, as nationally.
+    A thin row in another area is withheld on its own, and no row of one area
+    is withheld for a difference with another's.
+    """
+
+    rows = {
+        "fam.total@E14000001@2025": list(range(30)),
+        "fam.band_1@E14000001@2025": list(range(25)),
+        "fam.band_2@E14000001@2025": list(range(25, 30)),
+        "other.total@E14000002@2025": list(range(30, 35)),
+        "other.total@E14000003@2025": list(range(35, 60)),
+    }
+    levels = {name: "constituency" for name in rows}
+    thin, beside = _withheld_sets(rows, 60, levels=levels)
+    assert thin == {"fam.band_2@E14000001@2025", "other.total@E14000002@2025"}
+    assert beside == {"fam.band_1@E14000001@2025"}
+    # The same rows as one national block would give the same verdict; the
+    # block split changes only which differences are looked for.
+    national = _withheld_sets(rows, 60)
+    assert national == (thin, beside)
+
+
+def test_the_report_guard_matches_a_withheld_local_row_by_its_key(capsys) -> None:
+    """A constituency binds many families, so its bare code names published rows."""
+
+    from microcosm.build.uk_runtime.diagnostics import (
+        UKWithheldRowNamedError,
+        uk_refuse_named_withheld_rows,
+        uk_withheld_gate_areas,
+        uk_withheld_gate_keys,
+    )
+
+    rows = [
+        {
+            "family": "fam",
+            "area_code": "E14000001",
+            "metric": "band_2",
+            "geography_level": "constituency",
+            "model_figures_withheld": True,
+        },
+        {
+            "family": "private_rent",
+            "area_code": "S33999999",
+            "metric": "private_rent_brma",
+            "geography_level": "statistical_scope",
+            "model_figures_withheld": True,
+        },
+        {
+            "family": "other",
+            "area_code": "E14000001",
+            "metric": "total",
+            "geography_level": "constituency",
+        },
+    ]
+    keys = uk_withheld_gate_keys(rows)
+    areas = uk_withheld_gate_areas(rows)
+    assert keys == {"fam/E14000001/band_2", "private_rent/S33999999/private_rent_brma"}
+    assert areas == {"S33999999"}
+
+    def guard(report):
+        uk_refuse_named_withheld_rows(report, names=frozenset(), keys=keys, areas=areas)
+
+    # Another family's published row in the same constituency may be named.
+    guard({"failures": ["other/E14000001/total +30.0%"], "areas": ["E14000001"]})
+    for report in (
+        {"failures": ["fam/E14000001/band_2 +30.0%"]},
+        {"failures": ["S33999999 is beyond the bound"]},
+    ):
+        with pytest.raises(UKWithheldRowNamedError):
+            guard(report)
+        assert "names a withheld row" in capsys.readouterr().err

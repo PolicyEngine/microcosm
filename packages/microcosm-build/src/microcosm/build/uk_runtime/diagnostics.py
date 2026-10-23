@@ -19,6 +19,7 @@ import math
 import sys
 import warnings
 from collections.abc import Collection, Mapping, Sequence
+from dataclasses import dataclass
 from importlib import resources as importlib_resources
 from pathlib import Path
 from types import SimpleNamespace
@@ -971,11 +972,14 @@ def _declared_target_partition(
     return declared, compiled, skipped_names
 
 
-#: The local area levels whose rows the area-support rule governs
-#: (``uk_local_area_support``) rather than the per-row floor below: María's
-#: rule of 2026-10-21 has not been applied to the local line, and the report
-#: guard matches a withheld local row by its bare area code, which suits a
-#: BRMA's one family but not an area that binds many.
+#: The local area levels whose rows the area-support rule binds
+#: (``uk_local_area_support``). Their figures follow the per-row floor below
+#: like every other row's (María's ruling of 2026-10-23 on the local line):
+#: the support rule still decides which local rows bind, the floor which
+#: published figures are withheld. A local surface binds many families in
+#: each area, so its rows are checked one grain and area at a time, and the
+#: report guard matches a withheld local row by its own key, never by its
+#: bare area code as it does a BRMA's one family.
 UK_AREA_SUPPORT_LEVELS = frozenset({"constituency", "local_authority"})
 
 
@@ -1009,64 +1013,121 @@ def _row_level(geography_levels: Mapping[str, object] | None):
     return level
 
 
-def _scoped_rows(
-    problem: Any,
-    weights: Sequence[float] | np.ndarray,
-    frame: Frame,
+def _row_area(row: Mapping[str, object]) -> str:
+    """A local row's area code: its own field, its metadata's, or its name's."""
+
+    area = str(row.get("area_code") or "").strip()
+    if not area:
+        metadata = row.get("metadata")
+        if isinstance(metadata, Mapping):
+            area = str(metadata.get("geography_id") or "").strip()
+    if not area:
+        # Local row names are ``target_id@area_code@period``.
+        parts = str(row["name"]).split("@")
+        area = parts[-2] if len(parts) >= 3 else ""
+    if not area:
+        raise ValueError(f"UK local row {row['name']!r} names no area.")
+    return area
+
+
+def _row_blocks(
     target_rows: Sequence[Mapping[str, object]],
     geography_levels: Mapping[str, object] | None,
-) -> tuple[list[str], sparse.csr_matrix, np.ndarray, np.ndarray, np.ndarray]:
-    """The rows the per-row floor governs, sorted, over the positive-weight households.
+) -> list[list[str]]:
+    """The rows each withholding check spans, sorted.
 
-    Returns their names, their problem rows (stored zeros dropped: a household
-    with a zero entry does not carry the row), those households' source ids,
-    each row's distinct source households and each row's floor.
+    The national, regional and BRMA rows form one block, as one span holds
+    them. A local surface is too large for one dense span and binds many
+    families in each area, so its rows form one block per grain and area
+    (María's ruling of 2026-10-23 on the local line); a difference that runs
+    across areas or grains is outside this check.
     """
 
     level = _row_level(geography_levels)
-    names = sorted(
-        {
-            str(row["name"])
-            for row in target_rows
-            if level(str(row["name"])) not in UK_AREA_SUPPORT_LEVELS
-        }
-    )
-    if not names:
-        empty = np.zeros(0)
-        return [], sparse.csr_matrix((0, 0)), empty, empty, empty
-    household = frame.table("household")
-    if "source_household_id" not in household.columns:
-        raise ValueError(
-            "UK diagnostics need household source_household_id to count each "
-            "row's carriers."
+    national: set[str] = set()
+    local: dict[tuple[str, str], set[str]] = {}
+    for row in target_rows:
+        name = str(row["name"])
+        grain = level(name)
+        if grain in UK_AREA_SUPPORT_LEVELS:
+            local.setdefault((grain, _row_area(row)), set()).add(name)
+        else:
+            national.add(name)
+    blocks = [sorted(national)] if national else []
+    blocks.extend(sorted(names) for _, names in sorted(local.items()))
+    return blocks
+
+
+@dataclass(frozen=True)
+class _CarrierSpan:
+    """The problem's rows over its positive-weight households, sliced once."""
+
+    matrix: sparse.csr_matrix
+    sources: np.ndarray
+    index: Mapping[str, int]
+    level: Any
+
+    @classmethod
+    def build(
+        cls,
+        problem: Any,
+        weights: Sequence[float] | np.ndarray,
+        frame: Frame,
+        geography_levels: Mapping[str, object] | None,
+    ) -> _CarrierSpan:
+        household = frame.table("household")
+        if "source_household_id" not in household.columns:
+            raise ValueError(
+                "UK diagnostics need household source_household_id to count each "
+                "row's carriers."
+            )
+        sources = household["source_household_id"].to_numpy()
+        positive = np.asarray(weights, dtype=float) > 0
+        if positive.shape != sources.shape:
+            raise ValueError("UK row carriers need one weight per household.")
+        matrix = sparse.csr_matrix(
+            sparse.csr_matrix(problem.matrix)[:, np.flatnonzero(positive)]
         )
-    sources = household["source_household_id"].to_numpy()
-    positive = np.asarray(weights, dtype=float) > 0
-    if positive.shape != sources.shape:
-        raise ValueError("UK row carriers need one weight per household.")
-    index = {str(name): position for position, name in enumerate(problem.names)}
-    for name in names:
-        if name not in index:
-            raise ValueError(f"UK target diagnostic {name!r} has no problem row.")
-    matrix = sparse.csr_matrix(problem.matrix)[[index[name] for name in names]]
-    matrix = sparse.csr_matrix(matrix[:, np.flatnonzero(positive)])
-    matrix.eliminate_zeros()
-    sources = sources[positive]
-    carriers = np.array(
-        [
-            len(pd.unique(sources[matrix.indices[start:stop]]))
-            for start, stop in zip(matrix.indptr[:-1], matrix.indptr[1:], strict=True)
-        ]
-    )
-    floors = np.array(
-        [
-            UK_BRMA_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS
-            if level(name) == "brma"
-            else UK_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS
-            for name in names
-        ]
-    )
-    return names, matrix, sources, carriers, floors
+        matrix.eliminate_zeros()
+        return cls(
+            matrix=matrix,
+            sources=sources[positive],
+            index={str(name): position for position, name in enumerate(problem.names)},
+            level=_row_level(geography_levels),
+        )
+
+    def rows(
+        self, names: Sequence[str]
+    ) -> tuple[list[str], sparse.csr_matrix, np.ndarray, np.ndarray, np.ndarray]:
+        """One block's rows (stored zeros dropped: a household with a zero entry
+        does not carry the row), the households' source ids, each row's
+        distinct source households and each row's floor."""
+
+        names = list(names)
+        if not names:
+            empty = np.zeros(0)
+            return [], sparse.csr_matrix((0, 0)), empty, empty, empty
+        for name in names:
+            if name not in self.index:
+                raise ValueError(f"UK target diagnostic {name!r} has no problem row.")
+        matrix = sparse.csr_matrix(self.matrix[[self.index[name] for name in names]])
+        carriers = np.array(
+            [
+                len(pd.unique(self.sources[matrix.indices[start:stop]]))
+                for start, stop in zip(
+                    matrix.indptr[:-1], matrix.indptr[1:], strict=True
+                )
+            ]
+        )
+        floors = np.array(
+            [
+                UK_BRMA_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS
+                if self.level(name) == "brma"
+                else UK_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS
+                for name in names
+            ]
+        )
+        return names, matrix, self.sources, carriers, floors
 
 
 def uk_thin_rows(
@@ -1078,11 +1139,11 @@ def uk_thin_rows(
 ) -> set[str]:
     """The rows whose model figures rest on fewer than ten source households.
 
-    National, regional and BRMA rows: María's rule of 2026-10-21 binds a row
-    however few households carry it, and keeps its figures in the build, as
-    BRMA rows' have been kept since her ruling of 2026-10-17. A row whose
-    level in ``geography_levels`` is a constituency or a local authority is
-    left to the area-support rule (``UK_AREA_SUPPORT_LEVELS``). ``problem`` is
+    Every row: María's rule of 2026-10-21 binds a row however few households
+    carry it, and keeps its figures in the build, as BRMA rows' have been
+    kept since her ruling of 2026-10-17; her ruling of 2026-10-23 extends the
+    withholding to constituency and local-authority rows, whose binding the
+    area-support rule still decides (``UK_AREA_SUPPORT_LEVELS``). ``problem`` is
     the numerical problem the rows were scored on (its ``matrix`` and
     ``names``) and ``weights`` the weights they were scored at. A row's
     carriers are the distinct ``source_household_id`` values of the
@@ -1090,14 +1151,19 @@ def uk_thin_rows(
     area support counts them.
     """
 
-    names, _, _, carriers, floors = _scoped_rows(
-        problem, weights, frame, target_rows, geography_levels
-    )
-    return {
-        name
-        for name, count, floor in zip(names, carriers, floors, strict=True)
-        if count < floor
-    }
+    blocks = _row_blocks(target_rows, geography_levels)
+    if not blocks:
+        return set()
+    span = _CarrierSpan.build(problem, weights, frame, geography_levels)
+    thin: set[str] = set()
+    for block in blocks:
+        names, _, _, carriers, floors = span.rows(block)
+        thin.update(
+            name
+            for name, count, floor in zip(names, carriers, floors, strict=True)
+            if count < floor
+        )
+    return thin
 
 
 def uk_withheld_row_sets(
@@ -1127,14 +1193,35 @@ def uk_withheld_row_sets(
     the UC family total less its bound bands gives back the unbound band
     above GBP 2,500 a month, which is no row and may rest on a handful of
     households. What neither check sees is set out in :class:`_ResidualCheck`.
-    Constituency and authority rows stay outside, as they stay outside the
-    per-row floor: whether a local row can give back a national one is part
-    of the local-line ruling still owed.
+    Both checks run per block (:func:`_row_blocks`; María's ruling of
+    2026-10-23): the national, regional and BRMA rows together, and the
+    constituency and local-authority rows one grain and area at a time, so a
+    local family total less its published local bands is caught, and a
+    difference across areas or against a national row is not.
     """
 
-    names, matrix, sources, carriers, floors = _scoped_rows(
-        problem, weights, frame, target_rows, geography_levels
-    )
+    blocks = _row_blocks(target_rows, geography_levels)
+    if not blocks:
+        return set(), set()
+    span = _CarrierSpan.build(problem, weights, frame, geography_levels)
+    thin: set[str] = set()
+    complementary: set[str] = set()
+    for block in blocks:
+        block_thin, block_complementary = _withheld_in_block(*span.rows(block))
+        thin |= block_thin
+        complementary |= block_complementary
+    return thin, complementary
+
+
+def _withheld_in_block(
+    names: list[str],
+    matrix: sparse.csr_matrix,
+    sources: np.ndarray,
+    carriers: np.ndarray,
+    floors: np.ndarray,
+) -> tuple[set[str], set[str]]:
+    """One block's thin rows and the published rows withheld beside them."""
+
     thin = {
         name
         for name, count, floor in zip(names, carriers, floors, strict=True)
@@ -1929,6 +2016,30 @@ def uk_withheld_gate_keys(rows: object) -> frozenset[str]:
     )
 
 
+def uk_withheld_gate_areas(rows: object) -> frozenset[str]:
+    """The bare area codes of withheld BRMA rows, for the report guard.
+
+    One family binds per BRMA, so a BRMA's area code names its row. A
+    constituency or local authority binds many families, so its code names
+    published rows too, and its withheld rows are matched by their keys alone
+    (María's ruling of 2026-10-23 on the local line).
+    """
+
+    records = rows.to_dict(orient="records") if hasattr(rows, "to_dict") else rows
+    return frozenset(
+        str(row.get("area_code", "")).strip()
+        for row in records or ()
+        if isinstance(row, Mapping)
+        and uk_withheld_flag(row.get("model_figures_withheld"))
+        and _GEOGRAPHY_LEVEL_ALIASES.get(
+            str(row.get("geography_level", "")).strip().lower(),
+            str(row.get("geography_level", "")).strip().lower(),
+        )
+        == "brma"
+        and str(row.get("area_code", "")).strip()
+    )
+
+
 def uk_withhold_brma_figures(
     rows: Sequence[Mapping[str, object]],
     withheld: frozenset[str],
@@ -1975,7 +2086,11 @@ class UKWithheldRowNamedError(ValueError):
 
 
 def uk_refuse_named_withheld_rows(
-    payload: object, *, names: frozenset[str], keys: frozenset[str]
+    payload: object,
+    *,
+    names: frozenset[str],
+    keys: frozenset[str],
+    areas: frozenset[str] = frozenset(),
 ) -> None:
     """Fail closed if a written gate report names a withheld row at all.
 
@@ -1987,12 +2102,14 @@ def uk_refuse_named_withheld_rows(
     leaves it. The error's message is constant; the place goes to this
     machine's stderr only.
 
-    It matches literal text, and a bare area code: one family is bound per
-    BRMA today, and a second would stop the build on its published rows
-    until the guard matched each withheld row's own keys instead.
+    It matches literal text: each withheld row's name and gate key, and the
+    bare area codes in ``areas``, which are those of withheld BRMA rows only
+    (:func:`uk_withheld_gate_areas`). One family is bound per BRMA, so its
+    code names its row; a constituency or local authority binds many, so a
+    withheld local row is matched by its key and a published row of the same
+    area may be named (María's ruling of 2026-10-23 on the local line).
     """
 
-    areas = {key.split("/")[1] for key in keys if key.count("/") >= 2}
     labels = {label.casefold() for label in (*names, *keys, *areas) if label}
     if not labels:
         return
