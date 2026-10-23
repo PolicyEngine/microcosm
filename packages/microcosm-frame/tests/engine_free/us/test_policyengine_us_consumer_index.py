@@ -961,7 +961,11 @@ def test_override_table_get_resolves_each_parameter_key_exactly(
 
 
 def test_single_argument_get_still_fails_closed(tmp_path: Path) -> None:
-    """``mapping.get(key)`` yields ``None`` on a miss, which is not modeled."""
+    """``mapping.get(key)`` with a key read from the engine still fails closed.
+
+    A one-argument miss is modeled as ``None`` only for exact keys; a key the
+    engine computes at run time names no table entry statically.
+    """
 
     with pytest.raises(RuntimeError, match="Unresolved dynamic"):
         _index(

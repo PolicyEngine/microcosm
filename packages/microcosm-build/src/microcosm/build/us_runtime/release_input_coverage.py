@@ -733,7 +733,13 @@ def _ecps_populated_layers() -> frozenset[str]:
             f"{_ECPS_PARITY_REFERENCE_RESOURCE}: 'nonzero_shares' must be a "
             "non-empty JSON object."
         )
-    historical = {str(name) for name, share in shares.items() if float(share) > 0.0}
+    # A layer whose engine input the pinned engine retired is not a
+    # requirement; its live successor is graded in its place.
+    historical = {
+        str(name)
+        for name, share in shares.items()
+        if float(share) > 0.0 and str(name) not in REFERENCE_ECPS_RETIRED_LAYERS
+    }
     projected = {REFERENCE_ECPS_LAYER_RENAMES.get(name, name) for name in historical}
     if len(projected) != len(historical):
         raise ValueError(

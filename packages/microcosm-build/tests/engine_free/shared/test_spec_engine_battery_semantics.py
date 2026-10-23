@@ -55,9 +55,9 @@ def test_battery_registry_views_match_live_registry(
     assert views["required_scalar_targets"] == 134
     assert views["required_joint_targets"] == 1
     assert views["metric_counts"] == {
-        "boolean_incidence": 51,
+        "boolean_incidence": 52,
         "categorical_tvd": 4,
-        "monetary_sign_separated": 79,
+        "monetary_sign_separated": 78,
     }
 
 
