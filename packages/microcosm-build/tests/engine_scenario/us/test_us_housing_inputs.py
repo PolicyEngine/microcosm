@@ -68,5 +68,9 @@ def test_policyengine_us_live_housing_take_up_neutralization() -> None:
     neutralized = Simulation(situation=situation, reform=_build_reform(probe))
 
     assert baseline.calculate("is_eligible_for_housing_assistance", 2024)[0]
-    assert baseline.calculate("housing_assistance", 2024)[0] == pytest.approx(11_975)
+    # policyengine-us 2.60.4 adds LACDA's utility allowance to gross rent
+    # ($271 a month for a one-bedroom in county 06037; 2.2.1 had none):
+    # $12,000 rent + $3,252 allowance - $25 minimum rent.
+    assert baseline.calculate("hud_utility_allowance", 2024)[0] == pytest.approx(3_252)
+    assert baseline.calculate("housing_assistance", 2024)[0] == pytest.approx(15_227)
     assert neutralized.calculate("housing_assistance", 2024)[0] == 0
