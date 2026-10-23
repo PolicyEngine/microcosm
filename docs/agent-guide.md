@@ -305,6 +305,18 @@ against both H5 files. The publisher refuses to point `latest.json` at this
 child, so publish it with `--no-latest --tag-only`. See
 [the reported-receipt runbook](us-reported-receipt-source-enrichment.md).
 
+`compatibility_recertification` is a separate release type
+(`microcosm.data.compatibility_recertification`,
+`tools/build_us_compatibility_recertification.py`): a published US
+calibration release, republished byte for byte with a measured claim for a
+newer policyengine-us. Its parent identity is the parent's own published
+`release_manifest.json`, carried and hashed, never a code constant; the
+publisher checks the parent tag on the Hub before any upload. A change in
+what the tested engine reads or ignores must have an entry in
+`RECERTIFICATION_COLUMN_CHANGES`. It takes `--compatibility-wheel` and no
+`--parent-h5`. National parents only for now. See
+[the recertification runbook](us-compatibility-recertification.md).
+
 Three US release seams refuse a stored column that is lowercase snake_case,
 not a variable of the engine the release is certified against, and not in the
 reviewed register `microcosm.data.stored_inputs.US_STORED_NON_VARIABLE_COLUMNS`
