@@ -1,6 +1,5 @@
 """Offline regression tests for the certification orchestration safeguards."""
 
-import importlib.util
 import io
 import json
 import os
@@ -13,13 +12,8 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-SPEC = importlib.util.spec_from_file_location(
-    "certify_runner",
-    Path(__file__).resolve().parents[1] / "tools/certify_uk_cut_in_policyengine_py.py",
-)
-runner = importlib.util.module_from_spec(SPEC)
-sys.modules[SPEC.name] = runner
-SPEC.loader.exec_module(runner)
+from tools import certify_uk_cut_in_policyengine_py as runner
+
 TAG = "microcosm-uk-2024-25-national-20261023T075039Z-a133f37a"
 
 

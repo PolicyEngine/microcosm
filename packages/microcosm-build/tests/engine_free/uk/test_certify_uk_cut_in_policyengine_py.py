@@ -5,9 +5,8 @@ from __future__ import annotations
 import argparse
 
 import pytest
-from hypothesis import given
+from hypothesis import given, settings
 from hypothesis import strategies as st
-
 from tools import certify_uk_cut_in_policyengine_py as handoff
 
 NATIONAL = "microcosm-uk-2024-25-national-20261021T195620Z-a858c100"
@@ -101,6 +100,7 @@ def test_the_regional_tag_is_rewritten_only_as_a_literal(tmp_path):
     old=st.from_regex(r"[a-z0-9.\-]{3,20}", fullmatch=True),
     new=st.from_regex(r"[a-z0-9.\-]{3,20}", fullmatch=True),
 )
+@settings(deadline=None)  # This property performs file I/O on a shared build host.
 def test_the_rewrite_is_a_bijection_on_literals(tmp_path_factory, old, new):
     """Rewriting old->new then new->old restores a file of quoted literals."""
 
@@ -138,6 +138,14 @@ def test_the_pr_body_leaves_every_judgment_to_a_person():
             "dropped_overlays": ["enhanced_frs_2024_25"],
             "warnings": ["regional release: certifying on a claim"],
             "tests_failed": ["tests/test_models.py::test_x"],
+            "uc_floor_receipt": {
+                "check": "uk_uc_floor",
+                "passed": False,
+                "measures": [
+                    {"name": "benefit_units", "ratio": 0.8, "passed": False},
+                    {"name": "spend", "ratio": 0.95, "passed": True},
+                ],
+            },
         }
     )
     for needed in (
@@ -162,7 +170,14 @@ def test_a_dry_run_refuses_an_uncovered_dense_cut_before_writing(monkeypatch, tm
         "2.132.6": {"all": ["a", "b", "f"], "inputs": ["a", "b"]},
         "2.134.4": {"all": ["a", "b", "f", "n"], "inputs": ["a", "b", "f", "n"]},
     }
-    monkeypatch.setattr(handoff, "model_surface", lambda version: surfaces[version])
+
+    def model_surface(version, core_version=None, **kwargs):
+        assert core_version == "3.33.3"
+        assert kwargs["resource_root"] == tmp_path
+        assert kwargs["timings"].suffix == ".jsonl"
+        return surfaces[version]
+
+    monkeypatch.setattr(handoff, "model_surface", model_surface)
     monkeypatch.setattr(
         handoff.subprocess,
         "run",
@@ -172,14 +187,20 @@ def test_a_dry_run_refuses_an_uncovered_dense_cut_before_writing(monkeypatch, tm
         '{"data_releases": {"uk": {"regional_source_manifest_uri": '
         f'"{handoff.manifest_uri(DENSE, handoff.DENSE_RELEASE)}"}}}}}}'
     )
-    real_check_output = handoff.subprocess.check_output
-    monkeypatch.setattr(
-        handoff.subprocess,
-        "check_output",
-        lambda argv, **k: (
-            bundle if argv[:2] == ["git", "show"] else real_check_output(argv, **k)
-        ),
-    )
+    base_commit = "b" * 40
+
+    def check_output(argv, **kwargs):
+        if argv[:2] == ["git", "show"]:
+            assert (
+                argv[2] == f"{base_commit}:src/policyengine/data/bundle/manifest.json"
+            )
+            return bundle
+        if argv == ["git", "rev-parse", "HEAD"]:
+            return "a" * 40
+        assert argv == ["git", "rev-parse", "--verify", "origin/main^{commit}"]
+        return base_commit
+
+    monkeypatch.setattr(handoff.subprocess, "check_output", check_output)
     args = handoff.parse(
         ["--national-tag", NATIONAL, "--keep-regional-release", "--dry-run",
          "--pepy-repo", str(tmp_path)]
