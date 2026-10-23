@@ -587,7 +587,7 @@
         {
           "assignment_unit": "person",
           "draw": "max_free_entitlement_hours_used",
-          "eligibility": "children of whole-year age 0 in copy benefit units that claim the working-parent hours, against the copy's re-drawn would_claim_extended_childcare; native persons keep their frs_take_up draws",
+          "eligibility": "children of DfE age 0 in copy benefit units that claim the working-parent hours, against the copy's re-drawn would_claim_extended_childcare; native persons keep their frs_take_up draws",
           "kind": "assign_binary_from_rate",
           "output": "max_free_entitlement_hours_used",
           "rate_derivation": "as in frs_take_up, keyed on the copy's own person_id",
@@ -597,7 +597,7 @@
         {
           "assignment_unit": "person",
           "draw": "max_free_entitlement_hours_used",
-          "eligibility": "children of whole-year age 1 in copy benefit units that claim the working-parent hours, against the copy's re-drawn would_claim_extended_childcare; native persons keep their frs_take_up draws",
+          "eligibility": "children of DfE age 1 in copy benefit units that claim the working-parent hours, against the copy's re-drawn would_claim_extended_childcare; native persons keep their frs_take_up draws",
           "kind": "assign_binary_from_rate",
           "output": "max_free_entitlement_hours_used",
           "rate_derivation": "as in frs_take_up, keyed on the copy's own person_id",
@@ -2344,7 +2344,7 @@
         "maximum_extended_childcare_hours_usage",
         "max_free_entitlement_hours_used"
       ],
-      "notes": "Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only. The Universal Credit draw's population is the benefit units with a UC claimant or partner (is_uc_claimant) aged 18 or over and under Pension Credit qualifying age (66 for everyone who can reach it in this release), the age and role conditions of policyengine-uk 2.147.2's is_uc_eligible; the engine lockstep test pins it and names the three engine cases not mirrored (16- and 17-year-old claimants under the UC Regs 2013 reg 8 exceptions, mixed-age couples on the Pension Credit route, and from 2.128.0 pension-age families moved onto Universal Credit when their legacy benefit closes, SI 2014/1230 reg 60A). So the contract rate is a share of those units, an anchor outside them stays true, and any other unit is never drawn; a unit with no claimant or partner of that age keeps its reported Housing Benefit, which a claim it cannot make no longer zeroes (#882, microcosm#867, microcosm#1095). The universal childcare flag is nested under the working-parent one. A unit that claims the extended hours claims the universal hours, and any other unit claims them at the contract's universal_childcare rate, the rate conditional on not claiming the extended hours; the extended draw is unchanged. childcare_copy_take_up later re-draws the childcare flags and hours of the support and CGT copies on their own benefit units. A child of whole-year age 0 or 1 in a unit that claims the working-parent hours uses them at its age's contract rate, extended_childcare_age_0_usage or extended_childcare_age_1_usage (DfE registers far fewer of the youngest eligible children than of those aged 2 to 4, and fewer at 9 to 11 months than at age 1); a child that does not gets max_free_entitlement_hours_used 0, so the engine funds it no hours, and every other person keeps the engine's default of 30.",
+      "notes": "Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only. The Universal Credit draw's population is the benefit units with a UC claimant or partner (is_uc_claimant) aged 18 or over and under Pension Credit qualifying age (66 for everyone who can reach it in this release), the age and role conditions of policyengine-uk 2.147.2's is_uc_eligible; the engine lockstep test pins it and names the three engine cases not mirrored (16- and 17-year-old claimants under the UC Regs 2013 reg 8 exceptions, mixed-age couples on the Pension Credit route, and from 2.128.0 pension-age families moved onto Universal Credit when their legacy benefit closes, SI 2014/1230 reg 60A). So the contract rate is a share of those units, an anchor outside them stays true, and any other unit is never drawn; a unit with no claimant or partner of that age keeps its reported Housing Benefit, which a claim it cannot make no longer zeroes (#882, microcosm#867, microcosm#1095). The universal childcare flag is nested under the working-parent one. A unit that claims the extended hours claims the universal hours, and any other unit claims them at the contract's universal_childcare rate, the rate conditional on not claiming the extended hours; the extended draw is unchanged. childcare_copy_take_up later re-draws the childcare flags and hours of the support and CGT copies on their own benefit units. A child of DfE age 0 or 1 (its age on 31 December of the fit's model year, the age DfE counts by) in a unit that claims the working-parent hours uses them at its age's contract rate, extended_childcare_age_0_usage or extended_childcare_age_1_usage (DfE registers far fewer of the youngest eligible children than of those aged 2 to 4, and fewer at 9 to 11 months than at age 1); a child that does not gets max_free_entitlement_hours_used 0, so the engine funds it no hours, and every other person keeps the engine's default of 30.",
       "operations": [
         {
           "aggregates": {
@@ -2453,20 +2453,20 @@
         {
           "assignment_unit": "person",
           "draw": "max_free_entitlement_hours_used",
-          "eligibility": "persons of whole-year age 0 in benefit units that claim the working-parent hours (would_claim_extended_childcare)",
+          "eligibility": "persons of DfE age 0 in benefit units that claim the working-parent hours (would_claim_extended_childcare)",
           "kind": "assign_binary_from_rate",
           "output": "max_free_entitlement_hours_used",
-          "rate_derivation": "a child of whole-year age 0 in a claiming unit uses the working-parent hours where u < its age's rate and gets max_free_entitlement_hours_used 0 otherwise; every other person keeps the engine's default of 30; one draw per person serves both ages' operations",
+          "rate_derivation": "a child of DfE age 0 in a claiming unit uses the working-parent hours where u < its age's rate and gets max_free_entitlement_hours_used 0 otherwise; every other person keeps the engine's default of 30; one draw per person serves both ages' operations",
           "rate_key": "extended_childcare_age_0_usage",
           "seed": 0
         },
         {
           "assignment_unit": "person",
           "draw": "max_free_entitlement_hours_used",
-          "eligibility": "persons of whole-year age 1 in benefit units that claim the working-parent hours (would_claim_extended_childcare)",
+          "eligibility": "persons of DfE age 1 in benefit units that claim the working-parent hours (would_claim_extended_childcare)",
           "kind": "assign_binary_from_rate",
           "output": "max_free_entitlement_hours_used",
-          "rate_derivation": "a child of whole-year age 1 in a claiming unit uses the working-parent hours where u < its age's rate and gets max_free_entitlement_hours_used 0 otherwise; every other person keeps the engine's default of 30; one draw per person serves both ages' operations",
+          "rate_derivation": "a child of DfE age 1 in a claiming unit uses the working-parent hours where u < its age's rate and gets max_free_entitlement_hours_used 0 otherwise; every other person keeps the engine's default of 30; one draw per person serves both ages' operations",
           "rate_key": "extended_childcare_age_1_usage",
           "seed": 0
         }

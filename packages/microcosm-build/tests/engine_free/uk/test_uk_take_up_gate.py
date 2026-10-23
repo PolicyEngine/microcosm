@@ -61,6 +61,7 @@ def _frame(*, brma_values=("LONDON_A", "LONDON_B")):
             "person_benunit_id": [*range(201, 201 + n), 201, 203, 202, 204],
             "person_household_id": [*household_ids, 1, 3, 2, 4],
             "age": [30, 40] * 5 + [0, 1, 0, 1],
+            "months_since_last_birthday": [0.0] * (n + 4),
             "is_uc_claimant": [True] * n + [False] * 4,
         }
     )

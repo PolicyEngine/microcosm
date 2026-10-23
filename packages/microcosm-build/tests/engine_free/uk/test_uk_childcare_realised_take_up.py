@@ -45,6 +45,7 @@ def _tables(units: int = 30, high_pay: int = 3):
             "person_benunit_id": np.concatenate([ids, ids]),
             "person_household_id": np.concatenate([ids, ids]),
             "age": np.concatenate([np.full(units, 35), np.full(units, 1)]),
+            "months_since_last_birthday": np.zeros(2 * units),
             "employment_income": np.concatenate(
                 [np.where(ids <= high_pay, 150_000.0, 30_000.0), np.zeros(units)]
             ),

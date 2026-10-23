@@ -45,20 +45,27 @@ def test_under_two_usage_draws_children_in_claiming_units_only() -> None:
         derive_under_two_childcare_usage,
     )
 
+    # The draw keys on the DfE age (31 December): a whole-year age plus one for
+    # a birthday from 7 October, more than about 9.19 months before 6 October.
     person = pd.DataFrame(
         {
-            "person_id": np.arange(1, 4001),
-            "age": np.tile([0, 1, 2, 35], 1000),
+            "person_id": np.arange(1, 6001),
+            "age": np.tile([0, 0, 1, 1, 2, 35], 1000),
+            "months_since_last_birthday": np.tile(
+                [3.0, 11.0, 3.0, 11.0, 3.0, 3.0], 1000
+            ),
         }
     )
-    claiming = np.repeat([True, False], 2000)
+    claiming = np.repeat([True, False], 3000)
     usage = derive_under_two_childcare_usage(
         person, claiming=claiming, contract=_Contract()
     )
     draws = stable_identity_uniforms(
         person["person_id"].to_numpy(), seed=0, salt=UK_UNDER_TWO_USAGE_OUTPUT
     )
-    under_two = person["age"].to_numpy() < 2
+    # DfE ages 0, 1, 1, 2, 2, 35: a child of whole age 1 born from 7 October is
+    # a 2-year-old to DfE and is not drawn.
+    under_two = np.tile([True, True, True, False, False, False], 1000)
     expected = np.where(
         under_two & claiming & (draws >= 0.5), 0.0, UK_ENGINE_FREE_HOURS_DEFAULT
     )

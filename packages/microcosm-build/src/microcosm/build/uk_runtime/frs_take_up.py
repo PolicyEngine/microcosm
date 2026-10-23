@@ -17,6 +17,7 @@ from microcosm.build.stochastic_assignment import (
     clipped_normal_from_uniforms,
     stable_identity_uniforms,
 )
+from microcosm.build.uk_runtime.dfe_spring_term import dfe_age_at_31_december
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_national_frame,
@@ -48,12 +49,13 @@ FRS_TAKE_UP_OUTPUT_COLUMNS = (
 # would fund too many of them. A child that does not use them gets no funded
 # hours from the engine (max_free_entitlement_hours_used 0); every other person
 # keeps the engine's default of 30. The draw is keyed on the person (seed 0,
-# salt the output) at the rate of the child's whole-year age (0 or 1);
+# salt the output) at the rate of the child's DfE age (0 or 1): its age on 31
+# December of the fit's model year, the age DfE counts registrations by;
 # ``childcare_copy_take_up`` re-draws the copies' children against their own
 # unit's flag. The stage manifest declares one operation per age;
 # ``assert_under_two_usage_declaration`` refuses a manifest that drops either.
 UK_UNDER_TWO_USAGE_OUTPUT = "max_free_entitlement_hours_used"
-#: The usage rate's contract key by whole-year age.
+#: The usage rate's contract key by DfE age (``dfe_age_at_31_december``).
 UK_UNDER_TWO_USAGE_KEYS = {
     0: "extended_childcare_age_0_usage",
     1: "extended_childcare_age_1_usage",
@@ -307,7 +309,7 @@ def assert_under_two_usage_declaration(stage: SourceStageSpec) -> None:
     ):
         raise ValueError(
             f"stage {stage.stage!r} must declare one {UK_UNDER_TWO_USAGE_OUTPUT!r} "
-            "operation per whole-year age with assignment_unit person and the rate "
+            "operation per DfE age with assignment_unit person and the rate "
             f"keys {sorted(UK_UNDER_TWO_USAGE_KEYS.values())!r}; the code draws "
             f"whether each child under {UK_UNDER_TWO_AGE} in a unit claiming the "
             "working-parent hours uses them at its age's rate and refuses a "
@@ -524,25 +526,36 @@ def person_unit_flag(
     return mapped.to_numpy(dtype=bool)
 
 
-def under_two_children(person: pd.DataFrame) -> np.ndarray:
-    """Persons of whole-year age under ``UK_UNDER_TWO_AGE``."""
+def person_dfe_age(person: pd.DataFrame) -> np.ndarray:
+    """Each person's DfE age at the fit's model year, from the stored age and
+    months since the last birthday, as the engine places the date of birth."""
 
-    if "age" not in person.columns:
-        raise KeyError("person.age is missing; the under-2 usage draw needs it")
-    age = pd.to_numeric(person["age"], errors="coerce")
-    if age.isna().any():
-        raise ValueError("person.age must be numeric for the under-2 usage draw")
-    return age.to_numpy(dtype=float) < UK_UNDER_TWO_AGE
+    columns = {}
+    for name in ("age", "months_since_last_birthday"):
+        if name not in person.columns:
+            raise KeyError(f"person.{name} is missing; the under-2 usage draw needs it")
+        values = pd.to_numeric(person[name], errors="coerce")
+        if values.isna().any():
+            raise ValueError(
+                f"person.{name} must be numeric for the under-2 usage draw"
+            )
+        columns[name] = values.to_numpy(dtype=float)
+    return dfe_age_at_31_december(columns["age"], columns["months_since_last_birthday"])
+
+
+def under_two_children(person: pd.DataFrame) -> np.ndarray:
+    """Persons of DfE age under ``UK_UNDER_TWO_AGE``."""
+
+    return person_dfe_age(person) < UK_UNDER_TWO_AGE
 
 
 def under_two_usage_rates(
     person: pd.DataFrame, contract: UKTakeUpContract
 ) -> np.ndarray:
-    """Each person's usage rate by whole-year age (age 1's rate from 1 up)."""
+    """Each person's usage rate by DfE age (age 1's rate from 1 up)."""
 
-    age = pd.to_numeric(person["age"], errors="coerce").to_numpy(dtype=float)
     return np.where(
-        age < 1,
+        person_dfe_age(person) < 1,
         contract.rate(UK_UNDER_TWO_USAGE_KEYS[0]),
         contract.rate(UK_UNDER_TWO_USAGE_KEYS[1]),
     )
@@ -553,8 +566,8 @@ def derive_under_two_childcare_usage(
 ) -> np.ndarray:
     """``max_free_entitlement_hours_used`` for every person in ``person``.
 
-    A child under 2 whose unit claims the working-parent hours uses them where
-    its draw (keyed on ``person_id``) falls under its whole-year age's usage
+    A child of DfE age under 2 whose unit claims the working-parent hours uses them where
+    its draw (keyed on ``person_id``) falls under its DfE age's usage
     rate and gets 0 hours otherwise; every other person keeps the engine's
     default.
     """

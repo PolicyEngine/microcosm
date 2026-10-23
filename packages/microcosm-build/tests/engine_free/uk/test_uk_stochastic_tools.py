@@ -95,7 +95,7 @@ def test_childcare_fit_receipt_is_deterministic_with_seeded_runner(
     assert set(first["params"]) == set(tool.RATE_KEYS)
     assert len(first["params"]) == 6
     assert set(first["achieved"]) == set(tool.TARGET_IDS)
-    assert first["tool_version"] == 6
+    assert first["tool_version"] == 7
     assert first["expectation_basis"] == "dfe_spring_term"
     assert set(first["estimands"]) == set(tool.RATE_KEYS)
     # Vahid's round-2 finding C: the receipt says the Tax-Free Childcare rate
@@ -302,6 +302,7 @@ def test_e4_identity_receipt_survives_permutation_on_synthetic_frame() -> None:
             "person_benunit_id": [10, 10, 20, 30],
             "person_household_id": [1, 1, 1, 2],
             "age": [5, 6, 40, 70],
+            "months_since_last_birthday": [0.0] * 4,
             "is_uc_claimant": [False, False, True, True],
             "child_benefit_reported": [0.0, 10.0, 0.0, 0.0],
             "pension_credit_reported": [0.0, 0.0, 0.0, 5.0],

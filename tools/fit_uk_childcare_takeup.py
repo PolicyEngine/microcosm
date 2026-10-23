@@ -41,12 +41,13 @@ from microcosm.build.uk_runtime.take_up_contract import (
 )
 from microcosm.calibrate import TargetRegistry
 
-TOOL_VERSION = 6
+TOOL_VERSION = 7
 #: The model year the DfE rows are measured in: its spring term (January of
 #: the next calendar year) is the term DfE's January census counts, and from
 #: it working-parent hours reach children from 9 months.
 DEFAULT_TARGET_PERIOD = 2025
-#: The shares of children aged 0 and 1 (whole-year age) who use the hours
+#: The shares of children of DfE age 0 and 1 (age on 31 December of the model
+#: year, the age DfE counts by; tool version 7) who use the hours
 #: their family's working-parent claim gives them (DfE registers far fewer of
 #: the youngest eligible children than of those aged 2 to 4, and fewer at 9 to
 #: 11 months than at age 1).
@@ -103,10 +104,11 @@ ESTIMANDS = {
     ),
     **{
         key: (
-            f"The share of children of whole-year age {age} who use the hours their "
-            "family's working-parent claim gives them, fitted with the other age's "
-            "share to DfE's working parent registrations at 9 to 11 months and at "
-            "age 1 at the spring term."
+            f"The share of children of DfE age {age} (age on 31 December of the "
+            "model year) who use the hours their family's working-parent claim "
+            "gives them, fitted with the other age's share to DfE's working "
+            "parent registrations at 9 to 11 months and at age 1 at the spring "
+            "term."
         )
         for age, key in UNDER_TWO_KEYS.items()
     },
@@ -439,7 +441,7 @@ class ChildcareExpectationBasis:
 
     def total(self, side: str, target: str, usage: Mapping[int, float]) -> float:
         """A side's sum with each age's under-2 contributions scaled by its
-        usage share (``usage`` maps whole-year age to share)."""
+        usage share (``usage`` maps DfE age to share)."""
 
         values = getattr(self, side).get(target)
         if values is None:
@@ -624,9 +626,10 @@ def _basis_side(
         ),
     }
     person_rows = np.asarray(sim.calculate("person_id", target_period)).shape[0]
-    whole_age = np.floor(np.asarray(sim.calculate("age", target_period), dtype=float))
+    # The draw keys each child's usage on its DfE age (frs_take_up), so its
+    # contributions split by the same age.
     under_two_rows = {
-        target: {age: values * (whole_age == age) for age in UNDER_TWO_KEYS}
+        target: {age: values * (dfe_age == age) for age in UNDER_TWO_KEYS}
         for target, values in result.items()
         if np.asarray(values).shape[0] == person_rows and target.startswith("dfe.")
     }

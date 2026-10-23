@@ -15,7 +15,7 @@ unweighted and weighted, over:
   self-employment income exceeds £100,000 (a pay proxy, not adjusted net
   income);
 
-and each age's under-2 usage share over the children of that age in units that
+and each DfE age's under-2 usage share over the children of that age in units that
 claim the working-parent hours. Every cell names its carriers as distinct source
 households and reads "<10" in place of its shares when fewer than 10 carry it
 (UKDS disclosure control). The receipt belongs in the run tree; it is never
@@ -40,6 +40,7 @@ from microcosm.build.uk_runtime.frs_take_up import (
     UK_EXTENDED_CHILDCARE_OUTPUT,
     UK_UNDER_TWO_USAGE_KEYS,
     UK_UNDER_TWO_USAGE_OUTPUT,
+    person_dfe_age,
     person_unit_flag,
     under_two_children,
     universal_childcare_marginal_rate,
@@ -145,7 +146,7 @@ def realised_childcare_take_up(
         person, benunit, benunit[UK_EXTENDED_CHILDCARE_OUTPUT].to_numpy()
     )
     uses = person[UK_UNDER_TWO_USAGE_OUTPUT].to_numpy(dtype=float) > 0
-    whole_age = np.floor(age)
+    dfe_age = person_dfe_age(person)
     for child_age, key in UK_UNDER_TWO_USAGE_KEYS.items():
         flags[f"{UK_UNDER_TWO_USAGE_OUTPUT}.age_{child_age}"] = {
             "contract_key": key,
@@ -155,7 +156,7 @@ def realised_childcare_take_up(
                     uses,
                     person_weights,
                     person_sources,
-                    under_two_children(person) & claiming & (whole_age == child_age),
+                    under_two_children(person) & claiming & (dfe_age == child_age),
                 )
             },
         }

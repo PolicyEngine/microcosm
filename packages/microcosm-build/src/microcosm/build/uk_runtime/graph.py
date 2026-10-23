@@ -243,6 +243,9 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             # age (#882, microcosm#1095).
             "age",
             "is_uc_claimant",
+            # The under-2 usage draw keys on the DfE age, from the age and the
+            # months since the last birthday (microcosm#1338).
+            "months_since_last_birthday",
         )
     )
     | frozenset({("benunit", "is_married")}),

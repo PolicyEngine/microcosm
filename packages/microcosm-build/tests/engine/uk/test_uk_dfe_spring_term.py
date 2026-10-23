@@ -248,3 +248,39 @@ def test_a_child_under_two_that_does_not_use_its_hours_gets_none() -> None:
     assert uses[DFE_SPRING_WORKING_PARENT] == 1
     assert does_not["extended_childcare_entitlement_per_child"] == 0
     assert does_not[DFE_SPRING_WORKING_PARENT] == 0
+
+
+def test_the_build_stages_dfe_age_is_the_engines() -> None:
+    """The under-2 usage draw runs without the engine, so it restates the
+    engine's date of birth; it must give the engine's Y - birth_year."""
+
+    from policyengine_uk.utils.dates import (
+        birth_instant_from_age,
+        grid_months_to_yyyymmdd,
+    )
+
+    from microcosm.build.uk_runtime.dfe_spring_term import (
+        dfe_age_at_31_december,
+        engine_birth_year,
+    )
+
+    rng = np.random.default_rng(7)
+    age = rng.integers(0, 6, 20_000).astype(float)
+    months = rng.uniform(0, 12, age.size)
+    # Around the 31 December boundary (a birthday on 7 October, about 9.19
+    # months before 6 October).
+    months[:2_000] = np.linspace(9.18, 9.21, 2_000)
+    for year in (2024, 2025, 2026):
+        engine = (
+            grid_months_to_yyyymmdd(
+                birth_instant_from_age(
+                    year, age.astype(np.float32), months.astype(np.float32)
+                )
+            )
+            // 10_000
+        )
+        np.testing.assert_array_equal(engine_birth_year(age, months, year), engine)
+        np.testing.assert_array_equal(
+            dfe_age_at_31_december(age, months, year),
+            dfe_age_at_31_december(age, months, 2025),
+        )

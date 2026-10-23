@@ -46,15 +46,15 @@ def test_uk_contract_loads_and_selects_build_year_rates() -> None:
         0.6,
         0.55,
         0.5,
-        # The tool-version-6 refit: the DfE rows at the spring term, universal
+        # The tool-version-7 refit: the DfE rows at the spring term, universal
         # nested under working parent (at its lower bound), one usage share per
-        # under-2 age (age 1 at its upper bound).
+        # DfE age under 2 (age 1 at its upper bound).
         0.9697,
-        0.8361,
-        0.698,
+        0.8262,
+        0.6962,
         1.0,
         0.0,
-        0.6547,
+        0.6551,
         0.441,
         0.2682,
         0.97,

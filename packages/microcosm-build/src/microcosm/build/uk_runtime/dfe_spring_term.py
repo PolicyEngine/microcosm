@@ -30,7 +30,11 @@ starts on 1 January of Y + 1:
   claim on their own, or allocation from the gross working-parent hours, as
   the engine allocates them) and replace only that age gate, so they count
   the children DfE counts; they do not change what the engine pays.
-- **DfE age** is ``Y - birth_year``, the age on 31 December Y.
+- **DfE age** is ``Y - birth_year``, the age on 31 December Y. The engine
+  holds a person's age fixed across years and moves the date of birth with
+  the period, so the DfE age is the same at every model year;
+  :func:`dfe_age_at_31_december` restates the engine's date of birth so the
+  build stages, which run without the engine, key on the same age.
 
 The take-up flags and family conditions are annual and apply to the spring
 term unchanged. ``early_years_school_start_deferred`` is not supplied (the
@@ -52,7 +56,10 @@ __all__ = [
     "DFE_SPRING_UNIVERSAL",
     "DFE_SPRING_WORKING_PARENT",
     "UNIVERSAL_WEEKLY_HOURS",
+    "UK_CHILDCARE_FIT_MODEL_YEAR",
+    "dfe_age_at_31_december",
     "dfe_spring_term_status",
+    "engine_birth_year",
 ]
 
 DFE_AGE_AT_31_DECEMBER = "dfe_age_at_31_december"
@@ -85,6 +92,59 @@ _EARLY_LEARNING_DFE_AGE = 2
 #: (SI 2014/2147 regs 4 and 5). A working-parent child aged 3 or 4 is
 #: registered under working parents only if it uses more than these.
 UNIVERSAL_WEEKLY_HOURS = 15.0
+#: The childcare fit's model year (the fitter's target period and the take-up
+#: contract's fitting receipt): its spring term starts in January of the next.
+UK_CHILDCARE_FIT_MODEL_YEAR = 2025
+
+# policyengine-uk 2.147.2 ``utils.dates``, restated so the build stages need no
+# engine: a monthly grid whose months start on the 6th, with 6 October of Y at
+# grid month 12 * Y + 9; ages and months since the last birthday are float32.
+_MONTHS_BEFORE_1970 = 12 * 1970
+_MID_YEAR_GRID_MONTH = 9
+_LATEST_MONTHS_SINCE_BIRTHDAY = 12 - 1e-4
+_MIDNIGHT_TOLERANCE = 1e-3
+
+
+def _sixth_of(grid_months: np.ndarray) -> np.ndarray:
+    since_1970 = (grid_months - _MONTHS_BEFORE_1970).astype("datetime64[M]")
+    return since_1970.astype("datetime64[D]") + np.timedelta64(5, "D")
+
+
+def engine_birth_year(age, months_since_last_birthday, model_year: int) -> np.ndarray:
+    """policyengine-uk's ``birth_year`` at ``model_year`` for people given an
+    age and months since the last birthday and no date of birth
+    (``birth_instant_from_age``, then ``grid_months_to_yyyymmdd``)."""
+
+    age = np.asarray(age, dtype=np.float32).astype(np.float64)
+    months = np.asarray(months_since_last_birthday, dtype=np.float32).astype(np.float64)
+    whole_years = np.floor(age)
+    fraction = age - whole_years
+    exact_months = 12 * whole_years + np.clip(
+        np.where(fraction > 0, 12 * fraction, months),
+        0,
+        _LATEST_MONTHS_SINCE_BIRTHDAY,
+    )
+    instant = 12 * int(model_year) + _MID_YEAR_GRID_MONTH - exact_months
+    whole = np.floor(instant).astype(np.int64)
+    start = _sixth_of(whole)
+    length = (_sixth_of(whole + 1) - start).astype(np.int64)
+    elapsed = np.ceil((instant - whole) * length - _MIDNIGHT_TOLERANCE).astype(np.int64)
+    overflow = elapsed >= length
+    whole = np.where(overflow, whole + 1, whole)
+    elapsed = np.where(overflow, 0, elapsed)
+    day = _sixth_of(whole) + elapsed.astype("timedelta64[D]")
+    return day.astype("datetime64[Y]").astype(np.int64) + 1970
+
+
+def dfe_age_at_31_december(
+    age, months_since_last_birthday, model_year: int = UK_CHILDCARE_FIT_MODEL_YEAR
+) -> np.ndarray:
+    """``Y - birth_year``, as :func:`dfe_spring_term_status` reads it: for a
+    whole age, the age plus one for a birthday from 7 October to 31 December."""
+
+    return int(model_year) - engine_birth_year(
+        age, months_since_last_birthday, model_year
+    )
 
 
 def _spring_term_start(year: int) -> int:

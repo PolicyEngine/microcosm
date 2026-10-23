@@ -107,6 +107,7 @@ def _frame(contract, *, natives: int = _NATIVES):
             "person_benunit_id": ids,
             "person_household_id": ids,
             "age": ages,
+            "months_since_last_birthday": np.zeros(len(ids)),
         }
     )
     benunit = pd.DataFrame(
@@ -126,7 +127,9 @@ def _frame(contract, *, natives: int = _NATIVES):
     # frs_take_up drew each host child's usage keyed on the host's person and
     # unit; the copies inherit it.
     person[UK_UNDER_TWO_USAGE_OUTPUT] = derive_under_two_childcare_usage(
-        pd.DataFrame({"person_id": sources, "age": ages}),
+        pd.DataFrame(
+            {"person_id": sources, "age": ages, "months_since_last_birthday": 0.0}
+        ),
         claiming=inherited["would_claim_extended_childcare"],
         contract=contract,
     )
