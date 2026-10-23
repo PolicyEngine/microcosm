@@ -350,12 +350,12 @@ EXPECTED_HASHES = {
     "acs_person_predictors": "878c788a6f037d7aca12b3586ea034eff04f3034ffa11935a736493042551f25",
     "authority": "9d4a9672a0f03039b1fe874b9fe21ed575be0d29f14afc396d03cdf5c809bdd2",
     "early_families": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd",
-    "full_checkpoint": "72d3250c839cceaf52e6c1d24b70c229513e8eb771948865df16ab1e38142043",
+    "full_checkpoint": "0af421c69e29c23eedd42b1d1e890b8223d637101b8b681e8fa0d07124591b72",
     "gap_fill_schedule": "1c31f9868f7884347cc19cf1ff65da43f950b9114941a715bab168246db414a7",
     "graph_nodes": "40cd51ffdfe2e9d9d08d48c08e8ded9de1e4b134783bab05c4abc6ad5c72ca1e",
     "geography_assignment": "44e7f5f6cd7ceeef85d532c3d46306d03de4f4ee811376e6d29920742746b65c",
     "late_families": "d91f9ff0eb52f43e7b6eed3d5c58c37abe1620c3a11021da15dae9c10e16d382",
-    "late_resource_semantics": "56ee2e0fcaac83d17542e0202aa4e0574ae81463768947a06d16411d035902c6",
+    "late_resource_semantics": "429406ee38dbdcf5d751a86e37004636931b69f772e346fd8c853510ba54b05d",
     "late_schedule": "e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f",
     "ownership": "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356",
     "primary_tuples": "fdf23da429f8c501e198a2f5b719763d523a41565c2153fdf17b0344f21bcd7c",
@@ -369,7 +369,7 @@ EXPECTED_HASHES = {
     # not run, changes its probes, so again no US solve changes.
     "seed_map": "0db599df419dd16779097361dc72afdefb8df2abf8b134078da9c52d31d8e017",
     "seed_protocol": "2b7bdc1d6b0da1bdaf54b4cac29f10f2d3c8bed2e177729c2c89e6b33a099cc5",
-    "source_manifest": "78a2164e5b0c62c7a534c3e53dbd26ba9761804f88f8f0f9c3e7f2d67e33377a",
+    "source_manifest": "ef7ed58e0170f21db8be7812f99251e702bb6b429aae463a80ea0a870c16ced5",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "b3e7289f8107138e23e8d7c9a172285afd2099d45558d253cc369eebe8ba3406",
 }

@@ -26,9 +26,9 @@ from .resolver import (
 )
 from .schemas import load_schema_registry
 
-EXPECTED_AUTHORED_FIELD_COUNT = 32_545
+EXPECTED_AUTHORED_FIELD_COUNT = 32_584
 EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_784
-EXPECTED_CONFIGURATION_FIELD_COUNT = 42_329
+EXPECTED_CONFIGURATION_FIELD_COUNT = 42_368
 
 
 class FieldUsageError(AssertionError):
@@ -485,8 +485,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "d6782c5de5bbed1bdc6bf653c4a6d4aadcad4ccc72d35e1092e130fcb04680a3",
     ),
     "source_stages": (
-        1_845,
-        "4142b1037cddd9621b70eb9677be89510474475d9a705f1cedf7a32d7bf64db8",
+        1_884,
+        "886eca845bf2e67788b19c28aa24459b9e3a5edb5f2d8129fb47d13804eca393",
     ),
     "spine_assembly_household_mass_shares": (
         2,
