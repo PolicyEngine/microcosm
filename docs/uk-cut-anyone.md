@@ -53,9 +53,13 @@ command again.
 
 Nothing is overwritten:
 
-- A half-built spine is left for you to inspect. Rebuilding at the same path
-  would delete it, so pick a new `--label` instead.
+- An unfinished spine attempt is left for you to inspect. The builder
+  deletes a spine's sidecars when it starts, including a gate-blocked
+  attempt's signed report, so a retry needs `--retry-spine`, which moves the
+  whole attempt to `spine.failed-<time>` first.
 - An unfinished national run is moved aside only with `--retry-national`.
+- A score receipt, a certification or a stage-1 comparison that is redone
+  keeps the earlier one as `<name>.superseded-<time>`.
 - An existing release directory is never re-assembled.
 
 Other subcommands:
@@ -114,10 +118,12 @@ modal run --detach tools/modal_uk_cut.py --commit <sha> --label sat24 --run [--p
 
 ## Inputs
 
-`tools/uk_cut_inputs.json` says only *where* each input lives. Every expected
-digest is read at run time from the pins the build already checks:
-`uk/source_stages.json`, `uk/frs_release.json`, `uk/chronicle_feed.json`,
-`uk/gates.json` and `weighted_integrity.py`. A file is installed only if it
+`tools/uk_cut_inputs.json` says where each input lives. Every expected digest
+is read at run time from the pins the build already checks:
+`uk/source_stages.json`, `uk/frs_release.json`, `uk/chronicle_feed.json` and
+`uk/gates.json`. The one exception is the input-mass reference: the build
+binds it by a canonical digest of its contents, so the manifest also carries
+the hosted file's byte sha256. A file is installed only if it
 is byte-identical to what the build will accept, and nothing unverified is
 ever left at an input's path.
 
@@ -296,27 +302,37 @@ There are four routes:
 4. **An enhanced-FRS release that claims the version.** This needs a new
    uk-data release on Max's go.
 
-**Measured cost of route 2** (2026-10-22, from each version's variable list):
+**Measured cost of route 2.** This is measured on the 2.132.6 dense file's
+own columns (2026-10-23), under policyengine-uk 2.147.2. The UK hub's
+rehearsal probe agrees.
 
-- Run the 2.132.6 dense file under policyengine-uk 2.146.4, and no column is
-  dropped on load.
+- No stored column is dropped on load.
 - `pip_dl_category` and `pip_m_category` became formulas in 2.144.0, but the
   file's stored values still load.
-- 13 inputs take their defaults in area runs:
-  - nine new: `defined_benefit_pension_share`, `is_full_year_category_a_director`,
-    `non_residential_property_secured_debt`, `other_residential_property_secured_debt`,
+- 16 inputs take their defaults in area runs, where the build model computed
+  them or did not have them:
+  - `salary_sacrifice_returned_to_income` and `local_bus_uncapped_single_fare`;
+  - the property flags and debts (`additional_residential_property_purchased`,
+    `non_residential_property_purchased`, `non_residential_property_secured_debt`,
+    `other_residential_property_secured_debt`);
+  - pension inputs (`defined_benefit_pension_share`,
     `pension_annual_allowance_taxable_lump_sum_death_benefits`,
-    `pension_contributions_via_salary_sacrifice_pre_2015`, `pip_dl_points`,
-    `pip_m_points` (unused while the stored categories load) and
-    `war_widows_pension_reported`;
-  - four former formulas: `salary_sacrifice_returned_to_income`,
-    `local_bus_uncapped_single_fare`, `additional_residential_property_purchased`
-    and `non_residential_property_purchased`.
+    `pension_contributions_via_salary_sacrifice_pre_2015`);
+  - `directly_held_shares`, `unit_and_investment_trusts`,
+    `early_years_school_start_deferred`, `is_full_year_category_a_director`
+    and `war_widows_pension_reported`;
+  - `pip_dl_points` and `pip_m_points`, unused while the stored categories load.
 - National figures are unaffected. An area breakdown of a reform that works
-  through salary sacrifice, bus fares or those property flags would be wrong.
-- `tools/certify_uk_cut_in_policyengine_py.py` measures this difference
-  whenever a mismatch is accepted. It lists the difference in the pull
-  request, and refuses if any column would be dropped.
+  through any of these inputs would be wrong.
+- `tools/certify_uk_cut_in_policyengine_py.py` measures this whenever a
+  mismatch is accepted:
+  - it downloads the regional microdata at its manifest pin and checks its
+    sha256;
+  - it reads only column names;
+  - it compares them with both models.
+
+  It lists the result in the pull request, and refuses if a stored column
+  would be dropped (unless `--allow-dropped-columns`).
 
 **Recommendation.**
 

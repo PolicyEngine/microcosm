@@ -295,10 +295,13 @@ class HubDownloader:
 
 
 class VerifiedFiles:
-    """Remembers files already hashed, keyed by size and mtime.
+    """Remembers files already hashed, keyed by inode, size, mtime and ctime.
 
-    A file is re-hashed when either changes, or always with ``reverify``;
-    a cache entry never vouches for a file it did not hash.
+    A file is re-hashed when any of these changes, or always with
+    ``reverify``. ``ctime`` moves on every write and on every ``utime`` call
+    and cannot be set back from user space, so replacing a file's bytes and
+    restoring its mtime still invalidates the entry: a cache entry never
+    vouches for bytes it did not hash.
     """
 
     def __init__(self, path: Path, *, reverify: bool = False) -> None:
@@ -309,27 +312,32 @@ class VerifiedFiles:
         except (FileNotFoundError, json.JSONDecodeError):
             self.entries = {}
 
+    @staticmethod
+    def _identity(stat: os.stat_result) -> dict[str, int]:
+        return {
+            "inode": stat.st_ino,
+            "size": stat.st_size,
+            "mtime_ns": stat.st_mtime_ns,
+            "ctime_ns": stat.st_ctime_ns,
+        }
+
     def matches(self, file: Path, pin: PinnedFile) -> bool:
         if not file.is_file():
             return False
         stat = file.stat()
         if pin.size_bytes is not None and stat.st_size != pin.size_bytes:
             return False
-        key = str(file)
+        key = str(file.resolve())
+        identity = self._identity(stat)
         cached = self.entries.get(key)
         if (
             not self.reverify
             and cached is not None
-            and cached.get("size") == stat.st_size
-            and cached.get("mtime_ns") == stat.st_mtime_ns
+            and all(cached.get(field) == value for field, value in identity.items())
         ):
             return cached.get("sha256") == pin.sha256
         digest = _sha256_file(file)
-        self.entries[key] = {
-            "size": stat.st_size,
-            "mtime_ns": stat.st_mtime_ns,
-            "sha256": digest,
-        }
+        self.entries[key] = {**identity, "sha256": digest}
         return digest == pin.sha256
 
     def save(self) -> None:
@@ -1200,18 +1208,46 @@ def _execute(argv: list[str], cwd: Path, log_path: Path) -> int:
         return process.wait()
 
 
-def run_spine(runner: Runner, *, staging_local_only: bool) -> None:
+def _superseded(path: Path) -> Path:
+    """Where a failed attempt's evidence goes when a step is retried."""
+
+    return path.with_name(
+        f"{path.name}.superseded-{datetime.now(UTC):%Y%m%dT%H%M%S%fZ}"
+    )
+
+
+def _set_aside(runner: Runner, step: str, *paths: Path) -> None:
+    """Keep a failed attempt's outputs, signed failure reports included."""
+
+    for path in paths:
+        if path.exists():
+            aside = _superseded(path)
+            path.rename(aside)
+            runner.log(
+                f"[{step}] kept the earlier attempt's {path.name} as {aside.name}"
+            )
+
+
+def run_spine(runner: Runner, *, staging_local_only: bool, retry: bool = False) -> None:
     paths = runner.paths
     done, detail = spine_done(paths)
     if done:
         runner.log(f"[spine] done: {detail}")
         return
-    if paths.spine_h5.exists():
-        raise CutError(
-            f"a spine exists at {paths.spine_h5} but is incomplete ({detail}). A "
-            "rerun at this path would delete it first; inspect it, then use a "
-            "new --label."
+    if paths.spine_dir.exists() and any(paths.spine_dir.iterdir()):
+        # A gate-blocked spine writes its signed .spine_gates.json before any
+        # H5, and the builder deletes its sidecars on start: never rerun over
+        # an attempt, move the whole attempt aside instead.
+        if not retry:
+            raise CutError(
+                f"{paths.spine_dir} holds an unfinished spine attempt ({detail}); "
+                "pass --retry-spine to move it aside and build a fresh one."
+            )
+        aside = paths.spine_dir.with_name(
+            f"spine.failed-{datetime.now(UTC):%Y%m%dT%H%M%SZ}"
         )
+        paths.spine_dir.rename(aside)
+        runner.log(f"[spine] moved the unfinished attempt to {aside}")
     paths.spine_dir.mkdir(parents=True, exist_ok=True)
     runner.run(
         "spine",
@@ -1266,6 +1302,7 @@ def run_score(runner: Runner) -> None:
         runner.log(f"[score] done: {detail}")
         return
     runner.log(f"[score] re-scoring the candidate ({detail})")
+    _set_aside(runner, "score", paths.run_dir / "score_vs_incumbent.json")
     runner.run(
         "score",
         score_argv(
@@ -1286,6 +1323,12 @@ def run_certify(runner: Runner, *, logbook_prev_row_digest: str | None) -> None:
     if done:
         runner.log(f"[certify] done: {detail}")
         return
+    _set_aside(
+        runner,
+        "certify",
+        paths.run_dir / f"{CANDIDATE_NAME}.release_cut_gates.json",
+        paths.run_dir / f"{CANDIDATE_NAME}.release_certification.json",
+    )
     runner.run(
         "certify",
         certify_argv(
@@ -1302,12 +1345,32 @@ def run_certify(runner: Runner, *, logbook_prev_row_digest: str | None) -> None:
         raise CutError(f"the release cut is not certified: {detail}")
 
 
+def stage1_done(paths: CutPaths, previous_h5: Path) -> tuple[bool, str]:
+    """The comparison exists and measured exactly these two files."""
+
+    report = _read_json(paths.diagnostics / "stage1_comparison.json")
+    if report is None:
+        return False, "no stage-1 comparison"
+    measured = report.get("artifacts") or {}
+    expected = {
+        "candidate": candidate_sha256(paths),
+        "previous": _sha256_file(previous_h5),
+    }
+    for label, sha256 in expected.items():
+        if (measured.get(label) or {}).get("sha256") != sha256:
+            return False, f"the comparison measured another {label} file"
+    return True, "stage-1 comparison current"
+
+
 def run_stage1(runner: Runner, previous_h5: Path | None) -> None:
     paths = runner.paths
     output = paths.diagnostics / "stage1_comparison.json"
-    if output.exists():
-        runner.log(f"[stage1] done: {output}")
-        return
+    if previous_h5 is not None:
+        done, detail = stage1_done(paths, previous_h5)
+        if done:
+            runner.log(f"[stage1] done: {detail}")
+            return
+        _set_aside(runner, "stage1", output)
     if previous_h5 is None:
         runner.record("stage1", status="skipped", reason="no --previous-h5")
         runner.log(
@@ -1483,6 +1546,11 @@ def _parse(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument("--only", action="append", help="fetch only these sources")
     parser.add_argument("--reverify", action="store_true", help="re-hash every input")
     parser.add_argument("--skip-surface-check", action="store_true")
+    parser.add_argument(
+        "--retry-spine",
+        action="store_true",
+        help="move an unfinished spine attempt aside and build a fresh one",
+    )
     parser.add_argument("--retry-national", action="store_true")
     parser.add_argument("--previous-h5", type=Path, help="for the stage-1 comparison")
     parser.add_argument("--logbook-prev-row-digest")
@@ -1496,13 +1564,19 @@ def _parse(argv: Sequence[str] | None) -> argparse.Namespace:
         action="store_true",
         help="publish for inspection (--no-latest --tag-only); outward-facing",
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    # Steps run from different working directories (assembly and publication
+    # from the release directory), so every path must be absolute.
+    args.work_dir = args.work_dir.expanduser().resolve()
+    if args.previous_h5 is not None:
+        args.previous_h5 = args.previous_h5.expanduser().resolve()
+    return args
 
 
 def _cut_paths(args: argparse.Namespace) -> CutPaths:
     if not args.label:
         raise CutError("--label is required for this command.")
-    return CutPaths(args.work_dir.expanduser(), args.label, _git("rev-parse", "HEAD"))
+    return CutPaths(args.work_dir, args.label, _git("rev-parse", "HEAD"))
 
 
 def _print_checks(checks: Sequence[Check]) -> bool:
@@ -1584,7 +1658,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
             )
             return 0
-        work = args.work_dir.expanduser()
+        work = args.work_dir
         if args.command in {"fetch", "all"}:
             print("inputs:")
             results = fetch_inputs(
@@ -1610,7 +1684,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "preflight":
             return 0
         runner = Runner(paths=paths, sources=sources)
-        run_spine(runner, staging_local_only=not args.spine_telemetry)
+        run_spine(
+            runner, staging_local_only=not args.spine_telemetry, retry=args.retry_spine
+        )
         run_national(
             runner,
             retry=args.retry_national,

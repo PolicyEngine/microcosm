@@ -497,7 +497,7 @@ def test_an_incomplete_spine_is_never_rebuilt_over(tmp_path):
     runner, fake = _runner(tmp_path)
     runner.paths.spine_dir.mkdir(parents=True)
     runner.paths.spine_h5.write_bytes(b"half a spine")
-    with pytest.raises(cut.CutError, match="would delete it first"):
+    with pytest.raises(cut.CutError, match="--retry-spine"):
         cut.run_spine(runner, staging_local_only=True)
     assert fake.calls == []
     assert runner.paths.spine_h5.read_bytes() == b"half a spine"
@@ -587,3 +587,99 @@ def test_a_failed_dry_run_is_rerun(tmp_path):
     cut.run_national(runner, retry=False, logbook_prev_row_digest=None)
     assert fake.calls.count("national-dry-run") == 2
     assert fake.calls.count("national") == 1
+
+
+def test_a_retried_spine_keeps_the_signed_failure_report(tmp_path):
+    """A gate-blocked spine writes its signed report before any H5; the
+    builder deletes sidecars on start, so a retry must move the attempt."""
+
+    runner, fake = _runner(tmp_path)
+    paths = runner.paths
+    paths.spine_dir.mkdir(parents=True)
+    report = paths.spine_h5.with_suffix(".spine_gates.json")
+    report.write_text('{"shippable": false, "attestation": {"signature": "s"}}')
+    with pytest.raises(cut.CutError, match="--retry-spine"):
+        cut.run_spine(runner, staging_local_only=True)
+    assert fake.calls == [] and report.exists()
+    cut.run_spine(runner, staging_local_only=True, retry=True)
+    kept = list(paths.cut.glob("spine.failed-*/" + report.name))
+    assert len(kept) == 1 and '"shippable": false' in kept[0].read_text()
+    assert cut.spine_done(paths)[0]
+
+
+def test_retried_score_and_certification_keep_the_earlier_evidence(tmp_path):
+    runner, fake = _runner(tmp_path)
+    cut.run_spine(runner, staging_local_only=True)
+    cut.run_national(runner, retry=False, logbook_prev_row_digest=None)
+    receipt = runner.paths.run_dir / "score_vs_incumbent.json"
+    receipt.write_text('{"evaluation": {"verdict": "failed"}}')
+    cut.run_score(runner)
+    kept = list(runner.paths.run_dir.glob("score_vs_incumbent.json.superseded-*"))
+    assert len(kept) == 1 and "failed" in kept[0].read_text()
+    certification = (
+        runner.paths.run_dir / f"{cut.CANDIDATE_NAME}.release_certification.json"
+    )
+    certification.write_text('{"shippable": false}')
+    cut.run_certify(runner, logbook_prev_row_digest=None)
+    kept = list(runner.paths.run_dir.glob(f"{certification.name}.superseded-*"))
+    assert len(kept) == 1 and "false" in kept[0].read_text()
+    assert cut.certify_done(runner.paths)[0]
+
+
+def test_a_relative_work_dir_is_made_absolute(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    args = cut._parse(["status", "--label", "x", "--work-dir", "work",
+                       "--previous-h5", "prev.h5"])  # fmt: skip
+    assert args.work_dir == tmp_path.resolve() / "work"
+    assert args.previous_h5 == tmp_path.resolve() / "prev.h5"
+
+
+def test_a_stale_stage1_comparison_is_redone_and_kept(tmp_path):
+    runner, fake = _runner(tmp_path)
+    cut.run_spine(runner, staging_local_only=True)
+    cut.run_national(runner, retry=False, logbook_prev_row_digest=None)
+    previous = tmp_path / "previous.h5"
+    previous.write_bytes(b"previous")
+    output = runner.paths.diagnostics / "stage1_comparison.json"
+
+    def stage1(argv, cwd, log_path):
+        fake.calls.append("stage1")
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(
+            json.dumps(
+                {
+                    "artifacts": {
+                        "candidate": {"sha256": _sha(b"candidate")},
+                        "previous": {"sha256": _sha(previous.read_bytes())},
+                    }
+                }
+            )
+        )
+        return 0
+
+    runner.execute = stage1
+    cut.run_stage1(runner, previous)
+    cut.run_stage1(runner, previous)  # current: not rerun
+    assert fake.calls.count("stage1") == 1
+    previous.write_bytes(b"another promoted cut")
+    cut.run_stage1(runner, previous)
+    assert fake.calls.count("stage1") == 2
+    assert len(list(output.parent.glob("stage1_comparison.json.superseded-*"))) == 1
+
+
+def test_the_cache_never_trusts_bytes_it_did_not_hash(tmp_path):
+    """Equal-length replacement with the mtime restored is still re-hashed."""
+
+    import os
+
+    data = b"original-bytes"
+    path = tmp_path / "input.tab"
+    path.write_bytes(data)
+    pin = cut.PinnedFile("input.tab", _sha(data), len(data))
+    cache = cut.VerifiedFiles(tmp_path / ".verified.json")
+    assert cache.matches(path, pin)
+    stat = path.stat()
+    path.write_bytes(b"tampered-bytes")
+    os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+    assert path.stat().st_mtime_ns == stat.st_mtime_ns
+    assert not cache.matches(path, pin)
