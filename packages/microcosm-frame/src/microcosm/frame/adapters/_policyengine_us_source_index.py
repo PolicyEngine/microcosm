@@ -9,7 +9,7 @@ the installed wheel's source tree.
 from __future__ import annotations
 
 import ast
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
@@ -526,6 +526,28 @@ def _inventory_modules(variables_root: Path) -> dict[str, _ModuleIR]:
     return modules
 
 
+def _sequence_display(
+    node: ast.List | ast.Tuple | ast.Set,
+    evaluate: Callable[[ast.expr], _ExactValue],
+) -> _ExactValue:
+    """Evaluate a list, tuple or set display, splicing ``*name`` items.
+
+    A starred item contributes its items only when it evaluates to an exact
+    sequence (policyengine-us 2.60 writes ``["adjusted_gross_income",
+    *TAX_UNIT_ADDITIONS]``); anything else leaves the display unknown.
+    """
+    items: list[_ExactValue] = []
+    for element in node.elts:
+        if isinstance(element, ast.Starred):
+            spliced = evaluate(element.value)
+            if not isinstance(spliced, _SequenceValue):
+                return _unknown(f"starred:{node.lineno}")
+            items.extend(spliced.items)
+        else:
+            items.append(evaluate(element))
+    return _SequenceValue(tuple(items), set_like=isinstance(node, ast.Set))
+
+
 def _eval_module_value(
     node: ast.expr,
     env: Mapping[str, _ExactValue],
@@ -539,10 +561,7 @@ def _eval_module_value(
     if isinstance(node, ast.Name):
         return env.get(node.id, _unknown(f"name:{node.id}"))
     if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
-        return _SequenceValue(
-            tuple(_eval_module_value(item, env) for item in node.elts),
-            set_like=isinstance(node, ast.Set),
-        )
+        return _sequence_display(node, lambda item: _eval_module_value(item, env))
     if isinstance(node, ast.Dict):
         items: list[tuple[str, _ExactValue]] = []
         for key_node, value_node in zip(node.keys, node.values, strict=True):
@@ -856,9 +875,8 @@ class _ExactEvaluator:
                 frame.module_env.get(node.id, _unknown(f"name:{node.id}")),
             )
         if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
-            return _SequenceValue(
-                tuple(self.evaluate(item, local_env, frame) for item in node.elts),
-                set_like=isinstance(node, ast.Set),
+            return _sequence_display(
+                node, lambda item: self.evaluate(item, local_env, frame)
             )
         if isinstance(node, ast.Dict):
             items: list[tuple[str, _ExactValue]] = []
@@ -1774,9 +1792,7 @@ class _ConsumerInterpreter:
                     owner_name=owner.name,
                     frame=frame,
                     receiver_entity=self._definitions[owner.name].metadata.entity,
-                    aggregation_entity=(
-                        self._definitions[owner.name].metadata.entity
-                    ),
+                    aggregation_entity=(self._definitions[owner.name].metadata.entity),
                 )
             elif (
                 name == "defined_for"
