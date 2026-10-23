@@ -451,13 +451,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "f2d7e2ad1476cd25d251903c812a3674af8356d423efd08baeac2ab5fac679bf"
+    "cf7df0ce75fcb6b66cdba6f706ed777aca9550a966f364cef6c3c2c5f7780813"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "671b2c04a1139cae4afc8043332756fdbbbf2a3aabee90d8f6211f7126d54118"
+    "cb12e74aed6397667b17d5cf770161cf01df721f796ddc244ae9b6945dcf3605"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "9d335e980b720a477d26805559f766a2f9adcaea06747e13a0801c2b69e0cf55"
+    "fcebd763a4e9c427615ca935b019de43bc49e7dffbcece54181c21576bdcc372"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -937,10 +937,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "39295b40f70be77bb59e2aa70c9429be512e5af4ea78b0189f15687fb8ef3e36"
+            "985f54966ef25bfd7f778cb33ad501fd2e7d4c036f00245518bd1fd448ef9c7d"
         ),
         "policy_sha256": (
-            "53a7eb6d9e52eb54fe5d123e1f4393535d0e218d5cf5d9383b9ebf50d367cd1e"
+            "2b4995c6389870fd54ffd815f40d269facb593f1131c4e3fa3c5fa55e2869d24"
         ),
     },
     "calibration_seam": {
@@ -953,10 +953,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "6093d00bef53a5bd369eb66f45074a97d6bca9b9d02eba96e99e38c3a867d073"
+            "85aaa1f2a7a9d295c12db01698c4ba0e2c3724ab6051d68966f49e5d8a3427f5"
         ),
         "policy_sha256": (
-            "623f6300975649f691ce239fd744cbcc05e3ec192a40a8121cc25f7a1b5903c5"
+            "d7bda5f6771845ffc5bf591ae45f2618885f51ebeb48fcb96538a2a3b0ef6a11"
         ),
     },
 }
