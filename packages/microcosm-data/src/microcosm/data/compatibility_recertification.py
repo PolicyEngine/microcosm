@@ -58,6 +58,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import posixpath
 import re
 import shutil
@@ -531,10 +532,16 @@ def runtime_identities(
             )
         spec = importlib.util.find_spec(IMPORT_NAMES[name])
         installed_root = Path(dist.locate_file(IMPORT_NAMES[name])).resolve()
+        # Compared as written, not resolved: an overlay package earlier on the
+        # path whose __init__ is a symlink to the installed one resolves to the
+        # installed file, while Python searches the overlay for submodules.
+        search = list(getattr(spec, "submodule_search_locations", None) or ())
         if (
             spec is None
             or spec.origin is None
-            or not Path(spec.origin).resolve().is_relative_to(installed_root)
+            or not _unlinked_under(spec.origin, installed_root)
+            or [str(Path(location).absolute()) for location in search]
+            != [str(installed_root)]
         ):
             raise ValueError(
                 f"import {IMPORT_NAMES[name]} does not resolve to the installed "
@@ -672,33 +679,98 @@ def require_trusted_bytecode() -> None:
         )
 
 
-def verify_loaded_modules() -> int:
-    """Every loaded module from the engine trees is a verified source file.
+def authenticate_runtime_before_import(
+    compatibility_wheels: Sequence[Path | str] = (), *, require_wheels: bool
+) -> dict:
+    """:func:`runtime_identities`, refusing a process that ran the engine first.
 
-    Matched by file, not name, so the variable modules Core loads under
-    synthetic names are covered. Each must be a ``.py`` file of the inventory
+    Core executes every variable source in the country tree when the system
+    is built, so a file added to the tree runs on the first engine import.
+    Authenticating afterwards would check a tree the added code could already
+    have cleaned up. An engine module loaded before any authentication in this
+    process is therefore refused; one loaded after it is checked again by
+    :func:`verify_loaded_modules`.
+
+    Raises:
+        RuntimeError: An engine package was imported before its runtime was
+            authenticated in this process.
+        ValueError: As :func:`runtime_identities`.
+    """
+
+    import sys
+
+    roots = set(IMPORT_NAMES.values())
+    early = sorted(
+        name
+        for name, module in list(sys.modules.items())
+        if module is not None and name.split(".", 1)[0] in roots
+    )
+    if early and set(_VERIFIED_TREES) != set(COMPATIBILITY_PACKAGES):
+        raise RuntimeError(
+            "the engine was imported before its runtime was authenticated "
+            f"({early[:3]}); run the replay or scorer in a fresh process"
+        )
+    return runtime_identities(compatibility_wheels, require_wheels=require_wheels)
+
+
+def _unlinked_under(path: str | Path, root: Path) -> bool:
+    """Whether ``path`` lies under ``root`` as written, with no symlink on the way."""
+
+    written = Path(os.path.abspath(path))
+    return written == Path(os.path.realpath(path)) and written.is_relative_to(root)
+
+
+def verify_loaded_modules() -> int:
+    """Every loaded engine module is a verified source file, by name and by file.
+
+    By file: a module whose file lies under a verified tree, whatever its name,
+    which covers the variable modules Core loads under synthetic names. By
+    name: every module of the three engine packages, which must lie under its
+    package's tree as written (a symlinked overlay earlier on the path
+    resolves into the tree while Python loads its other files), as must each
+    package's ``__path__``. Each file must be a ``.py`` file of the inventory
     :func:`runtime_identities` verified. Returns how many were checked.
 
     Raises:
         RuntimeError: No inventory was verified in this process, or a module
-            came from a file outside it.
+            came from elsewhere.
     """
 
     import sys
 
     if set(_VERIFIED_TREES) != set(COMPATIBILITY_PACKAGES):
         raise RuntimeError("runtime_identities() must verify the packages first")
+    roots_by_import = {
+        IMPORT_NAMES[package]: (package, tree)
+        for package, tree in _VERIFIED_TREES.items()
+    }
     checked = 0
     for name, module in list(sys.modules.items()):
-        origin = getattr(module, "__file__", None) if module is not None else None
+        if module is None:
+            continue
+        origin = getattr(module, "__file__", None)
+        named = roots_by_import.get(name.split(".", 1)[0])
+        if named is not None:
+            package, (root, _, _) = named
+            locations = list(getattr(module, "__path__", None) or ())
+            if (
+                not isinstance(origin, str)
+                or not _unlinked_under(origin, root)
+                or any(not _unlinked_under(location, root) for location in locations)
+            ):
+                raise RuntimeError(
+                    f"{name} was loaded from {origin} (search path {locations}), "
+                    f"not from the installed {package}"
+                )
         if not isinstance(origin, str):
             continue
-        path = Path(origin)
         for package, (root, site, files) in _VERIFIED_TREES.items():
-            if not path.resolve().is_relative_to(root):
+            if not Path(origin).resolve().is_relative_to(root):
                 continue
-            relative = path.resolve().relative_to(site).as_posix()
-            if path.suffix != ".py" or relative not in files:
+            if not _unlinked_under(origin, root):
+                raise RuntimeError(f"{name} was loaded through a symlink: {origin}")
+            relative = Path(os.path.abspath(origin)).relative_to(site).as_posix()
+            if Path(origin).suffix != ".py" or relative not in files:
                 raise RuntimeError(
                     f"{name} was loaded from {origin}, not a verified {package} source"
                 )
@@ -856,10 +928,39 @@ def describe_parent(
     }
 
 
-def _reconstructed_parent(release_dir: Path, parent: Mapping, staging: Path) -> Path:
-    """The parent's release directory, rebuilt from the bytes the child carries."""
+_PARENT_ID = re.compile(r"populace-us-[A-Za-z0-9][A-Za-z0-9._-]*")
 
-    directory = staging / str(parent["build_id"])
+
+def _bare_release_filename(name: object) -> bool:
+    return (
+        isinstance(name, str)
+        and name not in {"", ".", ".."}
+        and Path(name).name == name
+        and "\\" not in name
+    )
+
+
+def _reconstructed_parent(release_dir: Path, parent: Mapping, staging: Path) -> Path:
+    """The parent's release directory, rebuilt from the bytes the child carries.
+
+    The parent id and every carried file name are checked before anything is
+    created, and every write is contained in ``staging`` (Sol r4 finding 3).
+
+    Raises:
+        ValueError: The report names a parent id or file that would leave
+            the staging directory.
+    """
+
+    parent_id = parent.get("build_id")
+    names = list(_mapping(parent.get("release_files")))
+    if not isinstance(parent_id, str) or _PARENT_ID.fullmatch(parent_id) is None:
+        raise ValueError(f"parent build_id {parent_id!r} is not a US release id")
+    if not all(_bare_release_filename(name) for name in names):
+        raise ValueError("parent release_files must be bare file names")
+    staging = Path(staging).resolve()
+    directory = staging / parent_id
+    if directory.parent != staging:
+        raise ValueError(f"parent build_id {parent_id!r} escapes the staging directory")
     directory.mkdir()
     shutil.copyfile(
         release_dir / PARENT_RELEASE_MANIFEST_FILE, directory / "release_manifest.json"
@@ -1037,6 +1138,12 @@ def run_recertification_loader_replay(
     """
 
     require_trusted_bytecode()
+    # Before the first engine import: importing policyengine_us builds the
+    # country system, and Core executes every variable source it finds, so
+    # the tree must be authenticated before anything in it runs (Sol r4).
+    packages = authenticate_runtime_before_import(
+        compatibility_wheels, require_wheels=require_wheels
+    )
 
     import inspect
 
@@ -1048,7 +1155,6 @@ def run_recertification_loader_replay(
     from microcosm.data import source_enrichment, stored_inputs
 
     candidate_h5 = Path(candidate_h5)
-    packages = runtime_identities(compatibility_wheels, require_wheels=require_wheels)
     tables = stored_inputs.h5_stored_tables(candidate_h5)
     engine = stored_inputs.installed_us_engine()
     changes = stored_column_changes(
@@ -2199,9 +2305,14 @@ def validate_recertification_candidate(
                 [f"carried parent does not describe a supported parent: {exc}"],
             ) from exc
     if described != dict(parent):
-        failures.append(
-            f"{REPORT_FILE} parent block must equal what the carried parent manifest "
-            "and files describe"
+        # Nothing later may act on a parent block the carried bytes do not
+        # describe: it names the files and paths the checks below touch.
+        raise ReleaseContractError(
+            release_dir,
+            [
+                f"{REPORT_FILE} parent block must equal what the carried parent "
+                "manifest and files describe"
+            ],
         )
     parent_manifest = json.loads(carried_manifest.read_text())
 

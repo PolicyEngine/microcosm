@@ -188,6 +188,29 @@ def test_tampered_candidates_are_refused(candidate, tamper, message):
         )
 
 
+@pytest.mark.parametrize(
+    "build_id", ["ABSOLUTE", "../outside", "populace-us-x/../../y"]
+)
+def test_parent_reconstruction_never_writes_outside_staging(
+    candidate, tmp_path, build_id
+):
+    """Sol r4 finding 3: the report's parent id names the rebuild directory."""
+
+    release_dir, artifact_root = candidate
+    target = tmp_path / "recert-outside"
+    bad = str(target) if build_id == "ABSOLUTE" else build_id
+    _rewrite_json(
+        release_dir / recert.REPORT_FILE,
+        lambda report: report["parent"].update(build_id=bad),
+    )
+    with pytest.raises(ReleaseContractError):
+        recert.validate_recertification_candidate(
+            release_dir, artifact_root=artifact_root
+        )
+    assert not target.exists()
+    assert not (release_dir.parent.parent / "outside").exists()
+
+
 def test_the_h5_may_not_live_in_the_release_directory(candidate):
     release_dir, artifact_root = candidate
     shutil.copyfile(
@@ -1018,9 +1041,24 @@ def fake_runtime(tmp_path, monkeypatch):
     monkeypatch.setattr(
         importlib.util,
         "find_spec",
-        lambda name: SimpleNamespace(origin=str(site / name / "__init__.py")),
+        lambda name: SimpleNamespace(
+            origin=str(site / name / "__init__.py"),
+            submodule_search_locations=[str(site / name)],
+        ),
     )
+    monkeypatch.setattr(recert, "_VERIFIED_TREES", {})
+    _forget_engine_modules(monkeypatch)
     return site, tuple(wheel for _, wheel in installs.values())
+
+
+def _forget_engine_modules(monkeypatch):
+    """Hide any real engine modules this test process imported earlier."""
+
+    import sys
+
+    for name in list(sys.modules):
+        if name.split(".", 1)[0] in recert.IMPORT_NAMES.values():
+            monkeypatch.delitem(sys.modules, name)
 
 
 def test_runtime_identity_covers_parameters_and_ignores_installer_files(fake_runtime):
@@ -1067,6 +1105,68 @@ def test_an_unrecorded_module_in_the_package_tree_is_refused(fake_runtime):
         recert.runtime_identities(wheels, require_wheels=True)
 
 
+def test_a_symlinked_overlay_package_is_refused(fake_runtime, monkeypatch, tmp_path):
+    """Sol r4 finding 1: the overlay's __init__ resolves into the real tree."""
+
+    site, wheels = fake_runtime
+    overlay = tmp_path / "overlay" / "policyengine_core"
+    overlay.mkdir(parents=True)
+    (overlay / "__init__.py").symlink_to(site / "policyengine_core" / "__init__.py")
+
+    def find_spec(name):
+        if name == "policyengine_core":
+            return SimpleNamespace(
+                origin=str(overlay / "__init__.py"),
+                submodule_search_locations=[str(overlay)],
+            )
+        return SimpleNamespace(
+            origin=str(site / name / "__init__.py"),
+            submodule_search_locations=[str(site / name)],
+        )
+
+    monkeypatch.setattr(importlib.util, "find_spec", find_spec)
+    with pytest.raises(ValueError, match="does not resolve to the installed"):
+        recert.runtime_identities(wheels, require_wheels=True)
+
+
+def test_a_loaded_engine_module_outside_its_tree_is_refused_by_name(
+    fake_runtime, monkeypatch, tmp_path
+):
+    import sys
+    import types
+
+    site, wheels = fake_runtime
+    recert.runtime_identities(wheels, require_wheels=True)
+    package = types.ModuleType("policyengine_core")
+    package.__file__ = str(site / "policyengine_core" / "__init__.py")
+    package.__path__ = [str(tmp_path / "overlay" / "policyengine_core")]
+    monkeypatch.setitem(sys.modules, "policyengine_core", package)
+    with pytest.raises(RuntimeError, match="not from the installed policyengine-core"):
+        recert.verify_loaded_modules()
+    package.__path__ = [str(site / "policyengine_core")]
+    helper = types.ModuleType("policyengine_core.simulations.microsimulation")
+    helper.__file__ = str(tmp_path / "overlay" / "microsimulation.py")
+    monkeypatch.setitem(sys.modules, helper.__name__, helper)
+    with pytest.raises(RuntimeError, match="not from the installed policyengine-core"):
+        recert.verify_loaded_modules()
+
+
+def test_the_engine_must_not_run_before_its_runtime_is_authenticated(
+    fake_runtime, monkeypatch
+):
+    """Sol r4 finding 2: Core runs every variable source on first import."""
+
+    import sys
+    import types
+
+    _, wheels = fake_runtime
+    monkeypatch.setitem(
+        sys.modules, "policyengine_us", types.ModuleType("policyengine_us")
+    )
+    with pytest.raises(RuntimeError, match="imported before its runtime"):
+        recert.authenticate_runtime_before_import(wheels, require_wheels=True)
+
+
 def test_an_import_that_resolves_elsewhere_is_refused(
     fake_runtime, monkeypatch, tmp_path
 ):
@@ -1075,7 +1175,8 @@ def test_an_import_that_resolves_elsewhere_is_refused(
         importlib.util,
         "find_spec",
         lambda name: SimpleNamespace(
-            origin=str(tmp_path / "shadow" / name / "__init__.py")
+            origin=str(tmp_path / "shadow" / name / "__init__.py"),
+            submodule_search_locations=[str(tmp_path / "shadow" / name)],
         ),
     )
     with pytest.raises(ValueError, match="does not resolve to the installed"):

@@ -553,7 +553,9 @@ def scoring_runtime(compatibility_wheels: Sequence[Path]) -> dict:
     score cannot rest on a locally patched engine bearing a released version.
     """
 
-    identities = recert.runtime_identities(compatibility_wheels, require_wheels=True)
+    identities = recert.authenticate_runtime_before_import(
+        compatibility_wheels, require_wheels=True
+    )
     by_package = {}
     for wheel in compatibility_wheels:
         path = Path(wheel)
