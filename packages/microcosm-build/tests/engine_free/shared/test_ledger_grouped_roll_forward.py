@@ -257,6 +257,48 @@ def test_top_level_member_count_also_counts_only_base_and_disagreement_refuses()
         replace(reference, expected_member_count=4)
 
 
+@pytest.mark.parametrize("operand_count", ["absent", None])
+def test_absent_or_null_base_count_keeps_the_top_level_count(operand_count):
+    reference = _reference(grouped=False)
+    base = {"role": "base"}
+    if operand_count is None:
+        base["expected_member_count"] = None
+    reference = replace(
+        reference,
+        expected_member_count=2,
+        value_operands=(base, *reference.value_operands[1:]),
+    )
+    with pytest.raises(ValueError, match="expected 2 base facts, got 1"):
+        _compile(reference=reference)
+
+
+@pytest.mark.parametrize("operand_count", ["absent", None])
+@pytest.mark.parametrize("shape", ["reference_selector", "base_operand"])
+def test_null_base_count_cannot_admit_a_short_geography_list(shape, operand_count):
+    reference = _reference(grouped=False)
+    selector = dict(reference.ledger_selector)
+    base = {"role": "base"}
+    if shape == "reference_selector":
+        selector["geography_id"] = ["01", "02"]
+    else:
+        base["geography_id"] = ["01", "02"]
+    if operand_count is None:
+        base["expected_member_count"] = None
+    reference = replace(
+        reference,
+        ledger_selector=selector,
+        expected_member_count=3,
+        value_operands=(base, *reference.value_operands[1:]),
+    )
+    facts = [
+        _fact("region01", 10, tenure=2),
+        _fact("region02", 20, tenure=2, geography="02"),
+        *_facts()[-2:],
+    ]
+    with pytest.raises(ValueError, match="expected 3 base facts, got 2"):
+        _compile(facts, reference)
+
+
 def test_explicit_multiple_geographies_still_sum_one_scalar_per_geography():
     reference = _reference(grouped=False)
     selector = {

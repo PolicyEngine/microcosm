@@ -2498,9 +2498,11 @@ def _assert_rolled_forward_base_cells(
     fact twice and pass a missing district silently.
     """
 
-    count = reference.value_operands[0].get(
-        "expected_member_count", reference.expected_member_count
-    )
+    # An explicit null on the base operand falls back to the reference's own
+    # count, as the roster validator does; it never switches the check off.
+    count = reference.value_operands[0].get("expected_member_count")
+    if count is None:
+        count = reference.expected_member_count
     if count is not None and len(base) != count:
         raise ValueError(
             f"Ledger target reference {reference.name!r}: "
