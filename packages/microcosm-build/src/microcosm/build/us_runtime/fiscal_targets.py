@@ -183,8 +183,9 @@ SOI_AMOUNT_MEASURE_VARIABLES: dict[str, str] = {
     # the gross column summed $241.3B over itemizers (+29.5%) while the capped
     # concept summed $214.2B (+15.0%) against the $186.3B aged fact -- the cap
     # haircut alone was a $27.1B pure concept gap. The capped formula is linear
-    # in the first/second_home_mortgage_interest export inputs (balances and
-    # origination years only set the deductible share), so calibration keeps
+    # in the person-level home_mortgage_interest and
+    # second_residence_mortgage_interest inputs (policyengine-us 2.60; balances
+    # and origination years only set the deductible share), so calibration keeps
     # the same pull-through to the export mass that Build H wanted. A
     # positive-balance unit's deductible share is always positive; gross and
     # structural carriers are independently imputed, so equality is a data

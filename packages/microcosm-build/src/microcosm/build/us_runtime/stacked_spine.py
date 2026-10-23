@@ -2812,11 +2812,6 @@ _EXPLICIT_ORIGIN_BATTERY_METRIC_DECLARATIONS: Mapping[
             (
                 "tax_unit",
                 "puf_tax_itemization",
-                "first_home_mortgage_interest",
-            ),
-            (
-                "tax_unit",
-                "puf_tax_itemization",
                 "health_savings_account_ald",
             ),
         ),
@@ -2963,6 +2958,7 @@ _EXPLICIT_ORIGIN_BATTERY_METRIC_DECLARATIONS: Mapping[
             ("person", "take_up", "takes_up_early_head_start_if_eligible"),
             ("person", "take_up", "takes_up_head_start_if_eligible"),
             ("person", "take_up", "takes_up_medicaid_if_eligible"),
+            ("person", "take_up", "takes_up_medicare_part_d_if_eligible"),
             ("person", "take_up", "takes_up_ssi_if_eligible"),
             (
                 "spm_unit",
@@ -8982,8 +8978,8 @@ if (
     len(_canonical_surface_keys) != 134
     or len(set(_canonical_surface_keys)) != 134
     or len(_canonical_early_transfer_keys) != 48
-    or len(_canonical_late_transfer_keys) != 70
-    or len(_canonical_late_puf_producer_keys) != 43
+    or len(_canonical_late_transfer_keys) != 69
+    or len(_canonical_late_puf_producer_keys) != 42
     or len(_canonical_late_source_producer_keys) != 29
     or len(_canonical_late_puf_producer_keys & _canonical_late_source_producer_keys)
     != 2
@@ -8992,7 +8988,7 @@ if (
     or _canonical_early_transfer_keys & _canonical_late_transfer_keys
     or _canonical_early_transfer_keys | _canonical_late_transfer_keys
     != _canonical_full_transfer_keys
-    or len(_canonical_full_transfer_keys) != 118
+    or len(_canonical_full_transfer_keys) != 117
     or set(_plan_target_keys(_CANONICAL_STACKED_GAP_FILL_PLAN_ANCHOR))
     != _canonical_early_transfer_keys
     or not _canonical_full_transfer_keys.issubset(_canonical_surface_keys)
@@ -9012,10 +9008,10 @@ if (
     )
 ):
     raise RuntimeError(
-        "Canonical stacked authority must partition the exact 118-target "
-        "transfer surface into 48 early gap-fill and 70 post-PUF targets "
+        "Canonical stacked authority must partition the exact 117-target "
+        "transfer surface into 48 early gap-fill and 69 post-PUF targets "
         "inside an exact 134-target terminal surface and metric registry; "
-        "the late surface must be exactly covered by 43 PUF-clone and 29 "
+        "the late surface must be exactly covered by 42 PUF-clone and 29 "
         "ASEC-source producer targets with their declared two-target overlap."
     )
 

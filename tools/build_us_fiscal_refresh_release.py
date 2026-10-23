@@ -914,10 +914,6 @@ US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS = {
         "Second-home mortgage decomposition not imputed; constant at the"
         " engine default (PolicyEngine/microcosm#38)."
     ),
-    "second_home_mortgage_interest": (
-        "Second-home mortgage decomposition not imputed; constant at the"
-        " engine default (PolicyEngine/microcosm#38)."
-    ),
     "second_home_mortgage_origination_year": (
         "Second-home mortgage decomposition not imputed; constant at the"
         " engine default (PolicyEngine/microcosm#38)."
@@ -7730,7 +7726,8 @@ def _ecps_parity_gate(
 #                          itemizer-masked Table 2.1 target (~$186.3B aged)
 #                          pins the itemizer share and pulls the full column
 #                          down toward the band from $474-526B.
-#   first_home_mortgage_interest follows home_mortgage_interest (second-home
+#   first_home_mortgage_interest (retired in policyengine-us 2.60) followed
+#                          home_mortgage_interest (second-home
 #                          leg un-imputed / 0 per microcosm#38).
 #   taxable_interest_income ref $320.159B band [$160.079B, $480.238B]; the
 #                          microcosm#489 adjudication VINDICATED this

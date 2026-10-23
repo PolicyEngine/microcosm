@@ -52,10 +52,23 @@ def test_the_1026_premises_hold_for_the_installed_engine():
     assert not wic.formulas
     for retired_or_construction in (
         "medicare_part_b_premiums",
-        "tax_unit_role_input",
         "filing_status_input",
     ):
         assert retired_or_construction not in variables
+    # policyengine-us 2.60 reads microunit's tax-unit roles and the ASEC
+    # parent pointers as inputs, so they left the register.
+    role = variables["tax_unit_role_input"]
+    assert (role.entity.key, role.default_value.name) == ("person", "UNSPECIFIED")
+    assert {"HEAD", "SPOUSE", "DEPENDENT"} <= set(role.possible_values.__members__)
+    assert not role.formulas
+    for pointer in ("parent_1_id", "parent_2_id"):
+        parent = variables[pointer]
+        assert (parent.entity.key, parent.value_type, parent.default_value) == (
+            "person",
+            int,
+            0,
+        )
+        assert not parent.formulas
     # medicare_part_b_premiums is a Person, YEAR, float input with no formula
     # in every policyengine-us version read from 1.452.0 to 1.670.2; its
     # replacement has that shape.

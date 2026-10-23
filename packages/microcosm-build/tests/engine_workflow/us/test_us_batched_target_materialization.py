@@ -56,6 +56,7 @@ def test_real_engine_batched_base_simulation_matches_unbatched(monkeypatch) -> N
         pd.testing.assert_frame_equal(household, unbatched, check_exact=True)
         assert version == unbatched_version
 
+
 def test_real_engine_base_batches_build_no_system_and_release_engines(
     monkeypatch,
 ) -> None:
@@ -116,6 +117,7 @@ def test_real_engine_base_batches_build_no_system_and_release_engines(
     assert list(batched) == list(unbatched)
     for column, values in unbatched.items():
         np.testing.assert_array_equal(batched[column], values)
+
 
 def test_real_engine_refuses_a_batched_medicaid_cost_target() -> None:
     """Compare guarded materialization with unguarded one-household engines."""
@@ -212,6 +214,7 @@ def test_real_engine_refuses_a_batched_medicaid_cost_target() -> None:
                 maximum_microsim_batch_size=batch_size,
             )
 
+
 def test_population_aggregate_list_matches_installed_engine_sources() -> None:
     """Pin the guard list to weight reads and aggregation markers in US sources.
 
@@ -252,11 +255,47 @@ def test_population_aggregate_list_matches_installed_engine_sources() -> None:
             "medicaid_household_income": {
                 "medicaid_claiming_tax_unit_value()",
                 "medicaid_external_claimed_sum()",
+                "medicaid_non_filer_member_sum()",
             },
             "medicaid_household_size": {
                 "medicaid_claiming_tax_unit_value()",
                 "medicaid_external_claimed_sum()",
+                "medicaid_non_filer_member_sum()",
             },
+            "ca_medicaid_household_pregnancies": {
+                "medicaid_claiming_tax_unit_value()",
+                "medicaid_external_claimed_sum()",
+                "medicaid_non_filer_member_sum()",
+            },
+            "medicaid_claimed_by_parent_in_tax_unit": {
+                "medicaid_known_claim_by_named_parent()",
+                "unlinked_parent()",
+            },
+            # The parent_1_id/parent_2_id joins of policyengine-us 2.60 resolve
+            # each id among the person's own household (or claiming tax unit)
+            # and count or pool over those row indices; a household batch
+            # holds whole households, so every join stays inside it.
+            "is_parent": {"linked_child_count()"},
+            "medicaid_tax_dependent_exception_living_with_both_parents": {
+                "unlinked_parent()"
+            },
+            "mo_tanf_is_parent_of_dependent_child": {"np.bincount("},
+            "wi_works_eligible": {"np.bincount("},
+            "wi_cts_caretaker_children": {"np.bincount("},
+            "nh_ssp_resources_deemed_from_parents": {"_ssi_parental_resource_pool()"},
+            "ssi_resources_deemed_from_ineligible_parent": {
+                "np.bincount(",
+                "_ssi_parental_resource_pool()",
+            },
+            # Wisconsin caretaker-supplement units are keyed by family member
+            # indices, so each unit lies inside one family.
+            "wi_cts": {"cts_filing_unit()", "cts_financial_test()"},
+            "wi_cts_buening_member": {"cts_filing_unit()"},
+            "wi_cts_sfu_member": {"cts_filing_unit()"},
+            # The two sums only count malformed tax units for its error message.
+            "tax_unit_roles_supplied": {".sum()"},
+            # The helper compares state and county codes with parameter lists.
+            "is_in_snap_abawd_waived_area": {"in_listed_abawd_waiver_area()"},
         }
     )
     assert set(found) == set(builder.US_POPULATION_AGGREGATE_VARIABLES) | set(
@@ -270,5 +309,5 @@ def test_population_aggregate_list_matches_installed_engine_sources() -> None:
         "\n".join(f"{name}:{source_digests[name]}" for name in sorted(triaged)).encode()
     ).hexdigest()
     assert triaged_digest == (
-        "f26eb560e474207fc1fa1d8828b62ba4791fb763089ea2ce7a85b57a259f2755"
+        "dc3b151dd7dc4588204cb47deb7406f79fea2b027352a8a674c0a886adb674ff"
     ), triaged_digest

@@ -34,7 +34,7 @@ __all__ = ["POLICYENGINE_US_CONCEPT_MAPPING"]
 # ---------------------------------------------------------------------------
 #
 # Which PolicyEngine-US inputs each engine-neutral concept feeds
-# (microcosm.frame.concepts), reviewed against policyengine-us 2.2.1. Every
+# (microcosm.frame.concepts), reviewed against policyengine-us 2.60.4. Every
 # target is a pure input (in ``PolicyEngineUSVariableMetadataIndex.variables``),
 # never a formula-owned aggregate: totals such as ``interest_income`` or
 # ``employment_income`` are fed through their input leaves. Notes quote the
@@ -86,7 +86,7 @@ def _us_take_up(program: str, entity: str, engine_input: str) -> InputBinding:
 
 POLICYENGINE_US_CONCEPT_MAPPING = ConceptMapping(
     engine="policyengine-us",
-    engine_version="2.2.1",
+    engine_version="2.60.4",
     entity_correspondence={"person": "person", "household": "household"},
     input_declaration=InputDeclaration.ENGINE_TYPED,
     bindings=(

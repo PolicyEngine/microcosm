@@ -268,6 +268,27 @@ programs:
       operation_index: 1
       operation_id: derive_medicare_take_up
   final_owner_stage: medicare_take_up_input
+- id: medicare_part_d
+  variable: takes_up_medicare_part_d_if_eligible
+  ownership: engine
+  documentation:
+    consumed_via: medicare_part_d_enrolled, gated by medicare_enrolled; it gates income_adjusted_part_d_premium_surcharge
+      (policyengine-us 2.60)
+    followup: No locked source measures Part D enrollment (the ASEC has no Part D item). CMS publishes
+      Part D enrollment counts, so a count-calibrated stage anchored on Medicare enrollment is the route
+      to seeding it.
+    notes: New in the policyengine-us 2.60 line. Left at the engine default (every Medicare enrollee takes
+      up Part D), which keeps the Part D income-related premium charged to every enrollee above the thresholds,
+      as policyengine-us 2.2.1 did.
+  pipeline:
+  - kind: engine_default
+    operation_id: legacy_seeded_input_default
+    kernel: kernel:engine_default
+    debt:
+      populace_treatment: rate_unsourced
+      rate_review:
+        status: no_source
+  final_owner_stage: policyengine_us_default
 - id: ssi
   variable: takes_up_ssi_if_eligible
   ownership: modeled

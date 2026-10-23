@@ -28,9 +28,10 @@ def test_the_register_spells_the_us_entities_in_schema_order():
 def test_every_register_entry_is_a_named_producer_column():
     """The register is exactly the four support provenance columns and the
     base-spine tag of every US entity, the pooled-source provenance columns,
-    microunit's two tax-unit construction columns, the PUF capital-gains tail
+    microunit's tax-unit filing-status column, the PUF capital-gains tail
     provenance columns, the ACS-native acs_ amounts and acs_pums's puma_geoid
-    alias."""
+    alias. microunit's tax_unit_role_input and the parent_1_id/parent_2_id
+    pointers are policyengine-us 2.60 inputs, so they are not in it."""
 
     support = {
         column(entity)
@@ -51,7 +52,7 @@ def test_every_register_entry_is_a_named_producer_column():
         puf_tail.PUF_CAPITAL_GAINS_TAIL_DONOR_AGI_BAND_COLUMN,
         puf_tail.PUF_CAPITAL_GAINS_TAIL_TRANSFER_WEIGHT_COLUMN,
     }
-    construction = {_TAX_UNIT_ROLE_COLUMN, TAX_UNIT_FILING_STATUS_COLUMN}
+    construction = {TAX_UNIT_FILING_STATUS_COLUMN}
 
     assert set(US_STORED_NON_VARIABLE_COLUMNS) == (
         support
@@ -60,10 +61,13 @@ def test_every_register_entry_is_a_named_producer_column():
         | tail
         | _ACS_NATIVE_AMOUNTS
         | {"puma_geoid"}
-        | set(US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS)
     )
+    assert not set(US_STORED_NON_VARIABLE_COLUMNS) & {
+        _TAX_UNIT_ROLE_COLUMN,
+        *US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS,
+    }
     assert len(_ACS_NATIVE_AMOUNTS) == 6
-    assert len(US_STORED_NON_VARIABLE_COLUMNS) == 30 + 6 + 6 + 6 + 1 + 2
+    assert len(US_STORED_NON_VARIABLE_COLUMNS) == 30 + 4 + 1 + 6 + 6 + 1
 
 
 def test_every_register_reason_names_where_its_column_comes_from():
@@ -88,14 +92,9 @@ def test_every_register_reason_names_where_its_column_comes_from():
         },
         **{column: "_ACS_NATIVE_INPUT_CONTRACTS" for column in _ACS_NATIVE_AMOUNTS},
         "puma_geoid": "microcosm.build.us_runtime.acs_pums",
-        _TAX_UNIT_ROLE_COLUMN: "microcosm.frame.units._TAX_UNIT_ROLE_COLUMN",
         TAX_UNIT_FILING_STATUS_COLUMN: (
             "microcosm.frame.units.TAX_UNIT_FILING_STATUS_COLUMN"
         ),
-        **{
-            column: "US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS"
-            for column in US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS
-        },
     }
     for column, owner in expected_owner.items():
         assert owner in US_STORED_NON_VARIABLE_COLUMNS[column], column

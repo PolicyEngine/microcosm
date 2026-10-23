@@ -995,8 +995,10 @@ def _build_take_up_contract_cached() -> dict[str, object]:
         programs.append(row)
 
     ownership_counts = Counter(str(row["ownership"]) for row in programs)
+    # policyengine-us 2.60 added takes_up_medicare_part_d_if_eligible, left at
+    # its engine default (the eighth engine-owned program).
     expected_ownership_counts = {
-        "engine": 7,
+        "engine": 8,
         "measured": 1,
         "mixed": 1,
         "modeled": 7,
