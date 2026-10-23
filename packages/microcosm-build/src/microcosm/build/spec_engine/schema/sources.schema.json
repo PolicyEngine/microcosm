@@ -7477,6 +7477,37 @@
          "type": "number"
         }
        }
+      },
+      "shares": {
+       "type": "object",
+       "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "total",
+         "numerator",
+         "denominator"
+        ],
+        "properties": {
+         "total": {
+          "type": "string"
+         },
+         "numerator": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+           "type": "string"
+          }
+         },
+         "denominator": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+           "type": "string"
+          }
+         }
+        }
+       }
       }
      }
     },
