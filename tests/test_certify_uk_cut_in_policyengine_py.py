@@ -165,6 +165,14 @@ class RunnerTests(unittest.TestCase):
             4,
         )
 
+    def test_pr_base_accepts_explicit_stack_target(self):
+        common = ["--national-tag", TAG, "--drop-regional-release"]
+        self.assertEqual(runner.parse(common).pr_base, "main")
+        args = runner.parse(common + ["--pr-base", "budget-local-data-manifest"])
+        self.assertEqual(args.pr_base, "budget-local-data-manifest")
+        self.assertFalse(args.push)
+        self.assertFalse(args.open_pr)
+
     def test_local_base_is_resolved_once_and_used_for_old_bundle(self):
         with tempfile.TemporaryDirectory() as tmp:
             args = runner.parse(
@@ -300,6 +308,20 @@ class RunnerTests(unittest.TestCase):
         self.assertIn(
             "UC floor acceptance", (root / "certification.pr-body.md").read_text()
         )
+
+    def test_handoff_marks_wrapper_qualification_pending(self):
+        _, _, root = self.run_mock_pipeline()
+        body = (root / "certification.pr-body.md").read_text()
+        for expected in (
+            "Mechanical handoff; wrapper qualification pending",
+            "19 producer release-cut gates and passing pytest do not establish",
+            "- [ ] **Wrapper qualification.**",
+            "full reform contract",
+            "metrics review and reform responsiveness",
+            "scorecard replay evidence",
+            "this script waives no gate",
+        ):
+            self.assertIn(expected, body)
 
 
 if __name__ == "__main__":

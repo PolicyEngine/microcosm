@@ -428,6 +428,11 @@ def pr_body(context: dict[str, Any]) -> str:
         f"Certifies Microcosm UK national cut `{context['national_tag']}` "
         f"(policyengine-uk {context['model']}, core {context['core']}).",
         "",
+        "**Mechanical handoff; wrapper qualification pending** unless reviewed "
+        "receipts cover this exact candidate pair, commit and bundle. Microcosm's "
+        "19 producer release-cut gates and passing pytest do not establish "
+        "wrapper qualification.",
+        "",
         f"- **Regional route:** {context['regional_summary']}",
         f"- **Compatibility basis:** `{context.get('basis')}`",
         f"- **Made by** `tools/certify_uk_cut_in_policyengine_py.py` in "
@@ -448,6 +453,12 @@ def pr_body(context: dict[str, Any]) -> str:
         "",
         "## Needs a person before this leaves draft",
         "",
+        "- [ ] **Wrapper qualification.** Attach exact-pair receipts for every "
+        "required candidate gate, including the full reform contract, metrics "
+        "review and reform responsiveness; attach and review scorecard replay "
+        "evidence. Keep qualification pending until the evidence is reviewed. "
+        "Record any explicit reviewer-approved exception; this script waives "
+        "no gate.",
         "- [ ] **UC floor acceptance.** A later Microcosm cut with the same gap "
         "needs the same explicit acceptance in its pull request "
         "(data-certification.md, recorded exceptions). Accepted by: ___",
@@ -523,6 +534,11 @@ def parse(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--skip-tests", action="store_true")
     parser.add_argument("--test-workers", type=int, default=4)
     parser.add_argument("--push", action="store_true")
+    parser.add_argument(
+        "--pr-base",
+        default="main",
+        help="pull-request target branch (default: main), independent of --base-ref",
+    )
     parser.add_argument("--open-pr", action="store_true", help="draft; needs --push")
     parser.add_argument("--dry-run", action="store_true", help="print the plan only")
     args = parser.parse_args(argv)
@@ -814,7 +830,7 @@ def certify(args: argparse.Namespace) -> int:
         run(["git", "push", "-u", "origin", branch])
     if args.open_pr:
         run(
-            ["gh", "pr", "create", "--draft", "--repo", PEPY_REPO, "--base", "main",
+            ["gh", "pr", "create", "--draft", "--repo", PEPY_REPO, "--base", args.pr_base,
              "--head", branch, "--title",
              f"Certify Microcosm UK cut {args.national_tag}", "--body-file", str(body)]
         )  # fmt: skip
