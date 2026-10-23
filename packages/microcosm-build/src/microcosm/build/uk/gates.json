@@ -1067,6 +1067,7 @@
           "person.would_claim_carers_allowance",
           "person.would_claim_marriage_allowance",
           "person.would_claim_scp",
+          "person.max_free_entitlement_hours_used",
           "person.person_is_spi_income_band_carrier",
           "person.person_is_spi_income_recipient",
           "benunit.benunit_source_id",
@@ -1116,7 +1117,8 @@
           "household.itl1_code",
           "household.itl2_code",
           "household.itl3_code",
-          "household.ward_code"
+          "household.ward_code",
+          "person.war_widows_pension_reported"
         ],
         "reviewed_exclusions": {
           "person.incapacity_benefit_reported": "The enhanced FRS stores this legacy reported-benefit input as an all-zero layer; the candidate must drop dead zero layers.",
@@ -1133,7 +1135,7 @@
       "parameters": {
         "maximum_share_deviation": 0.05
       },
-      "notes": "Every contract-driven stochastic flag must be non-constant and have a weighted share within +/-0.05 of its contract target. would_claim_pc is measured by uk_stage_pension_credit_take_up instead (microcosm#1069 R9), and would_claim_child_benefit and child_benefit_opts_out by uk_stage_child_benefit_take_up (microcosm#1063). would_claim_uc is drawn for FRS benefit units by frs_take_up and redrawn for SPI-channel units by spi_benefit_coherence on the same rule (microcosm#1095), so the gate measures both channels at the contract rate."
+      "notes": "Every contract-driven stochastic flag must be non-constant and have a weighted share within +/-0.05 of its contract target. would_claim_pc is measured by uk_stage_pension_credit_take_up instead (microcosm#1069 R9), and would_claim_child_benefit and child_benefit_opts_out by uk_stage_child_benefit_take_up (microcosm#1063). would_claim_uc is drawn for FRS benefit units by frs_take_up and redrawn for SPI-channel units by spi_benefit_coherence on the same rule (microcosm#1095), so the gate measures both channels at the contract rate. would_claim_universal_childcare is nested under would_claim_extended_childcare, so its target is the nested marginal r_e + (1 - r_e) * r_u of the contract's conditional universal rate, and the gate fails on any benefit unit that claims the extended hours without the universal ones. max_free_entitlement_hours_used carries the under-2 usage draw: its share of persons with hours is measured over the children of whole-year age 0 or 1 in units that claim the extended hours, against the weighted mean of their ages' contract rates (extended_childcare_age_0_usage, extended_childcare_age_1_usage)."
     },
     {
       "id": "uk_brma_enum_domain",

@@ -60,6 +60,9 @@ from microcosm.build.uk_runtime.cgt_support import UKCGTSupportSplitStageTransfo
 from microcosm.build.uk_runtime.child_benefit_take_up import (
     UKChildBenefitTakeUpStageTransform,
 )
+from microcosm.build.uk_runtime.childcare_copy_take_up import (
+    UKChildcareCopyTakeUpStageTransform,
+)
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.etb_services import UKETBServicesStageTransform
 from microcosm.build.uk_runtime.etb_vat import UKETBVATStageTransform
@@ -198,7 +201,7 @@ _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 46
+UK_FIXTURE_STAGE_COUNT = 47
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
@@ -2117,6 +2120,9 @@ def _build_implementations(
             stage=stages["private_school_attendance"],
             engine=engine,
             calibration_year=2025,
+        ),
+        "childcare_copy_take_up": UKChildcareCopyTakeUpStageTransform(
+            contract=contract, stage=stages["childcare_copy_take_up"]
         ),
         "age_tail": UKAgeTailStageTransform(stage=stages["age_tail"]),
     }

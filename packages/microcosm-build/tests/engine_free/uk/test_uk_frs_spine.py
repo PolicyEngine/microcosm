@@ -796,6 +796,7 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                         {
                             "kind": "assign_binary_from_rate",
                             "output": "would_claim_universal_childcare",
+                            "nested_under": "would_claim_extended_childcare",
                             "seed": 0,
                         },
                         {
@@ -813,6 +814,16 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                             "output": "maximum_extended_childcare_hours_usage",
                             "seed": 0,
                         },
+                        *(
+                            {
+                                "kind": "assign_binary_from_rate",
+                                "output": "max_free_entitlement_hours_used",
+                                "rate_key": f"extended_childcare_age_{age}_usage",
+                                "assignment_unit": "person",
+                                "seed": 0,
+                            }
+                            for age in (0, 1)
+                        ),
                     ],
                     outputs=(
                         "would_claim_child_benefit",
@@ -825,8 +836,12 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                         "would_claim_targeted_childcare",
                         "would_claim_uc_childcare",
                         "maximum_extended_childcare_hours_usage",
+                        "max_free_entitlement_hours_used",
                     ),
-                    nonnegative_outputs=("maximum_extended_childcare_hours_usage",),
+                    nonnegative_outputs=(
+                        "maximum_extended_childcare_hours_usage",
+                        "max_free_entitlement_hours_used",
+                    ),
                 ),
                 source_stage(
                     "frs_person_draws",
@@ -2282,6 +2297,7 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
         "would_claim_marriage_allowance",
         "would_claim_scp",
         "attends_private_school_random_draw",
+        "max_free_entitlement_hours_used",
     } <= set(frame.table("person"))
     assert {
         "household_owns_tv",

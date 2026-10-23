@@ -156,6 +156,10 @@ def _apply_pending_roster_transformations(
         "cgt_residential_split",
         "hmrc_cgt_asset_type_spine",
     ]
+    # Re-mint pending: the copies' childcare re-draw runs after every copy
+    # stage, before the private-school attendance.
+    assert "childcare_copy_take_up" not in roster
+    roster.append("childcare_copy_take_up")
     # microcosm#1095 re-mint pending: the stored private-school attendance is
     # the last stage of the spine.
     assert "private_school_attendance" not in roster

@@ -860,7 +860,23 @@
       "microcosm.high_value_homes.over_2m_by_region": "Microcosm-derived fact family (owner-occupied homes over £2m by English region and Wales, from Land Registry Price Paid, the UK HPI and the NSPL; uk/high_value_home_stock_facts.json, microcosm#1240), no uk-data metric. Bound on the local line only (calibration_lines), so the national line drops it after the compile (microcosm#1301).",
       "ons.population.age_0": "microcosm#1278 (the pre-Budget PR's plan, approved by María on 2026-10-20; microcosm#1095): the national 0_4 sex bands bind, but the single years inside them were free to move, so the contract also binds ages 0, 1 and 2 for all persons, on the 15_19 split's precedent. The 0_4 sex bands stay bound beside them: the three rows cover ages 0 to 2 for both sexes together, so neither band is their sum. No incumbent row has this row's definition.",
       "ons.population.age_1": "microcosm#1278 (the pre-Budget PR's plan, approved by María on 2026-10-20; microcosm#1095): the national 0_4 sex bands bind, but the single years inside them were free to move, so the contract also binds ages 0, 1 and 2 for all persons, on the 15_19 split's precedent. The 0_4 sex bands stay bound beside them: the three rows cover ages 0 to 2 for both sexes together, so neither band is their sum. No incumbent row has this row's definition.",
-      "ons.population.age_2": "microcosm#1278 (the pre-Budget PR's plan, approved by María on 2026-10-20; microcosm#1095): the national 0_4 sex bands bind, but the single years inside them were free to move, so the contract also binds ages 0, 1 and 2 for all persons, on the 15_19 split's precedent. The 0_4 sex bands stay bound beside them: the three rows cover ages 0 to 2 for both sexes together, so neither band is their sum. No incumbent row has this row's definition."
+      "ons.population.age_2": "microcosm#1278 (the pre-Budget PR's plan, approved by María on 2026-10-20; microcosm#1095): the national 0_4 sex bands bind, but the single years inside them were free to move, so the contract also binds ages 0, 1 and 2 for all persons, on the 15_19 split's precedent. The 0_4 sex bands stay bound beside them: the three rows cover ages 0 to 2 for both sexes together, so neither band is their sum. No incumbent row has this row's definition.",
+      "ons.population.age_3": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095): with ages 0, 1 and 2 bound, the single years 3 to 6 were still free inside the 0_4 and 5_9 sex bands, and the calibrated weights held too many 5-year-olds and too few 4-year-olds. The contract therefore binds ages 3, 4, 5 and 6 for all persons too, read from the same ONS mid-year estimate by single year of age as ages 0 to 2. The sex bands stay bound beside them. No incumbent row has this row's definition.",
+      "ons.population.age_4": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095): with ages 0, 1 and 2 bound, the single years 3 to 6 were still free inside the 0_4 and 5_9 sex bands, and the calibrated weights held too many 5-year-olds and too few 4-year-olds. The contract therefore binds ages 3, 4, 5 and 6 for all persons too, read from the same ONS mid-year estimate by single year of age as ages 0 to 2. The sex bands stay bound beside them. No incumbent row has this row's definition.",
+      "ons.population.age_5": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095): with ages 0, 1 and 2 bound, the single years 3 to 6 were still free inside the 0_4 and 5_9 sex bands, and the calibrated weights held too many 5-year-olds and too few 4-year-olds. The contract therefore binds ages 3, 4, 5 and 6 for all persons too, read from the same ONS mid-year estimate by single year of age as ages 0 to 2. The sex bands stay bound beside them. No incumbent row has this row's definition.",
+      "ons.population.age_6": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095): with ages 0, 1 and 2 bound, the single years 3 to 6 were still free inside the 0_4 and 5_9 sex bands, and the calibrated weights held too many 5-year-olds and too few 4-year-olds. The contract therefore binds ages 3, 4, 5 and 6 for all persons too, read from the same ONS mid-year estimate by single year of age as ages 0 to 2. The sex bands stay bound beside them. No incumbent row has this row's definition.",
+      "ons.population.england_age_0": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095): England's funded childcare is costed on England's children, whose single years the UK rows and the region 0_9 cells leave free, so the contract binds England's ages 0 to 6 for all persons, read from the ONS mid-year estimate for England (E92000001) by single year of age. Wales, Scotland and Northern Ireland get no single-year rows: each nation's single year rests on too few FRS households, and the UK rows bind their sum. No incumbent row has this row's definition.",
+      "ons.population.england_age_1": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095): England's funded childcare is costed on England's children, whose single years the UK rows and the region 0_9 cells leave free, so the contract binds England's ages 0 to 6 for all persons, read from the ONS mid-year estimate for England (E92000001) by single year of age. Wales, Scotland and Northern Ireland get no single-year rows: each nation's single year rests on too few FRS households, and the UK rows bind their sum. No incumbent row has this row's definition.",
+      "ons.population.england_age_2": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095): England's funded childcare is costed on England's children, whose single years the UK rows and the region 0_9 cells leave free, so the contract binds England's ages 0 to 6 for all persons, read from the ONS mid-year estimate for England (E92000001) by single year of age. Wales, Scotland and Northern Ireland get no single-year rows: each nation's single year rests on too few FRS households, and the UK rows bind their sum. No incumbent row has this row's definition.",
+      "ons.population.england_age_3": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095): England's funded childcare is costed on England's children, whose single years the UK rows and the region 0_9 cells leave free, so the contract binds England's ages 0 to 6 for all persons, read from the ONS mid-year estimate for England (E92000001) by single year of age. Wales, Scotland and Northern Ireland get no single-year rows: each nation's single year rests on too few FRS households, and the UK rows bind their sum. No incumbent row has this row's definition.",
+      "ons.population.england_age_4": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095): England's funded childcare is costed on England's children, whose single years the UK rows and the region 0_9 cells leave free, so the contract binds England's ages 0 to 6 for all persons, read from the ONS mid-year estimate for England (E92000001) by single year of age. Wales, Scotland and Northern Ireland get no single-year rows: each nation's single year rests on too few FRS households, and the UK rows bind their sum. No incumbent row has this row's definition.",
+      "ons.population.england_age_5": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095): England's funded childcare is costed on England's children, whose single years the UK rows and the region 0_9 cells leave free, so the contract binds England's ages 0 to 6 for all persons, read from the ONS mid-year estimate for England (E92000001) by single year of age. Wales, Scotland and Northern Ireland get no single-year rows: each nation's single year rests on too few FRS households, and the UK rows bind their sum. No incumbent row has this row's definition.",
+      "ons.population.england_age_6": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095): England's funded childcare is costed on England's children, whose single years the UK rows and the region 0_9 cells leave free, so the contract binds England's ages 0 to 6 for all persons, read from the ONS mid-year estimate for England (E92000001) by single year of age. Wales, Scotland and Northern Ireland get no single-year rows: each nation's single year rests on too few FRS households, and the UK rows bind their sum. No incumbent row has this row's definition.",
+      "dfe.funded_childcare.working_parent_children_9_to_11_months": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): bind every DfE funded-childcare count the model can carry, even on few records, and sign out only those with a real reason. The working parent registrations at 9 to 11 months and by single year of age (1, 2 and 3) and the universal registrations in nursery at age 3, from the DfE January census, England, measured at the spring term (María's ruling of 2026-10-22); the age-4 cells are signed out, as the bound rows fix them (accounting note dfe_funded_childcare_single_ages). No incumbent row has this row's definition.",
+      "dfe.funded_childcare.working_parent_children_age_1": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): bind every DfE funded-childcare count the model can carry, even on few records, and sign out only those with a real reason. The working parent registrations at 9 to 11 months and by single year of age (1, 2 and 3) and the universal registrations in nursery at age 3, from the DfE January census, England, measured at the spring term (María's ruling of 2026-10-22); the age-4 cells are signed out, as the bound rows fix them (accounting note dfe_funded_childcare_single_ages). No incumbent row has this row's definition.",
+      "dfe.funded_childcare.working_parent_children_age_2": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): bind every DfE funded-childcare count the model can carry, even on few records, and sign out only those with a real reason. The working parent registrations at 9 to 11 months and by single year of age (1, 2 and 3) and the universal registrations in nursery at age 3, from the DfE January census, England, measured at the spring term (María's ruling of 2026-10-22); the age-4 cells are signed out, as the bound rows fix them (accounting note dfe_funded_childcare_single_ages). No incumbent row has this row's definition.",
+      "dfe.funded_childcare.working_parent_children_age_3": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): bind every DfE funded-childcare count the model can carry, even on few records, and sign out only those with a real reason. The working parent registrations at 9 to 11 months and by single year of age (1, 2 and 3) and the universal registrations in nursery at age 3, from the DfE January census, England, measured at the spring term (María's ruling of 2026-10-22); the age-4 cells are signed out, as the bound rows fix them (accounting note dfe_funded_childcare_single_ages). No incumbent row has this row's definition.",
+      "dfe.funded_childcare.universal_nursery_children_age_3": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): bind every DfE funded-childcare count the model can carry, even on few records, and sign out only those with a real reason. The working parent registrations at 9 to 11 months and by single year of age (1, 2 and 3) and the universal registrations in nursery at age 3, from the DfE January census, England, measured at the spring term (María's ruling of 2026-10-22); the age-4 cells are signed out, as the bound rows fix them (accounting note dfe_funded_childcare_single_ages). No incumbent row has this row's definition."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -893,7 +909,9 @@
       "ons_terminal_sex_band_split": "María ruling 2026-08-21: split the incumbent terminal sex bands into uniform five-year 85_89 bands plus 90_plus tails. The incumbent six-year 85_90 terminal rows leave ages 91+ unconstrained; Microcosm keeps the uniform five-year bands and constrains the tail. The 85_89-vs-85_90 value gap is the single-age-90 share and is a signed semantic difference.",
       "cgt_band_promotion": "The 18 banded CGT registry names (hmrc/cgt_taxpayers_band_<lower> and hmrc/capital_gains_band_<lower>, nine bands from 12,300) move from excluded to mapped: Chronicle now carries HMRC Table 2.1a for 2024-25 (cgt_size_of_gain_2026), so the incumbent's unpackaged uk-data CSV is superseded by published individual rows bound at identity; the 3,000 and 6,000 bands the incumbent never carried are authored under the same naming form and the 0-2,999 band below the 2024 AEA is signed out (microcosm#467, #725). Chronicle's Table 2.1a package emits taxpayers and gains only, although the published sheet carries an amounts-of-tax column, so no liability-by-band target exists yet; it becomes possible once Chronicle emits that column.",
       "ons_15_19_sex_band_split": "María's ruling of 2026-10-13 (microcosm#1095, uk-data#563): the two national 15_19 sex bands are split into ages 15, 16-17 and 18-19. uk-data#563 found weights that fit the five-year band while holding too many 16-year-olds and too few 18- and 19-year-olds, and nothing in this contract bound the mix inside the band either. The six rows partition the two bands and read the same ONS mid-year estimate by single year of age, so each sex's three rows sum to the band they replace. The incumbent ons/female_15_19 and ons/male_15_19 rows move from mapped to excluded: no single contract row has their definition.",
-      "ons_single_year_ages_0_2": "microcosm#1278 (the pre-Budget PR's plan, approved by María on 2026-10-20; microcosm#1095): three all-persons rows bind ages 0, 1 and 2, read from the same ONS mid-year estimate by single year of age as the 0_4 sex bands. Unlike the 15_19 split, whose pieces replaced the bands, the 0_4 sex bands keep their incumbent mapping and stay bound: the three rows cover ages 0 to 2 for both sexes together, so neither band is their sum. The three are contract-only declarations; no incumbent row moves."
+      "ons_single_year_ages_0_2": "microcosm#1278 (the pre-Budget PR's plan, approved by María on 2026-10-20; microcosm#1095): three all-persons rows bind ages 0, 1 and 2, read from the same ONS mid-year estimate by single year of age as the 0_4 sex bands. Unlike the 15_19 split, whose pieces replaced the bands, the 0_4 sex bands keep their incumbent mapping and stay bound: the three rows cover ages 0 to 2 for both sexes together, so neither band is their sum. The three are contract-only declarations; no incumbent row moves.",
+      "ons_single_year_ages_0_6": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095). Eleven all-persons rows extend the single years of age: the UK rows go on from age 2 to age 6, and England binds ages 0 to 6 at E92000001. Every row reads the ONS mid-2025 estimate by single year of age (Population estimates for the UK, England, Wales, Scotland and Northern Ireland: mid-2025, published 1 October 2026; on the feed since the 942a1fa re-pin, microcosm#1123), the series the 0_4 and 5_9 sex bands and the region 0_9 cells sum, so the nested rows are consistent: the UK rows for ages 0 to 4 sum to the two 0_4 sex bands, and England's rows sit inside England's nine region 0_9 cells. Every band stays bound; the eleven are contract-only declarations and no incumbent row moves. Scotland's age 0 is already bound as ons.population.scotland_babies_under_1; Wales and Northern Ireland are left to the UK rows, as each nation's single year rests on too few FRS households.",
+      "dfe_funded_childcare_single_ages": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): bind every DfE funded-childcare count the model can carry, even on few records, and sign out only those with a real reason. María's ruling of 2026-10-22 (Vahid's round-2 finding A on microcosm#1338) measures every DfE row at the spring term. DfE counts the children registered in its January census by their age on the preceding 31 December, so each row counts the children funded in the term that starts on 1 January of the model year's April-to-March span, by their age on 31 December (uk_runtime/dfe_spring_term.py). policyengine-uk 2.147.2 stops the free hours when a child starts school, from its date of birth (reception the September after the fourth birthday), and starts working parent hours the term after the minimum age; the universal and 2-year-old measures count every child of the DfE age, as the term after the birthday does, where the engine still gates them on the age on 6 October. No row reads current_education. Bound, England, January 2025 census: working parent registrations at 9 to 11 months and at ages 1, 2 and 3; universal registrations in nursery at age 3; and the three earlier rows, working parent 2 to 4, early learning for 2-year-olds and universal-only (nursery ages 3 and 4 less working parent ages 3 and 4). The under-2 rows take their own take-up: a child under 2 in a family that claims working-parent hours draws whether it uses them, at its own contract rate, as DfE registers far fewer of the youngest eligible children (parental leave) than of those aged 2 to 4. The model year is 2025, so its spring term is January 2026: the January 2025 census is the same classification one birth cohort earlier, the in-year snapshot the holds record. Signed out, each for its reason: the three age-4 cells (working parent and universal in nursery: the bound 2 to 4 and universal-only rows, less the bound ages 2 and 3, already fix them on the facts and on the measures; universal in reception: the school place meets those children's entitlement, the model funds no early-years hours for them, and who is in reception follows only the date of birth, which the survey does not record); reception at age 3 (the same reason, and DfE records a handful); the 9 months to 2 years, 3 to 4 years and Total working parent cells, the nursery and reception Totals, the early learning for 2-year-olds Total and the all-entitlements Total (sums or copies of bound cells, or sums that include a signed-out cell); the universal all-provision cells at ages 3, 4 and Total (nursery plus reception, a few children off their sum in DfE's own table); the estimated eligible children, eligible nursery children and all-children estimates (DfE builds them from population and survey-based inputs, not administrative counts, and the all-children estimates restate the ONS England single years already bound at a different reference date); and the registered percentages (ratios of a bound count to one of those estimates). The FRS records no deferred school start and no council-funded independent reception place, so the model starts every child at school on the date its date of birth implies, which slightly undercounts the 4-year-olds in nursery; DfE notes that in 2025 some 2-year-olds eligible for both entitlements were recorded under working parents rather than early learning."
     },
     "scope_target_ids": [
       "obr.income_tax",
@@ -990,6 +1008,17 @@
       "ons.population.age_0",
       "ons.population.age_1",
       "ons.population.age_2",
+      "ons.population.age_3",
+      "ons.population.age_4",
+      "ons.population.age_5",
+      "ons.population.age_6",
+      "ons.population.england_age_0",
+      "ons.population.england_age_1",
+      "ons.population.england_age_2",
+      "ons.population.england_age_3",
+      "ons.population.england_age_4",
+      "ons.population.england_age_5",
+      "ons.population.england_age_6",
       "ons.population.female_0_4",
       "ons.population.female_10_14",
       "ons.population.female_15",
@@ -1105,6 +1134,11 @@
       "dfe.funded_childcare.working_parent_children_2_to_4",
       "dfe.funded_childcare.early_learning_2_year_olds",
       "dfe.funded_childcare.universal_only_children",
+      "dfe.funded_childcare.working_parent_children_9_to_11_months",
+      "dfe.funded_childcare.working_parent_children_age_1",
+      "dfe.funded_childcare.working_parent_children_age_2",
+      "dfe.funded_childcare.working_parent_children_age_3",
+      "dfe.funded_childcare.universal_nursery_children_age_3",
       "dft.bus_fare_receipts.england",
       "dft.bus_net_support.england",
       "dft.bus_fare_receipts.london",
@@ -8184,6 +8218,733 @@
       },
       "category_id": "ons.population",
       "label": "Age 2",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
+    },
+    {
+      "target_id": "ons.population.age_3",
+      "family": "ons_population",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 3
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<",
+            "value": 4
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "ons/age_3",
+          "filters": [
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 3
+            },
+            {
+              "variable": "age",
+              "operator": "<",
+              "value": 4
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household"
+        },
+        "axiom": {
+          "metric_name": "ons/age_3",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "age": [
+            3
+          ]
+        }
+      },
+      "category_id": "ons.population",
+      "label": "Age 3",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
+    },
+    {
+      "target_id": "ons.population.age_4",
+      "family": "ons_population",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 4
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<",
+            "value": 5
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "ons/age_4",
+          "filters": [
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 4
+            },
+            {
+              "variable": "age",
+              "operator": "<",
+              "value": 5
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household"
+        },
+        "axiom": {
+          "metric_name": "ons/age_4",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "age": [
+            4
+          ]
+        }
+      },
+      "category_id": "ons.population",
+      "label": "Age 4",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
+    },
+    {
+      "target_id": "ons.population.age_5",
+      "family": "ons_population",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 5
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<",
+            "value": 6
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "ons/age_5",
+          "filters": [
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 5
+            },
+            {
+              "variable": "age",
+              "operator": "<",
+              "value": 6
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household"
+        },
+        "axiom": {
+          "metric_name": "ons/age_5",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "age": [
+            5
+          ]
+        }
+      },
+      "category_id": "ons.population",
+      "label": "Age 5",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
+    },
+    {
+      "target_id": "ons.population.age_6",
+      "family": "ons_population",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 6
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<",
+            "value": 7
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "ons/age_6",
+          "filters": [
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 6
+            },
+            {
+              "variable": "age",
+              "operator": "<",
+              "value": 7
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household"
+        },
+        "axiom": {
+          "metric_name": "ons/age_6",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "age": [
+            6
+          ]
+        }
+      },
+      "category_id": "ons.population",
+      "label": "Age 6",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
+    },
+    {
+      "target_id": "ons.population.england_age_0",
+      "family": "ons_population",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.geography.country",
+            "equals": "england"
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 0
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<",
+            "value": 1
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "ons/england_age_0",
+          "filters": [
+            {
+              "variable": "country",
+              "equals": "ENGLAND"
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 0
+            },
+            {
+              "variable": "age",
+              "operator": "<",
+              "value": 1
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household"
+        },
+        "axiom": {
+          "metric_name": "ons/england_age_0",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "age": [
+            0
+          ]
+        }
+      },
+      "category_id": "ons.population",
+      "label": "England age 0",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
+    },
+    {
+      "target_id": "ons.population.england_age_1",
+      "family": "ons_population",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.geography.country",
+            "equals": "england"
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 1
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<",
+            "value": 2
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "ons/england_age_1",
+          "filters": [
+            {
+              "variable": "country",
+              "equals": "ENGLAND"
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 1
+            },
+            {
+              "variable": "age",
+              "operator": "<",
+              "value": 2
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household"
+        },
+        "axiom": {
+          "metric_name": "ons/england_age_1",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "age": [
+            1
+          ]
+        }
+      },
+      "category_id": "ons.population",
+      "label": "England age 1",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
+    },
+    {
+      "target_id": "ons.population.england_age_2",
+      "family": "ons_population",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.geography.country",
+            "equals": "england"
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 2
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<",
+            "value": 3
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "ons/england_age_2",
+          "filters": [
+            {
+              "variable": "country",
+              "equals": "ENGLAND"
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 2
+            },
+            {
+              "variable": "age",
+              "operator": "<",
+              "value": 3
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household"
+        },
+        "axiom": {
+          "metric_name": "ons/england_age_2",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "age": [
+            2
+          ]
+        }
+      },
+      "category_id": "ons.population",
+      "label": "England age 2",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
+    },
+    {
+      "target_id": "ons.population.england_age_3",
+      "family": "ons_population",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.geography.country",
+            "equals": "england"
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 3
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<",
+            "value": 4
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "ons/england_age_3",
+          "filters": [
+            {
+              "variable": "country",
+              "equals": "ENGLAND"
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 3
+            },
+            {
+              "variable": "age",
+              "operator": "<",
+              "value": 4
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household"
+        },
+        "axiom": {
+          "metric_name": "ons/england_age_3",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "age": [
+            3
+          ]
+        }
+      },
+      "category_id": "ons.population",
+      "label": "England age 3",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
+    },
+    {
+      "target_id": "ons.population.england_age_4",
+      "family": "ons_population",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.geography.country",
+            "equals": "england"
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 4
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<",
+            "value": 5
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "ons/england_age_4",
+          "filters": [
+            {
+              "variable": "country",
+              "equals": "ENGLAND"
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 4
+            },
+            {
+              "variable": "age",
+              "operator": "<",
+              "value": 5
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household"
+        },
+        "axiom": {
+          "metric_name": "ons/england_age_4",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "age": [
+            4
+          ]
+        }
+      },
+      "category_id": "ons.population",
+      "label": "England age 4",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
+    },
+    {
+      "target_id": "ons.population.england_age_5",
+      "family": "ons_population",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.geography.country",
+            "equals": "england"
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 5
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<",
+            "value": 6
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "ons/england_age_5",
+          "filters": [
+            {
+              "variable": "country",
+              "equals": "ENGLAND"
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 5
+            },
+            {
+              "variable": "age",
+              "operator": "<",
+              "value": 6
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household"
+        },
+        "axiom": {
+          "metric_name": "ons/england_age_5",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "age": [
+            5
+          ]
+        }
+      },
+      "category_id": "ons.population",
+      "label": "England age 5",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
+    },
+    {
+      "target_id": "ons.population.england_age_6",
+      "family": "ons_population",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.geography.country",
+            "equals": "england"
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 6
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<",
+            "value": 7
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "ons/england_age_6",
+          "filters": [
+            {
+              "variable": "country",
+              "equals": "ENGLAND"
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 6
+            },
+            {
+              "variable": "age",
+              "operator": "<",
+              "value": 7
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household"
+        },
+        "axiom": {
+          "metric_name": "ons/england_age_6",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "age": [
+            6
+          ]
+        }
+      },
+      "category_id": "ons.population",
+      "label": "England age 6",
       "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
@@ -15318,11 +16079,11 @@
         "observation_basis": "january_stock",
         "filters": [
           {
-            "concept": "uk.childcare.is_child_receiving_extended_childcare",
+            "concept": "uk.childcare.dfe_spring_working_parent",
             "equals": true
           },
           {
-            "concept": "uk.demographics.age",
+            "concept": "uk.childcare.dfe_age_at_31_december",
             "operator": ">=",
             "value": 2
           },
@@ -15340,11 +16101,11 @@
           "map_to": "household",
           "filters": [
             {
-              "variable": "is_child_receiving_extended_childcare",
+              "variable": "dfe_spring_working_parent",
               "equals": true
             },
             {
-              "variable": "age",
+              "variable": "dfe_age_at_31_december",
               "operator": ">=",
               "value": 2
             },
@@ -15353,7 +16114,7 @@
               "equals": "ENGLAND"
             }
           ],
-          "notes": "Caseload only: entitlement spending is not bound because caseload multiplied by full-usage ceilings would double count assumptions."
+          "notes": "Caseload only: entitlement spending is not bound because caseload multiplied by full-usage ceilings would double count assumptions. Counted at the spring term, as DfE's January census counts: a child registered in the term that starts on 1 January of the model year's April-to-March span, by its age on 31 December (uk_runtime/dfe_spring_term.py; accounting note dfe_funded_childcare_single_ages). A child already in reception by January is not funded then, so it is not counted; with the single ages 2 and 3 bound, this row fixes age 4."
         },
         "axiom": {
           "metric_name": "dfe/funded_childcare/working_parent_children_2_to_4",
@@ -15392,7 +16153,7 @@
         "observation_basis": "january_stock",
         "filters": [
           {
-            "concept": "uk.childcare.is_child_receiving_targeted_childcare",
+            "concept": "uk.childcare.dfe_spring_early_learning_2",
             "equals": true
           },
           {
@@ -15409,7 +16170,7 @@
           "map_to": "household",
           "filters": [
             {
-              "variable": "is_child_receiving_targeted_childcare",
+              "variable": "dfe_spring_early_learning_2",
               "equals": true
             },
             {
@@ -15417,7 +16178,7 @@
               "equals": "ENGLAND"
             }
           ],
-          "notes": "Caseload only; the published 74.8% denominator is not transferred into the model take-up rate."
+          "notes": "Caseload only; the published 74.8% denominator is not transferred into the model take-up rate. Counted at the spring term, as DfE's January census counts: a child registered in the term that starts on 1 January of the model year's April-to-March span, by its age on 31 December (uk_runtime/dfe_spring_term.py; accounting note dfe_funded_childcare_single_ages). Funding starts the term after the second birthday, so every child of DfE age 2 in a qualifying family that claims is counted, where policyengine-uk still reads the age on 6 October."
         },
         "axiom": {
           "metric_name": "dfe/funded_childcare/early_learning_2_year_olds",
@@ -15473,11 +16234,11 @@
         "observation_basis": "january_stock",
         "filters": [
           {
-            "concept": "uk.childcare.is_child_receiving_universal_childcare",
+            "concept": "uk.childcare.dfe_spring_universal",
             "equals": true
           },
           {
-            "concept": "uk.childcare.is_child_receiving_extended_childcare",
+            "concept": "uk.childcare.dfe_spring_working_parent",
             "equals": false
           },
           {
@@ -15494,11 +16255,11 @@
           "map_to": "household",
           "filters": [
             {
-              "variable": "is_child_receiving_universal_childcare",
+              "variable": "dfe_spring_universal",
               "equals": true
             },
             {
-              "variable": "is_child_receiving_extended_childcare",
+              "variable": "dfe_spring_working_parent",
               "equals": false
             },
             {
@@ -15506,7 +16267,7 @@
               "equals": "ENGLAND"
             }
           ],
-          "notes": "Universal-only caseload is the declared difference between the overlapping published universes; no entitlement spending row is bound. From policyengine-uk 2.128.1 a child on the working parent entitlement keeps the universal hours (Childcare Act 2016 s.1(6)(a); pe-uk#2177), so the measure counts children on the universal hours who are not receiving the extended entitlement, as the published difference does."
+          "notes": "Universal-only caseload is the declared difference between the overlapping published universes; no entitlement spending row is bound. Counted at the spring term, as DfE's January census counts: a child registered in the term that starts on 1 January of the model year's April-to-March span, by its age on 31 December (uk_runtime/dfe_spring_term.py; accounting note dfe_funded_childcare_single_ages). Nursery registrations at DfE ages 3 and 4 less working parent registrations at those ages: a working parent child keeps the universal hours (Childcare Act 2016 s.1(6)(a); policyengine-uk 2.128.1), so every working parent child of those ages is a universal child too. Universal hours start the term after the third birthday, so every child of DfE age 3 is counted, where policyengine-uk still reads the age on 6 October. With the nursery age 3 row bound, this row fixes the nursery age 4 cell."
         },
         "axiom": {
           "metric_name": "dfe/funded_childcare/universal_only_children",
@@ -15520,6 +16281,411 @@
       },
       "category_id": "dfe.funded_childcare",
       "label": "Universal only children"
+    },
+    {
+      "target_id": "dfe.funded_childcare.working_parent_children_9_to_11_months",
+      "family": "dfe_funded_childcare",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "observation_basis": "january_stock",
+        "filters": [
+          {
+            "concept": "uk.childcare.dfe_spring_working_parent",
+            "equals": true
+          },
+          {
+            "concept": "uk.childcare.dfe_age_at_31_december",
+            "operator": ">=",
+            "value": 0
+          },
+          {
+            "concept": "uk.childcare.dfe_age_at_31_december",
+            "operator": "<",
+            "value": 1
+          },
+          {
+            "concept": "uk.geography.country",
+            "equals": "ENGLAND"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dfe/funded_childcare/working_parent_children_9_to_11_months",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "dfe_spring_working_parent",
+              "equals": true
+            },
+            {
+              "variable": "dfe_age_at_31_december",
+              "operator": ">=",
+              "value": 0
+            },
+            {
+              "variable": "dfe_age_at_31_december",
+              "operator": "<",
+              "value": 1
+            },
+            {
+              "variable": "country",
+              "equals": "ENGLAND"
+            }
+          ],
+          "notes": "Caseload only: working parent registrations at 9 to 11 months in the January census, the 15 hours for children from 9 months from September 2024. Counted at the spring term, as DfE's January census counts: a child registered in the term that starts on 1 January of the model year's April-to-March span, by its age on 31 December (uk_runtime/dfe_spring_term.py; accounting note dfe_funded_childcare_single_ages). From policyengine-uk 2.147.2 a child is funded from the term after it reaches 9 months (SI 2022/1134 reg 27), so a child of DfE age 0 born from January to March is funded in the spring term."
+        },
+        "axiom": {
+          "metric_name": "dfe/funded_childcare/working_parent_children_9_to_11_months",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dfe",
+        "source_concept": "dfe.number_of_registered_children",
+        "source_measure_id": "registered_children_count",
+        "entity_name": "person",
+        "dimension_values": {
+          "entitlement_type": "Working parents",
+          "age": "9 to 11 months",
+          "registration_basis": "registered_children",
+          "provision": "all"
+        }
+      },
+      "category_id": "dfe.funded_childcare",
+      "label": "Working parent children 9 to 11 months"
+    },
+    {
+      "target_id": "dfe.funded_childcare.working_parent_children_age_1",
+      "family": "dfe_funded_childcare",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "observation_basis": "january_stock",
+        "filters": [
+          {
+            "concept": "uk.childcare.dfe_spring_working_parent",
+            "equals": true
+          },
+          {
+            "concept": "uk.childcare.dfe_age_at_31_december",
+            "operator": ">=",
+            "value": 1
+          },
+          {
+            "concept": "uk.childcare.dfe_age_at_31_december",
+            "operator": "<",
+            "value": 2
+          },
+          {
+            "concept": "uk.geography.country",
+            "equals": "ENGLAND"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dfe/funded_childcare/working_parent_children_age_1",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "dfe_spring_working_parent",
+              "equals": true
+            },
+            {
+              "variable": "dfe_age_at_31_december",
+              "operator": ">=",
+              "value": 1
+            },
+            {
+              "variable": "dfe_age_at_31_december",
+              "operator": "<",
+              "value": 2
+            },
+            {
+              "variable": "country",
+              "equals": "ENGLAND"
+            }
+          ],
+          "notes": "Caseload only, by single year of age: working parent registrations at age 1 in the January census. Counted at the spring term, as DfE's January census counts: a child registered in the term that starts on 1 January of the model year's April-to-March span, by its age on 31 December (uk_runtime/dfe_spring_term.py; accounting note dfe_funded_childcare_single_ages)."
+        },
+        "axiom": {
+          "metric_name": "dfe/funded_childcare/working_parent_children_age_1",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dfe",
+        "source_concept": "dfe.number_of_registered_children",
+        "source_measure_id": "registered_children_count",
+        "entity_name": "person",
+        "dimension_values": {
+          "entitlement_type": "Working parents",
+          "age": "1 year",
+          "registration_basis": "registered_children",
+          "provision": "all"
+        }
+      },
+      "category_id": "dfe.funded_childcare",
+      "label": "Working parent children age 1"
+    },
+    {
+      "target_id": "dfe.funded_childcare.working_parent_children_age_2",
+      "family": "dfe_funded_childcare",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "observation_basis": "january_stock",
+        "filters": [
+          {
+            "concept": "uk.childcare.dfe_spring_working_parent",
+            "equals": true
+          },
+          {
+            "concept": "uk.childcare.dfe_age_at_31_december",
+            "operator": ">=",
+            "value": 2
+          },
+          {
+            "concept": "uk.childcare.dfe_age_at_31_december",
+            "operator": "<",
+            "value": 3
+          },
+          {
+            "concept": "uk.geography.country",
+            "equals": "ENGLAND"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dfe/funded_childcare/working_parent_children_age_2",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "dfe_spring_working_parent",
+              "equals": true
+            },
+            {
+              "variable": "dfe_age_at_31_december",
+              "operator": ">=",
+              "value": 2
+            },
+            {
+              "variable": "dfe_age_at_31_december",
+              "operator": "<",
+              "value": 3
+            },
+            {
+              "variable": "country",
+              "equals": "ENGLAND"
+            }
+          ],
+          "notes": "Caseload only, by single year of age: working parent registrations at age 2 in the January census. Counted at the spring term, as DfE's January census counts: a child registered in the term that starts on 1 January of the model year's April-to-March span, by its age on 31 December (uk_runtime/dfe_spring_term.py; accounting note dfe_funded_childcare_single_ages)."
+        },
+        "axiom": {
+          "metric_name": "dfe/funded_childcare/working_parent_children_age_2",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dfe",
+        "source_concept": "dfe.number_of_registered_children",
+        "source_measure_id": "registered_children_count",
+        "entity_name": "person",
+        "dimension_values": {
+          "entitlement_type": "Working parents",
+          "age": "2 years",
+          "registration_basis": "registered_children",
+          "provision": "all"
+        }
+      },
+      "category_id": "dfe.funded_childcare",
+      "label": "Working parent children age 2"
+    },
+    {
+      "target_id": "dfe.funded_childcare.working_parent_children_age_3",
+      "family": "dfe_funded_childcare",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "observation_basis": "january_stock",
+        "filters": [
+          {
+            "concept": "uk.childcare.dfe_spring_working_parent",
+            "equals": true
+          },
+          {
+            "concept": "uk.childcare.dfe_age_at_31_december",
+            "operator": ">=",
+            "value": 3
+          },
+          {
+            "concept": "uk.childcare.dfe_age_at_31_december",
+            "operator": "<",
+            "value": 4
+          },
+          {
+            "concept": "uk.geography.country",
+            "equals": "ENGLAND"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dfe/funded_childcare/working_parent_children_age_3",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "dfe_spring_working_parent",
+              "equals": true
+            },
+            {
+              "variable": "dfe_age_at_31_december",
+              "operator": ">=",
+              "value": 3
+            },
+            {
+              "variable": "dfe_age_at_31_december",
+              "operator": "<",
+              "value": 4
+            },
+            {
+              "variable": "country",
+              "equals": "ENGLAND"
+            }
+          ],
+          "notes": "Caseload only, by single year of age: working parent registrations at age 3 in the January census. Counted at the spring term, as DfE's January census counts: a child registered in the term that starts on 1 January of the model year's April-to-March span, by its age on 31 December (uk_runtime/dfe_spring_term.py; accounting note dfe_funded_childcare_single_ages)."
+        },
+        "axiom": {
+          "metric_name": "dfe/funded_childcare/working_parent_children_age_3",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dfe",
+        "source_concept": "dfe.number_of_registered_children",
+        "source_measure_id": "registered_children_count",
+        "entity_name": "person",
+        "dimension_values": {
+          "entitlement_type": "Working parents",
+          "age": "3 years",
+          "registration_basis": "registered_children",
+          "provision": "all"
+        }
+      },
+      "category_id": "dfe.funded_childcare",
+      "label": "Working parent children age 3"
+    },
+    {
+      "target_id": "dfe.funded_childcare.universal_nursery_children_age_3",
+      "family": "dfe_funded_childcare",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "observation_basis": "january_stock",
+        "filters": [
+          {
+            "concept": "uk.childcare.dfe_spring_universal",
+            "equals": true
+          },
+          {
+            "concept": "uk.childcare.dfe_age_at_31_december",
+            "operator": ">=",
+            "value": 3
+          },
+          {
+            "concept": "uk.childcare.dfe_age_at_31_december",
+            "operator": "<",
+            "value": 4
+          },
+          {
+            "concept": "uk.geography.country",
+            "equals": "ENGLAND"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dfe/funded_childcare/universal_nursery_children_age_3",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "dfe_spring_universal",
+              "equals": true
+            },
+            {
+              "variable": "dfe_age_at_31_december",
+              "operator": ">=",
+              "value": 3
+            },
+            {
+              "variable": "dfe_age_at_31_december",
+              "operator": "<",
+              "value": 4
+            },
+            {
+              "variable": "country",
+              "equals": "ENGLAND"
+            }
+          ],
+          "notes": "Universal hours registrations at age 3 outside reception (DfE's nursery provision), counting working parent children too, as DfE's universal counts do. Counted at the spring term, as DfE's January census counts: a child registered in the term that starts on 1 January of the model year's April-to-March span, by its age on 31 December (uk_runtime/dfe_spring_term.py; accounting note dfe_funded_childcare_single_ages). Universal hours start the term after the third birthday, so every child of DfE age 3 is counted, where policyengine-uk still reads the age on 6 October."
+        },
+        "axiom": {
+          "metric_name": "dfe/funded_childcare/universal_nursery_children_age_3",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dfe",
+        "source_concept": "dfe.number_of_registered_children_nursery",
+        "source_measure_id": "registered_children_nursery_count",
+        "entity_name": "person",
+        "dimension_values": {
+          "entitlement_type": "Universal",
+          "age": "3 years",
+          "registration_basis": "registered_children",
+          "provision": "nursery"
+        }
+      },
+      "category_id": "dfe.funded_childcare",
+      "label": "Universal nursery children age 3"
     },
     {
       "target_id": "dft.bus_fare_receipts.england",

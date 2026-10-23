@@ -1892,3 +1892,133 @@ def test_the_resolver_routes_high_value_home_measures_to_households(
         assert resolver.entity_for(name) == "household"
         assert resolver.knows("household", name)
         assert not resolver.knows("person", name)
+
+
+def _stub_engine_term_calendar(monkeypatch) -> None:
+    """policyengine-uk's year of terms, without the engine installed."""
+
+    dates = SimpleNamespace(
+        term_starts=lambda year: (
+            year * 10_000 + 401,
+            year * 10_000 + 901,
+            (year + 1) * 10_000 + 101,
+        )
+    )
+    utils = SimpleNamespace(dates=dates)
+    monkeypatch.setitem(sys.modules, "policyengine_uk", SimpleNamespace(utils=utils))
+    monkeypatch.setitem(sys.modules, "policyengine_uk.utils", utils)
+    monkeypatch.setitem(sys.modules, "policyengine_uk.utils.dates", dates)
+
+
+def _spring_term_simulation() -> SimulationStub:
+    # Person 1 is an adult, person 2 a three-year-old on working-parent hours
+    # in a family that does not claim the universal hours on their own, and
+    # person 3 a four-year-old already in reception (a third of the year).
+    return SimulationStub(
+        {
+            "birth_year": ("person", np.array([1990, 2022, 2021])),
+            "country": ("household", np.array(["ENGLAND", "ENGLAND"])),
+            "early_years_term_share_before_school": (
+                "person",
+                np.array([1.0, 1.0, 1 / 3], dtype=np.float32),
+            ),
+            "extended_childcare_entitlement_total_per_child": (
+                "person",
+                np.array([0.0, 6_000.0, 2_000.0]),
+            ),
+            "is_of_compulsory_school_age": ("person", np.array([False] * 3)),
+            "max_free_entitlement_hours_used": (
+                "person",
+                np.array([30.0, 30.0, 30.0]),
+            ),
+            "maximum_extended_childcare_hours_usage": (
+                "benunit",
+                np.array([30.0, 30.0]),
+            ),
+            # A numeric group value reaches people through map_to.
+            ("maximum_extended_childcare_hours_usage", "person"): (
+                "person",
+                np.array([30.0, 30.0, 30.0]),
+            ),
+            "targeted_childcare_entitlement_eligible": (
+                "benunit",
+                np.array([False, False]),
+            ),
+            "would_claim_targeted_childcare": ("benunit", np.array([True, True])),
+            "would_claim_universal_childcare": ("benunit", np.array([False, True])),
+        }
+    )
+
+
+def test_dfe_spring_term_measures_classify_people_at_the_spring_term(monkeypatch):
+    _stub_engine_term_calendar(monkeypatch)
+    frame, simulation = FrameStub(), _spring_term_simulation()
+    expected = {
+        "dfe_age_at_31_december": [35.0, 3.0, 4.0],
+        # The working-parent child keeps its universal hours; the child in
+        # reception is not funded in the spring term.
+        "dfe_spring_working_parent": [0.0, 1.0, 0.0],
+        "dfe_spring_universal": [0.0, 1.0, 0.0],
+        "dfe_spring_early_learning_2": [0.0, 0.0, 0.0],
+    }
+    for variable, values in expected.items():
+        computed, route = compute_uk_measure_input(
+            frame, simulation, "person", variable, 2025
+        )
+        assert computed.tolist() == values, variable
+        assert route == f"dfe_spring_term:{variable}"
+    with pytest.raises(KeyError, match="person-only"):
+        compute_uk_measure_input(
+            frame, simulation, "household", "dfe_spring_universal", 2025
+        )
+
+
+def test_dfe_spring_term_measures_refuse_a_moved_term_calendar(monkeypatch):
+    dates = SimpleNamespace(term_starts=lambda year: (0, 0, year * 10_000 + 901))
+    utils = SimpleNamespace(dates=dates)
+    monkeypatch.setitem(sys.modules, "policyengine_uk", SimpleNamespace(utils=utils))
+    monkeypatch.setitem(sys.modules, "policyengine_uk.utils", utils)
+    monkeypatch.setitem(sys.modules, "policyengine_uk.utils.dates", dates)
+    with pytest.raises(ValueError, match="April-to-March year"):
+        compute_uk_measure_input(
+            FrameStub(),
+            _spring_term_simulation(),
+            "person",
+            "dfe_spring_universal",
+            2025,
+        )
+
+
+def test_the_resolver_routes_dfe_spring_term_measures_to_people(
+    monkeypatch, tmp_path: Path
+):
+    from microcosm.build.uk_runtime.dfe_spring_term import DFE_SPRING_TERM_MEASURES
+
+    resolver = _resolver_over(_spring_term_simulation(), monkeypatch, tmp_path)
+    for name in DFE_SPRING_TERM_MEASURES:
+        assert resolver.entity_for(name) == "person"
+        assert resolver.knows("person", name)
+        assert not resolver.knows("household", name)
+    # Without one of the engine inputs the route cannot compute, so it is
+    # not known.
+    partial = _spring_term_simulation()
+    del partial.tax_benefit_system.variables["birth_year"]
+    resolver = _resolver_over(partial, monkeypatch, tmp_path)
+    assert not resolver.knows("person", "dfe_spring_universal")
+
+
+def test_a_persisted_dfe_spring_term_column_is_refused(monkeypatch, tmp_path: Path):
+    frame = FrameStub()
+    frame._tables["person"]["dfe_spring_universal"] = [0.0, 1.0, 0.0]
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_uk",
+        SimpleNamespace(__version__="9.9.9", Microsimulation=lambda *, dataset: None),
+    )
+    with pytest.raises(ValueError, match="must not be persisted"):
+        UKMeasureResolver(
+            simulation_source=tmp_path / "input.h5",
+            scratch_dir=tmp_path,
+            year=2025,
+            frame=frame,
+        )

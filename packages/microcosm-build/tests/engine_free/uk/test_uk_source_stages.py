@@ -109,6 +109,10 @@ E8_STAGE_NAMES = [
     "hmrc_cgt_asset_type_spine",
     "salary_sacrifice",
     "student_loans",
+    # The copies' childcare re-draw runs after every copy stage, before the
+    # private-school attendance ranks households on net income (which counts
+    # the childcare entitlements).
+    "childcare_copy_take_up",
     # microcosm#1095: the stored private-school attendance runs last.
     "private_school_attendance",
 ]
@@ -293,6 +297,7 @@ class TestUKSourceStagesManifest:
                     "salary_sacrifice": _identity,
                     "student_loans": _identity,
                     "private_school_attendance": _identity,
+                    "childcare_copy_take_up": _identity,
                     "age_tail": _identity,
                     "frs_relationships": _identity,
                     "hmrc_spi_income_fallback": _identity,
@@ -376,6 +381,7 @@ class TestDeclaredOutputsAreWrittenColumns:
         from microcosm.build.uk_runtime.frs_take_up import (
             FRS_TAKE_UP_NONNEGATIVE_OUTPUT_COLUMNS,
             FRS_TAKE_UP_OUTPUT_COLUMNS,
+            FRS_TAKE_UP_PERSON_OUTPUT_COLUMNS,
         )
         from microcosm.build.uk_runtime.lcfs_consumption import (
             UK_LCFS_CONSUMPTION_NONNEGATIVE_OUTPUT_COLUMNS,
@@ -412,7 +418,10 @@ class TestDeclaredOutputsAreWrittenColumns:
         assert (
             stages["frs_education_grant_split"].rewrites == FRS_EDUCATION_GRANT_REWRITES
         )
-        assert stages["frs_take_up"].outputs == FRS_TAKE_UP_OUTPUT_COLUMNS
+        assert stages["frs_take_up"].outputs == (
+            *FRS_TAKE_UP_OUTPUT_COLUMNS,
+            *FRS_TAKE_UP_PERSON_OUTPUT_COLUMNS,
+        )
         assert (
             stages["frs_take_up"].nonnegative_outputs
             == FRS_TAKE_UP_NONNEGATIVE_OUTPUT_COLUMNS
@@ -591,6 +600,8 @@ class TestE3ManifestLockstep:
             "assign_binary_from_rate",
             "assign_binary_from_banded_rates",
             "assign_clipped_normal",
+            "assign_binary_from_rate",
+            "assign_binary_from_rate",
         ]
         assert [op.kind for op in stages["frs_person_draws"].operations] == [
             "assign_binary_from_rate",
@@ -914,6 +925,8 @@ class TestE3ManifestLockstep:
             "extended_childcare",
             "universal_childcare",
             "targeted_childcare",
+            "extended_childcare_age_0_usage",
+            "extended_childcare_age_1_usage",
             "marriage_allowance",
             "tv_ownership_rate",
             "tv_licence_evasion_rate",

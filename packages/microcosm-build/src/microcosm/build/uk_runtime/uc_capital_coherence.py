@@ -75,12 +75,13 @@ UC_CAPITAL_COARSENING = (
 _UC_CAPITAL_LEVELS = ("exact_cell", *UC_CAPITAL_COARSENING)
 #: The UC capital limits the receipt measures the redraw against.
 _UC_CAPITAL_RECEIPT_LIMITS = (6_000.0, 16_000.0)
-#: policyengine-uk 2.145.0 counts these household property values as Universal
+#: policyengine-uk 2.147.2 counts these household property values as Universal
 #: Credit capital (``property_sources`` under
 #: ``gov.dwp.universal_credit.means_test.capital``, at 90% of value less any
 #: secured debt since 2.136.1) and as Pension Credit capital (the ``sources``
 #: list under ``gov.dwp.pension_credit.income.capital``, beside ``savings`` and
-#: ``corporate_wealth``). A recorded figure of 0 or more is a unit's complete
+#: ``share_like_capital``, which is ``corporate_wealth`` unless the share
+#: components the build leaves unset exceed it). A recorded figure of 0 or more is a unit's complete
 #: capital: it replaces every source, property included, and the engine takes
 #: it as already countable, but TOTCAPB4 counts accounts and assets and no
 #: property. So the recorded figures add the household's property for the unit

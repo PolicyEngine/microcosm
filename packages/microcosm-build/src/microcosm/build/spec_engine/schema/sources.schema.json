@@ -654,6 +654,9 @@
       "method": {
        "type": "string"
       },
+      "nested_under": {
+       "type": "string"
+      },
       "output": {
        "type": "string"
       },
@@ -6668,6 +6671,9 @@
      "properties": {
       "kind": {
        "const": "assign_clipped_normal"
+      },
+      "eligibility": {
+       "type": "string"
       },
       "output": {
        "type": "string"
