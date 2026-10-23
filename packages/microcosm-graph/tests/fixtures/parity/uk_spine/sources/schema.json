@@ -114,6 +114,7 @@
       "uc_is_in_startup_period": "bool",
       "universal_credit_reported": "float64",
       "war_widows_pension_reported": "float64",
+      "widowed_parents_allowance_reported": "float64",
       "winter_fuel_allowance_reported": "float64",
       "working_tax_credit_reported": "float64",
       "would_claim_carers_allowance": "bool"

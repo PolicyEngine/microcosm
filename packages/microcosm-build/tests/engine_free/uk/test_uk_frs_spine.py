@@ -42,6 +42,7 @@ from microcosm.build.uk_runtime.frs_relationships import (
 )
 from microcosm.build.uk_runtime.frs_spine import (
     BENEFIT_CODES,
+    BSP_MONTHLY_RATES,
     FRS_SPINE_TABLES,
     OWNER_MANAGER_COLUMNS,
     REGION_MAP,
@@ -181,6 +182,10 @@ def test_stage_observer_reports_to_emitter_and_staging_bundle_independently() ->
 def _write_tab(root: Path, table: str, rows: list[dict[str, object]]) -> None:
     path = root / f"{table}.tab"
     pd.DataFrame(rows).to_csv(path, sep="\t", index=False)
+
+
+#: Bereavement Support Payment's standard rate, GBP 100 a month, weekly.
+_BSP_STANDARD_WEEKLY = 100 * 12 / 52
 
 
 def _fixture_tables() -> dict[str, list[dict[str, object]]]:
@@ -488,7 +493,9 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "PERSON": 1,
                 "BENEFIT": 6,
                 "VAR2": 0,
-                "BENAMT": 6.0,
+                # Bereavement Support Payment's standard rate, GBP 100 a
+                # month, as a weekly amount.
+                "BENAMT": _BSP_STANDARD_WEEKLY,
                 "UCSTART": "",
                 "UCHOUSEL": "",
             },
@@ -1253,6 +1260,7 @@ _PERSON_INCOME_COLUMNS = (
     "esa_contrib_reported",
     "esa_income_reported",
     "bsp_reported",
+    "widowed_parents_allowance_reported",
 )
 
 
@@ -1857,7 +1865,50 @@ def test_benefit_code_splits_are_ported(tmp_path: Path) -> None:
     assert adult["jsa_income_reported"] == pytest.approx(3 * WEEKS_IN_YEAR)
     assert adult["esa_contrib_reported"] == pytest.approx(4 * WEEKS_IN_YEAR)
     assert adult["esa_income_reported"] == pytest.approx(5 * WEEKS_IN_YEAR)
-    assert adult["bsp_reported"] == pytest.approx(6 * WEEKS_IN_YEAR)
+    assert adult["bsp_reported"] == pytest.approx(_BSP_STANDARD_WEEKLY * WEEKS_IN_YEAR)
+    assert adult["widowed_parents_allowance_reported"] == 0.0
+
+
+@pytest.mark.parametrize(
+    ("weekly", "payment"),
+    [
+        # Each monthly rate at 12/52 and at four weeks, and 1% either side.
+        (350 * 12 / 52, "bsp"),
+        (350 / 4, "bsp"),
+        (100 * 12 / 52, "bsp"),
+        (100 / 4, "bsp"),
+        (350 * 12 / 52 * 1.0099, "bsp"),
+        (100 * 12 / 52 * 0.9901, "bsp"),
+        # Off every rate: Widowed Parent's Allowance, at its 2024-25 full
+        # rate, at a reduced rate, and just outside the band.
+        (148.40, "wpa"),
+        (65.0, "wpa"),
+        (350 * 12 / 52 * 1.011, "wpa"),
+        (100 / 4 * 0.989, "wpa"),
+    ],
+)
+def test_code_6_splits_at_the_bereavement_support_payment_rates(
+    tmp_path: Path, weekly: float, payment: str
+) -> None:
+    """A code-6 amount at a Bereavement Support Payment rate stays
+    bsp_reported; any other is Widowed Parent's Allowance, which
+    policyengine-uk 2.149.0 gives its own input (#1222, pe-uk#2572)."""
+
+    assert BSP_MONTHLY_RATES == (350.0, 100.0)
+    tables = _fixture_tables()
+    (row,) = [entry for entry in tables["benefits"] if entry["BENEFIT"] == 6]
+    row["BENAMT"] = weekly
+    stage = _write_fixture(tmp_path, tables)
+    person = (
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
+        .table("person")
+        .set_index("person_id")
+    )
+    columns = {"bsp": "bsp_reported", "wpa": "widowed_parents_allowance_reported"}
+    assert person.loc[1001, columns[payment]] == pytest.approx(weekly * WEEKS_IN_YEAR)
+    other = columns["wpa" if payment == "bsp" else "bsp"]
+    assert person[other].eq(0.0).all()
+    assert person.drop(index=1001)[columns[payment]].eq(0.0).all()
 
 
 def test_war_widows_pension_leaves_bereavement_support(tmp_path: Path) -> None:
@@ -1884,7 +1935,9 @@ def test_war_widows_pension_leaves_bereavement_support(tmp_path: Path) -> None:
         .set_index("person_id")
     )
 
-    assert person.loc[1001, "bsp_reported"] == pytest.approx(6 * WEEKS_IN_YEAR)
+    assert person.loc[1001, "bsp_reported"] == pytest.approx(
+        _BSP_STANDARD_WEEKLY * WEEKS_IN_YEAR
+    )
     assert person.loc[1001, "war_widows_pension_reported"] == pytest.approx(
         8 * WEEKS_IN_YEAR
     )

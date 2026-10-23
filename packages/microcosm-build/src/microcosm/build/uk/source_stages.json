@@ -233,7 +233,7 @@
     },
     {
      "kind": "map_coded_amounts",
-     "scope": "region, tenure, accommodation, council tax band, benefit-code amount mappings (Scotland's Adult and Child Disability Payment codes 117/118 and 121/122 into the PIP and DLA columns they replace; benefit recovery codes 69 and 70 unmapped); adult HOURTOT care-hours band code to weekly care_hours at the band's lower edge (codes 5, 6, 7 and 10 reach the 35-hour Carer's Allowance line); would_claim_carers_allowance from positive reported Carer's Allowance, the anchor carers_allowance_take_up opens to carers over the earnings limit (microcosm#1319)"
+     "scope": "region, tenure, accommodation, council tax band, benefit-code amount mappings (Scotland's Adult and Child Disability Payment codes 117/118 and 121/122 into the PIP and DLA columns they replace; benefit recovery codes 69 and 70 unmapped; code 6 into bsp_reported where a weekly amount is within 1% of a Bereavement Support Payment rate's weekly equivalent, else into widowed_parents_allowance_reported); adult HOURTOT care-hours band code to weekly care_hours at the band's lower edge (codes 5, 6, 7 and 10 reach the 35-hour Carer's Allowance line); would_claim_carers_allowance from positive reported Carer's Allowance, the anchor carers_allowance_take_up opens to carers over the earnings limit (microcosm#1319)"
     },
     {
      "kind": "annualize_periodic_amounts",
@@ -338,6 +338,7 @@
     "esa_includes_support_component",
     "bsp_reported",
     "war_widows_pension_reported",
+    "widowed_parents_allowance_reported",
     "benunit_id",
     "frs_benunit_capital",
     "is_married",
@@ -2195,6 +2196,7 @@
       "afcs_reported",
       "bsp_reported",
       "war_widows_pension_reported",
+      "widowed_parents_allowance_reported",
       "winter_fuel_allowance_reported",
       "council_tax_benefit_reported",
       "jsa_contrib_reported",
@@ -2579,6 +2581,7 @@
     "afcs_reported",
     "bsp_reported",
     "war_widows_pension_reported",
+    "widowed_parents_allowance_reported",
     "winter_fuel_allowance_reported",
     "council_tax_benefit_reported",
     "jsa_contrib_reported",
@@ -5338,7 +5341,8 @@
       "iidb_reported",
       "afcs_reported",
       "bsp_reported",
-      "war_widows_pension_reported"
+      "war_widows_pension_reported",
+      "widowed_parents_allowance_reported"
      ],
      "linkage": "person_source_id -> FRS-channel person_id",
      "reason": "follows an injury, service or a death, not income"
@@ -5394,6 +5398,7 @@
     "afcs_reported",
     "bsp_reported",
     "war_widows_pension_reported",
+    "widowed_parents_allowance_reported",
     "is_disabled_for_benefits",
     "is_enhanced_disabled_for_benefits",
     "is_severely_disabled_for_benefits",

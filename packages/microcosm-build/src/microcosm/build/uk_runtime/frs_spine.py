@@ -292,6 +292,7 @@ OUTPUT_COLUMNS = (
     "esa_includes_support_component",
     "bsp_reported",
     "war_widows_pension_reported",
+    "widowed_parents_allowance_reported",
     "benunit_id",
     "frs_benunit_capital",
     "is_married",
@@ -960,6 +961,28 @@ def _odd_job_income(person: pd.DataFrame, oddjob: pd.DataFrame) -> np.ndarray:
     )
 
 
+#: Bereavement Support Payment's monthly rates, frozen since the payment began
+#: on 6 April 2017: the higher rate, with a child, and the standard rate (The
+#: Bereavement Support Payment Regulations 2017, SI 2017/410, reg. 3).
+BSP_MONTHLY_RATES = (350.0, 100.0)
+#: The share of a rate's weekly equivalent within which an FRS code-6 weekly
+#: amount is that rate. The equivalents are the monthly rate at 12/52, as a
+#: month, quarter or year converts, and at 1/4, as four weeks converts.
+BSP_RATE_MATCH_TOLERANCE = 0.01
+
+
+def bsp_rate_match(weekly: pd.Series) -> pd.Series:
+    """Whether each weekly amount is one of Bereavement Support Payment's rates."""
+
+    equivalents = [
+        rate * factor for rate in BSP_MONTHLY_RATES for factor in (12 / 52, 1 / 4)
+    ]
+    match = pd.Series(False, index=weekly.index)
+    for equivalent in equivalents:
+        match |= (weekly - equivalent).abs() <= BSP_RATE_MATCH_TOLERANCE * equivalent
+    return match
+
+
 def _add_benefits(
     pe_person: pd.DataFrame, person: pd.DataFrame, benefits: pd.DataFrame
 ) -> None:
@@ -1007,8 +1030,18 @@ def _add_benefits(
     pe_person["esa_includes_support_component"] = _esa_includes_support_component(
         benefits, person_id, person["person_id"]
     )
+    # FRS code 6 is Bereavement Support Payment with its predecessors. A weekly
+    # amount at one of the payment's frozen rates is the payment; any other is
+    # Widowed Parent's Allowance, the predecessor still in payment, which
+    # policyengine-uk 2.149.0 gives its own input (pe-uk#2572; #1222, María's
+    # ruling of 2026-10-22).
+    code_6 = benefit == 6
+    bsp = code_6 & bsp_rate_match(amount)
     pe_person["bsp_reported"] = (
-        _sum_to_entity(amount * (benefit == 6), person_id, person["person_id"])
+        _sum_to_entity(amount * bsp, person_id, person["person_id"]) * WEEKS_IN_YEAR
+    )
+    pe_person["widowed_parents_allowance_reported"] = (
+        _sum_to_entity(amount * (code_6 & ~bsp), person_id, person["person_id"])
         * WEEKS_IN_YEAR
     )
     # FRS code 9 is War Widow's or Widower's Pension, which rises with CPI while
