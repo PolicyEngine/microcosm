@@ -678,6 +678,11 @@ metric_registry:
   metric: boolean_incidence
 - entity: person
   family: take_up
+  column: takes_up_medicare_part_d_if_eligible
+  clone_index: 0
+  metric: boolean_incidence
+- entity: person
+  family: take_up
   column: takes_up_ssi_if_eligible
   clone_index: 0
   metric: boolean_incidence
@@ -734,11 +739,6 @@ metric_registry:
 - entity: tax_unit
   family: puf_tax_itemization
   column: first_home_mortgage_balance
-  clone_index: 0
-  metric: monetary_sign_separated
-- entity: tax_unit
-  family: puf_tax_itemization
-  column: first_home_mortgage_interest
   clone_index: 0
   metric: monetary_sign_separated
 - entity: tax_unit

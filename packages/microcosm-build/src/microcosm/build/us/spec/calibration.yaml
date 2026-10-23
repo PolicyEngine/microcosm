@@ -279,7 +279,6 @@ tail_contracts:
     - farm_rent_income
     - farm_rent_income_would_be_qualified
     - first_home_mortgage_balance
-    - first_home_mortgage_interest
     - first_home_mortgage_origination_year
     - fsla_overtime_premium
     - has_never_worked
@@ -335,7 +334,6 @@ tail_contracts:
     - scf_student_loan_debt
     - scf_vehicle_installment_debt
     - second_home_mortgage_balance
-    - second_home_mortgage_interest
     - second_home_mortgage_origination_year
     - self_employed_pension_contributions_desired
     - self_employment_income_before_lsr
