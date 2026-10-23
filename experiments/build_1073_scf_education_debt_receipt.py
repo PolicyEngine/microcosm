@@ -523,6 +523,23 @@ def donor_under_reading(
     return result
 
 
+def parent_plus_draw_rate(donor: pd.DataFrame, drawn: pd.DataFrame) -> float:
+    """Weighted share drawing Parent PLUS among held-out borrower families without it.
+
+    Families observed with federal education debt but no Parent PLUS balance,
+    and drawn with debt: how often the draw gives them Parent PLUS anyway.
+    """
+
+    weight = donor["scf_weight"].to_numpy(dtype=np.float64)
+    observed_without = (donor[SCF_EDUCATION_DEBT_TOTAL_TARGET] > 0) & (
+        donor["federal_parent_plus_loan_balance"] <= 0
+    )
+    drawn_debt = drawn[SCF_EDUCATION_DEBT_TOTAL_TARGET] > 0
+    base = (observed_without & drawn_debt).to_numpy()
+    plus = (drawn["federal_parent_plus_loan_balance"] > 0).to_numpy()
+    return float(weight[base & plus].sum() / weight[base].sum())
+
+
 def _fold_of_family(families: np.ndarray, *, folds: int, seed: int) -> np.ndarray:
     unique = np.unique(families)
     rng = np.random.default_rng(np.random.SeedSequence([seed, 1073, 5]))
@@ -1036,7 +1053,9 @@ def markdown(receipt: Mapping[str, object]) -> str:
         "total variation distance between band distributions; MAE averages the "
         "absolute error of the share with debt across the groups. `educ` is the "
         "SCF reference person's education, which the CPS side cannot supply until "
-        "microcosm#297, so that row shows what the predictor would add.",
+        "microcosm#297, so that row shows what the predictor would add. The last "
+        "column is the weighted share of held-out families observed with federal "
+        "debt but no Parent PLUS that are drawn some Parent PLUS anyway.",
         "",
     ]
     metrics = [
@@ -1050,6 +1069,7 @@ def markdown(receipt: Mapping[str, object]) -> str:
         "borrower_balance_band_tvd",
         "borrower_age_band_tvd",
         "household_rank_correlation",
+        "parent_plus_drawn_without_observed_parent_plus",
     ]
     lines.append("| Variant | " + " | ".join(metrics) + " |")
     lines.append("|---|" + "---:|" * len(metrics))
@@ -1062,7 +1082,15 @@ def markdown(receipt: Mapping[str, object]) -> str:
             + " |"
         )
     if host is not None:
-        host_metrics = [m for m in metrics if m != "household_rank_correlation"]
+        host_metrics = [
+            m
+            for m in metrics
+            if m
+            not in {
+                "household_rank_correlation",
+                "parent_plus_drawn_without_observed_parent_plus",
+            }
+        ]
         lines += [
             "",
             "## Host fit, before and after",
@@ -1212,6 +1240,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         metrics["household_rank_correlation"] = _rank_correlation(
             observed_total,
             drawn[SCF_EDUCATION_DEBT_TOTAL_TARGET].to_numpy(dtype=np.float64),
+        )
+        metrics["parent_plus_drawn_without_observed_parent_plus"] = (
+            parent_plus_draw_rate(donor, drawn)
         )
         receipt["holdout"]["variants"][name] = {
             "predictors": list(predictors),

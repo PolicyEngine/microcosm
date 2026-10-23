@@ -59,25 +59,25 @@ X7951). Loans beyond the sixth are one total, X7179, with none of these items.
   file folds grandchild and other relative into it). The survey asks about
   the loans of the family living in the household, and the screener (X7801)
   leaves out loans of people who live elsewhere, so a code-3 loan is a
-  co-resident child's own loan or the parent's Parent PLUS loan. It is the child's own
-  (``child_federal_student_loan_balance``) when the household listing
-  (persons 3-12, X108-X226) has a child (code 4) aged 18 or over who could
-  have been in school when it was borrowed (16 or older in that year, at the
-  oldest age the child's public-file age band allows: the file bands listed
-  ages, so 18-27 all read 25), unless only a parent could have borrowed it:
-  an undergraduate or certificate loan whose amount borrowed exceeds the
-  $31,000 aggregate limit on a dependent undergraduate's own Direct Loans
-  (34 CFR 685.203(e)(1)), borrowed while the child could still have been
-  under 24, and so dependent (20 U.S.C. 1087vv(d)(1)(A)). Parent PLUS
-  finances only a dependent undergraduate (34 CFR 685.200(c)(2)(i)), so a
-  graduate loan, or one borrowed after every fitting child turned 24, is
-  never Parent PLUS. Every other code-3 loan is the head's
-  ``federal_parent_plus_loan_balance``: no listed adult child could have
-  borrowed it, so the student lives elsewhere and only the parent's loan is
-  reported, or it exceeds the dependent limit. An undergraduate loan within
-  the limit for a child of dependent age could be either, and is read as the
-  child's own, the household member the listing names; the receipt reports
-  the Parent PLUS share under the other reading too.
+  co-resident child's own loan or the parent's Parent PLUS loan. It is the
+  child's own (the child's ``federal_student_loan_balance``) when the
+  household listing (persons 3-12, X108-X226) has a child (code 4) aged 18 or
+  over who could have been in school when it was borrowed (16 or older in
+  that year, at the oldest age the child's public-file age band allows: the
+  file bands listed ages, so 18-27 all read 25), unless only a parent could
+  have borrowed it: an undergraduate or certificate loan whose amount
+  borrowed exceeds the $31,000 aggregate limit on a dependent undergraduate's
+  own Direct Loans (34 CFR 685.203(e)(1)), borrowed while the child could
+  still have been under 24, and so dependent (20 U.S.C. 1087vv(d)(1)(A)).
+  Parent PLUS finances only a dependent undergraduate (34 CFR
+  685.200(c)(2)(i)), so a graduate loan, or one borrowed after every fitting
+  child turned 24, is never Parent PLUS. Every other code-3 loan is the
+  head's ``federal_parent_plus_loan_balance``: no listed adult child could
+  have borrowed it, so the student lives elsewhere and only the parent's loan
+  is reported, or it exceeds the dependent limit. An undergraduate loan
+  within the limit for a child of dependent age could be either, and is read
+  as the child's own, the household member the listing names; the receipt
+  reports the Parent PLUS share under the other reading too.
 - **IBR new-borrower status** is true when the person holds a federal loan and
   every federal loan the person holds (own, and for the head Parent PLUS too,
   since 34 CFR 685.209(b)(13)(ii) looks at any outstanding Direct or FFEL

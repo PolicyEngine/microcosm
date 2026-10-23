@@ -1269,8 +1269,6 @@
             "x228"
           ],
           "allocation": "x7179_in_proportion_to_loans_1_6",
-          "whose_education_correction": "x8000_reversed_families_swap_codes_1_and_2_on_loans_4_and_6",
-          "child_education_holder": "co_resident_adult_child_unless_only_a_parent_could_borrow",
           "source": "scf_2025_full_extract"
         },
         {
@@ -1318,7 +1316,6 @@
             "spouse_is_ibr_new_borrower",
             "child_is_ibr_new_borrower"
           ],
-          "holder_shares": "drawn_in_order_then_normalized_to_one",
           "weight": "wgt",
           "response_filter": "federal_education_debt > 0",
           "n_estimators": 100,
