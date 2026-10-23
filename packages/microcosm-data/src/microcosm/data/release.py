@@ -314,8 +314,8 @@ def prepare_release(
         release_type = (
             manifest.get("release_type") if isinstance(manifest, Mapping) else None
         )
-        # A recertification replays its loader under the four wheels too, but
-        # its H5 is its parent's, so it takes no parent_h5.
+        # A recertification replays its loader under its tested wheels too,
+        # but its H5 is its parent's, so it takes no parent_h5.
         if not (
             release_type == SOURCE_ENRICHMENT_RELEASE_TYPE
             or (release_type == RECERTIFICATION_RELEASE_TYPE and parent_h5 is None)
@@ -388,6 +388,18 @@ def prepare_release(
                 "enrichment: a published donor, never the national default "
                 "pointer. Pass update_latest=False (publish CLI: --no-latest, "
                 "with --tag-only to leave main untouched)."
+            )
+        from microcosm.data.compatibility_recertification import is_recertification
+
+        if is_recertification(release_dir):
+            # A recertification republishes its parent's data under a wider
+            # compatibility claim, so it never moves the default pointer as a
+            # side effect; consumers reach it by its release id.
+            raise ValueError(
+                f"release {release_id!r} is a compatibility recertification of "
+                "a published release, never the national default pointer. "
+                "Pass update_latest=False (publish CLI: --no-latest, with "
+                "--tag-only to leave main untouched)."
             )
     if tag_only and update_latest:
         raise ValueError(

@@ -720,6 +720,27 @@ def _unlinked_under(path: str | Path, root: Path) -> bool:
     return written == Path(os.path.realpath(path)) and written.is_relative_to(root)
 
 
+def _is_namespace_package(module) -> bool:
+    """Whether ``module`` is a namespace package: a directory, no code run.
+
+    policyengine-us imports parameter and reform directories that have no
+    ``__init__.py`` (``policyengine_us.parameters.gov``, for one). Python gives
+    them no file and a namespace loader, which executes nothing, so their
+    search path is all there is to check.
+    """
+
+    from importlib.machinery import NamespaceLoader
+
+    spec = getattr(module, "__spec__", None)
+    return (
+        getattr(module, "__file__", None) is None
+        and spec is not None
+        and spec.origin is None
+        and isinstance(spec.loader, NamespaceLoader)
+        and bool(list(getattr(module, "__path__", None) or ()))
+    )
+
+
 def verify_loaded_modules() -> int:
     """Every loaded engine module is a verified source file, by name and by file.
 
@@ -728,7 +749,8 @@ def verify_loaded_modules() -> int:
     name: every module of the three engine packages, which must lie under its
     package's tree as written (a symlinked overlay earlier on the path
     resolves into the tree while Python loads its other files), as must each
-    package's ``__path__``. Each file must be a ``.py`` file of the inventory
+    package's ``__path__``; a namespace package, which has no file, is checked
+    by its path alone. Each file must be a ``.py`` file of the inventory
     :func:`runtime_identities` verified. Returns how many were checked.
 
     Raises:
@@ -753,10 +775,12 @@ def verify_loaded_modules() -> int:
         if named is not None:
             package, (root, _, _) = named
             locations = list(getattr(module, "__path__", None) or ())
-            if (
-                not isinstance(origin, str)
-                or not _unlinked_under(origin, root)
-                or any(not _unlinked_under(location, root) for location in locations)
+            if isinstance(origin, str):
+                located = _unlinked_under(origin, root)
+            else:
+                located = _is_namespace_package(module)
+            if not located or any(
+                not _unlinked_under(location, root) for location in locations
             ):
                 raise RuntimeError(
                     f"{name} was loaded from {origin} (search path {locations}), "

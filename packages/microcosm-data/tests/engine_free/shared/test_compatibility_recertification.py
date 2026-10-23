@@ -951,6 +951,34 @@ def test_prepare_release_takes_wheels_but_not_a_parent_h5(
     assert "populace_us_2024.h5" in prepared.root_artifacts
 
 
+def test_a_recertification_never_moves_latest(
+    paths_hub, parent, candidate, tmp_path, monkeypatch
+):
+    parent_dir, parent_root = parent
+    output, artifact_root = certify(candidate, tmp_path, monkeypatch)
+    seed_published_parent(paths_hub, parent_dir, parent_root)
+    monkeypatch.setattr(recert, "run_recertification_loader_replay", fake_replay())
+    monkeypatch.setattr(recert, "_check_producer", lambda code, failures, label: None)
+    wheel = tmp_path / "policyengine_us-2.60.4-py3-none-any.whl"
+    wheel.write_bytes(b"")
+    with pytest.raises(ValueError, match="never the national default pointer"):
+        release_module.prepare_release(
+            output, artifact_root=artifact_root, compatibility_wheels=(wheel,)
+        )
+    events = list(paths_hub.events)
+    with pytest.raises(ValueError, match="never the national default pointer"):
+        release_module.publish_release(
+            output,
+            "policyengine/populace-us",
+            api=paths_hub,
+            artifact_root=artifact_root,
+            compatibility_wheels=(wheel,),
+            notify=False,
+        )
+    assert paths_hub.events == events
+    assert "latest.json" not in dict(paths_hub.uploads)
+
+
 def test_preflight_prints_the_recertification_measurement(
     candidate, tmp_path, monkeypatch, capsys
 ):
@@ -1148,6 +1176,53 @@ def test_a_loaded_engine_module_outside_its_tree_is_refused_by_name(
     helper.__file__ = str(tmp_path / "overlay" / "microsimulation.py")
     monkeypatch.setitem(sys.modules, helper.__name__, helper)
     with pytest.raises(RuntimeError, match="not from the installed policyengine-core"):
+        recert.verify_loaded_modules()
+
+
+def _namespace_module(name, location):
+    """A module as Python imports a directory without ``__init__.py``."""
+
+    from importlib.machinery import ModuleSpec, NamespaceLoader, PathFinder
+
+    loader = NamespaceLoader(name, [str(location)], PathFinder._get_spec)
+    spec = ModuleSpec(name, loader, is_package=True)
+    spec.submodule_search_locations = [str(location)]
+    return importlib.util.module_from_spec(spec)
+
+
+def test_a_namespace_package_is_checked_by_its_path(
+    fake_runtime, monkeypatch, tmp_path
+):
+    """The real-runtime smoke: policyengine_us.parameters.gov has no file."""
+
+    import sys
+    import types
+
+    site, wheels = fake_runtime
+    recert.runtime_identities(wheels, require_wheels=True)
+    package = types.ModuleType("policyengine_us")
+    package.__file__ = str(site / "policyengine_us" / "__init__.py")
+    package.__path__ = [str(site / "policyengine_us")]
+    monkeypatch.setitem(sys.modules, "policyengine_us", package)
+    inside = _namespace_module(
+        "policyengine_us.parameters", site / "policyengine_us" / "parameters"
+    )
+    assert getattr(inside, "__file__", None) is None
+    assert recert._is_namespace_package(inside)
+    monkeypatch.setitem(sys.modules, inside.__name__, inside)
+    assert recert.verify_loaded_modules() >= 1
+    outside = _namespace_module(
+        "policyengine_us.reforms", tmp_path / "overlay" / "reforms"
+    )
+    monkeypatch.setitem(sys.modules, outside.__name__, outside)
+    with pytest.raises(RuntimeError, match="not from the installed policyengine-us"):
+        recert.verify_loaded_modules()
+    monkeypatch.delitem(sys.modules, outside.__name__)
+    # No file and no namespace loader: code that came from somewhere unchecked.
+    in_memory = types.ModuleType("policyengine_us.generated")
+    in_memory.__path__ = [str(site / "policyengine_us")]
+    monkeypatch.setitem(sys.modules, in_memory.__name__, in_memory)
+    with pytest.raises(RuntimeError, match="not from the installed policyengine-us"):
         recert.verify_loaded_modules()
 
 

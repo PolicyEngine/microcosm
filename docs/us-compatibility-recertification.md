@@ -268,8 +268,10 @@ recorded commit.
    ```
 
    Publication is the same command through `tools/publish_release.sh`, still
-   with a fresh `PYTHONPYCACHEPREFIX` and without `--preflight-only`. Whether the child should also become `latest.json` is
-   a separate decision; the commands above leave the pointer alone.
+   with a fresh `PYTHONPYCACHEPREFIX` and without `--preflight-only`. The
+   publisher refuses to point `latest.json` at a recertification child, which
+   republishes its parent's data under a wider claim: consumers reach it by
+   its release id, so it always publishes with `--no-latest --tag-only`.
 
 7. **Certify the bundle downstream.** policyengine.py certifies the child on
    its publisher claim (`compatibility_basis: legacy_compatible_model_package`,
