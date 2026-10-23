@@ -829,8 +829,8 @@ def certify(args: argparse.Namespace) -> int:
                 step="install-pytest-xdist",
             )
         tests = run(
-            [python, "-m", "pytest", "-n", str(args.test_workers), "-q",
-             "-p", "no:cacheprovider"],
+            [python, "-m", "pytest", "-n", str(args.test_workers), "-vv",
+             "--durations=20", "-p", "no:cacheprovider"],
             check=False,
             step="tests",
         )  # fmt: skip
