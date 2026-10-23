@@ -170,120 +170,120 @@
     },
     {
       "name": "slc.repayments.england_plan_5",
-      "reason": "Structural under-support: the E8 PLAN_5 top-up saturates the eligible pool (rate 1.0), so the plan-5 repayment mass is bound by frame composition, not by weighting (-84.4% on the rebind packet).",
+      "reason": "Structural under-support: the student-loans stage tops Plan 5 up to SLC's liable stock, which binds, and fewer than ten source households carry Plan 5 repayments on #1333's 2.145.0 spine, so no weights reach SLC's repayment figure; the row's model figures are withheld.",
       "tracking": "microcosm#757",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
-      "approved_on": "2026-08-26",
-      "expires_on": "2026-11-26"
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411); renewed on 2026-10-23 to 2027-01-23 by juaristi22 on arm 1 of the next policyengine-uk bump (calibrate-only on #1333's 2.145.0 spine), beside Plan 5's liable stock, which binds",
+      "approved_on": "2026-10-23",
+      "expires_on": "2027-01-23"
     },
     {
       "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_13_200_to_14_400",
-      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support (the #623-carried catalogue); every cell in this class undershoots on the rebind packet and two sit at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
+      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support. Measured unbound at the calibrated weights of arm 1 of the next policyengine-uk bump (calibrate-only on #1333's 2.145.0 spine), every band in this class stays outside 10 percent, eleven short and one over, as on #1333's own arm. The bands rest in large part on households of the SPI support channel, so this register gives no figure of theirs (SN 9422). The bands need the award-band take-up draw (microcosm#1334, #1344), not the would_claim_uc take-up lever or the weights.",
       "tracking": "uk-data#452",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
-      "approved_on": "2026-08-26",
-      "expires_on": "2026-11-26"
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411); renewed on 2026-10-23 to 2027-01-23 by juaristi22 on arm 1 of the next policyengine-uk bump (calibrate-only on #1333's 2.145.0 spine): the twelve stay on their own renewals until the award-band take-up binds them (María's ruling of 2026-10-21, microcosm#1344)",
+      "approved_on": "2026-10-23",
+      "expires_on": "2027-01-23"
     },
     {
       "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_15_600_to_16_800",
-      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support (the #623-carried catalogue); every cell in this class undershoots on the rebind packet and two sit at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
+      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support. Measured unbound at the calibrated weights of arm 1 of the next policyengine-uk bump (calibrate-only on #1333's 2.145.0 spine), every band in this class stays outside 10 percent, eleven short and one over, as on #1333's own arm. The bands rest in large part on households of the SPI support channel, so this register gives no figure of theirs (SN 9422). The bands need the award-band take-up draw (microcosm#1334, #1344), not the would_claim_uc take-up lever or the weights.",
       "tracking": "uk-data#452",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
-      "approved_on": "2026-08-26",
-      "expires_on": "2026-11-26"
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411); renewed on 2026-10-23 to 2027-01-23 by juaristi22 on arm 1 of the next policyengine-uk bump (calibrate-only on #1333's 2.145.0 spine): the twelve stay on their own renewals until the award-band take-up binds them (María's ruling of 2026-10-21, microcosm#1344)",
+      "approved_on": "2026-10-23",
+      "expires_on": "2027-01-23"
     },
     {
       "name": "dwp/uc_payment_dist/SINGLE_annual_payment_9_600_to_10_800",
-      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support (the #623-carried catalogue); every cell in this class undershoots on the rebind packet and two sit at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
+      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support. Measured unbound at the calibrated weights of arm 1 of the next policyengine-uk bump (calibrate-only on #1333's 2.145.0 spine), every band in this class stays outside 10 percent, eleven short and one over, as on #1333's own arm. The bands rest in large part on households of the SPI support channel, so this register gives no figure of theirs (SN 9422). The bands need the award-band take-up draw (microcosm#1334, #1344), not the would_claim_uc take-up lever or the weights.",
       "tracking": "uk-data#452",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
-      "approved_on": "2026-08-26",
-      "expires_on": "2026-11-26"
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411); renewed on 2026-10-23 to 2027-01-23 by juaristi22 on arm 1 of the next policyengine-uk bump (calibrate-only on #1333's 2.145.0 spine): the twelve stay on their own renewals until the award-band take-up binds them (María's ruling of 2026-10-21, microcosm#1344)",
+      "approved_on": "2026-10-23",
+      "expires_on": "2027-01-23"
     },
     {
       "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_18_000_to_19_200",
-      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support (the #623-carried catalogue); every cell in this class undershoots on the rebind packet and two sit at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
+      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support. Measured unbound at the calibrated weights of arm 1 of the next policyengine-uk bump (calibrate-only on #1333's 2.145.0 spine), every band in this class stays outside 10 percent, eleven short and one over, as on #1333's own arm. The bands rest in large part on households of the SPI support channel, so this register gives no figure of theirs (SN 9422). The bands need the award-band take-up draw (microcosm#1334, #1344), not the would_claim_uc take-up lever or the weights.",
       "tracking": "uk-data#452",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
-      "approved_on": "2026-08-26",
-      "expires_on": "2026-11-26"
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411); renewed on 2026-10-23 to 2027-01-23 by juaristi22 on arm 1 of the next policyengine-uk bump (calibrate-only on #1333's 2.145.0 spine): the twelve stay on their own renewals until the award-band take-up binds them (María's ruling of 2026-10-21, microcosm#1344)",
+      "approved_on": "2026-10-23",
+      "expires_on": "2027-01-23"
     },
     {
       "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_16_800_to_18_000",
-      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support (the #623-carried catalogue); every cell in this class undershoots on the rebind packet and two sit at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
+      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support. Measured unbound at the calibrated weights of arm 1 of the next policyengine-uk bump (calibrate-only on #1333's 2.145.0 spine), every band in this class stays outside 10 percent, eleven short and one over, as on #1333's own arm. The bands rest in large part on households of the SPI support channel, so this register gives no figure of theirs (SN 9422). The bands need the award-band take-up draw (microcosm#1334, #1344), not the would_claim_uc take-up lever or the weights.",
       "tracking": "uk-data#452",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
-      "approved_on": "2026-08-26",
-      "expires_on": "2026-11-26"
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411); renewed on 2026-10-23 to 2027-01-23 by juaristi22 on arm 1 of the next policyengine-uk bump (calibrate-only on #1333's 2.145.0 spine): the twelve stay on their own renewals until the award-band take-up binds them (María's ruling of 2026-10-21, microcosm#1344)",
+      "approved_on": "2026-10-23",
+      "expires_on": "2027-01-23"
     },
     {
       "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_19_200_to_20_400",
-      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support (the #623-carried catalogue); every cell in this class undershoots on the rebind packet and two sit at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
+      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support. Measured unbound at the calibrated weights of arm 1 of the next policyengine-uk bump (calibrate-only on #1333's 2.145.0 spine), every band in this class stays outside 10 percent, eleven short and one over, as on #1333's own arm. The bands rest in large part on households of the SPI support channel, so this register gives no figure of theirs (SN 9422). The bands need the award-band take-up draw (microcosm#1334, #1344), not the would_claim_uc take-up lever or the weights.",
       "tracking": "uk-data#452",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
-      "approved_on": "2026-08-26",
-      "expires_on": "2026-11-26"
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411); renewed on 2026-10-23 to 2027-01-23 by juaristi22 on arm 1 of the next policyengine-uk bump (calibrate-only on #1333's 2.145.0 spine): the twelve stay on their own renewals until the award-band take-up binds them (María's ruling of 2026-10-21, microcosm#1344)",
+      "approved_on": "2026-10-23",
+      "expires_on": "2027-01-23"
     },
     {
       "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_14_400_to_15_600",
-      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support (the #623-carried catalogue); every cell in this class undershoots on the rebind packet and two sit at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
+      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support. Measured unbound at the calibrated weights of arm 1 of the next policyengine-uk bump (calibrate-only on #1333's 2.145.0 spine), every band in this class stays outside 10 percent, eleven short and one over, as on #1333's own arm. The bands rest in large part on households of the SPI support channel, so this register gives no figure of theirs (SN 9422). The bands need the award-band take-up draw (microcosm#1334, #1344), not the would_claim_uc take-up lever or the weights.",
       "tracking": "uk-data#452",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
-      "approved_on": "2026-08-26",
-      "expires_on": "2026-11-26"
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411); renewed on 2026-10-23 to 2027-01-23 by juaristi22 on arm 1 of the next policyengine-uk bump (calibrate-only on #1333's 2.145.0 spine): the twelve stay on their own renewals until the award-band take-up binds them (María's ruling of 2026-10-21, microcosm#1344)",
+      "approved_on": "2026-10-23",
+      "expires_on": "2027-01-23"
     },
     {
       "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_12_000_to_13_200",
-      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support (the #623-carried catalogue); every cell in this class undershoots on the rebind packet and two sit at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
+      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support. Measured unbound at the calibrated weights of arm 1 of the next policyengine-uk bump (calibrate-only on #1333's 2.145.0 spine), every band in this class stays outside 10 percent, eleven short and one over, as on #1333's own arm. The bands rest in large part on households of the SPI support channel, so this register gives no figure of theirs (SN 9422). The bands need the award-band take-up draw (microcosm#1334, #1344), not the would_claim_uc take-up lever or the weights.",
       "tracking": "uk-data#452",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
-      "approved_on": "2026-08-26",
-      "expires_on": "2026-11-26"
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411); renewed on 2026-10-23 to 2027-01-23 by juaristi22 on arm 1 of the next policyengine-uk bump (calibrate-only on #1333's 2.145.0 spine): the twelve stay on their own renewals until the award-band take-up binds them (María's ruling of 2026-10-21, microcosm#1344)",
+      "approved_on": "2026-10-23",
+      "expires_on": "2027-01-23"
     },
     {
       "name": "dwp/uc_payment_dist/SINGLE_annual_payment_14_400_to_15_600",
-      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support (the #623-carried catalogue); every cell in this class undershoots on the rebind packet and two sit at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
+      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support. Measured unbound at the calibrated weights of arm 1 of the next policyengine-uk bump (calibrate-only on #1333's 2.145.0 spine), every band in this class stays outside 10 percent, eleven short and one over, as on #1333's own arm. The bands rest in large part on households of the SPI support channel, so this register gives no figure of theirs (SN 9422). The bands need the award-band take-up draw (microcosm#1334, #1344), not the would_claim_uc take-up lever or the weights.",
       "tracking": "uk-data#452",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
-      "approved_on": "2026-08-26",
-      "expires_on": "2026-11-26"
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411); renewed on 2026-10-23 to 2027-01-23 by juaristi22 on arm 1 of the next policyengine-uk bump (calibrate-only on #1333's 2.145.0 spine): the twelve stay on their own renewals until the award-band take-up binds them (María's ruling of 2026-10-21, microcosm#1344)",
+      "approved_on": "2026-10-23",
+      "expires_on": "2027-01-23"
     },
     {
       "name": "dwp/uc_payment_dist/SINGLE_annual_payment_13_200_to_14_400",
-      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support (the #623-carried catalogue); every cell in this class undershoots on the rebind packet and two sit at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
+      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support. Measured unbound at the calibrated weights of arm 1 of the next policyengine-uk bump (calibrate-only on #1333's 2.145.0 spine), every band in this class stays outside 10 percent, eleven short and one over, as on #1333's own arm. The bands rest in large part on households of the SPI support channel, so this register gives no figure of theirs (SN 9422). The bands need the award-band take-up draw (microcosm#1334, #1344), not the would_claim_uc take-up lever or the weights.",
       "tracking": "uk-data#452",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
-      "approved_on": "2026-08-26",
-      "expires_on": "2026-11-26"
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411); renewed on 2026-10-23 to 2027-01-23 by juaristi22 on arm 1 of the next policyengine-uk bump (calibrate-only on #1333's 2.145.0 spine): the twelve stay on their own renewals until the award-band take-up binds them (María's ruling of 2026-10-21, microcosm#1344)",
+      "approved_on": "2026-10-23",
+      "expires_on": "2027-01-23"
     },
     {
       "name": "dwp/uc_payment_dist/SINGLE_annual_payment_8_400_to_9_600",
-      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support (the #623-carried catalogue); every cell in this class undershoots on the rebind packet and two sit at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
+      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support. Measured unbound at the calibrated weights of arm 1 of the next policyengine-uk bump (calibrate-only on #1333's 2.145.0 spine), every band in this class stays outside 10 percent, eleven short and one over, as on #1333's own arm. The bands rest in large part on households of the SPI support channel, so this register gives no figure of theirs (SN 9422). The bands need the award-band take-up draw (microcosm#1334, #1344), not the would_claim_uc take-up lever or the weights.",
       "tracking": "uk-data#452",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
-      "approved_on": "2026-08-26",
-      "expires_on": "2026-11-26"
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411); renewed on 2026-10-23 to 2027-01-23 by juaristi22 on arm 1 of the next policyengine-uk bump (calibrate-only on #1333's 2.145.0 spine): the twelve stay on their own renewals until the award-band take-up binds them (María's ruling of 2026-10-21, microcosm#1344)",
+      "approved_on": "2026-10-23",
+      "expires_on": "2027-01-23"
     },
     {
       "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_21_600_to_22_800",
-      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support (the #623-carried catalogue); every cell in this class undershoots on the rebind packet and two sit at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
+      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support. Measured unbound at the calibrated weights of arm 1 of the next policyengine-uk bump (calibrate-only on #1333's 2.145.0 spine), every band in this class stays outside 10 percent, eleven short and one over, as on #1333's own arm. The bands rest in large part on households of the SPI support channel, so this register gives no figure of theirs (SN 9422). The bands need the award-band take-up draw (microcosm#1334, #1344), not the would_claim_uc take-up lever or the weights.",
       "tracking": "uk-data#452",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
-      "approved_on": "2026-08-26",
-      "expires_on": "2026-11-26"
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411); renewed on 2026-10-23 to 2027-01-23 by juaristi22 on arm 1 of the next policyengine-uk bump (calibrate-only on #1333's 2.145.0 spine): the twelve stay on their own renewals until the award-band take-up binds them (María's ruling of 2026-10-21, microcosm#1344)",
+      "approved_on": "2026-10-23",
+      "expires_on": "2027-01-23"
     },
     {
       "name": "ons.savings_interest_income",
@@ -305,21 +305,21 @@
     },
     {
       "name": "slc.borrowers.plan_2_liable",
-      "reason": "The row binds SLC's forecast stock of plan-2 borrowers in England liable to repay in academic year 2024/25 (AY2024/25; Student loan forecasts for England, Table 6a: 8.94M), the stock the student_loans stage tops up to (microcosm#868). The stage exhausts its top-up pool at 41 percent of that stock: the 18 October spine at d0f0fafec carries 3.70M at design weights (-59 percent), and the 19 October national file (810315ac2), with the row held out, 3.54M at calibrated weights (-60 percent). Unreachable by reweighting within the stretch bound: student-loan borrower coverage in the frame, a frame-side gap, not a weight question; while bound it pulls the joint solve toward weight concentration (housing benefit alone triples the max/median ratio under grain_equal). Window to the November PR's renewals: correct the spine or re-adjudicate.",
+      "reason": "The row binds SLC's forecast stock of plan-2 borrowers in England liable to repay in academic year 2024/25 (AY2024/25; Student loan forecasts for England, Table 6a: 8.94M), the stock the student_loans stage tops up to (microcosm#868). The stage exhausts its top-up pool at 41 percent of that stock: the 18 October spine at d0f0fafec carries 3.70M at design weights (-59 percent), and the 19 October national file (810315ac2), with the row held out, 3.54M at calibrated weights (-60 percent). Arm 1 of the next policyengine-uk bump (calibrate-only on #1333's 2.145.0 spine) measured it again, held out, at its calibrated weights: the gap stands. Unreachable by reweighting within the stretch bound: student-loan borrower coverage in the frame, a frame-side gap, not a weight question; while bound it pulls the joint solve toward weight concentration (housing benefit alone triples the max/median ratio under grain_equal). Window to the next re-adjudication: correct the spine or re-adjudicate.",
       "tracking": "microcosm#1278",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#762 (A16, ruling 2026-09-03; receipts R8-R10 in experiments/762-uk-rowwise-candidate-receipts.md); renewed one month on 2026-10-02 by juaristi22 in session (microcosm#1063 stack): the plan-2 borrower coverage gap stays with microcosm#868 and is not corrected by the spine follow-ups; tracking moved to microcosm#1278 on 2026-10-17 by juaristi22 after microcosm#868 closed; renewed on 2026-10-20 to 2026-11-26 by juaristi22 (María's ruling of 2026-10-20 on the pre-Budget PR, microcosm#1278: renew rather than make the row a diagnostic, to the November PR's renewal date). The reason is restated on the AY2024/25 SLC figure the row has bound since microcosm#868 (it quoted AY2025/26), with the 18 October spine's student_loans stage receipt and the 19 October national file.",
-      "approved_on": "2026-10-20",
-      "expires_on": "2026-11-26"
+      "adjudication": "microcosm#762 (A16, ruling 2026-09-03; receipts R8-R10 in experiments/762-uk-rowwise-candidate-receipts.md); renewed one month on 2026-10-02 by juaristi22 in session (microcosm#1063 stack): the plan-2 borrower coverage gap stays with microcosm#868 and is not corrected by the spine follow-ups; tracking moved to microcosm#1278 on 2026-10-17 by juaristi22 after microcosm#868 closed; renewed on 2026-10-20 to 2026-11-26 by juaristi22 (María's ruling of 2026-10-20 on the pre-Budget PR, microcosm#1278: renew rather than make the row a diagnostic, to the November PR's renewal date). The reason is restated on the AY2024/25 SLC figure the row has bound since microcosm#868 (it quoted AY2025/26), with the 18 October spine's student_loans stage receipt and the 19 October national file; renewed on 2026-10-23 to 2027-01-23 by juaristi22 on arm 1 of the next policyengine-uk bump (calibrate-only on #1333's 2.145.0 spine): the plan-2 coverage gap stands, measured again on that arm",
+      "approved_on": "2026-10-23",
+      "expires_on": "2027-01-23"
     },
     {
       "name": "slc.borrowers.plan_2_above_threshold",
-      "reason": "The row binds SLC's forecast of plan-2 borrowers in England earning above the repayment threshold in academic year 2024/25 (AY2024/25; Student loan forecasts for England, Table 6a: 3.985M), counted as England plan-2 borrowers with positive repayments. The 18 October spine at d0f0fafec carries 1.56M at design weights (-61 percent), and the 19 October national file (810315ac2), with the row held out, 1.51M at calibrated weights (-62 percent). Unreachable by reweighting within the stretch bound: student-loan borrower coverage in the frame, a frame-side gap, not a weight question; while bound it pulls the joint solve toward weight concentration (housing benefit alone triples the max/median ratio under grain_equal). Window to the November PR's renewals: correct the spine or re-adjudicate.",
+      "reason": "The row binds SLC's forecast of plan-2 borrowers in England earning above the repayment threshold in academic year 2024/25 (AY2024/25; Student loan forecasts for England, Table 6a: 3.985M), counted as England plan-2 borrowers with positive repayments. The 18 October spine at d0f0fafec carries 1.56M at design weights (-61 percent), and the 19 October national file (810315ac2), with the row held out, 1.51M at calibrated weights (-62 percent). Arm 1 of the next policyengine-uk bump (calibrate-only on #1333's 2.145.0 spine) measured it again, held out, at its calibrated weights: the gap stands. Unreachable by reweighting within the stretch bound: student-loan borrower coverage in the frame, a frame-side gap, not a weight question; while bound it pulls the joint solve toward weight concentration (housing benefit alone triples the max/median ratio under grain_equal). Window to the next re-adjudication: correct the spine or re-adjudicate.",
       "tracking": "microcosm#1278",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#762 (A16, ruling 2026-09-03; receipts R8-R10 in experiments/762-uk-rowwise-candidate-receipts.md); renewed one month on 2026-10-02 by juaristi22 in session (microcosm#1063 stack): the plan-2 borrower coverage gap stays with microcosm#868 and is not corrected by the spine follow-ups; tracking moved to microcosm#1278 on 2026-10-17 by juaristi22 after microcosm#868 closed; renewed on 2026-10-20 to 2026-11-26 by juaristi22 (María's ruling of 2026-10-20 on the pre-Budget PR, microcosm#1278: renew rather than make the row a diagnostic, to the November PR's renewal date). The reason is restated on the AY2024/25 SLC figure the row has bound since microcosm#868 (it quoted AY2025/26), with the 18 October spine's student_loans stage receipt and the 19 October national file.",
-      "approved_on": "2026-10-20",
-      "expires_on": "2026-11-26"
+      "adjudication": "microcosm#762 (A16, ruling 2026-09-03; receipts R8-R10 in experiments/762-uk-rowwise-candidate-receipts.md); renewed one month on 2026-10-02 by juaristi22 in session (microcosm#1063 stack): the plan-2 borrower coverage gap stays with microcosm#868 and is not corrected by the spine follow-ups; tracking moved to microcosm#1278 on 2026-10-17 by juaristi22 after microcosm#868 closed; renewed on 2026-10-20 to 2026-11-26 by juaristi22 (María's ruling of 2026-10-20 on the pre-Budget PR, microcosm#1278: renew rather than make the row a diagnostic, to the November PR's renewal date). The reason is restated on the AY2024/25 SLC figure the row has bound since microcosm#868 (it quoted AY2025/26), with the 18 October spine's student_loans stage receipt and the 19 October national file; renewed on 2026-10-23 to 2027-01-23 by juaristi22 on arm 1 of the next policyengine-uk bump (calibrate-only on #1333's 2.145.0 spine): the plan-2 coverage gap stands, measured again on that arm",
+      "approved_on": "2026-10-23",
+      "expires_on": "2027-01-23"
     },
     {
       "name": "dwp.jsa_claimants",
@@ -332,12 +332,12 @@
     },
     {
       "name": "dwp.uc.households_housing_element",
-      "reason": "Structural bias, not a weight question: DWP's any-tenure housing-entitlement count is social plus private plus 'Other or unknown' tenure, and the model has no other/unknown tenure (uc_housing_costs_element pays only council, housing-association and private renters), so the model's any-tenure count is identically the social plus private rows, which are bound and fit; the row overstates the reachable total by the other/unknown cell, 112,518 of 4,037,650 in calendar 2025 (2.8 percent; the published any-tenure mean, which the three tenure cells reproduce to the unit). Fitting all three housing rows would ask the solver to over-fill the tenure rows by that amount. Measured on every evaluation as the housing-element caseload diagnostic (Q50f -0.8 percent, D2 +0.6 percent at the baseline; v20 -2.8 percent unbound, the structural gap itself, docs/evidence/uk-a16-v20/).",
+      "reason": "Structural bias, not a weight question: DWP's any-tenure housing-entitlement count is social plus private plus 'Other or unknown' tenure, and the model has no other/unknown tenure (uc_housing_costs_element pays only council, housing-association and private renters), so the model's any-tenure count is identically the social plus private rows, which are bound and fit; the row overstates the reachable total by the other/unknown cell, 112,518 of 4,037,650 in calendar 2025 (2.8 percent; the published any-tenure mean, which the three tenure cells reproduce to the unit). Fitting all three housing rows would ask the solver to over-fill the tenure rows by that amount. Measured on every evaluation as the housing-element caseload diagnostic (Q50f -0.8 percent, D2 +0.6 percent at the baseline; v20 -2.8 percent unbound, the structural gap itself, docs/evidence/uk-a16-v20/). Arm 1 of the next policyengine-uk bump (calibrate-only on #1333's 2.145.0 spine) reads it, unbound at its calibrated weights, at the structural gap itself.",
       "tracking": "microcosm#882",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#882 (element sizing at the 10 September 2026 baseline, docs/uk-uc-baseline-2026-09-10.md; María's sign-off in review of microcosm#921 on 2026-09-15, setting the one-month window); renewed one month on 2026-10-14 by juaristi22 in session (microcosm#1124 local release): the model still has no other/unknown tenure, so the any-tenure count stays structurally above the bound tenure rows",
-      "approved_on": "2026-10-14",
-      "expires_on": "2026-11-14"
+      "adjudication": "microcosm#882 (element sizing at the 10 September 2026 baseline, docs/uk-uc-baseline-2026-09-10.md; María's sign-off in review of microcosm#921 on 2026-09-15, setting the one-month window); renewed one month on 2026-10-14 by juaristi22 in session (microcosm#1124 local release): the model still has no other/unknown tenure, so the any-tenure count stays structurally above the bound tenure rows; renewed on 2026-10-23 to 2027-01-23 by juaristi22 on arm 1 of the next policyengine-uk bump (calibrate-only on #1333's 2.145.0 spine): the model still has no other/unknown tenure",
+      "approved_on": "2026-10-23",
+      "expires_on": "2027-01-23"
     },
     {
       "name": "dwp.hb.households",

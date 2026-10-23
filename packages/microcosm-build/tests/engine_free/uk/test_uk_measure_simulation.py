@@ -742,18 +742,23 @@ def test_packaged_exclusions_load():
     # entry may remain on the register. 35 since microcosm#890 also retired
     # the obr.fuel_duties entry (2026-09-11): the all-road-users row is
     # signed out of the reference surface and the cars receipts bind instead.
-    tranche = [e for e in exclusions if e["approved_on"] == "2026-08-26"]
     # Three 2026-08-26 rows retired 2026-09-21 on the v20 measurement, three
     # payment bands retired 2026-10-16 under the support floor, the two thin
     # HMRC 500k-1m cells retired 2026-10-21, bound again, and fourteen more
-    # with the next bump: the ten HMRC £1m-and-over cells and Plan 5's liable
-    # stock bind, and the OBR welfare-cap split and the postgraduate
-    # repayments leave the targets. The twelve payment bands and Plan 5's
-    # repayments remain.
+    # with the next bump: the ten HMRC £1m-and-over cells (held again on arm
+    # 1's distortion, on their own entries) and Plan 5's liable stock were
+    # bound, and the OBR welfare-cap split and the postgraduate repayments
+    # left the targets. The twelve payment bands and Plan 5's repayments
+    # remain, renewed on 2026-10-23 on arm 1's measurement.
+    assert [e for e in exclusions if e["approved_on"] == "2026-08-26"] == []
+    tranche = [e for e in exclusions if "5427936411" in e["adjudication"]]
     assert len(tranche) == 13
     for entry in tranche:
-        assert "5427936411" in entry["adjudication"], entry["name"]
-        assert entry["expires_on"] == "2026-11-26", entry["name"]
+        assert (entry["approved_on"], entry["expires_on"]) == (
+            "2026-10-23",
+            "2027-01-23",
+        ), entry["name"]
+        assert "renewed on 2026-10-23 to 2027-01-23" in entry["adjudication"]
     assert not [n for n in names if n.startswith("ons.household_composition.")]
 
     # The 2026-09-03 tranche was #762's A16: five unreachable national rows,
@@ -778,14 +783,15 @@ def test_packaged_exclusions_load():
     # #1063 stack arm retired 2026-10-16 (the support floor drops them), and
     # the plan-2 rows left the 2026-10-02 clock on their 2026-10-20 renewal.
     assert [e for e in exclusions if e["approved_on"] == "2026-10-02"] == []
-    # The other 2026-10-20 entry is the rail-support hold-out (below).
+    # The plan-2 rows were renewed again on 2026-10-23, on arm 1 of the next
+    # bump; the 2026-10-20 entry left is the rail-support hold-out (below).
     assert sorted(
         e["name"] for e in exclusions if e["approved_on"] == "2026-10-20"
-    ) == sorted([*_A16_UNREACHABLE_ROWS[:2], "orr.rail_government_support"])
+    ) == ["orr.rail_government_support"]
     renewed = [
         e
         for e in exclusions
-        if e["approved_on"] == "2026-10-20" and e["name"] in _A16_UNREACHABLE_ROWS
+        if e["approved_on"] == "2026-10-23" and e["name"] in _A16_UNREACHABLE_ROWS
     ]
     assert sorted(e["name"] for e in renewed) == sorted(_A16_UNREACHABLE_ROWS[:2])
     # María's ruling of 2026-10-20 (microcosm#1278): the ORR row is held out
@@ -844,9 +850,9 @@ def test_packaged_exclusions_load():
     assert sorted(
         e["name"] for e in exclusions if e["approved_on"] == "2026-10-16"
     ) == ["obr.ni_employer", "ons.savings_interest_income"]
-    assert sorted(
-        e["name"] for e in exclusions if e["approved_on"] == "2026-10-14"
-    ) == sorted(_UC_ELEMENT_REGISTER_ROWS)
+    # The housing-element row's 2026-10-14 renewal was renewed again on
+    # 2026-10-23, on arm 1 of the next bump.
+    assert [e for e in exclusions if e["approved_on"] == "2026-10-14"] == []
     assert "dwp.uc.households_children_5_or_more" not in names
     # María's ruling of 2026-10-20 (microcosm#1278): renewed rather than made
     # diagnostics, and restated on the academic year 2024/25 stock the rows
@@ -857,7 +863,8 @@ def test_packaged_exclusions_load():
     }
     for entry in renewed:
         assert entry["approved_by"] == "juaristi22", entry["name"]
-        assert entry["expires_on"] == "2026-11-26", entry["name"]
+        assert entry["expires_on"] == "2027-01-23", entry["name"]
+        assert "renewed on 2026-10-23 to 2027-01-23" in entry["adjudication"]
         assert entry["tracking"] == a16_issues[entry["name"]], entry["name"]
         assert "A16" in entry["adjudication"], entry["name"]
         assert "renewed one month on 2026-10-02" in entry["adjudication"], entry["name"]
@@ -927,12 +934,13 @@ def test_packaged_exclusions_load():
     elements = [
         e
         for e in exclusions
-        if e["approved_on"] == "2026-10-14" and e["tracking"] == "microcosm#882"
+        if e["approved_on"] == "2026-10-23" and e["tracking"] == "microcosm#882"
     ]
     assert sorted(e["name"] for e in elements) == sorted(_UC_ELEMENT_REGISTER_ROWS)
     for entry in elements:
-        assert entry["expires_on"] == "2026-11-14", entry["name"]
+        assert entry["expires_on"] == "2027-01-23", entry["name"]
         assert "renewed one month on 2026-10-14" in entry["adjudication"]
+        assert "renewed on 2026-10-23 to 2027-01-23" in entry["adjudication"]
         assert entry["tracking"] == "microcosm#882", entry["name"]
         assert entry["approved_by"] == "juaristi22", entry["name"]
         assert "microcosm#882" in entry["adjudication"], entry["name"]
