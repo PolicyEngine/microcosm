@@ -35,7 +35,6 @@ __all__ = [
     "FRS_SPINE_TABLES",
     "OUTPUT_COLUMNS",
     "REGION_MAP",
-    "STATE_PENSION_WEEKS_IN_YEAR",
     "TIME_PERIOD",
     "UC_CAPITAL_UNAVAILABLE",
     "WEEKS_IN_YEAR",
@@ -70,14 +69,17 @@ FRS_SPINE_TABLES = (
     "pension",
 )
 
-WEEKS_IN_YEAR = 365.25 / 7
-#: The State Pension alone annualises at 52 weeks (María's ruling of 2026-10-20,
-#: an exception to microcosm#1095's weekly amounts). It is paid at weekly rates,
-#: and policyengine-uk reads ``state_pension_reported`` back to a weekly amount
-#: at 52 weeks a year before comparing it with the full rate, so at 365.25 / 7 a
-#: full-rate pensioner would read 0.34% above the full rate and the excess
-#: would become a protected payment.
-STATE_PENSION_WEEKS_IN_YEAR = 52
+#: Weekly FRS amounts annualise at 52 weeks a year (María's ruling of
+#: 2026-10-23, uk-data#531). policyengine-uk reads an annual amount back to a
+#: weekly or monthly one at policyengine-core's 52 weeks before a weekly or
+#: monthly rule tests it (Housing Benefit, Council Tax Reduction, Pension
+#: Credit, the non-dependant deductions, the hours tests), so at 365.25 / 7 a
+#: weekly amount would read 0.34% above itself there, as a full-rate State
+#: Pension read above the full rate before María's ruling of 2026-10-20 made it
+#: the first amount at 52. LCFS spending keeps 365.25 / 7
+#: (``lcfs_consumption``) and NTS trips 52.14 (``nts_bus_travel``): no weekly
+#: rule reads them back.
+WEEKS_IN_YEAR = 52
 TIME_PERIOD = "2024"
 
 # Raw TOTCAPB4 blanks, nonnumeric values, and negative codes mean that the
@@ -1019,14 +1021,14 @@ def _add_benefits(
     pe_person["winter_fuel_allowance_reported"] = (
         pe_person["winter_fuel_allowance_reported"] / WEEKS_IN_YEAR
     )
-    # The State Pension's weekly amounts, re-summed at its own 52 weeks.
+    # The State Pension's weekly amounts, re-summed on their own.
     pe_person["state_pension_reported"] = (
         _sum_to_entity(
             amount * benefit.isin(BENEFIT_CODES["state_pension"]),
             person_id,
             person["person_id"],
         )
-        * STATE_PENSION_WEEKS_IN_YEAR
+        * WEEKS_IN_YEAR
     )
 
 

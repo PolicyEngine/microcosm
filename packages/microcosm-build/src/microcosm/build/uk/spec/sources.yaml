@@ -372,11 +372,7 @@ stages:
   - kind: map_coded_amounts
     scope: region, tenure, accommodation, council tax band, benefit-code amount mappings (Scotland's Adult and Child Disability Payment codes 117/118 and 121/122 into the PIP and DLA columns they replace; benefit recovery codes 69 and 70 unmapped); adult HOURTOT care-hours band code to weekly care_hours at the band's lower edge (codes 5, 6, 7 and 10 reach the 35-hour Carer's Allowance line); would_claim_carers_allowance from positive reported Carer's Allowance, the anchor carers_allowance_take_up opens to carers over the earnings limit (microcosm#1319)
   - kind: annualize_periodic_amounts
-    weeks_in_year: 52.17857142857143
-    weeks_in_year_exceptions:
-      state_pension_reported:
-        weeks_in_year: 52
-        reason: 'The State Pension is paid at weekly rates, and policyengine-uk reads state_pension_reported back to a weekly amount at 52 weeks a year before comparing it with the full rate, so at 365.25 / 7 a full-rate pensioner would read 0.34% above the full rate and the excess would become a protected payment. An exception for the State Pension alone to microcosm#1095''s weekly amounts (María''s ruling of 2026-10-20, microcosm#1278).'
+    weeks_in_year: 52
   - kind: assign_binary_from_rate
     output: uc_is_in_startup_period
     draw: uc_is_in_startup_period
@@ -763,7 +759,7 @@ stages:
     - adulth == 1
     donor_filter: raw ctreb != 1 and ctannual > 0
     missing: raw ctannual < 0 or NaN, or ctannual == 0 with ctpaid == 1 and ctreb != 1
-    value: 'council tax before council tax reduction: CTANNUAL net of the Scottish water and sewerage charges ((CWATAMT1 + CSEWAMT1) x 365.25/7, at 0.65 where CTREB is 1; CWATAMTD where CWATAMT1 is not positive), plus CTREBAMT x 365.25/7 where CTREB is 1 and CTREBAMT > 0; a CTREB 1 household without a positive CTREBAMT takes the larger of its netted CTANNUAL and its cell mean'
+    value: 'council tax before council tax reduction: CTANNUAL net of the Scottish water and sewerage charges ((CWATAMT1 + CSEWAMT1) x 52, at 0.65 where CTREB is 1; CWATAMTD where CWATAMT1 is not positive), plus CTREBAMT x 52 where CTREB is 1 and CTREBAMT > 0; a CTREB 1 household without a positive CTREBAMT takes the larger of its netted CTANNUAL and its cell mean'
   outputs:
   - council_tax
   nonnegative_outputs:
@@ -834,7 +830,7 @@ stages:
     - 'single cell: EMA participants (code == 1; adema/ademaamt pair, eduma/edumaamt when adema is absent; chema/chemaamt for children)'
     donor_filter: participants with non-negative reported amounts
     missing: participants with sentinel negative reported amounts
-    value: donor-mean fill, floored at zero, annualized with 365.25 / 7
+    value: donor-mean fill, floored at zero, annualized at 52 weeks
   outputs:
   - current_education
   - highest_education
@@ -887,7 +883,7 @@ stages:
   - legacy_jobseeker_proxy
   - esa_health_condition_proxy
   - esa_support_group_proxy
-  notes: The proxies are labels, not entitlement determinations. JSA hours compare against 16 * (365.25 / 7) on the E2 spine hours scale; state_pension_age is consumed but not persisted.
+  notes: The proxies are labels, not entitlement determinations. JSA hours compare against 16 * 52 on the E2 spine hours scale; state_pension_age is consumed but not persisted.
 - stage: frs_education_grant_split
   survey: Family Resources Survey 2024-25
   source: Department for Work and Pensions Family Resources Survey 2024-25, UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1; local licensed 2024_25 tabs. plus policyengine-uk DfE grant parameters.
@@ -1193,7 +1189,7 @@ stages:
     population: uk_frs_raw_spine
     source_vintage: 2024-25
     mapped_build_period: 2024
-    annualization: weekly raw FRS amounts * (365.25 / 7)
+    annualization: weekly raw FRS amounts * 52
     status: adjudicated_partial_replay
     retained_full_constituents:
       hmrc_spi_pay:
@@ -1201,20 +1197,20 @@ stages:
         scope: full
         raw_sources:
         - ADULT.INEARNS
-        formula: max(0, ADULT.INEARNS) * (365.25 / 7)
+        formula: max(0, ADULT.INEARNS) * 52
       hmrc_spi_unemployment_benefit_income:
         spi_concept: UBISJA
         scope: full
         raw_sources:
         - BENEFITS.BENEFIT=14:BENAMT
         - BENEFITS.BENEFIT=19:BENAMT
-        formula: sum(BENAMT where BENEFIT in {14, 19}) * (365.25 / 7)
+        formula: sum(BENAMT where BENEFIT in {14, 19}) * 52
       hmrc_spi_incapacity_benefit_income:
         spi_concept: INCPBEN
         scope: full
         raw_sources:
         - BENEFITS.BENEFIT=17:BENAMT
-        formula: sum(BENAMT where BENEFIT == 17) * (365.25 / 7)
+        formula: sum(BENAMT where BENEFIT == 17) * 52
         observed_support: structural zero in the audited 2023-24 FRS; retained so future vintages flow
     retained_named_subsets:
       ossben_identifiable_subset:
@@ -1222,13 +1218,13 @@ stages:
         raw_sources:
         - BENEFITS.BENEFIT=13:BENAMT
         - BENEFITS.BENEFIT=16,VAR2 in {1,3}:BENAMT
-        formula: sum(BENAMT where BENEFIT == 13 or (BENEFIT == 16 and VAR2 in {1, 3})) * (365.25 / 7)
+        formula: sum(BENAMT where BENEFIT == 13 or (BENEFIT == 16 and VAR2 in {1, 3})) * 52
         scope: identifiable_subset
       srp_regular_code5:
         spi_concept: SRP
         raw_sources:
         - BENEFITS.BENEFIT=5:BENAMT
-        formula: sum(BENAMT where BENEFIT == 5) * (365.25 / 7)
+        formula: sum(BENAMT where BENEFIT == 5) * 52
         scope: regular_code5_subset
     source_absent_full_constituents:
     - EPB

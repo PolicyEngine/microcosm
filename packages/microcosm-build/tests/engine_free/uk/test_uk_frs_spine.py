@@ -46,7 +46,6 @@ from microcosm.build.uk_runtime.frs_spine import (
     OWNER_MANAGER_COLUMNS,
     REGION_MAP,
     SCOTTISH_WATER_CHARGES_REDUCTION_RECIPIENT_SHARE,
-    STATE_PENSION_WEEKS_IN_YEAR,
     UC_CAPITAL_UNAVAILABLE,
     WEEKS_IN_YEAR,
     UKFRSSpineStageTransform,
@@ -1929,13 +1928,14 @@ def test_scottish_disability_payments_land_in_the_pip_and_dla_columns() -> None:
     )
 
 
-def test_state_pension_alone_annualises_at_52_weeks() -> None:
-    """policyengine-uk reads the State Pension back at 52 weeks a year.
+def test_weekly_benefits_annualise_at_52_weeks() -> None:
+    """policyengine-uk reads weekly amounts back at 52 weeks a year.
 
     At 365.25 / 7 a full-rate pensioner would read above the full rate and the
-    excess would become a protected payment (María's ruling of 2026-10-20, an
-    exception to microcosm#1095's weekly amounts). Every other weekly benefit
-    keeps 365.25 / 7, and the Winter Fuel Payment, already annual, keeps its
+    excess would become a protected payment (María's ruling of 2026-10-20),
+    and every other weekly amount would read 0.34% high at the rule that tests
+    it; since her ruling of 2026-10-23 every weekly FRS amount annualises at
+    52 (uk-data#531). The Winter Fuel Payment, already annual, keeps its
     amount.
     """
 
@@ -1955,7 +1955,7 @@ def test_state_pension_alone_annualises_at_52_weeks() -> None:
 
     _add_benefits(pe_person, person, benefits)
 
-    assert STATE_PENSION_WEEKS_IN_YEAR == 52
+    assert WEEKS_IN_YEAR == 52
     state_pension = pe_person["state_pension_reported"]
     assert state_pension.tolist() == pytest.approx([221.20 * 52, 179.50 * 52, 0.0])
     # Read back at the engine's 52 weeks, the full rate is the full rate.
@@ -1966,7 +1966,7 @@ def test_state_pension_alone_annualises_at_52_weeks() -> None:
     assert pe_person["winter_fuel_allowance_reported"].tolist() == pytest.approx(
         [0.0, 0.0, 300.0]
     )
-    # The 52-week State Pension stays out of the 365.25 / 7 sum.
+    # The State Pension is re-summed on its own, beside the other benefits.
     reported = pe_person.drop(
         columns=[
             "state_pension_reported",
@@ -1977,7 +1977,7 @@ def test_state_pension_alone_annualises_at_52_weeks() -> None:
     assert reported.to_numpy().sum() == pytest.approx(2 * 81.90 * WEEKS_IN_YEAR)
 
 
-def test_manifest_declares_the_state_pension_weeks_in_year() -> None:
+def test_manifest_declares_52_weeks_for_every_weekly_amount() -> None:
     operation = next(
         operation
         for operation in _manifest_stage().operations
@@ -1985,13 +1985,47 @@ def test_manifest_declares_the_state_pension_weeks_in_year() -> None:
     )
     parameters = dict(operation.parameters)
 
-    assert parameters["weeks_in_year"] == WEEKS_IN_YEAR
-    exceptions = parameters["weeks_in_year_exceptions"]
-    assert set(exceptions) == {"state_pension_reported"}
-    assert (
-        exceptions["state_pension_reported"]["weeks_in_year"]
-        == STATE_PENSION_WEEKS_IN_YEAR
+    assert parameters["weeks_in_year"] == WEEKS_IN_YEAR == 52
+    # The State Pension's exception of 2026-10-20 became the rule.
+    assert "weeks_in_year_exceptions" not in parameters
+
+
+def test_every_reader_of_weekly_frs_amounts_annualises_at_52() -> None:
+    """One week count for every FRS amount a weekly or monthly rule reads.
+
+    María's ruling of 2026-10-23 (uk-data#531): the spine, the HMRC replay
+    leaves and the private-rent localisation read 52; LCFS spending keeps
+    365.25 / 7 and NTS trips 52.14, since no weekly rule reads them back.
+    """
+
+    from microcosm.build.uk_runtime import (
+        frs_council_tax,
+        frs_disability,
+        frs_education,
+        frs_hmrc_source,
+        frs_legacy_proxies,
+        lcfs_consumption,
+        nts_bus_travel,
+        private_rent_localisation,
     )
+
+    for module in (
+        frs_council_tax,
+        frs_disability,
+        frs_education,
+        frs_legacy_proxies,
+    ):
+        assert module.WEEKS_IN_YEAR is WEEKS_IN_YEAR, module.__name__
+    assert frs_hmrc_source.FRS_WEEKS_IN_YEAR == WEEKS_IN_YEAR == 52
+    assert private_rent_localisation.WEEKS_IN_YEAR == WEEKS_IN_YEAR
+    formulas = [
+        str(entry["formula"])
+        for entry in frs_hmrc_source.FRS_HMRC_RETAINED_LEAF_SOURCE_EVIDENCE.values()
+        if "formula" in entry
+    ]
+    assert formulas and not [formula for formula in formulas if "365.25" in formula]
+    assert lcfs_consumption.WEEKS_IN_YEAR == pytest.approx(365.25 / 7)
+    assert nts_bus_travel.WEEKS_IN_YEAR == 52.14
 
 
 def test_northern_ireland_households_take_the_placeholder_band() -> None:
