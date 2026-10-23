@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -368,6 +370,27 @@ def _target(target_id, **binding):
                 )
             ],
             "benunit",
+        ),
+        *(
+            (
+                [
+                    _target(
+                        "a",
+                        value_variable="person_count",
+                        from_entity="person",
+                        filters=[
+                            {"variable": "age", "operator": ">", "value": 0, **extra}
+                        ],
+                    )
+                ],
+                # The refusal lists the key it does not honour.
+                re.escape(repr([key])),
+            )
+            for key, extra in (
+                ("entity", {"entity": "benunit"}),
+                ("reduce", {"reduce": "any"}),
+                ("concept", {"concept": "uk.person.age"}),
+            )
         ),
     ],
 )

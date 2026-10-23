@@ -13,6 +13,7 @@ from microcosm.build.uk_runtime import measure_simulation
 from microcosm.build.uk_runtime.candidate_score import (
     UK_INCUMBENT_ANNUAL_INCOME_FALLBACK,
 )
+from microcosm.build.uk_runtime.uc_relationships import frs_uc_claimant_mask
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -124,3 +125,61 @@ def test_extract_incumbent_surface_from_tiny_h5_and_stub_simulation(
         persisted["outputs"]["weights"]["sha256"]
         == manifest["outputs"]["weights"]["sha256"]
     )
+
+
+def test_extract_incumbent_surface_names_the_register_when_uc_inputs_are_missing(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    pytest.importorskip("tables")
+    tool = _tool_module()
+    incumbent = tmp_path / "incumbent.h5"
+    with pd.HDFStore(incumbent, mode="w") as store:
+        store["household"] = pd.DataFrame({"household_id": [10, 20]})
+    weights = {}
+    for name, code in (("constituency", "C1"), ("la", "L1")):
+        weights[name] = tmp_path / f"{name}.h5"
+        with h5py.File(weights[name], mode="w") as root:
+            root.create_dataset("2025", data=np.asarray([[1.0, 2.0]]))
+            root.attrs["area_codes"] = np.asarray([code], dtype="S2")
+
+    class StubResolver:
+        def __init__(self, **kwargs):
+            pass
+
+        def use_current_income_for_annual_measures(self, *, reason):
+            pass
+
+    monkeypatch.setattr(
+        measure_simulation, "UKMeasureResolver", lambda **kwargs: StubResolver()
+    )
+
+    # The enhanced FRS has no dependent_children, so the UC child bands'
+    # relationship check refuses; raise through it, so the text the extractor
+    # recognises cannot drift from it.
+    def missing_uc_inputs(resolver, grain, *, period, household_ids):
+        frs_uc_claimant_mask(
+            pd.DataFrame(
+                {
+                    "person_benunit_id": [1],
+                    "is_benunit_head": [True],
+                    "is_parent": [False],
+                }
+            ),
+            pd.DataFrame({"benunit_id": [1]}),
+        )
+
+    monkeypatch.setattr(tool, "compute_household_metrics", missing_uc_inputs)
+    with pytest.raises(
+        ValueError, match="incumbent_unresolvable_measures.json"
+    ) as raised:
+        tool.extract_incumbent_surface(
+            incumbent_h5=incumbent,
+            constituency_weights_h5=weights["constituency"],
+            local_authority_weights_h5=weights["la"],
+            constituency_codes_csv=None,
+            local_authority_codes_csv=None,
+            period=2025,
+            out_dir=tmp_path / "out",
+        )
+    assert "benunit.uc_calibration_child_count" in str(raised.value)

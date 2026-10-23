@@ -309,6 +309,12 @@ _LOCAL_BINDING_KEYS = frozenset(
         "filters",
     }
 )
+#: The filter keys the local line honours: one test on a column of the
+#: binding's own entity. A filter that names another entity, a concept or a
+#: reduction refuses, since the local line reads it as none of those.
+_LOCAL_FILTER_KEYS = frozenset(
+    {"variable", "operator", "value", "equals", "in", "lower", "upper"}
+)
 
 
 def local_metric_bindings(area_type: str) -> dict[str, Mapping[str, Any]]:
@@ -324,6 +330,9 @@ def local_metric_bindings(area_type: str) -> dict[str, Mapping[str, Any]]:
     return dict(_local_metric_bindings(area_type))
 
 
+# Cached on the packaged contract: a test that patches
+# ``load_uk_population_contract`` calls ``_local_metric_bindings.cache_clear()``
+# before and after, or it reads the bindings of the contract before it.
 @functools.cache
 def _local_metric_bindings(area_type: str) -> tuple[tuple[str, Mapping[str, Any]], ...]:
     level = AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL[area_type]
@@ -339,6 +348,14 @@ def _local_metric_bindings(area_type: str) -> tuple[tuple[str, Mapping[str, Any]
                 f"local metric {name!r} declares {unhonoured or binding['map_to']!r}, "
                 "which the local line does not honour: its rows are households."
             )
+        for predicate in binding.get("filters", ()):
+            unhonoured = sorted(set(predicate) - _LOCAL_FILTER_KEYS)
+            if unhonoured:
+                raise ValueError(
+                    f"local metric {name!r} has a filter that declares "
+                    f"{unhonoured!r}, which the local line does not honour: "
+                    "each filter tests a column of the binding's own entity."
+                )
         if name in bindings and _binding_terms(bindings[name]) != _binding_terms(
             binding
         ):

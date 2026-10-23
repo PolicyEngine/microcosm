@@ -196,15 +196,31 @@ def extract_incumbent_surface(
         resolver.use_current_income_for_annual_measures(
             reason=UK_INCUMBENT_ANNUAL_INCOME_FALLBACK
         )
-        metric_frames = [
-            compute_household_metrics(
-                resolver,
-                grain,
-                period=period,
-                household_ids=household_ids,
-            )
-            for grain in ("constituency", "la")
-        ]
+        try:
+            metric_frames = [
+                compute_household_metrics(
+                    resolver,
+                    grain,
+                    period=period,
+                    household_ids=household_ids,
+                )
+                for grain in ("constituency", "la")
+            ]
+        except KeyError as error:
+            # The UC child bands read the administrative-basis child count,
+            # which the enhanced FRS cannot supply. Say so, rather than leave
+            # the operator with the missing relationship columns.
+            if "UC relationship" not in str(error):
+                raise
+            raise ValueError(
+                f"{incumbent_h5}: the local UC child bands read "
+                "benunit.uc_calibration_child_count, and this incumbent lacks "
+                f"its relationship inputs ({error.args[0]}). The enhanced FRS "
+                "is known not to carry that measure "
+                "(uk/incumbent_unresolvable_measures.json); the local extractor "
+                "does not prune listed measures, so use a Microcosm release as "
+                "the incumbent."
+            ) from error
     metrics = metric_frames[0].copy()
     for frame in metric_frames[1:]:
         shared = sorted(set(metrics.columns) & set(frame.columns))

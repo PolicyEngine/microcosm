@@ -935,6 +935,8 @@ class UKMeasureResolver:
         self._source_path = source_path
         self._counterfactuals: dict[tuple[str, str | None], Any] = {}
         self._counterfactual_measures: dict[str, dict[str, Any]] = {}
+        # The domestic energy measures, computed together on first read.
+        self._household_energy_cache: dict[str, np.ndarray] | None = None
         reserved = {
             str(name)
             for name in frame.table("person")
@@ -1404,7 +1406,7 @@ class UKMeasureResolver:
 
         if entity != "household":
             raise KeyError(f"{variable} is household-only: {entity}")
-        cached = getattr(self, "_household_energy_cache", None)
+        cached = self._household_energy_cache
         if cached is None:
             year = self._dataset_year()
             electricity = _values(
