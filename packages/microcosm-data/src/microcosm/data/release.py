@@ -678,7 +678,12 @@ def publish_release(
         # The offline gates proved the child against the parent manifest it
         # carries; only the Hub can say that manifest is the published one.
         # Checked before any branch, commit or upload.
-        require_parent_publication(api, prepared.release_dir, repo_id=repo_id)
+        require_parent_publication(
+            api,
+            prepared.release_dir,
+            repo_id=repo_id,
+            artifact_root=prepared.artifact_root,
+        )
     if evidence:
         payload = latest_evidence_pointer_payload(
             release_id,

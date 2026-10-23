@@ -9,8 +9,9 @@ On a three-household H5 in two states, scored with real engines:
   every tax unit and person exactly once;
 - the counterfactual withholds exactly the newly read columns.
 
-The wrapper package is not in this environment, so the runtime identities
-are stubbed; the real loader replay runs in the qualification environment.
+The wrapper package is not in this environment and no wheels are at hand,
+so the scorer's runtime proof is stubbed; the real loader replay and wheel
+proof run in the qualification environments.
 """
 
 from __future__ import annotations
@@ -21,7 +22,6 @@ import pandas as pd
 import pytest
 
 from microcosm.data import compatibility_recertification as recert
-from microcosm.data import source_enrichment
 from test_support.microcosm_data.compatibility_recertification import (
     CRITICAL_METADATA,
     FIXTURE_PRODUCER,
@@ -117,10 +117,16 @@ def scorable(tmp_path, monkeypatch):
     tool = load_tool()
     monkeypatch.setattr(tool, "_producer_identity", lambda: dict(FIXTURE_PRODUCER))
     monkeypatch.setattr(
-        source_enrichment,
-        "_runtime_package_identities",
-        lambda wheels, require_wheels: {
-            name: {"version": "0", "source_sha256": "0" * 64}
+        tool,
+        "scoring_runtime",
+        lambda wheels: {
+            name: {
+                "version": "0",
+                "files": 0,
+                "content_sha256": "0" * 64,
+                "wheel_sha256": "0" * 64,
+                "pypi_sha256_verified": True,
+            }
             for name in recert.COMPATIBILITY_PACKAGES
         },
     )
@@ -135,6 +141,7 @@ def test_household_batched_totals_do_not_depend_on_the_batch_size(scorable, tmp_
             artifact_root=artifact_root,
             output=tmp_path / f"scores-{size}.json",
             variant=recert.VARIANT_AS_STORED,
+            compatibility_wheels=(),
             batch_households=size,
         )
         for size in (1, 1_000)
@@ -155,6 +162,7 @@ def test_household_batched_totals_do_not_depend_on_the_batch_size(scorable, tmp_
     )
     assert documents[1]["tax_unit_roles"]["persons"] == 6
     assert documents[0]["scoring"]["passes"][0]["batches"] == 3
+    assert [item["households"] for item in documents[0]["scoring"]["passes"]] == [3, 3]
 
 
 def test_the_counterfactual_withholds_exactly_the_newly_read_columns(
@@ -177,6 +185,7 @@ def test_the_counterfactual_withholds_exactly_the_newly_read_columns(
                 artifact_root=artifact_root,
                 output=tmp_path / "counterfactual.json",
                 variant=recert.VARIANT_WITHOUT_NEWLY_READ,
+                compatibility_wheels=(),
             )
         return
     document = tool.score_candidate(
@@ -184,6 +193,7 @@ def test_the_counterfactual_withholds_exactly_the_newly_read_columns(
         artifact_root=artifact_root,
         output=tmp_path / "counterfactual.json",
         variant=recert.VARIANT_WITHOUT_NEWLY_READ,
+        compatibility_wheels=(),
     )
     assert document["variant"] == {
         "id": recert.VARIANT_WITHOUT_NEWLY_READ,

@@ -242,6 +242,22 @@ def test_describe_parent_refuses_unsupported_parents(parent, update, message):
         recert.describe_parent(release_dir, artifact_root)
 
 
+@pytest.mark.parametrize("key", ["build_manifest", "compatibility_drift"])
+def test_describe_parent_refuses_a_key_the_child_writes_its_evidence_under(parent, key):
+    """Sol r1 finding 6: the child's entry would silently replace the artifact."""
+
+    release_dir, artifact_root = parent
+
+    def rename(manifest):
+        manifest["artifacts"][key] = manifest["artifacts"].pop(
+            "populace_us_2024_calibration"
+        )
+
+    _rewrite_json(release_dir / "release_manifest.json", rename)
+    with pytest.raises(ValueError, match="child writes its own"):
+        recert.describe_parent(release_dir, artifact_root)
+
+
 def test_describe_parent_refuses_an_artifact_that_differs_from_its_pin(parent):
     release_dir, artifact_root = parent
     (artifact_root / "populace_us_2024.h5").write_bytes(b"other bytes")
@@ -291,6 +307,38 @@ def _strip_stored_input_evidence(release_dir):
         manifest["artifacts"].pop(US_STORED_INPUTS_EVIDENCE_KEY, None)
 
     _rewrite_json(release_dir / "release_manifest.json", strip_release)
+
+
+def test_the_substitution_does_not_excuse_an_unrelated_gate_disagreement(
+    parent, tmp_path, monkeypatch
+):
+    """Sol r1 finding 7: only absent stored-input evidence is replaceable."""
+
+    release_dir, artifact_root = parent
+    _strip_stored_input_evidence(release_dir)
+    _rewrite_json(
+        release_dir / "build_manifest.json",
+        lambda build: build.setdefault("gate_evidence", {}).update(
+            reform_coverage_smoke="skipped"
+        ),
+    )
+    _rewrite_json(
+        release_dir / "release_manifest.json",
+        lambda manifest: (
+            manifest["build"]
+            .setdefault("gate_evidence", {})
+            .update(reform_coverage_smoke="bound")
+        ),
+    )
+    tool = load_tool()
+    monkeypatch.setattr(tool, "_producer_identity", lambda: dict(FIXTURE_PRODUCER))
+    with pytest.raises(ValueError, match="different gate_evidence blocks"):
+        tool.build_candidate(
+            parent_release_dir=release_dir,
+            parent_artifact_root=artifact_root,
+            output_dir=tmp_path / "out",
+            release_id=CHILD_ID,
+        )
 
 
 def test_a_parent_without_stored_input_evidence_is_replaced_not_waived(
@@ -436,21 +484,37 @@ def test_claim_keeps_every_parent_entry_and_adds_the_measured_versions(candidate
 
 
 @pytest.mark.parametrize(
-    "specifier, message",
+    "specifier",
     [
-        (">=1.0,<2.61", "reaches back to the built-with"),
-        (">=2.60.4", "reaches 3.0.0"),
-        ("==2.60.3", "excludes the tested"),
+        ">=1.0,<2.61",
+        ">=2.60.4",
+        "==2.60.3",
+        ">=2.60.4,!=3.0.0,!=99999.0.0",
+        ">=2.60.4,<2.62",
+        "~=2.60.4",
+        "==2.60.*",
+        ">2.60.3,<2.61",
     ],
 )
-def test_claims_that_overreach_are_refused(candidate, specifier, message):
-    with pytest.raises(ValueError, match=message):
+def test_claims_outside_the_bounded_grammar_are_refused(candidate, specifier):
+    with pytest.raises(ValueError, match="is not '==2.60.4'"):
         recert.claim_entries(
             _parent_manifest(candidate),
             tested_packages=TESTED_PACKAGES,
             specifier=specifier,
             declared_by=DECLARER,
         )
+
+
+@pytest.mark.parametrize("specifier", ["==2.60.4", ">=2.60.0,<2.61", ">=2.60.4,<2.61"])
+def test_claims_inside_the_bounded_grammar_are_accepted(candidate, specifier):
+    models, _, claims = recert.claim_entries(
+        _parent_manifest(candidate),
+        tested_packages=TESTED_PACKAGES,
+        specifier=specifier,
+        declared_by=DECLARER,
+    )
+    assert claims["model"]["specifier"] == specifier == models[-1]["specifier"]
 
 
 def test_a_parent_that_already_covers_the_tested_version_needs_no_child(candidate):
@@ -528,45 +592,83 @@ def test_tampered_certified_children_are_refused(
         validate_release_dir(output, artifact_root=artifact_root)
 
 
-def test_drift_refuses_a_baseline_on_another_engine(candidate):
-    release_dir, _ = candidate
+def _combine(release_dir, **overrides):
     diagnostics = json.loads((release_dir / "calibration_diagnostics.json").read_text())
     report = json.loads((release_dir / recert.REPORT_FILE).read_text())
-    baseline = score_document(release_dir, packages=TESTED_PACKAGES)
+    arguments = {
+        "calibration_diagnostics": diagnostics,
+        "dataset_sha256": report["dataset"]["sha256"],
+        "baseline": score_document(release_dir, packages=BASELINE_PACKAGES),
+        "tested": score_document(release_dir),
+        "counterfactual": None,
+        "baseline_engine": {
+            "model": {"version": "1.729.0"},
+            "core": {"version": "3.19.0"},
+        },
+        "tested_packages": TESTED_PACKAGES,
+        "newly_read_columns": [],
+        "diagnostics_sha256": recert.sha256_file(
+            release_dir / "calibration_diagnostics.json"
+        ),
+        "expected_households": HOUSEHOLDS,
+    }
+    arguments.update(overrides)
+    return recert.combine_drift(**arguments)
+
+
+def test_drift_refuses_a_baseline_on_another_engine(candidate):
+    release_dir, _ = candidate
     with pytest.raises(ValueError, match="built-with policyengine-us"):
-        recert.combine_drift(
-            calibration_diagnostics=diagnostics,
-            dataset_sha256=report["dataset"]["sha256"],
-            baseline=baseline,
-            tested=score_document(release_dir),
-            counterfactual=None,
-            baseline_engine={
-                "model": {"version": "1.729.0"},
-                "core": {"version": "3.19.0"},
-            },
-            tested_packages=TESTED_PACKAGES,
-            newly_read_columns=[],
-        )
+        _combine(release_dir, baseline=score_document(release_dir))
 
 
 def test_drift_requires_the_counterfactual_when_columns_are_newly_read(candidate):
     release_dir, _ = candidate
-    diagnostics = json.loads((release_dir / "calibration_diagnostics.json").read_text())
-    report = json.loads((release_dir / recert.REPORT_FILE).read_text())
     with pytest.raises(ValueError, match="counterfactual"):
-        recert.combine_drift(
-            calibration_diagnostics=diagnostics,
-            dataset_sha256=report["dataset"]["sha256"],
-            baseline=score_document(release_dir, packages=BASELINE_PACKAGES),
-            tested=score_document(release_dir),
-            counterfactual=None,
-            baseline_engine={
-                "model": {"version": "1.729.0"},
-                "core": {"version": "3.19.0"},
-            },
-            tested_packages=TESTED_PACKAGES,
-            newly_read_columns=["tax_unit_role_input"],
-        )
+        _combine(release_dir, newly_read_columns=["tax_unit_role_input"])
+
+
+@pytest.mark.parametrize(
+    "role, document_overrides, message",
+    [
+        ("tested", {"households": 2}, "cover all 3 households"),
+        ("baseline", {"households": 0}, "cover all 3 households"),
+        ("tested", {"spm": {"geography_kind": "state"}}, "post-export SPM selection"),
+    ],
+)
+def test_drift_refuses_scores_that_did_not_cover_or_bind_the_parent(
+    candidate, role, document_overrides, message
+):
+    release_dir, _ = candidate
+    packages = BASELINE_PACKAGES if role == "baseline" else TESTED_PACKAGES
+    document = score_document(release_dir, packages=packages, **document_overrides)
+    with pytest.raises(ValueError, match=message):
+        _combine(release_dir, **{role: document})
+
+
+def test_drift_refuses_scores_of_other_diagnostics(candidate):
+    release_dir, _ = candidate
+    with pytest.raises(ValueError, match="carried parent diagnostics"):
+        _combine(release_dir, diagnostics_sha256="0" * 64)
+
+
+@pytest.mark.parametrize("field", ["content_sha256", "wheel_sha256"])
+def test_drift_refuses_a_tested_runtime_the_replay_did_not_certify(candidate, field):
+    release_dir, _ = candidate
+    packages = {
+        **TESTED_PACKAGES,
+        "policyengine-us": {**TESTED_PACKAGES["policyengine-us"], field: "f" * 64},
+    }
+    with pytest.raises(ValueError, match="certified policyengine-us runtime"):
+        _combine(release_dir, tested=score_document(release_dir, packages=packages))
+
+
+def test_drift_refuses_a_runtime_not_proven_against_pypi(candidate):
+    release_dir, _ = candidate
+    document = score_document(release_dir, packages=BASELINE_PACKAGES)
+    document["runtime"]["packages"]["policyengine-us"]["pypi_sha256_verified"] = False
+    with pytest.raises(ValueError, match="PyPI publishes"):
+        _combine(release_dir, baseline=document)
 
 
 @settings(
@@ -579,44 +681,20 @@ def test_drift_requires_the_counterfactual_when_columns_are_newly_read(candidate
     new=st.floats(-1e12, 1e12, allow_nan=False),
     withheld=st.floats(-1e12, 1e12, allow_nan=False),
 )
-def test_drift_rows_decompose_exactly(parent, base, new, withheld):
-    release_dir, _ = parent
-    diagnostics = json.loads((release_dir / "calibration_diagnostics.json").read_text())
-    definitions = recert.drift_metric_definitions(diagnostics)
-    dataset = {"artifact": "x", "filename": "x.h5", "sha256": "c" * 64}
-
-    def document(
-        packages, value, variant=recert.VARIANT_AS_STORED, withheld_columns=()
-    ):
-        return {
-            "schema_version": recert.SCORES_SCHEMA_VERSION,
-            "kind": recert.SCORES_KIND,
-            "dataset": dataset,
-            "variant": {"id": variant, "withheld_columns": list(withheld_columns)},
-            "metric_definitions_sha256": recert.canonical_sha256(definitions),
-            "runtime": {"packages": packages},
-            "metrics": {
-                m["metric_id"]: {"value": value} for m in definitions["metrics"]
-            },
-            "code": dict(FIXTURE_PRODUCER),
-        }
-
-    drift = recert.combine_drift(
-        calibration_diagnostics=diagnostics,
-        dataset_sha256=dataset["sha256"],
-        baseline=document(BASELINE_PACKAGES, base),
-        tested=document(TESTED_PACKAGES, new),
-        counterfactual=document(
-            TESTED_PACKAGES,
-            withheld,
-            recert.VARIANT_WITHOUT_NEWLY_READ,
-            ["parent_1_id"],
+def test_drift_rows_decompose_exactly(candidate, base, new, withheld):
+    release_dir, _ = candidate
+    drift = _combine(
+        release_dir,
+        baseline=score_document(
+            release_dir, packages=BASELINE_PACKAGES, value=lambda metric_id: base
         ),
-        baseline_engine={
-            "model": {"version": "1.729.0"},
-            "core": {"version": "3.19.0"},
-        },
-        tested_packages=TESTED_PACKAGES,
+        tested=score_document(release_dir, value=lambda metric_id: new),
+        counterfactual=score_document(
+            release_dir,
+            variant=recert.VARIANT_WITHOUT_NEWLY_READ,
+            withheld=("parent_1_id",),
+            value=lambda metric_id: withheld,
+        ),
         newly_read_columns=["parent_1_id"],
     )
     for row in drift["rows"]:
@@ -652,19 +730,6 @@ def test_signed_component_scores_soi_rows_as_the_release_tool_does():
 # ---------------------------------------------------------------------------
 
 
-def _seed_parent(hub, parent_dir):
-    tag = parent_dir.name
-    hub._commits["commit-parent"] = {
-        f"releases/{tag}/release_manifest.json": (
-            parent_dir / "release_manifest.json"
-        ).read_bytes(),
-        f"releases/{tag}/build_manifest.json": (
-            parent_dir / "build_manifest.json"
-        ).read_bytes(),
-    }
-    hub._refs[tag] = "commit-parent"
-
-
 def _publish(hub, output, artifact_root, monkeypatch):
     monkeypatch.setattr(recert, "run_recertification_loader_replay", fake_replay())
     monkeypatch.setattr(recert, "_check_producer", lambda code, failures, label: None)
@@ -681,43 +746,94 @@ def _publish(hub, output, artifact_root, monkeypatch):
 
 
 def test_publication_refuses_a_parent_the_hub_does_not_serve(
-    hub, parent, candidate, tmp_path, monkeypatch
+    paths_hub, parent, candidate, tmp_path, monkeypatch
 ):
     output, artifact_root = certify(candidate, tmp_path, monkeypatch)
     with pytest.raises(ValueError, match="is not published"):
-        _publish(hub, output, artifact_root, monkeypatch)
-    assert hub.events == []
+        _publish(paths_hub, output, artifact_root, monkeypatch)
+    assert paths_hub.events == []
 
 
 def test_publication_refuses_a_parent_whose_published_manifest_differs(
-    hub, parent, candidate, tmp_path, monkeypatch
+    paths_hub, parent, candidate, tmp_path, monkeypatch
 ):
-    parent_dir, _ = parent
+    parent_dir, parent_root = parent
     output, artifact_root = certify(candidate, tmp_path, monkeypatch)
-    _seed_parent(hub, parent_dir)
-    hub._commits["commit-parent"][
+    seed_published_parent(paths_hub, parent_dir, parent_root)
+    paths_hub._commits["commit-parent"][
         f"releases/{parent_dir.name}/release_manifest.json"
     ] = b"{}"
     with pytest.raises(ValueError, match="differs from the carried"):
+        _publish(paths_hub, output, artifact_root, monkeypatch)
+    assert paths_hub.events == []
+
+
+def test_publication_needs_a_hub_that_can_say_where_artifacts_are(
+    hub, parent, candidate, tmp_path, monkeypatch
+):
+    parent_dir, parent_root = parent
+    output, artifact_root = certify(candidate, tmp_path, monkeypatch)
+    seed_published_parent(hub, parent_dir, parent_root)
+    with pytest.raises(TypeError, match="get_paths_info"):
         _publish(hub, output, artifact_root, monkeypatch)
     assert hub.events == []
 
 
-def test_publication_of_a_published_parents_child_is_tag_only(
-    hub, parent, candidate, tmp_path, monkeypatch
+def test_publication_refuses_a_root_artifact_moved_into_the_release_directory(
+    paths_hub, parent, candidate, tmp_path, monkeypatch
 ):
-    parent_dir, _ = parent
+    """Sol r1 finding 3: an unchanged root NPZ reclassified as a release file."""
+
+    parent_dir, parent_root = parent
     output, artifact_root = certify(candidate, tmp_path, monkeypatch)
-    _seed_parent(hub, parent_dir)
-    _publish(hub, output, artifact_root, monkeypatch)
-    uploads = dict(hub.uploads)
+    npz = "populace_us_2024_calibration.npz"
+    shutil.copyfile(artifact_root / npz, output / npz)
+    os.chmod(output / npz, 0o400)
+
+    def reclassify(report):
+        sha = report["parent"]["root_artifacts"].pop(npz)
+        report["parent"]["release_files"][npz] = sha
+
+    _rewrite_json(output / recert.REPORT_FILE, reclassify)
+    _rewrite_json(
+        output / "release_manifest.json",
+        lambda manifest: manifest["artifacts"]["compatibility_recertification"].update(
+            sha256=recert.sha256_file(output / recert.REPORT_FILE)
+        ),
+    )
+    seed_published_parent(paths_hub, parent_dir, parent_root)
+    with pytest.raises(ValueError, match="publishes no"):
+        _publish(paths_hub, output, artifact_root, monkeypatch)
+    assert paths_hub.events == []
+
+
+def test_publication_refuses_a_root_artifact_the_parent_tag_holds_other_bytes_of(
+    paths_hub, parent, candidate, tmp_path, monkeypatch
+):
+    parent_dir, parent_root = parent
+    output, artifact_root = certify(candidate, tmp_path, monkeypatch)
+    seed_published_parent(paths_hub, parent_dir, parent_root)
+    paths_hub._commits["commit-parent"]["populace_us_2024.h5"] = b"other bytes"
+    with pytest.raises(ValueError, match="is not the artifact the child carries"):
+        _publish(paths_hub, output, artifact_root, monkeypatch)
+    assert paths_hub.events == []
+
+
+def test_publication_of_a_published_parents_child_is_tag_only(
+    paths_hub, parent, candidate, tmp_path, monkeypatch
+):
+    parent_dir, parent_root = parent
+    output, artifact_root = certify(candidate, tmp_path, monkeypatch)
+    seed_published_parent(paths_hub, parent_dir, parent_root)
+    _publish(paths_hub, output, artifact_root, monkeypatch)
+    uploads = dict(paths_hub.uploads)
     assert (
         uploads["populace_us_2024.h5"]
         == (artifact_root / "populace_us_2024.h5").read_bytes()
     )
     assert f"releases/{CHILD_ID}/{recert.DRIFT_FILE}" in uploads
     assert "latest.json" not in uploads
-    assert [tag["tag"] for tag in hub.tags] == [CHILD_ID]
+    assert [tag["tag"] for tag in paths_hub.tags] == [CHILD_ID]
 
 
 def test_prepare_release_takes_wheels_but_not_a_parent_h5(
@@ -775,3 +891,110 @@ def test_preflight_prints_the_recertification_measurement(
     verdict = json.loads(captured.out.strip().splitlines()[-1])
     assert verdict["claim_measurement"]["model"]["measured_versions"] == ["2.60.4"]
     assert "measured against only the versions recorded here" in captured.err
+
+
+# ---------------------------------------------------------------------------
+# Runtime identity (Sol r1 findings 1 and 8).
+# ---------------------------------------------------------------------------
+
+
+def _fake_install(root, name, version):
+    """An installed distribution and its wheel, sharing every package byte."""
+
+    from zipfile import ZipFile
+
+    module = name.replace("-", "_")
+    dist_info = f"{module}-{version}.dist-info"
+    files = {
+        f"{module}/__init__.py": b"VALUE = 1\n",
+        f"{module}/parameters/rate.yaml": b"values:\n  2024-01-01: 0.1\n",
+        f"{dist_info}/METADATA": (
+            f"Metadata-Version: 2.1\nName: {name}\nVersion: {version}\n".encode()
+        ),
+    }
+    site = root / "site"
+    for relative, content in files.items():
+        (site / relative).parent.mkdir(parents=True, exist_ok=True)
+        (site / relative).write_bytes(content)
+    (site / dist_info / "uv_cache.json").write_text("{}")
+    record = [*files, f"{dist_info}/uv_cache.json", f"{dist_info}/RECORD"]
+    (site / dist_info / "RECORD").write_text("".join(f"{path},,\n" for path in record))
+    wheel = root / f"{module}-{version}-py3-none-any.whl"
+    with ZipFile(wheel, "w") as archive:
+        for relative, content in files.items():
+            archive.writestr(relative, content)
+        archive.writestr(f"{dist_info}/RECORD", "")
+    return site / dist_info, wheel
+
+
+@pytest.fixture
+def fake_runtime(tmp_path, monkeypatch):
+    from importlib import metadata
+
+    installs = {
+        name: _fake_install(tmp_path, name, version)
+        for name, version in (
+            ("policyengine-us", "2.60.4"),
+            ("policyengine-core", "3.33.3"),
+            ("policyengine", "6.10.1"),
+            ("spm-calculator", "1.0.0"),
+        )
+    }
+    monkeypatch.setattr(
+        metadata,
+        "distribution",
+        lambda name: metadata.PathDistribution(installs[name][0]),
+    )
+    return tmp_path / "site", tuple(wheel for _, wheel in installs.values())
+
+
+def test_runtime_identity_covers_parameters_and_ignores_installer_files(fake_runtime):
+    site, wheels = fake_runtime
+    identities = recert.runtime_identities(wheels, require_wheels=True)
+    assert identities["policyengine-us"]["files"] == 3
+    assert identities["policyengine-us"]["wheel_sha256"] == recert.sha256_file(
+        wheels[0]
+    )
+    assert "direct_url" not in identities["policyengine-us"]
+    before = identities["policyengine-us"]["content_sha256"]
+    (site / "policyengine_us-2.60.4.dist-info" / "uv_cache.json").write_text('{"x": 1}')
+    assert (
+        recert.runtime_identities(wheels, require_wheels=True)["policyengine-us"][
+            "content_sha256"
+        ]
+        == before
+    )
+
+
+def test_a_patched_parameter_file_is_not_the_wheels_runtime(fake_runtime):
+    site, wheels = fake_runtime
+    (site / "policyengine_us" / "parameters" / "rate.yaml").write_bytes(
+        b"values:\n  2024-01-01: 0.2\n"
+    )
+    with pytest.raises(ValueError, match="rate.yaml differs from its wheel"):
+        recert.runtime_identities(wheels, require_wheels=True)
+    unbound = recert.runtime_identities((), require_wheels=False)
+    assert unbound["policyengine-us"]["wheel_sha256"] is None
+
+
+def test_the_runtime_needs_all_four_wheels(fake_runtime):
+    _, wheels = fake_runtime
+    with pytest.raises(ValueError, match="all four wheels"):
+        recert.runtime_identities(wheels[:3], require_wheels=True)
+
+
+def test_the_scorer_refuses_a_nonpositive_batch_size_before_any_work(
+    candidate, tmp_path
+):
+    tool = load_tool()
+    release_dir, artifact_root = candidate
+    for size in (0, -1):
+        with pytest.raises(ValueError, match="positive integer"):
+            tool.score_candidate(
+                release_dir=release_dir,
+                artifact_root=artifact_root,
+                output=tmp_path / f"scores-{size}.json",
+                variant=recert.VARIANT_AS_STORED,
+                compatibility_wheels=(),
+                batch_households=size,
+            )

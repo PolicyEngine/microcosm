@@ -33,10 +33,21 @@ every parent artifact, so it is the whole lineage. Offline, the validator:
   the child's revision;
 - replays today's release contract on the rebuilt parent (`parent_contract`).
 
-Publication adds the online anchor: after the Hub client exists and before
-any branch, commit or upload, `publish_release` downloads both manifests at
-the parent's tag and refuses unless they equal the carried bytes
-(`require_parent_publication`). Preflight stays offline.
+Publication adds the online anchor (`require_parent_publication`). After the
+Hub client exists, and before any branch, commit or upload, `publish_release`
+checks two things at the parent's tag:
+
+- both parent manifests are byte for byte the carried ones;
+- each parent artifact is published exactly where the child will publish it,
+  with the pinned digest: each release file under `releases/<parent>/`, each
+  root artifact at its root path. It compares an LFS file's SHA-256, or the
+  git blob id of the carried bytes.
+
+Offline, which artifacts count as release files rests on where the files sit
+locally. This check is what stops a root artifact moved into the release
+directory from publishing at the wrong path. Preflight stays offline. A
+parent artifact key the child uses for its own evidence (`build_manifest`,
+`compatibility_drift`, ...) is refused outright.
 
 The parent must be a US calibration release (`release_type` absent or
 `calibration`) with `dataset_role` `national_default`. A recertification of a
@@ -53,7 +64,10 @@ register, under both engines: the baseline score records the built-with
 engine's verdict and the loader replay grades the tested engine. Such a parent
 passes as `passed_with_stored_input_evidence_replaced`, the replaced failure
 lines are recorded verbatim, and certification requires the baseline verdict
-to pass. Any other contract failure refuses the child.
+to pass. The substitution covers absent evidence only. It applies when the
+parent carries no stored-input evidence anywhere and its two manifests agree
+on every other `gate_evidence` field. Any other contract failure refuses the
+child.
 
 ## What the newer engine reads differently
 
@@ -110,9 +124,18 @@ Three score runs feed one drift document:
    `other_engine_changes_effect`.
 
 The drift document embeds all three, and validation recomputes every row from
-them. The tested runs must be the exact runtime the loader replay certified
-(version and installed-source digest of all four packages). The baseline run
-must be the parent's built-with policyengine-us and policyengine-core.
+them. Every score document must:
+
+- cover all households of the H5, in both its household and its state pass;
+- score the carried `calibration_diagnostics.json` (by digest) under the
+  parent's post-export SPM selection;
+- run on a runtime proven against the four wheels, every installed byte
+  included (parameter YAML, not only Python), each wheel's SHA-256 matching
+  the digest PyPI publishes for that version.
+
+The tested runs must be exactly the runtime the loader replay certified:
+version, content digest and wheel digest of all four packages. The baseline
+run must be the parent's built-with policyengine-us and policyengine-core.
 
 ## Steps
 
@@ -152,6 +175,10 @@ recorded commit.
      --variant without_newly_read_inputs --output counterfactual.json
    ```
 
+   Each run also takes the four `--compatibility-wheel` files its environment
+   was installed from. Before building any engine, the scorer proves the
+   install against them and checks them against PyPI.
+
 4. **Put the drift in front of the declarer.** Whether drift blocks the
    claim is the declarer's call, not this lane's. Queue it with
    `cos add-decision`.
@@ -172,9 +199,14 @@ recorded commit.
    ```
 
    The certified manifest keeps every parent entry. It adds one
-   `publisher_claim` model entry, which must contain the tested version, pass
-   the source-enrichment claim guards and not reach back to the built-with
-   version. It also adds the tested Core as an exact `publisher_claim` pin,
+   `publisher_claim` model entry in one of two bounded shapes:
+
+   - `==T`, the tested version; or
+   - `>=L,<U`, where the built-with version < L <= T < U <= the next minor
+     release after T.
+
+   Wildcards, `~=`, exclusion lists and open ranges are refused. The
+   source-enrichment guards only probe bounds. It also adds the tested Core as an exact `publisher_claim` pin,
    unless a parent entry already covers that Core. `build.built_with_*`
    stays the parent's.
 

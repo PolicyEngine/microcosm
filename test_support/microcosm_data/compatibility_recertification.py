@@ -25,18 +25,62 @@ from test_support.microcosm_data.release import *
 from test_support.microcosm_data.release import _bind_stored_input_evidence
 
 CHILD_ID = "populace-us-2024-9f1260b-recert-pe-us-2.60.4"
+
+
+def _identity(version, digit):
+    return {
+        "version": version,
+        "files": 10,
+        "content_sha256": digit * 64,
+        "wheel_sha256": chr(ord(digit) + 1) * 64,
+    }
+
+
+#: Receipt-shaped identities (no PyPI flag; the replay does not check PyPI).
 TESTED_PACKAGES = {
-    "policyengine-us": {"version": "2.60.4", "source_sha256": "1" * 64},
-    "policyengine-core": {"version": "3.33.3", "source_sha256": "2" * 64},
-    "policyengine": {"version": "6.10.1", "source_sha256": "3" * 64},
-    "spm-calculator": {"version": "1.0.0", "source_sha256": "4" * 64},
+    "policyengine-us": _identity("2.60.4", "1"),
+    "policyengine-core": _identity("3.33.3", "3"),
+    "policyengine": _identity("6.10.1", "5"),
+    "spm-calculator": _identity("1.0.0", "7"),
 }
 BASELINE_PACKAGES = {
-    "policyengine-us": {"version": "1.729.0", "source_sha256": "5" * 64},
-    "policyengine-core": {"version": "3.19.0", "source_sha256": "6" * 64},
-    "policyengine": {"version": "6.10.1", "source_sha256": "3" * 64},
-    "spm-calculator": {"version": "1.0.0", "source_sha256": "4" * 64},
+    "policyengine-us": _identity("1.729.0", "a"),
+    "policyengine-core": _identity("3.19.0", "c"),
+    "policyengine": _identity("6.10.1", "5"),
+    "spm-calculator": _identity("1.0.0", "7"),
 }
+HOUSEHOLDS = 3
+
+
+def scored_runtime(packages):
+    """Score-document identities: the receipt's plus the PyPI verification."""
+
+    return {
+        name: {**identity, "pypi_sha256_verified": True}
+        for name, identity in packages.items()
+    }
+
+
+def write_fixture_h5(path: Path, households: int = HOUSEHOLDS) -> None:
+    """A real HDF5 file whose metadata names ``households`` households.
+
+    Engine-free tests never load it; validation reads only its household
+    count from metadata, and digests its bytes.
+    """
+
+    import h5py
+    import numpy as np
+
+    with h5py.File(path, "w") as h5:
+        h5.create_dataset(
+            "household/table",
+            data=np.array(
+                [(index, index + 1) for index in range(households)],
+                dtype=[("index", "<i8"), ("household_id", "<i8")],
+            ),
+        )
+
+
 DECLARER = "Max Ghenis (fixture declarer, not a real declaration)"
 
 
@@ -139,7 +183,7 @@ def make_published_parent(release_dir: Path, artifact_root: Path) -> None:
 
     h5 = artifact_root / "populace_us_2024.h5"
     npz = artifact_root / "populace_us_2024_calibration.npz"
-    h5.write_bytes(b"synthetic parent microdata, not an HDF5 file")
+    write_fixture_h5(h5)
     npz.write_bytes(b"synthetic parent calibration weights")
     diagnostics = release_dir / "calibration_diagnostics.json"
 
@@ -242,6 +286,8 @@ def score_document(
     withheld=(),
     value=lambda metric_id: 1_000.0,
     stored_input_passed=True,
+    households=HOUSEHOLDS,
+    spm=None,
 ) -> dict:
     """A score document shaped as the tool writes it, with invented values."""
 
@@ -256,7 +302,21 @@ def score_document(
         "dataset": report["dataset"],
         "variant": {"id": variant, "withheld_columns": sorted(withheld)},
         "metric_definitions_sha256": recert.canonical_sha256(definitions),
-        "runtime": {"packages": packages},
+        "parent_diagnostics_sha256": recert.sha256_file(
+            release_dir / "calibration_diagnostics.json"
+        ),
+        "runtime": {"packages": scored_runtime(packages)},
+        "scoring": {
+            "method": recert.SCORING_METHOD,
+            "period": recert.SCORING_PERIOD,
+            "spm": spm or diagnostics["build"]["post_export_scoring"]["spm"],
+            "batch_households": 2_000,
+            "n_households": HOUSEHOLDS,
+            "passes": [
+                {"batching": recert.BATCHING_HOUSEHOLD, "households": households},
+                {"batching": recert.BATCHING_STATE, "households": households},
+            ],
+        },
         "engine": {
             "label": f"policyengine-us {packages['policyengine-us']['version']}",
             "stored_input_verdict": {
@@ -301,6 +361,58 @@ def write_scores(directory: Path, release_dir: Path, **overrides) -> dict[str, P
         paths[role] = directory / f"{role}.json"
         paths[role].write_text(json.dumps(document))
     return paths
+
+
+class PathsInfoHub(FakeHub):
+    """FakeHub with ``get_paths_info``: LFS for H5/NPZ, git blob ids otherwise."""
+
+    def get_paths_info(self, *, repo_id, paths, revision=None, repo_type=None):
+        from types import SimpleNamespace
+
+        assert repo_type == "dataset" and repo_id == self.repo_id
+        files = self._commits[self._refs.get(revision or "main", revision)]
+        infos = []
+        for path in paths:
+            if path not in files:
+                continue
+            content = files[path]
+            lfs = (
+                SimpleNamespace(sha256=hashlib.sha256(content).hexdigest())
+                if path.endswith((".h5", ".npz"))
+                else None
+            )
+            infos.append(
+                SimpleNamespace(
+                    path=path, lfs=lfs, blob_id=recert.git_blob_sha1(content)
+                )
+            )
+        return infos
+
+
+def seed_published_parent(hub, parent_dir: Path, artifact_root: Path) -> None:
+    """Publish the parent's files at its tag on the fake Hub, as the publisher did."""
+
+    tag = parent_dir.name
+    manifest = json.loads((parent_dir / "release_manifest.json").read_text())
+    files = {
+        f"releases/{tag}/{name}": (parent_dir / name).read_bytes()
+        for name in ("release_manifest.json", "build_manifest.json")
+    }
+    for entry in manifest["artifacts"].values():
+        path = entry["path"]
+        if (parent_dir / path).is_file():
+            files[f"releases/{tag}/{path}"] = (parent_dir / path).read_bytes()
+        else:
+            files[path] = (artifact_root / path).read_bytes()
+    hub._commits["commit-parent"] = files
+    hub._refs[tag] = "commit-parent"
+
+
+@pytest.fixture
+def paths_hub(tmp_path) -> PathsInfoHub:
+    fake = PathsInfoHub()
+    fake._download_dir = tmp_path / "hub-cache"
+    return fake
 
 
 def certify(candidate, tmp_path, monkeypatch, *, specifier="policyengine-us==2.60.4"):

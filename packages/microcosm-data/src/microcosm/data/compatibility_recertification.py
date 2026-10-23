@@ -349,6 +349,129 @@ def write_json(path: Path, value: object) -> None:
     path.write_text(json.dumps(value, indent=2, sort_keys=True, allow_nan=False) + "\n")
 
 
+#: dist-info files an installer writes, which no wheel carries: they say how a
+#: package was installed, not what it is (``uv_cache.json`` is uv's).
+_INSTALLER_FILES = frozenset(
+    {"RECORD", "INSTALLER", "REQUESTED", "direct_url.json", "uv_cache.json"}
+)
+
+
+def _identity_file(name: str) -> bool:
+    """Whether an installed or wheel path belongs to the package's identity.
+
+    Bytecode caches and installer bookkeeping are excluded; so are paths the
+    installer generates outside the package (console scripts, ``../bin``).
+    Everything else counts, parameter YAML and data files included, because
+    every byte of it can change what the engine computes.
+    """
+
+    parts = name.split("/")
+    if ".." in parts or "__pycache__" in parts or name.endswith(".pyc"):
+        return False
+    return not (parts[0].endswith(".dist-info") and parts[-1] in _INSTALLER_FILES)
+
+
+def _canonical_package(name: str) -> str:
+    return name.lower().replace("_", "-").replace(".", "-")
+
+
+def runtime_identities(
+    compatibility_wheels: Sequence[Path | str] = (), *, require_wheels: bool
+) -> dict:
+    """Every installed byte of the four packages, bound to their wheels.
+
+    For each of :data:`COMPATIBILITY_PACKAGES`, the digest covers every file
+    the distribution installed (``_identity_file``), parameters and data as
+    well as Python. With a wheel for the package, the installed inventory
+    must equal the wheel's members and every installed file the member's
+    bytes, so ``content_sha256`` then identifies the wheel's contents and
+    ``wheel_sha256`` the wheel itself. ``require_wheels`` demands all four
+    wheels and refuses an editable install. Nothing here depends on where a
+    wheel was installed from, so honest replays in two environments agree.
+
+    Raises:
+        ValueError: A wheel is unknown, duplicated, or differs from the
+            installed package; or ``require_wheels`` and a wheel is missing.
+    """
+
+    from email.parser import BytesParser
+    from importlib import metadata
+    from zipfile import ZipFile
+
+    wheels: dict[str, tuple[Path, str, dict[str, bytes]]] = {}
+    for raw in compatibility_wheels:
+        path = Path(raw)
+        with ZipFile(path) as archive:
+            members = {
+                name: archive.read(name)
+                for name in archive.namelist()
+                if not name.endswith("/") and _identity_file(name)
+            }
+        metadata_files = [
+            name for name in members if name.endswith(".dist-info/METADATA")
+        ]
+        if len(metadata_files) != 1:
+            raise ValueError(f"{path.name} must contain one wheel METADATA file")
+        parsed = BytesParser().parsebytes(members[metadata_files[0]])
+        name = _canonical_package(parsed["Name"])
+        if name not in COMPATIBILITY_PACKAGES or name in wheels:
+            raise ValueError(
+                "compatibility wheels must uniquely name the country, Core, wrapper "
+                "and calculator packages"
+            )
+        wheels[name] = (path, parsed["Version"], members)
+    if require_wheels and set(wheels) != set(COMPATIBILITY_PACKAGES):
+        raise ValueError(
+            "the runtime must be proven against all four wheels: "
+            f"{', '.join(COMPATIBILITY_PACKAGES)}"
+        )
+    identities = {}
+    for name in COMPATIBILITY_PACKAGES:
+        dist = metadata.distribution(name)
+        direct_url = dist.read_text("direct_url.json")
+        if (
+            require_wheels
+            and direct_url
+            and _mapping(_mapping(json.loads(direct_url)).get("dir_info")).get(
+                "editable"
+            )
+        ):
+            raise ValueError(f"{name} is an editable install, not a wheel identity")
+        files = sorted(
+            str(file) for file in dist.files or () if _identity_file(str(file))
+        )
+        if not files:
+            raise ValueError(f"cannot list the installed files of {name}")
+        digest = hashlib.sha256()
+        for relative in files:
+            digest.update(relative.encode() + b"\0")
+            digest.update(Path(dist.locate_file(relative)).read_bytes() + b"\0")
+        identity = {
+            "version": dist.version,
+            "files": len(files),
+            "content_sha256": digest.hexdigest(),
+            "wheel_sha256": None,
+        }
+        if name in wheels:
+            path, version, members = wheels[name]
+            if version != dist.version:
+                raise ValueError(
+                    f"{name} wheel {version} is not the installed {dist.version}"
+                )
+            if set(members) != set(files):
+                raise ValueError(
+                    f"{name} installed files differ from its wheel's members"
+                )
+            for relative in files:
+                if Path(dist.locate_file(relative)).read_bytes() != members[relative]:
+                    raise ValueError(
+                        f"{name} installed {relative} differs from its wheel"
+                    )
+            identity["wheel_sha256"] = sha256_file(path)
+        identities[name] = identity
+    return identities
+
+
 def is_recertification(release_dir: Path | str) -> bool:
     """Whether ``release_dir``'s manifest declares this release type.
 
@@ -381,7 +504,14 @@ def describe_parent(
     artifacts (the H5 and the calibration NPZ). Every artifact the manifest
     declares must be present with the digest it pins, in exactly one of the
     two places: a bare filename in the release directory is a release file,
-    anything else a root artifact.
+    anything else a root artifact. Offline, that placement rests on where the
+    files sit locally; publication authenticates it against the parent tag on
+    the Hub (:func:`require_parent_publication`), so a root artifact moved into
+    the release directory cannot publish at the wrong path.
+
+    A parent artifact key that the child uses for its own evidence is refused:
+    the child's entry would replace it, and the artifact would silently leave
+    the child's manifest.
 
     Raises:
         ValueError: The parent is not a supported published release, or a
@@ -416,6 +546,11 @@ def describe_parent(
         )
     release_files, root_artifacts = {}, {}
     for key, raw in _mapping(manifest.get("artifacts")).items():
+        if key in CHILD_ARTIFACT_KEYS or key in CERTIFIED_ARTIFACT_KEYS:
+            raise ValueError(
+                f"parent artifact key {key!r} is one the child writes its own "
+                "evidence under; the parent artifact would leave the child manifest"
+            )
         entry = _mapping(raw)
         path, sha = entry.get("path"), entry.get("sha256")
         if not isinstance(path, str) or not isinstance(sha, str):
@@ -507,13 +642,22 @@ def replay_parent_contract(
     itself, against the current register, under the built-with engine (the
     baseline scores) and the tested engine (the loader replay), so such a
     parent passes as :data:`PARENT_CONTRACT_STORED_INPUT_EVIDENCE_REPLACED`,
-    with the replaced failure lines recorded. Any other failure is returned in
-    ``other_failures`` and refuses the child.
+    with the replaced failure lines recorded.
+
+    The substitution covers absent evidence and nothing else. It applies only
+    when the parent carries no stored-input evidence anywhere (no evidence
+    file, artifact, ``gate_evidence`` entry or manifest block) and its two
+    manifests agree on every other ``gate_evidence`` field; the evidence check
+    also compares those blocks whole, so without the second condition an
+    unrelated gate disagreement would be excused with the missing evidence.
+    Otherwise every failure is returned in ``other_failures`` and refuses the
+    child.
     """
 
     from microcosm.data import contract
 
     release_dir = Path(release_dir)
+    key = contract.US_STORED_INPUTS_EVIDENCE_KEY
     with tempfile.TemporaryDirectory(prefix=".recertification-parent-") as staging:
         parent_dir = _reconstructed_parent(release_dir, parent, Path(staging))
         try:
@@ -531,8 +675,26 @@ def replay_parent_contract(
             failures=evidence_failures,
             evidence_tier=False,
         )
-    replaced = [line for line in failures if line in evidence_failures]
-    other = [line for line in failures if line not in evidence_failures]
+        evidence_file_present = (
+            parent_dir / contract.US_STORED_INPUTS_EVIDENCE_FILE
+        ).exists()
+    manifest_build = _mapping(manifest.get("build"))
+    gate_blocks = [
+        _mapping(holder.get("gate_evidence"))
+        for holder in (_mapping(build), manifest_build)
+    ]
+    evidence_absent = (
+        not evidence_file_present
+        and key not in _mapping(manifest.get("artifacts"))
+        and all(key not in holder for holder in (_mapping(build), manifest_build))
+        and all(key not in block for block in gate_blocks)
+    )
+    other_gates_agree = gate_blocks[0] == gate_blocks[1]
+    replaceable = (
+        set(evidence_failures) if evidence_absent and other_gates_agree else set()
+    )
+    replaced = [line for line in failures if line in replaceable]
+    other = [line for line in failures if line not in replaceable]
     return {
         "status": PARENT_CONTRACT_PASSED
         if not failures
@@ -576,8 +738,8 @@ def run_recertification_loader_replay(
     The receipt this returns is replayed at every later gate, so it holds only
     what is deterministic for the H5 and the installed runtime:
 
-    1. The four packages' installed sources, bound to the four wheels when
-       ``require_wheels`` (``source_enrichment._runtime_package_identities``).
+    1. Every installed byte of the four packages, parameters included, bound
+       to the four wheels when ``require_wheels`` (:func:`runtime_identities`).
     2. The stored-input classification (:func:`stored_column_changes`) and
        the register digests. An unreviewed change refuses the replay.
     3. Both native loaders (country ``USSingleYearDataset``, wrapper
@@ -603,9 +765,7 @@ def run_recertification_loader_replay(
     from microcosm.data import source_enrichment, stored_inputs
 
     candidate_h5 = Path(candidate_h5)
-    packages = source_enrichment._runtime_package_identities(
-        compatibility_wheels, require_wheels=require_wheels
-    )
+    packages = runtime_identities(compatibility_wheels, require_wheels=require_wheels)
     tables = stored_inputs.h5_stored_tables(candidate_h5)
     engine = stored_inputs.installed_us_engine()
     changes = stored_column_changes(
@@ -1123,12 +1283,72 @@ VARIANT_AS_STORED = "as_stored"
 VARIANT_WITHOUT_NEWLY_READ = "without_newly_read_inputs"
 
 
+#: Recorded by the tool's scorer; bump with any change to how it scores.
+SCORING_METHOD = "household_batched_country_loader"
+
+
 def _score_document_failures(
-    scores: Mapping, *, dataset_sha256: str, definitions: Mapping, label: str
+    scores: Mapping,
+    *,
+    dataset_sha256: str,
+    definitions: Mapping,
+    label: str,
+    diagnostics_sha256: str,
+    spm: object,
+    expected_households: int,
 ) -> list[str]:
-    """Shape and binding checks for one embedded score document."""
+    """Shape and binding checks for one embedded score document.
+
+    Beyond shape: the document scored the carried parent diagnostics' metric
+    definitions under the parent's own post-export SPM selection, covered
+    every household of the H5 in each of its passes, and ran on a runtime
+    whose every package was proven against a wheel whose digest PyPI
+    publishes for that version.
+    """
 
     failures = []
+    if scores.get("parent_diagnostics_sha256") != diagnostics_sha256:
+        failures.append(f"{label} scores must score the carried parent diagnostics")
+    scoring = _mapping(scores.get("scoring"))
+    if (
+        scoring.get("method") != SCORING_METHOD
+        or scoring.get("period") != SCORING_PERIOD
+        or scoring.get("spm") != spm
+    ):
+        failures.append(
+            f"{label} scores must use the {SCORING_METHOD} method for "
+            f"{SCORING_PERIOD} under the parent's post-export SPM selection {spm!r}"
+        )
+    batch = scoring.get("batch_households")
+    if type(batch) is not int or batch <= 0:
+        failures.append(f"{label} scores must record a positive batch size")
+    passes = scoring.get("passes")
+    if (
+        scoring.get("n_households") != expected_households
+        or not isinstance(passes, list)
+        or {_mapping(item).get("batching") for item in passes}
+        != {BATCHING_HOUSEHOLD, BATCHING_STATE}
+        or any(
+            _mapping(item).get("households") != expected_households for item in passes
+        )
+    ):
+        failures.append(
+            f"{label} scores must cover all {expected_households} households of "
+            "the H5 in both their household and their state passes"
+        )
+    packages = _mapping(_mapping(scores.get("runtime")).get("packages"))
+    for package in COMPATIBILITY_PACKAGES:
+        identity = _mapping(packages.get(package))
+        if not (
+            isinstance(identity.get("version"), str)
+            and isinstance(identity.get("content_sha256"), str)
+            and isinstance(identity.get("wheel_sha256"), str)
+            and identity.get("pypi_sha256_verified") is True
+        ):
+            failures.append(
+                f"{label} scores must run {package} proven against a wheel whose "
+                "digest PyPI publishes for its version"
+            )
     if (
         scores.get("schema_version") != SCORES_SCHEMA_VERSION
         or scores.get("kind") != SCORES_KIND
@@ -1176,20 +1396,32 @@ def combine_drift(
     baseline_engine: Mapping,
     tested_packages: Mapping,
     newly_read_columns: Sequence[str],
+    diagnostics_sha256: str,
+    expected_households: int,
 ) -> dict:
     """Combine score documents into the drift document, or raise ``ValueError``.
 
     ``baseline`` must have been scored under the parent's built-with
     policyengine-us and policyengine-core (``baseline_engine``); ``tested``
-    under exactly ``tested_packages`` (every package's version and installed
-    source digest, as the loader replay recorded them). ``counterfactual``, if
-    given, must be the tested runtime with exactly ``newly_read_columns``
-    withheld, and is required whenever there are any. Every row recomputes
-    from the embedded documents.
+    under exactly ``tested_packages`` (every package's version, installed
+    content digest and wheel digest, as the loader replay recorded them).
+    ``counterfactual``, if given, must be the tested runtime with exactly
+    ``newly_read_columns`` withheld, and is required whenever there are any.
+    Every document must score the carried diagnostics (``diagnostics_sha256``)
+    under the parent's SPM selection and cover all ``expected_households``
+    (:func:`_score_document_failures`). Every row recomputes from the
+    embedded documents.
     """
 
     definitions = drift_metric_definitions(calibration_diagnostics)
+    spm = _mapping(
+        _mapping(calibration_diagnostics.get("build")).get("post_export_scoring")
+    ).get("spm")
     failures = []
+    if not isinstance(spm, Mapping):
+        failures.append(
+            "the parent diagnostics record no post-export SPM selection to score under"
+        )
     exact = set(_exact_requirement_ids())
     scored_exact = {
         metric["requirement_id"]
@@ -1222,6 +1454,9 @@ def combine_drift(
                 dataset_sha256=dataset_sha256,
                 definitions=definitions,
                 label=label,
+                diagnostics_sha256=diagnostics_sha256,
+                spm=spm,
+                expected_households=expected_households,
             )
         )
         recorded_variant = _mapping(scores.get("variant"))
@@ -1244,9 +1479,9 @@ def combine_drift(
         for package in COMPATIBILITY_PACKAGES:
             want = _mapping(tested_packages.get(package))
             got = _mapping(observed.get(package))
-            if (got.get("version"), got.get("source_sha256")) != (
-                want.get("version"),
-                want.get("source_sha256"),
+            if any(
+                got.get(field) != want.get(field)
+                for field in ("version", "content_sha256", "wheel_sha256")
             ):
                 failures.append(
                     f"{label} scores must run the certified {package} runtime"
@@ -1398,28 +1633,103 @@ def drift_from_scores(
     drift: Mapping,
     *,
     calibration_diagnostics: Mapping,
+    dataset_sha256: str,
+    diagnostics_sha256: str,
+    expected_households: int,
     baseline_engine: Mapping,
     tested_packages: Mapping,
     newly_read_columns: Sequence[str],
 ) -> dict:
-    """Recompute a drift document from the score documents it embeds."""
+    """Recompute a drift document from the score documents it embeds.
+
+    The dataset, diagnostics and household count come from the release being
+    validated, never from the drift document, so a drift cannot vouch for
+    itself.
+    """
 
     scores = _mapping(drift.get("scores"))
     return combine_drift(
         calibration_diagnostics=calibration_diagnostics,
-        dataset_sha256=str(drift.get("dataset_sha256")),
+        dataset_sha256=dataset_sha256,
         baseline=_mapping(scores.get("baseline")),
         tested=_mapping(scores.get("tested")),
         counterfactual=scores.get("counterfactual"),
         baseline_engine=baseline_engine,
         tested_packages=tested_packages,
         newly_read_columns=newly_read_columns,
+        diagnostics_sha256=diagnostics_sha256,
+        expected_households=expected_households,
     )
+
+
+def h5_household_count(path: Path | str) -> int:
+    """Households in a US release H5, from HDF metadata alone."""
+
+    import h5py
+
+    with h5py.File(path, "r") as h5:
+        return int(h5["household/table"].shape[0])
 
 
 # ---------------------------------------------------------------------------
 # The claim.
 # ---------------------------------------------------------------------------
+
+
+def _check_recertification_claim(
+    specifier: object, *, tested: object, built_with: object
+) -> None:
+    """Refuse a model claim outside this lane's grammar.
+
+    The source-enrichment guards probe a claim's bounds; they cannot prove
+    them (``>=2.60.4,!=3.0.0,!=99999.0.0`` passes them and admits 4.0). A
+    recertification therefore takes only two shapes, both bounded by
+    construction:
+
+    - ``==T``, the tested version exactly; or
+    - ``>=L,<U`` with ``L <= T < U``, ``L`` above the built-with version (the
+      parent's own entries carry that one, and nothing between the two was
+      measured) and ``U`` at most the next minor release after ``T``.
+
+    A prerelease tested version takes only the exact pin.
+
+    Raises:
+        ValueError: The claim has another shape or breaks a bound.
+    """
+
+    from packaging.specifiers import InvalidSpecifier, SpecifierSet
+    from packaging.version import InvalidVersion, Version
+
+    try:
+        clauses = sorted(
+            SpecifierSet(str(specifier)), key=lambda clause: clause.operator
+        )
+        tested_version = Version(str(tested))
+        built_version = Version(str(built_with))
+    except (InvalidSpecifier, InvalidVersion) as exc:
+        raise ValueError(f"publisher compatibility claim {specifier!r}: {exc}") from exc
+    operators = [clause.operator for clause in clauses]
+    try:
+        bounds = [Version(clause.version) for clause in clauses]
+    except InvalidVersion:
+        # A wildcard ("==2.60.*") names a series, not a version.
+        bounds = []
+    if operators == ["=="] and bounds == [tested_version]:
+        return
+    next_minor = Version(f"{tested_version.major}.{tested_version.minor + 1}")
+    if (
+        operators == ["<", ">="]
+        and not tested_version.is_prerelease
+        and bounds[1] <= tested_version < bounds[0] <= next_minor
+        and bounds[1] > built_version
+    ):
+        return
+    raise ValueError(
+        f"publisher compatibility claim {specifier!r} is not '=={tested_version}' "
+        f"or '>=L,<U' with {built_version} < L <= {tested_version} < U <= "
+        f"{next_minor}; a recertification claims what it measured and at most "
+        "the rest of that minor series"
+    )
 
 
 def claim_entries(
@@ -1469,27 +1779,16 @@ def claim_entries(
             f"the parent already certifies policyengine-us {model_version}; "
             "there is nothing to recertify"
         )
+    built_with = _mapping(
+        _mapping(parent_manifest.get("build")).get("built_with_model_package")
+    ).get("version")
+    _check_recertification_claim(specifier, tested=model_version, built_with=built_with)
     model = compatibility_claim_entry(
         specifier,
         package="policyengine-us",
         version=model_version,
         declared_by=declared_by,
     )
-    # The parent's own entries already cover what it was built with. A claim
-    # that also reaches back to that version spans every release between the
-    # two, none of which this recertification measured.
-    built_with = _mapping(
-        _mapping(parent_manifest.get("build")).get("built_with_model_package")
-    ).get("version")
-    if isinstance(built_with, str) and Version(built_with) in SpecifierSet(
-        model["specifier"]
-    ):
-        raise ValueError(
-            f"publisher compatibility claim {model['specifier']!r} reaches back to "
-            f"the built-with policyengine-us {built_with}; claim the measured "
-            f"version {model_version} (or a range above the built-with one), and "
-            "let the parent's entries carry the built-with version"
-        )
     claims = {"model": model}
     if not covered(cores, "policyengine-core", core_version):
         claims["core"] = {
@@ -1907,11 +2206,16 @@ def _check_certified_compatibility(
         expected_drift = drift_from_scores(
             drift,
             calibration_diagnostics=diagnostics,
+            dataset_sha256=str(_mapping(report.get("dataset")).get("sha256")),
+            diagnostics_sha256=sha256_file(
+                release_dir / "calibration_diagnostics.json"
+            ),
+            expected_households=h5_household_count(candidate),
             baseline_engine=baseline_engine,
             tested_packages=tested_packages,
             newly_read_columns=newly_read,
         )
-    except (ValueError, KeyError, TypeError) as exc:
+    except (ValueError, KeyError, TypeError, OSError) as exc:
         failures.append(f"drift does not recompute from its scores: {exc}")
         return
     if drift != expected_drift:
@@ -2024,6 +2328,8 @@ def certify_recertification(
         },
         tested_packages=tested_packages,
         newly_read_columns=[item["column"] for item in changes[CHANGE_READ]],
+        diagnostics_sha256=sha256_file(release_dir / "calibration_diagnostics.json"),
+        expected_households=h5_household_count(candidate),
     )
     output_dir.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(
@@ -2079,16 +2385,36 @@ def certify_recertification(
 # ---------------------------------------------------------------------------
 
 
-def require_parent_publication(
-    api: object, release_dir: Path | str, *, repo_id: str
-) -> None:
-    """Refuse unless the parent tag on the Hub serves the carried manifests.
+def git_blob_sha1(content: bytes) -> str:
+    """The id git (and so the Hub) gives a file of ``content``'s bytes."""
 
-    Runs after the publisher constructs its Hub client and before any upload.
-    The parent's ``release_manifest.json`` pins every parent artifact, so equal
-    bytes at the parent's immutable tag mean the lineage the child carries is
-    the published one. Absence and difference both refuse; a transient Hub
-    failure propagates.
+    return hashlib.sha1(b"blob %d\0" % len(content) + content).hexdigest()
+
+
+def require_parent_publication(
+    api: object,
+    release_dir: Path | str,
+    *,
+    repo_id: str,
+    artifact_root: Path | str | None,
+) -> None:
+    """Refuse unless the parent tag on the Hub serves what the child carries.
+
+    Runs after the publisher constructs its Hub client and before any branch,
+    commit or upload. Two checks, both against the parent's immutable tag:
+
+    - the carried ``release_manifest.json`` and ``build_manifest.json`` are
+      byte for byte the parent's published ones. The release manifest pins
+      every parent artifact's digest, so this anchors the whole lineage;
+    - every parent artifact sits on the Hub where the child will publish it:
+      each carried release file under ``releases/<parent>/`` and each root
+      artifact at its root path, with the pinned digest (an LFS file's
+      SHA-256, or the git blob id of the carried bytes). Offline, which
+      artifacts are release files rests on where the files sit locally; this
+      is what stops a root artifact moved into the release directory from
+      publishing at the wrong path.
+
+    Absence and difference both refuse. A transient Hub failure propagates.
     """
 
     from microcosm.data.release import _is_absent_entry_error, _is_absent_revision_error
@@ -2129,6 +2455,50 @@ def require_parent_publication(
                 f"{path_in_repo} at tag {revision!r} differs from the carried "
                 f"{carried}; refusing to publish a child of a parent the Hub does "
                 "not serve."
+            )
+    get_paths_info = getattr(api, "get_paths_info", None)
+    if not callable(get_paths_info):
+        raise TypeError(
+            "publishing a recertification needs a Hub client with get_paths_info, "
+            "to authenticate where the parent's artifacts are published"
+        )
+    expected = {}
+    for name, sha in _mapping(parent.get("release_files")).items():
+        expected[f"releases/{parent_id}/{name}"] = (sha, release_dir / name)
+    root = Path(artifact_root) if artifact_root is not None else None
+    for path, sha in _mapping(parent.get("root_artifacts")).items():
+        expected[path] = (sha, None if root is None else root / path)
+    published = {
+        getattr(info, "path", None): info
+        for info in get_paths_info(
+            repo_id=repo_id,
+            paths=sorted(expected),
+            revision=revision,
+            repo_type="dataset",
+        )
+    }
+    for path_in_repo, (sha, local) in sorted(expected.items()):
+        info = published.get(path_in_repo)
+        if info is None:
+            raise ValueError(
+                f"parent {parent_id!r} publishes no {path_in_repo} at tag "
+                f"{revision!r}; the child would publish an artifact the parent "
+                "does not have there"
+            )
+        lfs = getattr(info, "lfs", None)
+        if lfs is not None:
+            matches = getattr(lfs, "sha256", None) == sha
+        else:
+            matches = (
+                local is not None
+                and local.is_file()
+                and sha256_file(local) == sha
+                and getattr(info, "blob_id", None) == git_blob_sha1(local.read_bytes())
+            )
+        if not matches:
+            raise ValueError(
+                f"{path_in_repo} at tag {revision!r} is not the artifact the child "
+                "carries; refusing to publish it there"
             )
 
 

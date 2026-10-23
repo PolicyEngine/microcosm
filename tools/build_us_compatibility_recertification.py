@@ -519,16 +519,68 @@ class _BatchScorer:
         )
 
 
+def _pypi_wheel_sha256(name: str, version: str, filename: str) -> str | None:
+    """The SHA-256 PyPI publishes for one wheel file, or ``None`` if it has none."""
+
+    from urllib.request import urlopen
+
+    with urlopen(
+        f"https://pypi.org/pypi/{name}/{version}/json", timeout=60
+    ) as response:
+        payload = json.load(response)
+    for item in payload.get("urls", ()):
+        if item.get("filename") == filename:
+            return (item.get("digests") or {}).get("sha256")
+    return None
+
+
+def scoring_runtime(compatibility_wheels: Sequence[Path]) -> dict:
+    """The four packages' identities, each wheel checked against PyPI's digest.
+
+    ``runtime_identities`` proves every installed byte against its wheel;
+    this adds that the wheel is the one PyPI publishes for that version, so a
+    score cannot rest on a locally patched engine bearing a released version.
+    """
+
+    identities = recert.runtime_identities(compatibility_wheels, require_wheels=True)
+    by_package = {}
+    for wheel in compatibility_wheels:
+        path = Path(wheel)
+        for name, identity in identities.items():
+            if identity["wheel_sha256"] == recert.sha256_file(path):
+                by_package[name] = path
+    for name, identity in identities.items():
+        path = by_package[name]
+        published = _pypi_wheel_sha256(name, identity["version"], path.name)
+        identity["pypi_sha256_verified"] = published == identity["wheel_sha256"]
+        if not identity["pypi_sha256_verified"]:
+            raise ValueError(
+                f"{path.name} is not the wheel PyPI publishes for {name} "
+                f"{identity['version']}"
+            )
+    return identities
+
+
 def score_candidate(
     *,
     release_dir: Path,
     artifact_root: Path,
     output: Path,
     variant: str,
+    compatibility_wheels: Sequence[Path],
     batch_households: int = _DEFAULT_BATCH_HOUSEHOLDS,
     microsimulation_cls=None,
 ) -> dict:
-    """Score the candidate's H5 under the installed engine; write the document."""
+    """Score the candidate's H5 under the installed engine; write the document.
+
+    The runtime is proven against the four wheels, and they against PyPI,
+    before any engine is built, so a long run cannot end on an unprovable
+    runtime.
+    """
+
+    if type(batch_households) is not int or batch_households <= 0:
+        raise ValueError("--batch-households must be a positive integer")
+    runtime = scoring_runtime(compatibility_wheels)
 
     import numpy as np
     from policyengine_us.data import USSingleYearDataset
@@ -600,7 +652,7 @@ def score_candidate(
         ),
     ):
         selected = [m for m in metrics.values() if m["batching"] == batching]
-        count = 0
+        count = scored = 0
         for ids in batches:
             batch = frames.batch(ids)
             simulation = microsimulation_cls(
@@ -628,28 +680,27 @@ def score_candidate(
                     "scored in batches (microcosm#956)."
                 )
             count += 1
+            scored += len(ids)
             del simulation, scorer, batch
             gc.collect()
         passes.append(
-            {"batching": batching, "batches": count, "metrics": len(selected)}
+            {
+                "batching": batching,
+                "batches": count,
+                "households": scored,
+                "metrics": len(selected),
+            }
         )
-    packages = source_enrichment._runtime_package_identities((), require_wheels=False)
     document = {
         "schema_version": recert.SCORES_SCHEMA_VERSION,
         "kind": recert.SCORES_KIND,
         "dataset": dict(dataset),
         "variant": {"id": variant, "withheld_columns": withheld},
         "metric_definitions_sha256": recert.canonical_sha256(definitions),
-        "runtime": {
-            "python": platform.python_version(),
-            "packages": {
-                name: {
-                    "version": identity["version"],
-                    "source_sha256": identity["source_sha256"],
-                }
-                for name, identity in packages.items()
-            },
-        },
+        "parent_diagnostics_sha256": recert.sha256_file(
+            release_dir / "calibration_diagnostics.json"
+        ),
+        "runtime": {"python": platform.python_version(), "packages": runtime},
         "engine": {
             "label": engine.label,
             "stored_input_verdict": {
@@ -664,7 +715,7 @@ def score_candidate(
             "column_changes": changes,
         },
         "scoring": {
-            "method": "household_batched_country_loader",
+            "method": recert.SCORING_METHOD,
             "period": recert.SCORING_PERIOD,
             "spm": spm,
             "batch_households": batch_households,
@@ -709,6 +760,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     score.add_argument(
         "--batch-households", type=int, default=_DEFAULT_BATCH_HOUSEHOLDS
     )
+    score.add_argument(
+        "--compatibility-wheel",
+        action="append",
+        type=Path,
+        required=True,
+        help="the installed country, Core, wrapper and calculator wheels (all four)",
+    )
     args = parser.parse_args(argv)
     try:
         if args.command == "fetch-parent":
@@ -743,6 +801,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 artifact_root=args.artifact_root,
                 output=args.output,
                 variant=args.variant,
+                compatibility_wheels=tuple(args.compatibility_wheel),
                 batch_households=args.batch_households,
             )
             print(
