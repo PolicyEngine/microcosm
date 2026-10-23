@@ -15,6 +15,11 @@ def test_policyengine_us_contract_includes_strike_person_year_input_leaf() -> No
         assert str(variable.definition_period).lower() == "year"
         assert variable.default_value == 0
 
-    assert "alimony_expense" in (
+    # policyengine-us 2.60 deducts each non-dependent's eligible alimony
+    # through a person-level variable; the divorce-year test is unchanged.
+    assert "alimony_expense_ald_person" in (
         variables["alimony_expense_ald"].formula.__code__.co_consts
+    )
+    assert "alimony_expense" in (
+        variables["alimony_expense_ald_person"].formula.__code__.co_consts
     )

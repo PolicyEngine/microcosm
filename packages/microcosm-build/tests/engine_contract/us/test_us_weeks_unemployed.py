@@ -4,7 +4,7 @@
 from test_support.microcosm_build.us_weeks_unemployed import *
 
 
-def test_live_engine_graph_has_only_structurally_blocked_ui_consumers() -> None:
+def test_live_engine_graph_has_exactly_the_reviewed_consumers() -> None:
     import policyengine_us
     system = policyengine_us.CountryTaxBenefitSystem()
 
@@ -14,7 +14,23 @@ def test_live_engine_graph_has_only_structurally_blocked_ui_consumers() -> None:
         for formula in variable.formulas.values()
         if _OUTPUT in formula.__code__.co_consts
     }
-    assert consumers == {"al_ui", "ny_ui", "ok_ui", "pa_uc"}
+    # policyengine-us 2.60 converts weeks into months of unemployment
+    # compensation for the SNAP work registration exemption (7 CFR
+    # 273.7(b)(1)(v)). That consumer is live: it reads the compensation the
+    # release stores. Zero weeks with positive compensation counts as all 12
+    # months, the engine's behavior before months were modeled.
+    assert consumers == {
+        "al_ui",
+        "ny_ui",
+        "ok_ui",
+        "pa_uc",
+        "unemployment_compensation_months",
+    }
+    months = system.variables["unemployment_compensation_months"]
+    assert months.entity.key == "person"
+    assert "total_unemployment_compensation" in (
+        months.formulas[min(months.formulas)].__code__.co_consts
+    )
     weeks = system.variables[_OUTPUT]
     assert weeks.default_value == 0
     assert not weeks.formulas

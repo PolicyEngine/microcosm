@@ -704,12 +704,14 @@ def test_canonical_battery_contract_matches_production_registries() -> None:
     assert single == 134
     assert joint == 1
     assert len(contract) == single + joint
-    assert sum(len(row["metric_legs"]) for row in contract.values()) == 372
+    # policyengine-us 2.60.4 retired the first-home mortgage leg (a four-leg
+    # monetary metric) and added Part D take-up (a one-leg incidence metric).
+    assert sum(len(row["metric_legs"]) for row in contract.values()) == 369
     assert (
         sum(row["metric"] == "monetary_sign_separated" for row in contract.values())
-        == 79
+        == 78
     )
-    assert sum(row["metric"] == "boolean_incidence" for row in contract.values()) == 51
+    assert sum(row["metric"] == "boolean_incidence" for row in contract.values()) == 52
     assert sum(row["metric"] == "categorical_tvd" for row in contract.values()) == 5
     assert (
         "person/source_operator_immigration/"
