@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.13"
 resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'win32'",
@@ -828,7 +828,7 @@ us = [
     { name = "h5py" },
     { name = "microcosm-data" },
     { name = "microunit" },
-    { name = "policyengine-core", version = "3.32.5", source = { registry = "https://pypi.org/simple" } },
+    { name = "policyengine-core" },
     { name = "policyengine-us" },
     { name = "tables" },
 ]
@@ -856,9 +856,9 @@ requires-dist = [
     { name = "numpy", specifier = ">=1.26" },
     { name = "openpyxl", marker = "extra == 'uk'", specifier = ">=3.1" },
     { name = "pandas", specifier = ">=2" },
-    { name = "policyengine-core", marker = "extra == 'us'", specifier = "==3.32.5" },
+    { name = "policyengine-core", marker = "extra == 'us'", specifier = "==3.33.3" },
     { name = "policyengine-uk", marker = "extra == 'uk'", specifier = ">=2.147.2" },
-    { name = "policyengine-us", marker = "extra == 'us'", specifier = ">=2.2.1,<3" },
+    { name = "policyengine-us", marker = "extra == 'us'", specifier = ">=2.60.4,<3" },
     { name = "pyarrow", specifier = ">=15" },
     { name = "pyyaml", specifier = ">=6" },
     { name = "referencing", specifier = ">=0.35,<1" },
@@ -920,7 +920,7 @@ uk = [
     { name = "policyengine-uk" },
 ]
 us = [
-    { name = "policyengine-core", version = "3.32.5", source = { registry = "https://pypi.org/simple" } },
+    { name = "policyengine-core" },
     { name = "policyengine-us" },
 ]
 
@@ -935,9 +935,9 @@ requires-dist = [
     { name = "huggingface-hub", specifier = ">=0.20" },
     { name = "microcosm-diagnostics", editable = "packages/microcosm-diagnostics" },
     { name = "packaging", specifier = ">=24" },
-    { name = "policyengine-core", marker = "extra == 'us'", specifier = "==3.32.5" },
+    { name = "policyengine-core", marker = "extra == 'us'", specifier = "==3.33.3" },
     { name = "policyengine-uk", marker = "extra == 'uk'", specifier = ">=2.147.2" },
-    { name = "policyengine-us", marker = "extra == 'us'", specifier = ">=2.2.1,<3" },
+    { name = "policyengine-us", marker = "extra == 'us'", specifier = ">=2.60.4,<3" },
 ]
 provides-extras = ["us", "uk"]
 
@@ -1030,7 +1030,7 @@ axiom = [
 ]
 policyengine = [
     { name = "microunit" },
-    { name = "policyengine-core", version = "3.32.5", source = { registry = "https://pypi.org/simple" } },
+    { name = "policyengine-core" },
     { name = "policyengine-us" },
 ]
 uk = [
@@ -1054,9 +1054,9 @@ requires-dist = [
     { name = "microunit", marker = "extra == 'us'", specifier = ">=0.1.0" },
     { name = "numpy", specifier = ">=2" },
     { name = "pandas", specifier = ">=2.3" },
-    { name = "policyengine-core", marker = "extra == 'policyengine'", specifier = "==3.32.5" },
+    { name = "policyengine-core", marker = "extra == 'policyengine'", specifier = "==3.33.3" },
     { name = "policyengine-uk", marker = "extra == 'uk'", specifier = ">=2.147.2" },
-    { name = "policyengine-us", marker = "extra == 'policyengine'", specifier = ">=2.2.1,<3" },
+    { name = "policyengine-us", marker = "extra == 'policyengine'", specifier = ">=2.60.4,<3" },
     { name = "tables", marker = "extra == 'axiom'", specifier = ">=3" },
 ]
 provides-extras = ["us", "policyengine", "uk", "axiom"]
@@ -1605,51 +1605,8 @@ wheels = [
 
 [[package]]
 name = "policyengine-core"
-version = "3.32.5"
-source = { registry = "https://pypi.org/simple" }
-resolution-markers = [
-    "python_full_version >= '3.14' and sys_platform == 'win32'",
-    "python_full_version >= '3.14' and sys_platform == 'emscripten'",
-    "python_full_version >= '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
-    "python_full_version < '3.14' and sys_platform == 'win32'",
-    "python_full_version < '3.14' and sys_platform == 'emscripten'",
-    "python_full_version < '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
-]
-dependencies = [
-    { name = "dpath" },
-    { name = "h5py" },
-    { name = "huggingface-hub" },
-    { name = "ipython" },
-    { name = "microdf-python" },
-    { name = "numexpr" },
-    { name = "numpy" },
-    { name = "pandas" },
-    { name = "plotly" },
-    { name = "psutil" },
-    { name = "pytest" },
-    { name = "pyvis" },
-    { name = "requests" },
-    { name = "sortedcontainers" },
-    { name = "standard-imghdr" },
-    { name = "wheel" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/12/54/cfd2138584de9cddaa4459bba7fdc381101ca8b8ffd38356a1b256850d5f/policyengine_core-3.32.5.tar.gz", hash = "sha256:f051c269b538fe77ee7868f7cfbc0138551960b1b677a0ad6fdc1a93f1660460", size = 420112, upload-time = "2026-09-10T04:16:48.889Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/c6/d9/72c3707465e9fe77e6f7a55ea64b49a287cbf875b78f6e862d945df26975/policyengine_core-3.32.5-py3-none-any.whl", hash = "sha256:9d8c162d5fe5c784ae16c885da3ffbfc39a536add0e111133144d8edd555935f", size = 245925, upload-time = "2026-09-10T04:16:47.153Z" },
-]
-
-[[package]]
-name = "policyengine-core"
 version = "3.33.3"
 source = { registry = "https://pypi.org/simple" }
-resolution-markers = [
-    "python_full_version >= '3.14' and sys_platform == 'win32'",
-    "python_full_version >= '3.14' and sys_platform == 'emscripten'",
-    "python_full_version >= '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
-    "python_full_version < '3.14' and sys_platform == 'win32'",
-    "python_full_version < '3.14' and sys_platform == 'emscripten'",
-    "python_full_version < '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
-]
 dependencies = [
     { name = "dpath" },
     { name = "h5py" },
@@ -1679,7 +1636,7 @@ version = "2.147.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "microdf-python" },
-    { name = "policyengine-core", version = "3.33.3", source = { registry = "https://pypi.org/simple" } },
+    { name = "policyengine-core" },
     { name = "pydantic" },
     { name = "tables" },
 ]
@@ -1690,19 +1647,19 @@ wheels = [
 
 [[package]]
 name = "policyengine-us"
-version = "2.2.1"
+version = "2.60.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "microdf-python" },
     { name = "pandas" },
-    { name = "policyengine-core", version = "3.32.5", source = { registry = "https://pypi.org/simple" } },
+    { name = "policyengine-core" },
     { name = "spm-calculator" },
     { name = "tables" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2c/09/763b21371a62635e15e62b53fb696e299f01460907c27313d40f63031eb2/policyengine_us-2.2.1.tar.gz", hash = "sha256:d5300c91f3eae2e47a61f485fdfde91a892b80e95db3e46ff2c4bbd417d76501", size = 11946510, upload-time = "2026-09-15T04:45:50.33Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b3/5f/1e46158c068f34ccfa05df7bccac6aef1be42e54e3fecf259a5a9c8ac491/policyengine_us-2.60.4.tar.gz", hash = "sha256:db0e67e122cf58d7f770f43ec4b4a14a9e0a97edfac822b73f22ad87b2239b90", size = 14827187, upload-time = "2026-10-23T09:48:28.412Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5e/09/86ac3968d2a18e28fce3ba1186fc21728e9f299b96a806d6f204f1e0aaed/policyengine_us-2.2.1-py3-none-any.whl", hash = "sha256:0993a6c73fcdfbe171a796aca9d302741bd8e00ab83388ad81c15a08740318c6", size = 14885537, upload-time = "2026-09-15T04:45:46.649Z" },
+    { url = "https://files.pythonhosted.org/packages/30/bd/47ec8d8ebe658f9694aee7ad6dff1c70b40c00c4783729766204e91f7d3f/policyengine_us-2.60.4-py3-none-any.whl", hash = "sha256:f95dbc8336e6733db548180680aaaf55b88b2bd8d59f732e8e2ae754dde564bd", size = 18943144, upload-time = "2026-10-23T09:48:24.923Z" },
 ]
 
 [[package]]
