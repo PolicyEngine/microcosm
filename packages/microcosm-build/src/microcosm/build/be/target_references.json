@@ -1,6 +1,6 @@
 {
   "country": "be",
-  "description": "Belgian calibration and validation schema groundwork, by reference only. Values and source projections would resolve from Chronicle consumer facts at build time, but the current Chronicle Belgian catalog does not satisfy this full selector and period surface. Criticality tiers, relative tolerances, and target_role are validated declaration metadata only: this package does not yet wire them into runtime calibration objectives or release gates. Multi-cell series remain non-executable until Chronicle fanout produces cell-pinned references. No external-oracle implementation from #264 is included. The file never copies a target value from Chronicle, a survey publication, or a validation oracle.",
+  "description": "Belgian calibration and validation schema groundwork, by reference only. Values and source projections would resolve from Chronicle consumer facts at build time, but the current Chronicle Belgian catalog does not satisfy this full selector and period surface. Criticality tiers, relative tolerances, and target_role are validated declaration metadata only: this package does not yet wire them into runtime calibration objectives or release gates. Multi-cell series remain non-executable until Chronicle fanout produces cell-pinned references. No external-oracle implementation from #264 is included. The file never copies a target value from Chronicle, a survey publication, or a validation oracle. These earlier-period declarations remain inactive groundwork; B3 must replace them with reviewed transport references and explicit ageing to the proposed 2026 policy year. Their source periods are not donor or target-period authorities.",
   "allowed_value_operations": [
     "identity"
   ],
@@ -210,23 +210,19 @@
         "basis": "reference_date",
         "fact_period_type": "calendar_year",
         "mismatch_policy": "requires_source_projection",
-        "description": "Population stock in the BE-SILC 2023 survey year."
+        "description": "Earlier-period population-stock reference, retained as inactive groundwork pending the B3 transport reference rewrite."
       },
       "assessment_income_year_2022": {
         "period": 2022,
         "basis": "income_year",
         "fact_period_type": "tax_year",
-        "survey_year": 2023,
-        "income_reference_offset_years": -1,
         "mismatch_policy": "requires_source_projection",
-        "description": "BE-SILC survey year 2023 carries 2022 incomes; assessed fiscal facts bind by represented income year."
+        "description": "Earlier assessed fiscal reference binds the represented 2022 income year; retained as inactive groundwork pending B3, never silently relabelled to 2026."
       },
       "calendar_year_2022": {
         "period": 2022,
         "basis": "calendar_year",
         "fact_period_type": "calendar_year",
-        "survey_year": 2023,
-        "income_reference_offset_years": -1,
         "mismatch_policy": "requires_source_projection",
         "description": "Calendar-year administrative or national-accounts fact aligned to the 2022 income reference year."
       }

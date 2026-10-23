@@ -1939,6 +1939,19 @@ def _attest_be_typed_geography_compatibility(
             typed_preserves_constraint,
             True,
         )
+    elif spine.constrain_to_column == "":
+        # Donor support has no observed Belgian region to preserve.
+        require_equal(
+            "assignment/draw/universe <-> geography_spine/constrain_to_column",
+            draw_contract.get("universe"),
+            f"{spine.geography_level}_nationally",
+        )
+        require_equal(
+            "assignment/assertions/source_nuts1_preserved "
+            "<-> geography_spine/constrain_to_column",
+            isinstance(assertions, list) and "source_nuts1_preserved" in assertions,
+            False,
+        )
     else:
         mismatches.append(
             "geography_spine/constrain_to_column: typed BE compatibility "
