@@ -1,0 +1,1 @@
+Draw `is_apprentice` on the UK spine for employees aged 21 to 24, at DfE's England apprenticeship participation per head aged 19 to 24 (5,992 per 100,000 in 2024/25), so the employer NICs zero rate for apprentices under 25 (SSCBA 1992 s.9B, policyengine-uk#2505) reaches them (#1372). The FRS has no apprenticeship variable; other ages keep the default False.

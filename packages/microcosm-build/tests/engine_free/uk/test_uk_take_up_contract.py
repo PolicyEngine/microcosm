@@ -66,6 +66,9 @@ def test_uk_contract_loads_and_selects_build_year_rates() -> None:
         0.384,
         0.0385,
         0.593,
+        # microcosm#1372: DfE apprenticeship participation per head aged 19 to
+        # 24 in England, 2024/25.
+        0.05992,
     ]
 
 
