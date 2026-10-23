@@ -16,8 +16,8 @@
     "assignment_source": {
       "survey": "Stats NZ subnational population estimates at 30 June 2025",
       "source": "https://www.stats.govt.nz/information-releases/subnational-population-estimates-at-30-june-2025/",
-      "notes": "Region follows from each household's atomic territorial-authority by Accommodation Supplement area draw, whose support weights come from Stats NZ population facts, and is broadcast to family and person tables; the age-by-sex-by-region cells are calibration targets. Chronicle must supply the complete current region and territorial-authority rosters and cell-level facts before the operator can run."
+      "notes": "Region follows from each household's atomic territorial-authority by Accommodation Supplement area draw, whose support weights come from Stats NZ population facts, and is broadcast to family and person tables; the age-by-region, all sexes cells are calibration targets. The pinned Chronicle feed supplies all-sex age-by-region cells for the 16 ERP regions and all-age ERP for 67 territorial authorities. Region 99 is retained separately under a national-growth proxy; assigning its geography support remains an explicit prerequisite."
     },
-    "notes": "One clone per record is the compile-safe national starting point. This generation-0 record describes the region layer only; the shared graph geography kernels execute assignment. The exact 16-region roster, the geography source artifact identity, the harvested territorial-authority to Accommodation Supplement area shares, and reviewed support diagnostics must land before execution."
+    "notes": "One clone per record is the compile-safe national starting point. This generation-0 record describes the region layer only; the shared graph geography kernels execute assignment. The exact 16-region ERP roster, pinned feed identity and harvested territorial-authority to Accommodation Supplement area shares are declared. Reviewed assignment support for region 99 remains required; it is not TA 999."
   }
 }
