@@ -179,6 +179,10 @@ def test_a_dry_run_refuses_an_uncovered_dense_cut_before_writing(monkeypatch, tm
         return surfaces[version]
 
     monkeypatch.setattr(handoff, "model_surface", model_surface)
+    stored = {"a", "b", "f", "x"}  # x: a support column neither model defines
+    monkeypatch.setattr(
+        handoff, "regional_stored_columns", lambda tag, release, **kw: stored
+    )
     monkeypatch.setattr(
         handoff.subprocess,
         "run",
@@ -212,9 +216,10 @@ def test_a_dry_run_refuses_an_uncovered_dense_cut_before_writing(monkeypatch, tm
         handoff.certify(args)
     args.accept_regional_model_mismatch = "area receipts are uncertified (#685)"
     assert handoff.certify(args) == 0
-    # A column the newer model no longer defines would be lost in area runs.
-    surfaces["2.134.4"] = {"all": ["b", "f", "n"], "inputs": ["b", "f", "n"]}
-    with pytest.raises(handoff.CertifyError, match="area runs would lose them: a"):
+    # A stored column the newer model no longer defines would be lost in area
+    # runs, even one the build model computed (f is a formula there).
+    surfaces["2.134.4"] = {"all": ["b", "n"], "inputs": ["b", "n"]}
+    with pytest.raises(handoff.CertifyError, match="area runs would lose them: a, f"):
         handoff.certify(args)
     args.allow_dropped_columns = "a is retired upstream; reviewed"
     assert handoff.certify(args) == 0
@@ -230,38 +235,115 @@ def test_a_dry_run_refuses_an_uncovered_dense_cut_before_writing(monkeypatch, tm
 names = st.sets(st.from_regex(r"[a-z]{1,6}", fullmatch=True), max_size=12)
 
 
-@given(built_all=names, built_inputs=names, cert_all=names, cert_inputs=names)
+@given(
+    built_all=names,
+    built_inputs=names,
+    cert_all=names,
+    cert_inputs=names,
+    stored=names,
+)
 def test_the_input_surface_change_is_exact(
-    built_all, built_inputs, cert_all, cert_inputs
+    built_all, built_inputs, cert_all, cert_inputs, stored
 ):
-    """Dropped columns are the file's inputs the new model lacks entirely;
-    defaulted inputs are the new model's inputs the file cannot carry; an
-    input that became a formula is in neither, because its values load."""
+    """Measured on the file's own columns: dropped are stored columns the
+    build model defined and the certified model does not; defaulted are the
+    certified model's inputs the file does not store that the build model did
+    not take as inputs. Columns neither model knows, inputs absent under both
+    models, and stored formula variables that still exist are no change."""
 
     built_all |= built_inputs
     cert_all |= cert_inputs
-    change = handoff.input_surface_change(
-        {"all": sorted(built_all), "inputs": sorted(built_inputs)},
-        {"all": sorted(cert_all), "inputs": sorted(cert_inputs)},
-    )
-    assert set(change["dropped"]) == built_inputs - cert_all
-    assert set(change["defaulted"]) == cert_inputs - built_inputs
-    assert not set(change["dropped"]) & cert_all
-    assert not set(change["defaulted"]) & built_inputs
-    became_formula = built_inputs & (cert_all - cert_inputs)
-    assert not became_formula & (set(change["dropped"]) | set(change["defaulted"]))
-    assert change == handoff.input_surface_change(
-        {"all": sorted(built_all), "inputs": sorted(built_inputs)},
-        {"all": sorted(cert_all), "inputs": sorted(cert_inputs)},
-    )
+    built = {"all": sorted(built_all), "inputs": sorted(built_inputs)}
+    certified = {"all": sorted(cert_all), "inputs": sorted(cert_inputs)}
+    change = handoff.input_surface_change(built, certified, stored)
+    dropped, defaulted = set(change["dropped"]), set(change["defaulted"])
+    assert dropped == (stored & built_all) - cert_all
+    assert defaulted == (cert_inputs - stored) - built_inputs
+    assert dropped <= stored and not dropped & cert_all
+    assert not defaulted & stored and not defaulted & built_inputs
+    assert not (stored - built_all - cert_all) & (dropped | defaulted)
+    assert not (stored & cert_all) & dropped
+    assert change == handoff.input_surface_change(built, certified, set(stored))
 
 
 def test_an_unchanged_model_changes_nothing():
     surface = {"all": ["a", "b"], "inputs": ["a"]}
-    assert handoff.input_surface_change(surface, surface) == {
-        "dropped": [],
-        "defaulted": [],
+    for stored in (set(), {"a"}, {"a", "b", "support"}):
+        assert handoff.input_surface_change(surface, surface, stored) == {
+            "dropped": [],
+            "defaulted": [],
+        }
+
+
+def test_a_stored_formula_variable_the_new_model_removes_is_dropped():
+    """The reviewer's case: Microcosm stores formula variables too."""
+
+    built = {"all": ["is_uc_claimant", "age"], "inputs": ["age"]}
+    certified = {"all": ["age"], "inputs": ["age"]}
+    change = handoff.input_surface_change(built, certified, {"is_uc_claimant", "age"})
+    assert change == {"dropped": ["is_uc_claimant"], "defaulted": []}
+
+
+def test_a_stored_variable_that_became_an_input_is_not_defaulted():
+    built = {"all": ["fare"], "inputs": []}
+    certified = {"all": ["fare"], "inputs": ["fare"]}
+    assert handoff.input_surface_change(built, certified, {"fare"})["defaulted"] == []
+    assert handoff.input_surface_change(built, certified, set())["defaulted"] == [
+        "fare"
+    ]
+
+
+def _table_h5(path, entities):
+    import h5py
+    import numpy as np
+
+    with h5py.File(path, "w") as store:
+        for entity, columns in entities.items():
+            dtype = np.dtype([("index", "i8"), *((c, "f8") for c in columns)])
+            group = store.create_group(entity)
+            group.create_dataset("table", data=np.zeros(2, dtype=dtype))
+            index = group.create_group("_i_table")
+            for column in columns:
+                index.create_group(column)
+
+
+def test_the_column_inventory_reads_microcosm_table_files(tmp_path):
+    path = tmp_path / "dense.h5"
+    _table_h5(
+        path,
+        {
+            "person": ["age", "is_uc_claimant"],
+            "benunit": ["benunit_id"],
+            "household": ["household_weight", "constituency_code_oa"],
+        },
+    )
+    assert handoff.h5_stored_columns(path) == {
+        "age",
+        "is_uc_claimant",
+        "benunit_id",
+        "household_weight",
+        "constituency_code_oa",
     }
+
+
+def test_the_column_inventory_reads_flat_files_and_refuses_others(tmp_path):
+    import h5py
+
+    flat = tmp_path / "flat.h5"
+    with h5py.File(flat, "w") as store:
+        store.create_dataset("age", data=[1, 2])
+        store.create_group("employment_income").create_dataset("2024", data=[0.0])
+    assert handoff.h5_stored_columns(flat) == {"age", "employment_income"}
+    mixed = tmp_path / "mixed.h5"
+    _table_h5(mixed, {"person": ["age"]})
+    with h5py.File(mixed, "a") as store:
+        store.create_dataset("stray", data=[1])
+    with pytest.raises(handoff.CertifyError, match="not a recognised"):
+        handoff.h5_stored_columns(mixed)
+    fixed = tmp_path / "fixed.h5"
+    _table_h5(fixed, {"person": ["values_block_0"]})
+    with pytest.raises(handoff.CertifyError, match="fixed-format"):
+        handoff.h5_stored_columns(fixed)
 
 
 def test_the_pr_body_lists_the_area_input_surface():

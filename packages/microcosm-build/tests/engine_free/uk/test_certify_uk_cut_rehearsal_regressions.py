@@ -332,6 +332,7 @@ class RunnerTests(unittest.TestCase):
                 patch.object(
                     runner, "model_surface", return_value={"all": [], "inputs": []}
                 ) as probe,
+                patch.object(runner, "regional_stored_columns", return_value=set()),
             ):
                 self.assertEqual(runner.certify(args), 0)
             self.assertEqual(probe.call_args_list[0].args, (dense.model, dense.core))

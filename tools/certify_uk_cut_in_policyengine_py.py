@@ -43,6 +43,7 @@ Needs ``HF_TOKEN`` (read ``policyengine/populace-uk-private``), PyPI, and
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -583,23 +584,120 @@ def model_surface(
 
 
 def input_surface_change(
-    built: dict[str, list[str]], certified: dict[str, list[str]]
+    built: dict[str, list[str]],
+    certified: dict[str, list[str]],
+    stored: set[str],
 ) -> dict[str, list[str]]:
     """What area runs lose when a file built on one model runs under another.
 
-    ``dropped``: the file's input columns the certified model no longer
-    defines; policyengine-core ignores them on load. ``defaulted``: inputs
-    of the certified model the file cannot carry (new variables, and
-    variables that were formulas when it was built), which take defaults.
-    A built input that became a formula is in neither: its stored values
-    still load.
+    ``stored`` is the regional file's own column inventory
+    (:func:`h5_stored_columns`), not a model's input list: Microcosm stores
+    some formula variables too, and those load as values.
+
+    ``dropped``: stored columns the build model defined and the certified
+    model does not; they are skipped on load. ``defaulted``: inputs of the
+    certified model the file does not store and that were not inputs of the
+    build model (new variables, or variables that were formulas), so they
+    take defaults in area runs where the build model computed them. Columns
+    neither model defines, and inputs absent under both, are not changes.
     """
 
-    built_inputs = set(built["inputs"])
+    built_all, built_inputs = set(built["all"]), set(built["inputs"])
+    certified_all, certified_inputs = set(certified["all"]), set(certified["inputs"])
     return {
-        "dropped": sorted(built_inputs - set(certified["all"])),
-        "defaulted": sorted(set(certified["inputs"]) - built_inputs),
+        "dropped": sorted((stored & built_all) - certified_all),
+        "defaulted": sorted((certified_inputs - stored) - built_inputs),
     }
+
+
+def h5_stored_columns(path: Path) -> set[str]:
+    """Column names of a PolicyEngine dataset H5, reading no values.
+
+    Microcosm writes pandas table-format files: one group per entity whose
+    ``table`` dataset is a compound array, its field names the columns. The
+    older flat layout keeps one top-level dataset or group per variable.
+    Anything else is refused rather than guessed at.
+    """
+
+    import h5py
+
+    with h5py.File(path, "r") as store:
+        names = sorted(store.keys())
+        groups = [store[name] for name in names]
+        if names and all(
+            isinstance(group, h5py.Group)
+            and isinstance(group.get("table"), h5py.Dataset)
+            for group in groups
+        ):
+            columns: set[str] = set()
+            for group in groups:
+                fields = set(group["table"].dtype.names or ())
+                fields.discard("index")
+                if any(field.startswith("values_block_") for field in fields):
+                    raise CertifyError(
+                        f"{path.name}: entity {group.name} is a fixed-format "
+                        "table whose column names are not stored per field."
+                    )
+                columns |= fields
+            return columns
+        if names and not any(
+            isinstance(item, h5py.Group) and isinstance(item.get("table"), h5py.Dataset)
+            for item in groups
+        ):
+            return set(names)
+    raise CertifyError(f"{path.name}: not a recognised dataset H5 layout.")
+
+
+def regional_stored_columns(tag: str, release: str, *, timings: Path) -> set[str]:
+    """Download the regional cut's microdata at its pin and list its columns."""
+
+    from huggingface_hub import hf_hub_download
+
+    token = os.environ.get("HUGGING_FACE_TOKEN") or os.environ.get("HF_TOKEN")
+    with timed_step("regional-schema", timings) as record:
+        manifest = json.loads(
+            Path(
+                hf_hub_download(
+                    CUT_REPO,
+                    f"releases/{release}/release_manifest.json",
+                    repo_type="dataset",
+                    revision=tag,
+                    token=token,
+                )
+            ).read_text()
+        )
+        microdata = [
+            artifact
+            for artifact in manifest.get("artifacts", {}).values()
+            if artifact.get("kind") == "microdata"
+        ]
+        if len(microdata) != 1 or not microdata[0].get("sha256"):
+            raise CertifyError(
+                f"{tag}: expected one sha-pinned microdata artifact, found "
+                f"{len(microdata)}."
+            )
+        artifact = microdata[0]
+        path = Path(
+            hf_hub_download(
+                artifact.get("repo_id") or CUT_REPO,
+                artifact["path"],
+                repo_type="dataset",
+                revision=artifact["revision"],
+                token=token,
+            )
+        )
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1 << 22), b""):
+                digest.update(chunk)
+        if digest.hexdigest() != artifact["sha256"]:
+            raise CertifyError(
+                f"{artifact['path']} at {artifact['revision']} hashes to "
+                f"{digest.hexdigest()}, not the manifest's {artifact['sha256']}."
+            )
+        columns = h5_stored_columns(path)
+        record.update(sha256=artifact["sha256"], columns=len(columns))
+    return columns
 
 
 def overlay_diff(old_bundle: dict, new_bundle: dict) -> list[str]:
@@ -899,10 +997,11 @@ def certify(args: argparse.Namespace) -> int:
                     dense.model, dense.core, timings=timings, resource_root=repo
                 ),
                 model_surface(model, core, timings=timings, resource_root=repo),
+                regional_stored_columns(new_regional, DENSE_RELEASE, timings=timings),
             )
             if surface["dropped"] and not args.allow_dropped_columns:
                 raise CertifyError(
-                    f"policyengine-uk {model} no longer defines these input columns "
+                    f"policyengine-uk {model} no longer defines these stored columns "
                     f"of the {dense.model} local-area file, so area runs would lose "
                     f"them: {', '.join(surface['dropped'])}. Build a dense cut on "
                     f"{model}, or pass --allow-dropped-columns with a reason."
