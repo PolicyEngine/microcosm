@@ -1049,6 +1049,7 @@ def drift_metric_definitions(calibration_diagnostics: Mapping) -> dict:
     unscored.
     """
 
+    from microcosm.data.contract import _target_registry_family
     from microcosm.data.us_critical_targets import (
         US_EXACT_CRITICAL_TARGET_FIT_REQUIREMENTS,
         US_SOI_TABLE_1_4_NATIONAL_DOLLAR_FIT_REQUIREMENT,
@@ -1065,7 +1066,8 @@ def drift_metric_definitions(calibration_diagnostics: Mapping) -> dict:
         metadata = _mapping(target.get("metadata"))
         if not name or name in seen or is_congressional_district_target(name, metadata):
             continue
-        family = name.split(".", 1)[0]
+        # The contract selects critical rows by registry family, so this does.
+        family = _target_registry_family(target)
         role = str(metadata.get("target_role") or "")
         requirement = next(
             (
