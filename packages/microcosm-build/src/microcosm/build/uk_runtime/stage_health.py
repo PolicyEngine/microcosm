@@ -3494,13 +3494,14 @@ def _excise_quantities_gate(
     """The excise step gave the frame the published quantities (microcosm#1359).
 
     Fact checks on the ``excise_quantities`` and ``excise_shares`` receipts:
-    each engine input's published quantity is recomputed here from the
-    vendored row through the stage's own declaration (never taken from the
-    receipt) and must equal the receipt's, its frame total at prior weights
-    must equal it and the factor must reproduce it from the household
-    spending, to ``maximum_relative_deviation``; an input is positive exactly
-    where its spending is; the basis is the declared fiscal year over the
-    engine's 52 weeks. The shares the spending comes from must have stayed in
+    each engine input's published quantity (alcohol and tobacco clearances,
+    gambling bases) is recomputed here from the vendored rows through the
+    stage's own declaration (never taken from the receipt) and must equal the
+    receipt's, its frame total at prior weights must equal it and the factor
+    must reproduce it from the household spending, to
+    ``maximum_relative_deviation``; an input is positive exactly where its
+    spending is; each draught share written is the published ratio; the basis
+    is the declared fiscal year over the engine's 52 weeks. The shares the spending comes from must have stayed in
     [0, 1] on the frame, each must rest on ``required_support_band`` donors,
     and the donor share whose published total sits beside its diary lines
     must be at most ``maximum_parent_residual_share`` (a share withheld for
@@ -3534,7 +3535,8 @@ def _excise_quantities_gate(
     )
     if declared is None:
         raise ValueError(f"{stage}: declares no level_excise_quantities operation.")
-    levels, volume = excise_levels(declared)
+    resolved = excise_levels(declared)
+    levels, volume = resolved.quantities, resolved.volume
 
     def _close(observed: object, value: float) -> bool:
         return isinstance(observed, int | float) and abs(float(observed) - value) <= (
@@ -3608,6 +3610,25 @@ def _excise_quantities_gate(
                 f"{stage}: {column} is positive on a share {entry.get('positive_share')!r} "
                 "of households, not exactly where its spending is."
             )
+    draught = receipt.get("draught_shares")
+    if not isinstance(draught, Mapping) or set(draught) != set(resolved.draught):
+        failures.append(
+            f"{stage}: the excise receipt writes draught shares "
+            f"{sorted(draught) if isinstance(draught, Mapping) else draught!r}, not "
+            f"the declared {sorted(resolved.draught)}."
+        )
+    else:
+        for column, published in resolved.draught.items():
+            written = (
+                draught[column].get("share")
+                if isinstance(draught[column], Mapping)
+                else None
+            )
+            if not _close(written, float(published["share"])):
+                failures.append(
+                    f"{stage}: {column} {written!r} is not the vendored "
+                    f"{published['share']}."
+                )
     if set(shares) != set(UK_LCFS_EXCISE_SHARES):
         failures.append(
             f"{stage}: the excise_shares receipt names {sorted(shares)}, not "

@@ -3593,7 +3593,8 @@ def test_excise_levels_turn_published_rows_into_engine_units(monkeypatch) -> Non
     )
 
     patch_excise_facts(monkeypatch)
-    levels, volume = excise_levels(excise_declaration())
+    resolved = excise_levels(excise_declaration())
+    levels, volume = resolved.quantities, resolved.volume
 
     # Litres of pure alcohol over the strength are litres of the product;
     # sticks are cigarettes and kilograms a thousand grams each.
@@ -3617,7 +3618,7 @@ def test_excise_levels_turn_published_rows_into_engine_units(monkeypatch) -> Non
         },
     }
     beer["share"] = 0.8
-    levels, _ = excise_levels(split)
+    levels = excise_levels(split).quantities
     assert levels["beer_litres"].annual == pytest.approx(0.8 * 2.0e5 / 0.04)
     assert levels["cider_litres"].annual == pytest.approx(0.2 * 2.0e5 / 0.045)
 
@@ -3698,11 +3699,12 @@ def test_level_excise_quantities_gives_each_household_its_part(monkeypatch) -> N
     )
 
     patch_excise_facts(monkeypatch)
-    levels, volume = excise_levels(excise_declaration())
+    resolved = excise_levels(excise_declaration())
+    levels = resolved.quantities
     draws, weights = _excise_draws()
 
     quantities, receipt = level_excise_quantities(
-        draws, levels=levels, volume=volume, weights=weights
+        draws, levels=resolved, weights=weights
     )
 
     alcohol = np.array([950.0, 0.0, 300.0, 800.0])
@@ -3730,7 +3732,16 @@ def test_level_excise_quantities_gives_each_household_its_part(monkeypatch) -> N
         pytest.approx(weights @ np.array([750.0, 0.0, 0.0, 800.0]))
     )
     # The step writes only the engine's inputs: no spending, no total.
-    assert list(quantities.columns) == list(levels)
+    assert list(quantities.columns) == [*levels, *resolved.draught]
+    # Gambling bases follow the stakes; the draught share is the published one.
+    stakes = np.array([60.0, 0.0, 0.0, 100.0])
+    np.testing.assert_allclose(
+        quantities["remote_gaming_net_losses"],
+        levels["remote_gaming_net_losses"].annual * stakes / (weights @ stakes),
+    )
+    assert receipt["keys"]["gambling"]["positive_share"] == pytest.approx(0.5)
+    assert (quantities["beer_draught_share"] == 0.25).all()
+    assert receipt["draught_shares"]["beer_draught_share"]["share"] == 0.25
 
 
 def test_published_on_trade_share_gives_each_channel_its_volume(monkeypatch) -> None:
@@ -3745,13 +3756,14 @@ def test_published_on_trade_share_gives_each_channel_its_volume(monkeypatch) -> 
     )
 
     patch_excise_facts(monkeypatch)
-    levels, volume = excise_levels(
+    resolved = excise_levels(
         excise_declaration(alcohol_volume_weights=ON_TRADE_VOLUME_WEIGHTS)
     )
+    levels, volume = resolved.quantities, resolved.volume
     draws, weights = _excise_draws()
 
     quantities, receipt = level_excise_quantities(
-        draws, levels=levels, volume=volume, weights=weights
+        draws, levels=resolved, weights=weights
     )
 
     assert volume.on_trade_share == 0.25
@@ -3799,6 +3811,7 @@ def test_stage_writes_the_engines_excise_inputs_when_declared(monkeypatch) -> No
 
     from microcosm.build.uk_runtime.lcfs_consumption import (
         UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS,
+        UK_LCFS_EXCISE_GAMBLING_OUTPUTS,
     )
     from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
     from test_support.microcosm_build.uk_excise_facts import (
@@ -3819,7 +3832,11 @@ def test_stage_writes_the_engines_excise_inputs_when_declared(monkeypatch) -> No
     pd.testing.assert_frame_equal(out[columns], before[columns])
     evidence = synthetic.transform.checkpoint_metadata()["evidence"]
     receipt = evidence["excise_quantities"]
-    assert set(receipt["outputs"]) == set(EXCISE_DECLARATION["outputs"])
+    assert set(receipt["outputs"]) == {
+        *EXCISE_DECLARATION["outputs"],
+        *UK_LCFS_EXCISE_GAMBLING_OUTPUTS,
+    }
+    assert (out["beer_draught_share"] == 0.25).all()
     for column, entry in receipt["outputs"].items():
         per = 52 if entry["stored_per"] == "week" else 1
         assert weights @ out[column].to_numpy() * per == pytest.approx(
@@ -3840,3 +3857,106 @@ def test_stage_writes_the_engines_excise_inputs_when_declared(monkeypatch) -> No
         },
     )
     assert gate.passed, gate.failures
+
+
+def test_gambling_bases_are_receipts_over_rates_with_betting_split_by_yield(
+    monkeypatch,
+) -> None:
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_EXCISE_GAMBLING_OUTPUTS,
+        UK_LCFS_GENERAL_BETTING_OUTPUTS,
+        excise_levels,
+    )
+    from test_support.microcosm_build.uk_excise_facts import (
+        excise_declaration,
+        patch_excise_facts,
+    )
+
+    patch_excise_facts(monkeypatch)
+    resolved = excise_levels(excise_declaration())
+    levels = resolved.quantities
+
+    # A single-duty base is the duty's receipts over its rate; Machine Games
+    # Duty's bands come from their liabilities; Gaming Duty's from the
+    # engine's effective-rate proxy.
+    assert levels["remote_gaming_net_losses"].annual == pytest.approx(2.1e6 / 0.21)
+    assert levels["national_lottery_ticket_spending"].annual == pytest.approx(
+        1.2e6 / 0.12
+    )
+    assert levels["machine_games_standard_rate_net_takings"].annual == pytest.approx(
+        6.0e5 / 0.20
+    )
+    assert levels["land_based_casino_net_losses"].annual == pytest.approx(
+        2.0e5 / 0.235487
+    )
+    # General Betting Duty's base, its receipts over the fixed-odds rate, is
+    # split by yield: over the counter 4, remote fixed odds 4 (a quarter of
+    # remote betting yield is horse racing), exchange 1 and pools 0.6 + 0.4.
+    base = 1.5e6 / 0.15
+    assert [levels[column].annual for column in UK_LCFS_GENERAL_BETTING_OUTPUTS] == (
+        pytest.approx([0.4 * base, 0.1 * base, 0.3 * base, 0.1 * base, 0.1 * base])
+    )
+    horse = levels["remote_uk_horseracing_betting_net_losses"].receipt
+    assert horse["remote_horse_racing_share"] == pytest.approx(0.25)
+    assert horse["split_by"]["remote_horses"]["geography_id"] == "K03000001"
+    assert {levels[c].key for c in UK_LCFS_EXCISE_GAMBLING_OUTPUTS} == {"gambling"}
+    # Spread betting has no published base and stays at the engine's zero.
+    assert "financial_spread_betting_net_losses" not in levels
+    assert "other_spread_betting_net_losses" not in levels
+    # Draught relief: the draught-only and the draught-and-small-producer rows
+    # over all of the product's clearances.
+    assert resolved.draught["beer_draught_share"]["share"] == pytest.approx(0.25)
+
+
+@pytest.mark.parametrize(
+    ("change", "match"),
+    [
+        (lambda d: d["gambling"]["rates"].pop("casino"), "gambling rates must be"),
+        (lambda d: d["gambling"].pop("yield"), "gambling must declare"),
+        (lambda d: d["gambling"].update(receipts=["x"]), "receipts is not a mapping"),
+        # A series' own dimensions narrow its rows: there is no accrued series.
+        (
+            lambda d: d["gambling"]["receipts"].update(
+                dimensions={"accounting_basis": "accrual"}
+            ),
+            "expected one",
+        ),
+        (
+            lambda d: d["gambling"]["rates"]["lottery"].update(value=12.0),
+            r"outside \(0, 1\]",
+        ),
+        (
+            lambda d: d["gambling"]["rates"]["bingo"].pop("parameter_path"),
+            "engine parameter",
+        ),
+        (
+            lambda d: d["draught_shares"].update(
+                wine_draught_share=d["draught_shares"]["beer_draught_share"]
+            ),
+            "cannot write",
+        ),
+        (
+            lambda d: d["draught_shares"]["beer_draught_share"].update(unit="litre"),
+            "must be declared in",
+        ),
+        (
+            lambda d: d["draught_shares"]["beer_draught_share"].update(numerator=[]),
+            "declares no numerator",
+        ),
+    ],
+)
+def test_gambling_and_draught_declarations_are_held_to_the_step(
+    monkeypatch, change, match
+) -> None:
+    from microcosm.build.uk_runtime.lcfs_consumption import excise_levels
+    from test_support.microcosm_build.uk_excise_facts import (
+        excise_declaration,
+        patch_excise_facts,
+    )
+
+    patch_excise_facts(monkeypatch)
+    declaration = excise_declaration()
+    change(declaration)
+
+    with pytest.raises(ValueError, match=match):
+        excise_levels(declaration)
