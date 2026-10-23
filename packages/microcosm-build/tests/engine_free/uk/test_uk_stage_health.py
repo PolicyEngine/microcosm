@@ -2865,3 +2865,131 @@ def test_the_1308_fact_gates_record_without_blocking_a_synthetic_smoke_build() -
         assert gates[gate_id]["population_fact_check"] is True
     contract = gates["uk_stage_uc_legacy_closure_take_up_contract"]
     assert contract.get("population_fact_check", False) is False
+
+
+def test_excise_quantities_gate_recomputes_every_level_from_the_vendored_rows(
+    monkeypatch,
+) -> None:
+    """The lcfs excise_quantities receipt is fact-checked at stage time (#1359)."""
+
+    import copy
+
+    import pandas as pd
+
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        excise_levels,
+        level_excise_quantities,
+    )
+    from test_support.microcosm_build.uk_excise_facts import (
+        excise_declaration,
+        patch_excise_facts,
+    )
+
+    declaration = excise_declaration()
+    patch_excise_facts(monkeypatch, declaration)
+    levels, volume = excise_levels(declaration)
+    tobacco, on_trade = (
+        "tobacco_share_of_alcohol_and_tobacco",
+        "on_trade_alcohol_share_of_restaurants_and_hotels",
+    )
+    draws = pd.DataFrame(
+        {
+            "alcohol_and_tobacco_consumption": [1000.0, 500.0, 0.0, 800.0],
+            "restaurants_and_hotels_consumption": [2000.0, 0.0, 600.0, 400.0],
+            tobacco: [0.25, 1.0, 0.0, 0.0],
+            on_trade: [0.1, 0.0, 0.5, 0.0],
+        }
+    )
+    _, quantities = level_excise_quantities(
+        draws,
+        levels=levels,
+        volume=volume,
+        weights=np.array([1.0e3, 2.0e3, 3.0e3, 4.0e3]),
+    )
+    receipt = {
+        "period_type": "fiscal_year",
+        "period_value": 2024,
+        "weeks_per_year": 52,
+        **quantities,
+    }
+    shares = {
+        name: {
+            "frame": {"draws_outside_unit_interval": 0},
+            "donor": {"positive_support": "30+", "total_beside_lines": residual},
+        }
+        for name, residual in ((tobacco, 0.004), (on_trade, None))
+    }
+    parameters = {
+        "stage": "lcfs_consumption",
+        "check": "excise_quantities",
+        "maximum_relative_deviation": 1e-9,
+        "maximum_parent_residual_share": 0.01,
+        "required_support_band": "30+",
+    }
+
+    def run(excise, excise_shares=shares):
+        return uk_stage_health_gate(
+            evidence={
+                "stage": "lcfs_consumption",
+                "excise_quantities": excise,
+                "excise_shares": excise_shares,
+            },
+            stage="lcfs_consumption",
+            check="excise_quantities",
+            parameters=parameters,
+        )
+
+    def failing(change, fragment: str) -> None:
+        excise, excise_shares = copy.deepcopy(receipt), copy.deepcopy(shares)
+        change(excise, excise_shares)
+        result = run(excise, excise_shares)
+        assert not result.passed and any(fragment in f for f in result.failures), (
+            fragment,
+            result.failures,
+        )
+
+    passed = run(receipt)
+    assert passed.passed, passed.failures
+    assert passed.details["levels"]["beer_litres"] == pytest.approx(2.0e5 / 0.04)
+    beer = lambda e, s: e["outputs"]["beer_litres"]  # noqa: E731
+    failing(lambda e, s: beer(e, s).update(published=2.1), "published")
+    failing(lambda e, s: beer(e, s).update(annual_level=1.0), "annual_level")
+    failing(lambda e, s: beer(e, s).update(source_record_id="x"), "declared row")
+    failing(
+        lambda e, s: beer(e, s).update(
+            frame_annual_total=beer(e, s)["frame_annual_total"] * 0.99
+        ),
+        "is not the level",
+    )
+    failing(
+        lambda e, s: beer(e, s).update(factor=beer(e, s)["factor"] * 1.01),
+        "does not reproduce",
+    )
+    failing(
+        lambda e, s: beer(e, s).update(positive_share=0.99), "where its spending is"
+    )
+    failing(lambda e, s: e["outputs"].pop("wine_litres"), "not the declared")
+    failing(lambda e, s: e.update(weeks_per_year=52.18), "weeks_per_year")
+    failing(lambda e, s: e.update(period_value=2025), "period_value")
+    failing(
+        lambda e, s: e.update(alcohol_volume_weights={"rule": "other"}),
+        "volume weights",
+    )
+    failing(
+        lambda e, s: s[tobacco]["frame"].update(draws_outside_unit_interval="<10"),
+        "left [0, 1]",
+    )
+    failing(
+        lambda e, s: s[on_trade]["donor"].update(positive_support="10-29"),
+        "rests on",
+    )
+    failing(
+        lambda e, s: s[tobacco]["donor"].update(total_beside_lines=0.02),
+        "beside",
+    )
+    # A residual withheld for resting on under ten donors is under the ceiling.
+    withheld = copy.deepcopy(shares)
+    withheld[tobacco]["donor"]["total_beside_lines"] = "<10"
+    assert run(receipt, withheld).passed
+    with pytest.raises(ValueError, match="excise_quantities must be an object"):
+        run(None)

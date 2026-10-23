@@ -3495,3 +3495,270 @@ def test_excise_share_draws_move_only_for_the_households_whose_inputs_move() -> 
         perturbed_column="hbai_household_net_income",
         perturbed_value=777.0,
     )
+
+
+def _excise_draws() -> tuple[pd.DataFrame, np.ndarray]:
+    """Drawn totals and excise shares of four households (microcosm#1359).
+
+    Tobacco spending is 250, 500, 0 and 0; off-trade alcohol 750, 0, 0 and
+    800; on-trade alcohol 200, 0, 300 and 0.
+    """
+
+    draws = pd.DataFrame(
+        {
+            "alcohol_and_tobacco_consumption": [1000.0, 500.0, 0.0, 800.0],
+            "restaurants_and_hotels_consumption": [2000.0, 0.0, 600.0, 400.0],
+            TOBACCO_SHARE: [0.25, 1.0, 0.0, 0.0],
+            ON_TRADE_SHARE: [0.1, 0.0, 0.5, 0.0],
+        }
+    )
+    return draws, np.array([1.0e3, 2.0e3, 3.0e3, 4.0e3])
+
+
+def test_excise_levels_turn_published_rows_into_engine_units(monkeypatch) -> None:
+    from microcosm.build.uk_runtime.lcfs_consumption import excise_levels
+    from test_support.microcosm_build.uk_excise_facts import (
+        excise_declaration,
+        patch_excise_facts,
+    )
+
+    patch_excise_facts(monkeypatch)
+    levels, volume = excise_levels(excise_declaration())
+
+    # Thousand hectolitres of alcohol over the strength are litres of the
+    # product; million sticks are cigarettes, thousand kilograms grams.
+    assert levels["beer_litres"].annual == pytest.approx(2.0e5 / 0.04)
+    assert levels["spirits_litres"].annual == pytest.approx(0.5e5 / 0.40)
+    assert levels["cigarettes_per_week"].annual == pytest.approx(100.0e6)
+    assert levels["hand_rolling_tobacco_grams_per_week"].annual == pytest.approx(0.5e6)
+    assert levels["beer_litres"].receipt["source_record_id"] == (
+        "synthetic.alcohol_clearances.beer_and_cider.fy2024"
+    )
+    assert volume.rule == "spending" and volume.on_trade_share is None
+    # Two inputs may split one row between them, if they take all of it.
+    split = excise_declaration()
+    beer = split["outputs"]["beer_litres"]
+    split["outputs"]["cider_litres"] = {
+        **beer,
+        "share": 0.2,
+        "strength": {
+            "value": 0.045,
+            "parameter_path": "household.consumption.alcohol.cider_abv",
+        },
+    }
+    beer["share"] = 0.8
+    levels, _ = excise_levels(split)
+    assert levels["beer_litres"].annual == pytest.approx(0.8 * 2.0e5 / 0.04)
+    assert levels["cider_litres"].annual == pytest.approx(0.2 * 2.0e5 / 0.045)
+
+
+@pytest.mark.parametrize(
+    ("change", "match"),
+    [
+        (lambda d: d.update(resource="other.json"), "must read"),
+        (lambda d: d.update(period_type="calendar_year"), "fiscal-year"),
+        (lambda d: d.update(weeks_per_year=52.18), "weeks_per_year"),
+        (lambda d: d.update(fiscal_start=None), "fiscal_start"),
+        (
+            lambda d: d["outputs"].update(vape_litres=d["outputs"]["beer_litres"]),
+            "cannot write",
+        ),
+        (
+            lambda d: d["outputs"]["cigarettes_per_week"].update(
+                unit="thousand_kilograms"
+            ),
+            "declared in",
+        ),
+        (lambda d: d["outputs"]["wine_litres"].pop("strength"), "needs a strength"),
+        (
+            lambda d: d["outputs"]["cigarettes_per_week"].update(
+                strength={"value": 1.0, "parameter_path": "x"}
+            ),
+            "needs a strength",
+        ),
+        (
+            lambda d: d["outputs"]["wine_litres"]["strength"].pop("parameter_path"),
+            "engine parameter",
+        ),
+        (
+            lambda d: d["outputs"]["wine_litres"]["strength"].update(value=12.0),
+            r"outside \(0, 1\]",
+        ),
+        (lambda d: d["outputs"]["beer_litres"].update(share=0.5), "not all of each"),
+        (
+            lambda d: d["outputs"]["beer_litres"]["dimensions"].update(product="lager"),
+            "expected one",
+        ),
+        (lambda d: d.update(alcohol_volume_weights={"rule": "price"}), "unsupported"),
+    ],
+)
+def test_excise_levels_refuse_a_declaration_they_cannot_apply(
+    monkeypatch, change, match
+) -> None:
+    from microcosm.build.uk_runtime.lcfs_consumption import excise_levels
+    from test_support.microcosm_build.uk_excise_facts import (
+        excise_declaration,
+        patch_excise_facts,
+    )
+
+    patch_excise_facts(monkeypatch)
+    declaration = excise_declaration()
+    change(declaration)
+
+    with pytest.raises(ValueError, match=match):
+        excise_levels(declaration)
+
+
+def test_level_excise_quantities_gives_each_household_its_part(monkeypatch) -> None:
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        excise_levels,
+        level_excise_quantities,
+    )
+    from test_support.microcosm_build.uk_excise_facts import (
+        excise_declaration,
+        patch_excise_facts,
+    )
+
+    patch_excise_facts(monkeypatch)
+    levels, volume = excise_levels(excise_declaration())
+    draws, weights = _excise_draws()
+
+    quantities, receipt = level_excise_quantities(
+        draws, levels=levels, volume=volume, weights=weights
+    )
+
+    alcohol = np.array([950.0, 0.0, 300.0, 800.0])
+    tobacco = np.array([250.0, 500.0, 0.0, 0.0])
+    np.testing.assert_allclose(
+        quantities["beer_litres"],
+        levels["beer_litres"].annual * alcohol / (weights @ alcohol),
+    )
+    # The weekly inputs are the annual quantity over the engine's 52 weeks.
+    np.testing.assert_allclose(
+        quantities["cigarettes_per_week"] * 52,
+        levels["cigarettes_per_week"].annual * tobacco / (weights @ tobacco),
+    )
+    for column, level in levels.items():
+        entry = receipt["outputs"][column]
+        assert entry["frame_annual_total"] == pytest.approx(level.annual)
+        assert entry["factor"] * entry["key_total"] == pytest.approx(level.annual)
+        assert (
+            entry["positive_share"] == receipt["keys"][entry["key"]]["positive_share"]
+        )
+    assert receipt["outputs"]["cigarettes_per_week"]["stored_per"] == "week"
+    assert receipt["outputs"]["wine_litres"]["stored_per"] == "year"
+    assert receipt["keys"]["tobacco"]["positive_share"] == pytest.approx(0.3)
+    assert receipt["components"]["off_trade_alcohol_spending"]["weighted_total"] == (
+        pytest.approx(weights @ np.array([750.0, 0.0, 0.0, 800.0]))
+    )
+    # The step writes only the engine's inputs: no spending, no total.
+    assert list(quantities.columns) == list(levels)
+
+
+def test_published_on_trade_share_gives_each_channel_its_volume(monkeypatch) -> None:
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        excise_levels,
+        level_excise_quantities,
+    )
+    from test_support.microcosm_build.uk_excise_facts import (
+        ON_TRADE_VOLUME_WEIGHTS,
+        excise_declaration,
+        patch_excise_facts,
+    )
+
+    patch_excise_facts(monkeypatch)
+    levels, volume = excise_levels(
+        excise_declaration(alcohol_volume_weights=ON_TRADE_VOLUME_WEIGHTS)
+    )
+    draws, weights = _excise_draws()
+
+    quantities, receipt = level_excise_quantities(
+        draws, levels=levels, volume=volume, weights=weights
+    )
+
+    assert volume.on_trade_share == 0.25
+    off = np.array([750.0, 0.0, 0.0, 800.0])
+    on = np.array([200.0, 0.0, 300.0, 0.0])
+    np.testing.assert_allclose(
+        quantities["wine_litres"],
+        levels["wine_litres"].annual
+        * (0.75 * off / (weights @ off) + 0.25 * on / (weights @ on)),
+    )
+    assert receipt["alcohol_volume_weights"]["source_record_id"] == (
+        "synthetic.alcohol_on_trade_share.all_alcohol.fy2024"
+    )
+
+
+def test_excise_quantities_step_is_a_no_op_when_undeclared() -> None:
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.lcfs_consumption import lcfs_excise_quantities
+
+    stage = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+
+    assert lcfs_excise_quantities(stage, pd.DataFrame(), weights=[], shares={}) == (
+        None,
+        None,
+    )
+
+
+def test_excise_quantities_step_needs_the_excise_shares(monkeypatch) -> None:
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.lcfs_consumption import lcfs_excise_quantities
+    from test_support.microcosm_build.uk_excise_facts import (
+        excise_declaration,
+        patch_excise_facts,
+    )
+
+    patch_excise_facts(monkeypatch, excise_declaration())
+    stage = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+
+    with pytest.raises(ValueError, match="excise shares"):
+        lcfs_excise_quantities(stage, pd.DataFrame(), weights=[], shares={})
+
+
+def test_stage_writes_the_engines_excise_inputs_when_declared(monkeypatch) -> None:
+    """End to end: the step adds the engine's inputs and moves nothing else."""
+
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS,
+    )
+    from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
+    from test_support.microcosm_build.uk_excise_facts import (
+        EXCISE_DECLARATION,
+        excise_declaration,
+        patch_excise_facts,
+    )
+
+    plain = _synthetic_lcfs_stage()
+    before = plain.transform(plain.frame).table("household")
+    patch_excise_facts(monkeypatch, excise_declaration())
+    synthetic = _synthetic_lcfs_stage()
+    result = synthetic.transform(synthetic.frame)
+
+    out = result.table("household")
+    weights = result.weights_for("household").values
+    columns = list(UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS)
+    pd.testing.assert_frame_equal(out[columns], before[columns])
+    evidence = synthetic.transform.checkpoint_metadata()["evidence"]
+    receipt = evidence["excise_quantities"]
+    assert set(receipt["outputs"]) == set(EXCISE_DECLARATION["outputs"])
+    for column, entry in receipt["outputs"].items():
+        per = 52 if entry["stored_per"] == "week" else 1
+        assert weights @ out[column].to_numpy() * per == pytest.approx(
+            entry["annual_level"]
+        )
+    assert receipt["period_type"] == "fiscal_year"
+    assert receipt["weeks_per_year"] == 52
+    gate = uk_stage_health_gate(
+        evidence=evidence,
+        stage="lcfs_consumption",
+        check="excise_quantities",
+        parameters={
+            "stage": "lcfs_consumption",
+            "check": "excise_quantities",
+            "maximum_relative_deviation": 1e-9,
+            "maximum_parent_residual_share": 0.01,
+            "required_support_band": "30+",
+        },
+    )
+    assert gate.passed, gate.failures
