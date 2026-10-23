@@ -838,6 +838,132 @@ def test_activation_accepts_optional_json_nulls(composed):
     validate_transport_activation(spec)
 
 
+def _transport_spec_with_reference_profile(composed, suffix=""):
+    spec = copy.deepcopy(composed.spec)
+    row = spec["resources"]["target_references"]["target_references"][0]
+    selector = {
+        "aggregate_fact_key": "atom",
+        "source_name": "publisher",
+        "source_measure_id": "count",
+        "source_concept": "population",
+        "entity_name": row["entity"],
+        "record_set_id": "population",
+        "period_type": "calendar_year",
+        "period_value": 2023,
+        "geography_level": "country",
+        "geography_id": "toy",
+        "geography_vintage": "unstated",
+        "dimensions": ["category"],
+        "dimension_values": {"category": 1},
+    }
+    row.pop("ledger_fact_key")
+    row["ledger_selector"] = selector
+    row["metadata"]["activation_status"] = "requires_reference_profile_resolution"
+    total = {key: value for key, value in selector.items() if key != "dimension_values"}
+    total.update(aggregate_fact_key="total", dimensions=[])
+    transformation = {
+        "reference_names": [row["name"]],
+        "operation": "allocated_residual_by_ratio",
+        "value_operands": [
+            {"role": "base", "expected_member_count": 1},
+            {"role": "total", **total},
+            {
+                "role": "partition",
+                "member_selectors": [selector],
+                "allocation_member_keys": ["atom"],
+            },
+        ],
+    }
+    spec["resources"]["reference_profiles"] = {
+        "schema_version": 1,
+        "reference_resource": "target_references" + suffix,
+        "interval_resource": "profile_intervals" + suffix,
+        "dimensions": {
+            "residual": {
+                "default": "central",
+                "profiles": {"central": {"transformations": [transformation]}},
+            },
+            "aging_index": {
+                "default": "central",
+                "profiles": {
+                    "central": {"deferred": True, "transformations": []},
+                    "low": {"available": False, "transformations": []},
+                },
+            },
+        },
+    }
+    spec["resources"]["profile_intervals"] = {"bands": []}
+    return spec, row
+
+
+@pytest.mark.parametrize("suffix", ["", ".json"])
+def test_preflight_and_composition_use_the_same_resolved_reference_view(
+    composed, suffix
+):
+    spec, row = _transport_spec_with_reference_profile(composed, suffix)
+    validate_transport_activation(spec)
+    graph = compose_transport_graph(spec, composed.config)
+    compiler = next(
+        node
+        for node in graph.nodes
+        if node.kernel == "targets.compile@1"
+        and json.loads(node.params["references"])["target_references"][0]["name"]
+        == row["name"]
+    )
+    references = json.loads(compiler.params["references"])
+    receipt = json.loads(compiler.params["reference_resolution"])
+    assert (
+        references["target_references"][0]["metadata"]["activation_status"] == "active"
+    )
+    assert (
+        compiler.params["references_sha256"]
+        == hashlib.sha256(canonical_json(references)).hexdigest()
+    )
+    assert (
+        receipt["effective_references_sha256"] == compiler.params["references_sha256"]
+    )
+    assert (
+        row["metadata"]["activation_status"] == "requires_reference_profile_resolution"
+    )
+    with pytest.raises(ValueError, match="unavailable"):
+        compose_module.reference_profile_view(spec, {"aging_index": "low"})
+
+
+def test_preflight_checks_the_selected_variant_reference_status(composed):
+    spec, row = _transport_spec_with_reference_profile(composed)
+    compiler = copy.deepcopy(
+        next(
+            node
+            for node in spec["resources"]["transport_graph"]["nodes"]
+            if node["kernel"] == "targets.compile@1"
+            and node["params"]["references"]["resource"] == "target_references"
+        )
+    )
+    compiler["id"] = "{variant}.targets"
+    spec["resources"]["entitlement_graph"] = {
+        "schema_version": 1,
+        "variant_nodes": [compiler],
+        "variant_gap": "{variant}.targets",
+    }
+    variant = {
+        "id": "candidate",
+        "tier": "calibration",
+        "knobs": {"residual": "central"},
+    }
+    spec["resources"]["scenarios"]["scenarios"] = [variant]
+    validate_transport_activation(spec)
+    profiles = spec["resources"]["reference_profiles"]["dimensions"]["residual"][
+        "profiles"
+    ]
+    profiles["unresolved"] = {"transformations": []}
+    variant["knobs"]["residual"] = "unresolved"
+    with pytest.raises(
+        ValueError,
+        match="placeholder reference target_references\\." + re.escape(row["name"]),
+    ):
+        validate_transport_activation(spec)
+
+
 class _IllegalOwner(KernelBase):
     ref = "test.illegal_owner@1"
     capabilities = Capabilities(Determinism.DETERMINISTIC)
@@ -1166,7 +1292,9 @@ def test_packaged_spec_refuses_with_every_activation_gap_named():
     # Schedule 2, so it is no longer an activation gap.
     assert "benefit_unit_rule.dependent_child" not in str(error.value)
     for resource in ("precal_references", "target_references", "holdout_references"):
-        for reference in spec["resources"][resource]["target_references"]:
+        for reference in compose_module.transport_resource(spec, resource)[
+            "target_references"
+        ]:
             if reference["metadata"].get("activation_status", "active") != "active":
                 assert f"placeholder reference {resource}.{reference['name']}" in str(
                     error.value

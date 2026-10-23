@@ -12,7 +12,8 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from microcosm.build.calibration_columns import prepare_calibration_columns
-from microcosm.build.country_spec import load_country_spec
+from microcosm.build.country_spec import _validate_target_references
+from microcosm.build.reference_profiles import resolve_reference_profiles
 from microcosm.calibrate import Target, TargetSet
 from microcosm.calibrate.matrix import build_constraint_matrix
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
@@ -57,6 +58,18 @@ def _frame(tables):
     )
 
 
+def _replace_people(tables, ages):
+    tables["household"] = tables["household"].iloc[:1].copy()
+    tables["person"] = pd.DataFrame(
+        {
+            "person_id": range(len(ages)),
+            "person_household_id": [0] * len(ages),
+            "age": ages,
+            "region_code": ["01"] * len(ages),
+        }
+    )
+
+
 def test_prepared_columns_partition_age_and_canonical_tenure_on_a_real_frame():
     tables = _tables()
     prepared = prepare_calibration_columns(tables, _bindings())
@@ -95,7 +108,7 @@ def test_prepared_columns_partition_age_and_canonical_tenure_on_a_real_frame():
 @given(st.lists(st.integers(min_value=0, max_value=200), min_size=1, max_size=30))
 def test_nonnegative_integer_ages_have_exactly_one_declared_band(ages):
     tables = _tables()
-    tables["person"] = pd.DataFrame({"age": ages, "region_code": ["01"] * len(ages)})
+    _replace_people(tables, ages)
     person = prepare_calibration_columns(tables, _bindings())["person"]
     indicators = [
         f"population_region_01_age_{band}_indicator"
@@ -155,7 +168,7 @@ def test_stale_indicators_are_recomputed_after_inputs_change():
 def test_receipt_age_indicators_retain_the_published_strata_boundaries():
     tables = _tables()
     ages = [17, 18, 24, 25, 39, 40, 54, 55, 64, 65]
-    tables["person"] = pd.DataFrame({"age": ages, "region_code": ["01"] * len(ages)})
+    _replace_people(tables, ages)
     person = prepare_calibration_columns(tables, _bindings())["person"]
     for code, positions in (
         ("18_24", [1, 2]),
@@ -168,9 +181,15 @@ def test_receipt_age_indicators_retain_the_published_strata_boundaries():
 
 def test_all_active_calibration_bindings_enter_the_small_frame_matrix():
     frame = _frame(prepare_calibration_columns(_tables(), _bindings()))
+    root = paths_for("microcosm-build").package / "src/microcosm/build/nz"
+    effective, _, _ = resolve_reference_profiles(
+        json.loads((root / "target_references.json").read_text()),
+        json.loads((root / "reference_profiles.json").read_text()),
+        {},
+    )
     references = [
         ref
-        for ref in load_country_spec("nz").target_references
+        for ref in _validate_target_references(effective, country="nz")
         if ref.metadata["activation_status"] == "active"
     ]
     # Synthetic positive right-hand sides isolate column readiness; the public
@@ -188,7 +207,97 @@ def test_all_active_calibration_bindings_enter_the_small_frame_matrix():
     )
     problem = build_constraint_matrix(frame, targets, "household")
     assert not problem.skipped
-    assert len(problem.names) == len(references) == 98
+    assert len(problem.names) == len(references) == 234
+
+
+def test_household_size_indicators_partition_all_regions_and_include_nine_people():
+    bindings = _bindings()
+    regions = bindings["input_domains"]["household"]["household_region_code"]["values"]
+    sizes = list(range(1, 10)) * len(regions)
+    household_regions = [region for region in regions for _ in range(9)]
+    memberships = [index for index, size in enumerate(sizes) for _ in range(size)]
+    tables = {
+        "household": pd.DataFrame(
+            {
+                "household_id": range(len(sizes)),
+                "household_region_code": household_regions,
+                "tenure": [TENURE_DOMAIN[0]] * len(sizes),
+            }
+        ),
+        "person": pd.DataFrame(
+            {
+                "person_id": range(len(memberships)),
+                "person_household_id": memberships,
+                "age": [30] * len(memberships),
+                "region_code": [household_regions[index] for index in memberships],
+            }
+        ),
+    }
+    prepared = prepare_calibration_columns(tables, bindings)["household"]
+    columns = [row["name"] for row in bindings["columns"] if "_size_" in row["name"]]
+    assert len(columns) == 136
+    assert prepared["household_size"].tolist() == sizes
+    np.testing.assert_array_equal(prepared[columns].sum(axis=1), np.ones(len(sizes)))
+    for region in regions:
+        eight_plus = prepared[f"household_region_{region}_size_8_indicator"]
+        assert eight_plus.sum() == 2
+
+
+@pytest.mark.parametrize(
+    "defect",
+    [
+        "duplicate_household",
+        "duplicate_person",
+        "duplicate_boxed_person",
+        "orphan",
+        "empty",
+        "missing",
+        "missing_person",
+        "missing_household",
+        "blank",
+        "wrong_type",
+    ],
+)
+def test_household_roster_refuses_invalid_membership(defect):
+    tables = _tables()
+    if defect == "duplicate_household":
+        tables["household"].loc[1, "household_id"] = 0
+    elif defect == "duplicate_person":
+        tables["person"].loc[1, "person_id"] = 0
+    elif defect == "duplicate_boxed_person":
+        tables["person"]["person_id"] = tables["person"]["person_id"].astype(object)
+        tables["person"].loc[1, "person_id"] = np.int64(0)
+    elif defect == "orphan":
+        tables["person"].loc[0, "person_household_id"] = 999
+    elif defect == "empty":
+        tables["person"] = tables["person"].loc[
+            lambda rows: rows.person_household_id != 5
+        ]
+    elif defect in {"missing", "missing_person", "missing_household", "blank"}:
+        entity, column = {
+            "missing": ("person", "person_household_id"),
+            "missing_person": ("person", "person_id"),
+            "missing_household": ("household", "household_id"),
+            "blank": ("person", "person_household_id"),
+        }[defect]
+        tables[entity][column] = tables[entity][column].astype(object)
+        tables[entity].loc[0, column] = "" if defect == "blank" else None
+    else:
+        tables["person"]["person_household_id"] = tables["person"][
+            "person_household_id"
+        ].astype(object)
+        tables["person"].loc[0, "person_household_id"] = "0"
+    with pytest.raises(ValueError, match="missing values|identit|orphan|empty"):
+        prepare_calibration_columns(tables, _bindings())
+
+
+def test_prepared_columns_cannot_overwrite_a_validated_roster_count():
+    bindings = _bindings()
+    bindings["columns"].append(
+        {"entity": "household", "name": "household_size", "constant": 8}
+    )
+    with pytest.raises(ValueError, match="repeated or structural"):
+        prepare_calibration_columns(_tables(), bindings)
 
 
 def test_family_multiplicity_is_a_measure_while_nucleus_activation_stays_blocked():

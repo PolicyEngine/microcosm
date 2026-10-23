@@ -20,6 +20,13 @@ from microcosm.build.ledger_artifact import (
 from microcosm.build.ledger_targets import (
     compile_ledger_target_references,
     fact_matches_selector,
+    reference_fact_selectors,
+)
+from microcosm.build.reference_profiles import (
+    REFERENCE_DOCUMENT_KEYS,
+    reference_document_sha256,
+    resolve_reference_profiles,
+    validate_reference_resolution,
 )
 from microcosm.build.transport.target_kernels import parse_reference_document
 from test_support.paths import paths_for
@@ -64,6 +71,25 @@ ERP = [
     ("18", 50800, 50800),
     ("NZ", 5200000, 5324700),
 ]
+RESIDUALS = [
+    ("01", 70476, 66261, 4215, 70470, 6),
+    ("02", 539490, 521835, 17655, 539358, 132),
+    ("03", 177543, 170253, 7290, 177447, 96),
+    ("04", 118452, 113598, 4854, 118437, 15),
+    ("05", 17124, 16236, 888, 17124, 0),
+    ("06", 62964, 59523, 3441, 62910, 54),
+    ("07", 48108, 46329, 1779, 48090, 18),
+    ("08", 95187, 92073, 3114, 95175, 12),
+    ("09", 194406, 188772, 5634, 194370, 36),
+    ("12", 14205, 13347, 858, 14199, 6),
+    ("13", 248550, 242292, 6258, 248520, 30),
+    ("14", 91563, 89067, 2496, 91551, 12),
+    ("15", 40185, 38892, 1293, 40182, 3),
+    ("16", 21864, 21030, 834, 21864, 0),
+    ("17", 20577, 20112, 465, 20571, 6),
+    ("18", 19590, 18966, 624, 19587, 3),
+    ("99", 240, 225, 15, 240, 0),
+]
 
 
 def _document(name):
@@ -78,6 +104,15 @@ def _parsed(rows):
     return parse_reference_document(
         {"country": "nz", "target_references": rows}, country="nz"
     )
+
+
+def _effective_rows(profile="mar"):
+    document, _, _ = resolve_reference_profiles(
+        _document("target_references.json"),
+        _document("reference_profiles.json"),
+        {"census_residual_allocation": profile, "aging_index": "central"},
+    )
+    return document["target_references"]
 
 
 def test_inventory_has_exact_contract_counts_and_named_parking_reasons():
@@ -95,7 +130,7 @@ def test_inventory_has_exact_contract_counts_and_named_parking_reasons():
     }
     assert len(_rows("precal_references.json")) == 318
     for filename, active in (
-        ("target_references.json", 98),
+        ("target_references.json", 64),
         ("precal_references.json", 67),
     ):
         rows = _rows(filename)
@@ -152,6 +187,335 @@ def test_b1_uses_only_64_all_sex_regional_age_leaves():
     }
 
 
+def test_residual_profiles_have_exact_recipient_rosters_and_preserve_other_targets():
+    raw = _rows()
+    assert len([row for row in raw if "households_by_size" in row["name"]]) == 136
+    for profile in ("mar", "small_households"):
+        effective = _effective_rows(profile)
+        assert (
+            sum(row["metadata"]["activation_status"] == "active" for row in effective)
+            == 234
+        )
+        assert {
+            row["ledger_selector"]["geography_id"]
+            for row in effective
+            if "households_by_size" in row["name"]
+        } == {*REGIONS, "99"}
+        for before, after in zip(raw, effective, strict=True):
+            if (
+                before["metadata"]["activation_status"]
+                != "requires_reference_profile_resolution"
+            ):
+                assert before == after
+                continue
+            assert before["ledger_selector"] == after["ledger_selector"]
+            assert after["metadata"]["activation_status"] == "active"
+            assert after["value_operation"] == "allocated_residual_by_ratio"
+            operands = {operand["role"]: operand for operand in after["value_operands"]}
+            partition = operands["partition"]
+            size = "households_by_size" in after["name"]
+            expected_codes = list(range(1, 9 if size else 4))
+            member_selectors = partition["member_selectors"]
+            dimension = (
+                "nz_census_2023.household_size_source_label"
+                if size
+                else "nz_census_2023.household_tenure_source_label"
+            )
+            assert [
+                selector["dimension_values"][dimension] for selector in member_selectors
+            ] == expected_codes
+            recipients = [
+                selector["dimension_values"][dimension]
+                for selector in member_selectors
+                if selector["aggregate_fact_key"] in partition["allocation_member_keys"]
+            ]
+            assert recipients == (
+                [1, 2] if size and profile == "small_households" else expected_codes
+            )
+            assert (
+                operands["total"]["geography_id"]
+                == after["ledger_selector"]["geography_id"]
+            )
+            assert operands["total"]["dimensions"] == []
+            if after["ledger_selector"]["geography_id"] == "99":
+                assert (
+                    after["metadata"]["growth_geography_proxy"]
+                    == "national-growth proxy"
+                )
+                assert "national-growth proxy" in after["hierarchy"]["target_label"]
+            assert after["metadata"]["allocation_ruling"] == "d1886"
+            assert after["metadata"]["census_residual_allocation"] == profile
+            assert profile in after["hierarchy"]["target_label"]
+
+
+@pytest.mark.parametrize("profile", ["mar", "small_households"])
+def test_full_nz_resource_resolves_directly_to_the_strict_compiler_document(profile):
+    raw = _document("target_references.json")
+    assert {
+        "reference_set",
+        "description",
+        "allowed_value_operations",
+        "target_profile",
+    } <= set(raw)
+    effective, intervals, receipt = resolve_reference_profiles(
+        raw,
+        _document("reference_profiles.json"),
+        {"census_residual_allocation": profile, "aging_index": "central"},
+    )
+    assert intervals is None
+    assert set(effective) == set(raw) & REFERENCE_DOCUMENT_KEYS
+    references = parse_reference_document(effective, country="nz")
+    assert len(references) == 773
+    active = [
+        row for row in references if row.metadata["activation_status"] == "active"
+    ]
+    parked = [
+        row for row in references if row.metadata["activation_status"] != "active"
+    ]
+    assert len(active) == 234
+    assert len(parked) == 539
+    assert receipt["base_references_sha256"] == reference_document_sha256(raw)
+    assert receipt["effective_references_sha256"] == reference_document_sha256(
+        effective
+    )
+    assert receipt["base_references_sha256"] != receipt["effective_references_sha256"]
+    assert (
+        validate_reference_resolution(
+            effective,
+            receipt,
+            references_sha256=reference_document_sha256(effective),
+            interval_document=intervals,
+        )
+        == receipt
+    )
+    for reference in parked:
+        with pytest.raises(ValueError, match="non-executable placeholder"):
+            compile_ledger_target_references([], [reference], country="nz")
+
+
+def test_raw_tenure_and_size_cannot_bypass_profile_resolution():
+    references = _parsed(
+        [
+            row
+            for row in _rows()
+            if "households_by_size" in row["name"] or row["family"] == "housing_tenure"
+        ]
+    )
+    assert len(references) == 170
+    for reference in references:
+        with pytest.raises(ValueError, match="non-executable placeholder"):
+            compile_ledger_target_references([], [reference], country="nz")
+
+
+def test_raw_tenure_refuses_even_when_all_real_operands_are_present(artifact):
+    rows = [row for row in _rows() if row["family"] == "housing_tenure"]
+    assert len(rows) == 34
+    for reference in _parsed(rows):
+        with pytest.raises(ValueError, match="non-executable placeholder"):
+            compile_ledger_target_references(artifact.facts, [reference], country="nz")
+
+
+def test_v4_changes_only_the_residual_knob_and_prior_variants_keep_their_meaning():
+    document = _document("scenarios.json")
+    assert document["central_knobs"]["census_residual_allocation"] == "mar"
+    assert document["knob_domains"]["census_residual_allocation"] == [
+        "mar",
+        "small_households",
+    ]
+    rows = {row["id"]: row for row in document["scenarios"]}
+    assert rows["V1"]["knobs"] == {"aging_index": "low"}
+    assert rows["V2"]["knobs"] == {"aging_index": "high"}
+    assert rows["V3"]["knobs"] == {"beneficiary_assignment": "variant"}
+    assert rows["V4"]["knobs"] == {"census_residual_allocation": "small_households"}
+    assert rows["V4"]["tier"] == "calibration"
+    for scenario in rows.values():
+        knobs = {**document["central_knobs"], **scenario["knobs"]}
+        assert knobs["census_residual_allocation"] == (
+            "small_households" if scenario["id"] == "V4" else "mar"
+        )
+
+
+@pytest.mark.parametrize("profile", ["mar", "small_households"])
+def test_inventory_asserts_exact_regional_residual_table(profile):
+    receipts = [
+        row
+        for row in _document("reference_inventory.json")["regional_profile_allocations"]
+        if row["profile"] == profile
+    ]
+    actual = {}
+    for region in (*REGIONS, "99"):
+        size = next(
+            row
+            for row in receipts
+            if row["geography_id"] == region and row["table"] == "household_size"
+        )
+        tenure = next(
+            row
+            for row in receipts
+            if row["geography_id"] == region and row["table"] == "tenure"
+        )
+        actual[region] = (
+            region,
+            size["published_total"],
+            size["raw_leaf_sum"],
+            size["computed_residual"],
+            tenure["raw_leaf_sum"],
+            tenure["computed_residual"],
+        )
+        assert size["published_total"] == tenure["published_total"]
+        for receipt in (size, tenure):
+            assert math.isclose(
+                receipt["allocated_closure"],
+                receipt["published_total"],
+                rel_tol=1e-12,
+                abs_tol=1e-7,
+            )
+            assert math.isclose(
+                receipt["final_closure"],
+                receipt["published_total"] * receipt["growth_ratio"],
+                rel_tol=1e-12,
+                abs_tol=1e-7,
+            )
+            assert receipt["growth_applications"] == 1
+            assert receipt["total_selector"]["geography_id"] == region
+    assert list(actual.values()) == RESIDUALS
+    assert math.fsum(row[3] for row in actual.values()) == 61713
+    assert math.fsum(row[5] for row in actual.values()) == 429
+
+
+def test_sensitivity_removes_mar_additions_from_sizes_three_to_eight():
+    receipts = _document("reference_inventory.json")["regional_profile_allocations"]
+    for region in (*REGIONS, "99"):
+        size_rows = {
+            row["profile"]: row
+            for row in receipts
+            if row["geography_id"] == region and row["table"] == "household_size"
+        }
+        mar, small = size_rows["mar"], size_rows["small_households"]
+        assert math.fsum(small["allocated_counts"]) == pytest.approx(
+            math.fsum(mar["allocated_counts"]), rel=1e-12, abs=1e-7
+        )
+        for index in range(2, 8):
+            stated = small["allocated_counts"][index]
+            mar_increment = mar["computed_residual"] * stated / mar["raw_leaf_sum"]
+            assert mar["allocated_counts"][index] - small["allocated_counts"][
+                index
+            ] == pytest.approx(mar_increment, rel=1e-12, abs=1e-7)
+        tenure_rows = [
+            row
+            for row in receipts
+            if row["geography_id"] == region and row["table"] == "tenure"
+        ]
+        assert tenure_rows[0]["allocated_counts"] == tenure_rows[1]["allocated_counts"]
+
+
+@pytest.mark.parametrize("profile", ["mar", "small_households"])
+def test_real_artifact_regional_closure_shares_and_sensitivity(
+    artifact, facts_by_key, profile
+):
+    rows = [
+        row
+        for row in _effective_rows(profile)
+        if "households_by_size" in row["name"] or row["family"] == "housing_tenure"
+    ]
+    registry = compile_ledger_target_references(
+        artifact.facts, _parsed(rows), country="nz"
+    )
+    actual = {}
+    for row, target in zip(rows, registry.specs, strict=True):
+        assert target.hierarchy.geography.id == row["ledger_selector"]["geography_id"]
+        actual[row["name"]] = target.value
+    for (
+        region,
+        total,
+        size_sum,
+        size_residual,
+        tenure_sum,
+        tenure_residual,
+    ) in RESIDUALS:
+        for table, expected_sum, residual in (
+            ("household_size", size_sum, size_residual),
+            ("tenure", tenure_sum, tenure_residual),
+        ):
+            selected = [
+                row
+                for row in rows
+                if row["ledger_selector"]["geography_id"] == region
+                and ("households_by_size" in row["name"]) == (table == "household_size")
+            ]
+            operands = {
+                operand["role"]: operand for operand in selected[0]["value_operands"]
+            }
+            partition = operands["partition"]
+            counts = [
+                _matched(selector, facts_by_key)[0]["value"]
+                for selector in partition["member_selectors"]
+            ]
+            source_total = _matched(
+                {
+                    key: value
+                    for key, value in operands["total"].items()
+                    if key != "role"
+                },
+                facts_by_key,
+            )[0]["value"]
+            assert source_total == total
+            assert math.fsum(counts) == expected_sum
+            assert source_total - math.fsum(counts) == residual
+            num = _matched(
+                {
+                    key: value
+                    for key, value in operands["numerator"].items()
+                    if key != "role"
+                },
+                facts_by_key,
+            )[0]["value"]
+            den = _matched(
+                {
+                    key: value
+                    for key, value in operands["denominator"].items()
+                    if key != "role"
+                },
+                facts_by_key,
+            )[0]["value"]
+            ratio = num / den
+            assert math.isclose(
+                math.fsum(actual[row["name"]] for row in selected),
+                total * ratio,
+                rel_tol=1e-12,
+                abs_tol=1e-7,
+            )
+            if table == "household_size":
+                unbridged = [actual[row["name"]] / ratio for row in selected]
+                for index, (stated, allocated) in enumerate(
+                    zip(counts, unbridged, strict=True)
+                ):
+                    denominator = (
+                        math.fsum(counts[:2])
+                        if profile == "small_households"
+                        else expected_sum
+                    )
+                    increment = (
+                        residual * stated / denominator
+                        if profile == "mar" or index < 2
+                        else 0
+                    )
+                    assert allocated == pytest.approx(
+                        stated + increment, rel=1e-12, abs=1e-7
+                    )
+                    if profile == "small_households" and index >= 2:
+                        assert allocated == pytest.approx(stated, rel=1e-12, abs=1e-7)
+                if profile == "mar":
+                    for first in range(len(counts)):
+                        for second in range(len(counts)):
+                            assert unbridged[first] * counts[second] == pytest.approx(
+                                unbridged[second] * counts[first], rel=1e-12, abs=1e-7
+                            )
+    assert math.fsum(
+        value for name, value in actual.items() if "households_by_size" in name
+    ) == pytest.approx(1822217.4461861975, rel=1e-12, abs=1e-7)
+
+
 def test_grouped_tenure_family_multiplicities_and_parked_definitions():
     for row in _rows():
         selector = row["ledger_selector"]
@@ -184,8 +548,12 @@ def test_grouped_tenure_family_multiplicities_and_parked_definitions():
                 == "requires_census_family_nucleus_standard"
             )
         if "households_by_size" in row["name"]:
-            assert "61,725" in row["metadata"]["parking_reason"]
-            assert "unexplained" in row["metadata"]["parking_reason"]
+            assert "d1886" in row["metadata"]["parking_reason"]
+        if "households_by_size" in row["name"] or row["family"] == "housing_tenure":
+            assert (
+                row["metadata"]["activation_status"]
+                == "requires_reference_profile_resolution"
+            )
         if row["family"] == "income":
             assert row["metadata"]["activation_status"].startswith("requires_g8r2")
 
@@ -296,7 +664,11 @@ def test_every_active_scalar_resolves_once_and_grouped_tenure_has_exact_roster(
         references = _parsed(
             [
                 row
-                for row in _rows(filename)
+                for row in (
+                    _effective_rows()
+                    if filename == "target_references.json"
+                    else _rows(filename)
+                )
                 if row["metadata"]["activation_status"] == "active"
             ]
         )
@@ -314,14 +686,9 @@ def test_every_active_scalar_resolves_once_and_grouped_tenure_has_exact_roster(
                     type(code) is int for code in codes
                 )
             members = list(base)
-            for operand in ref.value_operands:
-                if operand.get("role") == "base":
-                    continue
-                selector = {
-                    key: value for key, value in operand.items() if key != "role"
-                }
+            for selector in reference_fact_selectors(ref):
                 resolved = _matched(selector, facts_by_key)
-                assert len(resolved) == 1, (ref.name, operand)
+                assert resolved, (ref.name, selector)
                 members.extend(resolved)
             needed.update({fact["aggregate_fact_key"]: fact for fact in members})
         registry = compile_ledger_target_references(
@@ -364,7 +731,7 @@ def test_all_17_erp_ratios_match_the_reviewed_source_table(
 def test_scaled_tenure_values_are_fractional_exact_bridges_and_national_diagnostics_are_separate(
     artifact, facts_by_key
 ):
-    rows = [row for row in _rows() if row["family"] == "housing_tenure"]
+    rows = [row for row in _effective_rows() if row["family"] == "housing_tenure"]
     registry = compile_ledger_target_references(
         artifact.facts, _parsed(rows), country="nz"
     )
@@ -373,15 +740,25 @@ def test_scaled_tenure_values_are_fractional_exact_bridges_and_national_diagnost
         base = math.fsum(
             fact["value"] for fact in _matched(row["ledger_selector"], facts_by_key)
         )
-        operands = row["value_operands"]
+        operands = {operand["role"]: operand for operand in row["value_operands"]}
         num = _matched(
-            {k: v for k, v in operands[1].items() if k != "role"}, facts_by_key
+            {k: v for k, v in operands["numerator"].items() if k != "role"},
+            facts_by_key,
         )[0]["value"]
         den = _matched(
-            {k: v for k, v in operands[2].items() if k != "role"}, facts_by_key
+            {k: v for k, v in operands["denominator"].items() if k != "role"},
+            facts_by_key,
         )[0]["value"]
-        assert spec.value == base * (num / den)
-        expected.append(base * (num / den))
+        total = _matched(
+            {k: v for k, v in operands["total"].items() if k != "role"}, facts_by_key
+        )[0]["value"]
+        leaf_sum = math.fsum(
+            _matched(selector, facts_by_key)[0]["value"]
+            for selector in operands["partition"]["member_selectors"]
+        )
+        allocated = base + (total - leaf_sum) * base / leaf_sum
+        assert spec.value == pytest.approx(allocated * (num / den), rel=1e-12, abs=1e-7)
+        expected.append(allocated * (num / den))
     diagnostic = next(
         row
         for row in _document("reference_inventory.json")["national_bridge_diagnostics"]
@@ -390,8 +767,8 @@ def test_scaled_tenure_values_are_fractional_exact_bridges_and_national_diagnost
     assert math.fsum(spec.value for spec in registry.specs) == pytest.approx(
         math.fsum(expected), abs=1e-8
     )
-    assert diagnostic["regional_leaf_sum_scaled"] == pytest.approx(
-        math.fsum(expected), abs=1e-8
+    assert diagnostic["regional_published_total_sum_scaled"] == pytest.approx(
+        math.fsum(expected), abs=1e-7
     )
     assert diagnostic["independently_scaled_published_national_total"] == 1780527 * (
         5324700 / 5200000
@@ -465,7 +842,7 @@ def test_published_regional_totals_and_national_totals_remain_independent_diagno
 def test_region_99_is_a_separate_national_growth_proxy_and_ta_999_has_no_erp(artifact):
     rows = [
         row
-        for row in _rows()
+        for row in _effective_rows()
         if row["family"] == "housing_tenure"
         and row["ledger_selector"]["geography_id"] == "99"
     ]
@@ -478,7 +855,9 @@ def test_region_99_is_a_separate_national_growth_proxy_and_ta_999_has_no_erp(art
         assert row["metadata"]["bridge_status"] == "national-growth proxy"
         assert "national-growth proxy" in spec.hierarchy.target.label
         assert all(
-            operand["geography_id"] == "NZ" for operand in row["value_operands"][1:]
+            operand["geography_id"] == "NZ"
+            for operand in row["value_operands"]
+            if operand["role"] in {"numerator", "denominator"}
         )
     erp_facts = [
         fact

@@ -69,6 +69,7 @@ from microcosm.build.graph_atomic_geography import (
     ATOMIC_SUPPORT_TYPE,
 )
 from microcosm.build.ledger_artifact import CHRONICLE_FEED_RESOURCE
+from microcosm.build.reference_profiles import resolve_reference_profiles
 from microcosm.calibrate.ordered_kernels import OUTPUT_TYPES
 from microcosm.graph import (
     ArtifactInput,
@@ -128,6 +129,7 @@ SKELETON_KERNELS = frozenset(
         RULES_ROUTER,
         "takeup.assign@1",
         "targets.compile@1",
+        "calibration.prepare@1",
         "targets.problem@1",
         "calibrate.ordered_adam@1",
         "geography.support_from_facts@1",
@@ -350,7 +352,7 @@ def _target_feed_params(
     return result
 
 
-def transport_resource(spec: Mapping[str, object], name: str) -> Mapping:
+def _raw_transport_resource(spec: Mapping[str, object], name: str) -> Mapping:
     """One JSON resource of a normalized transport spec.
 
     A spec is ``{"country", "resources", "resource_hashes"?}``. A resource
@@ -367,7 +369,63 @@ def transport_resource(spec: Mapping[str, object], name: str) -> Mapping:
     return _mapping(value, f"{stem}.json")
 
 
-def _resource_digest(spec: Mapping[str, object], name: str) -> str:
+def reference_profile_view(
+    spec: Mapping[str, object], selection: Mapping | None = None
+):
+    """Resolve the declared reference resource before activation or composition."""
+    if not _has_resource(spec, "reference_profiles"):
+        return None
+    declarations = _raw_transport_resource(spec, "reference_profiles")
+    resource = declarations.get("reference_resource", "target_references")
+    dimensions = _mapping(
+        declarations.get("dimensions"), "reference profile dimensions"
+    )
+    selected = (
+        {}
+        if selection is None
+        else {name: value for name, value in selection.items() if name in dimensions}
+    )
+    intervals = declarations.get("interval_resource")
+    return resolve_reference_profiles(
+        _raw_transport_resource(spec, resource),
+        declarations,
+        selected,
+        interval_document=None
+        if intervals is None
+        else _raw_transport_resource(spec, intervals),
+    )
+
+
+def transport_resource(
+    spec: Mapping[str, object], name: str, *, profile_selection: Mapping | None = None
+) -> Mapping:
+    """Read the same effective reference/interval view used by compilation."""
+    if _has_resource(spec, "reference_profiles"):
+        declarations = _raw_transport_resource(spec, "reference_profiles")
+        reference = _stem(declarations.get("reference_resource", "target_references"))
+        interval = declarations.get("interval_resource")
+        interval = None if interval is None else _stem(interval)
+        if _stem(name) in {reference, interval}:
+            refs, intervals, _ = reference_profile_view(spec, profile_selection)
+            return refs if _stem(name) == reference else intervals
+    return _raw_transport_resource(spec, name)
+
+
+def _resource_digest(
+    spec: Mapping[str, object], name: str, *, profile_selection=None
+) -> str:
+    if _has_resource(spec, "reference_profiles"):
+        declarations = _raw_transport_resource(spec, "reference_profiles")
+        interval = declarations.get("interval_resource")
+        if _stem(name) in {
+            _stem(declarations.get("reference_resource", "target_references")),
+            None if interval is None else _stem(interval),
+        }:
+            return hashlib.sha256(
+                canonical_json(
+                    transport_resource(spec, name, profile_selection=profile_selection)
+                )
+            ).hexdigest()
     hashes = _mapping(spec.get("resource_hashes", {}), "resource_hashes")
     stem = _stem(name)
     digest = hashes.get(stem, hashes.get(f"{stem}.json"))
@@ -452,6 +510,16 @@ def _null_paths(value: object, path: str = "") -> Iterator[str]:
             yield from _null_paths(item, f"{path}[{index}]")
 
 
+def _reference_activation_gaps(document: Mapping, resource: str) -> Iterator[str]:
+    for row in _sequence(
+        document.get("target_references"), f"{resource}.target_references"
+    ):
+        reference = _mapping(row, f"{resource} reference")
+        metadata = _mapping(reference.get("metadata", {}), f"{resource}.metadata")
+        if metadata.get("activation_status", "active") != "active":
+            yield f"placeholder reference {resource}.{reference.get('name', '?')}"
+
+
 def validate_transport_activation(spec: Mapping[str, object]) -> None:
     """Refuse enumerated activation gaps before registry/CREATE/source reads.
 
@@ -466,30 +534,46 @@ def validate_transport_activation(spec: Mapping[str, object]) -> None:
     """
 
     missing = []
+    # Resolve first so activation never inspects an executable profile's raw rows.
+    reference_profile_view(spec)
     selections = (
         tuple(_declared_resource_selections(transport_resource(spec, GRAPH_RESOURCE)))
         if _has_resource(spec, GRAPH_RESOURCE)
         else ()
     )
-    selections = [(selection, False) for selection in selections]
+    selections = [(selection, False, None) for selection in selections]
     if _has_resource(spec, "entitlement_graph") and _has_resource(spec, "scenarios"):
         from .entitlement import _rows
 
         rows, _ = _rows(spec)
-        selections.extend(
-            (selection, True)
-            for selection in _declared_resource_selections(
-                {"nodes": [row for row, _ in rows]}
+        for row, scenario in rows:
+            knobs = None if scenario is None else scenario.get("knobs", {})
+            selections.extend(
+                (selection, True, knobs)
+                for selection in _declared_resource_selections({"nodes": [row]})
             )
-        )
     selected = {
         selection["resource"].removesuffix(".json")
-        for selection, _ in selections
+        for selection, _, _ in selections
         if isinstance(selection["resource"], str) and selection["resource"]
     }
-    for selection, allow_json_sequences in selections:
+    selected_reference_views = {}
+    for selection, allow_json_sequences, profile_selection in selections:
         try:
-            _resource_param(spec, selection, allow_json_sequences=allow_json_sequences)
+            _resource_param(
+                spec,
+                selection,
+                allow_json_sequences=allow_json_sequences,
+                profile_selection=profile_selection,
+            )
+            if profile_selection is not None:
+                resource = _stem(selection["resource"])
+                document = transport_resource(
+                    spec, resource, profile_selection=profile_selection
+                )
+                if "target_references" in document:
+                    identity = hashlib.sha256(canonical_json(document)).hexdigest()
+                    selected_reference_views[resource, identity] = document
         except (ValueError, TypeError) as error:
             missing.append(
                 f"Resource {selection['resource']!r} path {selection.get('path', [])!r}: "
@@ -517,18 +601,18 @@ def validate_transport_activation(spec: Mapping[str, object]) -> None:
         if _has_resource(spec, name)
         and "target_references" in transport_resource(spec, name)
     )
+    checked_reference_views = set()
     for resource in sorted(reference_resources):
         if not _has_resource(spec, resource):
             missing.append(f"{resource}.json")
             continue
-        rows = transport_resource(spec, resource).get("target_references")
-        for row in _sequence(rows, f"{resource}.target_references"):
-            reference = _mapping(row, f"{resource} reference")
-            metadata = _mapping(reference.get("metadata", {}), f"{resource}.metadata")
-            if metadata.get("activation_status", "active") != "active":
-                missing.append(
-                    f"placeholder reference {resource}.{reference.get('name', '?')}"
-                )
+        document = transport_resource(spec, resource)
+        identity = hashlib.sha256(canonical_json(document)).hexdigest()
+        checked_reference_views.add((resource, identity))
+        missing.extend(_reference_activation_gaps(document, resource))
+    for (resource, identity), document in selected_reference_views.items():
+        if (resource, identity) not in checked_reference_views:
+            missing.extend(_reference_activation_gaps(document, resource))
     receipt = (
         transport_resource(spec, "receipt_contract")
         if _has_resource(spec, "receipt_contract")
@@ -898,7 +982,11 @@ def _param(
 
 
 def _resource_param(
-    spec: Mapping[str, object], value: Mapping, *, allow_json_sequences: bool = False
+    spec: Mapping[str, object],
+    value: Mapping,
+    *,
+    allow_json_sequences: bool = False,
+    profile_selection: Mapping | None = None,
 ) -> object:
     """Resolve and validate one literal resource selection for preflight/params.
 
@@ -919,12 +1007,14 @@ def _resource_param(
         raise ValueError(
             "The graph resource's own digest cannot enter node parameters."
         )
-    document: object = transport_resource(spec, name)
+    document: object = transport_resource(
+        spec, name, profile_selection=profile_selection
+    )
     path = tuple(_sequence(value.get("path", ()), "resource selection path"))
     if encoding == "sha256":
         if path:
             raise ValueError("A sha256 selection names a whole resource (no path).")
-        return _resource_digest(spec, name)
+        return _resource_digest(spec, name, profile_selection=profile_selection)
     for component in path:
         if not isinstance(document, Mapping) or component not in document:
             raise ValueError(f"Resource {name!r} has no selected path {list(path)!r}.")
@@ -1081,6 +1171,7 @@ def _node(
     *,
     allowed_kernels: frozenset[str] = SKELETON_KERNELS,
     resolved_params: Mapping[str, object] | None = None,
+    profile_selection: Mapping | None = None,
 ) -> Node:
     _safe_node_id(row.get("id"))
     unknown = set(row) - _NODE_FIELDS
@@ -1102,6 +1193,15 @@ def _node(
         }
     )
     params = _target_feed_params(spec, kernel, params)
+    if (
+        kernel in TARGET_COMPILATION_KERNELS | {"calibration.prepare@1"}
+        and "references" in params
+    ):
+        view = reference_profile_view(spec, profile_selection)
+        if view is not None:
+            references, _, receipt = view
+            if canonical_json(references).decode("utf-8") == params["references"]:
+                params["reference_resolution"] = canonical_json(receipt).decode("utf-8")
     if "rules_binding" in row:
         params = _rules_params(spec, row, params, config)
     elif kernel == RULES_ROUTER:
