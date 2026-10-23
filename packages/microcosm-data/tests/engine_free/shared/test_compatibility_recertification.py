@@ -744,3 +744,34 @@ def test_prepare_release_takes_wheels_but_not_a_parent_h5(
         tag_only=True,
     )
     assert "populace_us_2024.h5" in prepared.root_artifacts
+
+
+def test_preflight_prints_the_recertification_measurement(
+    candidate, tmp_path, monkeypatch, capsys
+):
+    from microcosm.data.publish_cli import main as publish_main
+
+    output, artifact_root = certify(candidate, tmp_path, monkeypatch)
+    monkeypatch.setattr(recert, "run_recertification_loader_replay", fake_replay())
+    monkeypatch.setattr(recert, "_check_producer", lambda code, failures, label: None)
+    wheel = tmp_path / "policyengine_us-2.60.4-py3-none-any.whl"
+    wheel.write_bytes(b"")
+    status = publish_main(
+        [
+            str(output),
+            "--repo-id",
+            "policyengine/populace-us",
+            "--artifact-root",
+            str(artifact_root),
+            "--compatibility-wheel",
+            str(wheel),
+            "--no-latest",
+            "--tag-only",
+            "--preflight-only",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert status == 0, captured.err
+    verdict = json.loads(captured.out.strip().splitlines()[-1])
+    assert verdict["claim_measurement"]["model"]["measured_versions"] == ["2.60.4"]
+    assert "measured against only the versions recorded here" in captured.err
