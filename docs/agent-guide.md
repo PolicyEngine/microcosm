@@ -40,6 +40,18 @@ installs policyengine-uk, such as `uv sync --all-packages --extra us --extra uk`
 or `uv sync --all-packages --all-extras`. To keep both countries set up, point
 `UV_PROJECT_ENVIRONMENT` at a separate directory outside the checkout for each.
 
+Moving the US engine lock starts with the frame adapter's static consumer
+index, which reads the installed policyengine-us source without importing it
+and gates every generator. It interprets `variables/` only. A formula that
+calls a package helper defined elsewhere (`tools/general.py`,
+`tools/section_911.py`, the HUD loaders under `parameters/`) is answered from
+that helper's review in
+`packages/microcosm-frame/src/microcosm/frame/adapters/_policyengine_us_helper_reviews.py`.
+A new engine that calls an unreviewed helper, or changes a reviewed one, stops
+the index and prints the helper's digest. Read the helper and the package
+functions it uses, record what it reads at that digest, then rerun the
+generators.
+
 PR CI (`.github/workflows/test.yml`) has `lint`, `engine-free`, `engine-us`,
 `engine-uk`, `integration-uk`, and `wheels` jobs, plus the
 `select-countries` orchestration job.
