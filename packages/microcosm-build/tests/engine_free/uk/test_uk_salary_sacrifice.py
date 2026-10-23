@@ -16,14 +16,20 @@ from microcosm.build.uk_runtime.cgt_structure import HOUSEHOLD_IS_CGT_CLONE
 from microcosm.build.uk_runtime.cgt_support import HOUSEHOLD_IS_CGT_SUPPORT_COPY
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.salary_sacrifice import (
+    BONUS_SACRIFICE_OUTPUT,
+    BONUS_SACRIFICE_SOURCE,
     SALSAC_MOVE_PAY_SHARE_CAP,
     SALSAC_OUTPUT,
     SALSAC_PRE_CONVERSION_PAY_COLUMN,
     SALSAC_RATE_CAP,
     SALSAC_STAGE_TARGET,
     UKSalarySacrificeStageTransform,
+    _assert_bonus_sacrifice_anchor,
     _assert_salary_sacrifice_stage_parameters,
+    bonus_sacrifice_excess,
+    convert_bonuses_to_bonus_sacrifice,
     impute_salary_sacrifice,
+    load_bonus_sacrifice_anchor,
     load_salary_sacrifice_anchor,
 )
 
@@ -65,6 +71,7 @@ def _frame(
     donors=None,
     weights=None,
     employment_income=None,
+    bonus=None,
 ):
     n = len(asked)
     ids = np.arange(1, n + 1, dtype="int64")
@@ -85,11 +92,13 @@ def _frame(
             "salary_sacrifice_asked": asked,
             SALSAC_OUTPUT: salary_sacrifice_values,
             "employee_pension_contributions": employee_pension,
+            BONUS_SACRIFICE_SOURCE: np.zeros(n) if bonus is None else bonus,
         }
     )
     household = pd.DataFrame(
         {
             "household_id": ids,
+            "household_source_id": ids,
             "household_support_channel": channels,
             HOUSEHOLD_IS_CGT_CLONE: clones,
             HOUSEHOLD_IS_CGT_SUPPORT_COPY: donors,
@@ -502,6 +511,7 @@ def test_draws_move_only_for_the_people_whose_inputs_move(
                     "household_support_channel": "frs",
                     HOUSEHOLD_IS_CGT_CLONE: False,
                     HOUSEHOLD_IS_CGT_SUPPORT_COPY: False,
+                    "household_source_id": groups,
                 }
             ),
             household_weights=np.ones(len(ids)),
@@ -521,6 +531,7 @@ def test_draws_move_only_for_the_people_whose_inputs_move(
             "salary_sacrifice_asked": [1, 1, 0, 0, 0, 0],
             SALSAC_OUTPUT: [10.0, 20.0, 0.0, 0.0, 0.0, 0.0],
             "employee_pension_contributions": np.zeros(rows),
+            BONUS_SACRIFICE_SOURCE: np.zeros(rows),
         }
     )
     assert_draws_are_keyed_on_ids(
@@ -545,6 +556,21 @@ def test_anchor_is_self_consistent() -> None:
         *[
             (0, name)
             for name in (
+                "artifact_role",
+                "resource",
+                "feed_pin",
+                "record_sets",
+                "source_vintage",
+                "mapped_build_period",
+                "period_mapping",
+                "require_before_source_read",
+                "runtime_sha256_required",
+                "fail_on_mismatch",
+            )
+        ],
+        *[
+            (1, name)
+            for name in (
                 "training_population",
                 "target_population",
                 "predictors",
@@ -560,7 +586,7 @@ def test_anchor_is_self_consistent() -> None:
             )
         ],
         *[
-            (1, name)
+            (2, name)
             for name in (
                 "resource",
                 "target",
@@ -568,6 +594,23 @@ def test_anchor_is_self_consistent() -> None:
                 "rate_cap",
                 "move_pay_share_cap",
                 "move",
+                "seed",
+                "salt",
+                "receipt",
+            )
+        ],
+        *[
+            (3, name)
+            for name in (
+                "resource",
+                "facts",
+                "source",
+                "output",
+                "candidates",
+                "move",
+                "move_pay_share_cap",
+                "threshold",
+                "solve",
                 "seed",
                 "salt",
                 "receipt",
@@ -595,7 +638,7 @@ def test_resource_drift_assert_rejects_anchor_change() -> None:
 def test_drift_assert_rejects_extra_keys_and_operations() -> None:
     with pytest.raises(ValueError, match="drifted"):
         _assert_salary_sacrifice_stage_parameters(
-            _drift(1, "undeclared_extra_key"),
+            _drift(2, "undeclared_extra_key"),
             anchor=load_salary_sacrifice_anchor(),
         )
     stage = _stage()
@@ -604,3 +647,194 @@ def test_drift_assert_rejects_extra_keys_and_operations() -> None:
         _assert_salary_sacrifice_stage_parameters(
             extra, anchor=load_salary_sacrifice_anchor()
         )
+
+
+def _toy_bonus_anchor(**overrides) -> dict:
+    anchor = {
+        "engine": {"package": "policyengine-uk", "version": "toy"},
+        "source": {},
+        "obr_base_above_threshold": 0.0,
+        "threshold": 2000,
+        "data_year": 2024,
+        "base_year": 2027,
+        "earnings_growth": {"factor": 1.0},
+        "weight_growth": {"factor": 1.0},
+        "upper_earnings_limit": {"weekly": 50_000 / 52, "annual": 50_000.0},
+    }
+    anchor.update(overrides)
+    return anchor
+
+
+def test_bonus_excess_is_the_bonus_routes_share_above_the_threshold() -> None:
+    """The threshold applies to the two routes summed (microcosm#1340)."""
+
+    salary = np.asarray([0.0, 1_500.0, 3_000.0, 0.0])
+    bonus = np.asarray([1_000.0, 1_000.0, 1_000.0, 3_000.0])
+    np.testing.assert_allclose(
+        bonus_sacrifice_excess(salary, bonus, earnings_growth=1.0),
+        [0.0, 500.0, 1_000.0, 1_000.0],
+    )
+    # The amounts grow to the base year before the fixed threshold applies.
+    np.testing.assert_allclose(
+        bonus_sacrifice_excess(salary, bonus, earnings_growth=2.0),
+        [0.0, 2_000.0, 2_000.0, 4_000.0],
+    )
+
+
+def _conversion(target: float, **kwargs):
+    defaults = dict(
+        bonus=np.asarray([10_000.0, 10_000.0, 10_000.0, 10_000.0, 0.0, 10_000.0]),
+        employment_income=np.asarray(
+            [100_000.0, 100_000.0, 100_000.0, 100_000.0, 100_000.0, 55_000.0]
+        ),
+        salary_sacrifice=np.zeros(6),
+        employee_contributions=np.zeros(6),
+        weights=np.ones(6),
+        uniforms=np.asarray([0.4, 0.1, 0.3, 0.2, 0.05, 0.01]),
+        anchor=_toy_bonus_anchor(obr_base_above_threshold=target),
+    )
+    defaults.update(kwargs)
+    return convert_bonuses_to_bonus_sacrifice(**defaults)
+
+
+def test_bonus_candidates_have_a_bonus_and_pay_without_it_at_the_limit() -> None:
+    result = _conversion(0.0)
+    # No bonus (row 4), and pay without the bonus under the limit (row 5).
+    np.testing.assert_array_equal(
+        result.candidates, [True, True, True, True, False, False]
+    )
+    assert not result.participants.any()
+
+
+def test_bonus_participants_follow_their_uniforms_to_the_nearest_base() -> None:
+    """Each candidate adds 8,000 above the threshold; 17,000 is nearest two."""
+
+    result = _conversion(17_000.0)
+    # The two candidates with the smallest uniforms: rows 1 (0.1) and 3 (0.2).
+    np.testing.assert_array_equal(
+        result.participants, [False, True, False, True, False, False]
+    )
+    np.testing.assert_allclose(result.sacrificed, [0, 10_000, 0, 10_000, 0, 0])
+    assert result.projected_base == pytest.approx(16_000.0)
+    assert result.all_candidates_fall_short is False
+    # The engine's growth moves the base, not who is first.
+    grown = _conversion(
+        17_000.0,
+        anchor=_toy_bonus_anchor(
+            obr_base_above_threshold=17_000.0, weight_growth={"factor": 2.0}
+        ),
+    )
+    np.testing.assert_array_equal(
+        grown.participants, [False, True, False, False, False, False]
+    )
+    assert grown.projected_base == pytest.approx(16_000.0)
+
+
+def test_every_candidate_converts_where_all_fall_short() -> None:
+    result = _conversion(1e12)
+    np.testing.assert_array_equal(result.participants, result.candidates)
+    assert result.all_candidates_fall_short is True
+
+
+def test_a_bonus_moves_within_half_the_pay_and_the_room_above_the_other_routes() -> (
+    None
+):
+    result = _conversion(
+        1e12,
+        bonus=np.asarray([80_000.0, 10_000.0, 10_000.0, 0.0, 0.0, 0.0]),
+        employment_income=np.asarray([140_000.0, 100_000.0, 100_000.0, 0.0, 0.0, 0.0]),
+        salary_sacrifice=np.asarray([0.0, 0.0, 95_000.0, 0.0, 0.0, 0.0]),
+    )
+    # Half of 140,000; the whole bonus; the 5,000 left above the salary route.
+    np.testing.assert_allclose(result.sacrificed, [70_000, 10_000, 5_000, 0, 0, 0])
+    np.testing.assert_array_equal(
+        result.pay_share_capped, [True, False, True, False, False, False]
+    )
+
+
+def test_the_stage_converts_bonuses_out_of_pay(monkeypatch: pytest.MonkeyPatch) -> None:
+    _Fitted.value = 0.0
+    monkeypatch.setattr(salary_sacrifice, "QRF", _FakeQRF)
+    n = 12
+    frame = _frame(
+        asked=[1] * n,
+        salary_sacrifice_values=[0.0] * n,
+        employee_pension=[0.0] * n,
+        employment_income=[120_000.0] * n,
+        bonus=[20_000.0] * n,
+    )
+    result = impute_salary_sacrifice(
+        frame, bonus_anchor=_toy_bonus_anchor(obr_base_above_threshold=90_000.0)
+    )
+    person = result.frame.table("person")
+    converted = person[BONUS_SACRIFICE_OUTPUT] > 0.0
+    # Each converted bonus adds 18,000 above the threshold: five is nearest.
+    assert int(converted.sum()) == 5
+    assert (person.loc[converted, BONUS_SACRIFICE_OUTPUT] == 20_000.0).all()
+    assert (person.loc[converted, "employment_income"] == 100_000.0).all()
+    assert (person.loc[~converted, "employment_income"] == 120_000.0).all()
+    assert (person.loc[converted, SALSAC_PRE_CONVERSION_PAY_COLUMN] == 120_000.0).all()
+    assert (person.loc[~converted, SALSAC_PRE_CONVERSION_PAY_COLUMN] == 0.0).all()
+    receipt = result.evidence()["bonus_sacrifice_receipt"]
+    assert receipt["target_base"] == 90_000.0
+    # Five sources: the base and the band are withheld under ten.
+    assert receipt["participant_support"] == "<10"
+    assert receipt["projected_base"] == "<10"
+    assert receipt["candidate_support"] == "10-29"
+    assert BONUS_SACRIFICE_OUTPUT in UKSalarySacrificeStageTransform.output_columns()
+
+
+def test_the_stage_refuses_a_frame_without_the_bonus_carrier(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _Fitted.value = 0.0
+    monkeypatch.setattr(salary_sacrifice, "QRF", _FakeQRF)
+    frame = _frame(asked=[1], salary_sacrifice_values=[0.0], employee_pension=[0.0])
+    person = frame.table("person").drop(columns=BONUS_SACRIFICE_SOURCE)
+    bare = uk_national_frame(
+        person=person,
+        benunit=frame.table("benunit"),
+        household=frame.table("household"),
+        household_weights=frame.weights_for("household").values,
+        time_period="2024",
+    )
+    with pytest.raises(ValueError, match=BONUS_SACRIFICE_SOURCE):
+        impute_salary_sacrifice(bare, bonus_anchor=_toy_bonus_anchor())
+
+
+def test_the_stage_refuses_an_anchor_for_another_year(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _Fitted.value = 0.0
+    monkeypatch.setattr(salary_sacrifice, "QRF", _FakeQRF)
+    frame = _frame(asked=[1], salary_sacrifice_values=[0.0], employee_pension=[0.0])
+    with pytest.raises(ValueError, match="projects from 2023"):
+        impute_salary_sacrifice(frame, bonus_anchor=_toy_bonus_anchor(data_year=2023))
+
+
+def test_the_packaged_bonus_anchor_is_the_vendored_obr_row() -> None:
+    anchor = load_bonus_sacrifice_anchor()
+    _assert_bonus_sacrifice_anchor(anchor)
+    assert anchor["base_year"] == 2027
+    assert anchor["obr_base_above_threshold"] == 13.0e9
+    with pytest.raises(ValueError, match="differs from the vendored row"):
+        _assert_bonus_sacrifice_anchor({**anchor, "obr_base_above_threshold": 1.0})
+
+
+def test_the_hmrc_salary_sacrifice_rows_bind_the_salary_route_alone() -> None:
+    """ASHE, which HMRC's salary-sacrifice figures come from, covers no bonus
+    sacrifice, so those rows keep reading the salary route (microcosm#1340)."""
+
+    import json
+    from importlib.resources import files
+
+    targets = json.loads(
+        files("microcosm.build.uk")
+        .joinpath("uk_population_targets.json")
+        .read_text("utf-8")
+    )["targets"]
+    rows = [t for t in targets if t["target_id"].startswith("hmrc.salary_sacrifice")]
+    assert rows
+    for row in rows:
+        text = json.dumps(row)
+        assert BONUS_SACRIFICE_OUTPUT not in text, row["target_id"]

@@ -544,6 +544,9 @@ UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
         # that keeps loss-making landlords in the CGT residential signal; it is
         # no engine input.
         "reports_rent_from_other_property",
+        # The FRS bonus carrier (frs_spine.FRS_BONUS_CARRIER_COLUMN) the bonus
+        # sacrifice conversion reads (microcosm#1340); it is no engine input.
+        "frs_bonus_amount",
     ),
     # The value the spine's regional home values replaced (microcosm#1112):
     # the dense node ranks on it, and it is no engine input.

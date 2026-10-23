@@ -665,6 +665,34 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "NATURE": 4,
                 "DIRPERC": 2 if household_id % 10 == 0 else -1,
                 "DIVIDEND": 1000.0 if household_id % 10 == 0 else 0.0,
+                # Every fifth job pays one bonus, given before or after tax by
+                # turn (#1340).
+                **{
+                    f"BONAMT{index}": (
+                        float(500 + 100 * (household_id % 7))
+                        if index == 1 and household_id % 5 == 0
+                        else ""
+                    )
+                    for index in range(1, 7)
+                },
+                **{
+                    f"BONTAX{index}": (
+                        1 + (household_id // 5) % 2
+                        if index == 1 and household_id % 5 == 0
+                        else ""
+                    )
+                    for index in range(1, 7)
+                },
+                **{
+                    f"BONTXAM{index}": (
+                        3.0
+                        if index == 1
+                        and household_id % 5 == 0
+                        and (household_id // 5) % 2 == 1
+                        else ""
+                    )
+                    for index in range(1, 7)
+                },
                 # The annual income stage's job columns: a job under a year old
                 # follows paid employment (WRKPREV 1) on two households in
                 # four; every employee job carries its DV pay (UGRSPAY) and

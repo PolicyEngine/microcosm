@@ -408,6 +408,9 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     # Spousal maintenance (ALIAMT or ALUAMT, and APAMT; #1320, pe-uk#2572).
     # The enhanced FRS reads no alimony and keeps APAMT a private transfer.
     "person.spousal_maintenance_income",
+    # Bonus sacrifice (#1340, pe-uk#2572 section 1): the enhanced FRS carries
+    # salary sacrifice only.
+    "person.pension_contributions_via_bonus_sacrifice",
 )
 
 UK_KNOWN_MISSING_REFERENCE_EXPORT_COLUMNS: tuple[str, ...] = (

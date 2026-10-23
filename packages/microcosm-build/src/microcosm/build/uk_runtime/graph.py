@@ -1109,6 +1109,8 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         "person",
         (
             "pension_contributions_via_salary_sacrifice",
+            # Bonuses converted to bonus sacrifice (microcosm#1340).
+            "pension_contributions_via_bonus_sacrifice",
             "employee_pension_contributions",
             # Converted records' pay drops by the sacrificed amount (microcosm#1069).
             "employment_income",

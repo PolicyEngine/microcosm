@@ -311,6 +311,7 @@
     "pension_contributions_via_salary_sacrifice",
     "salary_sacrifice_reported",
     "salary_sacrifice_asked",
+    "frs_bonus_amount",
     "child_benefit_reported",
     "income_support_reported",
     "housing_benefit_reported",
@@ -6559,9 +6560,41 @@
      "resource": "salary_sacrifice_anchor.json",
      "format": "json",
      "runtime_sha256_required": true
+    },
+    {
+     "role": "obr_salary_sacrifice_costing_facts",
+     "kind": "public_aggregate_reference",
+     "resource": "obr_salary_sacrifice_costing_facts.json",
+     "format": "json",
+     "runtime_sha256_required": true
+    },
+    {
+     "role": "bonus_sacrifice_anchor",
+     "kind": "public_aggregate_reference",
+     "resource": "bonus_sacrifice_anchor.json",
+     "format": "json",
+     "runtime_sha256_required": true
     }
    ],
    "operations": [
+    {
+     "kind": "verify_vendored_fact_resource",
+     "artifact_role": "obr_salary_sacrifice_costing_facts",
+     "resource": "obr_salary_sacrifice_costing_facts.json",
+     "feed_pin": "chronicle_feed.json",
+     "record_sets": [
+      "obr.salary_sacrifice_costing_2026_02.tax_base.fy2027",
+      "obr.salary_sacrifice_costing_2026_02.tax_base.fy2028",
+      "obr.salary_sacrifice_costing_2026_02.tax_base.fy2029",
+      "obr.salary_sacrifice_costing_2026_02.tax_base.fy2030"
+     ],
+     "source_vintage": "OBR supplementary forecast information on salary sacrifice, 5 February 2026",
+     "mapped_build_period": 2024,
+     "period_mapping": "fiscal_year_2027_base_met_by_the_engine_projection",
+     "require_before_source_read": true,
+     "runtime_sha256_required": true,
+     "fail_on_mismatch": true
+    },
     {
      "kind": "fit_weighted_qrf",
      "training_population": "support_channel == frs and not capital-gains clone and not CGT support copy and salary_sacrifice_asked == 1 and employment_income > 0",
@@ -6594,16 +6627,33 @@
      "salt": "salary_sacrifice_conversion",
      "receipt": "weighted_headcount",
      "reason": "Salary-sacrifice support stage rewrites pension columns and converted records' pay; household rows and typed household weights pass through and total household mass is conserved."
+    },
+    {
+     "kind": "convert_bonuses_to_bonus_sacrifice",
+     "resource": "bonus_sacrifice_anchor.json",
+     "facts": "obr_salary_sacrifice_costing_facts.json",
+     "source": "frs_bonus_amount",
+     "output": "pension_contributions_via_bonus_sacrifice",
+     "candidates": "frs_bonus_amount > 0 and employment_income - frs_bonus_amount at least the anchor's annual upper earnings limit, after the salary conversion",
+     "move": "the whole FRS bonus, at most move_pay_share_cap of employment_income and at most the pay left above the salary sacrifice and the employee contribution, to pension_contributions_via_bonus_sacrifice; employment_income lowered by the amount sacrificed; the record's pay before the stage's conversions kept on salary_sacrifice_pre_conversion_pay",
+     "move_pay_share_cap": 0.5,
+     "threshold": 2000,
+     "solve": "the candidates in the order of their identity-keyed uniforms, taken while the projected base is nearer the anchor's OBR base: the anchor's weight growth times the sum of person weight times (max(0, g (S + B) - threshold) - max(0, g S - threshold)), with g the anchor's earnings growth, S the salary sacrifice and B the bonus sacrificed; every candidate where even all fall short",
+     "seed": 2024,
+     "salt": "bonus_sacrifice_conversion",
+     "receipt": "projected_base"
     }
    ],
    "outputs": [
     "pension_contributions_via_salary_sacrifice",
+    "pension_contributions_via_bonus_sacrifice",
     "employee_pension_contributions",
     "employment_income",
     "salary_sacrifice_pre_conversion_pay"
    ],
    "nonnegative_outputs": [
     "pension_contributions_via_salary_sacrifice",
+    "pension_contributions_via_bonus_sacrifice",
     "employee_pension_contributions",
     "employment_income",
     "salary_sacrifice_pre_conversion_pay"

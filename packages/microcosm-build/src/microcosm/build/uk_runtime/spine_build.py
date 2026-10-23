@@ -782,7 +782,10 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
                     stage_seeds["within_band_draws"] = seed
                 elif operation.kind == "assign_badr_qualifying_gains":
                     stage_seeds[operation.kind] = seed
-                elif operation.kind == "convert_donors_to_target_stock":
+                elif operation.kind in (
+                    "convert_donors_to_target_stock",
+                    "convert_bonuses_to_bonus_sacrifice",
+                ):
                     stage_seeds[str(operation.parameters["salt"])] = seed
                 elif operation.kind == "top_up_to_stock":
                     stage_seeds[str(operation.parameters["salt"])] = seed

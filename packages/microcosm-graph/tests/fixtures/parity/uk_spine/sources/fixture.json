@@ -1163,8 +1163,8 @@
           "locator": "job.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "cc985ee1ded0af25fb629acd58c31a8ea4e103c0d3bb3b0c35cc52158af17c57",
-          "size_bytes": 7593,
+          "sha256": "2130e5cba40f5e006aa63d02d576eb21899e4de89fc6e59e46f399efba506ab7",
+          "size_bytes": 10385,
           "table": "job",
           "vintage": "synthetic-h2"
         },
@@ -1562,8 +1562,8 @@
           "locator": "job.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "cc985ee1ded0af25fb629acd58c31a8ea4e103c0d3bb3b0c35cc52158af17c57",
-          "size_bytes": 7593,
+          "sha256": "2130e5cba40f5e006aa63d02d576eb21899e4de89fc6e59e46f399efba506ab7",
+          "size_bytes": 10385,
           "table": "job",
           "vintage": "synthetic-h2"
         },
@@ -2177,8 +2177,8 @@
           "locator": "job.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "cc985ee1ded0af25fb629acd58c31a8ea4e103c0d3bb3b0c35cc52158af17c57",
-          "size_bytes": 7593,
+          "sha256": "2130e5cba40f5e006aa63d02d576eb21899e4de89fc6e59e46f399efba506ab7",
+          "size_bytes": 10385,
           "table": "job",
           "vintage": "synthetic-h2"
         },
@@ -2380,6 +2380,7 @@
         "pension_contributions_via_salary_sacrifice",
         "salary_sacrifice_reported",
         "salary_sacrifice_asked",
+        "frs_bonus_amount",
         "child_benefit_reported",
         "income_support_reported",
         "housing_benefit_reported",
@@ -5466,17 +5467,50 @@
           "resource": "salary_sacrifice_anchor.json",
           "role": "salary_sacrifice_anchor",
           "runtime_sha256_required": true
+        },
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "obr_salary_sacrifice_costing_facts.json",
+          "role": "obr_salary_sacrifice_costing_facts",
+          "runtime_sha256_required": true
+        },
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "bonus_sacrifice_anchor.json",
+          "role": "bonus_sacrifice_anchor",
+          "runtime_sha256_required": true
         }
       ],
       "grain": "person",
       "nonnegative_outputs": [
         "pension_contributions_via_salary_sacrifice",
+        "pension_contributions_via_bonus_sacrifice",
         "employee_pension_contributions",
         "employment_income",
         "salary_sacrifice_pre_conversion_pay"
       ],
       "notes": "The QRF trains only on the 2024-25 FRS asked subset with pay. Salary sacrifice is pay given up, so every amount, reported or predicted, is limited to the pay the person still receives, and a person without pay has none (uk-data#518, microcosm#1095); the limit bites above all on SPI-channel rows, which keep their FRS twin's answer beside pay redrawn from the SPI. The second arm creates support toward the reviewed 5.4m staging target by moving contributors' pension amounts, up to half their pay, into salary sacrifice and lowering their pay by the same amount, since the engine reads employment_income after sacrifice; what does not move stays an employee contribution, so the sacrifice never exceeds the pay that remains. Before microcosm#1069 c9 the pay stayed whole and the converted record lost its net-pay relief.",
       "operations": [
+        {
+          "artifact_role": "obr_salary_sacrifice_costing_facts",
+          "fail_on_mismatch": true,
+          "feed_pin": "chronicle_feed.json",
+          "kind": "verify_vendored_fact_resource",
+          "mapped_build_period": 2024,
+          "period_mapping": "fiscal_year_2027_base_met_by_the_engine_projection",
+          "record_sets": [
+            "obr.salary_sacrifice_costing_2026_02.tax_base.fy2027",
+            "obr.salary_sacrifice_costing_2026_02.tax_base.fy2028",
+            "obr.salary_sacrifice_costing_2026_02.tax_base.fy2029",
+            "obr.salary_sacrifice_costing_2026_02.tax_base.fy2030"
+          ],
+          "require_before_source_read": true,
+          "resource": "obr_salary_sacrifice_costing_facts.json",
+          "runtime_sha256_required": true,
+          "source_vintage": "OBR supplementary forecast information on salary sacrifice, 5 February 2026"
+        },
         {
           "cache": false,
           "clamp_maximum": "employment_income floored at zero; every row, reported or predicted, FRS and SPI channel",
@@ -5509,10 +5543,26 @@
           "salt": "salary_sacrifice_conversion",
           "seed": 2024,
           "target": 5400000
+        },
+        {
+          "candidates": "frs_bonus_amount > 0 and employment_income - frs_bonus_amount at least the anchor's annual upper earnings limit, after the salary conversion",
+          "facts": "obr_salary_sacrifice_costing_facts.json",
+          "kind": "convert_bonuses_to_bonus_sacrifice",
+          "move": "the whole FRS bonus, at most move_pay_share_cap of employment_income and at most the pay left above the salary sacrifice and the employee contribution, to pension_contributions_via_bonus_sacrifice; employment_income lowered by the amount sacrificed; the record's pay before the stage's conversions kept on salary_sacrifice_pre_conversion_pay",
+          "move_pay_share_cap": 0.5,
+          "output": "pension_contributions_via_bonus_sacrifice",
+          "receipt": "projected_base",
+          "resource": "bonus_sacrifice_anchor.json",
+          "salt": "bonus_sacrifice_conversion",
+          "seed": 2024,
+          "solve": "the candidates in the order of their identity-keyed uniforms, taken while the projected base is nearer the anchor's OBR base: the anchor's weight growth times the sum of person weight times (max(0, g (S + B) - threshold) - max(0, g S - threshold)), with g the anchor's earnings growth, S the salary sacrifice and B the bonus sacrificed; every candidate where even all fall short",
+          "source": "frs_bonus_amount",
+          "threshold": 2000
         }
       ],
       "outputs": [
         "pension_contributions_via_salary_sacrifice",
+        "pension_contributions_via_bonus_sacrifice",
         "employee_pension_contributions",
         "employment_income",
         "salary_sacrifice_pre_conversion_pay"

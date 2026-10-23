@@ -9658,6 +9658,66 @@
      "additionalProperties": false,
      "required": [
       "kind",
+      "resource",
+      "facts",
+      "source",
+      "output",
+      "candidates",
+      "move",
+      "move_pay_share_cap",
+      "threshold",
+      "solve",
+      "seed",
+      "salt",
+      "receipt"
+     ],
+     "properties": {
+      "kind": {
+       "const": "convert_bonuses_to_bonus_sacrifice"
+      },
+      "resource": {
+       "type": "string"
+      },
+      "facts": {
+       "type": "string"
+      },
+      "source": {
+       "type": "string"
+      },
+      "output": {
+       "type": "string"
+      },
+      "candidates": {
+       "type": "string"
+      },
+      "move": {
+       "type": "string"
+      },
+      "move_pay_share_cap": {
+       "type": "number"
+      },
+      "threshold": {
+       "type": "number"
+      },
+      "solve": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "salt": {
+       "type": "string"
+      },
+      "receipt": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
       "year_rule",
       "start_year_formula",
       "reported_repayment_test",

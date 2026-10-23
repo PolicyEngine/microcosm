@@ -52,6 +52,7 @@
       "free_school_breakfasts": "float64",
       "free_school_fruit_veg": "float64",
       "free_school_meals": "float64",
+      "frs_bonus_amount": "float64",
       "gender": "string",
       "healthy_start_vouchers": "float64",
       "hours_worked": "float64",

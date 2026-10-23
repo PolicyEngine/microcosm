@@ -539,6 +539,7 @@ class TestDeclaredOutputsAreWrittenColumns:
         assert stages["hmrc_cgt_gains_spine"].rewrites == ("capital_gains",)
         assert stages["salary_sacrifice"].outputs == (
             SALSAC_OUTPUT,
+            "pension_contributions_via_bonus_sacrifice",
             "employee_pension_contributions",
             "employment_income",
             SALSAC_PRE_CONVERSION_PAY_COLUMN,
@@ -779,8 +780,10 @@ class TestE3ManifestLockstep:
             "classify_cgt_band_facts_with_reviewed_fence",
         ]
         assert [op.kind for op in stages["salary_sacrifice"].operations] == [
+            "verify_vendored_fact_resource",
             "fit_weighted_qrf",
             "convert_donors_to_target_stock",
+            "convert_bonuses_to_bonus_sacrifice",
         ]
         assert [op.kind for op in stages["student_loans"].operations] == [
             "assign_student_loan_plan_cohorts",
@@ -1071,8 +1074,9 @@ class TestE3ManifestLockstep:
         assert (
             stages["hmrc_cgt_gains_spine"].operations[4].parameters["seed_base"] == 552
         )
-        assert stages["salary_sacrifice"].operations[0].parameters["seed"] == 42
-        assert stages["salary_sacrifice"].operations[1].parameters["seed"] == 2024
+        assert stages["salary_sacrifice"].operations[1].parameters["seed"] == 42
+        assert stages["salary_sacrifice"].operations[2].parameters["seed"] == 2024
+        assert stages["salary_sacrifice"].operations[3].parameters["seed"] == 2024
         assert [
             operation.parameters["seed"]
             for operation in stages["student_loans"].operations[1:]

@@ -444,6 +444,20 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "NATURE": 4,
                 "DIRPERC": -1,
                 "DIVIDEND": 0.0,
+                # Two bonuses (#1340): 1,000 before tax, and 500 after a weekly
+                # imputed tax of 2.
+                **{
+                    f"BONAMT{index}": {1: 1_000.0, 2: 500.0}.get(index, "")
+                    for index in range(1, 7)
+                },
+                **{
+                    f"BONTAX{index}": {1: 1, 2: 2}.get(index, "")
+                    for index in range(1, 7)
+                },
+                **{
+                    f"BONTXAM{index}": 2.0 if index == 2 else ""
+                    for index in range(1, 7)
+                },
             }
         ],
         "benefits": [
@@ -1957,6 +1971,34 @@ def test_code_6_splits_at_the_bereavement_support_payment_rates(
     other = columns["wpa" if payment == "bsp" else "bsp"]
     assert person[other].eq(0.0).all()
     assert person.drop(index=1001)[columns[payment]].eq(0.0).all()
+
+
+def test_bonuses_are_summed_gross_over_the_year(tmp_path: Path) -> None:
+    """A bonus given after tax adds back its imputed weekly tax over the year;
+    BONAMT is the sum received, not weekly (#1340)."""
+
+    stage = _write_fixture(tmp_path, _fixture_tables())
+    person = (
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
+        .table("person")
+        .set_index("person_id")
+    )
+    assert person.loc[1001, "frs_bonus_amount"] == pytest.approx(
+        1_000.0 + 500.0 + 2.0 * WEEKS_IN_YEAR
+    )
+    assert person.drop(index=1001)["frs_bonus_amount"].eq(0.0).all()
+
+
+@pytest.mark.parametrize("column", ["BONAMT1", "BONTAX3", "BONTXAM6"])
+def test_frs_spine_refuses_a_job_tab_without_the_bonus_fields(
+    tmp_path: Path, column: str
+) -> None:
+    tables = _fixture_tables()
+    for row in tables["job"]:
+        row.pop(column)
+    stage = _write_fixture(tmp_path, tables)
+    with pytest.raises(KeyError, match=column.lower()):
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
 
 
 def test_war_widows_pension_leaves_bereavement_support(tmp_path: Path) -> None:
@@ -3549,6 +3591,8 @@ def test_e8_manifest_seeds_all_reach_the_build_sidecar_harvester() -> None:
     assert declared["salary_sacrifice"] == {
         "salary_sacrifice": 42,
         "salary_sacrifice_conversion": 2024,
+        # The bonus route's conversion (microcosm#1340).
+        "pension_contributions_via_bonus_sacrifice": 2024,
     }
     assert declared["student_loans"] == {
         "student_loan_plan_5": 42,

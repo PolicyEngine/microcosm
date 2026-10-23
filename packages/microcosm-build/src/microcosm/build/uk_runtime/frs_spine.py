@@ -265,6 +265,7 @@ OUTPUT_COLUMNS = (
     "pension_contributions_via_salary_sacrifice",
     "salary_sacrifice_reported",
     "salary_sacrifice_asked",
+    "frs_bonus_amount",
     "child_benefit_reported",
     "income_support_reported",
     "housing_benefit_reported",
@@ -601,6 +602,7 @@ def _assemble_frame(
     owner_managers = frs_owner_manager_inputs(person, frs["job"])
     for column in OWNER_MANAGER_COLUMNS:
         pe_person[column] = owner_managers[column].to_numpy()
+    pe_person[FRS_BONUS_CARRIER_COLUMN] = frs_annual_bonuses(person, frs["job"])
     _add_person_income(pe_person, person, household, frs["oddjob"], evidence=evidence)
     _add_benefits(pe_person, person, frs["benefits"])
     # The engine pays Carer's Allowance on hours or receipt; a dataset keeps it
@@ -742,6 +744,47 @@ FRS_MAIN_JOB_JOBTYPE = 1
 #: on this release, which leaves the engine's company-owner rules off for it.
 PROPERTY_BUSINESS_SIC_DIVISION = 68
 OWNER_MANAGER_JOB_COLUMNS = ("director", "nature", "dirperc", "jobtype", "dividend")
+#: The JOB tab's bonus fields (FRS 2024-25): the amount of each of up to six
+#: occasional bonuses received in the last 12 months (BONAMT1-6, the sum
+#: received, not weekly), whether it was given before or after tax (BONTAX1-6:
+#: 1 before, 2 after) and the weekly tax the FRS imputes on a bonus given
+#: after tax (BONTXAM1-6, a weekly variable).
+FRS_BONUS_JOB_COLUMNS = tuple(
+    f"{stem}{index}"
+    for index in range(1, 7)
+    for stem in ("bonamt", "bontax", "bontxam")
+)
+#: Each adult's gross occasional bonuses over the last 12 months, the carrier
+#: salary_sacrifice's bonus conversion reads (microcosm#1340). It is no engine
+#: input and leaves at the release boundary. The FRS's earnings already hold
+#: the bonuses (UGRSPAY adds occasional bonuses to pay), so the conversion
+#: lowers pay by what it moves.
+FRS_BONUS_CARRIER_COLUMN = "frs_bonus_amount"
+FRS_BONUS_AFTER_TAX = 2
+
+
+def frs_annual_bonuses(person: pd.DataFrame, job: pd.DataFrame) -> np.ndarray:
+    """Each adult's gross bonuses over the last 12 months, over all their jobs.
+
+    A bonus given after tax adds back the tax the FRS imputes on it, a weekly
+    amount, over the year. A tab without the bonus fields refuses, rather
+    than set nobody's.
+    """
+
+    missing = [column for column in FRS_BONUS_JOB_COLUMNS if column not in job]
+    if missing:
+        raise KeyError(
+            f"The FRS job tab has no {missing} column(s), so bonuses cannot be set."
+        )
+    gross = pd.Series(0.0, index=job.index)
+    for index in range(1, 7):
+        amount = np.maximum(_number(job, f"bonamt{index}"), 0)
+        after_tax = _number(job, f"bontax{index}") == FRS_BONUS_AFTER_TAX
+        tax = np.maximum(_number(job, f"bontxam{index}"), 0) * WEEKS_IN_YEAR
+        gross = gross + amount + tax.where(after_tax, 0.0)
+    return np.asarray(
+        _sum_to_entity(gross, job["person_id"], person["person_id"]), dtype=float
+    )
 
 
 def frs_owner_manager_inputs(person: pd.DataFrame, job: pd.DataFrame) -> pd.DataFrame:

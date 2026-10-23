@@ -756,12 +756,15 @@ class TestUKSurfaceAdapter:
         """
 
         from microcosm.build.uk_runtime.salary_sacrifice import (
+            BONUS_SACRIFICE_OUTPUT,
             SALSAC_OUTPUT,
             SALSAC_PRE_CONVERSION_PAY_COLUMN,
         )
 
         person, benunit, household = _tables()
         person[SALSAC_OUTPUT] = [0.0, 10.0, 0.0, 5.0]
+        # The stage's bonus route (#1340) is a declared non-negative output too.
+        person[BONUS_SACRIFICE_OUTPUT] = [0.0, 0.0, 3.0, 0.0]
         person["employee_pension_contributions"] = [1.0, 0.0, 2.0, 0.0]
         release = uk_national_frame(
             person=person.copy(),
