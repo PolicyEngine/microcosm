@@ -652,7 +652,9 @@ _PACKAGED_EXCLUSION_CENSUS = {
     # microcosm#1113 and #1123 item 3 (2026-10-08): rows whose level the
     # engine, a published-source residual or a scope the frame doesn't hold
     # sets, held out and measured with tools/diagnose_uk_consumption_taxes.py.
-    "obr.vat": 1,
+    # obr.vat binds again with the next policyengine-uk bump (ruling D3):
+    # policyengine-uk 2.135.7 replaced the engine factor.
+    "obr.vat": 0,
     "obr.fuel_duties_cars": 1,
     "ons.household_electricity_expenditure": 1,
     "ons.household_gas_expenditure": 1,
@@ -698,8 +700,8 @@ def test_packaged_exclusions_load():
     # seventeen the next policyengine-uk bump retires: the ten HMRC £1m-and-over
     # cells, the three band-H region cells and Plan 5's liable stock bind, and
     # the OBR welfare-cap split and the postgraduate repayments leave the
-    # targets.
-    assert len(names) == len(set(names)) == 28
+    # targets; and obr.vat binds again with it (ruling D3).
+    assert len(names) == len(set(names)) == 27
     assert not [name for name in names if name.startswith("dwp.benefit_cap.")]
     # The band-H region cells bind under the floor's band-H scope.
     assert not [name for name in names if name.startswith("mhclg.council_tax_stock.")]
@@ -799,11 +801,10 @@ def test_packaged_exclusions_load():
     # three that tracked it tracked its follow-up issue, microcosm#1207, and
     # since that closed into it, microcosm#1278. obr.vat tracked
     # policyengine-uk#1996 until policyengine-uk#2187 (released in 2.135.7)
-    # closed it; it tracks microcosm#1278 until a lock bump lets it rebind.
+    # closed it, and it binds again with the next policyengine-uk bump.
     consumption_taxes = [e for e in exclusions if e["approved_on"] == "2026-10-08"]
     assert sorted(e["name"] for e in consumption_taxes) == [
         "obr.fuel_duties_cars",
-        "obr.vat",
         "ons.household_electricity_expenditure",
         "ons.household_gas_expenditure",
     ]
@@ -818,14 +819,11 @@ def test_packaged_exclusions_load():
         ), entry["name"]
     trackings = {e["name"]: e["tracking"] for e in consumption_taxes}
     assert trackings == {
-        "obr.vat": "microcosm#1278",
         "obr.fuel_duties_cars": "microcosm#1278",
         "ons.household_electricity_expenditure": "microcosm#1278",
         "ons.household_gas_expenditure": "microcosm#1278",
     }
-    vat = next(e for e in consumption_taxes if e["name"] == "obr.vat")
-    assert "policyengine-uk#2187" in vat["adjudication"]
-    assert "lock bump" in vat["adjudication"]
+    assert "obr.vat" not in names
     # microcosm#1095: the five-or-more children row held out on 2026-10-14
     # (María's ruling on microcosm#1271) is no target since 2026-10-16, but a
     # diagnostic beside the two-child-limit rows, so no exclusion names it and
@@ -986,15 +984,12 @@ def test_employer_nics_are_a_measured_diagnostic():
     assert entry["tracking"] == "policyengine-uk#2459"
     assert entry["approved_by"] == "juaristi22"
     assert entry["approved_on"] == "2026-10-16"
-    # Three months, the window of the 2026-10-08 engine-factor diagnostic.
+    # Three months, the window the 2026-10-08 engine-factor diagnostic had.
     assert entry["expires_on"] == "2027-01-16"
-    vat = exclusions["obr.vat"]
     assert (
         date.fromisoformat(entry["expires_on"])
         - date.fromisoformat(entry["approved_on"])
-    ).days == (
-        date.fromisoformat(vat["expires_on"]) - date.fromisoformat(vat["approved_on"])
-    ).days
+    ).days == (date(2027, 1, 8) - date(2026, 10, 8)).days
     for phrase in (
         "Employment Allowance",
         "calendar-2025 window",
