@@ -2887,7 +2887,7 @@ def test_excise_quantities_gate_recomputes_every_level_from_the_vendored_rows(
 
     declaration = excise_declaration()
     patch_excise_facts(monkeypatch, declaration)
-    levels, volume = excise_levels(declaration)
+    resolved = excise_levels(declaration)
     tobacco, on_trade, gambling = (
         "tobacco_share_of_alcohol_and_tobacco",
         "on_trade_alcohol_share_of_restaurants_and_hotels",
@@ -2905,8 +2905,7 @@ def test_excise_quantities_gate_recomputes_every_level_from_the_vendored_rows(
     )
     _, quantities = level_excise_quantities(
         draws,
-        levels=levels,
-        volume=volume,
+        levels=resolved,
         weights=np.array([1.0e3, 2.0e3, 3.0e3, 4.0e3]),
     )
     receipt = {
@@ -2973,6 +2972,18 @@ def test_excise_quantities_gate_recomputes_every_level_from_the_vendored_rows(
     )
     failing(lambda e, s: e["outputs"].pop("wine_litres"), "not the declared")
     failing(lambda e, s: e.update(weeks_per_year=52.18), "weeks_per_year")
+    failing(
+        lambda e, s: e["draught_shares"]["beer_draught_share"].update(share=0.3),
+        "beer_draught_share",
+    )
+    failing(lambda e, s: e["draught_shares"].clear(), "draught shares")
+    lottery = lambda e, s: e["outputs"]["national_lottery_ticket_spending"]  # noqa: E731
+    failing(
+        lambda e, s: lottery(e, s).update(
+            frame_annual_total=lottery(e, s)["frame_annual_total"] * 1.01
+        ),
+        "national_lottery_ticket_spending",
+    )
     failing(lambda e, s: e.update(period_value=2025), "period_value")
     failing(
         lambda e, s: e.update(alcohol_volume_weights={"rule": "other"}),
