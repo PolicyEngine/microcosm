@@ -2630,3 +2630,165 @@ def test_consumption_basis_gate_checks_the_recorded_bridge_factor() -> None:
     result = run(evidence)
     assert not result.passed
     assert any("not after / base" in f and first in f for f in result.failures)
+
+
+def _packaged_parameters(gate_id: str) -> dict:
+    gates = json.loads(
+        (_TEST_PATHS.package / "src/microcosm/build/uk/gates.json").read_text()
+    )["gates"]
+    (gate,) = [entry for entry in gates if entry["id"] == gate_id]
+    return gate["parameters"]
+
+
+def _purchases_receipt() -> dict:
+    def kind(name, target, fitted, shortfall=0.0, value=1.0e9):
+        return {
+            "property_type": name,
+            "target_transactions": target,
+            "fitted_transactions": fitted,
+            "target_value": value,
+            "fitted_value": value * (1.0 - shortfall),
+            "value_shortfall_share": shortfall,
+        }
+
+    return {
+        "stage": "property_purchases",
+        "kinds": [
+            kind("additional_residential", 1000.0, 1010.0),
+            kind("non_residential", 200.0, 196.0, shortfall=0.1),
+        ],
+        "derivation": {
+            "residential_individuals_transaction_share": 0.9,
+            "residential_individuals_value_share": 0.8,
+        },
+    }
+
+
+def _gate(gate_id: str, evidence: dict):
+    parameters = _packaged_parameters(gate_id)
+    return uk_stage_health_gate(
+        evidence=evidence,
+        stage=parameters["stage"],
+        check=parameters["check"],
+        parameters=parameters,
+    )
+
+
+def test_property_purchases_gate_holds_each_kind_to_hmrc_within_the_contract() -> None:
+    assert _passed(_gate("uk_stage_property_purchases_fit", _purchases_receipt()))
+
+    missing = _purchases_receipt()
+    missing["kinds"] = missing["kinds"][:1]
+    assert (
+        "draws kinds" in _gate("uk_stage_property_purchases_fit", missing).failures[0]
+    )
+
+    far = _purchases_receipt()
+    far["kinds"][0]["fitted_transactions"] = 1100.0
+    assert "transactions" in _gate("uk_stage_property_purchases_fit", far).failures[0]
+
+    short = _purchases_receipt()
+    short["kinds"][1].update(value_shortfall_share=0.25, fitted_value=0.75e9)
+    assert (
+        "short of HMRC" in _gate("uk_stage_property_purchases_fit", short).failures[0]
+    )
+
+    unrecorded = _purchases_receipt()
+    unrecorded["kinds"][1]["fitted_value"] = 1.0e9
+    assert (
+        "recorded shortfall"
+        in (_gate("uk_stage_property_purchases_fit", unrecorded).failures[0])
+    )
+
+    no_share = _purchases_receipt()
+    no_share["derivation"]["residential_individuals_value_share"] = 1.2
+    assert (
+        "not a share" in _gate("uk_stage_property_purchases_fit", no_share).failures[0]
+    )
+
+
+def _home_values_receipt() -> dict:
+    regions = [f"E1200000{index}" for index in range(1, 10)] + ["W92000004"]
+    return {
+        "stage": "regional_home_values",
+        "rows": 100,
+        "rows_rewritten_by_region": {region: 5 for region in regions},
+        "sources_at_cap": 0,
+        "knots_basis_year": 2024,
+        "ranking": {"rank_basis": "weighted_midpoint_within_frs_region"},
+        "weighted_value_before": 1.0e9,
+        "weighted_value_after": 1.2e9,
+    }
+
+
+@pytest.mark.parametrize(
+    ("mutate", "fragment"),
+    [
+        (lambda r: r["rows_rewritten_by_region"].pop("W92000004"), "rewrites regions"),
+        (lambda r: r["rows_rewritten_by_region"].update(E12000007=0), "no row"),
+        (lambda r: r.update(rows=40), "more rows"),
+        (lambda r: r.update(sources_at_cap=1), "value cap"),
+        (lambda r: r.update(knots_basis_year=2023), "basis year"),
+        (lambda r: r["ranking"].update(rank_basis="national"), "ranking basis"),
+        (lambda r: r.update(weighted_value_after=0.0), "not positive"),
+    ],
+)
+def test_regional_home_values_gate_holds_the_ranking_contract(mutate, fragment) -> None:
+    assert _passed(
+        _gate("uk_stage_regional_home_values_ranking", _home_values_receipt())
+    )
+    receipt = _home_values_receipt()
+    mutate(receipt)
+    result = _gate("uk_stage_regional_home_values_ranking", receipt)
+    assert not result.passed
+    assert any(fragment in failure for failure in result.failures), result.failures
+
+
+def _legacy_closure_receipt() -> dict:
+    return {
+        "stage": "uc_legacy_closure_take_up",
+        "p_basis": "spine_design_weights_great_britain",
+        "great_britain_weighted_share_claiming_at_closure": 0.8,
+        "combinations": {
+            "housing_benefit": {
+                "rate": 0.75,
+                "rate_source": "combination",
+                "rate_unreachable": False,
+                "support": "30+",
+            },
+            "jsa_income": {
+                "rate": 0.6,
+                "rate_source": "all_households",
+                "rate_unreachable": "<10",
+                "support": "<10",
+            },
+        },
+    }
+
+
+def test_legacy_closure_gate_reads_what_the_receipt_prints() -> None:
+    gate_id = "uk_stage_uc_legacy_closure_take_up_contract"
+    assert _passed(_gate(gate_id, _legacy_closure_receipt()))
+    # A thin drawn cohort prints its share withheld.
+    withheld = _legacy_closure_receipt()
+    withheld["great_britain_weighted_share_claiming_at_closure"] = "<10"
+    assert _passed(_gate(gate_id, withheld))
+    for mutate, fragment in (
+        (lambda r: r.update(p_basis="calibrated_weights"), "measured on"),
+        (lambda r: r["combinations"]["housing_benefit"].update(rate=1.2), "rate 1.2"),
+        (
+            lambda r: r["combinations"]["jsa_income"].update(rate_source="guess"),
+            "takes its rate",
+        ),
+        (lambda r: r["combinations"]["jsa_income"].update(support="3"), "support band"),
+        (
+            lambda r: r["combinations"]["jsa_income"].update(rate_unreachable="2"),
+            "unreachable",
+        ),
+        (lambda r: r.update(combinations={}), "no combinations"),
+    ):
+        receipt = _legacy_closure_receipt()
+        mutate(receipt)
+        result = _gate(gate_id, receipt)
+        assert not result.passed
+        assert any(fragment in failure for failure in result.failures), result.failures

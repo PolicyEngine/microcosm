@@ -95,6 +95,12 @@ def uk_stage_health_gate(
         return _bus_support_pricing_gate(stage, evidence, parameters)
     if check == "property_components":
         return _property_components_gate(stage, evidence, parameters)
+    if check == "property_purchases":
+        return _property_purchases_gate(stage, evidence, parameters)
+    if check == "regional_home_values":
+        return _regional_home_values_gate(stage, evidence, parameters)
+    if check == "legacy_closure_take_up":
+        return _legacy_closure_take_up_gate(stage, evidence, parameters)
     return GateResult(
         name="stage_health",
         passed=False,
@@ -3671,6 +3677,214 @@ def _high_value_home_support_gate(
         "mass_deviation": deviation,
         "regions_with_owners": regions_with_owners,
     }
+    if failures:
+        return _fail(stage, check, failures, details)
+    return _pass(stage, check, details)
+
+
+def _property_purchases_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """Each purchase kind meets HMRC's Stamp Tax totals as the stage contracts (#1308).
+
+    Every declared kind is drawn once. Its transactions meet HMRC's count
+    within the declared deviation (the events are drawn, so the count is near,
+    not exact); its value is HMRC's less the recorded shortfall, which the
+    stage refuses past one fifth, so the gate refuses past the declared share;
+    and the individuals' shares that carry the all-buyers totals onto
+    households are proper shares.
+    """
+
+    check = "property_purchases"
+    expected = sorted(str(kind) for kind in parameters["kinds"])
+    deviation = _finite_number(
+        parameters["maximum_transactions_relative_deviation"],
+        label=f"{stage}.maximum_transactions_relative_deviation",
+    )
+    maximum_shortfall = _finite_number(
+        parameters["maximum_value_shortfall_share"],
+        label=f"{stage}.maximum_value_shortfall_share",
+    )
+    failures: list[str] = []
+    details: dict[str, object] = {}
+    kinds = evidence.get("kinds")
+    if not isinstance(kinds, list):
+        kinds = []
+    drawn = sorted(
+        str(_mapping(kind, label=f"{stage}.kinds[]").get("property_type"))
+        for kind in kinds
+    )
+    if drawn != expected:
+        failures.append(f"{stage}: the receipt draws kinds {drawn}, not {expected}.")
+    for kind in kinds:
+        name = str(kind.get("property_type"))
+        target = _finite_number(
+            kind.get("target_transactions"), label=f"{stage}.{name}.target_transactions"
+        )
+        fitted = _finite_number(
+            kind.get("fitted_transactions"), label=f"{stage}.{name}.fitted_transactions"
+        )
+        shortfall = _finite_number(
+            kind.get("value_shortfall_share"),
+            label=f"{stage}.{name}.value_shortfall_share",
+        )
+        target_value = _finite_number(
+            kind.get("target_value"), label=f"{stage}.{name}.target_value"
+        )
+        fitted_value = _finite_number(
+            kind.get("fitted_value"), label=f"{stage}.{name}.fitted_value"
+        )
+        relative = fitted / target - 1.0 if target > 0 else math.inf
+        details[name] = {
+            "transactions_relative_deviation": relative,
+            "value_shortfall_share": shortfall,
+        }
+        if abs(relative) > deviation:
+            failures.append(
+                f"{stage}: {name} draws {relative:+.4f} of HMRC's transactions "
+                f"(limit {deviation})."
+            )
+        if not 0.0 <= shortfall <= maximum_shortfall:
+            failures.append(
+                f"{stage}: {name} falls {shortfall:.4f} short of HMRC's value "
+                f"(limit {maximum_shortfall})."
+            )
+        expected_value = target_value * (1.0 - shortfall)
+        if not math.isclose(fitted_value, expected_value, rel_tol=1e-9, abs_tol=1e-6):
+            failures.append(
+                f"{stage}: {name} fits value {fitted_value:.6g}, not HMRC's less "
+                f"the recorded shortfall ({expected_value:.6g})."
+            )
+    derivation = evidence.get("derivation")
+    shares = {}
+    if isinstance(derivation, Mapping):
+        shares = {
+            key: value for key, value in derivation.items() if key.endswith("_share")
+        }
+    if not shares:
+        failures.append(f"{stage}: the receipt carries no individuals' shares.")
+    for key, value in shares.items():
+        share = _finite_number(value, label=f"{stage}.derivation.{key}")
+        if not 0.0 < share <= 1.0:
+            failures.append(f"{stage}: derivation {key} is {share}, not a share.")
+    if failures:
+        return _fail(stage, check, failures, details)
+    return _pass(stage, check, details)
+
+
+def _regional_home_values_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """Home values are re-ranked in every region on the declared knots (#1308).
+
+    Every declared region has rewritten rows and no more than the stage's
+    rows; no source sits at the value cap beyond the declared count; the knots
+    are the declared basis year and the ranking the declared basis; and the
+    weighted value stays positive on both sides of the stage.
+    """
+
+    check = "regional_home_values"
+    regions = sorted(str(region) for region in parameters["regions"])
+    failures: list[str] = []
+    rewritten = evidence.get("rows_rewritten_by_region")
+    if not isinstance(rewritten, Mapping):
+        rewritten = {}
+    if sorted(rewritten) != regions:
+        failures.append(
+            f"{stage}: the receipt rewrites regions {sorted(rewritten)}, not {regions}."
+        )
+    counts = {str(region): int(count) for region, count in rewritten.items()}
+    empty = sorted(region for region, count in counts.items() if count <= 0)
+    if empty:
+        failures.append(f"{stage}: no row is rewritten in {empty}.")
+    rows = int(evidence.get("rows", 0))
+    if sum(counts.values()) > rows:
+        failures.append(f"{stage}: more rows are rewritten than the stage carries.")
+    at_cap = int(evidence.get("sources_at_cap", -1))
+    maximum_at_cap = int(parameters["maximum_sources_at_cap"])
+    if not 0 <= at_cap <= maximum_at_cap:
+        failures.append(
+            f"{stage}: {at_cap} sources sit at the value cap (limit {maximum_at_cap})."
+        )
+    if evidence.get("knots_basis_year") != parameters["knots_basis_year"]:
+        failures.append(
+            f"{stage}: the knots' basis year is {evidence.get('knots_basis_year')!r}, "
+            f"not {parameters['knots_basis_year']!r}."
+        )
+    ranking = evidence.get("ranking")
+    basis = ranking.get("rank_basis") if isinstance(ranking, Mapping) else None
+    if basis != parameters["rank_basis"]:
+        failures.append(
+            f"{stage}: the ranking basis is {basis!r}, not {parameters['rank_basis']!r}."
+        )
+    for side in ("weighted_value_before", "weighted_value_after"):
+        value = _finite_number(evidence.get(side), label=f"{stage}.{side}")
+        if value <= 0.0:
+            failures.append(f"{stage}: {side} is not positive.")
+    details = {"regions": regions, "sources_at_cap": at_cap}
+    if failures:
+        return _fail(stage, check, failures, details)
+    return _pass(stage, check, details)
+
+
+#: The support bands the take-up receipts print (receipt_counts).
+_SUPPORT_BANDS = frozenset({"<10", "10-29", "30+"})
+
+
+def _legacy_closure_take_up_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """The Move to UC draw records a rate and its basis for every combination (#1308).
+
+    The receipt withholds what a thin combination realizes, so the gate holds
+    the contract it can read: the share is measured on the declared basis,
+    every combination's rate is a probability from a declared source, its
+    support is a printed band, and its unreachable flag is a boolean, a
+    withheld "<10" or absent; the share claiming at closure is a share.
+    """
+
+    check = "legacy_closure_take_up"
+    sources = {str(source) for source in parameters["rate_sources"]}
+    failures: list[str] = []
+    if evidence.get("p_basis") != parameters["p_basis"]:
+        failures.append(
+            f"{stage}: the share is measured on {evidence.get('p_basis')!r}, not "
+            f"{parameters['p_basis']!r}."
+        )
+    combinations = evidence.get("combinations")
+    if not isinstance(combinations, Mapping) or not combinations:
+        failures.append(f"{stage}: the receipt carries no combinations.")
+        combinations = {}
+    for name, combination in combinations.items():
+        combination = _mapping(combination, label=f"{stage}.combinations.{name}")
+        rate = _finite_number(combination.get("rate"), label=f"{stage}.{name}.rate")
+        if not 0.0 <= rate <= 1.0:
+            failures.append(f"{stage}: {name} draws at rate {rate}.")
+        if combination.get("rate_source") not in sources:
+            failures.append(
+                f"{stage}: {name} takes its rate from "
+                f"{combination.get('rate_source')!r}."
+            )
+        if combination.get("support") not in _SUPPORT_BANDS:
+            failures.append(f"{stage}: {name} prints no support band.")
+        flag = combination.get("rate_unreachable")
+        if not (flag is None or isinstance(flag, bool) or flag == "<10"):
+            failures.append(f"{stage}: {name} flags {flag!r} as unreachable.")
+    # A drawn cohort on fewer than ten sources prints the share withheld.
+    printed = evidence.get("great_britain_weighted_share_claiming_at_closure")
+    if printed != "<10":
+        share = _finite_number(
+            printed, label=f"{stage}.great_britain_weighted_share_claiming_at_closure"
+        )
+        if not 0.0 <= share <= 1.0:
+            failures.append(f"{stage}: the share claiming at closure is {share}.")
+    details = {"combinations": len(combinations)}
     if failures:
         return _fail(stage, check, failures, details)
     return _pass(stage, check, details)

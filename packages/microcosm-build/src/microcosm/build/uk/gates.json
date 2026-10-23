@@ -800,6 +800,68 @@
       "notes": "Stage-time invariants over the #791 relationship receipt: exactly one HEAD per household agreeing with hrpid and hrpnum, contiguous person numbers, no person with two partners, no unmapped relhrp code, family index and enum domains consistent, and the ten-cell household-type partition covering every household exactly once. The grid reciprocity tolerance is the reviewed 2024-25 tape count; a re-issued tape with a different count refuses for review."
     },
     {
+      "id": "uk_stage_regional_home_values_ranking",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "regional_home_values",
+        "check": "regional_home_values",
+        "regions": [
+          "E12000001",
+          "E12000002",
+          "E12000003",
+          "E12000004",
+          "E12000005",
+          "E12000006",
+          "E12000007",
+          "E12000008",
+          "E12000009",
+          "W92000004"
+        ],
+        "maximum_sources_at_cap": 0,
+        "knots_basis_year": 2024,
+        "rank_basis": "weighted_midpoint_within_frs_region"
+      },
+      "notes": "Stage-time gate over the regional home-values receipt (microcosm#1308, gated with the next policyengine-uk bump on María's ruling of 2026-10-17): every English region and Wales has rows re-ranked on the regional knots, no more rows are rewritten than the stage carries, no source sits at the value cap, the knots are the 2024 basis and the ranking is the weighted midpoint within each FRS region, and the weighted value stays positive before and after the stage."
+    },
+    {
+      "id": "uk_stage_property_purchases_fit",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "property_purchases",
+        "check": "property_purchases",
+        "kinds": [
+          "additional_residential",
+          "non_residential"
+        ],
+        "maximum_transactions_relative_deviation": 0.05,
+        "maximum_value_shortfall_share": 0.2
+      },
+      "notes": "Stage-time gate over the property purchases receipt (microcosm#1308, gated with the next policyengine-uk bump on María's ruling of 2026-10-17): the additional-dwelling and non-residential kinds are each drawn once; each draws HMRC's Stamp Tax transactions within 5 percent (the events are drawn, so the count is near, not exact); each fits HMRC's value less its recorded shortfall, which may not pass one fifth, the floor the stage itself refuses below; and the individuals' shares of HMRC's all-buyers totals are proper shares."
+    },
+    {
+      "id": "uk_stage_uc_legacy_closure_take_up_contract",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "uc_legacy_closure_take_up",
+        "check": "legacy_closure_take_up",
+        "p_basis": "spine_design_weights_great_britain",
+        "rate_sources": [
+          "combination",
+          "all_households"
+        ]
+      },
+      "notes": "Stage-time gate over the Move to UC take-up receipt (microcosm#1308, gated with the next policyengine-uk bump on María's ruling of 2026-10-17). The receipt withholds what a thin combination realizes, so the gate holds the contract it can read: the share is measured at the spine's design weights over Great Britain, every combination's rate is a probability taken from its combination or from all households, its support is a printed band, its unreachable flag is a boolean, a withheld \"<10\" or absent, and the share claiming at closure is a share or withheld."
+    },
+    {
       "id": "uk_release_input_coverage",
       "gate": "release_input_coverage",
       "phase": "terminal",

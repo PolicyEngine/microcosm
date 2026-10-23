@@ -133,6 +133,9 @@ UK_SPINE_GATE_SCOPE = (
     "uk_stage_student_loans_realization",
     "uk_stage_age_tail_targets",
     "uk_stage_frs_relationships_composition",
+    "uk_stage_regional_home_values_ranking",
+    "uk_stage_property_purchases_fit",
+    "uk_stage_uc_legacy_closure_take_up_contract",
     # Weight-independent like the BRMA enum below, and its column exists from
     # frs_relationships onward (#791).
     "uk_ons_household_type_enum_domain",

@@ -1480,6 +1480,9 @@ class TestUKGatesManifest:
             "uk_stage_student_loans_realization",
             "uk_stage_age_tail_targets",
             "uk_stage_frs_relationships_composition",
+            "uk_stage_regional_home_values_ranking",
+            "uk_stage_property_purchases_fit",
+            "uk_stage_uc_legacy_closure_take_up_contract",
             "uk_release_input_coverage",
             "uk_degenerate_release_surface",
             "uk_zero_weight_strata",
@@ -1605,6 +1608,9 @@ class TestUKGatesManifest:
             "uk_stage_student_loans_realization",
             "uk_stage_age_tail_targets",
             "uk_stage_frs_relationships_composition",
+            "uk_stage_regional_home_values_ranking",
+            "uk_stage_property_purchases_fit",
+            "uk_stage_uc_legacy_closure_take_up_contract",
             "uk_weights_audit",
             # The #970 projection fence: a seam that cannot project cannot
             # certify the candidate's sub-exempt gainers.

@@ -213,13 +213,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "cf7df0ce75fcb6b66cdba6f706ed777aca9550a966f364cef6c3c2c5f7780813"
+    "19122687709812d560a5e1e698326d84d05d269f78956d0169f300da4fe922ce"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "cb12e74aed6397667b17d5cf770161cf01df721f796ddc244ae9b6945dcf3605"
+    "e37ac71ddeecf69128e920149b77aa49670009a531fa9ff0247fc06838aadb79"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "fcebd763a4e9c427615ca935b019de43bc49e7dffbcece54181c21576bdcc372"
+    "94c867d1985651196cf3cbed2523f9bf8ae931484e1abcc847360e4768eca56e"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "6a179222c6b6058ad9caacfd347f7bdb8cb98a62237b50d1fc1136df09337251"
@@ -325,6 +325,21 @@ UK_GATE_BATTERY_ENTRIES = {
         None,
     ),
     "uk_stage_student_loans_realization": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_regional_home_values_ranking": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_property_purchases_fit": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_uc_legacy_closure_take_up_contract": (
         "stage_health",
         "transferred",
         None,
@@ -1395,6 +1410,9 @@ def _gate_battery_payload(
         "uk_stage_cgt_incidence_anchor_composition": "cgt_incidence_anchor",
         "uk_stage_salary_sacrifice_realization": "salary_sacrifice",
         "uk_stage_student_loans_realization": "student_loans",
+        "uk_stage_regional_home_values_ranking": "regional_home_values",
+        "uk_stage_property_purchases_fit": "property_purchases",
+        "uk_stage_uc_legacy_closure_take_up_contract": "uc_legacy_closure_take_up",
         "uk_stage_age_tail_targets": "age_tail",
         "uk_stage_frs_relationships_composition": "frs_relationships",
     }
