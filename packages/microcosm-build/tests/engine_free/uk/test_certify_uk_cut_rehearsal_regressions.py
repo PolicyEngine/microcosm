@@ -370,8 +370,114 @@ class RunnerTests(unittest.TestCase):
                 ],
             )
 
+    def test_certification_changes_preserve_auxiliary_untracked_files(self):
+        manifest = "src/policyengine/data/bundle/manifest.json"
+        changelog = f"changelog.d/certify-uk-{TAG}.changed.md"
+        with patch.object(
+            runner.subprocess,
+            "check_output",
+            side_effect=[
+                f"pyproject.toml\0{manifest}\0",
+                f"{changelog}\0data\0operator-notes.md\0"
+                "src/policyengine/data/bundle/operator-private.json\0"
+                "tests/fixtures/household_calculator_snapshots/operator-helper.json\0",
+            ],
+        ):
+            paths = runner.certification_changes(Path.cwd(), TAG)
+        self.assertEqual(paths, sorted(["pyproject.toml", manifest, changelog]))
+
+    def test_certification_changes_refuse_unrelated_tracked_edits(self):
+        with patch.object(
+            runner.subprocess,
+            "check_output",
+            return_value="src/policyengine/core/simulation.py\0",
+        ):
+            with self.assertRaisesRegex(runner.CertifyError, "unrelated tracked"):
+                runner.certification_changes(Path.cwd(), TAG)
+
+    def test_resume_validates_identity_and_preserves_unfinished_generated_files(self):
+        for problem in (
+            None,
+            "branch",
+            "registration",
+            "owner",
+            "head",
+            "merge",
+            "tracked",
+            "cut",
+        ):
+            with self.subTest(problem=problem), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                repo, worktree = root / "repo", root / "worktree"
+                repo.mkdir()
+                worktree.mkdir()
+                branch, base = "certify-uk-a133f37a", "b" * 40
+                relative = "src/policyengine/data/bundle/manifest.json"
+                path = worktree / relative
+                path.parent.mkdir(parents=True)
+                path.write_text(
+                    json.dumps(
+                        {
+                            "data_releases": {
+                                "uk": {
+                                    "data_package": {
+                                        "release_manifest_revision": "another-cut"
+                                        if problem == "cut"
+                                        else TAG
+                                    }
+                                }
+                            }
+                        }
+                    )
+                )
+                original = path.read_bytes()
+
+                def output(argv, *, cwd, **kwargs):
+                    if argv[1:3] == ["worktree", "list"]:
+                        location = (
+                            root / "elsewhere"
+                            if problem == "registration"
+                            else worktree
+                        )
+                        registered_branch = "other" if problem == "branch" else branch
+                        return f"worktree {location}\0HEAD {base}\0branch refs/heads/{registered_branch}\0\0"
+                    if argv[1:] == ["rev-parse", "--git-common-dir"]:
+                        if problem == "owner" and cwd == worktree:
+                            return str(root / "other/.git")
+                        return str(repo / ".git")
+                    if argv[1:] == ["rev-parse", "HEAD"]:
+                        return "c" * 40 if problem == "head" else base
+                    if argv[1:3] == ["ls-files", "--unmerged"]:
+                        return "unmerged" if problem == "merge" else ""
+                    if argv[1:3] == ["diff", "--name-only"]:
+                        return (
+                            "README.md\0" if problem == "tracked" else relative + "\0"
+                        )
+                    if argv[1:3] == ["ls-files", "--others"]:
+                        return "data\0operator-notes.md\0"
+                    self.fail(f"unexpected validation command: {argv}")
+
+                with (
+                    patch.object(runner.subprocess, "check_output", side_effect=output),
+                    patch.object(runner.subprocess, "run") as mutation,
+                ):
+                    if problem:
+                        with self.assertRaises(runner.CertifyError):
+                            runner.validate_resume_worktree(
+                                repo, worktree, branch, base, TAG
+                            )
+                    else:
+                        self.assertEqual(
+                            runner.validate_resume_worktree(
+                                repo, worktree, branch, base, TAG
+                            ),
+                            [relative],
+                        )
+                    mutation.assert_not_called()
+                self.assertEqual(path.read_bytes(), original)
+
     def run_mock_pipeline(
-        self, *, pytest_code=0, uc_code=0, receipt=None, call_details=None
+        self, *, pytest_code=0, uc_code=0, receipt=None, call_details=None, resume=False
     ):
         if receipt is None and uc_code == 0:
             receipt = {
@@ -387,6 +493,10 @@ class RunnerTests(unittest.TestCase):
         root = Path(tmp.name)
         worktree = root / "certification"
         bundle = {"data_releases": {"uk": {"default_dataset": "candidate"}}}
+        if resume:
+            path = worktree / "src/policyengine/data/bundle/manifest.json"
+            path.parent.mkdir(parents=True)
+            path.write_text(json.dumps(bundle))
         args = runner.parse(
             [
                 "--national-tag",
@@ -400,6 +510,7 @@ class RunnerTests(unittest.TestCase):
                 str(worktree),
                 "--skip-writer-check",
                 "offline regression",
+                *(["--resume-worktree"] if resume else []),
             ]
         )
         calls = []
@@ -448,6 +559,12 @@ class RunnerTests(unittest.TestCase):
                 "check_test_temp_directory",
                 return_value=root / "isolated-test-temp",
             ),
+            patch.object(runner, "validate_resume_worktree", return_value=[]),
+            patch.object(
+                runner,
+                "certification_changes",
+                return_value=["src/policyengine/data/bundle/manifest.json"],
+            ),
         ):
             result = runner.certify(args)
         return result, calls, root
@@ -460,6 +577,16 @@ class RunnerTests(unittest.TestCase):
         )
         worktree_call = next(c for c in calls if c[:3] == ["git", "worktree", "add"])
         self.assertEqual(worktree_call[-1], "immutable-sha")
+
+    def test_resume_replays_without_creating_or_resetting_worktree(self):
+        result, calls, _ = self.run_mock_pipeline(resume=True)
+        self.assertEqual(result, 0)
+        self.assertFalse(any(call[:3] == ["git", "worktree", "add"] for call in calls))
+        self.assertFalse(any(call[:2] == ["git", "reset"] for call in calls))
+        self.assertIn(
+            ["git", "add", "--", "src/policyengine/data/bundle/manifest.json"], calls
+        )
+        self.assertNotIn(["git", "add", "-A"], calls)
 
     def test_uc_operational_failure_refuses(self):
         with self.assertRaisesRegex(runner.CertifyError, "failed operationally"):
