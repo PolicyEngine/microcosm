@@ -59,7 +59,7 @@ def _fake_domains() -> dict[str, object]:
         "take_up": {
             "programs": [
                 {"id": f"program_{index:02d}", "variable": f"variable_{index:02d}"}
-                for index in range(17)
+                for index in range(engine_abi_module.US_TAKE_UP_PROGRAM_COUNT)
             ]
         },
     }
@@ -75,7 +75,7 @@ def _fake_engine_contract() -> dict[str, dict[str, object]]:
             "consumers": [f"consumer_{index:02d}"],
             "engine_class": "data_seeded",
         }
-        for index in range(17)
+        for index in range(engine_abi_module.US_TAKE_UP_PROGRAM_COUNT)
     }
 
 
