@@ -350,20 +350,29 @@ def rewrite_regional_constants(
 
 
 _SURFACE_SCRIPT = (
-    "import json; from policyengine_uk import CountryTaxBenefitSystem as S; "
-    "s = S(); print(json.dumps({'all': sorted(s.variables), 'inputs': sorted("
-    "n for n, v in s.variables.items() if v.is_input_variable())}))"
+    "import json; from policyengine_uk import variables; "
+    "print(json.dumps({'all': sorted(variables), 'inputs': sorted("
+    "n for n, v in variables.items() if v.is_input_variable())}))"
 )
 
 
 def model_surface(
-    version: str, *, timings: Path | None = None, resource_root: Path | None = None
+    version: str,
+    core_version: str | None = None,
+    *,
+    timings: Path | None = None,
+    resource_root: Path | None = None,
 ) -> dict[str, list[str]]:
-    """Every variable and every input variable of one policyengine-uk version."""
+    """Read the country's existing variable registry at the requested model/core."""
 
+    packages = ["--with", f"policyengine-uk=={version}"]
+    if core_version:
+        packages += ["--with", f"policyengine-core=={core_version}"]
     started = time.monotonic()
     timing = {
         "step": f"model_surface:{version}",
+        "model_version": version,
+        "core_version": core_version,
         "started_at": datetime.now(UTC).isoformat(),
         "returncode": None,
     }
@@ -373,7 +382,7 @@ def model_surface(
         result = subprocess.run(
         [
             "uv", "run", "--no-project", "--python", PEPY_PYTHON,
-            "--with", f"policyengine-uk=={version}", "python", "-c", _SURFACE_SCRIPT,
+            *packages, "python", "-c", _SURFACE_SCRIPT,
         ],
         capture_output=True,
         text=True,
@@ -645,8 +654,10 @@ def certify(args: argparse.Namespace) -> int:
                     "where policyengine.py supports one."
                 )
             surface = input_surface_change(
-                model_surface(dense.model, timings=timings, resource_root=repo),
-                model_surface(model, timings=timings, resource_root=repo),
+                model_surface(
+                    dense.model, dense.core, timings=timings, resource_root=repo
+                ),
+                model_surface(model, core, timings=timings, resource_root=repo),
             )
             if surface["dropped"] and not args.allow_dropped_columns:
                 raise CertifyError(

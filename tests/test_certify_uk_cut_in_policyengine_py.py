@@ -9,6 +9,7 @@ import sys
 import tempfile
 import types
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -139,6 +140,94 @@ class RunnerTests(unittest.TestCase):
             with self.assertRaises(runner.CertifyError):
                 runner.model_surface("2.147.2")
             spawn.assert_not_called()
+
+    def test_model_surface_pins_core_and_records_intended_pair(self):
+        surface = {"all": ["x"], "inputs": ["x"]}
+        with tempfile.TemporaryDirectory() as tmp:
+            timings = Path(tmp) / "timings.jsonl"
+            with (
+                patch.object(runner, "resource_guard", return_value={}),
+                patch.object(
+                    runner.subprocess,
+                    "run",
+                    return_value=subprocess.CompletedProcess(
+                        [], 0, json.dumps(surface), ""
+                    ),
+                ) as spawn,
+            ):
+                self.assertEqual(
+                    runner.model_surface("2.147.2", "3.33.3", timings=timings), surface
+                )
+            argv = spawn.call_args.args[0]
+            self.assertIn("policyengine-uk==2.147.2", argv)
+            self.assertIn("policyengine-core==3.33.3", argv)
+            record = json.loads(timings.read_text())
+            self.assertEqual(record["model_version"], "2.147.2")
+            self.assertEqual(record["core_version"], "3.33.3")
+
+    def test_surface_script_reuses_country_registry_without_construction(self):
+        constructor = Mock(side_effect=AssertionError("duplicate system construction"))
+        country = types.SimpleNamespace(
+            variables={
+                "input": types.SimpleNamespace(is_input_variable=lambda: True),
+                "formula": types.SimpleNamespace(is_input_variable=lambda: False),
+            },
+            CountryTaxBenefitSystem=constructor,
+        )
+        output = io.StringIO()
+        with (
+            patch.dict(sys.modules, {"policyengine_uk": country}),
+            redirect_stdout(output),
+        ):
+            exec(runner._SURFACE_SCRIPT, {})
+        constructor.assert_not_called()
+        self.assertEqual(
+            json.loads(output.getvalue()),
+            {"all": ["formula", "input"], "inputs": ["input"]},
+        )
+
+    def test_regional_surface_comparison_uses_both_cut_core_versions(self):
+        dense_tag = "microcosm-uk-2024-25-dense-20261019T000432Z-ee5c2dbe"
+        national = runner.CutVersions(TAG, "2.147.2", "3.33.3", ())
+        dense = runner.CutVersions(dense_tag, "2.132.6", "3.29.0", ())
+        with tempfile.TemporaryDirectory() as tmp:
+            args = runner.parse(
+                [
+                    "--national-tag",
+                    TAG,
+                    "--dense-tag",
+                    dense_tag,
+                    "--dry-run",
+                    "--base-ref",
+                    "local",
+                    "--pepy-repo",
+                    tmp,
+                    "--skip-writer-check",
+                    "offline regression",
+                    "--accept-regional-model-mismatch",
+                    "recorded rehearsal mismatch",
+                ]
+            )
+            with (
+                patch.object(
+                    runner.subprocess,
+                    "check_output",
+                    side_effect=[
+                        "microcosm",
+                        "immutable-sha",
+                        json.dumps({"data_releases": {"uk": {}}}),
+                    ],
+                ),
+                patch.object(runner, "read_cut", side_effect=[national, dense]),
+                patch.object(
+                    runner, "model_surface", return_value={"all": [], "inputs": []}
+                ) as probe,
+            ):
+                self.assertEqual(runner.certify(args), 0)
+            self.assertEqual(probe.call_args_list[0].args, (dense.model, dense.core))
+            self.assertEqual(
+                probe.call_args_list[1].args, (national.model, national.core)
+            )
 
     def test_workers_are_limited(self):
         for workers in (0, 5):
