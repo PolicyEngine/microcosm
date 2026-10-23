@@ -44,6 +44,7 @@ from pathlib import Path
 
 from microcosm.build.us_runtime.release_input_coverage import (
     REFERENCE_ECPS_LAYER_RENAMES,
+    REFERENCE_ECPS_RETIRED_LAYERS,
     project_ecps_parity_known_gap_names,
 )
 
@@ -170,7 +171,7 @@ POST_REFERENCE_COLUMN_NOTES = {
         "self-care difficulty item PEDISDRS by the adult_care_inputs "
         "base-builder stage. Also read by SNAP/Medicaid work-requirement "
         "logic and multiple state dependent-care formulas in PolicyEngine-US "
-        "2.2.1. "
+        "2.60.4. "
         "Currently absent — the intended red gate until the next base "
         "rebuild carries the stage through."
     ),
@@ -178,19 +179,19 @@ POST_REFERENCE_COLUMN_NOTES = {
         "ASEC reported WIC receipt (WICYN == 1), stored on the reporting "
         "adult as her SPM unit's receipt carrier by "
         "cps_carried.derive_us_cps_carried_inputs; a formula-less monthly "
-        "boolean person input in PolicyEngine-US 2.2.1. " + _RECEIPT_INPUT_NOTE_TAIL
+        "boolean person input in PolicyEngine-US 2.60.4. " + _RECEIPT_INPUT_NOTE_TAIL
     ),
     "receives_snap": (
         "ASEC reported SNAP receipt (maximum member SPM_SNAPSUB > 0 per SPM "
         "unit), carried by cps_carried.derive_us_cps_carried_inputs; a "
         "formula-less monthly boolean spm_unit input in PolicyEngine-US "
-        "2.2.1. " + _RECEIPT_INPUT_NOTE_TAIL
+        "2.60.4. " + _RECEIPT_INPUT_NOTE_TAIL
     ),
     "receives_tanf": (
         "ASEC reported TANF receipt (any member with PAW_VAL > 0 and PAW_TYP "
         "1 or 3, per SPM unit), carried by "
         "cps_carried.derive_us_cps_carried_inputs; a formula-less monthly "
-        "boolean spm_unit input in PolicyEngine-US 2.2.1. " + _RECEIPT_INPUT_NOTE_TAIL
+        "boolean spm_unit input in PolicyEngine-US 2.60.4. " + _RECEIPT_INPUT_NOTE_TAIL
     ),
 }
 
@@ -369,7 +370,7 @@ REFORM_COVERAGE_PROBES = [
             "without the adjacent-year carry the neutralization is a "
             "structural zero. The distinct "
             "previous_year_income_available flag has no formula consumer in "
-            "PolicyEngine-US 2.2.1 and remains protected by the hard "
+            "PolicyEngine-US 2.60.4 and remains protected by the hard "
             "non-default column gate."
         ),
         "issue": "PolicyEngine/microcosm#38",
@@ -873,11 +874,11 @@ REFORM_COVERAGE_PROBES = [
                     "student_loan_interest_ald",
                     "early_withdrawal_penalty",
                     "alimony_expense_ald",
-                    "educator_expense",
+                    "educator_expense_ald",
                     "health_savings_account_ald",
                     "self_employed_health_insurance_ald",
                     "self_employed_pension_contribution_ald",
-                    "traditional_ira_contributions",
+                    "traditional_ira_deduction",
                     "qualified_adoption_assistance_expense",
                     "us_bonds_for_higher_ed",
                     "specified_possession_income",
@@ -893,7 +894,7 @@ REFORM_COVERAGE_PROBES = [
         "binding_inputs": ["domestic_production_ald"],
         "min_abs_effect": 1_000_000.0,
         "reason": (
-            "PolicyEngine-US 2.2.1 excludes the former Section 199 deduction "
+            "PolicyEngine-US 2.60.4 excludes the former Section 199 deduction "
             "from current-law above-the-line deductions. This probe preserves "
             "the exact 2024 list and adds only domestic_production_ald, so "
             "baseline-minus-reform income tax must be positive. Without the "
@@ -934,7 +935,7 @@ REFORM_COVERAGE_PROBES = [
         "binding_inputs": ["salt_refund_income"],
         "min_abs_effect": 1_000_000.0,
         "reason": (
-            "PolicyEngine-US 2.2.1 includes salt_refund_income in the "
+            "PolicyEngine-US 2.60.4 includes salt_refund_income in the "
             "South Carolina, Idaho, and West Virginia subtraction lists. "
             "Neutralizing only that leaf removes the state subtraction and "
             "raises state income tax, so baseline-minus-reform state income "
@@ -993,19 +994,63 @@ REFORM_COVERAGE_PROBES = [
                 "2024-01-01.2024-12-31": [
                     "ssi",
                     "general_assistance",
+                    "ak_ssp",
+                    "al_ssp",
+                    "co_oap",
+                    "co_state_supplement",
+                    "ct_ssp_person",
+                    "dc_ossp",
+                    "de_ssp",
+                    "fl_oss",
+                    "ga_ssp_person",
+                    "hi_oss",
+                    "id_aabd",
+                    "in_ssp",
+                    "ks_sspp",
+                    "ky_ssp",
+                    "la_oss",
+                    "ma_state_supplement",
+                    "md_paa",
+                    "me_ssp",
+                    "mi_ssp_person",
+                    "mn_msa_person",
+                    "mo_ssp",
+                    "mt_ssp",
+                    "nc_sa",
+                    "ne_aabd",
+                    "nh_ssp",
+                    "nj_ssp",
+                    "nm_ssi_state_supplement",
+                    "nv_oss",
+                    "ny_ssp",
+                    "oh_rss",
+                    "ok_ssp",
+                    "pa_ssp",
+                    "ri_ssp",
+                    "sc_ssi_state_supplement",
+                    "sd_ssp",
+                    "tx_ssi_state_supplement",
+                    "ut_dhhs_ssp",
+                    "va_ag",
+                    "vt_aabd",
+                    "wa_ssp",
+                    "wi_ssp_countable_for_snap",
+                    "wy_ssp",
                     "pension_income",
                     "veterans_benefits",
-                    "unemployment_compensation",
+                    "total_unemployment_compensation",
                     "disability_benefits",
                     "workers_compensation",
                     "social_security",
-                    "retirement_distributions",
-                    "rental_income",
-                    "alimony_income",
-                    "financial_assistance",
                     "survivor_benefits",
+                    "retirement_distributions",
+                    "military_retirement_income",
+                    "snap_rental_income",
+                    "snap_farm_rent_income",
+                    "alimony_income",
                     "dividend_income",
                     "interest_income",
+                    "financial_assistance",
                     "miscellaneous_income",
                 ]
             }
@@ -1060,19 +1105,63 @@ REFORM_COVERAGE_PROBES = [
                 "2024-01-01.2024-12-31": [
                     "ssi",
                     "general_assistance",
+                    "ak_ssp",
+                    "al_ssp",
+                    "co_oap",
+                    "co_state_supplement",
+                    "ct_ssp_person",
+                    "dc_ossp",
+                    "de_ssp",
+                    "fl_oss",
+                    "ga_ssp_person",
+                    "hi_oss",
+                    "id_aabd",
+                    "in_ssp",
+                    "ks_sspp",
+                    "ky_ssp",
+                    "la_oss",
+                    "ma_state_supplement",
+                    "md_paa",
+                    "me_ssp",
+                    "mi_ssp_person",
+                    "mn_msa_person",
+                    "mo_ssp",
+                    "mt_ssp",
+                    "nc_sa",
+                    "ne_aabd",
+                    "nh_ssp",
+                    "nj_ssp",
+                    "nm_ssi_state_supplement",
+                    "nv_oss",
+                    "ny_ssp",
+                    "oh_rss",
+                    "ok_ssp",
+                    "pa_ssp",
+                    "ri_ssp",
+                    "sc_ssi_state_supplement",
+                    "sd_ssp",
+                    "tx_ssi_state_supplement",
+                    "ut_dhhs_ssp",
+                    "va_ag",
+                    "vt_aabd",
+                    "wa_ssp",
+                    "wi_ssp_countable_for_snap",
+                    "wy_ssp",
                     "pension_income",
                     "veterans_benefits",
-                    "unemployment_compensation",
+                    "total_unemployment_compensation",
                     "workers_compensation",
                     "social_security",
+                    "survivor_benefits",
                     "retirement_distributions",
-                    "rental_income",
+                    "military_retirement_income",
+                    "snap_rental_income",
+                    "snap_farm_rent_income",
                     "child_support_received",
                     "alimony_income",
-                    "financial_assistance",
-                    "survivor_benefits",
                     "dividend_income",
                     "interest_income",
+                    "financial_assistance",
                     "miscellaneous_income",
                 ]
             }
@@ -1099,19 +1188,63 @@ REFORM_COVERAGE_PROBES = [
                 "2024-01-01.2024-12-31": [
                     "ssi",
                     "general_assistance",
+                    "ak_ssp",
+                    "al_ssp",
+                    "co_oap",
+                    "co_state_supplement",
+                    "ct_ssp_person",
+                    "dc_ossp",
+                    "de_ssp",
+                    "fl_oss",
+                    "ga_ssp_person",
+                    "hi_oss",
+                    "id_aabd",
+                    "in_ssp",
+                    "ks_sspp",
+                    "ky_ssp",
+                    "la_oss",
+                    "ma_state_supplement",
+                    "md_paa",
+                    "me_ssp",
+                    "mi_ssp_person",
+                    "mn_msa_person",
+                    "mo_ssp",
+                    "mt_ssp",
+                    "nc_sa",
+                    "ne_aabd",
+                    "nh_ssp",
+                    "nj_ssp",
+                    "nm_ssi_state_supplement",
+                    "nv_oss",
+                    "ny_ssp",
+                    "oh_rss",
+                    "ok_ssp",
+                    "pa_ssp",
+                    "ri_ssp",
+                    "sc_ssi_state_supplement",
+                    "sd_ssp",
+                    "tx_ssi_state_supplement",
+                    "ut_dhhs_ssp",
+                    "va_ag",
+                    "vt_aabd",
+                    "wa_ssp",
+                    "wi_ssp_countable_for_snap",
+                    "wy_ssp",
                     "pension_income",
                     "veterans_benefits",
-                    "unemployment_compensation",
+                    "total_unemployment_compensation",
                     "disability_benefits",
                     "social_security",
+                    "survivor_benefits",
                     "retirement_distributions",
-                    "rental_income",
+                    "military_retirement_income",
+                    "snap_rental_income",
+                    "snap_farm_rent_income",
                     "child_support_received",
                     "alimony_income",
-                    "financial_assistance",
-                    "survivor_benefits",
                     "dividend_income",
                     "interest_income",
+                    "financial_assistance",
                     "miscellaneous_income",
                 ]
             }
@@ -1169,7 +1302,7 @@ REFORM_COVERAGE_PROBES = [
                     "health_savings_account_ald",
                     "self_employed_health_insurance_ald",
                     "self_employed_pension_contribution_ald",
-                    "traditional_ira_contributions",
+                    "traditional_ira_deduction",
                     "qualified_adoption_assistance_expense",
                     "us_bonds_for_higher_ed",
                     "specified_possession_income",
@@ -1201,11 +1334,11 @@ REFORM_COVERAGE_PROBES = [
                     "self_employment_tax_ald",
                     "student_loan_interest_ald",
                     "early_withdrawal_penalty",
-                    "educator_expense",
+                    "educator_expense_ald",
                     "health_savings_account_ald",
                     "self_employed_health_insurance_ald",
                     "self_employed_pension_contribution_ald",
-                    "traditional_ira_contributions",
+                    "traditional_ira_deduction",
                     "qualified_adoption_assistance_expense",
                     "us_bonds_for_higher_ed",
                     "specified_possession_income",
@@ -1455,7 +1588,7 @@ REFORM_COVERAGE_PROBES = [
             "structural zero. The "
             "other source-mapped housing leaves are enforced by their exact "
             "ASEC mappings and signal gate; household tenure_type has no "
-            "standalone PolicyEngine-US 2.2.1 formula consumer."
+            "standalone PolicyEngine-US 2.60.4 formula consumer."
         ),
         "issue": "PolicyEngine/microcosm#32",
     },
@@ -1506,10 +1639,12 @@ def build_manifest() -> dict:
     # resolve through the runtime rename register the parity gate uses, so a
     # gap filed under a historical spelling is excluded, and guarded, as the
     # live column the gate exempts.
+    # Layers whose input the pinned engine retired are not requirements; their
+    # live successor layer is graded in their place.
     populated_layers = {
         REFERENCE_ECPS_LAYER_RENAMES.get(name, name)
         for name, share in parity["nonzero_shares"].items()
-        if float(share) > 0.0
+        if float(share) > 0.0 and name not in REFERENCE_ECPS_RETIRED_LAYERS
     } | set(POST_REFERENCE_ECPS_REQUIRED_INPUTS)
     gap_register_names = project_ecps_parity_known_gap_names(register_gaps)
     known_gaps = {

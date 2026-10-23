@@ -97,7 +97,7 @@ def test_weighted_qrf_writes_only_puf_channel_and_allocates_by_employment(
 def test_policyengine_us_17646_contract_is_person_year_input_in_ald_graph() -> None:
     from policyengine_us import CountryTaxBenefitSystem
 
-    assert version("policyengine-us") == "2.2.1"
+    assert version("policyengine-us") == "2.60.4"
     system = CountryTaxBenefitSystem()
     variable = system.variables["educator_expense"]
 
@@ -105,14 +105,18 @@ def test_policyengine_us_17646_contract_is_person_year_input_in_ald_graph() -> N
     assert variable.entity.key == "person"
     assert str(variable.definition_period).lower() == "year"
     assert variable.default_value == 0
+    # policyengine-us 2.60 uprates dollar inputs by per-capita series.
     assert (
         variable.uprating
-        == "calibration.gov.cbo.income_by_source.adjusted_gross_income"
+        == "calibration.gov.cbo.income_by_source.adjusted_gross_income_per_capita"
     )
-    assert system.variables["above_the_line_deductions"].adds == (
-        "gov.irs.ald.deductions"
+    # 2.60 sums the listed deductions in a formula (head and spouse only)
+    # rather than through ``adds``, and lists the educator leaf as
+    # educator_expense_ald, which sums educator_expense_ald_person.
+    assert system.variables["above_the_line_deductions"].formulas
+    assert "educator_expense_ald" in system.parameters.gov.irs.ald.deductions(
+        "2024-01-01"
     )
-    assert "educator_expense" in system.parameters.gov.irs.ald.deductions("2024-01-01")
 
 
 def test_shipped_abolition_probe_has_positive_sign_and_binds_live() -> None:
@@ -132,7 +136,7 @@ def test_shipped_abolition_probe_has_positive_sign_and_binds_live() -> None:
     assert probe.min_abs_effect == 1_000_000.0
     deductions = probe.parameter_changes["gov.irs.ald.deductions"]
     assert set(deductions) == {"2024-01-01.2024-12-31"}
-    assert "educator_expense" not in deductions["2024-01-01.2024-12-31"]
+    assert "educator_expense_ald" not in deductions["2024-01-01.2024-12-31"]
 
     situation = {
         "people": {

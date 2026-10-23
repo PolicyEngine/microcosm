@@ -1789,20 +1789,6 @@ families:
     period: year
     requires_concepts: []
     output_coverage_scope: puf_clone
-  - name: first_home_mortgage_interest
-    entity: tax_unit
-    value_kind: amount
-    dtype: float
-    period: year
-    requires_concepts: []
-    output_coverage_scope: puf_clone
-  - name: second_home_mortgage_interest
-    entity: tax_unit
-    value_kind: amount
-    dtype: float
-    period: year
-    requires_concepts: []
-    output_coverage_scope: puf_clone
   - name: first_home_mortgage_origination_year
     entity: tax_unit
     value_kind: category
@@ -2717,13 +2703,6 @@ families:
     requires_concepts: []
     output_coverage_scope: whole_pool
   - name: first_home_mortgage_balance
-    entity: tax_unit
-    value_kind: amount
-    dtype: float
-    period: year
-    requires_concepts: []
-    output_coverage_scope: whole_pool
-  - name: first_home_mortgage_interest
     entity: tax_unit
     value_kind: amount
     dtype: float
@@ -4119,16 +4098,6 @@ producer_graph:
       tolerated_absence_receipts:
       - optional_input:primary_puf_qrf:tax_unit_output_passthrough:first_home_mortgage_balance
     - alternatives:
-      - - column: first_home_mortgage_interest
-          entity: tax_unit
-          value_kind: finite_numeric
-      column: '@effective:tax_unit_output_passthrough:first_home_mortgage_interest'
-      entity: tax_unit
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts:
-      - optional_input:primary_puf_qrf:tax_unit_output_passthrough:first_home_mortgage_interest
-    - alternatives:
       - - column: first_home_mortgage_origination_year
           entity: tax_unit
           value_kind: finite_numeric
@@ -4158,16 +4127,6 @@ producer_graph:
       required_scope: whole_pool
       tolerated_absence_receipts:
       - optional_input:primary_puf_qrf:tax_unit_output_passthrough:second_home_mortgage_balance
-    - alternatives:
-      - - column: second_home_mortgage_interest
-          entity: tax_unit
-          value_kind: finite_numeric
-      column: '@effective:tax_unit_output_passthrough:second_home_mortgage_interest'
-      entity: tax_unit
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts:
-      - optional_input:primary_puf_qrf:tax_unit_output_passthrough:second_home_mortgage_interest
     - alternatives:
       - - column: second_home_mortgage_origination_year
           entity: tax_unit
@@ -5271,11 +5230,9 @@ producer_graph:
             recipient_owned_candidate_overlap:
             - domestic_production_ald
             - first_home_mortgage_balance
-            - first_home_mortgage_interest
             - first_home_mortgage_origination_year
             - health_savings_account_ald
             - second_home_mortgage_balance
-            - second_home_mortgage_interest
             - second_home_mortgage_origination_year
             top_k: 100
             max_top_share: 0.75
@@ -33243,15 +33200,6 @@ producer_graph:
       required_scope: puf_clone
       tolerated_absence_receipts: []
     - alternatives:
-      - - column: first_home_mortgage_interest
-          entity: tax_unit
-          value_kind: finite_numeric
-      column: first_home_mortgage_interest
-      entity: tax_unit
-      producing_stage: primary_puf_qrf
-      required_scope: puf_clone
-      tolerated_absence_receipts: []
-    - alternatives:
       - - column: first_home_mortgage_origination_year
           entity: tax_unit
           value_kind: finite_numeric
@@ -33332,7 +33280,6 @@ producer_graph:
             - domestic_production_ald
             - unrecaptured_section_1250_gain
             - first_home_mortgage_balance
-            - first_home_mortgage_interest
             - first_home_mortgage_origination_year
             - health_savings_account_ald
   execution_receipt_contract:

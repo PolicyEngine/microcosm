@@ -496,35 +496,9 @@ def _materialize(builder, monkeypatch, frame, batch_size):
     return target_frame, registry, compilation, ledger
 
 
-
-
-
-
-
-
-
-
-
-
 _AGGREGATE_PROBE_TARGETS = (
     _variable("aggregate_probe_total", base_variable="aggregate_probe"),
 )
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 def _second_batch_drops_a_column(real):
@@ -547,10 +521,6 @@ def _one_value_short(real):
         return result
 
     return columns
-
-
-
-
 
 
 # ---------------------------------------------------------------------------
@@ -599,10 +569,6 @@ def _real_engine_frame() -> Frame:
     )
 
 
-
-
-
-
 def _medicaid_frame() -> Frame:
     """Four California parents with children; the first parent's earnings
     exceed the other three parents' earnings."""
@@ -639,8 +605,6 @@ def _medicaid_frame() -> Frame:
         US_SCHEMA,
         {"household": Weights(np.asarray([1.0, 2.0, 3.0, 4.0]), WeightKind.DESIGN)},
     )
-
-
 
 
 _POPULATION_AGGREGATE_MARKER = re.compile(
@@ -747,10 +711,9 @@ def _engine_population_aggregate_sources(
     return found
 
 
-
-
-# These inspected 2.2.1 formulas compare a record's status or geography with
-# parameter lists, literal lists or enum members, rather than another record.
+# These inspected formulas (policyengine-us 2.2.1, and those 2.60.4 adds)
+# compare a record's status or geography with parameter lists, literal
+# lists or enum members, rather than another record.
 _CONSTANT_MEMBERSHIP_FORMULAS = {
     "additional_senior_deduction_eligible_person",
     "ak_ccap_rate_region",
@@ -760,6 +723,7 @@ _CONSTANT_MEMBERSHIP_FORMULAS = {
     "ca_ala_general_assistance_immigration_status_eligible",
     "ca_calworks_child_care_immigration_status_eligible_person",
     "ca_cc_general_assistance_immigration_status_eligible",
+    "ca_cchip_eligible",
     "ca_marin_general_relief_immigration_status_eligible_person",
     "ca_oc_general_relief_immigration_status_eligible",
     "ca_riv_general_relief_immigration_status_eligible",
@@ -784,6 +748,7 @@ _CONSTANT_MEMBERSHIP_FORMULAS = {
     "il_hfs_immigration_status_eligible",
     "il_tanf_county_group",
     "il_tanf_immigration_status_eligible_person",
+    "in_eap",
     "in_ny_mctd_zone_2",
     "in_nyc",
     "is_aca_ptc_immigration_status_eligible",
@@ -792,9 +757,10 @@ _CONSTANT_MEMBERSHIP_FORMULAS = {
     "is_ca_medicaid_immigration_status_eligible",
     "is_ccdf_immigration_eligible_child",
     "is_chip_fcep_eligible_person",
+    "is_chip_immigration_status_eligible",
     "is_citizen_or_legal_immigrant",
-    "is_in_snap_abawd_waived_area",
     "is_medicaid_immigration_status_eligible",
+    "is_medicaid_lawfully_residing_option_eligible",
     "is_snap_gross_test_full_income_count_alien",
     "is_snap_immigration_status_eligible",
     "is_snap_prorated_income_member",
@@ -804,27 +770,37 @@ _CONSTANT_MEMBERSHIP_FORMULAS = {
     "ks_dcf_csfp_county_eligible",
     "ks_tanf_county_group",
     "ky_ccap_rate_region",
+    "local_sales_tax",
     "ma_ccfa_immigration_status_eligible",
     "ma_ccfa_region",
     "ma_dese_csfp_county_eligible",
     "md_ccs_region",
+    "md_meap",
     "me_ccap_region",
     "meets_ctc_child_identification_requirements",
     "meets_ctc_identification_requirements",
+    "meets_snap_qualified_alien_waiting_period",
     "mo_ccs_region",
+    "mo_ssp_immigration_status_eligible",
     "ms_ccpp_facility_location",
     "mt_tanf_immigration_status_eligible_person",
     "ne_child_care_subsidy_location",
     "nh_ccap_immigration_status_eligible_person",
+    "nh_ssp_eligible",
+    "nj_liheap_region",
     "ny_ccap_county_group",
+    "ny_ssp",
     "oh_ccap_county_rate_category",
+    "oh_liheap",
     "or_healthier_oregon_immigration_status_eligible",
+    "or_liheap_region",
     "overtime_income_deduction_ssn_requirement_met",
     "pa_ccw_region",
     "pa_ccw_stepparent_county_group",
     "pa_tanf_county_group",
     "sc_ccap_geography",
     "sd_cca_region",
+    "sd_liheap_region",
     "state_group",
     "state_itemized_deductions",
     "state_standard_deduction",
@@ -833,6 +809,7 @@ _CONSTANT_MEMBERSHIP_FORMULAS = {
     "tn_ccap_county_tier",
     "trump_dividend_eligible",
     "tx_ccs_workforce_board_region",
+    "va_ag_maximum_care_rate",
     "va_ccsp_income_eligible",
     "va_ccsp_locality_group",
     "va_ccsp_ready_region",
@@ -845,6 +822,8 @@ _CONSTANT_MEMBERSHIP_FORMULAS = {
     "wa_tanf_immigration_status_eligible",
     "wa_wccc_center_region",
     "wa_wccc_region",
+    "wi_cts_area_i",
+    "wi_cts_child_eligible",
     "wic_income_limit",
 }
 

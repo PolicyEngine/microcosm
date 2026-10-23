@@ -170,17 +170,16 @@ _DEFAULT_SUPPORT_CHANNELS = (
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
 )
 
+# policyengine-us 2.60 removed the tax-unit first/second_home_mortgage_interest
+# legs (policyengine-us#9605): the person-level home_mortgage_interest carries
+# the whole amount, and second-residence interest is its own person input.
 _US_PUF_E19200_LINEAGE_DONOR_COLUMNS = (
     "home_mortgage_interest",
-    "first_home_mortgage_interest",
-    "second_home_mortgage_interest",
     "interest_deduction",
 )
 US_PUF_DONOR_MORTGAGE_QUARANTINE_FIELDS = (
     "home_mortgage_interest",
     "investment_interest_expense",
-    "first_home_mortgage_interest",
-    "second_home_mortgage_interest",
     "interest_deduction",
 )
 
@@ -339,8 +338,6 @@ PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS: tuple[str, ...] = (
     "unrecaptured_section_1250_gain",
     "first_home_mortgage_balance",
     "second_home_mortgage_balance",
-    "first_home_mortgage_interest",
-    "second_home_mortgage_interest",
     "first_home_mortgage_origination_year",
     "second_home_mortgage_origination_year",
     "health_savings_account_ald",
@@ -478,8 +475,6 @@ _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS = frozenset(
         "health_savings_account_ald",
         "first_home_mortgage_balance",
         "second_home_mortgage_balance",
-        "first_home_mortgage_interest",
-        "second_home_mortgage_interest",
         "first_home_mortgage_origination_year",
         "second_home_mortgage_origination_year",
         *US_QBI_NONNEGATIVE_OUTPUT_COLUMNS,

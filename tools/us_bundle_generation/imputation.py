@@ -2061,13 +2061,15 @@ def _assert_invariants(
         by_stage.setdefault(str(family["stage"]), []).append(family)
     expected = {
         "gap_fill_stacked_spine": (13, 48),
-        "primary_puf_qrf": (1, 65),
-        "late_producer_dag": (19, 70),
+        # policyengine-us 2.60 retired the PUF QRF's two tax-unit
+        # first/second_home_mortgage_interest outputs (one of them late).
+        "primary_puf_qrf": (1, 63),
+        "late_producer_dag": (19, 69),
     }
     expected_dtypes = {
         "gap_fill_stacked_spine": {"bool": 20, "float": 27, "int": 1},
-        "primary_puf_qrf": {"bool": 8, "float": 55, "int": 2},
-        "late_producer_dag": {"bool": 17, "float": 50, "int": 1, "str": 2},
+        "primary_puf_qrf": {"bool": 8, "float": 53, "int": 2},
+        "late_producer_dag": {"bool": 17, "float": 49, "int": 1, "str": 2},
     }
     for stage, (family_count, target_count) in expected.items():
         rows = by_stage.get(stage, [])
@@ -2121,7 +2123,9 @@ def _assert_invariants(
         late_authored_output_count,
         len(tolerated_receipts),
     )
-    expected_graph_counts = (2744, 92, 227, 35, 0, 213)
+    # (2744, 92, 227, 35, 0, 213) before policyengine-us 2.60 retired the two
+    # first/second_home_mortgage_interest outputs and their passthroughs.
+    expected_graph_counts = (2741, 92, 224, 35, 0, 211)
     if graph_counts != expected_graph_counts:
         raise RuntimeError(
             "US producer graph input/output/absence counts changed: "

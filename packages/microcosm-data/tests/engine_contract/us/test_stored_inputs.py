@@ -24,8 +24,12 @@ def test_the_naming_convention_holds_for_the_installed_engine():
         assert variable.entity.key == "household"
         assert variable.value_type is bool
         assert variable.formulas
-    if metadata.version("policyengine-us") == "2.2.1":
-        assert (len(names), outside) == (6167, _US_POSTAL_CODES)
+    measured = {"2.2.1": 6167, "2.60.4": 6797}
+    if metadata.version("policyengine-us") in measured:
+        assert (len(names), outside) == (
+            measured[metadata.version("policyengine-us")],
+            _US_POSTAL_CODES,
+        )
 
 
 def test_the_register_is_consistent_with_the_installed_engine():
@@ -52,10 +56,23 @@ def test_the_1026_premises_hold_for_the_installed_engine():
     assert not wic.formulas
     for retired_or_construction in (
         "medicare_part_b_premiums",
-        "tax_unit_role_input",
         "filing_status_input",
     ):
         assert retired_or_construction not in variables
+    # policyengine-us 2.60 reads microunit's tax-unit roles and the ASEC
+    # parent pointers as inputs, so they left the register.
+    role = variables["tax_unit_role_input"]
+    assert (role.entity.key, role.default_value.name) == ("person", "UNSPECIFIED")
+    assert {"HEAD", "SPOUSE", "DEPENDENT"} <= set(role.possible_values.__members__)
+    assert not role.formulas
+    for pointer in ("parent_1_id", "parent_2_id"):
+        parent = variables[pointer]
+        assert (parent.entity.key, parent.value_type, parent.default_value) == (
+            "person",
+            int,
+            0,
+        )
+        assert not parent.formulas
     # medicare_part_b_premiums is a Person, YEAR, float input with no formula
     # in every policyengine-us version read from 1.452.0 to 1.670.2; its
     # replacement has that shape.
@@ -91,9 +108,9 @@ def test_the_1026_premises_hold_for_the_installed_engine():
 @pytest.mark.parametrize("name", sorted(_EXPECTED_VERDICTS))
 def test_each_examined_file_gets_its_expected_verdict(name):
     """The examined files, by their stored-column inventories, against the
-    installed engine: each refusal names exactly the stale inputs, one person
-    table line each, and every other model-named non-variable column the file
-    stores is a register entry."""
+    installed engine: each refusal names exactly the stale inputs, one line
+    each on the table that stores it, and every other model-named non-variable
+    column the file stores is a register entry."""
 
     engine = stored_inputs.installed_us_engine()
     tables = _inventories()[name]["tables"]
@@ -104,7 +121,10 @@ def test_each_examined_file_gets_its_expected_verdict(name):
     assert [_QUOTED.findall(line) for line in failures] == [
         [column] for column in refused
     ]
-    assert all("(person table)" in line for line in failures)
+    assert all(
+        f"({_REFUSED_COLUMN_TABLE[column]} table)" in line
+        for column, line in zip(refused, failures, strict=True)
+    )
     registered = {
         column
         for columns in tables.values()

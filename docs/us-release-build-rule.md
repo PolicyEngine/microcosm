@@ -32,8 +32,10 @@ release the certified default.
 
 A from-scratch attempt ran on main at `51c314382` on 15 and 16 September 2026
 and reached no release. The causes below were re-read on main at `d1196af10`.
-The engine lock that also blocked it is fixed: main resolves policyengine-us
-2.2.1, policyengine-core 3.32.5 and spm-calculator 1.0.0.
+The engine lock that also blocked it is fixed. Main resolved policyengine-us
+2.2.1, policyengine-core 3.32.5 and spm-calculator 1.0.0 from microcosm#936,
+and resolves policyengine-us 2.60.4, policyengine-core 3.33.3 and
+spm-calculator 1.0.0 from microcosm#1365.
 
 ### 1. No Chronicle feed on the build machine carries dimension labels
 

@@ -7,7 +7,7 @@ from test_support.microcosm_build.us_sipp_head_start import *
 def test_policyengine_us_2_2_1_head_start_is_zero_when_neutralized() -> None:
     from policyengine_us import CountryTaxBenefitSystem, Simulation
 
-    assert version("policyengine-us") == "2.2.1"
+    assert version("policyengine-us") == "2.60.4"
     variable = CountryTaxBenefitSystem().variables[_OUTPUT]
     assert variable.is_input_variable()
     assert variable.entity.key == "person"

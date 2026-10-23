@@ -44,7 +44,7 @@ import sys
 import time
 import tomllib
 import uuid
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from contextlib import contextmanager, nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
@@ -319,6 +319,7 @@ from microcosm.build.us_runtime.release_gate_preflight import (  # noqa: TC001
 )
 from microcosm.build.us_runtime.release_input_coverage import (
     REFERENCE_ECPS_LAYER_RENAMES,
+    REFERENCE_ECPS_RETIRED_LAYERS,
     project_ecps_parity_known_gap_names,
     us_release_input_coverage_signal_counts,
 )
@@ -911,10 +912,6 @@ US_HEALTH_INPUT_NONCONSTANT_COLUMNS = (
 US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS = {
     "takes_up_dc_ptc": ("DC PTC take-up imputation backlog; constant True."),
     "second_home_mortgage_balance": (
-        "Second-home mortgage decomposition not imputed; constant at the"
-        " engine default (PolicyEngine/microcosm#38)."
-    ),
-    "second_home_mortgage_interest": (
         "Second-home mortgage decomposition not imputed; constant at the"
         " engine default (PolicyEngine/microcosm#38)."
     ),
@@ -7542,6 +7539,37 @@ def _input_mass_reference_gate(
     )
 
 
+def _retire_ecps_reference_layers(
+    nonzero_shares: Mapping[str, float],
+    engine_inputs: Collection[str],
+) -> tuple[dict[str, float], dict[str, str]]:
+    """Drop the reference layers whose engine input the pinned engine removed.
+
+    Each retired layer (``REFERENCE_ECPS_RETIRED_LAYERS``) names the live
+    layer that carries its amount. The retirement applies only while the
+    engine defines the successor and not the retired input; anything else is
+    refused, because the register would then describe another engine.
+    Returns the kept layers and ``{retired: successor}`` for those dropped.
+    """
+
+    inputs = set(engine_inputs)
+    kept: dict[str, float] = {}
+    retired: dict[str, str] = {}
+    for name, share in nonzero_shares.items():
+        successor = REFERENCE_ECPS_RETIRED_LAYERS.get(str(name))
+        if successor is None:
+            kept[str(name)] = float(share)
+            continue
+        if str(name) in inputs or successor not in inputs:
+            raise ValueError(
+                f"eCPS parity reference layer {name!r} is registered as retired "
+                f"in favour of {successor!r}, but the installed engine "
+                f"{'still defines it' if str(name) in inputs else 'lacks the successor'}."
+            )
+        retired[str(name)] = successor
+    return kept, retired
+
+
 def _project_ecps_reference_layers(
     nonzero_shares: Mapping[str, float],
 ) -> tuple[dict[str, float], dict[str, str]]:
@@ -7630,9 +7658,10 @@ def _ecps_parity_gate(
     known_gaps = known_gaps if known_gaps is not None else load_ecps_parity_known_gaps()
     input_variables = _engine_input_variables()
     candidate_shares = us_nonzero_shares(base_frame, columns=input_variables)
-    reference_shares, applied_renames = _project_ecps_reference_layers(
-        reference.nonzero_shares
+    kept_shares, retired_layers = _retire_ecps_reference_layers(
+        reference.nonzero_shares, input_variables
     )
+    reference_shares, applied_renames = _project_ecps_reference_layers(kept_shares)
     # Exemptions resolve through the same register, so a historical-name entry
     # exempts (and goes stale or dormant on) the live layer it names.
     projected_gaps, applied_gap_renames = _project_ecps_known_gaps(known_gaps)
@@ -7645,6 +7674,7 @@ def _ecps_parity_gate(
     # The pinned reference predates engine input renames; its layers are graded
     # under the live names, and the projection is recorded, not hidden.
     details["reference_layer_renames"] = applied_renames
+    details["reference_layer_retirements"] = retired_layers
     details["known_gap_renames"] = applied_gap_renames
     details["reference"] = {
         "repo_id": reference.source.repo_id,
@@ -7730,7 +7760,8 @@ def _ecps_parity_gate(
 #                          itemizer-masked Table 2.1 target (~$186.3B aged)
 #                          pins the itemizer share and pulls the full column
 #                          down toward the band from $474-526B.
-#   first_home_mortgage_interest follows home_mortgage_interest (second-home
+#   first_home_mortgage_interest (retired in policyengine-us 2.60) followed
+#                          home_mortgage_interest (second-home
 #                          leg un-imputed / 0 per microcosm#38).
 #   taxable_interest_income ref $320.159B band [$160.079B, $480.238B]; the
 #                          microcosm#489 adjudication VINDICATED this

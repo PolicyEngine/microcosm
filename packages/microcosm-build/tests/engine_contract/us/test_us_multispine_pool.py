@@ -9,9 +9,9 @@ def test_simulation_projection_defaults_match_pinned_engine_surface() -> None:
     receipt = pool_engine_input_projection_receipt(PolicyEngineUSEngine())
 
     assert receipt == {
-        "engine_version": "2.2.1",
-        "input_count": 926,
-        "default_count": 925,
+        "engine_version": "2.60.4",
+        "input_count": 1074,
+        "default_count": 1073,
         "defaults_sha256": (POOL_ENGINE_INPUT_PROJECTION_CONTRACT.defaults_sha256),
     }
 
@@ -202,11 +202,11 @@ def test_derive_stage_keeps_whole_pool_qbi_reconciliation() -> None:
     derived = result.frame.table("person")
 
     assert result.receipt["operator_order"] == list(POOL_DERIVE_OPERATOR_ORDER)
-    assert result.receipt["remaining_stage_input_manifest"]["entry_count"] == 1059
+    assert result.receipt["remaining_stage_input_manifest"]["entry_count"] == 1250
     assert result.receipt["remaining_stage_input_manifest"]["stage_counts"] == {
         "derive": 34,
-        "seed": 33,
-        "simulate": 992,
+        "seed": 34,
+        "simulate": 1182,
     }
     assert (
         result.receipt["qbi_input_reconciliation"]["recipient_source_universe"][

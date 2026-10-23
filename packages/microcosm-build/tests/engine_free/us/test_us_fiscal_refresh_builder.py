@@ -14,6 +14,8 @@ import h5py
 import numpy as np
 import pandas as pd
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from microcosm.build.us_runtime import h5_io as builder_h5_io
 from microcosm.calibrate import (
@@ -16966,6 +16968,83 @@ def test_ecps_reference_projection_refuses_to_merge_two_layers() -> None:
     with pytest.raises(ValueError, match="would merge two layers"):
         builder._project_ecps_reference_layers(
             {"would_claim_wic": 1.0, "takes_up_wic_if_eligible": 0.4}
+        )
+
+
+def test_ecps_reference_layers_drop_the_retired_mortgage_legs() -> None:
+    """policyengine-us 2.60 removed the tax-unit first/second home mortgage
+    interest inputs; the person-level layer is graded in their place."""
+
+    builder = _load_builder_module()
+    shares = {
+        "first_home_mortgage_interest": 0.13,
+        "second_home_mortgage_interest": 0.0,
+        "home_mortgage_interest": 0.09,
+    }
+
+    kept, retired = builder._retire_ecps_reference_layers(
+        shares, {"home_mortgage_interest", "employment_income"}
+    )
+
+    assert kept == {"home_mortgage_interest": 0.09}
+    assert retired == {
+        "first_home_mortgage_interest": "home_mortgage_interest",
+        "second_home_mortgage_interest": "home_mortgage_interest",
+    }
+
+
+@settings(max_examples=50, deadline=None)
+@given(
+    shares=st.dictionaries(
+        st.sampled_from(
+            [
+                "first_home_mortgage_interest",
+                "second_home_mortgage_interest",
+                "home_mortgage_interest",
+                "employment_income",
+                "would_claim_wic",
+            ]
+        ),
+        st.floats(min_value=0.0, max_value=1.0, allow_nan=False),
+    )
+)
+def test_ecps_reference_retirement_partitions_every_layer(shares) -> None:
+    """Property: every layer is kept or retired, never both, and only a
+    registered layer is retired, onto its registered successor."""
+
+    builder = _load_builder_module()
+    kept, retired = builder._retire_ecps_reference_layers(
+        shares, {"home_mortgage_interest", "employment_income", "takes_up_wic"}
+    )
+
+    assert set(kept) | set(retired) == set(shares)
+    assert not set(kept) & set(retired)
+    assert retired == {
+        name: builder.REFERENCE_ECPS_RETIRED_LAYERS[name]
+        for name in shares
+        if name in builder.REFERENCE_ECPS_RETIRED_LAYERS
+    }
+    assert all(kept[name] == shares[name] for name in kept)
+
+
+@pytest.mark.parametrize(
+    ("engine_inputs", "message"),
+    [
+        (
+            {"first_home_mortgage_interest", "home_mortgage_interest"},
+            "still defines it",
+        ),
+        ({"employment_income"}, "lacks the successor"),
+    ],
+)
+def test_ecps_reference_retirement_refuses_an_engine_it_does_not_describe(
+    engine_inputs: set[str], message: str
+) -> None:
+    builder = _load_builder_module()
+
+    with pytest.raises(ValueError, match=message):
+        builder._retire_ecps_reference_layers(
+            {"first_home_mortgage_interest": 0.13}, engine_inputs
         )
 
 

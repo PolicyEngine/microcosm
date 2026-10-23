@@ -1307,6 +1307,16 @@ columns:
     nullable: false
     domain: source_operator_medicare_take_up
     public_stability: internal
+- key: person.takes_up_medicare_part_d_if_eligible
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: take_up_rate_unsourced
+    public_stability: internal
 - key: person.takes_up_ssi_if_eligible
   contract:
     entity: person
@@ -1690,17 +1700,6 @@ columns:
     domain: puf_tax_itemization
     public_stability: internal
     unit_waiver: policyengine_us_unit_unavailable
-- key: tax_unit.first_home_mortgage_interest
-  contract:
-    entity: tax_unit
-    dtype: float64
-    unit: unit_not_declared_by_engine_metadata
-    definition_period: year
-    vintage: vintage:target_2024
-    nullable: false
-    domain: puf_tax_itemization
-    public_stability: internal
-    unit_waiver: policyengine_us_unit_unavailable
 - key: tax_unit.first_home_mortgage_origination_year
   contract:
     entity: tax_unit
@@ -1724,17 +1723,6 @@ columns:
     public_stability: internal
     unit_waiver: policyengine_us_unit_unavailable
 - key: tax_unit.second_home_mortgage_balance
-  contract:
-    entity: tax_unit
-    dtype: float64
-    unit: unit_not_declared_by_engine_metadata
-    definition_period: year
-    vintage: vintage:target_2024
-    nullable: false
-    domain: primary_puf_qrf_nontransfer
-    public_stability: internal
-    unit_waiver: policyengine_us_unit_unavailable
-- key: tax_unit.second_home_mortgage_interest
   contract:
     entity: tax_unit
     dtype: float64

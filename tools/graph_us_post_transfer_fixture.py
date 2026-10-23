@@ -59,11 +59,7 @@ _DEFAULT_OUTPUT = (
     / "us_post_transfer"
 )
 _POOL_TOOL_TEST = (
-    _REPOSITORY
-    / "packages"
-    / "microcosm-build"
-    / "tests"
-    / "test_us_multispine_pool_tool.py"
+    _REPOSITORY / "test_support" / "microcosm_build" / "us_multispine_pool_tool.py"
 )
 _SAMPLE_SEED = 578
 _SOURCE_HOUSEHOLDS = 100
@@ -138,6 +134,9 @@ def _write_root_csv(
 
 def _pool_tool_test_helpers() -> ModuleType:
     name = "graph_us_post_transfer_pool_tool_test_helpers"
+    # The helpers import the repository's test_support package.
+    if str(_REPOSITORY) not in sys.path:
+        sys.path.insert(0, str(_REPOSITORY))
     spec = importlib.util.spec_from_file_location(name, _POOL_TOOL_TEST)
     if spec is None or spec.loader is None:
         raise RuntimeError(

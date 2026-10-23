@@ -182,6 +182,7 @@ def _pregnancy_structural_policy_identity(*, enabled: bool) -> dict[str, object]
     ).hexdigest()
     return payload
 
+
 _IMMIGRATION_STATUS_TARGETS = (
     "ssn_card_type",
     "immigration_status_str",
@@ -438,7 +439,6 @@ _DECLARED_ACS_TRANSFER_TARGET_FAMILIES: dict[str, dict[str, tuple[str, ...]]] = 
             if target
             not in {
                 "second_home_mortgage_balance",
-                "second_home_mortgage_interest",
                 "second_home_mortgage_origination_year",
             }
         ),
@@ -1138,8 +1138,8 @@ def _prepare_pregnancy_structural_plan(
             "through 44."
         )
 
-    source_codes, group_count, key_column, representatives = (
-        _pregnancy_source_groups(table)
+    source_codes, group_count, key_column, representatives = _pregnancy_source_groups(
+        table
     )
     eligible_min = np.ones(group_count, dtype=np.int8)
     eligible_max = np.zeros(group_count, dtype=np.int8)
@@ -1449,9 +1449,7 @@ def transfer_acs_inputs(
                 person,
                 pregnancy_plan,
             )
-            pregnancy_entity, pregnancy_family, pregnancy_targets = (
-                pregnancy_request
-            )
+            pregnancy_entity, pregnancy_family, pregnancy_targets = pregnancy_request
             if pregnancy_targets != (_PREGNANCY_TARGET,):  # pragma: no cover
                 raise AssertionError(
                     "Pregnancy structural target was not isolated before receipt."

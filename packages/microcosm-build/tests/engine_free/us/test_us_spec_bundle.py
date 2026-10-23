@@ -71,11 +71,11 @@ def test_constant_derived_domain_counts_are_complete(
     }
     assert target_counts == {
         "gap_fill_stacked_spine": 48,
-        "primary_puf_qrf": 65,
-        "late_producer_dag": 70,
+        "primary_puf_qrf": 63,
+        "late_producer_dag": 69,
     }
     assert "primary_effective_predictor_tuples" not in imputation["chaining"]
-    assert len(derive_primary_effective_predictor_tuples(imputation)) == 65
+    assert len(derive_primary_effective_predictor_tuples(imputation)) == 63
     itemization_batches = [
         family for family in families if "puf_tax_itemization__batch_" in family["id"]
     ]
@@ -90,8 +90,8 @@ def test_constant_derived_domain_counts_are_complete(
         for stage in ("primary_puf_qrf", "late_producer_dag")
     }
     assert modeled_output_scopes == {
-        "primary_puf_qrf": {"puf_clone": 64, "whole_pool": 1},
-        "late_producer_dag": {"whole_pool": 70},
+        "primary_puf_qrf": {"puf_clone": 62, "whole_pool": 1},
+        "late_producer_dag": {"whole_pool": 69},
     }
     assert all(
         "output_coverage_scope" not in target
@@ -142,16 +142,16 @@ def test_constant_derived_domain_counts_are_complete(
     assert len(compiled_schedule["waves"]) == 6
     assert (
         compiled_schedule["schedule_sha256"]
-        == "e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f"
+        == "50aa8412d99ec92b1638885d6b45a838b23d990fe1cbf3f0d4d3b21426496d16"
     )
     assert (
         compiled_schedule["payload_sha256"]
-        == "7be038d34f228d66c12b53558fc5f30c93f1b376f1058c5e4fd7e7563a88d67f"
+        == "c04c59fa15718de9e72178b5531f9164f8e456fc883d8195ba60aecf1a6fd0bf"
     )
 
-    assert len(take_up["programs"]) == 17
+    assert len(take_up["programs"]) == 18
     assert Counter(program["ownership"] for program in take_up["programs"]) == {
-        "engine": 7,
+        "engine": 8,
         "measured": 1,
         "mixed": 1,
         "modeled": 7,
@@ -165,12 +165,12 @@ def test_constant_derived_domain_counts_are_complete(
             take_up_steps.extend(
                 step for segment in program["segments"] for step in segment["pipeline"]
             )
-    assert len(take_up_steps) == 28
+    assert len(take_up_steps) == 29
     assert Counter(step["kind"] for step in take_up_steps) == {
         "assignment": 5,
         "count_calibration": 5,
         "probability_seed": 5,
-        "engine_default": 7,
+        "engine_default": 8,
         "measured_map": 3,
         "imputed_transfer": 2,
         "delivery_gate": 1,
@@ -180,7 +180,7 @@ def test_constant_derived_domain_counts_are_complete(
     ]
     local_steps = [step for step in take_up_steps if "source_operation_ref" not in step]
     assert len(source_backed_steps) == 18
-    assert len(local_steps) == 10
+    assert len(local_steps) == 11
     assert (
         len({step["source_operation_ref"]["stage"] for step in source_backed_steps})
         == 9

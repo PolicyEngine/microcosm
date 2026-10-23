@@ -84,7 +84,8 @@ earlier; the certified report records the one measured version as
 (:func:`microcosm.data.source_enrichment.claim_measurement_record`).
 
 **Naming convention, measured rather than assumed.** policyengine-us 2.2.1
-defines 6,167 variables. 6,114 match ``[a-z][a-z0-9_]*``. The other 53 are the
+defines 6,167 variables and 2.60.4 defines 6,797; 6,114 and 6,744 of them
+match ``[a-z][a-z0-9_]*``. In both versions the other 53 are the
 postal codes of the 50 states, DC, PR and VI:
 ``variables/household/demographic/geographic/state/in_state.py`` generates one
 household Boolean formula per state, named by its code. No variable starts
@@ -248,10 +249,10 @@ _TAX_UNIT_CONSTRUCTION = (
     "Tax-unit construction output: {detail} ({constant}). Later build stages "
     "read it (microcosm.build.us_runtime.us_late_producer_registry and the US "
     "imputation spec, microcosm/build/us/spec/imputation.yaml). "
-    "policyengine-us 1.764.6 and 2.2.1 neither define nor read a variable of "
-    "this name, and there is no live input to rename it to: the engine "
-    "derives {engine} with formulas, which the release writer refuses to "
-    "store."
+    "policyengine-us 1.764.6, 2.2.1 and 2.60.4 neither define nor read a "
+    "variable of this name, and there is no live input to rename it to: the "
+    "engine derives {engine} with formulas, which the release writer refuses "
+    "to store."
 )
 #: The six US entity tables, in ``microcosm.frame.units.US_SCHEMA`` order.
 #: microcosm-data depends on no other Microcosm shard, so the names are spelled
@@ -404,11 +405,6 @@ US_STORED_NON_VARIABLE_COLUMNS: Mapping[str, str] = MappingProxyType(
                 "microcosm.build.us_runtime.acs_release_predictors)."
             ),
         ),
-        "tax_unit_role_input": _TAX_UNIT_CONSTRUCTION.format(
-            detail="the HEAD / SPOUSE / DEPENDENT role microunit assigns each person",
-            constant="microcosm.frame.units._TAX_UNIT_ROLE_COLUMN",
-            engine="is_tax_unit_head, is_tax_unit_spouse and is_tax_unit_dependent",
-        ),
         "filing_status_input": _TAX_UNIT_CONSTRUCTION.format(
             detail="the filing status microunit assigns each tax unit",
             constant="microcosm.frame.units.TAX_UNIT_FILING_STATUS_COLUMN",
@@ -432,21 +428,6 @@ US_STORED_NON_VARIABLE_COLUMNS: Mapping[str, str] = MappingProxyType(
         "puf_capital_gains_tail_transfer_weight": _PUF_TAIL.format(
             detail="the donor weight carried by the transfer"
         ),
-        **{
-            column: (
-                f"The person_id of the co-resident parent the person's CPS "
-                f"ASEC {pointer} pointer names, or 0 when unknown, written by "
-                "microcosm.build.us_runtime.eligibility_inputs "
-                "(US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS; microcosm#884). The "
-                "certified engine does not define it yet, so it is ignored "
-                "there; policyengine-us#9406 adds it as an input. Remove this "
-                "entry when the pinned engine defines the variable."
-            )
-            for column, pointer in (
-                ("parent_1_id", "PEPAR1"),
-                ("parent_2_id", "PEPAR2"),
-            )
-        },
     }
 )
 

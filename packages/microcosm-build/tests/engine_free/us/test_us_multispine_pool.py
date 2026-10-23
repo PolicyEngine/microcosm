@@ -603,10 +603,10 @@ def test_pool_transfer_plan_extends_legacy_except_receipted_asset_deferrals() ->
     assert "has_marketplace_health_coverage" not in owners
 
     target_names = sorted(owners)
-    assert len(target_names) == 118
+    assert len(target_names) == 117
     assert (
         hashlib.sha256(("\n".join(target_names) + "\n").encode()).hexdigest()
-        == "c792f12f0ef34f8a2ca9f16e68f5b306391eed56f120cda247bf778a95118c15"
+        == "077c9d870c79e57c11a98ef91ed89c0f844457009ecd262f5bb9aa4b4d931a28"
     )
 
 
@@ -626,10 +626,10 @@ def test_pool_transfer_plan_partitions_at_the_declared_producer_boundary() -> No
     source_producers = keys(pool_post_puf_source_producer_target_families())
 
     assert len(early) == 48
-    assert len(late) == 70
+    assert len(late) == 69
     assert early.isdisjoint(late)
     assert early | late == full
-    assert len(puf_producers) == 43
+    assert len(puf_producers) == 42
     assert len(source_producers) == 29
     assert len(puf_producers & source_producers) == 2
     assert puf_producers | source_producers == late
@@ -661,16 +661,16 @@ def test_pool_input_surface_normalizes_all_four_source_registries() -> None:
     surface = pool_input_surface()
     by_name = {entry.variable: entry for entry in surface}
 
-    assert len(surface) == len(by_name) == 142
+    assert len(surface) == len(by_name) == 141
     assert [entry.variable for entry in surface] == sorted(by_name)
     assert Counter(
         provenance for entry in surface for provenance in entry.provenance
     ) == Counter(
         {
-            "pool_transfer_target_families": 118,
+            "pool_transfer_target_families": 117,
             "POOL_DEFERRED_TRANSFER_INPUTS": 3,
-            "PRIMARY_QRF_TARGET_ORDER": 65,
-            "load_take_up_contract": 17,
+            "PRIMARY_QRF_TARGET_ORDER": 63,
+            "load_take_up_contract": 18,
         }
     )
     assert by_name["bank_account_assets"] == PoolInputSurfaceEntry(
@@ -1071,9 +1071,9 @@ def test_remaining_stage_manifest_enumerates_every_simulation_projection_input()
 def test_remaining_stage_manifest_is_unique_complete_and_stable() -> None:
     manifest = pool_remaining_stage_input_manifest(_installed_variable_metadata_index())
 
-    assert len(manifest) == 1059
+    assert len(manifest) == 1250
     assert Counter(entry.stage for entry in manifest) == Counter(
-        {"derive": 34, "seed": 33, "simulate": 992}
+        {"derive": 34, "seed": 34, "simulate": 1182}
     )
     assert len(
         {
@@ -1086,16 +1086,16 @@ def test_remaining_stage_manifest_is_unique_complete_and_stable() -> None:
     receipt = pool_remaining_stage_input_manifest_receipt(
         _installed_variable_metadata_index()
     )
-    assert receipt["entry_count"] == 1059
+    assert receipt["entry_count"] == 1250
     assert receipt["stage_counts"] == {
         "derive": 34,
-        "seed": 33,
-        "simulate": 992,
+        "seed": 34,
+        "simulate": 1182,
     }
     assert receipt["engine_input_projection_contract"] == {
-        "engine_version": "2.2.1",
-        "input_count": 926,
-        "default_count": 925,
+        "engine_version": "2.60.4",
+        "input_count": 1074,
+        "default_count": 1073,
         "sha256": POOL_ENGINE_INPUT_PROJECTION_CONTRACT.sha256,
         "defaults_sha256": POOL_ENGINE_INPUT_PROJECTION_CONTRACT.defaults_sha256,
     }
@@ -1126,7 +1126,7 @@ def test_every_pool_transfer_target_is_an_installed_engine_input_leaf() -> None:
         for columns in families.values()
         for target in columns
     }
-    assert len(targets) == 118
+    assert len(targets) == 117
     acs_transfer_module.assert_acs_transfer_targets_are_input_leaves(
         targets,
         require_known=True,
@@ -1151,9 +1151,9 @@ def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
         )
     )
 
-    assert len(targets) == 118
+    assert len(targets) == 117
     assert len(predictors) == 32
-    assert len(primary_predictor_sets) == 65
+    assert len(primary_predictor_sets) == 63
     primary_targets = tuple(
         (
             *puf_support_module.PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
@@ -1166,9 +1166,9 @@ def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
         for position, target in enumerate(primary_targets)
     )
     assert len(primary_predictor_sets[0][1]) == 8
-    assert len(primary_predictor_sets[-1][1]) == 72
+    assert len(primary_predictor_sets[-1][1]) == 70
     assert len(POOL_DEFERRED_TRANSFER_INPUTS) == 3
-    assert len(targets) + len(POOL_DEFERRED_TRANSFER_INPUTS) == 121
+    assert len(targets) + len(POOL_DEFERRED_TRANSFER_INPUTS) == 120
     assert set(POOL_SOURCE_OPERATOR_ORDER) <= set(calls)
     assert all(calls[name] > 0 for name in POOL_SOURCE_OPERATOR_ORDER)
     assert calls["with_us_prior_year_income_inputs"] == 2

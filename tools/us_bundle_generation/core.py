@@ -1066,7 +1066,9 @@ def build_catalogs() -> dict[str, Any]:
         or output["column"] == "@resolved_weight"
     }
     missing_graph_contracts = graph_physical_keys - seen
-    if len(graph_physical_keys) != 134 or len(missing_graph_contracts) != 34:
+    # 132 since policyengine-us 2.60 retired the PUF QRF's two tax-unit
+    # first/second_home_mortgage_interest outputs.
+    if len(graph_physical_keys) != 132 or len(missing_graph_contracts) != 34:
         raise ValueError(
             "Canonical producer/catalog closure changed; "
             f"physical_outputs={len(graph_physical_keys)}, "
@@ -1143,8 +1145,8 @@ def build_catalogs() -> dict[str, Any]:
         seen.add(key)
     if not deferred <= {key.split(".", 1)[1] for key in seen}:
         raise ValueError("Deferred pool inputs are absent from the generated catalog.")
-    if len(seen) != 176:
-        raise ValueError(f"Closed US catalog must contain 176 keys, got {len(seen)}.")
+    if len(seen) != 175:
+        raise ValueError(f"Closed US catalog must contain 175 keys, got {len(seen)}.")
     return {
         "metadata_waivers": [
             {

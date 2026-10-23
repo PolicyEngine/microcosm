@@ -127,10 +127,10 @@ def test_generated_take_up_has_closed_coherent_semantics() -> None:
 
     load_schema_registry().validate(take_up, "take_up.schema.json")
     validate_take_up_semantics(take_up, sources_document=sources)
-    assert len(take_up["programs"]) == 17
+    assert len(take_up["programs"]) == 18
 
     steps = list(_steps(take_up))
-    assert len(steps) == 28
+    assert len(steps) == 29
     assert sum("source_operation_ref" in step for _, step in steps) == 18
 
 
@@ -196,13 +196,15 @@ def test_mixed_ownership_requires_segment_shape() -> None:
 def test_mixed_segments_cannot_claim_the_same_scope_twice() -> None:
     take_up, sources = _documents()
     program = _program(take_up, "housing_assistance")
+    index = take_up["programs"].index(program)
     segments = program["segments"]
     segments[1]["row_scope"] = copy.deepcopy(segments[0]["row_scope"])
 
     with pytest.raises(
         SpecValidationError,
         match=(
-            "take_up/programs/11/segments/1/row_scope: duplicate mixed-ownership scope"
+            f"take_up/programs/{index}/segments/1/row_scope: "
+            "duplicate mixed-ownership scope"
         ),
     ):
         validate_take_up_semantics(take_up, sources_document=sources)

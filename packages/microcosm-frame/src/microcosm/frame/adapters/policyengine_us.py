@@ -31,6 +31,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from microcosm.frame.adapters._policyengine_us_helper_reviews import HelperReview
 from microcosm.frame.adapters._policyengine_us_source_index import (
     ConsumerReceipt,
     _PolicyEngineUSSourceIndex,
@@ -126,7 +127,7 @@ _PERIOD_BY_DEFINITION: dict[str, str] = {"year": "year", "month": "month"}
 # Regenerate with:
 #   uv run python tools/refresh_us_generated_variable_audit.py
 # The block below is generated from the installed wheels; never edit a
-# digest or a name by hand. 119 default-system variables are
+# digest or a name by hand. 120 default-system variables are
 # created outside ordinary top-level ``class ...(Variable)``
 # declarations, so the snapshot is tied to every source and activation
 # surface that produced it: a changed wheel fails closed until this
@@ -134,22 +135,22 @@ _PERIOD_BY_DEFINITION: dict[str, str] = {"year": "year", "month": "month"}
 # formula-owned output. A name policyengine_us.spm.DATASET_SOURCE_INPUTS
 # declares source-deliverable is recorded as an input leaf despite its
 # fallback formula; spm.py is pinned so that declaration cannot drift.
-_GENERATED_SOURCE_VERSION = "2.2.1"
+_GENERATED_SOURCE_VERSION = "2.60.4"
 _GENERATED_SOURCE_SHA256: dict[str, str] = {
     "model_api.py": "d7edb7436b84733f179fe223376fb588bb7a3ad6817d119703faeb599d4bb9c7",
     "reforms/reforms.py": (
-        "b4077ecee0342080f9a738422f2275479f1b8923366700aece79ef92c64baa61"
+        "4cf1f3685101ab91b742dfb114bafdb80313d9826f6acbb0749151ca47f96ca5"
     ),
     "reforms/states/mi/surtax.py": (
-        "e1d0c0207c46243d3509b22b15fbdc07aa02b4df9461f7b93bec872dc7124ea9"
+        "7b9ff5915df57d3d1d7901980d60dd82bf7e7479b5fe3c4f6268c50df1f61278"
     ),
-    "spm.py": "baa69c0d1163bdc55f7dc9ac85645c2b75e5519c8b72ec54fd57787a22164d5a",
-    "system.py": "1c8539dcb8aeba4973823887895f5cd42bb9a2ee1270b0a947c9e7c185571302",
+    "spm.py": "129ad7afad57ef765839f9409310f7d395c8dc36b7a948a0993b6e1c9fe58ae1",
+    "system.py": "1e0e5b7f703a4f0bd477772aac072dc96804fab5c91e4b260b3b55d6c4c0397a",
     "variables/gov/puf.py": (
         "17545c43549ecf34016107bc8ed2dce25a53610afb802431a1b0ea6724215e7b"
     ),
     "variables/gov/states/tax/income/_generate_state_mfs_variables.py": (
-        "a0c9decd81b6eb76ac7edcddfc913d89ee86e0f18d8c51702bcb2a015dc2fabe"
+        "1b8a262ce480871dc03fc013b7342c736c0ddd3c1d4e6e9f36c0c60c4413c13e"
     ),
     "variables/household/demographic/geographic/state/in_state.py": (
         "a3792c642387b652752461c85c03e5a9cb39fab55b4e038270374dd7e7d8aa60"
@@ -191,7 +192,7 @@ _GENERATED_VARIABLE_GROUPS: tuple[tuple[tuple[str, ...], str, str, str, bool], .
             "ia_standard_deduction ia_taxable_income "
             "ky_itemized_deductions ky_standard_deduction "
             "ky_taxable_income ms_itemized_deductions "
-            "ms_standard_deduction ms_taxable_income "
+            "ms_standard_deduction ms_taxable_income mt_agi "
             "mt_itemized_deductions mt_standard_deduction "
             "mt_taxable_income".split()
         ),
@@ -245,12 +246,14 @@ def _index_policyengine_us_sources(
     variables_root: Path,
     *,
     parameters_root: Path | None = None,
+    helper_reviews: Mapping[str, HelperReview] | None = None,
 ) -> _PolicyEngineUSSourceIndex:
     """Thin adapter hook over the single combined source-index implementation."""
 
     return _build_policyengine_us_source_index(
         variables_root,
         parameters_root=parameters_root,
+        helper_reviews=helper_reviews,
     )
 
 

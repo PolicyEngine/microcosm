@@ -154,10 +154,9 @@ def _column_strategies(st):
 
 
 #: Register entries that postdate the files examined for #1026 and rest on a
-#: live producer instead: the parent ids (microcosm#884), bound to
-#: eligibility_inputs.US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS by
-#: test_us_stored_input_register.py (microcosm-data cannot import the build).
-_PRODUCER_BOUND_ENTRIES = frozenset({"parent_1_id", "parent_2_id"})
+#: live producer instead. The parent ids (microcosm#884) were the only ones;
+#: policyengine-us 2.60 defines them as inputs, so they left the register.
+_PRODUCER_BOUND_ENTRIES: frozenset[str] = frozenset()
 
 
 #: The role columns policyengine-core's ``build_from_dataset`` reads to build
@@ -258,20 +257,60 @@ def fake_probe_runtime(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-#: Each examined file's expected verdict: the refused columns, and how many
-#: register entries it stores. The published default, its receipt child and
-#: the ACS local-area release store two retired engine inputs: the #1026 WIC
-#: draw as would_claim_wic, and the Medicare Part B target as
-#: medicare_part_b_premiums (an input in every policyengine-us version read
-#: from 1.452.0 to 1.670.2, replaced by medicare_part_b_premiums_reported by
-#: 1.690.7). So each is refused naming exactly those two. The Route A
-#: rehearsal export and the Build Q stacked multispine pool pass.
+#: Each examined file's expected verdict against the locked policyengine-us
+#: 2.60.4: the refused columns in report order, and how many register entries
+#: it stores. The published default, its receipt child and the ACS local-area
+#: release store two retired person inputs: the #1026 WIC draw as
+#: would_claim_wic, and the Medicare Part B target as medicare_part_b_premiums
+#: (an input in every policyengine-us version read from 1.452.0 to 1.670.2,
+#: replaced by medicare_part_b_premiums_reported by 1.690.7). Every examined
+#: file also stores the tax-unit first/second_home_mortgage_interest legs that
+#: 2.60 removed (policyengine-us#9605); on 2.2.1 they were inputs. Each file
+#: registers one entry fewer than on 2.2.1 because 2.60 defines
+#: tax_unit_role_input.
 _EXPECTED_VERDICTS = {
-    _PUBLISHED_DEFAULT: (["medicare_part_b_premiums", "would_claim_wic"], 24),
-    _RECEIPT_CHILD: (["medicare_part_b_premiums", "would_claim_wic"], 24),
-    _ACS_LOCAL_RELEASE: (["medicare_part_b_premiums", "would_claim_wic"], 37),
-    _REHEARSAL_EXPORT: ([], 30),
-    _STACKED_POOL: ([], 43),
+    _PUBLISHED_DEFAULT: (
+        [
+            "first_home_mortgage_interest",
+            "medicare_part_b_premiums",
+            "second_home_mortgage_interest",
+            "would_claim_wic",
+        ],
+        23,
+    ),
+    _RECEIPT_CHILD: (
+        [
+            "first_home_mortgage_interest",
+            "medicare_part_b_premiums",
+            "second_home_mortgage_interest",
+            "would_claim_wic",
+        ],
+        23,
+    ),
+    _ACS_LOCAL_RELEASE: (
+        [
+            "first_home_mortgage_interest",
+            "medicare_part_b_premiums",
+            "second_home_mortgage_interest",
+            "would_claim_wic",
+        ],
+        36,
+    ),
+    _REHEARSAL_EXPORT: (
+        ["first_home_mortgage_interest", "second_home_mortgage_interest"],
+        29,
+    ),
+    _STACKED_POOL: (
+        ["first_home_mortgage_interest", "second_home_mortgage_interest"],
+        42,
+    ),
+}
+#: The table each refused column is stored on.
+_REFUSED_COLUMN_TABLE = {
+    "first_home_mortgage_interest": "tax_unit",
+    "second_home_mortgage_interest": "tax_unit",
+    "medicare_part_b_premiums": "person",
+    "would_claim_wic": "person",
 }
 
 

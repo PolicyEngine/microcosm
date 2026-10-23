@@ -30,14 +30,27 @@ uv run ruff check .      # lint
 ```
 
 Each country keeps its own policyengine-core pin (#1086). The extras that
-install policyengine-us pin the core the certified US default was built with,
-and the extras that install policyengine-uk follow policyengine-uk's own core
-floor. So no environment can hold both engines: uv refuses any sync that asks
+install policyengine-us pin the engine and core the next certified US build is
+built with (policyengine-us 2.60.4 on core 3.33.3, the core policyengine.py's
+bundle pins), and the extras that install policyengine-uk follow
+policyengine-uk's own core floor. So no environment can hold both engines: uv refuses any sync that asks
 for an extra that installs policyengine-us (`microcosm-build[us]`,
 `microcosm-data[us]` or `microcosm-frame[policyengine]`) together with one that
 installs policyengine-uk, such as `uv sync --all-packages --extra us --extra uk`
 or `uv sync --all-packages --all-extras`. To keep both countries set up, point
 `UV_PROJECT_ENVIRONMENT` at a separate directory outside the checkout for each.
+
+Moving the US engine lock starts with the frame adapter's static consumer
+index, which reads the installed policyengine-us source without importing it
+and gates every generator. It interprets `variables/` only. A formula that
+calls a package helper defined elsewhere (`tools/general.py`,
+`tools/section_911.py`, the HUD loaders under `parameters/`) is answered from
+that helper's review in
+`packages/microcosm-frame/src/microcosm/frame/adapters/_policyengine_us_helper_reviews.py`.
+A new engine that calls an unreviewed helper, or changes a reviewed one, stops
+the index and prints the helper's digest. Read the helper and the package
+functions it uses, record what it reads at that digest, then rerun the
+generators.
 
 PR CI (`.github/workflows/test.yml`) has `lint`, `engine-free`, `engine-us`,
 `engine-uk`, `integration-uk`, and `wheels` jobs, plus the
@@ -257,15 +270,17 @@ the 2026 Medicare Trustees Report's calendar-year rows in Tables V.E3 and V.E4
 and/or Part B). Part B is
 `gross_medicare_part_b_premium_if_enrolled - base_part_b_premium`, because the
 base premium is defined for every eligible person. Part D is
-`income_adjusted_part_d_premium_surcharge`, which policyengine-us charges every
-Medicare enrollee above the thresholds until PolicyEngine/policyengine-us#10115
-gates it on Part D enrollment. IRMAA rests on income from two years before
-the period. The locked policyengine-us 2.2.1 reads that year's inputs, and a
-single-year release H5 has none, so a 2024 release on that engine reports
-`status: no_payers` (the batched scorer gives exactly that on the certified
-`populace-us-2024-spm-20260915` file) until the engine includes
-PolicyEngine/policyengine-us#10106. A Part with no weighted payer never reports
-a Trustees comparison. It is held out the same way: no calibration row, no
+`income_adjusted_part_d_premium_surcharge`. policyengine-us 2.60 gates it on
+Part D enrollment (PolicyEngine/policyengine-us#10115), and Microcosm leaves
+`takes_up_medicare_part_d_if_eligible` at its engine default (true), so the
+surcharge still reaches every Medicare enrollee above the thresholds. IRMAA
+rests on income from two years before the period. policyengine-us 2.2.1 read
+that year's inputs, and a single-year release H5 has none, so a 2024 release
+on it reports `status: no_payers` (the batched scorer gives exactly that on the
+certified `populace-us-2024-spm-20260915` file). The locked 2.60.4 includes
+PolicyEngine/policyengine-us#10106: it falls back to the earliest input year's
+income, deflated by per-capita CBO AGI. A Part with no weighted payer never
+reports a Trustees comparison. It is held out the same way: no calibration row, no
 release refusal.
 Before a release rerun, run the small-H5 guard sweep described in
 [the release build rule](us-release-build-rule.md#post-export-scoring).

@@ -9,11 +9,17 @@ the installed wheel's source tree.
 from __future__ import annotations
 
 import ast
-from collections.abc import Mapping
+import copy
+import hashlib
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 
+from microcosm.frame.adapters._policyengine_us_helper_reviews import (
+    POLICYENGINE_US_HELPER_REVIEWS,
+    HelperReview,
+)
 from microcosm.frame.schema import VariableMetadata
 
 _ENTITY_KEY_BY_SOURCE_NAME: dict[str, str] = {
@@ -126,6 +132,18 @@ class _UnknownValue:
     origins: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class _LocalFunctionValue:
+    """A function defined inside the function being interpreted.
+
+    A call to it is interpreted in place, in the caller's scope (Python
+    closures read enclosing names when called), so what it reads belongs to
+    the enclosing consumer.
+    """
+
+    node: ast.FunctionDef | ast.AsyncFunctionDef
+
+
 _ExactValue = (
     _StringValue
     | _SequenceValue
@@ -137,11 +155,18 @@ _ExactValue = (
     | _EntityValue
     | _OpaqueValue
     | _UnknownValue
+    | _LocalFunctionValue
 )
 
 
 def _unknown(*origins: str) -> _UnknownValue:
     return _UnknownValue(tuple(dict.fromkeys(origins)))
+
+
+#: ``None`` as the evaluator spells a ``None`` constant. It is opaque, so it
+#: still fails closed at a sink; ``is None`` tests and one-argument
+#: ``dict.get`` misses resolve against it exactly.
+_NONE_VALUE = _OpaqueValue("None")
 
 
 def _contains_unknown(value: _ExactValue) -> bool:
@@ -179,6 +204,9 @@ class _SourceVariableDefinition:
 class _PolicyEngineUSSourceIndex:
     definitions: Mapping[str, _SourceVariableDefinition]
     consumers: Mapping[str, tuple[ConsumerReceipt, ...]]
+    #: Qualified names of the package helpers the formulas call, each
+    #: answered from its review.
+    reviewed_helpers: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -441,89 +469,225 @@ def _resolve_import_module(
     return ".".join(prefix)
 
 
+def _module_ir(
+    source_path: Path,
+    *,
+    root: Path,
+    package: str,
+    display_prefix: str,
+) -> _ModuleIR:
+    """Parse one source module below ``root``, named inside ``package``."""
+
+    try:
+        tree = ast.parse(source_path.read_text(), filename=str(source_path))
+    except (OSError, SyntaxError) as exc:
+        raise RuntimeError(
+            f"Could not index PolicyEngine-US source {source_path}."
+        ) from exc
+    relative_path = source_path.relative_to(root).as_posix()
+    is_package = relative_path.endswith("/__init__.py") or relative_path == (
+        "__init__.py"
+    )
+    relative_module = relative_path.removesuffix(".py")
+    if relative_module == "__init__":
+        relative_module = ""
+    elif relative_module.endswith("/__init__"):
+        relative_module = relative_module.removesuffix("/__init__")
+    relative_module = relative_module.replace("/", ".")
+    module_name = package
+    if relative_module:
+        module_name += f".{relative_module}"
+    module_imports: list[_ModuleImportBinding] = []
+    imports: list[_ImportBinding] = []
+    star_imports: list[str] = []
+    for statement in tree.body:
+        if isinstance(statement, ast.Import):
+            for alias in statement.names:
+                bound_path = (
+                    (alias.asname,)
+                    if alias.asname is not None
+                    else tuple(alias.name.split("."))
+                )
+                module_imports.append(
+                    _ModuleImportBinding(
+                        source_module=alias.name,
+                        bound_path=bound_path,
+                    )
+                )
+            continue
+        if not isinstance(statement, ast.ImportFrom):
+            continue
+        source_module = _resolve_import_module(
+            module_name,
+            statement,
+            is_package=is_package,
+        )
+        if source_module is None:
+            continue
+        for alias in statement.names:
+            if alias.name == "*":
+                star_imports.append(source_module)
+            else:
+                module_imports.append(
+                    _ModuleImportBinding(
+                        source_module=f"{source_module}.{alias.name}",
+                        bound_path=(alias.asname or alias.name,),
+                    )
+                )
+                imports.append(
+                    _ImportBinding(
+                        source_module=source_module,
+                        source_name=alias.name,
+                        bound_name=alias.asname or alias.name,
+                    )
+                )
+    return _ModuleIR(
+        source_path=source_path,
+        display_path=f"{display_prefix}{relative_path}",
+        module_name=module_name,
+        is_package=is_package,
+        tree=tree,
+        module_imports=tuple(module_imports),
+        imports=tuple(imports),
+        star_imports=tuple(star_imports),
+        classes=tuple(node for node in tree.body if isinstance(node, ast.ClassDef)),
+        functions=tuple(
+            node
+            for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        ),
+    )
+
+
 def _inventory_modules(variables_root: Path) -> dict[str, _ModuleIR]:
     modules: dict[str, _ModuleIR] = {}
     for source_path in sorted(variables_root.rglob("*.py")):
-        try:
-            tree = ast.parse(source_path.read_text(), filename=str(source_path))
-        except (OSError, SyntaxError) as exc:
-            raise RuntimeError(
-                f"Could not index PolicyEngine variable source {source_path}."
-            ) from exc
-        relative_path = source_path.relative_to(variables_root).as_posix()
-        is_package = relative_path.endswith("/__init__.py") or relative_path == (
-            "__init__.py"
+        module = _module_ir(
+            source_path,
+            root=variables_root,
+            package="policyengine_us.variables",
+            display_prefix="variables/",
         )
-        relative_module = relative_path.removesuffix(".py")
-        if relative_module == "__init__":
-            relative_module = ""
-        elif relative_module.endswith("/__init__"):
-            relative_module = relative_module.removesuffix("/__init__")
-        relative_module = relative_module.replace("/", ".")
-        module_name = "policyengine_us.variables"
-        if relative_module:
-            module_name += f".{relative_module}"
-        module_imports: list[_ModuleImportBinding] = []
-        imports: list[_ImportBinding] = []
-        star_imports: list[str] = []
-        for statement in tree.body:
-            if isinstance(statement, ast.Import):
-                for alias in statement.names:
-                    bound_path = (
-                        (alias.asname,)
-                        if alias.asname is not None
-                        else tuple(alias.name.split("."))
-                    )
-                    module_imports.append(
-                        _ModuleImportBinding(
-                            source_module=alias.name,
-                            bound_path=bound_path,
-                        )
-                    )
-                continue
-            if not isinstance(statement, ast.ImportFrom):
-                continue
-            source_module = _resolve_import_module(
-                module_name,
-                statement,
-                is_package=is_package,
-            )
-            if source_module is None:
-                continue
-            for alias in statement.names:
-                if alias.name == "*":
-                    star_imports.append(source_module)
-                else:
-                    module_imports.append(
-                        _ModuleImportBinding(
-                            source_module=f"{source_module}.{alias.name}",
-                            bound_path=(alias.asname or alias.name,),
-                        )
-                    )
-                    imports.append(
-                        _ImportBinding(
-                            source_module=source_module,
-                            source_name=alias.name,
-                            bound_name=alias.asname or alias.name,
-                        )
-                    )
-        modules[module_name] = _ModuleIR(
-            source_path=source_path,
-            display_path=f"variables/{relative_path}",
-            module_name=module_name,
-            is_package=is_package,
-            tree=tree,
-            module_imports=tuple(module_imports),
-            imports=tuple(imports),
-            star_imports=tuple(star_imports),
-            classes=tuple(node for node in tree.body if isinstance(node, ast.ClassDef)),
-            functions=tuple(
-                node
-                for node in tree.body
-                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-            ),
-        )
+        modules[module.module_name] = module
     return modules
+
+
+def _is_helper_module_name(name: str) -> bool:
+    return (name == "policyengine_us" or name.startswith("policyengine_us.")) and not (
+        name == "policyengine_us.variables"
+        or name.startswith("policyengine_us.variables.")
+    )
+
+
+def _helper_module_path(package_root: Path, module_name: str) -> Path | None:
+    parts = module_name.split(".")[1:]
+    candidates = (
+        (package_root.joinpath(*parts).with_suffix(".py"),) if parts else ()
+    ) + (package_root.joinpath(*parts, "__init__.py"),)
+    return next((path for path in candidates if path.is_file()), None)
+
+
+def _imported_module_names(module: _ModuleIR) -> set[str]:
+    names = set(module.star_imports)
+    names.update(binding.source_module for binding in module.imports)
+    # ``import a.b`` and ``from a import b`` may each name a submodule.
+    names.update(binding.source_module for binding in module.module_imports)
+    return names
+
+
+def _inventory_helper_modules(
+    package_root: Path,
+    modules: Mapping[str, _ModuleIR],
+) -> dict[str, _ModuleIR]:
+    """Package modules outside ``variables/`` that formula modules import.
+
+    Formulas reach PolicyEngine-US helpers (``model_api``, ``tools.general``,
+    the HUD parameter loaders) through star and explicit imports, possibly
+    through further package modules.  This follows those imports from every
+    formula module, transitively.  The modules are inventoried to bind helper
+    names and to digest helper code; their functions are never interpreted.
+    """
+
+    helper_modules: dict[str, _ModuleIR] = {}
+    pending = sorted(
+        {name for module in modules.values() for name in _imported_module_names(module)}
+    )
+    while pending:
+        name = pending.pop()
+        if (
+            name in helper_modules
+            or name in modules
+            or not _is_helper_module_name(name)
+        ):
+            continue
+        path = _helper_module_path(package_root, name)
+        if path is None:
+            continue
+        module = _module_ir(
+            path,
+            root=package_root,
+            package="policyengine_us",
+            display_prefix="",
+        )
+        helper_modules[module.module_name] = module
+        pending.extend(sorted(_imported_module_names(module)))
+    return helper_modules
+
+
+def _is_none(left: _ExactValue, right: _ExactValue) -> bool | None:
+    """``left is right`` when one side is None and the other is decidable."""
+
+    exact = (_StringValue, _SequenceValue, _MapValue, _BoolValue, _IntValue)
+    for value, other in ((left, right), (right, left)):
+        if value == _NONE_VALUE:
+            if other == _NONE_VALUE:
+                return True
+            if isinstance(other, exact):
+                return False
+    return None
+
+
+def _sequence_display(
+    node: ast.List | ast.Tuple | ast.Set,
+    evaluate: Callable[[ast.expr], _ExactValue],
+    materialize: Callable[[_ExactValue], _ExactValue] | None = None,
+) -> _ExactValue:
+    """Evaluate a list, tuple or set display, splicing ``*name`` items.
+
+    A starred item contributes its items only when it evaluates to exact
+    sequences (policyengine-us 2.60 writes ``["adjusted_gross_income",
+    *TAX_UNIT_ADDITIONS]`` and ``["ssi_earned_income", *ssi_sources.unearned]``);
+    ``materialize`` resolves a parameter list first. A starred value with
+    several exact alternatives gives one display per alternative; anything
+    else leaves the display unknown.
+    """
+    displays: list[list[_ExactValue]] = [[]]
+    for element in node.elts:
+        if isinstance(element, ast.Starred):
+            spliced = evaluate(element.value)
+            if materialize is not None:
+                spliced = materialize(spliced)
+            alternatives = _alternatives(spliced)
+            if _contains_unknown(spliced) or not all(
+                isinstance(value, _SequenceValue) for value in alternatives
+            ):
+                return _unknown(f"starred:{node.lineno}")
+            displays = [
+                [*display, *value.items]
+                for display in displays
+                for value in alternatives
+                if isinstance(value, _SequenceValue)
+            ]
+            if len(displays) > _STATE_CAP:
+                return _unknown(f"starred-cap:{node.lineno}")
+        else:
+            item = evaluate(element)
+            for display in displays:
+                display.append(item)
+    set_like = isinstance(node, ast.Set)
+    return _make_alternative(
+        tuple(_SequenceValue(tuple(display), set_like=set_like) for display in displays)
+    )
 
 
 def _eval_module_value(
@@ -539,10 +703,7 @@ def _eval_module_value(
     if isinstance(node, ast.Name):
         return env.get(node.id, _unknown(f"name:{node.id}"))
     if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
-        return _SequenceValue(
-            tuple(_eval_module_value(item, env) for item in node.elts),
-            set_like=isinstance(node, ast.Set),
-        )
+        return _sequence_display(node, lambda item: _eval_module_value(item, env))
     if isinstance(node, ast.Dict):
         items: list[tuple[str, _ExactValue]] = []
         for key_node, value_node in zip(node.keys, node.values, strict=True):
@@ -660,6 +821,9 @@ class _EvaluationFrame:
     consumer: str
     defer_unresolved_sinks: bool = False
     enqueue_helpers: bool = True
+    # Local functions the enclosing function calls directly by name; any
+    # other local function is interpreted where it is defined.
+    called_local_functions: frozenset[str] = frozenset()
 
 
 def _make_alternative(values: tuple[_ExactValue, ...]) -> _ExactValue:
@@ -823,6 +987,18 @@ def _combine_values(
     return _make_alternative(tuple(results))
 
 
+def _is_exact_data(value: _ExactValue) -> bool:
+    """Whether ``value`` is plain data whose equality the evaluator decides."""
+
+    if isinstance(value, (_StringValue, _IntValue, _BoolValue)):
+        return True
+    if isinstance(value, _SequenceValue):
+        return all(_is_exact_data(item) for item in value.items)
+    if isinstance(value, _MapValue):
+        return all(_is_exact_data(item) for _key, item in value.items)
+    return value == _NONE_VALUE
+
+
 def _truth(value: _ExactValue) -> bool | None:
     if isinstance(value, _BoolValue):
         return value.value
@@ -856,9 +1032,10 @@ class _ExactEvaluator:
                 frame.module_env.get(node.id, _unknown(f"name:{node.id}")),
             )
         if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
-            return _SequenceValue(
-                tuple(self.evaluate(item, local_env, frame) for item in node.elts),
-                set_like=isinstance(node, ast.Set),
+            return _sequence_display(
+                node,
+                lambda item: self.evaluate(item, local_env, frame),
+                lambda value: _materialize_value(value, frame=frame, line=node.lineno),
             )
         if isinstance(node, ast.Dict):
             items: list[tuple[str, _ExactValue]] = []
@@ -981,6 +1158,9 @@ class _ExactEvaluator:
                 key = self.evaluate(node.args[0], local_env, frame)
                 default = self.evaluate(node.args[1], local_env, frame)
                 return self._mapping_get(base, key, default, node.lineno)
+            if method == "get" and len(node.args) == 1 and not node.keywords:
+                key = self.evaluate(node.args[0], local_env, frame)
+                return self._mapping_get(base, key, _NONE_VALUE, node.lineno)
         # Engine reads and numerical/model-api calls do not themselves produce
         # a string domain; sink scanning authenticates their arguments.
         return _OpaqueValue(function_name or "call")
@@ -1101,10 +1281,11 @@ class _ExactEvaluator:
 
         This is :meth:`_subscript`'s mapping arm with the missing-key case
         replaced by the caller's explicit default instead of an unknown, which
-        is exactly what the two-argument form means.  Only that form is
-        resolved: the one-argument ``get`` yields ``None`` on a miss, a value
-        this lattice does not model, so it keeps falling through to the opaque
-        result that fails closed at a sink.
+        is exactly what the two-argument form means.  The one-argument form
+        passes :data:`_NONE_VALUE`, which stays opaque at a sink; an ``is
+        None`` test on it is exact (policyengine-us 2.60's
+        ``de_itemized_deductions_indv`` skips a deduction whose
+        ``EXPENSE_SOURCES.get(deduction)`` is ``None``).
 
         PolicyEngine-US 2.2.1 reaches this through
         ``snap_individual_utility_allowance``, whose loop over the
@@ -1224,6 +1405,17 @@ class _ExactEvaluator:
         if isinstance(node.slice, ast.Slice):
             return self._slice(base, node.slice, local_env, frame, node.lineno)
         key = self.evaluate(node.slice, local_env, frame)
+        if (
+            _contains_unknown(key)
+            and isinstance(base, _MapValue)
+            and base.items
+            and all(isinstance(value, _StringValue) for _key, value in base.items)
+        ):
+            # The key is decided at run time (policyengine-us 2.60's
+            # ``CAPITAL_GAINS_RESPONSE_FORM_VARIABLES[form]``, where ``form``
+            # depends on parameter values), but the result is one of the
+            # map's values or a KeyError, so every value is a possible read.
+            return _make_alternative(tuple(value for _key, value in base.items))
         if _contains_unknown(base) or _contains_unknown(key):
             return _unknown(f"subscript:{node.lineno}")
         results: list[_ExactValue] = []
@@ -1371,6 +1563,14 @@ class _ExactEvaluator:
         results: list[_ExactValue] = []
         for left_value in _alternatives(left):
             for right_value in _alternatives(right):
+                if isinstance(
+                    node.ops[0], (ast.In, ast.NotIn, ast.Eq, ast.NotEq)
+                ) and not (_is_exact_data(left_value) and _is_exact_data(right_value)):
+                    # An array, engine object or other opaque value compared
+                    # with anything (``period.start.year != 2021``) is not
+                    # decided here: both outcomes stay possible.
+                    results.append(_unknown(f"compare:{node.lineno}"))
+                    continue
                 if isinstance(node.ops[0], (ast.In, ast.NotIn)):
                     if isinstance(right_value, _SequenceValue):
                         result = any(
@@ -1390,6 +1590,17 @@ class _ExactEvaluator:
                 elif isinstance(node.ops[0], (ast.Eq, ast.NotEq)):
                     result = _value_identity(left_value) == _value_identity(right_value)
                     if isinstance(node.ops[0], ast.NotEq):
+                        result = not result
+                    results.append(_BoolValue(result))
+                elif isinstance(node.ops[0], (ast.Is, ast.IsNot)):
+                    # Only identity with None is decidable: None is the one
+                    # opaque value this lattice names, and an exact string,
+                    # number, Boolean or collection is never None.
+                    result = _is_none(left_value, right_value)
+                    if result is None:
+                        results.append(_unknown(f"identity:{node.lineno}"))
+                        continue
+                    if isinstance(node.ops[0], ast.IsNot):
                         result = not result
                     results.append(_BoolValue(result))
                 else:
@@ -1531,6 +1742,30 @@ def _bind_target(
             _bind_target(element, item, env)
             for element, item in zip(target.elts, value.items, strict=True)
         )
+    if isinstance(target, (ast.Tuple, ast.List)) and isinstance(
+        value, _AlternativeValue
+    ):
+        # Each position takes the alternatives of that position; this keeps
+        # every possible value of each name, not which ones occur together.
+        if not all(
+            isinstance(item, _SequenceValue) and len(item.items) == len(target.elts)
+            for item in value.values
+        ):
+            return False
+        return all(
+            _bind_target(
+                element,
+                _make_alternative(
+                    tuple(
+                        item.items[position]
+                        for item in value.values
+                        if isinstance(item, _SequenceValue)
+                    )
+                ),
+                env,
+            )
+            for position, element in enumerate(target.elts)
+        )
     return False
 
 
@@ -1540,17 +1775,19 @@ _ENTITY_CALL_NAMES = frozenset(
 _ENTITY_AGGREGATION_METHODS = frozenset({"all", "any", "max", "min", "sum"})
 _REFERENCE_HELPER_ARGUMENTS: dict[str, int] = {
     # PolicyEngine-Core logical aggregators share ``add``'s
-    # ``(entity, period, variables)`` signature.
+    # ``(entity, period, variables)`` signature.  PolicyEngine-US's own
+    # helpers are answered from POLICYENGINE_US_HELPER_REVIEWS instead.
     "and_": 2,
     "any_": 2,
     "for_each_variable": 2,
     "multiply": 2,
     "or_": 2,
-    # PolicyEngine-US helpers with a single variable-name argument.
-    "spouse": 2,
-    "sum_contained_tax_units": 0,
-    "tax_unit_non_dep_sum": 0,
 }
+#: Simulation and population methods that read a variable named by their
+#: first argument: ``branch.calculate(name, period)``, ``get_holder(name)``,
+#: and ``simulation.get_array(name, period)`` (a holder's own
+#: ``get_array(period, branch)`` is skipped; its ``get_holder`` call names it).
+_SIMULATION_READ_METHODS = frozenset({"calculate", "get_array", "get_holder"})
 _STATE_CAP = 20_000
 
 
@@ -1578,12 +1815,71 @@ class _FunctionContext:
 class _Flow:
     env: dict[str, _ExactValue]
     signal: str = "normal"
+    # What a ``return`` flow returns; None on every other flow.
+    value: _ExactValue | None = None
 
 
 def _function_parameters(
     function: ast.FunctionDef | ast.AsyncFunctionDef,
 ) -> tuple[ast.arg, ...]:
     return tuple((*function.args.posonlyargs, *function.args.args))
+
+
+def _is_local_name(call: ast.Call, env: Mapping[str, _ExactValue]) -> bool:
+    """Whether a call's bare callee name is a local, not a module function."""
+
+    return isinstance(call.func, ast.Name) and call.func.id in env
+
+
+def _bound_parameters(
+    function: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda,
+) -> tuple[str, ...]:
+    arguments = function.args
+    names = [
+        argument.arg
+        for argument in (
+            *arguments.posonlyargs,
+            *arguments.args,
+            *arguments.kwonlyargs,
+        )
+    ]
+    for argument in (arguments.vararg, arguments.kwarg):
+        if argument is not None:
+            names.append(argument.arg)
+    return tuple(names)
+
+
+def _directly_called_local_functions(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> frozenset[str]:
+    """Functions defined inside ``function`` that it only ever calls by name.
+
+    Those are interpreted at each call.  A local function that is also passed
+    or returned as a value, or never called, is interpreted where it is
+    defined instead, with unknown arguments.
+    """
+
+    local = {
+        node.name
+        for node in ast.walk(function)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node is not function
+    }
+    callees = {
+        id(node.func)
+        for node in ast.walk(function)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
+    loads = [
+        node
+        for node in ast.walk(function)
+        if isinstance(node, ast.Name)
+        and isinstance(node.ctx, ast.Load)
+        and node.id in local
+    ]
+    called = {node.id for node in loads if id(node) in callees}
+    escaping = {node.id for node in loads if id(node) not in callees}
+    return frozenset(called - escaping)
 
 
 def _function_bindings(
@@ -1650,6 +1946,101 @@ def _function_bindings(
     raise RuntimeError("PolicyEngine-US source function imports did not converge.")
 
 
+def _code_dump(node: ast.AST) -> str:
+    """``node``'s code without docstrings, which do not change what it reads."""
+
+    stripped = copy.deepcopy(node)
+    for item in ast.walk(stripped):
+        if isinstance(
+            item, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+        ):
+            body = item.body
+            if (
+                body
+                and isinstance(body[0], ast.Expr)
+                and isinstance(body[0].value, ast.Constant)
+                and isinstance(body[0].value.value, str)
+            ):
+                item.body = body[1:] or [ast.Pass()]
+    return ast.dump(stripped, include_attributes=False)
+
+
+def _module_assignment(
+    modules: Mapping[str, _ModuleIR],
+    module_name: str,
+    name: str,
+    seen: set[tuple[str, str]],
+) -> list[str]:
+    """The top-level assignment of ``name`` that ``module_name`` sees."""
+
+    if (module_name, name) in seen or module_name not in modules:
+        return []
+    seen.add((module_name, name))
+    module = modules[module_name]
+    found: list[str] = []
+    for statement in module.tree.body:
+        assigned = _assigned_name(statement)
+        if assigned is not None and assigned[0] == name:
+            found = [f"{module_name}.{name}\n{_code_dump(statement)}"]
+    if found:
+        return found
+    for binding in module.imports:
+        if binding.bound_name == name:
+            return _module_assignment(
+                modules, binding.source_module, binding.source_name, seen
+            )
+    for source_module in reversed(module.star_imports):
+        found = _module_assignment(modules, source_module, name, seen)
+        if found:
+            return found
+    return []
+
+
+def _helper_digest(
+    identifier: _FunctionID,
+    modules: Mapping[str, _ModuleIR],
+    functions: Mapping[_FunctionID, _FunctionIR],
+    bindings: Mapping[str, Mapping[str, _FunctionID]],
+) -> str:
+    """SHA-256 of a helper's code, the package functions it uses and their constants.
+
+    Every function the helper names, directly or through another, and every
+    module-level constant those functions read is included, so a helper whose
+    reads could change gets a new digest.
+    """
+
+    parts: set[str] = set()
+    seen_constants: set[tuple[str, str]] = set()
+    seen: set[_FunctionID] = set()
+    pending = [identifier]
+    while pending:
+        current = pending.pop()
+        if current in seen:
+            continue
+        seen.add(current)
+        function = functions.get(current)
+        if function is None:
+            continue
+        parts.add(
+            f"{current.module_name}.{current.function_name}\n"
+            f"{_code_dump(function.node)}"
+        )
+        names = bindings.get(current.module_name, {})
+        for node in ast.walk(function.node):
+            if not (isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)):
+                continue
+            callee = names.get(node.id)
+            if callee is not None:
+                pending.append(callee)
+                continue
+            parts.update(
+                _module_assignment(
+                    modules, current.module_name, node.id, seen_constants
+                )
+            )
+    return hashlib.sha256("\n\n".join(sorted(parts)).encode()).hexdigest()
+
+
 class _ConsumerInterpreter:
     """Sequential exact-state interpreter for PolicyEngine consumer receipts."""
 
@@ -1659,16 +2050,64 @@ class _ConsumerInterpreter:
         module_envs: Mapping[str, Mapping[str, _ExactValue]],
         resolver: _ParameterListResolver,
         definitions: Mapping[str, _SourceVariableDefinition],
+        *,
+        helper_modules: Mapping[str, _ModuleIR] | None = None,
+        helper_reviews: Mapping[str, HelperReview] | None = None,
     ) -> None:
         self._modules = modules
         self._module_envs = module_envs
         self._resolver = resolver
         self._definitions = definitions
         self._evaluator = _ExactEvaluator()
-        self._functions, self._bindings = _function_bindings(modules, module_envs)
+        self._helper_modules = MappingProxyType(dict(helper_modules or {}))
+        self._helper_reviews = (
+            POLICYENGINE_US_HELPER_REVIEWS
+            if helper_reviews is None
+            else MappingProxyType(dict(helper_reviews))
+        )
+        functions, bindings = _function_bindings(
+            {**modules, **self._helper_modules},
+            module_envs,
+        )
+        # Formula-module functions are interpreted; package helpers outside
+        # ``variables/`` are bound by name and answered from their reviews.
+        self._functions = {
+            identifier: function
+            for identifier, function in functions.items()
+            if identifier.module_name in modules
+        }
+        self._bindings = {
+            module_name: MappingProxyType(
+                {
+                    name: identifier
+                    for name, identifier in names.items()
+                    if identifier.module_name in modules
+                }
+            )
+            for module_name, names in bindings.items()
+            if module_name in modules
+        }
+        self._all_functions = functions
+        self._helper_bindings = {
+            module_name: MappingProxyType(
+                {
+                    name: identifier
+                    for name, identifier in names.items()
+                    if identifier.module_name in self._helper_modules
+                }
+            )
+            for module_name, names in bindings.items()
+        }
+        self._all_bindings = bindings
+        self._checked_helpers: set[_FunctionID] = set()
+        self.reviewed_helpers: set[str] = set()
+        self._helper_digests: dict[_FunctionID, str] = {}
+        self._local_calls: set[tuple[int, object]] = set()
         self._receipts: dict[str, set[ConsumerReceipt]] = {}
         self._queue: list[_FunctionContext] = []
         self._seen_contexts: set[_FunctionContext] = set()
+        self._return_values: dict[_FunctionContext, _ExactValue] = {}
+        self._returning: set[_FunctionContext] = set()
 
     def run(self) -> Mapping[str, tuple[ConsumerReceipt, ...]]:
         for module_name in sorted(self._modules):
@@ -1774,9 +2213,7 @@ class _ConsumerInterpreter:
                     owner_name=owner.name,
                     frame=frame,
                     receiver_entity=self._definitions[owner.name].metadata.entity,
-                    aggregation_entity=(
-                        self._definitions[owner.name].metadata.entity
-                    ),
+                    aggregation_entity=(self._definitions[owner.name].metadata.entity),
                 )
             elif (
                 name == "defined_for"
@@ -1792,6 +2229,39 @@ class _ConsumerInterpreter:
                     owner_name=owner.name,
                     frame=frame,
                 )
+            else:
+                self._scan_class_attribute_calls(module, owner, expression, frame)
+
+    def _scan_class_attribute_calls(
+        self,
+        module: _ModuleIR,
+        owner: ast.ClassDef,
+        expression: ast.expr,
+        frame: _EvaluationFrame,
+    ) -> None:
+        """Record helper factories a class body calls (``formula = f(...)``).
+
+        ``all_of_variables([...])`` and ``sum_among_non_dependents(name)``
+        build the variable's formula from variable names.  A class-body call
+        to a formula-module function would build one the index cannot see, so
+        it fails closed.
+        """
+
+        for node in ast.walk(expression):
+            if not isinstance(node, ast.Call):
+                continue
+            helper = self._package_helper(node, {}, frame)
+            if helper is not None:
+                self._record_package_helper(
+                    helper,
+                    node,
+                    {},
+                    frame,
+                    owner.name,
+                    self._definitions[owner.name].metadata.entity,
+                )
+            elif self._helper_identifier(node, frame) is not None:
+                self._raise_unresolved(node, frame)
 
     def _analyze_function(
         self,
@@ -1804,7 +2274,7 @@ class _ConsumerInterpreter:
         keywords: tuple[tuple[str, _ExactValue], ...],
         defer_unresolved_sinks: bool = False,
         enqueue_helpers: bool = True,
-    ) -> None:
+    ) -> list[_Flow]:
         env: dict[str, _ExactValue] = {}
         parameters = _function_parameters(function)
         keyword_values = dict(keywords)
@@ -1826,8 +2296,9 @@ class _ConsumerInterpreter:
             consumer=consumer,
             defer_unresolved_sinks=defer_unresolved_sinks,
             enqueue_helpers=enqueue_helpers,
+            called_local_functions=_directly_called_local_functions(function),
         )
-        self._analyze_block(
+        return self._analyze_block(
             function.body,
             [_Flow(env)],
             frame=frame,
@@ -1875,6 +2346,10 @@ class _ConsumerInterpreter:
                 return [flow]
             self._scan_expression(expression, env, frame, owner_name)
             value = self._evaluator.evaluate(expression, env, frame)
+            if isinstance(expression, ast.Call) and isinstance(value, _OpaqueValue):
+                returned = self._helper_return_value(expression, env, frame)
+                if returned is not None:
+                    value = returned
             updated = dict(env)
             targets = (
                 statement.targets
@@ -1884,6 +2359,21 @@ class _ConsumerInterpreter:
             for target in targets:
                 if not self._assign_value(target, value, updated, frame):
                     self._assign_unknown(target, updated, statement.lineno)
+            return [_Flow(updated)]
+        if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            updated = dict(env)
+            updated[statement.name] = _LocalFunctionValue(statement)
+            if statement.name not in frame.called_local_functions:
+                self._analyze_local_function(
+                    statement,
+                    {
+                        name: _unknown(f"local-argument:{name}")
+                        for name in _bound_parameters(statement)
+                    },
+                    updated,
+                    frame,
+                    owner_name,
+                )
             return [_Flow(updated)]
         if isinstance(statement, ast.AugAssign):
             self._scan_expression(statement.value, env, frame, owner_name)
@@ -1954,7 +2444,14 @@ class _ConsumerInterpreter:
             value = getattr(statement, "value", None)
             if value is not None:
                 self._scan_expression(value, env, frame, owner_name)
-            return [_Flow(dict(env), "return")]
+            returned = (
+                self._evaluator.evaluate(value, env, frame)
+                if value is not None
+                else _NONE_VALUE
+            )
+            if not isinstance(statement, ast.Return):
+                returned = _unknown(f"yield:{statement.lineno}")
+            return [_Flow(dict(env), "return", returned)]
         if isinstance(statement, ast.Break):
             return [_Flow(dict(env), "break")]
         if isinstance(statement, ast.Continue):
@@ -2068,6 +2565,18 @@ class _ConsumerInterpreter:
             )
             return
         if isinstance(expression, ast.Lambda):
+            # Whatever the body reads is read by the enclosing consumer; the
+            # parameters are unknown, so a read named by one fails closed.
+            lambda_env = dict(env)
+            for parameter in _bound_parameters(expression):
+                lambda_env[parameter] = _unknown(f"lambda-argument:{parameter}")
+            self._scan_expression(
+                expression.body,
+                lambda_env,
+                frame,
+                owner_name,
+                aggregation_entity,
+            )
             return
         if isinstance(expression, ast.Call):
             function_name = _source_name(expression.func)
@@ -2137,6 +2646,24 @@ class _ConsumerInterpreter:
                         receiver.name if isinstance(receiver, _EntityValue) else ""
                     ),
                 )
+            elif (
+                package_helper := self._package_helper(expression, env, frame)
+            ) is not None:
+                self._record_package_helper(
+                    package_helper,
+                    expression,
+                    env,
+                    frame,
+                    owner_name,
+                    aggregation_entity,
+                )
+            elif isinstance(callee, _LocalFunctionValue):
+                self._call_local_function(callee, expression, env, frame, owner_name)
+            elif (
+                isinstance(expression.func, ast.Attribute)
+                and expression.func.attr in _SIMULATION_READ_METHODS
+            ):
+                self._record_simulation_read(expression, env, frame, owner_name)
             else:
                 helper_argument = _REFERENCE_HELPER_ARGUMENTS.get(function_name or "")
                 if helper_argument is not None and len(expression.args) > (
@@ -2227,13 +2754,260 @@ class _ConsumerInterpreter:
                 aggregation_entity,
             )
 
+    def _call_local_function(
+        self,
+        function: _LocalFunctionValue,
+        call: ast.Call,
+        env: Mapping[str, _ExactValue],
+        frame: _EvaluationFrame,
+        owner_name: str | None,
+    ) -> None:
+        """Interpret a local function's body for one call, in the caller's scope."""
+
+        node = function.node
+        parameters = _bound_parameters(node)
+        bound: dict[str, _ExactValue] = {
+            name: _unknown(f"local-argument:{name}") for name in parameters
+        }
+        if any(isinstance(argument, ast.Starred) for argument in call.args) or any(
+            keyword.arg is None for keyword in call.keywords
+        ):
+            self._raise_unresolved(call, frame)
+        positional = (*node.args.posonlyargs, *node.args.args)
+        for argument, value in zip(positional, call.args, strict=False):
+            bound[argument.arg] = self._evaluator.evaluate(value, env, frame)
+        for keyword in call.keywords:
+            if keyword.arg in bound:
+                bound[keyword.arg] = self._evaluator.evaluate(keyword.value, env, frame)
+        self._analyze_local_function(node, bound, env, frame, owner_name)
+
+    def _analyze_local_function(
+        self,
+        node: ast.FunctionDef | ast.AsyncFunctionDef,
+        arguments: Mapping[str, _ExactValue],
+        env: Mapping[str, _ExactValue],
+        frame: _EvaluationFrame,
+        owner_name: str | None,
+    ) -> None:
+        key = (
+            id(node),
+            tuple(
+                (name, _value_identity(value))
+                for name, value in sorted(arguments.items())
+            ),
+        )
+        if key in self._local_calls:
+            # The same call is already being interpreted further up (a
+            # recursive local function); its reads are recorded there.
+            return
+        self._local_calls.add(key)
+        try:
+            scope = dict(env)
+            scope[node.name] = _LocalFunctionValue(node)
+            scope.update(arguments)
+            self._analyze_block(
+                node.body,
+                [_Flow(scope)],
+                frame=frame,
+                owner_name=owner_name,
+            )
+        finally:
+            self._local_calls.discard(key)
+
+    def _record_simulation_read(
+        self,
+        call: ast.Call,
+        env: Mapping[str, _ExactValue],
+        frame: _EvaluationFrame,
+        owner_name: str | None,
+    ) -> None:
+        """Record ``calculate``/``get_holder``/``get_array`` reads by name."""
+
+        assert isinstance(call.func, ast.Attribute)
+        if call.func.attr == "get_array":
+            receiver = self._evaluator.evaluate(call.func.value, env, frame)
+            if isinstance(receiver, _OpaqueValue) and receiver.label == "get_holder":
+                return
+        keyword_name = "variable_name" if call.func.attr == "calculate" else "variable"
+        name = (
+            call.args[0]
+            if call.args and not isinstance(call.args[0], ast.Starred)
+            else next(
+                (
+                    keyword.value
+                    for keyword in call.keywords
+                    if keyword.arg == keyword_name
+                ),
+                None,
+            )
+        )
+        if name is None:
+            self._raise_unresolved(call, frame)
+        self._record_expression(
+            name,
+            env=env,
+            frame=frame,
+            owner_name=owner_name,
+            base_kind="simulation_read",
+        )
+
+    def _package_helper(
+        self,
+        call: ast.Call,
+        env: Mapping[str, _ExactValue],
+        frame: _EvaluationFrame,
+    ) -> _FunctionID | None:
+        """The PolicyEngine-US helper outside ``variables/`` a call invokes."""
+
+        module_name = frame.module.module_name
+        if isinstance(call.func, ast.Name):
+            name = call.func.id
+            if (
+                name in env
+                or name in frame.module_env
+                or name in self._bindings.get(module_name, {})
+            ):
+                return None
+            return self._helper_bindings.get(module_name, {}).get(name)
+        if not isinstance(call.func, ast.Attribute):
+            return None
+        base_path = _attribute_path(call.func.value)
+        if base_path is None or base_path[0] in env:
+            return None
+        for binding in reversed(frame.module.module_imports):
+            if base_path[: len(binding.bound_path)] != binding.bound_path:
+                continue
+            suffix = base_path[len(binding.bound_path) :]
+            source_module = ".".join((binding.source_module, *suffix))
+            if source_module not in self._helper_modules:
+                return None
+            return self._helper_bindings[source_module].get(call.func.attr)
+        return None
+
+    def _helper_review(
+        self,
+        identifier: _FunctionID,
+        call: ast.Call,
+        frame: _EvaluationFrame,
+    ) -> HelperReview:
+        qualified_name = f"{identifier.module_name}.{identifier.function_name}"
+        digest = self._helper_digests.get(identifier)
+        if digest is None:
+            digest = _helper_digest(
+                identifier,
+                {**self._modules, **self._helper_modules},
+                self._all_functions,
+                self._all_bindings,
+            )
+            self._helper_digests[identifier] = digest
+        review = self._helper_reviews.get(qualified_name)
+        location = (
+            f"called by {frame.consumer!r} at {frame.module.display_path}:{call.lineno}"
+        )
+        if review is None:
+            raise RuntimeError(
+                f"Unreviewed PolicyEngine-US helper {qualified_name} (digest "
+                f"{digest}) {location}. Review which variables it reads and "
+                "add it to POLICYENGINE_US_HELPER_REVIEWS."
+            )
+        if review.digest != digest:
+            raise RuntimeError(
+                f"PolicyEngine-US helper {qualified_name} changed (digest "
+                f"{digest}, reviewed {review.digest}) {location}. Review which "
+                "variables it now reads and update POLICYENGINE_US_HELPER_REVIEWS."
+            )
+        if identifier not in self._checked_helpers:
+            unknown = sorted(
+                name
+                for name in (
+                    *review.reads,
+                    *(
+                        read
+                        for _position, _keyword, names in review.reads_when_omitted
+                        for read in names
+                    ),
+                )
+                if name not in self._definitions
+            )
+            if unknown:
+                raise RuntimeError(
+                    f"PolicyEngine-US helper review {qualified_name} names reads "
+                    f"that are not variables: {unknown}."
+                )
+            self._checked_helpers.add(identifier)
+            self.reviewed_helpers.add(qualified_name)
+        return review
+
+    def _record_package_helper(
+        self,
+        identifier: _FunctionID,
+        call: ast.Call,
+        env: Mapping[str, _ExactValue],
+        frame: _EvaluationFrame,
+        owner_name: str | None,
+        aggregation_entity: str,
+    ) -> None:
+        """Record a reviewed helper's reads as the calling consumer's reads."""
+
+        review = self._helper_review(identifier, call, frame)
+        for position, keyword in review.arguments:
+            if any(
+                isinstance(argument, ast.Starred)
+                for argument in call.args[: position + 1]
+            ):
+                self._raise_unresolved(call, frame)
+            if position < len(call.args):
+                argument = call.args[position]
+            else:
+                argument = next(
+                    (item.value for item in call.keywords if item.arg == keyword),
+                    None,
+                )
+                if argument is None and any(item.arg is None for item in call.keywords):
+                    self._raise_unresolved(call, frame)
+            if argument is None:
+                continue
+            self._record_expression(
+                argument,
+                env=env,
+                frame=frame,
+                owner_name=owner_name,
+                base_kind="helper_call",
+                aggregation_entity=aggregation_entity,
+            )
+        reads = list(review.reads)
+        for position, keyword, names in review.reads_when_omitted:
+            argument = (
+                call.args[position]
+                if position < len(call.args)
+                else next(
+                    (item.value for item in call.keywords if item.arg == keyword),
+                    None,
+                )
+            )
+            if argument is None or (
+                self._evaluator.evaluate(argument, env, frame) == _NONE_VALUE
+            ):
+                reads.extend(names)
+        if reads:
+            self._record_receipts(
+                _SequenceValue(tuple(_StringValue(name) for name in reads)),
+                expression=call,
+                base_kind="helper_call",
+                module=frame.module,
+                consumer=frame.consumer,
+                owner_name=owner_name,
+                frame=frame,
+                aggregation_entity=aggregation_entity,
+            )
+
     def _enqueue_helper(
         self,
         call: ast.Call,
         env: Mapping[str, _ExactValue],
         frame: _EvaluationFrame,
     ) -> None:
-        if not frame.enqueue_helpers:
+        if not frame.enqueue_helpers or _is_local_name(call, env):
             return
         identifier = self._helper_identifier(call, frame)
         if identifier is None:
@@ -2257,6 +3031,83 @@ class _ConsumerInterpreter:
         if context not in self._seen_contexts:
             self._seen_contexts.add(context)
             self._queue.append(context)
+
+    def _helper_return_value(
+        self,
+        call: ast.Call,
+        env: Mapping[str, _ExactValue],
+        frame: _EvaluationFrame,
+    ) -> _ExactValue | None:
+        """What a source helper returns for this call's exact arguments.
+
+        policyengine-us 2.60 formulas unpack helper results before reading
+        them (``income, deductions = dependent_income_and_deductions(...)``).
+        The helper body is interpreted with the call's arguments, once per
+        distinct context, and its ``return`` values (``None`` when it can
+        fall off the end) become the assigned value's alternatives. A
+        recursive context is unknown. Returns None for a call that names no
+        source helper, which keeps the evaluator's opaque result.
+        """
+
+        if _is_local_name(call, env):
+            return None
+        identifier = self._helper_identifier(call, frame)
+        if identifier is None or identifier not in self._functions:
+            return None
+        if any(isinstance(argument, ast.Starred) for argument in call.args) or any(
+            keyword.arg is None for keyword in call.keywords
+        ):
+            return _unknown(f"helper-unpack:{call.lineno}")
+        context = _FunctionContext(
+            identifier=identifier,
+            args=tuple(
+                self._evaluator.evaluate(argument, env, frame) for argument in call.args
+            ),
+            keywords=tuple(
+                sorted(
+                    (keyword.arg, self._evaluator.evaluate(keyword.value, env, frame))
+                    for keyword in call.keywords
+                    if keyword.arg is not None
+                )
+            ),
+        )
+        if context in self._return_values:
+            return self._return_values[context]
+        if context in self._returning:
+            return _unknown(f"helper-recursion:{identifier.function_name}")
+        self._returning.add(context)
+        try:
+            function = self._functions[identifier]
+            # Only the value is wanted here. The helper's own receipts and
+            # its strict sink checks belong to the context the call enqueues
+            # (when its frame enqueues helpers), so this pass defers
+            # unresolved sinks and enqueues nothing.
+            flows = self._analyze_function(
+                module=function.module,
+                function=function.node,
+                consumer=function.node.name,
+                owner_name=None,
+                args=context.args,
+                keywords=context.keywords,
+                defer_unresolved_sinks=True,
+                enqueue_helpers=False,
+            )
+        finally:
+            self._returning.discard(context)
+        values = [
+            flow.value
+            for flow in flows
+            if flow.signal == "return" and flow.value is not None
+        ]
+        if any(flow.signal == "normal" for flow in flows):
+            values.append(_NONE_VALUE)
+        result = (
+            _make_alternative(tuple(values))
+            if values
+            else _unknown(f"helper-no-return:{identifier.function_name}")
+        )
+        self._return_values[context] = result
+        return result
 
     def _helper_identifier(
         self,
@@ -2464,9 +3315,11 @@ class _ConsumerInterpreter:
         flows: list[_Flow],
         frame: _EvaluationFrame,
     ) -> list[_Flow]:
-        unique: dict[tuple[str, tuple[tuple[str, _ExactValue], ...]], _Flow] = {}
+        unique: dict[
+            tuple[str, tuple[tuple[str, _ExactValue], ...], _ExactValue | None], _Flow
+        ] = {}
         for flow in flows:
-            key = (flow.signal, tuple(sorted(flow.env.items())))
+            key = (flow.signal, tuple(sorted(flow.env.items())), flow.value)
             unique[key] = flow
         if len(unique) > _STATE_CAP:
             raise RuntimeError(
@@ -2480,6 +3333,7 @@ def _index_policyengine_us_sources(
     variables_root: Path,
     *,
     parameters_root: Path | None = None,
+    helper_reviews: Mapping[str, HelperReview] | None = None,
 ) -> _PolicyEngineUSSourceIndex:
     """Build the shared source index from one parsed module inventory.
 
@@ -2519,15 +3373,19 @@ def _index_policyengine_us_sources(
         raise RuntimeError(
             f"No PolicyEngine variable classes found below {variables_root}."
         )
-    consumers = _ConsumerInterpreter(
+    interpreter = _ConsumerInterpreter(
         modules,
         module_envs,
         resolver,
         definitions,
-    ).run()
+        helper_modules=_inventory_helper_modules(variables_root.parent, modules),
+        helper_reviews=helper_reviews,
+    )
+    consumers = interpreter.run()
     return _PolicyEngineUSSourceIndex(
         definitions=MappingProxyType(definitions),
         consumers=consumers,
+        reviewed_helpers=tuple(sorted(interpreter.reviewed_helpers)),
     )
 
 

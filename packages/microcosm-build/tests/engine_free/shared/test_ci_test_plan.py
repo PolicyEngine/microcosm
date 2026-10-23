@@ -195,6 +195,26 @@ def test_example():
     assert ci_test_plan.engine_guard_lines(source) == (5,)
 
 
+def test_engine_guard_detection_finds_module_skips_on_import_error() -> None:
+    source = """
+try:
+    INDEX = PolicyEngineUSVariableMetadataIndex()
+except ImportError:
+    pytest.skip("requires the policyengine-us extra", allow_module_level=True)
+
+try:
+    import yaml
+except (ModuleNotFoundError, OSError):
+    pytest.skip("optional", allow_module_level=True)
+
+try:
+    import yaml
+except ImportError:
+    pytest.skip("only this test")
+"""
+    assert ci_test_plan.engine_guard_lines(source) == (5, 10)
+
+
 def test_every_repository_test_has_a_valid_execution_category() -> None:
     invalid = [
         path.relative_to(ci_test_plan.ROOT)

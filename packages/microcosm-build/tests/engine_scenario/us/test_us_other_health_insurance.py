@@ -7,7 +7,7 @@ from test_support.microcosm_build.us_other_health_insurance import *
 def test_policyengine_us_graph_uses_other_health_insurance_premiums() -> None:
     from policyengine_us import CountryTaxBenefitSystem, Simulation
 
-    assert version("policyengine-us") == "2.2.1"
+    assert version("policyengine-us") == "2.60.4"
     variable = CountryTaxBenefitSystem().variables[_OTHER]
     assert variable.is_input_variable()
     assert variable.entity.key == "person"
@@ -54,7 +54,7 @@ def test_policyengine_us_graph_uses_other_health_insurance_premiums() -> None:
 def test_policyengine_2_2_1_se_health_ald_contract_and_live_binding() -> None:
     from policyengine_us import CountryTaxBenefitSystem, Simulation
 
-    assert version("policyengine-us") == "2.2.1"
+    assert version("policyengine-us") == "2.60.4"
     variables = CountryTaxBenefitSystem().variables
     for name in US_SE_HEALTH_ATTRIBUTION_OUTPUT_COLUMNS:
         variable = variables[name]

@@ -4,8 +4,8 @@
   "policy": "Take-up contract inventory for PolicyEngine-US take-up flags. Each program records the engine facts a test asserts against the installed policyengine-us (entity, default, engine_class) and the curated populace treatment (seed / rate_unsourced / model_simulated / out_of_scope / near_universal) with its administrative rate provenance. The engine facts are derived, not remembered: PolicyEngineUSEngine.take_up_contract() recomputes them from engine metadata and test_us_take_up_contract.py fails when a checked-in engine fact drifts from the pinned engine (same doctrine as the #301 formula-owned guard). populace issue #312.",
   "asserted_engine": {
     "package": "policyengine-us",
-    "constraint": ">=2.2.1,<3",
-    "inventory_built_against": "2.2.1",
+    "constraint": ">=2.60.4,<3",
+    "inventory_built_against": "2.60.4",
     "note": "engine_class, entity, value_type, and default below are asserted against the installed engine by test. inventory_built_against records the version the curated treatments were reviewed against; the pin constraint is the contract the build honors."
   },
   "doctrine": {
@@ -116,6 +116,18 @@
       "consumed_via": "medicare_enrolled (adds), gated by is_medicare_eligible",
       "rate": {"status": "not_used_measured_source"},
       "notes": "The dedicated source stage restores the retired measured mapping MCARE == 1 from every locked ASEC year and copies it with source-identity clones onto the PUF support half. out_of_scope means out of scope for generic Bernoulli seeding, not unseeded."
+    },
+    {
+      "variable": "takes_up_medicare_part_d_if_eligible",
+      "engine_class": "data_seeded",
+      "entity": "person",
+      "value_type": "bool",
+      "default": true,
+      "populace_treatment": "rate_unsourced",
+      "consumed_via": "medicare_part_d_enrolled, gated by medicare_enrolled; it gates income_adjusted_part_d_premium_surcharge (policyengine-us 2.60)",
+      "rate": {"status": "no_source"},
+      "followup": "No locked source measures Part D enrollment (the ASEC has no Part D item). CMS publishes Part D enrollment counts, so a count-calibrated stage anchored on Medicare enrollment is the route to seeding it.",
+      "notes": "New in the policyengine-us 2.60 line. Left at the engine default (every Medicare enrollee takes up Part D), which keeps the Part D income-related premium charged to every enrollee above the thresholds, as policyengine-us 2.2.1 did."
     },
     {
       "variable": "takes_up_ssi_if_eligible",

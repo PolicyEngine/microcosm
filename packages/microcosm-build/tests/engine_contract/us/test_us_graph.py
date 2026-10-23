@@ -78,7 +78,7 @@ def test_us_post_transfer_rewrites_are_opened_by_identity_filters() -> None:
     materialize = graph.node("materialize_multispine_agreement_outputs")
 
     assert create.structural is StructuralDelta.CREATE
-    assert len(create.outputs) == 76
+    assert len(create.outputs) == 77
     assert all(not owned.rewrite for owned in create.outputs)
 
     for stage in _STAGES[:3]:
@@ -94,7 +94,7 @@ def test_us_post_transfer_rewrites_are_opened_by_identity_filters() -> None:
     assert all(owned.rewrite for owned in derive.outputs)
 
     seed_by_coordinate = {(owned.entity, owned.column): owned for owned in seed.outputs}
-    assert len(seed_by_coordinate) == 17
+    assert len(seed_by_coordinate) == 18
     assert not seed_by_coordinate[("tax_unit", "takes_up_eitc")].rewrite
     assert all(
         owned.rewrite

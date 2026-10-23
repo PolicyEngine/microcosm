@@ -123,10 +123,12 @@ _NO_PAYERS_REASON = (
     "No weighted Medicare enrollee pays an income-related premium, so no "
     "Trustees comparison is reported. The premium for a year rests on "
     "modified adjusted gross income from two years earlier. On "
-    "policyengine-us 2.2.1 this outcome is expected for a release H5 that "
+    "policyengine-us 2.2.1 this outcome was expected for a release H5 that "
     "carries only the release year's inputs, because that engine computes the "
-    "income from the earlier year's inputs; PolicyEngine/policyengine-us#10106 "
-    "adds a fallback to the earliest input year."
+    "income from the earlier year's inputs. From policyengine-us 2.60 "
+    "(PolicyEngine/policyengine-us#10106) the engine falls back to the "
+    "earliest input year's income, deflated by per-capita CBO AGI, so on it "
+    "no payer means no enrollee's income reaches the first threshold."
 )
 _NO_ENROLLEES_REASON = (
     "No weighted person is enrolled in Medicare, so no Trustees comparison is reported."

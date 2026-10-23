@@ -704,12 +704,14 @@ def test_canonical_battery_contract_matches_production_registries() -> None:
     assert single == 134
     assert joint == 1
     assert len(contract) == single + joint
-    assert sum(len(row["metric_legs"]) for row in contract.values()) == 372
+    # policyengine-us 2.60.4 retired the first-home mortgage leg (a four-leg
+    # monetary metric) and added Part D take-up (a one-leg incidence metric).
+    assert sum(len(row["metric_legs"]) for row in contract.values()) == 369
     assert (
         sum(row["metric"] == "monetary_sign_separated" for row in contract.values())
-        == 79
+        == 78
     )
-    assert sum(row["metric"] == "boolean_incidence" for row in contract.values()) == 51
+    assert sum(row["metric"] == "boolean_incidence" for row in contract.values()) == 52
     assert sum(row["metric"] == "categorical_tvd" for row in contract.values()) == 5
     assert (
         "person/source_operator_immigration/"
@@ -758,8 +760,8 @@ def test_observed_origin_battery_is_evidence_not_assertion(monkeypatch) -> None:
     assert asec_only["observed_origins"]["entities"]["person"]["asec_rows"] == 2
     assert both_origins["status"] == "computed_finished_h5"
     assert both_origins["production_receipt_authenticated"] is False
-    assert both_origins["metric_leg_count"] == 372
-    assert both_origins["scalar_leg_status_counts"] == {"computed": 372}
+    assert both_origins["metric_leg_count"] == 369
+    assert both_origins["scalar_leg_status_counts"] == {"computed": 369}
     for payload in (no_columns, asec_only):
         assert payload["comparison_count"] == 135
         assert all(

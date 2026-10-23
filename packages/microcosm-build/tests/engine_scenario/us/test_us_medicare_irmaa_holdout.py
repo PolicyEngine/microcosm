@@ -84,16 +84,16 @@ def test_holdout_measures_follow_the_engine_on_a_household() -> None:
     )
 
 
-def test_a_single_year_household_has_no_irmaa_on_the_locked_engine() -> None:
-    """Pin today's zero so an engine bump changes it visibly (microcosm#1206).
+def test_a_single_year_household_pays_irmaa_on_the_locked_engine() -> None:
+    """A single-year release still charges IRMAA on 2.60 (microcosm#1206).
 
-    A release H5 carries inputs for its year only. On policyengine-us 2.2.1,
-    IRMAA rests on income two years earlier, which such a household lacks, so
-    a 2024 enrollee with $600,000 of 2024 wages pays none and the holdout
-    withholds its Trustees comparisons. A policyengine-us that includes
-    PolicyEngine/policyengine-us#10106 falls back to the earliest input year;
-    when Microcosm moves to one, this test fails and should be rewritten to
-    expect the top tier.
+    A release H5 carries inputs for its year only. policyengine-us 2.2.1 read
+    the income two years earlier, which such a household lacks, so a 2024
+    enrollee with $600,000 of 2024 wages paid none. policyengine-us 2.60
+    includes PolicyEngine/policyengine-us#10106: with no earlier inputs it
+    takes the 2024 income deflated to 2022 by per-capita CBO AGI ($543,850),
+    still above the top threshold, so the enrollee pays the Trustees' 2024
+    top-tier amounts.
     """
     from policyengine_us import Simulation
 
@@ -114,9 +114,16 @@ def test_a_single_year_household_has_no_irmaa_on_the_locked_engine() -> None:
         for variable in MEDICARE_IRMAA_HOLDOUT_VARIABLES
     ]
     assert simulation.calculate("adjusted_gross_income", 2024)[0] >= 600_000
+    lookback = simulation.calculate("medicare_irmaa_magi_two_years_prior", 2024)[0]
+    assert 500_000 < lookback < 600_000
     payload = medicare_irmaa_holdout_payload(*values, np.array([1.0]), period=2024)
-    assert payload["status"] == "no_payers", payload["parts"]
     assert payload["weighted_medicare_enrollees"] == 1
-    for row in payload["parts"]:
-        assert row["weighted_payers"] == 0
-        assert row["payers_relative_difference"] is None
+    part_b_row, part_d_row = payload["parts"]
+    assert part_b_row["weighted_payers"] == 1
+    assert part_b_row["average_monthly_premium_per_payer"] == pytest.approx(
+        _TRUSTEES_2024_PART_B_TOP_MONTHLY
+    )
+    assert part_d_row["weighted_payers"] == 1
+    assert part_d_row["average_monthly_premium_per_payer"] == pytest.approx(
+        _TRUSTEES_2024_PART_D_TOP_MONTHLY
+    )
