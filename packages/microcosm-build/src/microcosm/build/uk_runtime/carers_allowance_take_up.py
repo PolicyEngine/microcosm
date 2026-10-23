@@ -11,8 +11,7 @@ week, reached a carer who would claim once entitled.
 
 This stage runs after the SPI income chain and the other take-up redraws. It
 opens the flag to the carers the earnings limit alone keeps from the
-allowance at the survey year: a person outside Scotland whose ``care_hours``
-reach the engine's ``gov.dwp.carers_allowance.min_hours``, who reports no
+allowance at the survey year: a person whose ``care_hours`` reach the engine's ``gov.dwp.carers_allowance.min_hours``, who reports no
 Carer's Allowance, and whom ``is_gainfully_employed_for_carers_allowance``
 holds gainfully employed at the survey year (the 2024-25 limit of £151 a
 week; the engine reads a year's parameters at 30 April). Such a person claims
@@ -23,13 +22,12 @@ identity-keyed uniform:
 
 A reporter stays true. A carer under the limit who reports no allowance
 stays false, as the survey records them entitled and not claiming. Scotland
-is left closed: Carer Support Payment reads the same flag, and until
-policyengine-uk 2.146.1 the engine did not apply its earnings limit, so a draw
-there would have paid it to carers over the limit. The engine applies the limit
-now (PolicyEngine/policyengine-uk#2473); opening Scotland is a follow-up
-(microcosm#1319). The incoming flag
-must still follow reported receipt, since the stage rebuilds it from that
-anchor.
+is drawn too (María's ruling of 2026-10-23): Carer Support Payment replaces the
+allowance there and reads the same flag, and since policyengine-uk 2.146.1
+(PolicyEngine/policyengine-uk#2473) the engine pays it only under its own
+earnings limit, so a drawn Scottish carer is paid only where its rules allow.
+The receipt reports Scotland apart. The incoming flag must still follow
+reported receipt, since the stage rebuilds it from that anchor.
 
 The earnings test is read where the stage runs, before ``salary_sacrifice``
 moves some contributors' pension amounts out of their pay, which lowers the
@@ -101,20 +99,19 @@ CARERS_ALLOWANCE_ENGINE_VARIABLES = (CARERS_ALLOWANCE_EARNINGS_TEST,)
 #: limit the survey's carers were held to; the stage refuses any other period.
 CARERS_ALLOWANCE_YEAR_RULE = "survey_year"
 CARERS_ALLOWANCE_NEWLY_ENTITLED_RATE_KEY = "carers_allowance_newly_entitled"
-#: Carer Support Payment replaces the allowance in Scotland and reads the same
-#: flag; policyengine-uk applies its earnings limit from 2.146.1, and until a
-#: follow-up opens it (microcosm#1319) Scotland is never drawn.
-CARERS_ALLOWANCE_CLOSED_REGION = "SCOTLAND"
+#: Where Carer Support Payment replaces the allowance and reads the same flag:
+#: drawn as everywhere else, under the engine's own earnings limit from
+#: policyengine-uk 2.146.1, and reported apart in the receipt.
+CARER_SUPPORT_PAYMENT_REGION = "SCOTLAND"
 CARERS_ALLOWANCE_PARAMETERS = "gov.dwp.carers_allowance"
 CARERS_ALLOWANCE_REPORTED_ANCHOR = "carers_allowance_reported > 0"
 CARERS_ALLOWANCE_ELIGIBILITY = (
-    "persons outside Scotland whose care_hours reach policyengine-uk's "
+    "persons whose care_hours reach policyengine-uk's "
     "gov.dwp.carers_allowance.min_hours, who report no Carer's Allowance, and "
     "whom is_gainfully_employed_for_carers_allowance holds gainfully employed at "
     "the survey year: the carers the earnings limit alone keeps from the "
-    "allowance. Scotland stays closed, since Carer Support Payment reads the same "
-    "flag; policyengine-uk applies its earnings limit from 2.146.1, and opening "
-    "Scotland is a follow-up (microcosm#1319)"
+    "allowance. In Scotland the flag is Carer Support Payment's, which "
+    "policyengine-uk pays under its own earnings limit from 2.146.1"
 )
 CARERS_ALLOWANCE_RATE_DERIVATION = (
     "the take-up contract's carers_allowance_newly_entitled rate, drawn flat over "
@@ -176,14 +173,12 @@ def carers_allowance_eligible(
     care_hours: np.ndarray,
     reported: np.ndarray,
     gainfully_employed: np.ndarray,
-    scotland: np.ndarray,
     min_hours: float,
 ) -> np.ndarray:
     """The carers the earnings limit alone keeps from the allowance."""
 
     return (
-        ~np.asarray(scotland, dtype=bool)
-        & (np.asarray(care_hours, dtype=np.float64) >= float(min_hours))
+        (np.asarray(care_hours, dtype=np.float64) >= float(min_hours))
         & ~np.asarray(reported, dtype=bool)
         & np.asarray(gainfully_employed, dtype=bool)
     )
@@ -314,7 +309,7 @@ def redraw_carers_allowance_take_up(
     )
     if regions.isna().any():
         raise ValueError("Every person's household must carry a region.")
-    scotland = regions.eq(CARERS_ALLOWANCE_CLOSED_REGION).to_numpy(dtype=bool)
+    scotland = regions.eq(CARER_SUPPORT_PAYMENT_REGION).to_numpy(dtype=bool)
     care_hours = (
         pd.to_numeric(person[CARERS_ALLOWANCE_CARE_HOURS], errors="coerce")
         .fillna(0.0)
@@ -324,7 +319,6 @@ def redraw_carers_allowance_take_up(
         care_hours=care_hours,
         reported=reported,
         gainfully_employed=gainfully_employed,
-        scotland=scotland,
         min_hours=resolved.min_hours,
     )
     draws = stable_identity_uniforms(
@@ -385,17 +379,14 @@ def redraw_carers_allowance_take_up(
         ),
         "drawn_support": support_band(sources(drawn)),
         "realized_share": share,
-        # Over-limit carers in Scotland stay closed: no Scottish person who
-        # reports no allowance carries the flag.
-        "scotland_left_closed_support": support_band(
-            sources(
-                scotland
-                & (care_hours >= resolved.min_hours)
-                & ~reported
-                & gainfully_employed
-            )
+        # Scotland apart: there the flag is Carer Support Payment's (María's
+        # ruling of 2026-10-23).
+        "scotland_eligible_support": support_band(sources(eligible & scotland)),
+        "scotland_eligible_weighted_persons": small_cell_share(
+            float(weights[eligible & scotland].sum()),
+            sources(eligible & scotland),
         ),
-        "scotland_closed": not bool((scotland & ~reported & would_claim).any()),
+        "scotland_drawn_support": support_band(sources(drawn & scotland)),
     }
     return UKCarersAllowanceTakeUpResult(frame=result, receipt=receipt)
 
