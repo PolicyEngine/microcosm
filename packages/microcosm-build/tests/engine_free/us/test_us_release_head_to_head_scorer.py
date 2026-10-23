@@ -760,8 +760,8 @@ def test_observed_origin_battery_is_evidence_not_assertion(monkeypatch) -> None:
     assert asec_only["observed_origins"]["entities"]["person"]["asec_rows"] == 2
     assert both_origins["status"] == "computed_finished_h5"
     assert both_origins["production_receipt_authenticated"] is False
-    assert both_origins["metric_leg_count"] == 372
-    assert both_origins["scalar_leg_status_counts"] == {"computed": 372}
+    assert both_origins["metric_leg_count"] == 369
+    assert both_origins["scalar_leg_status_counts"] == {"computed": 369}
     for payload in (no_columns, asec_only):
         assert payload["comparison_count"] == 135
         assert all(
