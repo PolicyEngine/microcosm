@@ -174,7 +174,39 @@ def engine_guard_lines(source: str) -> tuple[int, ...]:
                     and expression.attr in engine_markers
                 ):
                     lines.add(decorator.lineno)
+        # ``try: <engine call> except ImportError: pytest.skip(...,
+        # allow_module_level=True)`` skips a whole module when the engine is
+        # missing, which leaves an engine-free module that never runs in CI.
+        if isinstance(node, ast.ExceptHandler) and _catches_import_error(node):
+            lines.update(
+                call.lineno
+                for statement in node.body
+                for call in ast.walk(statement)
+                if isinstance(call, ast.Call)
+                and isinstance(call.func, (ast.Attribute, ast.Name))
+                and (
+                    call.func.attr
+                    if isinstance(call.func, ast.Attribute)
+                    else call.func.id
+                )
+                == "skip"
+                and any(
+                    keyword.arg == "allow_module_level"
+                    and isinstance(keyword.value, ast.Constant)
+                    and keyword.value.value is True
+                    for keyword in call.keywords
+                )
+            )
     return tuple(sorted(lines))
+
+
+def _catches_import_error(handler: ast.ExceptHandler) -> bool:
+    caught = handler.type
+    names = caught.elts if isinstance(caught, ast.Tuple) else (caught,)
+    return any(
+        isinstance(name, ast.Name) and name.id in {"ImportError", "ModuleNotFoundError"}
+        for name in names
+    )
 
 
 def test_files() -> tuple[Path, ...]:

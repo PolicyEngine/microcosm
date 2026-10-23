@@ -31,6 +31,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from microcosm.frame.adapters._policyengine_us_helper_reviews import HelperReview
 from microcosm.frame.adapters._policyengine_us_source_index import (
     ConsumerReceipt,
     _PolicyEngineUSSourceIndex,
@@ -245,12 +246,14 @@ def _index_policyengine_us_sources(
     variables_root: Path,
     *,
     parameters_root: Path | None = None,
+    helper_reviews: Mapping[str, HelperReview] | None = None,
 ) -> _PolicyEngineUSSourceIndex:
     """Thin adapter hook over the single combined source-index implementation."""
 
     return _build_policyengine_us_source_index(
         variables_root,
         parameters_root=parameters_root,
+        helper_reviews=helper_reviews,
     )
 
 

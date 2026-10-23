@@ -57,7 +57,8 @@ NON_ENGINE_CONSUMER_ALLOWLIST: dict[str, _ReviewedNonEngineConsumer] = {
 
 _REVIEWED_WIC_CONSUMERS = {
     # WICYN identifies the adult-female reporter/carrier, not the beneficiary.
-    # These targets are reviewed from the six PolicyEngine-US 2.2.1 formulas;
+    # These targets are reviewed from the six PolicyEngine-US formulas (read
+    # on 2.2.1 and again, unchanged, on 2.60.4);
     # output entity alone is insufficient because Pell aggregates by tax unit
     # and Virginia reads people inside an SPM-unit aggregation. Values pin the
     # direct receiver and the enclosing aggregation entity, in that order.
@@ -90,13 +91,7 @@ class _EngineConsumerIndex(Protocol):
     def variable_metadata(self, name: str) -> VariableMetadata: ...
 
 
-try:
-    _ENGINE_INDEX = PolicyEngineUSVariableMetadataIndex()
-except ImportError:
-    pytest.skip(
-        "requires the policyengine-us [us] extra",
-        allow_module_level=True,
-    )
+_ENGINE_INDEX = PolicyEngineUSVariableMetadataIndex()
 
 
 _POOL_INPUT_SURFACE = pool_input_surface()
@@ -496,10 +491,12 @@ def test_guard_rejects_redundant_allowlist_entry() -> None:
             "deductible_mortgage_interest_tax_unit",
             "entity_call",
         ),
+        # policyengine-us 2.60 sums the person-level interest inputs through
+        # home_mortgage_interest_tax_unit's class-level adds.
         (
-            "first_home_mortgage_interest",
+            "home_mortgage_interest",
             "home_mortgage_interest_tax_unit",
-            "add",
+            "adds",
         ),
         (
             "first_home_mortgage_origination_year",
@@ -512,9 +509,9 @@ def test_guard_rejects_redundant_allowlist_entry() -> None:
             "entity_call",
         ),
         (
-            "second_home_mortgage_interest",
+            "second_residence_mortgage_interest",
             "home_mortgage_interest_tax_unit",
-            "add",
+            "adds",
         ),
         (
             "second_home_mortgage_origination_year",
@@ -524,10 +521,10 @@ def test_guard_rejects_redundant_allowlist_entry() -> None:
     ),
     ids=(
         "first_home_mortgage_balance",
-        "first_home_mortgage_interest",
+        "home_mortgage_interest",
         "first_home_mortgage_origination_year",
         "second_home_mortgage_balance",
-        "second_home_mortgage_interest",
+        "second_residence_mortgage_interest",
         "second_home_mortgage_origination_year",
     ),
 )
@@ -546,17 +543,21 @@ def test_colocated_mortgage_consumer_is_discoverable(
 
 
 @pytest.mark.parametrize(
-    ("variable", "consumer", "filename"),
+    ("variable", "consumer", "filename", "kind"),
     (
         (
             "is_disabled",
             "il_pi_has_developmental_delay",
             "il_pi_has_developmental_delay.py",
+            "entity_call",
         ),
+        # policyengine-us 2.60 adds the parameter's pension sources over the
+        # tax unit's members (``add(person, period, p.pension_sources)``).
         (
             "taxable_pension_income",
             "ok_pension_subtraction",
             "ok_pension_subtraction.py",
+            "parameter_add",
         ),
     ),
     ids=("is_disabled", "taxable_pension_income"),
@@ -565,12 +566,14 @@ def test_group_member_consumer_is_discoverable(
     variable: str,
     consumer: str,
     filename: str,
+    kind: str,
 ) -> None:
     assert any(
         receipt.consumer == consumer
         and receipt.path.endswith(f"/{filename}")
         and receipt.line > 0
-        and receipt.kind == "entity_call"
+        and receipt.kind == kind
+        and receipt.receiver_entity == "person"
         for receipt in _ENGINE_INDEX.consumer_receipts(variable)
     )
 
@@ -595,17 +598,21 @@ def test_strike_benefits_market_income_consumer_is_discoverable() -> None:
 
 
 @pytest.mark.parametrize(
-    ("variable", "consumer", "filename"),
+    ("variable", "consumer", "filename", "kind"),
     (
         (
             "has_champva_health_coverage_at_interview",
             "qualifying_non_marketplace_health_coverage_type_count_at_interview",
             "qualifying_non_marketplace_health_coverage_type_count_at_interview.py",
+            "parameter_adds",
         ),
+        # policyengine-us 2.60 sums the parameter's deduction list through
+        # ``tax_unit_non_dep_add``, a reviewed package helper.
         (
             "domestic_production_ald",
             "above_the_line_deductions",
             "above_the_line_deductions.py",
+            "parameter_helper_call",
         ),
     ),
     ids=(
@@ -617,12 +624,13 @@ def test_parameter_consumer_is_discoverable(
     variable: str,
     consumer: str,
     filename: str,
+    kind: str,
 ) -> None:
     assert any(
         receipt.consumer == consumer
         and receipt.path.endswith(f"/{filename}")
         and receipt.line > 0
-        and receipt.kind == "parameter_adds"
+        and receipt.kind == kind
         for receipt in _ENGINE_INDEX.consumer_receipts(variable)
     )
 

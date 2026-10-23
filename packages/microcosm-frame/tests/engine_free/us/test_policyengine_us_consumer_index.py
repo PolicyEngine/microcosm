@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from importlib.util import find_spec
 from pathlib import Path
 from textwrap import dedent, indent
@@ -9,6 +10,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from microcosm.frame.adapters import policyengine_us as module
+from microcosm.frame.adapters._policyengine_us_helper_reviews import HelperReview
 
 _HAS_YAML = find_spec("yaml") is not None
 _REQUIRES_YAML = pytest.mark.skipif(
@@ -53,6 +55,8 @@ def _index(
     sources: dict[str, str],
     *,
     parameters: dict[str, str] | None = None,
+    package: dict[str, str] | None = None,
+    helper_reviews: dict[str, HelperReview] | None = None,
 ) -> module._PolicyEngineUSSourceIndex:
     variables_root = tmp_path / "variables"
     parameters_root = tmp_path / "parameters"
@@ -60,9 +64,13 @@ def _index(
         _write(variables_root, relative_path, source)
     for dotted_path, source in (parameters or {}).items():
         _write_parameter(parameters_root, dotted_path, source)
+    # Package modules outside ``variables/`` (``model_api.py``, ``tools/``).
+    for relative_path, source in (package or {}).items():
+        _write(tmp_path, relative_path, source)
     return module._index_policyengine_us_sources(
         variables_root,
         parameters_root=parameters_root,
+        helper_reviews=helper_reviews if helper_reviews is not None else {},
     )
 
 
@@ -1311,3 +1319,644 @@ def test_starred_display_reads_exactly_the_union_of_its_parts(
     index = _index(root, {"spliced.py": module, "leaves.py": _variables(*leaves)})
 
     assert _receipt_targets(index) == set(leaves)
+
+
+# Package helpers outside ``variables/`` -------------------------------------
+
+_MODEL_API = "from policyengine_us.tools.general import *\n"
+_GENERAL = """
+LEAVES = ("first_leaf", "second_leaf")
+
+
+def tax_unit_non_dep_sum(var, tax_unit, period):
+    return tax_unit.sum(
+        tax_unit.members(var, period)
+        * not_(tax_unit.members("is_dependent", period))
+    )
+
+
+def tax_unit_non_dep_add(tax_unit, period, variables, include_dependents=()):
+    \"\"\"Add variables over non-dependents.\"\"\"
+    total = 0
+    for variable in variables:
+        total = total + tax_unit_non_dep_sum(variable, tax_unit, period)
+    return total
+
+
+def eitc_like(tax_unit, period, child_count=None):
+    if child_count is None:
+        child_count = tax_unit("child_count", period)
+    return child_count * tax_unit("takes_up", period)
+
+
+def any_leaf(tax_unit, period):
+    return any(tax_unit(leaf, period) for leaf in LEAVES)
+
+
+def sum_among_non_dependents(variable):
+    def formula(tax_unit, period, parameters):
+        return tax_unit_non_dep_sum(variable, tax_unit, period)
+
+    return formula
+"""
+_HELPER_LEAVES = _variables(
+    "wages",
+    "interest",
+    "is_dependent",
+    "child_count",
+    "takes_up",
+    "first_leaf",
+    "second_leaf",
+)
+_HELPER_REVIEW_SPECS = {
+    "policyengine_us.tools.general.tax_unit_non_dep_add": {
+        "arguments": ((2, "variables"),),
+        "reads": ("is_dependent",),
+    },
+    "policyengine_us.tools.general.tax_unit_non_dep_sum": {
+        "arguments": ((0, "var"),),
+        "reads": ("is_dependent",),
+    },
+    "policyengine_us.tools.general.eitc_like": {
+        "reads": ("takes_up",),
+        "reads_when_omitted": ((2, "child_count", ("child_count",)),),
+    },
+    "policyengine_us.tools.general.any_leaf": {
+        "reads": ("first_leaf", "second_leaf"),
+    },
+    "policyengine_us.tools.general.sum_among_non_dependents": {
+        "arguments": ((0, "variable"),),
+        "reads": ("is_dependent",),
+    },
+}
+
+
+def _tax_unit_variable(name: str, body: str) -> str:
+    return (
+        _clean(
+            f"""
+        from policyengine_us.model_api import *
+
+        class {name}(Variable):
+            value_type = float
+            entity = TaxUnit
+            definition_period = YEAR
+
+        """
+        )
+        + indent(dedent(body).strip(), "    ")
+        + "\n"
+    )
+
+
+def _helper_digest_error(exc: pytest.ExceptionInfo[RuntimeError]) -> tuple[str, str]:
+    match = re.search(
+        r"helper (\S+) (?:\(digest|changed \(digest) ([0-9a-f]{64})",
+        str(exc.value),
+    )
+    assert match is not None, str(exc.value)
+    return match.group(1), match.group(2)
+
+
+def _reviewed_index(
+    tmp_path: Path,
+    sources: dict[str, str],
+    *,
+    package: dict[str, str],
+    specs: dict[str, dict[str, object]] | None = None,
+) -> module._PolicyEngineUSSourceIndex:
+    """Index ``sources``, reviewing each helper as a reviewer would.
+
+    Every unreviewed helper stops the index with its digest; the review is
+    then written from ``specs`` at that digest and the index rerun.
+    """
+
+    reviews: dict[str, HelperReview] = {}
+    specs = _HELPER_REVIEW_SPECS if specs is None else specs
+    for _ in range(len(specs) + 1):
+        try:
+            return _index(
+                tmp_path,
+                sources,
+                package=package,
+                helper_reviews=reviews,
+            )
+        except RuntimeError as exc:
+            match = re.search(
+                r"Unreviewed PolicyEngine-US helper (\S+) \(digest ([0-9a-f]{64})\)",
+                str(exc),
+            )
+            if match is None:
+                raise
+            name, digest = match.groups()
+            reviews[name] = HelperReview(digest=digest, **specs[name])  # type: ignore[arg-type]
+    raise AssertionError("helper reviews did not converge")
+
+
+def test_unreviewed_package_helper_fails_closed_with_its_digest(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(RuntimeError) as exc:
+        _index(
+            tmp_path,
+            {
+                "filer_total.py": _tax_unit_variable(
+                    "filer_total",
+                    """
+                    def formula(tax_unit, period, parameters):
+                        return tax_unit_non_dep_add(tax_unit, period, ["wages"])
+                    """,
+                ),
+                "leaves.py": _HELPER_LEAVES,
+            },
+            package={"model_api.py": _MODEL_API, "tools/general.py": _GENERAL},
+        )
+    assert "Unreviewed PolicyEngine-US helper" in str(exc.value)
+    assert _helper_digest_error(exc)[0] == (
+        "policyengine_us.tools.general.tax_unit_non_dep_add"
+    )
+
+
+def test_reviewed_package_helper_reads_belong_to_the_caller(tmp_path: Path) -> None:
+    """Named variables and the helper's own reads are the caller's receipts."""
+
+    index = _reviewed_index(
+        tmp_path,
+        {
+            "filer_total.py": _tax_unit_variable(
+                "filer_total",
+                """
+                def formula(tax_unit, period, parameters):
+                    return tax_unit_non_dep_add(
+                        tax_unit, period, ["wages", "interest"]
+                    ) + any_leaf(tax_unit, period)
+                """,
+            ),
+            "leaves.py": _HELPER_LEAVES,
+        },
+        package={"model_api.py": _MODEL_API, "tools/general.py": _GENERAL},
+    )
+
+    expected = {("filer_total", "variables/filer_total.py", "helper_call")}
+    for target in ("wages", "interest", "is_dependent", "first_leaf", "second_leaf"):
+        assert _receipt_identities(index, target) == expected
+    assert _receipt_targets(index) == {
+        "wages",
+        "interest",
+        "is_dependent",
+        "first_leaf",
+        "second_leaf",
+    }
+
+
+def test_helper_reads_tied_to_an_omitted_argument(tmp_path: Path) -> None:
+    index = _reviewed_index(
+        tmp_path,
+        {
+            "passes_count.py": _tax_unit_variable(
+                "passes_count",
+                """
+                def formula(tax_unit, period, parameters):
+                    return eitc_like(tax_unit, period, 2)
+                """,
+            ),
+            "omits_count.py": _tax_unit_variable(
+                "omits_count",
+                """
+                def formula(tax_unit, period, parameters):
+                    return eitc_like(tax_unit, period, child_count=None)
+                """,
+            ),
+            "leaves.py": _HELPER_LEAVES,
+        },
+        package={"model_api.py": _MODEL_API, "tools/general.py": _GENERAL},
+    )
+
+    assert {receipt.consumer for receipt in index.consumers["takes_up"]} == {
+        "passes_count",
+        "omits_count",
+    }
+    assert {receipt.consumer for receipt in index.consumers["child_count"]} == {
+        "omits_count"
+    }
+
+
+def test_class_body_helper_factory_reads_belong_to_the_class(tmp_path: Path) -> None:
+    index = _reviewed_index(
+        tmp_path,
+        {
+            "earned.py": _tax_unit_variable(
+                "earned",
+                """
+                formula = sum_among_non_dependents("wages")
+                """,
+            ),
+            "leaves.py": _HELPER_LEAVES,
+        },
+        package={"model_api.py": _MODEL_API, "tools/general.py": _GENERAL},
+    )
+
+    assert _receipt_identities(index, "wages") == {
+        ("earned", "variables/earned.py", "helper_call")
+    }
+    assert _receipt_identities(index, "is_dependent") == {
+        ("earned", "variables/earned.py", "helper_call")
+    }
+
+
+def test_class_body_call_to_a_formula_module_function_fails_closed(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(
+        RuntimeError,
+        match="Unresolved dynamic PolicyEngine consumer aggregation",
+    ):
+        _index(
+            tmp_path,
+            {
+                "factories.py": _clean(
+                    """
+                    def make(variable):
+                        def formula(person, period, parameters):
+                            return person(variable, period)
+
+                        return formula
+                    """
+                ),
+                "made.py": _clean(
+                    """
+                    from policyengine_us.variables.factories import make
+
+                    class made(Variable):
+                        value_type = float
+                        entity = Person
+                        definition_period = YEAR
+                        formula = make("wages")
+                    """
+                ),
+                "leaves.py": _HELPER_LEAVES,
+            },
+        )
+
+
+def test_local_name_shadowing_a_helper_is_not_the_helper(tmp_path: Path) -> None:
+    index = _index(
+        tmp_path,
+        {
+            "shadowed.py": _tax_unit_variable(
+                "shadowed",
+                """
+                def formula(tax_unit, period, parameters):
+                    tax_unit_non_dep_add = choose_function()
+                    return tax_unit_non_dep_add(tax_unit, period, ["wages"])
+                """,
+            ),
+            "leaves.py": _HELPER_LEAVES,
+        },
+        package={"model_api.py": _MODEL_API, "tools/general.py": _GENERAL},
+    )
+
+    assert _receipt_targets(index) == set()
+
+
+def test_helper_digest_ignores_docstrings_and_follows_code_and_constants(
+    tmp_path: Path,
+) -> None:
+    def digest(root: Path, general: str) -> str:
+        with pytest.raises(RuntimeError) as exc:
+            _index(
+                root,
+                {
+                    "caller.py": _tax_unit_variable(
+                        "caller",
+                        """
+                        def formula(tax_unit, period, parameters):
+                            return any_leaf(tax_unit, period)
+                        """,
+                    ),
+                    "leaves.py": _HELPER_LEAVES,
+                },
+                package={"model_api.py": _MODEL_API, "tools/general.py": general},
+            )
+        return _helper_digest_error(exc)[1]
+
+    base = digest(tmp_path / "base", _GENERAL)
+    redocumented = _GENERAL.replace(
+        "def any_leaf(tax_unit, period):\n",
+        'def any_leaf(tax_unit, period):\n    """Any leaf is positive."""\n',
+    )
+    recoded = _GENERAL.replace(
+        "return any(tax_unit(leaf, period) for leaf in LEAVES)",
+        "return all(tax_unit(leaf, period) for leaf in LEAVES)",
+    )
+    reconstant = _GENERAL.replace(
+        'LEAVES = ("first_leaf", "second_leaf")',
+        'LEAVES = ("first_leaf",)',
+    )
+
+    assert digest(tmp_path / "doc", redocumented) == base
+    assert digest(tmp_path / "code", recoded) != base
+    assert digest(tmp_path / "constant", reconstant) != base
+
+
+def test_changed_helper_fails_closed_until_reviewed_again(tmp_path: Path) -> None:
+    sources = {
+        "caller.py": _tax_unit_variable(
+            "caller",
+            """
+            def formula(tax_unit, period, parameters):
+                return any_leaf(tax_unit, period)
+            """,
+        ),
+        "leaves.py": _HELPER_LEAVES,
+    }
+    reviewed = _reviewed_index(
+        tmp_path / "reviewed",
+        sources,
+        package={"model_api.py": _MODEL_API, "tools/general.py": _GENERAL},
+    )
+    assert _receipt_targets(reviewed) == {"first_leaf", "second_leaf"}
+    with pytest.raises(RuntimeError) as exc:
+        _index(
+            tmp_path / "changed",
+            sources,
+            package={
+                "model_api.py": _MODEL_API,
+                "tools/general.py": _GENERAL.replace(
+                    'LEAVES = ("first_leaf", "second_leaf")',
+                    'LEAVES = ("first_leaf", "second_leaf", "wages")',
+                ),
+            },
+            helper_reviews={
+                "policyengine_us.tools.general.any_leaf": HelperReview(
+                    digest=_helper_digest_error_free_digest(tmp_path, sources),
+                    reads=("first_leaf", "second_leaf"),
+                )
+            },
+        )
+    assert "changed (digest" in str(exc.value)
+
+
+def _helper_digest_error_free_digest(tmp_path: Path, sources: dict[str, str]) -> str:
+    with pytest.raises(RuntimeError) as exc:
+        _index(
+            tmp_path / "original",
+            sources,
+            package={"model_api.py": _MODEL_API, "tools/general.py": _GENERAL},
+        )
+    return _helper_digest_error(exc)[1]
+
+
+def test_review_naming_a_non_variable_read_fails(tmp_path: Path) -> None:
+    specs = {
+        "policyengine_us.tools.general.any_leaf": {
+            "reads": ("first_leaf", "not_a_variable"),
+        }
+    }
+    with pytest.raises(RuntimeError, match="names reads that are not variables"):
+        _reviewed_index(
+            tmp_path,
+            {
+                "caller.py": _tax_unit_variable(
+                    "caller",
+                    """
+                    def formula(tax_unit, period, parameters):
+                        return any_leaf(tax_unit, period)
+                    """,
+                ),
+                "leaves.py": _HELPER_LEAVES,
+            },
+            package={"model_api.py": _MODEL_API, "tools/general.py": _GENERAL},
+            specs=specs,
+        )
+
+
+# Simulation reads, local functions and lambdas ---------------------------------
+
+
+def test_simulation_calculate_holder_and_array_reads(tmp_path: Path) -> None:
+    index = _index(
+        tmp_path,
+        {
+            "branch_reader.py": _tax_unit_variable(
+                "branch_reader",
+                """
+                def formula(tax_unit, period, parameters):
+                    simulation = tax_unit.simulation
+                    branch = simulation.get_branch("counterfactual")
+                    holder = simulation.get_holder("stored_leaf")
+                    stored = holder.get_array(period, simulation.branch_name)
+                    supplied = simulation.get_array("supplied_leaf", period)
+                    return branch.calculate("branch_leaf", period) + stored + supplied
+                """,
+            ),
+            "leaves.py": _variables("stored_leaf", "supplied_leaf", "branch_leaf"),
+        },
+    )
+
+    for target in ("stored_leaf", "supplied_leaf", "branch_leaf"):
+        assert _receipt_identities(index, target) == {
+            ("branch_reader", "variables/branch_reader.py", "simulation_read")
+        }
+    assert _receipt_targets(index) == {"stored_leaf", "supplied_leaf", "branch_leaf"}
+
+
+def test_simulation_read_of_an_unknown_name_fails_closed(tmp_path: Path) -> None:
+    with pytest.raises(
+        RuntimeError,
+        match="Unresolved dynamic PolicyEngine consumer aggregation",
+    ):
+        _index(
+            tmp_path,
+            {
+                "branch_reader.py": _tax_unit_variable(
+                    "branch_reader",
+                    """
+                    def formula(tax_unit, period, parameters):
+                        branch = tax_unit.simulation.get_branch("counterfactual")
+                        return branch.calculate(choose_name(), period)
+                    """,
+                ),
+            },
+        )
+
+
+def test_local_function_reads_are_exact_and_belong_to_the_caller(
+    tmp_path: Path,
+) -> None:
+    """A recursive local function reads exactly what its calls reach."""
+
+    index = _index(
+        tmp_path,
+        {
+            "lookback.py": _clean(
+                """
+                NAMES = ("first_leaf", "third_leaf")
+
+                class lookback(Variable):
+                    value_type = float
+                    entity = TaxUnit
+                    definition_period = YEAR
+
+                    def formula(tax_unit, period, parameters):
+                        def provided(variable):
+                            if variable == "first_leaf":
+                                return provided("second_leaf")
+                            return tax_unit(variable, period)
+
+                        total = 0
+                        for name in NAMES:
+                            total = total + provided(name)
+                        return total
+                """
+            ),
+            "leaves.py": _variables("first_leaf", "second_leaf", "third_leaf"),
+        },
+    )
+
+    assert _receipt_targets(index) == {"second_leaf", "third_leaf"}
+    assert _receipt_identities(index, "second_leaf") == {
+        ("lookback", "variables/lookback.py", "entity_call")
+    }
+
+
+def test_escaping_local_function_is_read_where_defined(tmp_path: Path) -> None:
+    index = _index(
+        tmp_path,
+        {
+            "unused.py": _tax_unit_variable(
+                "unused",
+                """
+                def formula(tax_unit, period, parameters):
+                    def never_called():
+                        return tax_unit("dead_leaf", period)
+
+                    return 0
+                """,
+            ),
+            "leaves.py": _variables("dead_leaf"),
+        },
+    )
+    assert _receipt_identities(index, "dead_leaf") == {
+        ("unused", "variables/unused.py", "entity_call")
+    }
+
+    with pytest.raises(
+        RuntimeError,
+        match="Unresolved dynamic PolicyEngine consumer aggregation",
+    ):
+        _index(
+            tmp_path / "escaping",
+            {
+                "mapped.py": _tax_unit_variable(
+                    "mapped",
+                    """
+                    def formula(tax_unit, period, parameters):
+                        def read(name):
+                            return tax_unit(name, period)
+
+                        return sum(map(read, ["first_leaf"]))
+                    """,
+                ),
+                "leaves.py": _variables("first_leaf"),
+            },
+        )
+
+
+def test_lambda_reads_are_recorded_and_unknown_names_fail_closed(
+    tmp_path: Path,
+) -> None:
+    index = _index(
+        tmp_path,
+        {
+            "deferred.py": _tax_unit_variable(
+                "deferred",
+                """
+                def formula(tax_unit, period, parameters):
+                    read = lambda: tax_unit("lambda_leaf", period)
+                    return read()
+                """,
+            ),
+            "leaves.py": _variables("lambda_leaf"),
+        },
+    )
+    assert _receipt_identities(index, "lambda_leaf") == {
+        ("deferred", "variables/deferred.py", "entity_call")
+    }
+
+    with pytest.raises(
+        RuntimeError,
+        match="Unresolved dynamic PolicyEngine consumer aggregation",
+    ):
+        _index(
+            tmp_path / "dynamic",
+            {
+                "folded.py": _tax_unit_variable(
+                    "folded",
+                    """
+                    def formula(tax_unit, period, parameters):
+                        return reduce(
+                            lambda total, name: total + tax_unit(name, period),
+                            ["lambda_leaf"],
+                            0,
+                        )
+                    """,
+                ),
+                "leaves.py": _variables("lambda_leaf"),
+            },
+        )
+
+
+@settings(
+    max_examples=25,
+    deadline=None,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
+@given(names=_NAMES)
+def test_reviewed_helper_reads_exactly_the_listed_variables_and_its_own(
+    tmp_path_factory: pytest.TempPathFactory,
+    names: list[str],
+) -> None:
+    """Property: ``tax_unit_non_dep_add(..., names)`` reads names and nothing else."""
+
+    root = tmp_path_factory.mktemp("helper")
+    index = _reviewed_index(
+        root,
+        {
+            "filer_total.py": _tax_unit_variable(
+                "filer_total",
+                f"""
+                def formula(tax_unit, period, parameters):
+                    return tax_unit_non_dep_add(tax_unit, period, {names!r})
+                """,
+            ),
+            "leaves.py": _variables(*names, "is_dependent"),
+        },
+        package={"model_api.py": _MODEL_API, "tools/general.py": _GENERAL},
+    )
+
+    assert _receipt_targets(index) == {*names, "is_dependent"}
+
+
+def test_comparing_an_engine_value_keeps_both_outcomes(tmp_path: Path) -> None:
+    """``period.start.year != 2021`` is undecided; exact data still decides."""
+
+    index = _index(
+        tmp_path,
+        {
+            "by_year.py": _tax_unit_variable(
+                "by_year",
+                """
+                def formula(tax_unit, period, parameters):
+                    if period.start.year != 2021:
+                        return tax_unit("first_leaf", period)
+                    if "second_leaf" in ["second_leaf"]:
+                        return tax_unit("second_leaf", period)
+                    return tax_unit("third_leaf", period)
+                """,
+            ),
+            "leaves.py": _variables("first_leaf", "second_leaf", "third_leaf"),
+        },
+    )
+
+    assert _receipt_targets(index) == {"first_leaf", "second_leaf"}
