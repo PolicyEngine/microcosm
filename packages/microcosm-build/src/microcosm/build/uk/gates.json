@@ -805,6 +805,7 @@
       "phase": "transferred",
       "criticality": "release_blocking",
       "evidence_absent_blocks": true,
+      "population_fact_check": true,
       "parameters": {
         "stage": "regional_home_values",
         "check": "regional_home_values",
@@ -824,7 +825,7 @@
         "knots_basis_year": 2024,
         "rank_basis": "weighted_midpoint_within_frs_region"
       },
-      "notes": "Stage-time gate over the regional home-values receipt (microcosm#1308, gated with the next policyengine-uk bump on María's ruling of 2026-10-17): every English region and Wales has rows re-ranked on the regional knots, no more rows are rewritten than the stage carries, no source sits at the value cap, the knots are the 2024 basis and the ranking is the weighted midpoint within each FRS region, and the weighted value stays positive before and after the stage."
+      "notes": "Stage-time gate over the regional home-values receipt (microcosm#1308, gated with the next policyengine-uk bump on María's ruling of 2026-10-17): every English region and Wales has rows re-ranked on the regional knots, no more rows are rewritten than the stage carries, no source sits at the value cap, the knots are the 2024 basis and the ranking is the weighted midpoint within each FRS region, and the weighted value stays positive before and after the stage. A synthetic smoke build records a failure without blocking on it (population_fact_check): the fixture holds a few regions, not the population the regional knots describe."
     },
     {
       "id": "uk_stage_property_purchases_fit",
@@ -832,6 +833,7 @@
       "phase": "transferred",
       "criticality": "release_blocking",
       "evidence_absent_blocks": true,
+      "population_fact_check": true,
       "parameters": {
         "stage": "property_purchases",
         "check": "property_purchases",
@@ -842,7 +844,7 @@
         "maximum_transactions_relative_deviation": 0.05,
         "maximum_value_shortfall_share": 0.2
       },
-      "notes": "Stage-time gate over the property purchases receipt (microcosm#1308, gated with the next policyengine-uk bump on María's ruling of 2026-10-17): the additional-dwelling and non-residential kinds are each drawn once; each draws HMRC's Stamp Tax transactions within 5 percent (the events are drawn, so the count is near, not exact); each fits HMRC's value less its recorded shortfall, which may not pass one fifth, the floor the stage itself refuses below; and the individuals' shares of HMRC's all-buyers totals are proper shares."
+      "notes": "Stage-time gate over the property purchases receipt (microcosm#1308, gated with the next policyengine-uk bump on María's ruling of 2026-10-17): the additional-dwelling and non-residential kinds are each drawn once; each draws HMRC's Stamp Tax transactions within 5 percent (the events are drawn, so the count is near, not exact); each fits HMRC's value less its recorded shortfall, which may not pass one fifth, the floor the stage itself refuses below; and the individuals' shares of HMRC's all-buyers totals are proper shares. A synthetic smoke build records a failure without blocking on it (population_fact_check): the fixture sizes its own targets to its few households and carries none of HMRC's published shares."
     },
     {
       "id": "uk_stage_uc_legacy_closure_take_up_contract",

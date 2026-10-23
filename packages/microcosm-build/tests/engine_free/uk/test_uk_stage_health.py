@@ -2792,3 +2792,25 @@ def test_legacy_closure_gate_reads_what_the_receipt_prints() -> None:
         result = _gate(gate_id, receipt)
         assert not result.passed
         assert any(fragment in failure for failure in result.failures), result.failures
+
+
+def test_the_1308_fact_gates_record_without_blocking_a_synthetic_smoke_build() -> None:
+    """A synthetic fixture is not the population HMRC and the knots describe (#1308).
+
+    The legacy closure gate holds the receipt's own contract, which a synthetic
+    fixture can meet, so it blocks a smoke build as it blocks every posture.
+    """
+
+    gates = {
+        entry["id"]: entry
+        for entry in json.loads(
+            (_TEST_PATHS.package / "src/microcosm/build/uk/gates.json").read_text()
+        )["gates"]
+    }
+    for gate_id in (
+        "uk_stage_regional_home_values_ranking",
+        "uk_stage_property_purchases_fit",
+    ):
+        assert gates[gate_id]["population_fact_check"] is True
+    contract = gates["uk_stage_uc_legacy_closure_take_up_contract"]
+    assert contract.get("population_fact_check", False) is False
