@@ -16,7 +16,7 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # budget_search_bracket move it, and the fit kernels' bytes, so the QRF
     # chain step's caller-owned uniforms move it too.
     assert first.spec_sha256 == (
-        "4f71334334c67cc17d1aab5b02a838def57bcc54ac4413b89b70b8ae3086d9ee"
+        "c9075203d54ef943b28d84c8a93f82bd46bbe9e1cf468da25fb6c5fed809f5ce"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")

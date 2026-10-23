@@ -106,7 +106,7 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_logbook_row_at_every_term
         assert published_transfer["completion"] == {
             "status": "complete",
             "group_count": 19,
-            "target_count": 70,
+            "target_count": 71,
             "residual_null_rows": 0,
         }
         calibrated = [
@@ -343,7 +343,8 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # retain_best_objective and microcosm#1301's budget_search_bracket
             # move it. It covers microcosm.fit.qrf's attested bytes too, so
             # fit_draw_next's caller-owned uniforms (microcosm#1332) move it.
-            "spec_sha256": "19460fc168a6f9ed44e580d0e36777cce78bb33cb52b75630ee86203fa795684",
+            # microcosm#1251's passive partnership/S-corp leaf in puf_support moves it.
+            "spec_sha256": "e50b72d5ea721211b34c996f0ae19dcd879a5e5c16d99a8c10cbe4d928771e3e",
         },
     }
 

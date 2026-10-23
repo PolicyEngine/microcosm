@@ -885,6 +885,15 @@ def _normalise_transfer_execution(
         )
     )
     adult_care.pop("enabled")
+    passive = deepcopy(
+        dict(
+            _mapping_like(
+                post_transfer["passive_partnership_s_corp"],
+                "passive partnership/S-corp post-transfer contract",
+            )
+        )
+    )
+    passive.pop("enabled")
     result["predictor_bindings"] = {
         "person_required": "acs_person_required",
         "person_optional": [
@@ -911,6 +920,10 @@ def _normalise_transfer_execution(
             },
             "contract": schedule_base,
             "enabled_overrides": schedule_override,
+        },
+        "passive_partnership_s_corp": {
+            "activation": {"all_targets": ["passive_partnership_s_corp_income"]},
+            "contract": passive,
         },
     }
     result["profiles"] = {
@@ -2013,8 +2026,8 @@ def _split_after() -> list[dict[str, object]]:
         if group.entity == "person"
         and group.family.startswith("puf_tax_itemization__batch_")
     ]
-    if [len(group.targets) for group in late_batches] != [8, 8, 8, 8, 5]:
-        raise RuntimeError("Late PUF itemization is no longer the reviewed 5x37 split.")
+    if [len(group.targets) for group in late_batches] != [8, 8, 8, 8, 6]:
+        raise RuntimeError("Late PUF itemization is no longer the reviewed 5x38 split.")
     result = [
         {
             "family": f"late/{group.entity}/{group.family}",
@@ -2061,13 +2074,13 @@ def _assert_invariants(
         by_stage.setdefault(str(family["stage"]), []).append(family)
     expected = {
         "gap_fill_stacked_spine": (13, 48),
-        "primary_puf_qrf": (1, 65),
-        "late_producer_dag": (19, 70),
+        "primary_puf_qrf": (1, 66),
+        "late_producer_dag": (19, 71),
     }
     expected_dtypes = {
         "gap_fill_stacked_spine": {"bool": 20, "float": 27, "int": 1},
-        "primary_puf_qrf": {"bool": 8, "float": 55, "int": 2},
-        "late_producer_dag": {"bool": 17, "float": 50, "int": 1, "str": 2},
+        "primary_puf_qrf": {"bool": 8, "float": 56, "int": 2},
+        "late_producer_dag": {"bool": 17, "float": 51, "int": 1, "str": 2},
     }
     for stage, (family_count, target_count) in expected.items():
         rows = by_stage.get(stage, [])
@@ -2121,7 +2134,7 @@ def _assert_invariants(
         late_authored_output_count,
         len(tolerated_receipts),
     )
-    expected_graph_counts = (2744, 92, 227, 35, 0, 213)
+    expected_graph_counts = (2746, 92, 229, 35, 0, 214)
     if graph_counts != expected_graph_counts:
         raise RuntimeError(
             "US producer graph input/output/absence counts changed: "

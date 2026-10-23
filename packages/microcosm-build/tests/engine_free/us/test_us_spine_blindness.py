@@ -294,6 +294,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "puf_qrf_chain.py",
         "puf_qrf_worker.py",
         "puf_source_agi.py",
+        # Source-year Schedule E line 32 alignment for the PUF donor; no
+        # population treatment (microcosm#1239).
+        "puf_source_schedule_e.py",
         "puf_support.py",
         "puma_ladder.py",
         "puma_ladder_sources.py",
@@ -3501,9 +3504,10 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
         # plus asec_sources.py, whose default ASEC pool the education sidecar
         # loader now defaults to. All four are classified in
         # _OTHER_US_RUNTIME_MODULES and scanned below like every other
-        # reached module.
-        assert len(runtime_graph) == 74, (
-            f"{tool.name} must reach the pinned 74-module runtime graph; "
+        # reached module. 75 adds puf_source_schedule_e.py, the PUF donor's
+        # Schedule E line-32 and passive supplement (#1239).
+        assert len(runtime_graph) == 75, (
+            f"{tool.name} must reach the pinned 75-module runtime graph; "
             f"reached {len(runtime_graph)}"
         )
         assert not missing_modules, (
