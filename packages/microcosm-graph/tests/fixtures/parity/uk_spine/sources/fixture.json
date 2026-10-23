@@ -98,7 +98,7 @@
       "artifacts": [],
       "grain": "person",
       "nonnegative_outputs": [],
-      "notes": "Runs after the SPI income chain, UC capital coherence and the Pension Credit and Child Benefit redraws, before CGT cloning, so every clone carries its source's draw (microcosm#1319). frs_spine sets would_claim_carers_allowance from reported receipt and the SPI income chain re-derives it from the refilled receipt on the rows it redraws, so that care_hours qualifies a carer for the Universal Credit carer element without paying the allowance to every carer (#882). A carer above the earnings limit cannot report the allowance, so no reform that widens it reached a carer who would claim once entitled: the April 2025 rise of the limit from \u00a3151 to \u00a3196 a week brought an estimated 61,000 more people into eligibility (Independent Review of Carer's Allowance Overpayments, July 2025, chapter 7). One temporary engine materialization at the survey year, on the frame's own values, gives each person's is_gainfully_employed_for_carers_allowance (consumed only); the engine reads a year's parameters at 30 April, so the limit is 2024-25's \u00a3151. A person outside Scotland whose care_hours reach the engine's gov.dwp.carers_allowance.min_hours (35), who reports no allowance and whom that test holds gainfully employed claims at the take-up contract's carers_allowance_newly_entitled rate (0.6, Mar\u00eda's ruling of 2026-10-20, sensitivity 0.45 to 0.75) on the person's identity-keyed uniform (seed 0, salt would_claim_carers_allowance): would_claim = reported OR (eligible AND u < rate). A reporter stays true; a carer under the limit who reports no allowance stays false, as the survey records them entitled and not claiming. Scotland stays closed, since Carer Support Payment reads the same flag and policyengine-uk does not yet apply its earnings limit. The earnings test is read before salary_sacrifice moves some contributors' pension amounts out of their pay, so a drawn carer whom that conversion takes under the survey year's limit keeps the flag although the file then shows them entitled and not reporting. The stage rebuilds the flag from reported receipt and refuses a frame whose flag no longer follows it. Its receipt bands support on distinct source households (household_source_id), and gives a weighted total only where ten or more carry it and the realised share only where neither side rests on one to nine; the stage has no health gate.",
+      "notes": "Runs after the SPI income chain, UC capital coherence and the Pension Credit and Child Benefit redraws, before CGT cloning, so every clone carries its source's draw (microcosm#1319). frs_spine sets would_claim_carers_allowance from reported receipt and the SPI income chain re-derives it from the refilled receipt on the rows it redraws, so that care_hours qualifies a carer for the Universal Credit carer element without paying the allowance to every carer (#882). A carer above the earnings limit cannot report the allowance, so no reform that widens it reached a carer who would claim once entitled: the April 2025 rise of the limit from \u00a3151 to \u00a3196 a week brought an estimated 61,000 more people into eligibility (Independent Review of Carer's Allowance Overpayments, July 2025, chapter 7). One temporary engine materialization at the survey year, on the frame's own values, gives each person's is_gainfully_employed_for_carers_allowance (consumed only); the engine reads a year's parameters at 30 April, so the limit is 2024-25's \u00a3151. A person outside Scotland whose care_hours reach the engine's gov.dwp.carers_allowance.min_hours (35), who reports no allowance and whom that test holds gainfully employed claims at the take-up contract's carers_allowance_newly_entitled rate (0.6, Mar\u00eda's ruling of 2026-10-20, sensitivity 0.45 to 0.75) on the person's identity-keyed uniform (seed 0, salt would_claim_carers_allowance): would_claim = reported OR (eligible AND u < rate). A reporter stays true; a carer under the limit who reports no allowance stays false, as the survey records them entitled and not claiming. Scotland stays closed, since Carer Support Payment reads the same flag; policyengine-uk applies its earnings limit from 2.146.1, and opening Scotland is a follow-up (microcosm#1319). The earnings test is read before salary_sacrifice moves some contributors' pension amounts out of their pay, so a drawn carer whom that conversion takes under the survey year's limit keeps the flag although the file then shows them entitled and not reporting. The stage rebuilds the flag from reported receipt and refuses a frame whose flag no longer follows it. Its receipt bands support on distinct source households (household_source_id), and gives a weighted total only where ten or more carry it and the realised share only where neither side rests on one to nine; the stage has no health gate.",
       "operations": [
         {
           "consumed_only": true,
@@ -111,7 +111,7 @@
         {
           "assignment_unit": "person",
           "draw": "would_claim_carers_allowance",
-          "eligibility": "persons outside Scotland whose care_hours reach policyengine-uk's gov.dwp.carers_allowance.min_hours, who report no Carer's Allowance, and whom is_gainfully_employed_for_carers_allowance holds gainfully employed at the survey year: the carers the earnings limit alone keeps from the allowance. Scotland stays closed, since Carer Support Payment reads the same flag and policyengine-uk does not yet apply its earnings limit",
+          "eligibility": "persons outside Scotland whose care_hours reach policyengine-uk's gov.dwp.carers_allowance.min_hours, who report no Carer's Allowance, and whom is_gainfully_employed_for_carers_allowance holds gainfully employed at the survey year: the carers the earnings limit alone keeps from the allowance. Scotland stays closed, since Carer Support Payment reads the same flag; policyengine-uk applies its earnings limit from 2.146.1, and opening Scotland is a follow-up (microcosm#1319)",
           "kind": "assign_binary_from_rate",
           "output": "would_claim_carers_allowance",
           "rate_derivation": "the take-up contract's carers_allowance_newly_entitled rate, drawn flat over the eligible persons; would_claim = reported OR (eligible AND u < rate), so a reporter stays true and every other person false",
@@ -288,7 +288,7 @@
     "cgt_residential_split": {
       "artifacts": [
         {
-          "dependency": "policyengine-uk>=2.145.0 via microcosm-build[uk]",
+          "dependency": "policyengine-uk>=2.147.2 via microcosm-build[uk]",
           "dependency_discipline": "deferred inside uk_cgt_policy_parameters; the base package never imports policyengine-uk at import time",
           "instant_rule": "raw dated parameter files evaluated at 1 June of the build period's tax year",
           "kind": "versioned_parameter_tree",
@@ -530,6 +530,92 @@
       ],
       "source": "HMRC Child Benefit statistics, annual release at August 2025 (percentage of eligible children for whom Child Benefit is claimed by single year of age; families registered and families opted out of payment), applied to PolicyEngine-UK Child Benefit eligibility and adjusted net income after the SPI income chain.",
       "stage": "child_benefit_take_up",
+      "survey": "Family Resources Survey 2024-25"
+    },
+    "childcare_copy_take_up": {
+      "artifacts": [],
+      "grain": "benunit",
+      "nonnegative_outputs": [],
+      "notes": "Runs after the last copy stage and before private_school_attendance, whose net-income ranking counts the childcare entitlements and Tax-Free Childcare. frs_take_up draws the childcare flags and the extended-hours usage on FRS benefit units before any copy exists, so every SPI support copy, income-band donor, high-value home support copy, CGT support copy, CGT incidence clone and residential arm inherited its host's draws, and a cell with few hosts fixed the take-up of all their copies. This stage re-draws would_claim_tfc, would_claim_extended_childcare, would_claim_universal_childcare (nested under the extended flag) and would_claim_targeted_childcare at the contract rates, and maximum_extended_childcare_hours_usage from the contract's clipped normal, for the copies only, with frs_take_up's own helper, seed 0 and output-name salts, keyed on the copy's own benunit_id. A copy's structural id is its source id plus a multiple of an offset above every id in the frame, so it is unique, differs from every native id and gives the copy streams independent of its host's; a rebuild of the same frame draws the same values. Native benefit units keep their frs_take_up draws. The anchored Child Benefit, Pension Credit and Universal Credit flags and would_claim_uc_childcare are left as they are. It also re-draws the copies' children's max_free_entitlement_hours_used, the under-2 usage, against their own unit's re-drawn working-parent flag, keyed on their own person_id.",
+      "operations": [
+        {
+          "assignment_unit": "benunit_id",
+          "draw": "would_claim_tfc",
+          "eligibility": "copy benefit units only, a unit whose household has a non-empty clone path (SPI support channel or income-band donor, CGT support split, high-value home support, CGT incidence clone, residential arm) or whose benunit_support_clone_index is positive; native units keep their frs_take_up draw",
+          "kind": "assign_binary_from_rate",
+          "output": "would_claim_tfc",
+          "rate_key": "tax_free_childcare",
+          "seed": 0
+        },
+        {
+          "assignment_unit": "benunit_id",
+          "draw": "would_claim_extended_childcare",
+          "eligibility": "copy benefit units only, a unit whose household has a non-empty clone path (SPI support channel or income-band donor, CGT support split, high-value home support, CGT incidence clone, residential arm) or whose benunit_support_clone_index is positive; native units keep their frs_take_up draw",
+          "kind": "assign_binary_from_rate",
+          "output": "would_claim_extended_childcare",
+          "rate_key": "extended_childcare",
+          "seed": 0
+        },
+        {
+          "assignment_unit": "benunit_id",
+          "draw": "would_claim_universal_childcare",
+          "eligibility": "copy benefit units only, a unit whose household has a non-empty clone path (SPI support channel or income-band donor, CGT support split, high-value home support, CGT incidence clone, residential arm) or whose benunit_support_clone_index is positive; native units keep their frs_take_up draw",
+          "kind": "assign_binary_from_rate",
+          "nested_under": "would_claim_extended_childcare",
+          "output": "would_claim_universal_childcare",
+          "rate_derivation": "the contract's universal_childcare rate is the rate among benefit units not claiming the extended hours; would_claim_universal_childcare = would_claim_extended_childcare OR u < rate, as in frs_take_up",
+          "rate_key": "universal_childcare",
+          "seed": 0
+        },
+        {
+          "assignment_unit": "benunit_id",
+          "draw": "would_claim_targeted_childcare",
+          "eligibility": "copy benefit units only, a unit whose household has a non-empty clone path (SPI support channel or income-band donor, CGT support split, high-value home support, CGT incidence clone, residential arm) or whose benunit_support_clone_index is positive; native units keep their frs_take_up draw",
+          "kind": "assign_binary_from_rate",
+          "output": "would_claim_targeted_childcare",
+          "rate_key": "targeted_childcare",
+          "seed": 0
+        },
+        {
+          "distribution_key": "maximum_extended_childcare_hours_usage",
+          "draw": "maximum_extended_childcare_hours_usage",
+          "eligibility": "copy benefit units only, a unit whose household has a non-empty clone path (SPI support channel or income-band donor, CGT support split, high-value home support, CGT incidence clone, residential arm) or whose benunit_support_clone_index is positive; native units keep their frs_take_up draw",
+          "kind": "assign_clipped_normal",
+          "output": "maximum_extended_childcare_hours_usage",
+          "seed": 0
+        },
+        {
+          "assignment_unit": "person",
+          "draw": "max_free_entitlement_hours_used",
+          "eligibility": "children of whole-year age 0 in copy benefit units that claim the working-parent hours, against the copy's re-drawn would_claim_extended_childcare; native persons keep their frs_take_up draws",
+          "kind": "assign_binary_from_rate",
+          "output": "max_free_entitlement_hours_used",
+          "rate_derivation": "as in frs_take_up, keyed on the copy's own person_id",
+          "rate_key": "extended_childcare_age_0_usage",
+          "seed": 0
+        },
+        {
+          "assignment_unit": "person",
+          "draw": "max_free_entitlement_hours_used",
+          "eligibility": "children of whole-year age 1 in copy benefit units that claim the working-parent hours, against the copy's re-drawn would_claim_extended_childcare; native persons keep their frs_take_up draws",
+          "kind": "assign_binary_from_rate",
+          "output": "max_free_entitlement_hours_used",
+          "rate_derivation": "as in frs_take_up, keyed on the copy's own person_id",
+          "rate_key": "extended_childcare_age_1_usage",
+          "seed": 0
+        }
+      ],
+      "outputs": [],
+      "rewrites": [
+        "would_claim_tfc",
+        "would_claim_extended_childcare",
+        "would_claim_universal_childcare",
+        "would_claim_targeted_childcare",
+        "maximum_extended_childcare_hours_usage",
+        "max_free_entitlement_hours_used"
+      ],
+      "source": "The UK take-up contract's childcare rates and extended-hours usage distribution, as frs_take_up draws them, applied to the support and CGT copies on their own benefit units.",
+      "stage": "childcare_copy_take_up",
       "survey": "Family Resources Survey 2024-25"
     },
     "etb_services": {
@@ -2255,9 +2341,10 @@
       "artifacts": [],
       "grain": "benunit",
       "nonnegative_outputs": [
-        "maximum_extended_childcare_hours_usage"
+        "maximum_extended_childcare_hours_usage",
+        "max_free_entitlement_hours_used"
       ],
-      "notes": "Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only. The Universal Credit draw's population is the benefit units with a UC claimant or partner (is_uc_claimant) aged 18 or over and under Pension Credit qualifying age (66 for everyone who can reach it in this release), the age and role conditions of policyengine-uk 2.145.0's is_uc_eligible; the engine lockstep test pins it and names the three engine cases not mirrored (16- and 17-year-old claimants under the UC Regs 2013 reg 8 exceptions, mixed-age couples on the Pension Credit route, and from 2.128.0 pension-age families moved onto Universal Credit when their legacy benefit closes, SI 2014/1230 reg 60A). So the contract rate is a share of those units, an anchor outside them stays true, and any other unit is never drawn; a unit with no claimant or partner of that age keeps its reported Housing Benefit, which a claim it cannot make no longer zeroes (#882, microcosm#867, microcosm#1095).",
+      "notes": "Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only. The Universal Credit draw's population is the benefit units with a UC claimant or partner (is_uc_claimant) aged 18 or over and under Pension Credit qualifying age (66 for everyone who can reach it in this release), the age and role conditions of policyengine-uk 2.147.2's is_uc_eligible; the engine lockstep test pins it and names the three engine cases not mirrored (16- and 17-year-old claimants under the UC Regs 2013 reg 8 exceptions, mixed-age couples on the Pension Credit route, and from 2.128.0 pension-age families moved onto Universal Credit when their legacy benefit closes, SI 2014/1230 reg 60A). So the contract rate is a share of those units, an anchor outside them stays true, and any other unit is never drawn; a unit with no claimant or partner of that age keeps its reported Housing Benefit, which a claim it cannot make no longer zeroes (#882, microcosm#867, microcosm#1095). The universal childcare flag is nested under the working-parent one. A unit that claims the extended hours claims the universal hours, and any other unit claims them at the contract's universal_childcare rate, the rate conditional on not claiming the extended hours; the extended draw is unchanged. childcare_copy_take_up later re-draws the childcare flags and hours of the support and CGT copies on their own benefit units. A child of whole-year age 0 or 1 in a unit that claims the working-parent hours uses them at its age's contract rate, extended_childcare_age_0_usage or extended_childcare_age_1_usage (DfE registers far fewer of the youngest eligible children than of those aged 2 to 4, and fewer at 9 to 11 months than at age 1); a child that does not gets max_free_entitlement_hours_used 0, so the engine funds it no hours, and every other person keeps the engine's default of 30.",
       "operations": [
         {
           "aggregates": {
@@ -2327,7 +2414,9 @@
         {
           "draw": "would_claim_universal_childcare",
           "kind": "assign_binary_from_rate",
+          "nested_under": "would_claim_extended_childcare",
           "output": "would_claim_universal_childcare",
+          "rate_derivation": "the contract's universal_childcare rate is the rate among benefit units not claiming the extended hours; would_claim_universal_childcare = would_claim_extended_childcare OR u < rate, so every unit claiming the extended hours claims the universal hours",
           "rate_key": "universal_childcare",
           "seed": 0
         },
@@ -2360,6 +2449,26 @@
           "kind": "assign_clipped_normal",
           "output": "maximum_extended_childcare_hours_usage",
           "seed": 0
+        },
+        {
+          "assignment_unit": "person",
+          "draw": "max_free_entitlement_hours_used",
+          "eligibility": "persons of whole-year age 0 in benefit units that claim the working-parent hours (would_claim_extended_childcare)",
+          "kind": "assign_binary_from_rate",
+          "output": "max_free_entitlement_hours_used",
+          "rate_derivation": "a child of whole-year age 0 in a claiming unit uses the working-parent hours where u < its age's rate and gets max_free_entitlement_hours_used 0 otherwise; every other person keeps the engine's default of 30; one draw per person serves both ages' operations",
+          "rate_key": "extended_childcare_age_0_usage",
+          "seed": 0
+        },
+        {
+          "assignment_unit": "person",
+          "draw": "max_free_entitlement_hours_used",
+          "eligibility": "persons of whole-year age 1 in benefit units that claim the working-parent hours (would_claim_extended_childcare)",
+          "kind": "assign_binary_from_rate",
+          "output": "max_free_entitlement_hours_used",
+          "rate_derivation": "a child of whole-year age 1 in a claiming unit uses the working-parent hours where u < its age's rate and gets max_free_entitlement_hours_used 0 otherwise; every other person keeps the engine's default of 30; one draw per person serves both ages' operations",
+          "rate_key": "extended_childcare_age_1_usage",
+          "seed": 0
         }
       ],
       "outputs": [
@@ -2372,7 +2481,8 @@
         "would_claim_universal_childcare",
         "would_claim_targeted_childcare",
         "would_claim_uc_childcare",
-        "maximum_extended_childcare_hours_usage"
+        "maximum_extended_childcare_hours_usage",
+        "max_free_entitlement_hours_used"
       ],
       "rewrites": [],
       "source": "Family Resources Survey 2024-25 reported receipt anchors plus sourced UK take-up contract rates.",
@@ -2415,7 +2525,7 @@
     "hmrc_cgt_asset_type_spine": {
       "artifacts": [
         {
-          "dependency": "policyengine-uk>=2.145.0 via microcosm-build[uk]",
+          "dependency": "policyengine-uk>=2.147.2 via microcosm-build[uk]",
           "dependency_discipline": "deferred inside uk_cgt_policy_parameters and uk_cgt_badr_parameters; the base package never imports policyengine-uk at import time",
           "instant_rule": "raw dated parameter files evaluated at 1 June of the build period's tax year",
           "kind": "versioned_parameter_tree",
@@ -5768,7 +5878,7 @@
       "artifacts": [],
       "grain": "benunit",
       "nonnegative_outputs": [],
-      "notes": "Runs after the last universal_credit_reported writer and before CGT cloning. Redraws every SPI benefit unit's capital, since the channel's incomes are SPI draws and the copied FRS answer no longer belongs to the unit (uk-data#495, microcosm#1095), from weighted base-FRS units with available capital in cells of UC reporter status by financial investment income band (interest, dividends and other investment income; property income is excluded because TOTCAPB4 counts accounts and assets) by is_uc_couple (two retained FRS claimant/partner roles, independently of legal is_married) by dependent-children band. A cell with fewer than 20 donors widens in the declared coarsening order, and reporter status is never coarsened. It then applies the monotone reported-UC OR refresh. The recorded capitals add property (uk-data#495, microcosm#1095), since policyengine-uk 2.145.0 replaces every capital source with a recorded figure of 0 or more and takes it as countable, and TOTCAPB4 has no property. WAS records the property for the household, and each means test counts the claimant's and partner's own capital (UC Regs 2013 reg 18; SPCA 2002 s.5). The household reference person's benefit unit therefore holds all of the household's property, and no other unit records any (Mar\u00eda's ruling of 2026-10-12), since that person is the one in whose name the home is owned or rented, the best single reading of the owner. The engine shares household property over every claimant or partner instead, which puts a parent's property on an adult child's claim; a recorded figure consumes its own unit's share, so the engine's shares reach only a unit on the unavailable sentinel, and since policyengine-uk 2.136.1 such a unit takes its share whatever a recording unit beside it holds (the receipt counts any unit left there). The property counts at 90% of its value, market value less 10% for the costs of sale (UC Regs 2013 reg 49; SPC Regs 2002 reg 19); debt secured on it is not on the frame and is not netted (pe-uk#1969). Universal Credit counts other residential and non-residential property, and Pension Credit counts those and owned land. A unit that reports Universal Credit keeps its receipt and records the carrier alone for Universal Credit, since DWP assessed its capital to pay it and the property is imputed without that receipt. frs_benunit_capital stays the financial carrier, and its unavailable sentinel -1 passes through to both. Both recorded figures project to later years by GDP per head, as financial capital does, while policyengine-uk 2.139.1 projects other residential property by house prices, so the other residential property in a recorded figure grows faster than the engine's own projection of it; by the OBR indices the engine carries, it grows 1.5% faster by 2025 and 2.0% by 2026 from a 2024 base.",
+      "notes": "Runs after the last universal_credit_reported writer and before CGT cloning. Redraws every SPI benefit unit's capital, since the channel's incomes are SPI draws and the copied FRS answer no longer belongs to the unit (uk-data#495, microcosm#1095), from weighted base-FRS units with available capital in cells of UC reporter status by financial investment income band (interest, dividends and other investment income; property income is excluded because TOTCAPB4 counts accounts and assets) by is_uc_couple (two retained FRS claimant/partner roles, independently of legal is_married) by dependent-children band. A cell with fewer than 20 donors widens in the declared coarsening order, and reporter status is never coarsened. It then applies the monotone reported-UC OR refresh. The recorded capitals add property (uk-data#495, microcosm#1095), since policyengine-uk 2.147.2 replaces every capital source with a recorded figure of 0 or more and takes it as countable, and TOTCAPB4 has no property. WAS records the property for the household, and each means test counts the claimant's and partner's own capital (UC Regs 2013 reg 18; SPCA 2002 s.5). The household reference person's benefit unit therefore holds all of the household's property, and no other unit records any (Mar\u00eda's ruling of 2026-10-12), since that person is the one in whose name the home is owned or rented, the best single reading of the owner. The engine shares household property over every claimant or partner instead, which puts a parent's property on an adult child's claim; a recorded figure consumes its own unit's share, so the engine's shares reach only a unit on the unavailable sentinel, and since policyengine-uk 2.136.1 such a unit takes its share whatever a recording unit beside it holds (the receipt counts any unit left there). The property counts at 90% of its value, market value less 10% for the costs of sale (UC Regs 2013 reg 49; SPC Regs 2002 reg 19); debt secured on it is not on the frame and is not netted (pe-uk#1969). Universal Credit counts other residential and non-residential property, and Pension Credit counts those and owned land. A unit that reports Universal Credit keeps its receipt and records the carrier alone for Universal Credit, since DWP assessed its capital to pay it and the property is imputed without that receipt. frs_benunit_capital stays the financial carrier, and its unavailable sentinel -1 passes through to both. Both recorded figures project to later years by GDP per head, as financial capital does, while policyengine-uk 2.139.1 projects other residential property by house prices, so the other residential property in a recorded figure grows faster than the engine's own projection of it; by the OBR indices the engine carries, it grows 1.5% faster by 2025 and 2.0% by 2026 from a 2024 base.",
       "operations": [
         {
           "aggregates": {
