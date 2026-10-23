@@ -36,6 +36,10 @@ from microcosm.calibrate.geography_constants import US_STATE_FIPS_TO_NAME
 from test_support.microcosm_build.us_batched_target_materialization import (
     _nested_frame,
 )
+from test_support.microcosm_diagnostics.json_schema import (
+    load_strict_json,
+    published_json_schema_errors,
+)
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -399,6 +403,13 @@ def test_every_calibrate_output_records_the_weights(calibrate_run) -> None:
     assert [by_name[spec.name] for spec in train] == pytest.approx(
         weights.tolist(), rel=1e-15
     )
+
+
+def test_calibrate_diagnostics_match_the_published_json_schema(calibrate_run) -> None:
+    calibrate_run.run()
+    written = calibrate_run.path / "calibration_diagnostics.json"
+
+    assert published_json_schema_errors(load_strict_json(written.read_bytes())) == []
 
 
 def test_a_family_multiplier_reaches_calibrate_and_the_stamp(calibrate_run) -> None:

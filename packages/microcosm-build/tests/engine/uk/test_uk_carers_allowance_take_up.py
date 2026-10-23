@@ -112,7 +112,7 @@ def test_the_earnings_limit_is_the_only_bar_left_for_a_non_reporting_carer() -> 
     assert (entitled_2025[weekly_pay > 196.0] == 0).all()
 
 
-def test_scotland_stays_closed_because_carer_support_payment_has_no_earnings_test() -> (
+def test_scotland_stays_closed_though_carer_support_payment_now_tests_earnings() -> (
     None
 ):
     simulation = _simulation(_carers([400.0]), 2025, region="SCOTLAND")
@@ -121,15 +121,18 @@ def test_scotland_stays_closed_because_carer_support_payment_has_no_earnings_tes
     country = simulation.calculate("country", 2025, decode_enums=True)
     assert [str(value) for value in country] == ["SCOTLAND"]
     assert np.asarray(simulation.calculate(_TEST, 2025)).all()
-    # Gainfully employed, yet paid Carer Support Payment once the flag is
-    # true: a draw in Scotland would pay it.
+    # From policyengine-uk 2.146.1 Carer Support Payment applies the earnings
+    # limit (PolicyEngine/policyengine-uk#2473): a gainfully employed carer is
+    # paid neither benefit with the flag true. Scotland stays closed until a
+    # follow-up opens it (microcosm#1319).
     assert (
         np.asarray(simulation.calculate("carer_support_payment_pre_overlap", 2025))[0]
-        > 0
+        == 0
     )
     assert (
         np.asarray(simulation.calculate("carers_allowance_pre_overlap", 2025))[0] == 0
     )
+    assert "applies its earnings limit from 2.146.1" in ca.CARERS_ALLOWANCE_ELIGIBILITY
 
 
 class _CertainContract:

@@ -27,6 +27,10 @@ from microcosm.calibrate import (
 )
 from microcosm.data.stored_inputs import register_sha256
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
+from test_support.microcosm_diagnostics.json_schema import (
+    load_strict_json,
+    published_json_schema_errors,
+)
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -5997,10 +6001,9 @@ def test_release_calibration_diagnostics_include_gate_failures(
     }
 
 
-def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
-    small_frame,
-    tmp_path,
-) -> None:
+def _write_release_diagnostics_with_nan_final_loss(small_frame, tmp_path) -> Path:
+    """Write release diagnostics for a one-target US registry with a NaN loss."""
+
     builder = _load_builder_module()
     base_h5 = tmp_path / "base.h5"
     base_h5.write_bytes(b"h5")
@@ -6073,8 +6076,16 @@ def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
         # writer; keep that call boundary explicit rather than moving the fix.
         default_dataset={"method": "dense_no_l0", "final_loss": None},
     )
+    return tmp_path / "calibration_diagnostics.json"
 
-    diagnostics = json.loads((tmp_path / "calibration_diagnostics.json").read_text())
+
+def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
+    small_frame,
+    tmp_path,
+) -> None:
+    written = _write_release_diagnostics_with_nan_final_loss(small_frame, tmp_path)
+
+    diagnostics = json.loads(written.read_text())
     assert diagnostics["schema_version"] == 8
     assert diagnostics["targets"][0]["source"] == "fixture"
     assert diagnostics["targets"][0]["hierarchy"] == {
@@ -6097,6 +6108,15 @@ def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
     }
     assert diagnostics["final_loss"] is None
     assert diagnostics["build"]["default_dataset"]["final_loss"] is None
+
+
+def test_release_calibration_diagnostics_match_the_published_json_schema(
+    small_frame,
+    tmp_path,
+) -> None:
+    written = _write_release_diagnostics_with_nan_final_loss(small_frame, tmp_path)
+
+    assert published_json_schema_errors(load_strict_json(written.read_bytes())) == []
 
 
 #: What the stubbed stored-input gate refuses in the ``stored_input_refused``

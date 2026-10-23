@@ -12,218 +12,10 @@ from microcosm.diagnostics import (
     parse_calibration_diagnostics,
     write_calibration_diagnostics,
 )
-
-
-def _payload() -> dict:
-    digest = "a" * 64
-    return {
-        "schema_version": 8,
-        "weight_entity": "household",
-        "options": {"epochs": 1},
-        "target_surface": {
-            "schema_version": 1,
-            "weight_entity": "household",
-            "n_targets": 1,
-            "n_records": 2,
-            "constraint_matrix": {"rows": 1, "columns": 2, "nnz": 2},
-            "sha256": digest,
-            "names_sha256": digest,
-            "values_sha256": digest,
-        },
-        "target_registry": {"country": "us", "version": digest, "n_specs": 1},
-        "l0_lambda": 0.0,
-        "n_nonzero": 2,
-        "n_records": 2,
-        "initial_loss": 0.1,
-        "final_loss": 0.01,
-        "fraction_within_10pct": 1.0,
-        "effective_sample_size": 2.0,
-        "realized_max_weight_ratio": 1.0,
-        "top_1pct_weight_share": 0.5,
-        "loss_trajectory": [0.1],
-        "skipped": [],
-        "past_cap_census": None,
-        "diagnostic_warnings": [],
-        "targets": [
-            {
-                "name": "population@2024",
-                "target_name": "population",
-                "period": 2024,
-                "entity": "household",
-                "measure": {"kind": "column", "name": "household_count"},
-                "filter": None,
-                "source": "Census fixture",
-                "metadata": {},
-                "target": 2.0,
-                "compiled_target": 2.0,
-                "initial_estimate": 1.8,
-                "final_estimate": 2.0,
-                "relative_error": 0.0,
-                "within_tolerance": None,
-                "hierarchy": {
-                    "provider": {"id": "census", "label": "Census"},
-                    "category": {
-                        "id": "census.population",
-                        "label": "Population",
-                        "provider_id": "census",
-                    },
-                    "geography": {
-                        "id": "0100000US",
-                        "label": "United States",
-                        "level": "country",
-                    },
-                    "dimensions": [],
-                    "target": {"id": "population", "label": "Population"},
-                },
-            }
-        ],
-    }
-
-
-def _uk_payload() -> dict:
-    payload = _payload()
-    payload["target_registry"]["country"] = "uk"
-    payload["n_nonzero"] = 1
-    payload["effective_sample_size"] = 1.0
-    payload["top_1pct_weight_share"] = 1.0
-    payload["uk_diagnostics"] = {
-        "schema_version": 1,
-        "weights": {
-            "n_records": 2,
-            "positive_weight_records": 1,
-            "zero_weight_records": 1,
-            "total_weight": 1.0,
-            "effective_sample_size": 1.0,
-            "ess_fraction": 0.5,
-            "median_positive_weight": 1.0,
-            "max_weight": 1.0,
-            "max_to_median_positive_weight": 1.0,
-            "top_1pct_weight_share": 1.0,
-        },
-        "zero_weight_rows_by_stratum": [
-            {
-                "stratum": {"source": "frs"},
-                "rows": 2,
-                "positive_weight_rows": 1,
-                "zero_weight_rows": 1,
-                "weight_sum": 1.0,
-            }
-        ],
-        "target_pass_rates_by_geography_level": [
-            {
-                "geography_level": level,
-                "n_targets": 1 if level == "national" else 0,
-                "n_scored": 1 if level == "national" else 0,
-                "n_skipped": 0,
-                "n_within_10pct": 1 if level == "national" else 0,
-                "pass_rate": 1.0 if level == "national" else None,
-            }
-            for level in (
-                "national",
-                "region",
-                "country",
-                "local_authority",
-                "constituency",
-            )
-        ],
-        "target_observation_basis": {"population@2024": "annual_stock"},
-        "weakest_families": [
-            {
-                "family": "population",
-                "n_targets": 1,
-                "n_within_10pct": 1,
-                "pass_rate": 1.0,
-                "worst_target": "population@2024",
-                "worst_abs_relative_error": 0.0,
-                "loss_contribution": 0.0,
-                "loss_share": 0.0,
-            }
-        ],
-        "weakest_areas_by_fit": {
-            "limit": 15,
-            "n_areas_scored": 1,
-            "bottom_by_fit": [
-                {
-                    "geography_level": "constituency",
-                    "area_code": "E14000001",
-                    "country": "England",
-                    "n_targets": 1,
-                    "n_within_10pct": 1,
-                    "pass_rate": 1.0,
-                    "worst_target": "population@2024",
-                    "worst_abs_relative_error": 0.0,
-                    "loss_contribution": 0.0,
-                    "support_below_floor": True,
-                }
-            ],
-            "countries": [
-                {
-                    "country": "England",
-                    "geography_level": "constituency",
-                    "n_areas": 1,
-                    "n_targets": 1,
-                    "n_within_10pct": 1,
-                    "pass_rate": 1.0,
-                    "worst_target": "population@2024",
-                    "worst_abs_relative_error": 0.0,
-                    "loss_contribution": 0.0,
-                }
-            ],
-        },
-        "rotated_holdout": {
-            "report_only": True,
-            "method": "rotated_folds",
-            "target_loss_cap": 10.0,
-            "loss_weight_scale": "held_local_grains_only",
-            "target_weight_rule": "grain_equal",
-            "population": "held_out_local_targets",
-            "grains": ["constituency", "local_authority"],
-            "n_folds": 2,
-            "seed": 20260529,
-            "solve_seed": 7,
-            "mean_holdout_loss": 0.15,
-            "worst_holdout_loss": 0.2,
-            "fold_losses": [0.1, 0.2],
-            "folds": [
-                {
-                    "fold": 0,
-                    "n_train_targets": 1,
-                    "n_holdout_targets": 1,
-                    "holdout_target_indices": [0],
-                    "training_national_rows": 1,
-                    "holdout_loss": 0.1,
-                },
-                {
-                    "fold": 1,
-                    "n_train_targets": 1,
-                    "n_holdout_targets": 1,
-                    "holdout_target_indices": [1],
-                    "training_national_rows": 1,
-                    "holdout_loss": 0.2,
-                },
-            ],
-        },
-        "consumption_drift": {
-            "report_only": True,
-            "totals": {
-                "petrol_spending": {
-                    "design": 100.0,
-                    "final": 102.0,
-                    "change": 2.0,
-                    "relative_change": 0.02,
-                }
-            },
-            "shares": {
-                "fuel_car_households_without_fuel": {
-                    "design": 0.0,
-                    "final": 0.0,
-                    "change": 0.0,
-                    "relative_change": None,
-                }
-            },
-        },
-    }
-    return payload
+from test_support.microcosm_diagnostics.payloads import (
+    schema_8_payload,
+    uk_schema_8_payload,
+)
 
 
 def _delete_path(payload: dict, path: tuple[object, ...]) -> None:
@@ -234,14 +26,16 @@ def _delete_path(payload: dict, path: tuple[object, ...]) -> None:
 
 
 def test_schema_8_round_trips_as_a_typed_model() -> None:
-    model = parse_calibration_diagnostics(_payload())
+    model = parse_calibration_diagnostics(schema_8_payload())
     assert isinstance(model, CalibrationDiagnosticsV8)
-    assert json.loads(model.model_dump_json(exclude_defaults=True)) == _payload()
+    assert (
+        json.loads(model.model_dump_json(exclude_defaults=True)) == schema_8_payload()
+    )
     assert calibration_diagnostics_json_schema()["$defs"]
 
 
 def test_schema_8_round_trips_the_complete_uk_extension() -> None:
-    payload = _uk_payload()
+    payload = uk_schema_8_payload()
     model = parse_calibration_diagnostics(payload)
 
     assert isinstance(model, CalibrationDiagnosticsV8)
@@ -252,7 +46,7 @@ def test_uk_area_fit_still_parses_legacy_support_figures() -> None:
     # Released diagnostics carry the floor flag in place of an area's support
     # figures (microcosm#1301); payloads written before still parse, and a
     # row may carry neither.
-    payload = _uk_payload()
+    payload = uk_schema_8_payload()
     (area,) = payload["uk_diagnostics"]["weakest_areas_by_fit"]["bottom_by_fit"]
     del area["support_below_floor"]
     bare = parse_calibration_diagnostics(payload)
@@ -336,7 +130,7 @@ def test_every_declared_uk_record_forbids_undeclared_fields() -> None:
 def test_schema_8_rejects_missing_fields_across_the_uk_extension(
     field_path: tuple[object, ...],
 ) -> None:
-    payload = _uk_payload()
+    payload = uk_schema_8_payload()
     _delete_path(payload, field_path)
 
     with pytest.raises(ValidationError):
@@ -368,7 +162,7 @@ def test_schema_8_rejects_missing_fields_across_the_uk_extension(
 def test_schema_8_rejects_undeclared_fields_across_the_uk_extension(
     field_path: tuple[object, ...],
 ) -> None:
-    payload = _uk_payload()
+    payload = uk_schema_8_payload()
     owner = payload
     for part in field_path:
         owner = owner[part]
@@ -379,7 +173,7 @@ def test_schema_8_rejects_undeclared_fields_across_the_uk_extension(
 
 
 def test_schema_8_requires_the_typed_uk_extension_for_uk_registries() -> None:
-    payload = _uk_payload()
+    payload = uk_schema_8_payload()
     del payload["uk_diagnostics"]
 
     with pytest.raises(ValidationError, match="require a uk_diagnostics block"):
@@ -387,7 +181,7 @@ def test_schema_8_requires_the_typed_uk_extension_for_uk_registries() -> None:
 
 
 def test_schema_8_schematizes_an_explicitly_skipped_uk_holdout() -> None:
-    payload = _uk_payload()
+    payload = uk_schema_8_payload()
     payload["uk_diagnostics"]["rotated_holdout"] = {"skipped": True}
 
     model = parse_calibration_diagnostics(payload)
@@ -399,7 +193,7 @@ def test_schema_8_schematizes_an_explicitly_skipped_uk_holdout() -> None:
 
 
 def test_schema_8_rejects_incomplete_hierarchy() -> None:
-    payload = _payload()
+    payload = schema_8_payload()
     del payload["targets"][0]["hierarchy"]
     with pytest.raises(ValidationError, match="hierarchy"):
         parse_calibration_diagnostics(payload)
@@ -425,7 +219,7 @@ def test_schema_8_rejects_inconsistent_hierarchy_identity(
     value: str,
     message: str,
 ) -> None:
-    payload = _payload()
+    payload = schema_8_payload()
     owner = payload
     for part in field_path[:-1]:
         owner = owner[part]
@@ -444,7 +238,7 @@ def test_schema_8_rejects_inconsistent_hierarchy_identity(
     ],
 )
 def test_schema_8_rejects_whitespace_only_text(field_path: tuple[object, ...]) -> None:
-    payload = _payload()
+    payload = schema_8_payload()
     payload["targets"][0]["hierarchy"]["dimensions"] = [
         {"id": "sex", "label": "Sex", "value_id": "female", "value_label": "Female"}
     ]
@@ -465,7 +259,7 @@ def test_schema_8_requires_positive_declared_target_counts(
     section: str,
     field: str,
 ) -> None:
-    payload = _payload()
+    payload = schema_8_payload()
     payload[section][field] = 0
 
     with pytest.raises(ValidationError, match="greater than 0"):
@@ -473,7 +267,7 @@ def test_schema_8_requires_positive_declared_target_counts(
 
 
 def test_schema_8_reconciles_target_surface_matrix_shape() -> None:
-    payload = _payload()
+    payload = schema_8_payload()
     payload["target_surface"]["constraint_matrix"]["rows"] = 2
 
     with pytest.raises(ValidationError, match="rows must equal n_targets"):
@@ -501,7 +295,9 @@ def test_schema_8_rejects_non_finite_numbers_recursively(
     location: str,
     value: float,
 ) -> None:
-    payload = _uk_payload() if location == "UK extension" else _payload()
+    payload = (
+        uk_schema_8_payload() if location == "UK extension" else schema_8_payload()
+    )
     if location == "top-level scalar":
         payload["final_loss"] = value
     elif location == "target scalar":
@@ -524,7 +320,7 @@ def test_schema_8_rejects_non_finite_numbers_recursively(
 def test_writer_strict_serialization_rejects_a_non_finite_mutated_mapping(
     tmp_path: Path,
 ) -> None:
-    payload = _payload()
+    payload = schema_8_payload()
     payload["build"] = {"nested": {"value": 1.0}}
     model = CalibrationDiagnosticsV8.model_validate(payload)
     assert model.build is not None
@@ -546,7 +342,7 @@ def test_writer_is_atomic_and_removes_stale_output_on_failure(
 ) -> None:
     path = tmp_path / "calibration_diagnostics.json"
     path.write_text("stale")
-    model = CalibrationDiagnosticsV8.model_validate(_payload())
+    model = CalibrationDiagnosticsV8.model_validate(schema_8_payload())
 
     def fail_write(self: Path, data: bytes) -> int:
         raise OSError("synthetic write failure")
@@ -565,7 +361,7 @@ def test_unexpected_writer_failure_does_not_escape(
 ) -> None:
     path = tmp_path / "calibration_diagnostics.json"
     path.write_text("stale")
-    model = CalibrationDiagnosticsV8.model_validate(_payload())
+    model = CalibrationDiagnosticsV8.model_validate(schema_8_payload())
 
     def fail_write(self: Path, data: bytes) -> int:
         raise RuntimeError("synthetic unexpected failure")
@@ -579,7 +375,7 @@ def test_unexpected_writer_failure_does_not_escape(
 
 
 def test_writer_round_trips_valid_output(tmp_path: Path) -> None:
-    model = CalibrationDiagnosticsV8.model_validate(_payload())
+    model = CalibrationDiagnosticsV8.model_validate(schema_8_payload())
     path = tmp_path / "calibration_diagnostics.json"
     outcome = write_calibration_diagnostics(model, path)
 
@@ -595,7 +391,7 @@ def test_writer_round_trips_valid_output(tmp_path: Path) -> None:
     ],
 )
 def test_uk_consumption_drift_values_reconcile(change: dict, match: str) -> None:
-    payload = _uk_payload()
+    payload = uk_schema_8_payload()
     payload["uk_diagnostics"]["consumption_drift"]["totals"]["petrol_spending"].update(
         change
     )

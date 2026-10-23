@@ -60,9 +60,15 @@ from microcosm.build.uk_runtime.cgt_support import UKCGTSupportSplitStageTransfo
 from microcosm.build.uk_runtime.child_benefit_take_up import (
     UKChildBenefitTakeUpStageTransform,
 )
+from microcosm.build.uk_runtime.childcare_copy_take_up import (
+    UKChildcareCopyTakeUpStageTransform,
+)
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.etb_services import UKETBServicesStageTransform
 from microcosm.build.uk_runtime.etb_vat import UKETBVATStageTransform
+from microcosm.build.uk_runtime.frs_annual_income import (
+    UKFRSAnnualIncomeStageTransform,
+)
 from microcosm.build.uk_runtime.frs_brma import UKFRSBRMAStageTransform
 from microcosm.build.uk_runtime.frs_council_tax import UKFRSCouncilTaxStageTransform
 from microcosm.build.uk_runtime.frs_disability import UKFRSDisabilityStageTransform
@@ -176,6 +182,7 @@ from microcosm.build.uk_runtime.uc_deduction_attributes import (
 from microcosm.build.uk_runtime.uc_reporter_redraw import (
     UKUCReporterRedrawStageTransform,
 )
+from microcosm.build.uk_runtime.uc_take_up import UKUCTakeUpStageTransform
 from microcosm.build.uk_runtime.was_lisa import UKWASLISAStageTransform
 from microcosm.build.uk_runtime.was_wealth import UKWASWealthStageTransform
 from microcosm.frame import Frame
@@ -198,7 +205,7 @@ _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 46
+UK_FIXTURE_STAGE_COUNT = 49
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
@@ -452,6 +459,27 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 f"SDEMP{month:02d}": 3 if household_id % 8 in (2, 3) else 1
                 for month in range(1, 13)
             },
+            # The annual income stage's adult columns: every adult works and
+            # is paid; every ninth started the job 5 or 9 months before the
+            # interview, and every thirteenth retired from a job in the last
+            # 12 months. Nobody is out of work, so the last-job block is blank.
+            "SELFDEMP": 3 if household_id % 8 in (2, 3) else 1,
+            "WORKING": 1,
+            "JOBAWAY": "",
+            "NUMJOB2": "",
+            "CURRJOBM": (
+                4
+                if household_id % 9 == 1
+                else 8
+                if household_id % 9 == 5
+                else 12 + household_id % 100
+            ),
+            "PREVJOBM": "",
+            "LSTWRK1": "",
+            "LSTWRK2": "",
+            "LSTYR": "",
+            "RETIRE": 1 if household_id % 13 == 0 else 2,
+            "RETIRE1": 1 + household_id % 12 if household_id % 13 == 0 else "",
             "MJOBSECT": 1 + household_id % 2,
             "SIC": 10 + household_id % 80,
             "FTED": 2,
@@ -632,6 +660,33 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "NATURE": 4,
                 "DIRPERC": 2 if household_id % 10 == 0 else -1,
                 "DIVIDEND": 1000.0 if household_id % 10 == 0 else 0.0,
+                # The annual income stage's job columns: a job under a year old
+                # follows paid employment (WRKPREV 1) on two households in
+                # four; every employee job carries its DV pay (UGRSPAY) and
+                # every third one a usual gross pay two per cent below it, so
+                # the stage measures its usual-to-DV pay ratio; a business
+                # under a year old (SEJBLONG 0) is five months old.
+                "FTPT": 2 if household_id % 8 == 1 else 1,
+                "WRKPREV": (
+                    (1 if household_id % 4 in (0, 1) else 3)
+                    if household_id % 9 in (1, 5)
+                    else ""
+                ),
+                "UGROSS": (
+                    round((100.0 + household_id) / 1.02, 2)
+                    if household_id % 8 not in (2, 3) and household_id % 3 == 0
+                    else ""
+                ),
+                "UGRSPAY": (
+                    100.0 + household_id if household_id % 8 not in (2, 3) else ""
+                ),
+                "SEJBMTHS": (
+                    5.0 if household_id % 8 in (2, 3) and household_id % 3 == 0 else ""
+                ),
+                "SELWKS": "",
+                "SEINCAMT": "",
+                "PROFIT1": "",
+                "PROFIT2": "",
             }
         )
         pensions.append(
@@ -1002,7 +1057,9 @@ def _nts_donors() -> tuple[
     household = pd.DataFrame(
         {
             "HouseholdID": 1000 + rows,
-            "SurveyYear": 2022 + rows % 3,
+            # Every region in every survey year: the single-fare share reads
+            # the cap years only, which must hold London donors too.
+            "SurveyYear": 2022 + (rows // 9) % 3,
             "HHoldGOR_B02ID": 1 + rows % 9,
             "HHIncome2002_B02ID": 1 + rows % 3,
             "NumCarVan": rows % 4,
@@ -2026,6 +2083,9 @@ def _build_implementations(
         "frs_hmrc_spine_leaves": UKFRSHMRCSpineLeavesStageTransform(
             raw_dir, stage=stages["frs_hmrc_spine_leaves"]
         ),
+        "frs_annual_income_spells": UKFRSAnnualIncomeStageTransform(
+            raw_dir, stage=stages["frs_annual_income_spells"]
+        ),
         "spi_support_channel": UKSPISupportChannelStageTransform(
             stage=stages["spi_support_channel"],
             sample_fraction=_SPI_SAMPLE_FRACTION,
@@ -2057,6 +2117,9 @@ def _build_implementations(
         ),
         "uc_capital_coherence": UKUCCapitalCoherenceStageTransform(
             stage=stages["uc_capital_coherence"]
+        ),
+        "uc_take_up": UKUCTakeUpStageTransform(
+            stage=stages["uc_take_up"], engine=engine
         ),
         "uc_legacy_closure_take_up": UKLegacyClosureTakeUpStageTransform(
             stage=stages["uc_legacy_closure_take_up"]
@@ -2115,6 +2178,9 @@ def _build_implementations(
             stage=stages["private_school_attendance"],
             engine=engine,
             calibration_year=2025,
+        ),
+        "childcare_copy_take_up": UKChildcareCopyTakeUpStageTransform(
+            contract=contract, stage=stages["childcare_copy_take_up"]
         ),
         "age_tail": UKAgeTailStageTransform(stage=stages["age_tail"]),
     }

@@ -1,4 +1,4 @@
-"""The sparse-band support floor (microcosm#1095 U3)."""
+"""The zero-support floor (microcosm#1095 U3; María's rule of 2026-10-21)."""
 
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ def _block(**overrides):
     return {
         "contract_target_ids": [SCOPE],
         "metric": "distinct_source_households_with_positive_prior_weight",
-        "floor": 3,
+        "floor": 1,
         "max_dropped_rows": 2,
         "max_dropped_published_share": 0.5,
         "reason": "Sparse bands are dropped, not pooled.",
@@ -128,25 +128,28 @@ def test_support_counts_distinct_source_households_with_a_positive_prior():
     assert support.tolist() == [3, 1, 0]
 
 
-def test_the_floor_drops_thin_rows_in_scope_and_reports_published_totals():
+def test_the_floor_drops_only_rows_no_household_carries():
+    """A row on one source household stays bound; a row on none leaves."""
+
     registry = _registry(
         _spec("low", "band_low", 40.0),
         _spec("thin", "band_thin", 30.0),
+        _spec("zero_weight", "band_zero_weight", 5.0),
         _spec("other", "other_thin", 7.0, target="dwp.uc.households"),
     )
     result = _apply(registry)
 
-    assert [spec.name for spec in result.registry.specs] == ["low", "other"]
-    assert result.problem.names == ("low@2025", "other@2025")
-    assert result.problem.target_vector.tolist() == [40.0, 7.0]
-    assert result.problem.matrix.shape == (2, 6)
-    assert set(result.exclusions) == {"thin"}
-    assert result.exclusions["thin"]["kind"] == UK_SUPPORT_FLOOR_KIND
-    assert result.exclusions["thin"]["evaluated_on"] == "2026-10-20"
+    assert [spec.name for spec in result.registry.specs] == ["low", "thin", "other"]
+    assert result.problem.names == ("low@2025", "thin@2025", "other@2025")
+    assert result.problem.target_vector.tolist() == [40.0, 30.0, 7.0]
+    assert result.problem.matrix.shape == (3, 6)
+    assert set(result.exclusions) == {"zero_weight"}
+    assert result.exclusions["zero_weight"]["kind"] == UK_SUPPORT_FLOOR_KIND
+    assert result.exclusions["zero_weight"]["evaluated_on"] == "2026-10-20"
     receipt = result.receipt
-    assert receipt["dropped"] == ["thin"]
-    assert receipt["dropped_by_target"] == {SCOPE: {"rows": 1, "published_total": 30.0}}
-    assert receipt["dropped_published_share"] == pytest.approx(30.0 / 70.0)
+    assert receipt["dropped"] == ["zero_weight"]
+    assert receipt["dropped_by_target"] == {SCOPE: {"rows": 1, "published_total": 5.0}}
+    assert receipt["dropped_published_share"] == pytest.approx(5.0 / 75.0)
     assert receipt["solved_register_sha256"] == result.registry.version
     # The receipt carries no row's support: support counts stay local.
     assert set(receipt) == {
@@ -171,6 +174,7 @@ def test_the_floor_refuses_outside_its_window_and_past_its_ceilings():
         _spec("low", "band_low", 40.0),
         _spec("thin", "band_thin", 30.0),
         _spec("zero_weight", "band_zero_weight", 5.0),
+        _spec("zero_weight_too", "band_zero_weight", 5.0),
     )
     with pytest.raises(ValueError, match="outside its reviewed window"):
         _apply(registry, evaluated_on=date(2026, 10, 15))
@@ -179,19 +183,23 @@ def test_the_floor_refuses_outside_its_window_and_past_its_ceilings():
     with pytest.raises(ValueError, match="drops 2 rows"):
         _apply(registry, block={"max_dropped_rows": 1})
     with pytest.raises(ValueError, match="published total"):
-        _apply(registry, block={"max_dropped_published_share": 0.4})
+        _apply(registry, block={"max_dropped_published_share": 0.1})
 
 
 def test_a_per_row_exclusion_the_floor_would_cover_refuses():
     registry = _registry(
         _spec("low", "band_low", 40.0),
-        _spec("thin", "band_thin", 30.0),
+        _spec("zero_weight", "band_zero_weight", 5.0),
     )
-    with pytest.raises(ValueError, match=r"retire those entries .*\['thin'\]"):
-        _apply(registry, row_excluded={"thin"})
-    # A per-row entry above the floor is measured and leaves the problem.
-    result = _apply(_registry(_spec("low", "band_low", 40.0)), row_excluded={"low"})
-    assert result.registry.specs == ()
+    with pytest.raises(ValueError, match=r"retire those entries .*\['zero_weight'\]"):
+        _apply(registry, row_excluded={"zero_weight"})
+    # A per-row entry on a row some household carries, however few, is
+    # measured and leaves the problem.
+    result = _apply(
+        _registry(_spec("low", "band_low", 40.0), _spec("thin", "band_thin", 30.0)),
+        row_excluded={"thin"},
+    )
+    assert [spec.name for spec in result.registry.specs] == ["low"]
     assert result.exclusions == {}
     assert result.receipt["probed_row_exclusions"] == 1
     with pytest.raises(ValueError, match="name no compiled row"):
@@ -225,8 +233,10 @@ def test_lineage_is_read_only_when_a_row_in_scope_needs_it():
     ("override", "message"),
     [
         ({"metric": "rows"}, "metric"),
-        ({"floor": 2}, "at least 3"),
-        ({"floor": True}, "at least 3"),
+        ({"floor": 0}, "must be 1"),
+        ({"floor": 3}, "must be 1"),
+        ({"floor": 10}, "must be 1"),
+        ({"floor": True}, "must be 1"),
         ({"max_dropped_rows": -1}, "count"),
         ({"max_dropped_published_share": 1.0}, r"\[0, 1\)"),
         ({"contract_target_ids": [SCOPE, SCOPE]}, "distinct"),
@@ -241,24 +251,41 @@ def test_the_declaration_is_validated_closed_world(override, message):
         uk_support_floor_from_payload(_block(**override))
 
 
-def test_the_packaged_floor_is_signed_and_scoped_to_the_payment_bands():
+def test_the_packaged_floor_drops_only_unsupported_bands_and_binds_thin_ones():
+    """María's rule of 2026-10-21: fewer than ten records is no reason to leave a row out."""
+
     declaration = load_uk_support_floor_declaration()
     floor = uk_support_floor_from_payload(declaration)
+    bands = (
+        "up_to_100",
+        *(f"{low}_01_to_{low + 100}" for low in range(100, 1300, 100)),
+        "1300_01_and_above",
+    )
     assert floor.contract_target_ids == {
-        f"dwp.uc.payment_distribution_{family}"
-        for family in (
-            "single",
-            "lone_parent",
-            "couple_no_children",
-            "couple_with_children",
-        )
+        *(
+            f"dwp.uc.payment_distribution_{family}"
+            for family in (
+                "single",
+                "lone_parent",
+                "couple_no_children",
+                "couple_with_children",
+            )
+        ),
+        *(f"dwp.benefit_cap.capped_households_{band}" for band in bands),
     }
-    assert floor.floor == 10
+    assert floor.floor == 1
     assert (floor.approved_by, floor.approved_on, floor.expires_on) == (
         "juaristi22",
-        date(2026, 10, 16),
+        date(2026, 10, 21),
         date(2027, 1, 8),
     )
+    # The rows once left out for thin support are bound again.
+    named = {entry["name"] for entry in load_uk_calibration_measure_exclusions()}
+    assert not {name for name in named if name.startswith("dwp.benefit_cap.")}
+    assert not named & {
+        "hmrc/dividend_income_income_band_500_000_to_1_000_000",
+        "hmrc/property_income_count_income_band_500_000_to_1_000_000",
+    }
 
 
 def test_only_schema_3_registers_carry_a_floor(tmp_path):
@@ -358,28 +385,32 @@ def _national_spec(name, measure, value, target=SCOPE):
     )
 
 
-def test_the_national_problem_drops_thin_rows_before_weights_and_metadata(
+def test_the_national_problem_drops_unsupported_rows_and_binds_thin_ones(
     monkeypatch,
 ):
     registry = _registry(
         _national_spec("low", "band_low", 40.0),
         _national_spec("thin", "band_thin", 30.0),
+        _national_spec("zero_weight", "band_zero_weight", 5.0),
         _national_spec("other", "other_thin", 7.0, target="dwp.uc.households"),
     )
     problem, materialized = _encode(monkeypatch, registry)
 
-    assert materialized == [["low", "thin", "other"]]
-    assert problem.problem.names == ("low@2025", "other@2025")
+    assert materialized == [["low", "thin", "zero_weight", "other"]]
+    assert problem.problem.names == ("low@2025", "thin@2025", "other@2025")
     assert [row["contract_target_id"] for row in problem.target_metadata] == [
+        SCOPE,
         SCOPE,
         "dwp.uc.households",
     ]
     bindings = problem.bindings
-    assert len(bindings["target_loss_weights"]) == 2
-    assert bindings["activated_reference_count"] == 2
-    assert bindings["resolved_reference_count"] == 2
-    assert bindings["measure_exclusions"]["thin"]["kind"] == UK_SUPPORT_FLOOR_KIND
-    assert bindings["support_floor"]["dropped"] == ["thin"]
+    assert len(bindings["target_loss_weights"]) == 3
+    assert bindings["activated_reference_count"] == 3
+    assert bindings["resolved_reference_count"] == 3
+    assert (
+        bindings["measure_exclusions"]["zero_weight"]["kind"] == UK_SUPPORT_FLOOR_KIND
+    )
+    assert bindings["support_floor"]["dropped"] == ["zero_weight"]
     # The register the targets node froze stays the approved one.
     assert bindings["register_sha256"] == registry.version
 
@@ -388,8 +419,8 @@ def test_the_national_problem_measures_per_row_exclusions_in_scope(monkeypatch):
     approved = _registry(_national_spec("low", "band_low", 40.0))
     band_edges = _registry(
         _national_spec("low", "band_low", 40.0),
-        _national_spec("thin", "band_thin", 30.0),
-        _national_spec("high", "band_low", 9.0),
+        _national_spec("zero_weight", "band_zero_weight", 30.0),
+        _national_spec("high", "band_thin", 9.0),
     )
     record = {
         "reason": "reviewed",
@@ -400,17 +431,17 @@ def test_the_national_problem_measures_per_row_exclusions_in_scope(monkeypatch):
         "expires_on": "2026-11-26",
         "evaluated_on": "2026-10-20",
     }
-    with pytest.raises(ValueError, match=r"retire those entries .*\['thin'\]"):
+    with pytest.raises(ValueError, match=r"retire those entries .*\['zero_weight'\]"):
         _encode(
             monkeypatch,
             approved,
             band_edge=band_edges,
-            exclusions={"thin": record, "high": record},
+            exclusions={"zero_weight": record, "high": record},
         )
     problem, materialized = _encode(
         monkeypatch, approved, band_edge=band_edges, exclusions={"high": record}
     )
-    # The entry above the floor was compiled to be measured and left again.
+    # The entry on a thin row was compiled to be measured and left again.
     assert materialized == [["low", "high"]]
     assert problem.problem.names == ("low@2025",)
     assert problem.bindings["measure_exclusions"] == {"high": record}

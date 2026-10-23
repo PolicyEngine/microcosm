@@ -289,6 +289,7 @@ OUTPUT_COLUMNS = (
     "esa_income_reported",
     "esa_includes_support_component",
     "bsp_reported",
+    "war_widows_pension_reported",
     "benunit_id",
     "frs_benunit_capital",
     "is_married",
@@ -461,8 +462,16 @@ def _read_pinned_tab(
         raw = pd.read_csv(path, sep="\t")
     else:
         wanted = {str(column).lower() for column in columns}
+        # One pass over the selected columns: pandas' chunked parser
+        # mis-indexes a column whose type changes between chunks under a
+        # callable column filter, and raises IndexError on a long tab (FRS
+        # 2024-25 adult.tab). The values after the numeric conversion below
+        # are the chunked read's wherever that read succeeds.
         raw = pd.read_csv(
-            path, sep="\t", usecols=lambda column: str(column).lower() in wanted
+            path,
+            sep="\t",
+            usecols=lambda column: str(column).lower() in wanted,
+            low_memory=False,
         )
     raw.columns = raw.columns.str.lower()
     if columns is not None:
@@ -997,7 +1006,14 @@ def _add_benefits(
         benefits, person_id, person["person_id"]
     )
     pe_person["bsp_reported"] = (
-        _sum_to_entity(amount * benefit.isin((6, 9)), person_id, person["person_id"])
+        _sum_to_entity(amount * (benefit == 6), person_id, person["person_id"])
+        * WEEKS_IN_YEAR
+    )
+    # FRS code 9 is War Widow's or Widower's Pension, which rises with CPI while
+    # Bereavement Support Payment's rates are frozen. policyengine-uk 2.135.7
+    # gives it its own input (pe-uk#2382), so it leaves bsp_reported (#1222).
+    pe_person["war_widows_pension_reported"] = (
+        _sum_to_entity(amount * (benefit == 9), person_id, person["person_id"])
         * WEEKS_IN_YEAR
     )
     pe_person["winter_fuel_allowance_reported"] = (

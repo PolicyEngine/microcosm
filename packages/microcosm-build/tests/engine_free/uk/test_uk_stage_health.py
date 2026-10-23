@@ -2261,6 +2261,61 @@ def test_pension_credit_take_up_checks_each_band_against_its_rate() -> None:
     assert committed["check"] == "pension_credit_take_up"
 
 
+def test_uc_take_up_gate_holds_each_family_type_to_dwp() -> None:
+    def family(dwp, before, after, reachable, realized):
+        return {
+            "dwp_caseload": dwp,
+            "caseload_before": before,
+            "caseload_after": after,
+            "reachable_pools_dwp_caseload": reachable,
+            "reachable_pools_caseload_after": realized,
+        }
+
+    parameters = {
+        "stage": "uc_take_up",
+        "check": "uc_take_up",
+        "maximum_caseload_deviation": 0.05,
+    }
+
+    def gate(families, **counts):
+        return uk_stage_health_gate(
+            evidence={
+                "stage": "uc_take_up",
+                "families": families,
+                "reporters_not_claiming": counts.get("reporters", 0),
+                "changed_outside_draw": counts.get("outside", 0),
+            },
+            stage="uc_take_up",
+            check="uc_take_up",
+            parameters=parameters,
+        )
+
+    good = {
+        "SINGLE": family(3_000.0, 3_300.0, 3_020.0, 2_500.0, 2_510.0),
+        # No reachable pool: the realized check does not apply.
+        "LONE_PARENT": family(2_100.0, 1_400.0, 1_500.0, 0.0, 0.0),
+    }
+    assert _passed(gate(good))
+    # A reporter not claiming, or a unit outside the draw changed, fails.
+    assert not gate(good, reporters=1).passed
+    assert not gate(good, outside="<10").passed
+    # The reachable pools miss DWP's count by more than the tolerance.
+    assert not gate(
+        {**good, "SINGLE": family(3_000.0, 3_300.0, 3_020.0, 2_500.0, 2_700.0)}
+    ).passed
+    # The family type moves further from DWP than before.
+    assert not gate(
+        {**good, "LONE_PARENT": family(2_100.0, 1_400.0, 1_100.0, 0.0, 0.0)}
+    ).passed
+    # A caseload resting on fewer than ten sources cannot be checked.
+    assert not gate({**good, "SINGLE": family(3_000.0, "<10", 1.0, 0.0, 0.0)}).passed
+    assert not gate({}).passed
+    # The caseloads are population facts: a synthetic smoke fixture records the
+    # failure without blocking, every other posture blocks on it.
+    committed = _gate_parameters("uk_stage_uc_take_up")
+    assert committed == parameters
+
+
 def test_spi_benefit_coherence_gate_holds_the_structural_zeros() -> None:
     gates = json.loads(
         (_TEST_PATHS.package / "src/microcosm/build/uk/gates.json").read_text("utf-8")

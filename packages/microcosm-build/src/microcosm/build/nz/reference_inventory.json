@@ -1,0 +1,1849 @@
+{
+  "schema_version": 1,
+  "country": "nz",
+  "generated_by": "tools/generate_nz_target_references.py",
+  "feed_identity": {
+    "version": 1,
+    "country": "nz",
+    "scope": "nz_calibration",
+    "source_repo": "PolicyEngine/chronicle",
+    "source_commit": "acbedb5fef490137219207cf40945d70c2db34ea",
+    "build": "build-bundle --suite nz -> build-consumer-artifact",
+    "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+    "consumer_fact_schema_versions": [
+      "chronicle.consumer_fact.v4"
+    ],
+    "consumer_fact_schema_sha256": "d953306d6f01fbc64db4372d0262d3012ee590269f8a25b276b18dca0626c6a0",
+    "fact_row_count": 12335,
+    "facts_sha256": "5a016eaebdeb289d09470bdc99fa637db383eeeb5b762d2c80db0e8952ecf1a8",
+    "manifest_sha256": "678638048ba8a0abef14af27ab96977a8c796df27e0ef43436f409663ceb4178"
+  },
+  "reference_counts": {
+    "target_references.json": {
+      "total": 773,
+      "by_contract": {
+        "stats_nz_population_by_age_region": 64,
+        "stats_nz_census_households_by_size_region": 136,
+        "stats_nz_census_families_by_type_region": 51,
+        "stats_nz_census_households_by_tenure_region": 34,
+        "ird_taxable_income_people_by_band": 237,
+        "ird_taxable_income_total_by_band": 237,
+        "msd_main_benefit_recipients_by_program_age": 12,
+        "msd_nz_super_recipients": 1,
+        "msd_veterans_pension_recipients": 1
+      },
+      "by_activation_status": {
+        "active": 98,
+        "requires_explained_census_household_size_universe": 136,
+        "requires_census_family_nucleus_standard": 51,
+        "requires_g8r2_taxable_income_contract_intervals_and_ageing": 474,
+        "requires_stratified_receipt_assignment": 12,
+        "requires_receipt_binding": 1,
+        "requires_unsupported_veterans_pension": 1
+      }
+    },
+    "precal_references.json": {
+      "total": 318,
+      "by_contract": {
+        "ird_wage_salary_people_by_band": 235,
+        "mbie_bond_rents_by_territorial_authority": 1,
+        "stats_nz_household_financial_net_worth_distribution": 1,
+        "stats_nz_population_by_territorial_authority": 67,
+        "msd_main_benefit_recipients_by_program_age": 12,
+        "msd_nz_super_recipients": 1,
+        "msd_veterans_pension_recipients": 1
+      },
+      "by_activation_status": {
+        "requires_g8r2_source_period_wage_bridge_and_intervals": 235,
+        "requires_rent_band_frequencies": 1,
+        "requires_all_household_liquid_asset_histogram": 1,
+        "active": 67,
+        "requires_stratified_receipt_assignment": 12,
+        "requires_receipt_binding": 1,
+        "requires_unsupported_veterans_pension": 1
+      }
+    }
+  },
+  "regions": [
+    "01",
+    "02",
+    "03",
+    "04",
+    "05",
+    "06",
+    "07",
+    "08",
+    "09",
+    "12",
+    "13",
+    "14",
+    "15",
+    "16",
+    "17",
+    "18"
+  ],
+  "census_regions": [
+    "01",
+    "02",
+    "03",
+    "04",
+    "05",
+    "06",
+    "07",
+    "08",
+    "09",
+    "12",
+    "13",
+    "14",
+    "15",
+    "16",
+    "17",
+    "18",
+    "99"
+  ],
+  "age_bands": [
+    "0_14",
+    "15_39",
+    "40_64",
+    "65_plus"
+  ],
+  "erp_bridges": [
+    {
+      "geography_id": "01",
+      "numerator_selector": {
+        "source_name": "stats_nz",
+        "source_measure_id": "population",
+        "source_concept": "stats_nz.estimated_resident_population",
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "01",
+        "geography_vintage": "regc_2025",
+        "record_set_id": "stats_nz.cy2025.subnational_population.all_ages",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:43b0df851a12e5e002e8fc39"
+      },
+      "denominator_selector": {
+        "source_name": "stats_nz",
+        "source_measure_id": "population",
+        "source_concept": "stats_nz.estimated_resident_population",
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2023,
+        "geography_level": "region",
+        "geography_id": "01",
+        "geography_vintage": "regc_2025",
+        "record_set_id": "stats_nz.cy2023.subnational_population.all_ages",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:9d2b505d85f03739f05eb8a3"
+      },
+      "numerator": 201100,
+      "denominator": 198500,
+      "ratio": 1.0130982367758186
+    },
+    {
+      "geography_id": "02",
+      "numerator_selector": {
+        "source_name": "stats_nz",
+        "source_measure_id": "population",
+        "source_concept": "stats_nz.estimated_resident_population",
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "02",
+        "geography_vintage": "regc_2025",
+        "record_set_id": "stats_nz.cy2025.subnational_population.all_ages",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:27e95cd94f82f56db86663cb"
+      },
+      "denominator_selector": {
+        "source_name": "stats_nz",
+        "source_measure_id": "population",
+        "source_concept": "stats_nz.estimated_resident_population",
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2023,
+        "geography_level": "region",
+        "geography_id": "02",
+        "geography_vintage": "regc_2025",
+        "record_set_id": "stats_nz.cy2023.subnational_population.all_ages",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:bccd2c9fbf4a4d3329645853"
+      },
+      "numerator": 1816000,
+      "denominator": 1755200,
+      "ratio": 1.0346399270738378
+    },
+    {
+      "geography_id": "03",
+      "numerator_selector": {
+        "source_name": "stats_nz",
+        "source_measure_id": "population",
+        "source_concept": "stats_nz.estimated_resident_population",
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "03",
+        "geography_vintage": "regc_2025",
+        "record_set_id": "stats_nz.cy2025.subnational_population.all_ages",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:9f4585e9218dcff756bded09"
+      },
+      "denominator_selector": {
+        "source_name": "stats_nz",
+        "source_measure_id": "population",
+        "source_concept": "stats_nz.estimated_resident_population",
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2023,
+        "geography_level": "region",
+        "geography_id": "03",
+        "geography_vintage": "regc_2025",
+        "record_set_id": "stats_nz.cy2023.subnational_population.all_ages",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:ca2c35799189520aa4b6b10f"
+      },
+      "numerator": 532100,
+      "denominator": 516800,
+      "ratio": 1.0296052631578947
+    },
+    {
+      "geography_id": "04",
+      "numerator_selector": {
+        "source_name": "stats_nz",
+        "source_measure_id": "population",
+        "source_concept": "stats_nz.estimated_resident_population",
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "04",
+        "geography_vintage": "regc_2025",
+        "record_set_id": "stats_nz.cy2025.subnational_population.all_ages",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:7fb1967436c127bbf1a4b4e7"
+      },
+      "denominator_selector": {
+        "source_name": "stats_nz",
+        "source_measure_id": "population",
+        "source_concept": "stats_nz.estimated_resident_population",
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2023,
+        "geography_level": "region",
+        "geography_id": "04",
+        "geography_vintage": "regc_2025",
+        "record_set_id": "stats_nz.cy2023.subnational_population.all_ages",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:3e06c55cd39b65be4bda85e8"
+      },
+      "numerator": 351500,
+      "denominator": 346500,
+      "ratio": 1.0144300144300145
+    },
+    {
+      "geography_id": "05",
+      "numerator_selector": {
+        "source_name": "stats_nz",
+        "source_measure_id": "population",
+        "source_concept": "stats_nz.estimated_resident_population",
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "05",
+        "geography_vintage": "regc_2025",
+        "record_set_id": "stats_nz.cy2025.subnational_population.all_ages",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:afcd0721c2b268541e3b54c2"
+      },
+      "denominator_selector": {
+        "source_name": "stats_nz",
+        "source_measure_id": "population",
+        "source_concept": "stats_nz.estimated_resident_population",
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2023,
+        "geography_level": "region",
+        "geography_id": "05",
+        "geography_vintage": "regc_2025",
+        "record_set_id": "stats_nz.cy2023.subnational_population.all_ages",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:e6bed840ab75a152d980b0e6"
+      },
+      "numerator": 52700,
+      "denominator": 52300,
+      "ratio": 1.0076481835564053
+    },
+    {
+      "geography_id": "06",
+      "numerator_selector": {
+        "source_name": "stats_nz",
+        "source_measure_id": "population",
+        "source_concept": "stats_nz.estimated_resident_population",
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "06",
+        "geography_vintage": "regc_2025",
+        "record_set_id": "stats_nz.cy2025.subnational_population.all_ages",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:730fe5017b3d2d17c34f7c9b"
+      },
+      "denominator_selector": {
+        "source_name": "stats_nz",
+        "source_measure_id": "population",
+        "source_concept": "stats_nz.estimated_resident_population",
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2023,
+        "geography_level": "region",
+        "geography_id": "06",
+        "geography_vintage": "regc_2025",
+        "record_set_id": "stats_nz.cy2023.subnational_population.all_ages",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:c71ec842360fb1d9aecc80e2"
+      },
+      "numerator": 179700,
+      "denominator": 179000,
+      "ratio": 1.0039106145251397
+    },
+    {
+      "geography_id": "07",
+      "numerator_selector": {
+        "source_name": "stats_nz",
+        "source_measure_id": "population",
+        "source_concept": "stats_nz.estimated_resident_population",
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "07",
+        "geography_vintage": "regc_2025",
+        "record_set_id": "stats_nz.cy2025.subnational_population.all_ages",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:fd897a46b792a00184f39086"
+      },
+      "denominator_selector": {
+        "source_name": "stats_nz",
+        "source_measure_id": "population",
+        "source_concept": "stats_nz.estimated_resident_population",
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2023,
+        "geography_level": "region",
+        "geography_id": "07",
+        "geography_vintage": "regc_2025",
+        "record_set_id": "stats_nz.cy2023.subnational_population.all_ages",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:07fa670e3fb50a12b4648e52"
+      },
+      "numerator": 130300,
+      "denominator": 129400,
+      "ratio": 1.0069551777434311
+    },
+    {
+      "geography_id": "08",
+      "numerator_selector": {
+        "source_name": "stats_nz",
+        "source_measure_id": "population",
+        "source_concept": "stats_nz.estimated_resident_population",
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "08",
+        "geography_vintage": "regc_2025",
+        "record_set_id": "stats_nz.cy2025.subnational_population.all_ages",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:ee0b65c46a71fd21b5be13c0"
+      },
+      "denominator_selector": {
+        "source_name": "stats_nz",
+        "source_measure_id": "population",
+        "source_concept": "stats_nz.estimated_resident_population",
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2023,
+        "geography_level": "region",
+        "geography_id": "08",
+        "geography_vintage": "regc_2025",
+        "record_set_id": "stats_nz.cy2023.subnational_population.all_ages",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:632b5d1b2d473a1a7fbb7200"
+      },
+      "numerator": 260700,
+      "denominator": 257800,
+      "ratio": 1.0112490302560124
+    },
+    {
+      "geography_id": "09",
+      "numerator_selector": {
+        "source_name": "stats_nz",
+        "source_measure_id": "population",
+        "source_concept": "stats_nz.estimated_resident_population",
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "09",
+        "geography_vintage": "regc_2025",
+        "record_set_id": "stats_nz.cy2025.subnational_population.all_ages",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:bb1505d195863e52f44ed933"
+      },
+      "denominator_selector": {
+        "source_name": "stats_nz",
+        "source_measure_id": "population",
+        "source_concept": "stats_nz.estimated_resident_population",
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2023,
+        "geography_level": "region",
+        "geography_id": "09",
+        "geography_vintage": "regc_2025",
+        "record_set_id": "stats_nz.cy2023.subnational_population.all_ages",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:66492f83cbc9a6da2a06fa8b"
+      },
+      "numerator": 543400,
+      "denominator": 538000,
+      "ratio": 1.0100371747211896
+    },
+    {
+      "geography_id": "12",
+      "numerator_selector": {
+        "source_name": "stats_nz",
+        "source_measure_id": "population",
+        "source_concept": "stats_nz.estimated_resident_population",
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "12",
+        "geography_vintage": "regc_2025",
+        "record_set_id": "stats_nz.cy2025.subnational_population.all_ages",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:8aacc6df0c62736fd25379cf"
+      },
+      "denominator_selector": {
+        "source_name": "stats_nz",
+        "source_measure_id": "population",
+        "source_concept": "stats_nz.estimated_resident_population",
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2023,
+        "geography_level": "region",
+        "geography_id": "12",
+        "geography_vintage": "regc_2025",
+        "record_set_id": "stats_nz.cy2023.subnational_population.all_ages",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:27d364f00b5883f659a90621"
+      },
+      "numerator": 34700,
+      "denominator": 33900,
+      "ratio": 1.0235988200589972
+    },
+    {
+      "geography_id": "13",
+      "numerator_selector": {
+        "source_name": "stats_nz",
+        "source_measure_id": "population",
+        "source_concept": "stats_nz.estimated_resident_population",
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "13",
+        "geography_vintage": "regc_2025",
+        "record_set_id": "stats_nz.cy2025.subnational_population.all_ages",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:387dd6d01f44b9fccdf01640"
+      },
+      "denominator_selector": {
+        "source_name": "stats_nz",
+        "source_measure_id": "population",
+        "source_concept": "stats_nz.estimated_resident_population",
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2023,
+        "geography_level": "region",
+        "geography_id": "13",
+        "geography_vintage": "regc_2025",
+        "record_set_id": "stats_nz.cy2023.subnational_population.all_ages",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:3bab1dbcaf90b21aceca2c1c"
+      },
+      "numerator": 698200,
+      "denominator": 676600,
+      "ratio": 1.0319243275199528
+    },
+    {
+      "geography_id": "14",
+      "numerator_selector": {
+        "source_name": "stats_nz",
+        "source_measure_id": "population",
+        "source_concept": "stats_nz.estimated_resident_population",
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "14",
+        "geography_vintage": "regc_2025",
+        "record_set_id": "stats_nz.cy2025.subnational_population.all_ages",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:5a8a9d31ade1412cd8a666d3"
+      },
+      "denominator_selector": {
+        "source_name": "stats_nz",
+        "source_measure_id": "population",
+        "source_concept": "stats_nz.estimated_resident_population",
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2023,
+        "geography_level": "region",
+        "geography_id": "14",
+        "geography_vintage": "regc_2025",
+        "record_set_id": "stats_nz.cy2023.subnational_population.all_ages",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:f13bbbd1e235e33dd57c9427"
+      },
+      "numerator": 253900,
+      "denominator": 248500,
+      "ratio": 1.0217303822937627
+    },
+    {
+      "geography_id": "15",
+      "numerator_selector": {
+        "source_name": "stats_nz",
+        "source_measure_id": "population",
+        "source_concept": "stats_nz.estimated_resident_population",
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "15",
+        "geography_vintage": "regc_2025",
+        "record_set_id": "stats_nz.cy2025.subnational_population.all_ages",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:30e1ac9225ac7f8c86b09d9e"
+      },
+      "denominator_selector": {
+        "source_name": "stats_nz",
+        "source_measure_id": "population",
+        "source_concept": "stats_nz.estimated_resident_population",
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2023,
+        "geography_level": "region",
+        "geography_id": "15",
+        "geography_vintage": "regc_2025",
+        "record_set_id": "stats_nz.cy2023.subnational_population.all_ages",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:d29d082fbcca5b5245686363"
+      },
+      "numerator": 104800,
+      "denominator": 102700,
+      "ratio": 1.0204479065238559
+    },
+    {
+      "geography_id": "16",
+      "numerator_selector": {
+        "source_name": "stats_nz",
+        "source_measure_id": "population",
+        "source_concept": "stats_nz.estimated_resident_population",
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "16",
+        "geography_vintage": "regc_2025",
+        "record_set_id": "stats_nz.cy2025.subnational_population.all_ages",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:77533877a935ed1f18ec816a"
+      },
+      "denominator_selector": {
+        "source_name": "stats_nz",
+        "source_measure_id": "population",
+        "source_concept": "stats_nz.estimated_resident_population",
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2023,
+        "geography_level": "region",
+        "geography_id": "16",
+        "geography_vintage": "regc_2025",
+        "record_set_id": "stats_nz.cy2023.subnational_population.all_ages",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:02f34101de2336b582574e5e"
+      },
+      "numerator": 59900,
+      "denominator": 59100,
+      "ratio": 1.0135363790186125
+    },
+    {
+      "geography_id": "17",
+      "numerator_selector": {
+        "source_name": "stats_nz",
+        "source_measure_id": "population",
+        "source_concept": "stats_nz.estimated_resident_population",
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "17",
+        "geography_vintage": "regc_2025",
+        "record_set_id": "stats_nz.cy2025.subnational_population.all_ages",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:3a6a17517bfbf78cebf6e867"
+      },
+      "denominator_selector": {
+        "source_name": "stats_nz",
+        "source_measure_id": "population",
+        "source_concept": "stats_nz.estimated_resident_population",
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2023,
+        "geography_level": "region",
+        "geography_id": "17",
+        "geography_vintage": "regc_2025",
+        "record_set_id": "stats_nz.cy2023.subnational_population.all_ages",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:b626527e6d31224c3a162ac0"
+      },
+      "numerator": 54300,
+      "denominator": 54300,
+      "ratio": 1.0
+    },
+    {
+      "geography_id": "18",
+      "numerator_selector": {
+        "source_name": "stats_nz",
+        "source_measure_id": "population",
+        "source_concept": "stats_nz.estimated_resident_population",
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "18",
+        "geography_vintage": "regc_2025",
+        "record_set_id": "stats_nz.cy2025.subnational_population.all_ages",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:69df33eb6eb0f00e952b306a"
+      },
+      "denominator_selector": {
+        "source_name": "stats_nz",
+        "source_measure_id": "population",
+        "source_concept": "stats_nz.estimated_resident_population",
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2023,
+        "geography_level": "region",
+        "geography_id": "18",
+        "geography_vintage": "regc_2025",
+        "record_set_id": "stats_nz.cy2023.subnational_population.all_ages",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:460b96df905c06076d7ca730"
+      },
+      "numerator": 50800,
+      "denominator": 50800,
+      "ratio": 1.0
+    },
+    {
+      "geography_id": "NZ",
+      "numerator_selector": {
+        "source_name": "stats_nz",
+        "source_measure_id": "population",
+        "source_concept": "stats_nz.estimated_resident_population",
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "NZ",
+        "geography_vintage": "current",
+        "record_set_id": "stats_nz.cy2025.subnational_population.all_ages",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:b1ba314a94795074129a560a"
+      },
+      "denominator_selector": {
+        "source_name": "stats_nz",
+        "source_measure_id": "population",
+        "source_concept": "stats_nz.estimated_resident_population",
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2023,
+        "geography_level": "country",
+        "geography_id": "NZ",
+        "geography_vintage": "current",
+        "record_set_id": "stats_nz.cy2023.subnational_population.all_ages",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:ebe5d8067d7730b7c178071a"
+      },
+      "numerator": 5324700,
+      "denominator": 5200000,
+      "ratio": 1.0239807692307692
+    }
+  ],
+  "source_discrepancies": [
+    {
+      "table": "tenure",
+      "published_national_total_selector": {
+        "source_name": "stats_nz",
+        "source_measure_id": "count",
+        "source_concept": "stats_nz.census_2023.household_count",
+        "entity_name": "household",
+        "period_type": "calendar_year",
+        "period_value": 2023,
+        "geography_level": "country",
+        "geography_id": "NZ",
+        "geography_vintage": "current",
+        "record_set_id": "stats_nz.census_2023.nz.households",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:485cd364c8c00ab1edf2a447"
+      },
+      "national_leaf_selectors": [
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "country",
+          "geography_id": "NZ",
+          "geography_vintage": "current",
+          "record_set_id": "stats_nz.census_2023.nz.tenure",
+          "dimensions": [
+            "nz_census_2023.household_tenure_source_label"
+          ],
+          "dimension_values": {
+            "nz_census_2023.household_tenure_source_label": 1
+          },
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:b1a23692787fba5440da2e31"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "country",
+          "geography_id": "NZ",
+          "geography_vintage": "current",
+          "record_set_id": "stats_nz.census_2023.nz.tenure",
+          "dimensions": [
+            "nz_census_2023.household_tenure_source_label"
+          ],
+          "dimension_values": {
+            "nz_census_2023.household_tenure_source_label": 2
+          },
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:e3bc09818f228009f71c7d84"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "country",
+          "geography_id": "NZ",
+          "geography_vintage": "current",
+          "record_set_id": "stats_nz.census_2023.nz.tenure",
+          "dimensions": [
+            "nz_census_2023.household_tenure_source_label"
+          ],
+          "dimension_values": {
+            "nz_census_2023.household_tenure_source_label": 3
+          },
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:ae125def7211cc07ecb8ee4c"
+        }
+      ],
+      "published_national_total": 1780527,
+      "published_national_leaf_sum": 1780101.0,
+      "deficit": 426.0,
+      "handling": "Preserve the published discrepancy; no residual category or hidden reconciliation.",
+      "activation": "Tenure leaves active; published total diagnostic only."
+    },
+    {
+      "table": "household_size",
+      "published_national_total_selector": {
+        "source_name": "stats_nz",
+        "source_measure_id": "count",
+        "source_concept": "stats_nz.census_2023.household_count",
+        "entity_name": "household",
+        "period_type": "calendar_year",
+        "period_value": 2023,
+        "geography_level": "country",
+        "geography_id": "NZ",
+        "geography_vintage": "current",
+        "record_set_id": "stats_nz.census_2023.nz.households",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:485cd364c8c00ab1edf2a447"
+      },
+      "national_leaf_selectors": [
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "country",
+          "geography_id": "NZ",
+          "geography_vintage": "current",
+          "record_set_id": "stats_nz.census_2023.nz.household_size",
+          "dimensions": [
+            "nz_census_2023.household_size_source_label"
+          ],
+          "dimension_values": {
+            "nz_census_2023.household_size_source_label": 1
+          },
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:9cb76a66d699d7da1c8de87c"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "country",
+          "geography_id": "NZ",
+          "geography_vintage": "current",
+          "record_set_id": "stats_nz.census_2023.nz.household_size",
+          "dimensions": [
+            "nz_census_2023.household_size_source_label"
+          ],
+          "dimension_values": {
+            "nz_census_2023.household_size_source_label": 2
+          },
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:ff56f3e8937d39176b7a78fd"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "country",
+          "geography_id": "NZ",
+          "geography_vintage": "current",
+          "record_set_id": "stats_nz.census_2023.nz.household_size",
+          "dimensions": [
+            "nz_census_2023.household_size_source_label"
+          ],
+          "dimension_values": {
+            "nz_census_2023.household_size_source_label": 3
+          },
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:90b105451bf00cbff70d4ba9"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "country",
+          "geography_id": "NZ",
+          "geography_vintage": "current",
+          "record_set_id": "stats_nz.census_2023.nz.household_size",
+          "dimensions": [
+            "nz_census_2023.household_size_source_label"
+          ],
+          "dimension_values": {
+            "nz_census_2023.household_size_source_label": 4
+          },
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:bf06c08ffd9f15516da20ea6"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "country",
+          "geography_id": "NZ",
+          "geography_vintage": "current",
+          "record_set_id": "stats_nz.census_2023.nz.household_size",
+          "dimensions": [
+            "nz_census_2023.household_size_source_label"
+          ],
+          "dimension_values": {
+            "nz_census_2023.household_size_source_label": 5
+          },
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:f816263720ebd0aa57826885"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "country",
+          "geography_id": "NZ",
+          "geography_vintage": "current",
+          "record_set_id": "stats_nz.census_2023.nz.household_size",
+          "dimensions": [
+            "nz_census_2023.household_size_source_label"
+          ],
+          "dimension_values": {
+            "nz_census_2023.household_size_source_label": 6
+          },
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:4515eb4b3c727775e2628fe8"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "country",
+          "geography_id": "NZ",
+          "geography_vintage": "current",
+          "record_set_id": "stats_nz.census_2023.nz.household_size",
+          "dimensions": [
+            "nz_census_2023.household_size_source_label"
+          ],
+          "dimension_values": {
+            "nz_census_2023.household_size_source_label": 7
+          },
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:3a58df6e6f74b1d0f715ff48"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "country",
+          "geography_id": "NZ",
+          "geography_vintage": "current",
+          "record_set_id": "stats_nz.census_2023.nz.household_size",
+          "dimensions": [
+            "nz_census_2023.household_size_source_label"
+          ],
+          "dimension_values": {
+            "nz_census_2023.household_size_source_label": 8
+          },
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:c8dc053f9b84203c7e1cf5b1"
+        }
+      ],
+      "published_national_total": 1780527,
+      "published_national_leaf_sum": 1718802.0,
+      "deficit": 61725.0,
+      "handling": "Preserve the published discrepancy; no residual category or hidden reconciliation.",
+      "activation": "parked: Eight Census household-size leaves sum 61,725 households (3.5%) below the published national total, unexplained; no residual category is permitted."
+    },
+    {
+      "table": "family_type",
+      "published_national_total_selector": {
+        "source_name": "stats_nz",
+        "source_measure_id": "count",
+        "source_concept": "stats_nz.census_2023.family_count",
+        "entity_name": "family",
+        "period_type": "calendar_year",
+        "period_value": 2023,
+        "geography_level": "country",
+        "geography_id": "NZ",
+        "geography_vintage": "current",
+        "record_set_id": "stats_nz.census_2023.nz.families",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:4a9f986ff503eb88334d9f61"
+      },
+      "national_leaf_selectors": [
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.family_count",
+          "entity_name": "family",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "country",
+          "geography_id": "NZ",
+          "geography_vintage": "current",
+          "record_set_id": "stats_nz.census_2023.nz.family_type",
+          "dimensions": [
+            "nz_census_2023.family_type_source_label"
+          ],
+          "dimension_values": {
+            "nz_census_2023.family_type_source_label": 1
+          },
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:a6eaaba985b438e5bbfda72d"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.family_count",
+          "entity_name": "family",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "country",
+          "geography_id": "NZ",
+          "geography_vintage": "current",
+          "record_set_id": "stats_nz.census_2023.nz.family_type",
+          "dimensions": [
+            "nz_census_2023.family_type_source_label"
+          ],
+          "dimension_values": {
+            "nz_census_2023.family_type_source_label": 2
+          },
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:855ad96b1d1cc94914738fb4"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.family_count",
+          "entity_name": "family",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "country",
+          "geography_id": "NZ",
+          "geography_vintage": "current",
+          "record_set_id": "stats_nz.census_2023.nz.family_type",
+          "dimensions": [
+            "nz_census_2023.family_type_source_label"
+          ],
+          "dimension_values": {
+            "nz_census_2023.family_type_source_label": 3
+          },
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:379619d9fc5e601495cea805"
+        }
+      ],
+      "published_national_total": 1294503,
+      "published_national_leaf_sum": 1294503.0,
+      "deficit": 0.0,
+      "handling": "Preserve the published discrepancy; no residual category or hidden reconciliation.",
+      "activation": "parked: Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+    }
+  ],
+  "national_bridge_diagnostics": [
+    {
+      "table": "tenure",
+      "regional_leaf_sum_scaled": 1821778.4824468337,
+      "regional_published_total_sum_scaled": 1822217.4461861975,
+      "regional_published_total_selectors": [
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "01",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_01.households",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:a37ad074587526f1319c6589"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "02",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_02.households",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:26c2f3bb8be3c98bfdffa191"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "03",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_03.households",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:405122268a421fd768c49e3a"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "04",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_04.households",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:dfa30175f763d1b8661649a4"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "05",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_05.households",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:dbfb8d88182af74adf0cff24"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "06",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_06.households",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:ca83e6d0fa86f98ce9639758"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "07",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_07.households",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:e2cdf9f7124cc22e591a2797"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "08",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_08.households",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:819586534b92e6d8ce8b14d0"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "09",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_09.households",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:d03bdd8d2f8a16b533105bae"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "12",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_12.households",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:898f0adc26c48d750481839b"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "13",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_13.households",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:315ef1c7c8768538694027b5"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "14",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_14.households",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:f7ef93f1415ddf61e7e9c7cd"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "15",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_15.households",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:ec7e5d166b7ad02ac58f6eb6"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "16",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_16.households",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:47c53840152f0469654662b2"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "17",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_17.households",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:66010905ed639e57249f0f81"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "18",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_18.households",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:0b0f383e5471716ab9724222"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "99",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_99.households",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:e996f2162851829dc746f074"
+        }
+      ],
+      "independently_scaled_published_national_total": 1823225.4070961538,
+      "independently_scaled_published_national_leaves": 1822789.1912884614,
+      "national_growth_operand_geography": "NZ",
+      "region_99": "included separately using national-growth proxy",
+      "use": "diagnostic only; never selected with the fitted leaves; aggregate_admin does not synthesize this roll-up"
+    },
+    {
+      "table": "household_size",
+      "regional_leaf_sum_scaled": 1759115.2458936423,
+      "regional_published_total_sum_scaled": 1822217.4461861975,
+      "regional_published_total_selectors": [
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "01",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_01.households",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:a37ad074587526f1319c6589"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "02",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_02.households",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:26c2f3bb8be3c98bfdffa191"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "03",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_03.households",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:405122268a421fd768c49e3a"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "04",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_04.households",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:dfa30175f763d1b8661649a4"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "05",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_05.households",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:dbfb8d88182af74adf0cff24"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "06",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_06.households",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:ca83e6d0fa86f98ce9639758"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "07",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_07.households",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:e2cdf9f7124cc22e591a2797"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "08",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_08.households",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:819586534b92e6d8ce8b14d0"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "09",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_09.households",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:d03bdd8d2f8a16b533105bae"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "12",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_12.households",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:898f0adc26c48d750481839b"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "13",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_13.households",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:315ef1c7c8768538694027b5"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "14",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_14.households",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:f7ef93f1415ddf61e7e9c7cd"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "15",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_15.households",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:ec7e5d166b7ad02ac58f6eb6"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "16",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_16.households",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:47c53840152f0469654662b2"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "17",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_17.households",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:66010905ed639e57249f0f81"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "18",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_18.households",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:0b0f383e5471716ab9724222"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.household_count",
+          "entity_name": "household",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "99",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_99.households",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:e996f2162851829dc746f074"
+        }
+      ],
+      "independently_scaled_published_national_total": 1823225.4070961538,
+      "independently_scaled_published_national_leaves": 1760020.1941153845,
+      "national_growth_operand_geography": "NZ",
+      "region_99": "included separately using national-growth proxy",
+      "use": "diagnostic only; never selected with the fitted leaves; aggregate_admin does not synthesize this roll-up"
+    },
+    {
+      "table": "family_type",
+      "regional_leaf_sum_scaled": 1325417.3144970597,
+      "regional_published_total_sum_scaled": 1325417.4267844125,
+      "regional_published_total_selectors": [
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.family_count",
+          "entity_name": "family",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "01",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_01.families",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:aacae9fa07ae1983dbc7017d"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.family_count",
+          "entity_name": "family",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "02",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_02.families",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:f18013c6029486592203c3ae"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.family_count",
+          "entity_name": "family",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "03",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_03.families",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:f7a6390279a6b304a702f917"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.family_count",
+          "entity_name": "family",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "04",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_04.families",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:bd7e7a9c7bfcda41e6dff504"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.family_count",
+          "entity_name": "family",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "05",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_05.families",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:ce1e919e263372c05de031c5"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.family_count",
+          "entity_name": "family",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "06",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_06.families",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:cc271ab115eac8302e3ffe52"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.family_count",
+          "entity_name": "family",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "07",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_07.families",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:66a81c4bf03b7b92fda03982"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.family_count",
+          "entity_name": "family",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "08",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_08.families",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:3809aa1c336c37dfc0efac98"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.family_count",
+          "entity_name": "family",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "09",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_09.families",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:4e7a5e2c886a99112020ecfd"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.family_count",
+          "entity_name": "family",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "12",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_12.families",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:59ac11cf4c063dc34343264a"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.family_count",
+          "entity_name": "family",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "13",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_13.families",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:126ecab5cdc9676536507c9c"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.family_count",
+          "entity_name": "family",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "14",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_14.families",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:dcfdab1330945819670b93e8"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.family_count",
+          "entity_name": "family",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "15",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_15.families",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:cf068e7ae7cb7d13706ac2e3"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.family_count",
+          "entity_name": "family",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "16",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_16.families",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:24f97990613fba5165474c84"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.family_count",
+          "entity_name": "family",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "17",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_17.families",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:640ac87e4416f7cdd09e304e"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.family_count",
+          "entity_name": "family",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "18",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_18.families",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:2c6cdb2d7713cc5a72a682ca"
+        },
+        {
+          "source_name": "stats_nz",
+          "source_measure_id": "count",
+          "source_concept": "stats_nz.census_2023.family_count",
+          "entity_name": "family",
+          "period_type": "calendar_year",
+          "period_value": 2023,
+          "geography_level": "region",
+          "geography_id": "99",
+          "geography_vintage": "unstated",
+          "record_set_id": "stats_nz.census_2023.rc_99.families",
+          "dimensions": [],
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:1a5f3e983d54b623b32fc0f8"
+        }
+      ],
+      "independently_scaled_published_national_total": 1325546.1777115385,
+      "independently_scaled_published_national_leaves": 1325546.1777115385,
+      "national_growth_operand_geography": "NZ",
+      "region_99": "included separately using national-growth proxy",
+      "use": "diagnostic only; never selected with the fitted leaves; aggregate_admin does not synthesize this roll-up"
+    }
+  ],
+  "ta_support": {
+    "count": 67,
+    "population_sum": 5324430.0,
+    "ta_999": "absent ERP; crosswalk Census population 33 remains explicit"
+  },
+  "exclusions": [
+    {
+      "id": "regional_all_age_erp",
+      "reason": "Bridge operands only; selecting totals together with age leaves duplicates the fit partition."
+    },
+    {
+      "id": "national_erp",
+      "reason": "Bridge operand or diagnostic only; national and regional ERP totals are independently published."
+    },
+    {
+      "id": "sex_specific_regional_erp",
+      "reason": "Chosen source surface is age-by-region, all sexes; no sex-specific split is emitted."
+    },
+    {
+      "id": "census_national_and_regional_totals",
+      "reason": "Diagnostic receipts only; do not select totals with leaves."
+    },
+    {
+      "id": "ird_taxable_income_total_row_246",
+      "reason": "Detail bands are the selected partition; published Total remains diagnostic."
+    },
+    {
+      "id": "ird_wage_salary_total_row_242",
+      "reason": "Detail bands are the quantile input partition; published Total remains diagnostic."
+    },
+    {
+      "id": "other_main_benefits",
+      "reason": "Unsupported aggregate of other programs; outside the three declared receipt programs."
+    },
+    {
+      "id": "all_main_benefits",
+      "reason": "Aggregate overlaps selected program-age leaves."
+    },
+    {
+      "id": "combined_youth_and_young_parent",
+      "reason": "Combined source category has no separate reviewed program binding."
+    },
+    {
+      "id": "msd_program_totals",
+      "reason": "Do not add program totals to the program-age fit partition."
+    },
+    {
+      "id": "combined_nzs_vp",
+      "reason": "No combined published total is emitted; NZS and unsupported VP remain distinct."
+    },
+    {
+      "id": "ta_999_erp",
+      "reason": "No ERP fact exists for TA 999; its crosswalk Census population is 33; it is not region 99."
+    },
+    {
+      "id": "region_99_erp",
+      "reason": "No regional ERP series exists; Census region 99 uses the explicit national-growth proxy, without residual inference."
+    },
+    {
+      "id": "qes_prefu_and_b5_ageing",
+      "reason": "G8-r2; QES/PREFU rows are absent from this pinned artifact."
+    },
+    {
+      "id": "wff_tripwires",
+      "reason": "G8-w; held-out WFF references remain explicitly parked and selected parked rows must refuse."
+    }
+  ]
+}

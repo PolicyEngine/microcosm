@@ -375,6 +375,13 @@ UK release workflows stop when diagnostics are unavailable because their later
 release checks require that evidence; historical schema-6 and schema-7 UK
 artifacts remain readable through isolated compatibility validation.
 
+A Draft 2020-12 JSON Schema for schema 8, generated from those models, is
+committed at
+`packages/microcosm-diagnostics/src/microcosm/diagnostics/schemas/calibration_diagnostics.v8.schema.json`
+for consumers that check the file without importing them, such as the
+collector. Its description lists the model rules a JSON Schema cannot express;
+see the [package README](packages/microcosm-diagnostics/README.md).
+
 Standard publication uploads the locally built `releases/<id>/` artifacts to
 the Hugging Face dataset, tags the release, and updates `latest.json`. It runs
 on the build machine (it needs the freshly built H5), so it isn't a CI step:

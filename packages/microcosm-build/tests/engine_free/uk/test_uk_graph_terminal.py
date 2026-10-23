@@ -21,6 +21,10 @@ from test_support.microcosm_build.uk_graph_terminal import _frame
 from test_support.microcosm_build.uk_hierarchy_fixtures import (
     uk_fixture_hierarchy,
 )
+from test_support.microcosm_diagnostics.json_schema import (
+    load_strict_json,
+    published_json_schema_errors,
+)
 
 
 def test_export_drops_native_aliases_and_keeps_identity_keyed_assignment(tmp_path):
@@ -947,14 +951,36 @@ def test_both_gate_kernels_are_registered():
     assert type(registry.get(UKFullHoldoutKernel.ref)) is UKFullHoldoutKernel
 
 
+@pytest.fixture(autouse=True)
+def _toy_national_rows_published(monkeypatch):
+    """Publish the two-household toy frame's national rows.
+
+    A national row's model figures leave a build only when ten distinct
+    source households carry it (María's rule of 2026-10-21), and no row here
+    rests on more than two. These kernel tests lower that floor to one; the
+    BRMA floor stays at ten, so the withheld BRMA row keeps its own test, and
+    the national withheld path has its tests in test_uk_diagnostics.py and
+    test_uk_national_graph.py.
+    """
+
+    from microcosm.build.uk_runtime import diagnostics
+
+    monkeypatch.setattr(diagnostics, "UK_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS", 1)
+
+
 def _run_final_gate_kernel(monkeypatch, *, brma_row: bool = False, solved=None):
     """Run the terminal gate kernel on a two-household fixture.
+
+    Rebuilding the diagnostics is forbidden, so a returned document proves
+    the kernel reused the decoded calibration result.
 
     ``solved``, a list, receives the calibration result the kernel decodes.
 
     ``brma_row`` adds a Scottish BRMA rent row far from its target: its two
     carriers sit under the ten-household floor, so its figures are withheld
-    (microcosm#1262).
+    (microcosm#1262). Its rent differs between the two households, so the
+    national count, which both carry once, does not give it back (Vahid's
+    second review of #1333: a row that did would be withheld beside it).
     """
     from dataclasses import replace
     from types import SimpleNamespace
@@ -1090,7 +1116,7 @@ def _run_final_gate_kernel(monkeypatch, *, brma_row: bool = False, solved=None):
             replace(specs[0].to_target(), measure=lambda f: np.ones(2)),
             replace(specs[1].to_target(), measure=lambda f: np.array([1.0, 0.0])),
             *(
-                [replace(specs[2].to_target(), measure=lambda f: np.ones(2))]
+                [replace(specs[2].to_target(), measure=lambda f: np.array([1.0, 0.5]))]
                 if brma_row
                 else []
             ),
@@ -1265,6 +1291,22 @@ def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(
     assert len(support_csv) == 4
     # Consumers read which areas sit below the floor (microcosm#1278).
     assert support_csv["support_below_floor"].dtype == bool
+
+
+@pytest.mark.parametrize(
+    "brma_row", [False, True], ids=["published_rows", "withheld_brma_row"]
+)
+def test_final_gate_kernel_diagnostics_match_the_published_json_schema(
+    monkeypatch, brma_row
+):
+    # The withheld BRMA row exercises the parts #1305 added: the ``brma``
+    # geography level and ``uk_diagnostics.model_figures_withheld``.
+    stored = _run_final_gate_kernel(monkeypatch, brma_row=brma_row)
+    document = load_strict_json(stored.artifacts["calibration_diagnostics"])
+
+    assert published_json_schema_errors(document) == []
+    if brma_row:
+        assert document["uk_diagnostics"]["model_figures_withheld"]["targets"] == 1
 
 
 def test_the_gate_kernel_keeps_a_withheld_brma_row_out_of_its_gates(monkeypatch):

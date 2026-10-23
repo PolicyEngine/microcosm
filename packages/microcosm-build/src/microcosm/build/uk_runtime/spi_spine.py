@@ -17,6 +17,9 @@ from microcosm.build.uk_runtime.employer_pension_contributions import (
     employer_scheme_and_sector,
     load_ashe_employer_rates,
 )
+from microcosm.build.uk_runtime.frs_annual_income import (
+    FRS_ANNUAL_INCOME_OUTPUT_COLUMNS,
+)
 from microcosm.build.uk_runtime.frs_hmrc_source import (
     FRS_HMRC_INCPBEN_COLUMN,
     FRS_HMRC_PAY_COLUMN,
@@ -238,6 +241,7 @@ UK_SPI_INCOME_SPINE_REWRITE_COLUMNS = (
     "iidb_reported",
     "afcs_reported",
     "bsp_reported",
+    "war_widows_pension_reported",
     "winter_fuel_allowance_reported",
     "council_tax_benefit_reported",
     "jsa_contrib_reported",
@@ -259,6 +263,10 @@ UK_SPI_INCOME_SPINE_REWRITE_COLUMNS = (
     FRS_HMRC_PAY_COLUMN,
     FRS_HMRC_UBISJA_COLUMN,
     FRS_HMRC_INCPBEN_COLUMN,
+    # The annual income descriptors follow a drawn row's drawn incomes: the
+    # tape's income is the tax year's, so each share is 1, and the twin's
+    # other spells stay only where the tape drew none of that income.
+    *FRS_ANNUAL_INCOME_OUTPUT_COLUMNS,
 )
 
 # Reviewed constants for every load-bearing manifest parameter the spine
@@ -300,6 +308,8 @@ SPI_SPINE_STAGE2_OUTPUT_COLUMNS = tuple(
         "loss_relief",
         "ni_class_4_losses_brought_forward",
     )
+    # Held to the drawn incomes by rule, not drawn by stage 2.
+    and column not in FRS_ANNUAL_INCOME_OUTPUT_COLUMNS
 )
 #: Both forests are queried over every SPI-channel person aged 16 and over,
 #: and the dependants' rows are discarded (uk-data#504, microcosm#1095).

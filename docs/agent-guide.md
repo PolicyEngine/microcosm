@@ -413,6 +413,17 @@ label, search for an existing definition and follow
 AI assistants must import shared static data from its domain-specific constants
 module instead of copying it or reconstructing alternate views in consumers.
 
+## Calibration diagnostics JSON Schema
+
+`packages/microcosm-diagnostics/src/microcosm/diagnostics/schemas/calibration_diagnostics.v8.schema.json`
+is generated from the schema-8 models in `microcosm.diagnostics.schema`. After
+changing one, regenerate it with
+`uv run --no-sync python tools/generate_calibration_diagnostics_json_schema.py`.
+A new model validator also needs an entry in
+`CALIBRATION_DIAGNOSTICS_V8_JSON_SCHEMA_GAPS` and a document in
+`test_json_schema.py` that the schema accepts and the models refuse; the
+diagnostics tests fail until both exist.
+
 ## Review this guide
 
 Update this guide in the same PR whenever the workspace layout, test

@@ -7,6 +7,7 @@ import json
 import math
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
+from datetime import date
 from functools import lru_cache
 from importlib import resources as importlib_resources
 from types import MappingProxyType
@@ -543,21 +544,49 @@ def compile_uk_target_registry(
     )
 
 
-#: DfT BUS05ai fare receipts are aligned from the publisher's year-ending-March
-#: period to the calibration year with the BUS0415 local bus fares index (a
-#: ruling of 2026-09-10: calendar-year basis). The contract declares the index
-#: on the fare-receipt rows (``uprating_index``); net support declares none and
-#: is never aligned. The index series is read from the vendored resource
-#: ``dft_bus_value_anchors.json`` (hash-pinned to the same Chronicle feed as
-#: the references), so the factor is reproducible without the licensed feed.
+#: DfT BUS05ai fare receipts are aligned from the publisher's April-to-March
+#: year to the calibration year on policyengine-uk's own window (María's ruling
+#: of 2026-10-21 on microcosm#1331, which replaced the calendar-year basis of
+#: 2026-09-10): the engine's model year t runs from 6 April t to 5 April t+1
+#: and day-weights the BUS0415a quarter-end index over it, each value in force
+#: from the start of the quarter it ends (``gov.dft.bus.local_bus_fares_index``,
+#: ``fiscal_year_blend``, PolicyEngine/policyengine-uk#2546). London and
+#: England outside London move by their own series, and England's receipts are
+#: their sum, as the engine prices each area by its own index. The contract
+#: declares the index on the fare-receipt rows (``uprating_index``); net
+#: support declares none and is never aligned. The index and the receipts are
+#: read from the vendored resource ``dft_bus_value_anchors.json`` (hash-pinned
+#: to the same Chronicle feed as the references), so the factor is
+#: reproducible without the licensed feed.
 UK_DFT_BUS_FARE_RECEIPTS_CONCEPT = "dft.local_bus_passenger_fare_receipts"
 UK_DFT_BUS_FARES_INDEX_CONCEPT = "dft.local_bus_fares_index"
 UK_DFT_BUS_FARES_INDEX_RESOURCE = "dft_bus_value_anchors.json"
 UK_DFT_BUS_FARE_INDEX_BASIS = (
-    "mean of the quarter-end BUS0415 index (March, June, September, December) "
-    "inside the calibration calendar year over the mean of the four quarter-ends "
-    "inside the receipts' April-to-March fiscal year"
+    "the BUS0415a quarter-end index, each value in force from the start of the "
+    "quarter it ends, day-weighted over 6 April to 5 April of the calibration "
+    "year over the same in the receipts' fiscal year (policyengine-uk's "
+    "fiscal_year_blend); England's receipts move as London's and England "
+    "outside London's, each by its own series"
 )
+UK_DFT_BUS_LONDON_ID = "E12000007"
+UK_DFT_BUS_ENGLAND_OUTSIDE_LONDON_ID = "dft:england_outside_london"
+UK_DFT_BUS_ENGLAND_ID = "E92000001"
+#: The areas England's fare receipts are the sum of, each moved by its own series.
+UK_DFT_BUS_ENGLAND_PARTS: tuple[str, ...] = (
+    UK_DFT_BUS_LONDON_ID,
+    UK_DFT_BUS_ENGLAND_OUTSIDE_LONDON_ID,
+)
+#: policyengine-uk's ``local_bus_fares_index`` area for each series the
+#: receipts move by (the parity check reads the engine's ratio by these).
+UK_ENGINE_BUS_INDEX_AREA_BY_SERIES: Mapping[str, str] = MappingProxyType(
+    {
+        UK_DFT_BUS_LONDON_ID: "LONDON",
+        UK_DFT_BUS_ENGLAND_OUTSIDE_LONDON_ID: "ENGLAND_OUTSIDE_LONDON",
+    }
+)
+#: How far London's and England outside London's receipts may sum from
+#: England's before the split refuses (the vendored values are unrounded).
+_UK_DFT_BUS_ENGLAND_SUM_TOLERANCE = 1e-9
 
 
 def _vendored_fares_index_rows() -> list[Mapping[str, Any]]:
@@ -568,6 +597,100 @@ def _vendored_fares_index_rows() -> list[Mapping[str, Any]]:
         concept=UK_DFT_BUS_FARES_INDEX_CONCEPT,
         period_type="month",
     )
+
+
+def _vendored_fare_receipt_rows(fiscal_start_year: int) -> list[Mapping[str, Any]]:
+    """BUS05ai fare receipts for the fiscal year opening in April of a year."""
+
+    return vendored_rows(
+        UK_DFT_BUS_FARES_INDEX_RESOURCE,
+        concept=UK_DFT_BUS_FARE_RECEIPTS_CONCEPT,
+        fiscal_start=f"{int(fiscal_start_year):04d}-04-01",
+    )
+
+
+def _fare_receipts(rows: Iterable[Mapping[str, Any]], geography_id: str) -> float:
+    values = {
+        float(row["value"])
+        for row in rows
+        if isinstance(row.get("geography"), Mapping)
+        and row["geography"].get("id") == geography_id
+        and row.get("concept") == UK_DFT_BUS_FARE_RECEIPTS_CONCEPT
+        and isinstance(row.get("value"), (int, float))
+        and not isinstance(row.get("value"), bool)
+    }
+    if len(values) != 1:
+        raise ValueError(
+            f"BUS05ai fare receipts for {geography_id!r} must be one value, "
+            f"found {sorted(values)}."
+        )
+    return values.pop()
+
+
+def _quarter_start(month: str) -> date:
+    """The first day of the quarter a quarter-end month (``YYYY-MM``) closes."""
+
+    year, number = (int(part) for part in month.split("-"))
+    if number not in (3, 6, 9, 12):
+        raise ValueError(f"BUS0415 month {month!r} does not end a quarter.")
+    return date(year, number - 2, 1)
+
+
+def uk_bus_fares_index_fiscal_year_blend(
+    series: Mapping[str, tuple[float, str]], year: int
+) -> tuple[float, tuple[str, ...]]:
+    """One BUS0415 series over policyengine-uk's model year ``year``.
+
+    The day-weighted mean over 6 April ``year`` to 5 April ``year + 1`` of the
+    value in force each day, where a quarter-end value is in force from the
+    start of the quarter it closes until the next one: how the engine dates
+    ``gov.dft.bus.local_bus_fares_index`` and blends it (``fiscal_year_blend``,
+    PolicyEngine/policyengine-uk#2546). The last published value holds after
+    its quarter, as the engine's does until its uprating adds a value. Returns
+    the blend and the quarter-end months it read; refuses when no value is in
+    force on 6 April.
+    """
+
+    start, end = date(int(year), 4, 6), date(int(year) + 1, 4, 6)
+    dated = sorted(
+        (_quarter_start(month), float(value), month)
+        for month, (value, _record) in series.items()
+    )
+    if not dated or dated[0][0] > start:
+        raise ValueError(
+            f"BUS0415 series has no value in force on {start.isoformat()}."
+        )
+    boundaries = [start, *(when for when, _, _ in dated if start < when < end), end]
+    total = 0.0
+    months: list[str] = []
+    for first, last in zip(boundaries, boundaries[1:], strict=False):
+        _when, value, month = next(item for item in reversed(dated) if item[0] <= first)
+        total += value * (last - first).days
+        months.append(month)
+    return total / (end - start).days, tuple(months)
+
+
+def uk_bus_fare_alignment_factors(
+    from_year: int,
+    to_year: int,
+    *,
+    index_rows: Iterable[Mapping[str, Any]] | None = None,
+) -> dict[str, float]:
+    """The receipts' alignment factor by engine area, from one model year to another.
+
+    The BUS0415 series the fare receipts move by, keyed by the engine's
+    ``local_bus_fares_index`` area: what the parity check compares with the
+    engine's own index ratio.
+    """
+
+    rows = list(index_rows) if index_rows is not None else _vendored_fares_index_rows()
+    factors = {}
+    for series_id, engine_area in UK_ENGINE_BUS_INDEX_AREA_BY_SERIES.items():
+        series = _fares_index_series(rows, series_id)
+        from_blend, _ = uk_bus_fares_index_fiscal_year_blend(series, from_year)
+        to_blend, _ = uk_bus_fares_index_fiscal_year_blend(series, to_year)
+        factors[engine_area] = to_blend / from_blend
+    return factors
 
 
 def _fares_index_series(
@@ -598,37 +721,25 @@ def _fares_index_series(
     return series
 
 
-def _quarter_end_months(start_year: int, start_month: int) -> tuple[str, ...]:
-    months = []
-    year, month = start_year, start_month
-    for _ in range(4):
-        # advance to the next quarter-end month (3, 6, 9, 12) on or after
-        # (year, month), then step past it
-        while month not in (3, 6, 9, 12):
-            month += 1
-            if month > 12:
-                month, year = 1, year + 1
-        months.append(f"{year:04d}-{month:02d}")
-        month += 1
-        if month > 12:
-            month, year = 1, year + 1
-    return tuple(months)
-
-
 def align_dft_bus_fare_receipts_to_period(
     reference: LedgerTargetReference,
     registry: TargetRegistry,
     *,
     index_rows: Iterable[Mapping[str, Any]] | None = None,
+    receipt_rows: Iterable[Mapping[str, Any]] | None = None,
 ) -> TargetRegistry:
     """Transport BUS05ai fare receipts to the reference period with BUS0415.
 
     Applies to references that declare ``uprating_index`` equal to the BUS0415
-    concept; any other reference passes through untouched. The generator and
-    the runtime both call this on the compiled registry, so the committed
-    membership, the parity receipts and the run manifest carry one value. The
-    factor is declared on the spec's metadata with the index concept, the
-    series geography, the months used, their source record ids and the
+    concept; any other reference passes through untouched. The reference
+    period is policyengine-uk's model year (6 April to 5 April), and each
+    area moves by its own series blended over that window
+    (:func:`uk_bus_fares_index_fiscal_year_blend`); England's receipts move as
+    London's plus England outside London's. The generator and the runtime
+    both call this on the compiled registry, so the committed membership, the
+    parity receipts and the run manifest carry one value. The factor is
+    declared on the spec's metadata with the index concept, each area's
+    series, blends, months, source record ids and receipt share, and the
     pre-alignment value.
     """
 
@@ -645,7 +756,7 @@ def align_dft_bus_fare_receipts_to_period(
     if reference.period is None or not str(reference.period).isdigit():
         raise ValueError(
             f"UK reference {reference.name!r}: BUS0415 alignment needs a "
-            "calendar-year reference period."
+            "model-year reference period."
         )
     target_period = int(str(reference.period))
     rows = list(index_rows) if index_rows is not None else _vendored_fares_index_rows()
@@ -659,37 +770,93 @@ def align_dft_bus_fare_receipts_to_period(
                 "resolved Ledger geography and fiscal start year."
             )
         start_year = int(fact_period)
-        from_months = _quarter_end_months(start_year, 4)
-        to_months = _quarter_end_months(target_period, 1)
-        series = _fares_index_series(rows, geography_id)
-        missing = [m for m in (*from_months, *to_months) if m not in series]
-        if missing:
-            raise ValueError(
-                f"UK target {spec.name!r}: BUS0415 series {geography_id!r} lacks "
-                f"quarter-end month(s) {missing}; refusing to align fare receipts."
+        parts = (
+            UK_DFT_BUS_ENGLAND_PARTS
+            if geography_id == UK_DFT_BUS_ENGLAND_ID
+            else (geography_id,)
+        )
+        areas: dict[str, dict[str, Any]] = {}
+        record_ids: list[str] = []
+        for part in parts:
+            series = _fares_index_series(rows, part)
+            try:
+                from_blend, from_months = uk_bus_fares_index_fiscal_year_blend(
+                    series, start_year
+                )
+                to_blend, to_months = uk_bus_fares_index_fiscal_year_blend(
+                    series, target_period
+                )
+            except ValueError as error:
+                raise ValueError(
+                    f"UK target {spec.name!r}: BUS0415 series {part!r}: {error} "
+                    "Refusing to align fare receipts."
+                ) from error
+            if from_blend <= 0 or to_blend <= 0:
+                raise ValueError(
+                    f"UK target {spec.name!r}: BUS0415 blends must be positive."
+                )
+            areas[part] = {
+                "from_blend": from_blend,
+                "to_blend": to_blend,
+                "factor": to_blend / from_blend,
+                "from_months": from_months,
+                "to_months": to_months,
+            }
+            record_ids.extend(
+                series[month][1] for month in dict.fromkeys((*from_months, *to_months))
             )
-        from_mean = sum(series[m][0] for m in from_months) / len(from_months)
-        to_mean = sum(series[m][0] for m in to_months) / len(to_months)
-        if from_mean <= 0 or to_mean <= 0:
-            raise ValueError(
-                f"UK target {spec.name!r}: BUS0415 index means must be positive."
+        if len(parts) == 1:
+            areas[parts[0]]["receipts_share"] = 1.0
+            factor = areas[parts[0]]["factor"]
+        else:
+            receipts = (
+                list(receipt_rows)
+                if receipt_rows is not None
+                else _vendored_fare_receipt_rows(start_year)
             )
-        factor = to_mean / from_mean
-        record_ids = ",".join(series[m][1] for m in (*from_months, *to_months))
+            values = {part: _fare_receipts(receipts, part) for part in parts}
+            total = math.fsum(values.values())
+            if not total > 0 or (
+                abs(total / spec.value - 1.0) > _UK_DFT_BUS_ENGLAND_SUM_TOLERANCE
+            ):
+                raise ValueError(
+                    f"UK target {spec.name!r}: London's and England outside "
+                    "London's fare receipts do not sum to England's; refusing "
+                    "to align them area by area."
+                )
+            for part in parts:
+                areas[part]["receipts_share"] = values[part] / total
+            factor = (
+                math.fsum(values[part] * areas[part]["factor"] for part in parts)
+                / total
+            )
         metadata = {
             **spec.metadata,
             "uprating_index": UK_DFT_BUS_FARES_INDEX_CONCEPT,
             "uprating_index_basis": UK_DFT_BUS_FARE_INDEX_BASIS,
             "uprating_index_resource": UK_DFT_BUS_FARES_INDEX_RESOURCE,
-            "uprating_index_series_geography_id": geography_id,
-            "uprating_index_from_months": ",".join(from_months),
-            "uprating_index_to_months": ",".join(to_months),
-            "uprating_index_from_mean": f"{from_mean:.15g}",
-            "uprating_index_to_mean": f"{to_mean:.15g}",
-            "uprating_index_source_record_ids": record_ids,
+            "uprating_index_series_geography_id": ",".join(parts),
+            "uprating_index_areas": json.dumps(
+                {
+                    part: {
+                        "from_blend": f"{area['from_blend']:.15g}",
+                        "to_blend": f"{area['to_blend']:.15g}",
+                        "factor": f"{area['factor']:.15g}",
+                        "receipts_share": f"{area['receipts_share']:.15g}",
+                        "from_months": list(area["from_months"]),
+                        "to_months": list(area["to_months"]),
+                    }
+                    for part, area in areas.items()
+                },
+                sort_keys=True,
+            ),
+            "uprating_index_source_record_ids": ",".join(record_ids),
             "uprating_factor": f"{factor:.15g}",
             "ledger_value_before_alignment": f"{spec.value:.15g}",
-            "uprating_adjudication": "microcosm#890 (ruling 2026-09-10: calendar-year basis)",
+            "uprating_adjudication": (
+                "microcosm#1331 (María's ruling of 2026-10-21: policyengine-uk's "
+                "April-to-March window, London and outside London apart)"
+            ),
         }
         aligned.append(replace(spec, value=spec.value * factor, metadata=metadata))
     return TargetRegistry(aligned, country="uk")

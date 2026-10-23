@@ -1,4 +1,12 @@
-"""UK salary-sacrifice QRF and headcount support conversion."""
+"""UK salary-sacrifice QRF and headcount support conversion.
+
+policyengine-uk's pension_contributions_via_salary_sacrifice_pre_2015 stays at
+its default of nil: the FRS records no start date for an arrangement, so all
+salary sacrifice counts in threshold income for the tapered annual allowance
+(FA 2004 s. 228ZA(6)). For arrangements made before 9 July 2015 that
+overstates threshold income, and so the taper and the number of people the
+annual allowance charge reaches, in any comparison with HMRC.
+"""
 
 from __future__ import annotations
 

@@ -1059,6 +1059,149 @@ class TestAggregateAdmin:
         assert "has no hierarchy" in outcome.result.failures[0]
 
 
+class TestNZReviewedFitGates:
+    @staticmethod
+    def _parameters(gate_id: str) -> dict:
+        return dict(
+            next(
+                gate
+                for gate in load_country_spec("nz").gates.gates
+                if gate.id == gate_id
+            ).parameters
+        )
+
+    @pytest.mark.parametrize(
+        ("gate_id", "boundary"),
+        [
+            ("calibration_per_family_fit", 0.05),
+            ("demography_per_family_fit", 0.02),
+        ],
+    )
+    def test_real_declarations_include_boundaries_and_refuse_one_target_misses(
+        self, gate_id: str, boundary: float
+    ) -> None:
+        parameters = self._parameters(gate_id)
+        families = parameters["families"]
+        for error, expected in (
+            (boundary, GateStatus.PASSED),
+            (math.nextafter(boundary, math.inf), GateStatus.FAILED),
+        ):
+            # Exactly one target per declared family: the hard policy cannot
+            # exempt small families or tolerate a share below one.
+            diagnostics = _diagnostics(
+                (family, f"anchor_{family}", error) for family in families
+            )
+            outcome = _evaluate(
+                "per_family_fit", parameters, {"artifacts": {DIAGNOSTICS: diagnostics}}
+            )
+            assert outcome.status is expected
+
+    @pytest.mark.parametrize(
+        "gate_id", ["calibration_per_family_fit", "demography_per_family_fit"]
+    )
+    def test_real_fit_declarations_require_each_named_family(
+        self, gate_id: str
+    ) -> None:
+        parameters = self._parameters(gate_id)
+        diagnostics = _diagnostics(
+            (family, f"anchor_{family}", 0.0) for family in parameters["families"][1:]
+        )
+        outcome = _evaluate(
+            "per_family_fit", parameters, {"artifacts": {DIAGNOSTICS: diagnostics}}
+        )
+        assert outcome.status is GateStatus.FAILED
+
+    def _admin_evidence(self, *, achieved: float = 105.0, zero: bool = False):
+        parameters = self._parameters("national_and_region_admin_aggregates")
+        value = 0.0 if zero else 100.0
+        specs = [
+            _spec(
+                f"anchor_{family}",
+                family=family,
+                value=value,
+                tolerance=0.05,
+                hierarchy=_hierarchy(
+                    f"anchor_{family}", "country" if index == 0 else "region"
+                ),
+            )
+            for index, family in enumerate(parameters["families"])
+        ]
+        surface = _surface(specs)
+        diagnostics = _diagnostics(
+            [(spec.family, spec.name, 0.0, value, achieved) for spec in specs],
+            surface=surface,
+        )
+        return parameters, surface, diagnostics
+
+    @pytest.mark.parametrize(
+        ("achieved", "expected"),
+        [
+            (105.0, GateStatus.PASSED),
+            (math.nextafter(105.0, math.inf), GateStatus.FAILED),
+        ],
+    )
+    def test_admin_uses_declared_relative_boundary_over_absolute_reference_tolerance(
+        self, achieved: float, expected: GateStatus
+    ) -> None:
+        parameters, surface, diagnostics = self._admin_evidence(achieved=achieved)
+        outcome = _evaluate(
+            "aggregate_admin",
+            parameters,
+            {"artifacts": {SURFACE: surface, DIAGNOSTICS: diagnostics}},
+        )
+        assert outcome.status is expected
+        assert all(spec.tolerance == 0.05 for spec in surface.registry.specs)
+
+    @pytest.mark.parametrize(
+        ("achieved", "expected"),
+        [
+            (0.05, GateStatus.PASSED),
+            (math.nextafter(0.05, math.inf), GateStatus.FAILED),
+        ],
+    )
+    def test_zero_anchor_uses_unit_scale_residual_convention(
+        self, achieved: float, expected: GateStatus
+    ) -> None:
+        # aggregate_admin divides by max(abs(target), 1). For a zero anchor,
+        # this is an absolute residual on a unit scale, not a percentage.
+        parameters, surface, diagnostics = self._admin_evidence(
+            achieved=achieved, zero=True
+        )
+        outcome = _evaluate(
+            "aggregate_admin",
+            parameters,
+            {"artifacts": {SURFACE: surface, DIAGNOSTICS: diagnostics}},
+        )
+        assert outcome.status is expected
+
+    @pytest.mark.parametrize(
+        "missing", ["family", "hierarchy", "measurement", "surface_identity"]
+    )
+    def test_real_admin_policy_refuses_incomplete_evidence(self, missing: str) -> None:
+        parameters, surface, diagnostics = self._admin_evidence(achieved=100.0)
+        if missing == "family":
+            surface = _surface(surface.registry.specs[1:])
+            diagnostics["build"]["surface_sha256"] = surface.sha256
+        elif missing == "hierarchy":
+            surface = _surface(
+                [
+                    replace(surface.registry.specs[0], hierarchy=None),
+                    *surface.registry.specs[1:],
+                ]
+            )
+            diagnostics["build"]["surface_sha256"] = surface.sha256
+        elif missing == "measurement":
+            diagnostics["targets"].pop()
+        else:
+            diagnostics.pop("build")
+        outcome = _evaluate(
+            "aggregate_admin",
+            parameters,
+            {"artifacts": {SURFACE: surface, DIAGNOSTICS: diagnostics}},
+        )
+        assert outcome.status is GateStatus.FAILED
+
+
 class TestCalibrationReferenceCoverage:
     @PROPERTY
     @given(

@@ -796,6 +796,7 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                         {
                             "kind": "assign_binary_from_rate",
                             "output": "would_claim_universal_childcare",
+                            "nested_under": "would_claim_extended_childcare",
                             "seed": 0,
                         },
                         {
@@ -813,6 +814,16 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                             "output": "maximum_extended_childcare_hours_usage",
                             "seed": 0,
                         },
+                        *(
+                            {
+                                "kind": "assign_binary_from_rate",
+                                "output": "max_free_entitlement_hours_used",
+                                "rate_key": f"extended_childcare_age_{age}_usage",
+                                "assignment_unit": "person",
+                                "seed": 0,
+                            }
+                            for age in (0, 1)
+                        ),
                     ],
                     outputs=(
                         "would_claim_child_benefit",
@@ -825,8 +836,12 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                         "would_claim_targeted_childcare",
                         "would_claim_uc_childcare",
                         "maximum_extended_childcare_hours_usage",
+                        "max_free_entitlement_hours_used",
                     ),
-                    nonnegative_outputs=("maximum_extended_childcare_hours_usage",),
+                    nonnegative_outputs=(
+                        "maximum_extended_childcare_hours_usage",
+                        "max_free_entitlement_hours_used",
+                    ),
                 ),
                 source_stage(
                     "frs_person_draws",
@@ -1846,6 +1861,37 @@ def test_benefit_code_splits_are_ported(tmp_path: Path) -> None:
     assert adult["bsp_reported"] == pytest.approx(6 * WEEKS_IN_YEAR)
 
 
+def test_war_widows_pension_leaves_bereavement_support(tmp_path: Path) -> None:
+    """FRS code 9, War Widow's or Widower's Pension, goes to its own input
+    (pe-uk#2382), and Bereavement Support Payment keeps code 6 alone (#1222)."""
+
+    tables = _fixture_tables()
+    tables["benefits"].append(
+        {
+            "SERNUM": 1,
+            "BENUNIT": 1,
+            "PERSON": 1,
+            "BENEFIT": 9,
+            "VAR2": 0,
+            "BENAMT": 8.0,
+            "UCSTART": "",
+            "UCHOUSEL": "",
+        }
+    )
+    stage = _write_fixture(tmp_path, tables)
+    person = (
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
+        .table("person")
+        .set_index("person_id")
+    )
+
+    assert person.loc[1001, "bsp_reported"] == pytest.approx(6 * WEEKS_IN_YEAR)
+    assert person.loc[1001, "war_widows_pension_reported"] == pytest.approx(
+        8 * WEEKS_IN_YEAR
+    )
+    assert person.drop(index=1001)["war_widows_pension_reported"].eq(0.0).all()
+
+
 def test_scottish_disability_payments_land_in_the_pip_and_dla_columns() -> None:
     """ADP and CDP rows map to the columns of the benefits they replace (uk-data#500).
 
@@ -2251,6 +2297,7 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
         "would_claim_marriage_allowance",
         "would_claim_scp",
         "attends_private_school_random_draw",
+        "max_free_entitlement_hours_used",
     } <= set(frame.table("person"))
     assert {
         "household_owns_tv",
@@ -3223,6 +3270,36 @@ def test_read_pinned_tab_reads_only_the_declared_columns(tmp_path) -> None:
         read_pinned_tab(tab, pins, columns=("CASER8", "FLISAVR8"))
     with pytest.raises(ValueError, match="not the pinned"):
         read_pinned_tab(tab, {**pins, "sha256": "f" * 64}, columns=("CASER8",))
+
+
+def test_read_pinned_tab_selects_columns_of_a_long_mixed_type_tab(tmp_path) -> None:
+    """A long tab whose selected column turns from numbers to text reads.
+
+    pandas' chunked parser mis-indexes such a column under a callable column
+    filter and raises IndexError (FRS 2024-25 adult.tab did), so a selective
+    read takes one pass.
+    """
+
+    import hashlib
+
+    from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
+
+    rows = 300_000
+    tab = tmp_path / "adult.tab"
+    lines = ["SERNUM\tB\tC\tD\tMIXED", *(f"{row}\t1\t2\t3\t1" for row in range(rows))]
+    lines[-1] = f"{rows - 1}\t1\t2\t3\tx"
+    tab.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    pins = {
+        "sha256": hashlib.sha256(tab.read_bytes()).hexdigest(),
+        "size_bytes": tab.stat().st_size,
+    }
+
+    table = read_pinned_tab(tab, pins, columns=("sernum", "mixed"))
+
+    assert list(table.columns) == ["sernum", "mixed"]
+    assert len(table) == rows
+    assert table["mixed"].iloc[0] == 1
+    assert np.isnan(table["mixed"].iloc[-1])
 
 
 def test_refuses_nan_in_produced_weight_column(tmp_path: Path) -> None:

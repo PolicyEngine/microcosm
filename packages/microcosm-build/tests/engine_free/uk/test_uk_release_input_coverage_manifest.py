@@ -181,6 +181,7 @@ def test_hmrc_stage_is_required_while_the_208_fact_replay_remains_fenced() -> No
     assert family["spi_prior_national_household_mass_share"] == 0.5
     assert family["required_predecessor_stages"] == [
         "frs_hmrc_spine_leaves",
+        "frs_annual_income_spells",
         "spi_support_channel",
         "spi_income_band_donors",
     ]
