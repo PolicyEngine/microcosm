@@ -445,11 +445,12 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
         }
     ),
     # The Move to UC claim draw reads each unit's legacy and Universal Credit
-    # receipts and its would_claim_uc, after their last writers, and the source
-    # household its receipt counts distinct support by (uk-data#534,
-    # microcosm#1095).
+    # receipts and its would_claim_uc, after their last writers, the claimant
+    # and partner whose reports count (pe-uk#2549), and the source household
+    # its receipt counts distinct support by (uk-data#534, microcosm#1095).
     "uc_legacy_closure_take_up": frozenset(
         {
+            ("person", "is_claimant_or_partner"),
             ("person", "child_tax_credit_reported"),
             ("person", "working_tax_credit_reported"),
             ("person", "housing_benefit_reported"),

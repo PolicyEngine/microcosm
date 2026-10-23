@@ -465,6 +465,9 @@ def _frame(time_period: str = "2024"):
             "is_uc_claimant": [True] * 4,
             "is_benunit_head": [True] * 4,
             "is_parent": [False] * 4,
+            # The legacy reports that count are the claimant's and partner's
+            # (pe-uk#2549).
+            "is_claimant_or_partner": [True] * 4,
             "universal_credit_reported": [1_000.0, 0.0, 0.0, 0.0],
             **{column: [0.0] * 4 for column in _LEGACY_REPORTS},
         }

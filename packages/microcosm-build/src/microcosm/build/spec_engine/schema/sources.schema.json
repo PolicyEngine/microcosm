@@ -10004,6 +10004,7 @@
       "output",
       "port_of",
       "legacy_benefits",
+      "reporters",
       "true_without_draw",
       "rate",
       "probability",
@@ -10025,6 +10026,9 @@
        "items": {
         "type": "string"
        }
+      },
+      "reporters": {
+       "type": "string"
       },
       "true_without_draw": {
        "type": "string"
