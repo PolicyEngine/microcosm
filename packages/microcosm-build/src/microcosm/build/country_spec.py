@@ -10,10 +10,11 @@ projections needed to compile a source manifest into a
 the US plan (an implementation per declared stage or nothing).
 
 Belgium is the first full consumer (microcosm#261, epic microcosm#259): the
-``be/`` package declares its BE-SILC source stages, clone-and-assign commune
-geography spine (vintage-aware NIS codes), Ledger target references (never
-values), gate selection with criticality tiers, and the release contract —
-zero Python in the country folder.
+``be/`` package declares its donor-transport source stage (the pinned
+populace-us support pool), clone-and-assign commune geography spine
+(vintage-aware NIS codes), Ledger target references (never values), gate
+selection with criticality tiers, and the release contract — zero Python in
+the country folder.
 
 Typed resources, by canonical filename:
 
