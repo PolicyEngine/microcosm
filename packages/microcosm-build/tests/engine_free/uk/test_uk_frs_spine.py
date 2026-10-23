@@ -3272,6 +3272,36 @@ def test_read_pinned_tab_reads_only_the_declared_columns(tmp_path) -> None:
         read_pinned_tab(tab, {**pins, "sha256": "f" * 64}, columns=("CASER8",))
 
 
+def test_read_pinned_tab_selects_columns_of_a_long_mixed_type_tab(tmp_path) -> None:
+    """A long tab whose selected column turns from numbers to text reads.
+
+    pandas' chunked parser mis-indexes such a column under a callable column
+    filter and raises IndexError (FRS 2024-25 adult.tab did), so a selective
+    read takes one pass.
+    """
+
+    import hashlib
+
+    from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
+
+    rows = 300_000
+    tab = tmp_path / "adult.tab"
+    lines = ["SERNUM\tB\tC\tD\tMIXED", *(f"{row}\t1\t2\t3\t1" for row in range(rows))]
+    lines[-1] = f"{rows - 1}\t1\t2\t3\tx"
+    tab.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    pins = {
+        "sha256": hashlib.sha256(tab.read_bytes()).hexdigest(),
+        "size_bytes": tab.stat().st_size,
+    }
+
+    table = read_pinned_tab(tab, pins, columns=("sernum", "mixed"))
+
+    assert list(table.columns) == ["sernum", "mixed"]
+    assert len(table) == rows
+    assert table["mixed"].iloc[0] == 1
+    assert np.isnan(table["mixed"].iloc[-1])
+
+
 def test_refuses_nan_in_produced_weight_column(tmp_path: Path) -> None:
     tables = _fixture_tables()
     tables["househol"][0]["GROSS4"] = ""

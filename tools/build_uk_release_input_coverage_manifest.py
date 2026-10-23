@@ -1212,6 +1212,9 @@ def _hmrc_family_coverage_contract(
         "base_candidate_tier": validate_uk_release_tier(candidate_source["tier"]),
         "required_predecessor_stages": [
             "frs_hmrc_spine_leaves",
+            # The SPI copies carry the annual income descriptors their twins
+            # hold, and the income stage holds them to the drawn incomes.
+            "frs_annual_income_spells",
             "spi_support_channel",
             "spi_income_band_donors",
         ],

@@ -213,13 +213,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "f2d7e2ad1476cd25d251903c812a3674af8356d423efd08baeac2ab5fac679bf"
+    "cf7df0ce75fcb6b66cdba6f706ed777aca9550a966f364cef6c3c2c5f7780813"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "671b2c04a1139cae4afc8043332756fdbbbf2a3aabee90d8f6211f7126d54118"
+    "cb12e74aed6397667b17d5cf770161cf01df721f796ddc244ae9b6945dcf3605"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "9d335e980b720a477d26805559f766a2f9adcaea06747e13a0801c2b69e0cf55"
+    "fcebd763a4e9c427615ca935b019de43bc49e7dffbcece54181c21576bdcc372"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "6a179222c6b6058ad9caacfd347f7bdb8cb98a62237b50d1fc1136df09337251"
@@ -278,6 +278,7 @@ UK_GATE_BATTERY_ENTRIES = {
         "transferred",
         None,
     ),
+    "uk_stage_frs_annual_income_spells": ("stage_health", "transferred", None),
     "uk_stage_spi_support_channel_mass": (
         "stage_health",
         "transferred",
@@ -289,6 +290,7 @@ UK_GATE_BATTERY_ENTRIES = {
         None,
     ),
     "uk_stage_spi_benefit_coherence": ("stage_health", "transferred", None),
+    "uk_stage_uc_take_up": ("stage_health", "transferred", None),
     "uk_stage_pension_credit_take_up": ("stage_health", "transferred", None),
     "uk_stage_child_benefit_take_up": ("stage_health", "transferred", None),
     "uk_stage_high_value_home_support_mass": ("stage_health", "transferred", None),
@@ -1119,7 +1121,7 @@ def _terminal_gate_details(name: str) -> dict:
     if name == "take_up_signal":
         # Mirrors uk_take_up_signal_gate's per-column detail block.
         return {
-            "benunit.would_claim_uc": {
+            "benunit.would_claim_tfc": {
                 "weighted_share": 0.55,
                 "target": 0.55,
                 "absolute_deviation": 0.0,
@@ -1345,6 +1347,7 @@ def _gate_battery_payload(
         "hmrc_spi_income_spine",
         "spi_benefit_coherence",
         "uc_capital_coherence",
+        "uc_take_up",
         "pension_credit_take_up",
         "child_benefit_take_up",
         "uc_deduction_attributes",
@@ -1375,9 +1378,11 @@ def _gate_battery_payload(
         "uk_stage_etb_services_support": "etb_services",
         "uk_stage_etb_services_support_pricing": "etb_services",
         "uk_stage_frs_hmrc_spine_leaves_signal": "frs_hmrc_spine_leaves",
+        "uk_stage_frs_annual_income_spells": "frs_annual_income_spells",
         "uk_stage_spi_support_channel_mass": "spi_support_channel",
         "uk_stage_hmrc_spi_income_spine_identity": "hmrc_spi_income_spine",
         "uk_stage_spi_benefit_coherence": "spi_benefit_coherence",
+        "uk_stage_uc_take_up": "uc_take_up",
         "uk_stage_pension_credit_take_up": "pension_credit_take_up",
         "uk_stage_child_benefit_take_up": "child_benefit_take_up",
         "uk_stage_high_value_home_support_mass": "high_value_home_support",

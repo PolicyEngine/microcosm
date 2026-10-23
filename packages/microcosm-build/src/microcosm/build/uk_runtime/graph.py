@@ -119,6 +119,9 @@ _READER_ISOLATION_BOUNDARIES = frozenset(
         # would_claim_uc (microcosm#1095).
         "spi_benefit_coherence",
         "uc_capital_coherence",
+        # The Universal Credit redraw rewrites ``would_claim_uc``, which the
+        # open-surface readers before it bind (microcosm#1334).
+        "uc_take_up",
         # The Pension Credit redraw rewrites ``frs_take_up``'s would_claim_pc,
         # which the open-surface readers before it bind (microcosm#1069).
         "pension_credit_take_up",
@@ -169,6 +172,7 @@ _SPLIT_STAGE_SOURCES: Mapping[str, tuple[str, ...]] = {
     "etb_vat": ("etb",),
     "etb_services": ("etb",),
     "frs_hmrc_spine_leaves": ("frs",),
+    "frs_annual_income_spells": ("frs",),
     "spi_income_band_donors": ("spi",),
     "hmrc_spi_income_spine": ("spi", "hmrc_income"),
 }
@@ -321,6 +325,18 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     "etb_services": None,
     # The employer pension draw applies an ASHE rate to pay (microcosm#1069).
     "frs_hmrc_spine_leaves": frozenset({("person", "employment_income")}),
+    # The annual income descriptors re-read the pinned adult, job and household
+    # tabs; the frame reads are the current income columns they qualify and
+    # the donor cells' age and sex.
+    "frs_annual_income_spells": frozenset(
+        ("person", column)
+        for column in (
+            "employment_income",
+            "self_employment_income",
+            "age",
+            "gender",
+        )
+    ),
     "spi_support_channel": None,
     "spi_income_band_donors": None,
     "hmrc_spi_income_spine": None,
@@ -347,6 +363,10 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     # Runs one temporary engine materialization over the whole frame for its
     # award screen, so its input surface is genuinely open.
     "uc_reporter_redraw": None,
+    # One temporary engine materialization of the Universal Credit award over
+    # the whole frame, which also hands the stage the source lineage its pools
+    # and receipt count by: an open surface (microcosm#1334).
+    "uc_take_up": None,
     # One temporary engine materialization of Pension Credit entitlement over
     # the whole frame: an open surface, like the UC award screen.
     "pension_credit_take_up": None,
@@ -924,6 +944,17 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
             "employer_pension_contributions",
         ),
     ),
+    "frs_annual_income_spells": _cells(
+        "person",
+        (
+            "employment_income_annual_share",
+            "employment_income_other_spells",
+            "self_employment_income_annual_share",
+            "self_employment_income_other_spells",
+            "private_pension_income_annual_share",
+            "contributory_benefits_annual_share",
+        ),
+    ),
     "spi_support_channel": (
         _Cell("person", "person_source_id", "int64"),
         _Cell("person", "person_support_channel", "string"),
@@ -1019,6 +1050,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("benunit", "frs_benunit_capital", "float64"),
         _Cell("benunit", "would_claim_uc", "bool"),
     ),
+    "uc_take_up": (_Cell("benunit", "would_claim_uc", "bool"),),
     "uc_legacy_closure_take_up": (
         _Cell("benunit", "would_claim_uc_at_legacy_closure", "bool"),
     ),
@@ -1161,6 +1193,13 @@ _HMRC_SPI_FLOAT_COLUMNS = (
     "hmrc_spi_pay",
     "hmrc_spi_unemployment_benefit_income",
     "hmrc_spi_incapacity_benefit_income",
+    # A drawn row's annual income descriptors follow its drawn incomes.
+    "employment_income_annual_share",
+    "employment_income_other_spells",
+    "self_employment_income_annual_share",
+    "self_employment_income_other_spells",
+    "private_pension_income_annual_share",
+    "contributory_benefits_annual_share",
 )
 _HMRC_SPI_HIDDEN_STRING = (
     "aa_category",

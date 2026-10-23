@@ -96,6 +96,9 @@ from microcosm.build.uk_runtime.childcare_copy_take_up import (
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.etb_services import UKETBServicesStageTransform
 from microcosm.build.uk_runtime.etb_vat import UKETBVATStageTransform
+from microcosm.build.uk_runtime.frs_annual_income import (
+    UKFRSAnnualIncomeStageTransform,
+)
 from microcosm.build.uk_runtime.frs_brma import UKFRSBRMAStageTransform
 from microcosm.build.uk_runtime.frs_council_tax import UKFRSCouncilTaxStageTransform
 from microcosm.build.uk_runtime.frs_disability import UKFRSDisabilityStageTransform
@@ -202,6 +205,7 @@ from microcosm.build.uk_runtime.uc_deduction_attributes import (
 from microcosm.build.uk_runtime.uc_reporter_redraw import (
     UKUCReporterRedrawStageTransform,
 )
+from microcosm.build.uk_runtime.uc_take_up import UKUCTakeUpStageTransform
 from microcosm.build.uk_runtime.was_lisa import UKWASLISAStageTransform
 from microcosm.build.uk_runtime.was_wealth import UKWASWealthStageTransform
 from microcosm.frame import Frame
@@ -1688,6 +1692,13 @@ def prepare_uk_spine_execution(
             sampled_rung=_is_sampled(args),
         )
     )
+    if "frs_annual_income_spells" in stage_names:
+        implementations["frs_annual_income_spells"] = _GraphSourceTransform(
+            lambda sources: UKFRSAnnualIncomeStageTransform(
+                sources["frs"],
+                stage=stages_by_name["frs_annual_income_spells"],
+            )
+        )
     implementations["spi_support_channel"] = UKSPISupportChannelStageTransform(
         stage=stages_by_name["spi_support_channel"],
         sample_fraction=args.sample_fraction,
@@ -1717,6 +1728,11 @@ def prepare_uk_spine_execution(
     if "uc_capital_coherence" in stage_names:
         implementations["uc_capital_coherence"] = UKUCCapitalCoherenceStageTransform(
             stage=stages_by_name["uc_capital_coherence"]
+        )
+    if "uc_take_up" in stage_names:
+        implementations["uc_take_up"] = UKUCTakeUpStageTransform(
+            stage=stages_by_name["uc_take_up"],
+            engine=engine,
         )
     if "uc_legacy_closure_take_up" in stage_names:
         implementations["uc_legacy_closure_take_up"] = (

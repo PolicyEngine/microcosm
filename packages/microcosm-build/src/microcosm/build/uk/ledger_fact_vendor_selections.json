@@ -1330,6 +1330,88 @@
       ]
     },
     {
+      "resource": "dwp_uc_award_band_facts.json",
+      "purpose": "DWP Stat-Xplore, Households on Universal Credit in Great Britain by Monthly Award Amount (bands) and Family Type, each month April to December 2025: the facts the registry's dwp/uc_payment_dist rows average over calendar 2025 (microcosm#1334). Consumed by the uc_take_up stage, which takes each family type and award band's calendar-2025 mean count as the caseload its Universal Credit take-up draw aims at on the spine's design weights, including the unbound GBP 2,500.01 or over band. No value is derived here.",
+      "consumers": [
+        "uk_runtime.uc_take_up"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "uc_households_by_award_band_and_family_type_2025_04",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.statx.uc_benefit_units.award_band_family_type.month2025_04"
+          },
+          "expected_row_count": 135
+        },
+        {
+          "label": "uc_households_by_award_band_and_family_type_2025_05",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.statx.uc_benefit_units.award_band_family_type.month2025_05"
+          },
+          "expected_row_count": 135
+        },
+        {
+          "label": "uc_households_by_award_band_and_family_type_2025_06",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.statx.uc_benefit_units.award_band_family_type.month2025_06"
+          },
+          "expected_row_count": 135
+        },
+        {
+          "label": "uc_households_by_award_band_and_family_type_2025_07",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.statx.uc_benefit_units.award_band_family_type.month2025_07"
+          },
+          "expected_row_count": 135
+        },
+        {
+          "label": "uc_households_by_award_band_and_family_type_2025_08",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.statx.uc_benefit_units.award_band_family_type.month2025_08"
+          },
+          "expected_row_count": 135
+        },
+        {
+          "label": "uc_households_by_award_band_and_family_type_2025_09",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.statx.uc_benefit_units.award_band_family_type.month2025_09"
+          },
+          "expected_row_count": 135
+        },
+        {
+          "label": "uc_households_by_award_band_and_family_type_2025_10",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.statx.uc_benefit_units.award_band_family_type.month2025_10"
+          },
+          "expected_row_count": 135
+        },
+        {
+          "label": "uc_households_by_award_band_and_family_type_2025_11",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.statx.uc_benefit_units.award_band_family_type.month2025_11"
+          },
+          "expected_row_count": 135
+        },
+        {
+          "label": "uc_households_by_award_band_and_family_type_2025_12",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.statx.uc_benefit_units.award_band_family_type.month2025_12"
+          },
+          "expected_row_count": 135
+        }
+      ]
+    },
+    {
       "resource": "obr_hvcts_costing_facts.json",
       "purpose": "OBR costing of the high value council tax surcharge (2 April 2026): Table 1.1 and 1.2 properties in scope by band for 2028-29 to 2030-31 (static and post-behaviour) and the paragraph 1.13 non-owner-occupied share. Consumed by the uk_high_value_homes_benchmarks diagnostic gate and the high-value home stock builder's owner-occupied control (microcosm#1240).",
       "consumers": [

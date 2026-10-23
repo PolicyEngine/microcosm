@@ -63,6 +63,7 @@ E6_STAGE_NAMES = [
 ]
 E7_STAGE_NAMES = [
     "frs_hmrc_spine_leaves",
+    "frs_annual_income_spells",
     "spi_support_channel",
     "spi_income_band_donors",
     "hmrc_spi_income_spine",
@@ -78,6 +79,12 @@ SPI_BENEFIT_COHERENCE_STAGE_NAMES = [
 ]
 UC_COHERENCE_STAGE_NAMES = [
     "uc_capital_coherence",
+]
+# microcosm#1334: the Universal Credit redraw reads the post-SPI awards and the
+# capital UC capital coherence sets, and writes would_claim_uc before the Move
+# to UC claim draw reads it.
+UC_TAKE_UP_STAGE_NAMES = [
+    "uc_take_up",
 ]
 # microcosm#1095: the Move to UC claim draw reads the final legacy and UC
 # receipts and would_claim_uc (uk-data#534).
@@ -130,6 +137,7 @@ UK_SOURCE_STAGE_NAMES = [
     *UC_REPORTER_REDRAW_STAGE_NAMES,
     *SPI_BENEFIT_COHERENCE_STAGE_NAMES,
     *UC_COHERENCE_STAGE_NAMES,
+    *UC_TAKE_UP_STAGE_NAMES,
     *UC_LEGACY_CLOSURE_TAKE_UP_STAGE_NAMES,
     *PENSION_CREDIT_TAKE_UP_STAGE_NAMES,
     *CHILD_BENEFIT_TAKE_UP_STAGE_NAMES,
@@ -203,6 +211,7 @@ class TestUKSourceStagesManifest:
             *UC_REPORTER_REDRAW_STAGE_NAMES,
             *SPI_BENEFIT_COHERENCE_STAGE_NAMES,
             *UC_COHERENCE_STAGE_NAMES,
+            *UC_TAKE_UP_STAGE_NAMES,
             *UC_LEGACY_CLOSURE_TAKE_UP_STAGE_NAMES,
             *PENSION_CREDIT_TAKE_UP_STAGE_NAMES,
             *CHILD_BENEFIT_TAKE_UP_STAGE_NAMES,
@@ -276,6 +285,7 @@ class TestUKSourceStagesManifest:
                     "etb_vat": _identity,
                     "etb_services": _identity,
                     "frs_hmrc_spine_leaves": _identity,
+                    "frs_annual_income_spells": _identity,
                     "spi_support_channel": _identity,
                     "spi_income_band_donors": _identity,
                     "hmrc_spi_income_spine": _identity,
@@ -283,6 +293,7 @@ class TestUKSourceStagesManifest:
                     "uc_reporter_redraw": _identity,
                     "spi_benefit_coherence": _identity,
                     "uc_capital_coherence": _identity,
+                    "uc_take_up": _identity,
                     "uc_legacy_closure_take_up": _identity,
                     "pension_credit_take_up": _identity,
                     "child_benefit_take_up": _identity,

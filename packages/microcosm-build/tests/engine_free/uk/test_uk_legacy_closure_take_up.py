@@ -336,9 +336,10 @@ def test_the_packaged_stage_carries_the_reviewed_operations_in_order() -> None:
     lc.UKLegacyClosureTakeUpStageTransform(stage=stage)
     order = list(stages)
     position = order.index(lc.LEGACY_CLOSURE_STAGE_NAME)
-    # After the last writers of would_claim_uc and the UC receipts, before the
-    # Pension Credit redraw and any CGT clone.
-    assert order.index("uc_capital_coherence") == position - 1
+    # After the last writers of would_claim_uc (uc_take_up, microcosm#1334) and
+    # the UC receipts, before the Pension Credit redraw and any CGT clone.
+    assert order.index("uc_take_up") == position - 1
+    assert order.index("uc_capital_coherence") == position - 2
     assert position < order.index("pension_credit_take_up")
     assert position < order.index("cgt_support_split")
 

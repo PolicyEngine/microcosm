@@ -54,12 +54,14 @@ from . import (
     hmrc_property_rental,
     household_lineage,
     ledger_fact_vendoring,
+    legacy_closure_take_up,
     property_localisation,
     receipt_counts,
     rowwise_geography,
     spi_income,
     spi_support,
     uc_capital_coherence,
+    uc_deduction_attributes,
     uc_relationships,
     was_wealth,
 )
@@ -103,6 +105,7 @@ _STAGE_MODULES = {
     "etb_vat": "etb_vat",
     "etb_services": "etb_services",
     "frs_hmrc_spine_leaves": "spi_spine",
+    "frs_annual_income_spells": "frs_annual_income",
     "spi_support_channel": "spi_spine",
     "spi_income_band_donors": "spi_band_donors",
     "hmrc_spi_income_spine": "spi_spine",
@@ -110,6 +113,7 @@ _STAGE_MODULES = {
     "uc_reporter_redraw": "uc_reporter_redraw",
     "spi_benefit_coherence": "spi_benefit_coherence",
     "uc_capital_coherence": "uc_capital_coherence",
+    "uc_take_up": "uc_take_up",
     "uc_legacy_closure_take_up": "legacy_closure_take_up",
     "pension_credit_take_up": "pension_credit_take_up",
     "child_benefit_take_up": "child_benefit_take_up",
@@ -134,6 +138,9 @@ _STAGE_MODULES = {
 # helpers and the adapter's input-retention checks into every consuming stage.
 _STAGE_HELPER_MODULES = {
     "frs_hmrc_spine_leaves": (frs_hmrc_source,),
+    # The annual income descriptors' receipt follows the shared disclosure rules
+    # (microcosm#1164).
+    "frs_annual_income_spells": (receipt_counts,),
     # The SPI income stage's imputation, band-donor resample and receipt live
     # in spi_income, so an edit there moves the stage's hash (microcosm#1278).
     "hmrc_spi_income_spine": (spi_income,),
@@ -172,6 +179,20 @@ _STAGE_HELPER_MODULES = {
         uc_capital_coherence,
     ),
     "uc_capital_coherence": (uc_relationships,),
+    # The Universal Credit redraw reads the award through the adapter, the
+    # vendored DWP counts, the closure stage's rule and rates, the deduction
+    # attributes, the take-up population and the family-type roles, and counts
+    # its pools and receipt on the source lineage (microcosm#1334).
+    "uc_take_up": (
+        uk_engine_adapter,
+        ledger_fact_vendoring,
+        legacy_closure_take_up,
+        uc_deduction_attributes,
+        frs_take_up,
+        uc_relationships,
+        uc_capital_coherence,
+        receipt_counts,
+    ),
     # The Move to UC claim draw reuses the UC stage's household-to-benefit-unit
     # weight mapping and reads the vendored DWP rows (microcosm#1095).
     "uc_legacy_closure_take_up": (uc_capital_coherence, ledger_fact_vendoring),
@@ -501,6 +522,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .childcare_copy_take_up import UKChildcareCopyTakeUpStageTransform
     from .etb_services import UKETBServicesStageTransform
     from .etb_vat import UKETBVATStageTransform
+    from .frs_annual_income import UKFRSAnnualIncomeStageTransform
     from .frs_brma import UKFRSBRMAStageTransform
     from .frs_council_tax import UKFRSCouncilTaxStageTransform
     from .frs_disability import UKFRSDisabilityStageTransform
@@ -539,6 +561,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .uc_capital_coherence import UKUCCapitalCoherenceStageTransform
     from .uc_deduction_attributes import UKUCDeductionAttributesStageTransform
     from .uc_reporter_redraw import UKUCReporterRedrawStageTransform
+    from .uc_take_up import UKUCTakeUpStageTransform
     from .was_lisa import UKWASLISAStageTransform
     from .was_wealth import UKWASWealthStageTransform
 
@@ -699,6 +722,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             "frs_hmrc_spine_leaves": UKFRSHMRCSpineLeavesStageTransform(
                 raw_dir, stage=stages["frs_hmrc_spine_leaves"]
             ),
+            "frs_annual_income_spells": UKFRSAnnualIncomeStageTransform(
+                raw_dir, stage=stages["frs_annual_income_spells"]
+            ),
             "spi_support_channel": UKSPISupportChannelStageTransform(
                 stage=stages["spi_support_channel"],
                 sample_fraction=sample_fraction,
@@ -730,6 +756,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             ),
             "uc_capital_coherence": UKUCCapitalCoherenceStageTransform(
                 stage=stages["uc_capital_coherence"]
+            ),
+            "uc_take_up": UKUCTakeUpStageTransform(
+                stage=stages["uc_take_up"], engine=engine
             ),
             "uc_legacy_closure_take_up": UKLegacyClosureTakeUpStageTransform(
                 stage=stages["uc_legacy_closure_take_up"]

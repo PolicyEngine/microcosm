@@ -22,6 +22,15 @@ from microcosm.build.uk_runtime.dfe_spring_term import (
     DFE_SPRING_TERM_MEASURES,
     dfe_spring_term_status,
 )
+from microcosm.build.uk_runtime.frs_annual_income import (
+    CONTRIBUTORY_BENEFITS_ANNUAL_SHARE,
+    EMPLOYMENT_INCOME_ANNUAL_SHARE,
+    EMPLOYMENT_INCOME_OTHER_SPELLS,
+    FRS_ANNUAL_INCOME_OUTPUT_COLUMNS,
+    PRIVATE_PENSION_INCOME_ANNUAL_SHARE,
+    SELF_EMPLOYMENT_INCOME_ANNUAL_SHARE,
+    SELF_EMPLOYMENT_INCOME_OTHER_SPELLS,
+)
 from microcosm.build.uk_runtime.high_value_homes import (
     high_value_home_mask,
     uk_high_value_home_thresholds,
@@ -247,6 +256,78 @@ _LOSS_RELIEF_MEASURE_COMPONENTS = (
 )
 
 
+#: HMRC's income statistics count the income each taxpayer received over a
+#: tax year, banded by what they received; they cover individuals liable to UK
+#: income tax. The frame's incomes are current, annualised ones, and
+#: ``frs_annual_income_spells`` stores beside them what each adult received
+#: over the 12 months before the interview. Each annual measure is its current
+#: measure computed on a second simulation whose inputs are each person's year,
+#: so the engine's own rules give the tax on it. That year is a proxy for the
+#: tax year: the 12 months before the interview, applied to the engine's
+#: amounts at the calibration year (the stage module says how). Poverty,
+#: benefits and the engine's published tax keep reading current income.
+UK_ANNUAL_INCOME_MEASURES: Mapping[str, str] = {
+    "employment_income_annual": "employment_income",
+    "self_employment_income_after_loss_relief_annual": (
+        UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF
+    ),
+    "private_pension_income_annual": "private_pension_income",
+    "state_pension_annual": "state_pension",
+    "total_income_after_loss_relief_annual": UK_TOTAL_INCOME_AFTER_LOSS_RELIEF,
+    "income_tax_annual": "income_tax",
+    "tax_band_annual": "tax_band",
+}
+#: The inputs the annual simulation replaces at the measurement year: the
+#: engine's current amount times its annual share, plus its other spells,
+#: carried from the dataset's year by the engine's own factor for the input.
+_ANNUAL_INCOME_INPUTS: tuple[tuple[str, str, str | None], ...] = (
+    (
+        "employment_income_before_lsr",
+        EMPLOYMENT_INCOME_ANNUAL_SHARE,
+        EMPLOYMENT_INCOME_OTHER_SPELLS,
+    ),
+    (
+        "self_employment_income",
+        SELF_EMPLOYMENT_INCOME_ANNUAL_SHARE,
+        SELF_EMPLOYMENT_INCOME_OTHER_SPELLS,
+    ),
+    ("private_pension_income", PRIVATE_PENSION_INCOME_ANNUAL_SHARE, None),
+    ("jsa_contrib_reported", CONTRIBUTORY_BENEFITS_ANNUAL_SHARE, None),
+    ("esa_contrib_reported", CONTRIBUTORY_BENEFITS_ANNUAL_SHARE, None),
+    ("incapacity_benefit_reported", CONTRIBUTORY_BENEFITS_ANNUAL_SHARE, None),
+)
+#: Taxable benefits whose entitlement reads earnings, held at their baseline
+#: values: a carer was paid in the year at the earnings of the time, which the
+#: current concept records, not at the year's total.
+_ANNUAL_INCOME_HELD_VARIABLES = (
+    "carers_allowance",
+    "carer_support_payment",
+    "scottish_carer_supplement",
+)
+#: ``months_since_state_pension_age`` counts to the middle of the fiscal year
+#: (6 October), so someone attaining State Pension age within the year was
+#: paid for that many months plus six of it.
+_FISCAL_HALF_YEAR_MONTHS = 6.0
+
+
+def state_pension_annual_share(months_since_state_pension_age: Any) -> np.ndarray:
+    """The share of the fiscal year a State Pension starting in it was paid.
+
+    Only someone attaining State Pension age within the year, less than six
+    months either side of its middle, is paid for part of it. Anyone else
+    keeps the whole year, an amount reported below the age included: the
+    current concept carries it, and the descriptors say nothing about it.
+    """
+
+    months = np.asarray(months_since_state_pension_age, dtype=float)
+    in_year = np.isfinite(months) & (np.abs(months) < _FISCAL_HALF_YEAR_MONTHS)
+    share = np.ones(months.shape)
+    share[in_year] = (months[in_year] + _FISCAL_HALF_YEAR_MONTHS) / (
+        2.0 * _FISCAL_HALF_YEAR_MONTHS
+    )
+    return share
+
+
 #: Every binding key that names a measured variable: a dated CGT measure in
 #: any of them must carry its own measurement period (microcosm#1014 bands
 #: and filters on dated measures, not only gates and values).
@@ -409,22 +490,7 @@ def compute_uk_measure_input(
                 ),
                 "frame_columns:self_employment_income_less_loss_relief",
             )
-        profit = compute_uk_measure_input(
-            frame, simulation, "person", "self_employment_income", year
-        )[0]
-        relief = compute_uk_measure_input(
-            frame, simulation, "person", LOSS_RELIEF_COLUMN, year
-        )[0]
-        after = self_employment_income_after_loss_relief(profit, relief)
-        if variable == UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF:
-            return after, "engine_components:self_employment_income_less_loss_relief"
-        total = compute_uk_measure_input(
-            frame, simulation, "person", "total_income", year
-        )[0]
-        return (
-            np.asarray(total, dtype=float) - np.asarray(profit, dtype=float) + after,
-            "engine_components:total_income_with_profit_after_loss_relief",
-        )
+        return _loss_relief_measure_from_engine(frame, simulation, variable, year)
 
     if variable in UC_TARGET_VARIABLES:
         if entity != "benunit":
@@ -499,6 +565,29 @@ def compute_uk_measure_input(
     if values.dtype.kind not in {"O", "U", "S"}:
         values = values.astype(float)
     return values, route
+
+
+def _loss_relief_measure_from_engine(
+    frame: Any, simulation: Any, variable: str, year: int
+) -> tuple[np.ndarray, str]:
+    """A loss-relief measure from the engine's components at ``year``."""
+
+    profit = compute_uk_measure_input(
+        frame, simulation, "person", "self_employment_income", year
+    )[0]
+    relief = compute_uk_measure_input(
+        frame, simulation, "person", LOSS_RELIEF_COLUMN, year
+    )[0]
+    after = self_employment_income_after_loss_relief(profit, relief)
+    if variable == UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF:
+        return after, "engine_components:self_employment_income_less_loss_relief"
+    total, _ = compute_uk_measure_input(
+        frame, simulation, "person", "total_income", year
+    )
+    return (
+        np.asarray(total, dtype=float) - np.asarray(profit, dtype=float) + after,
+        "engine_components:total_income_with_profit_after_loss_relief",
+    )
 
 
 def compute_uc_paid_diagnostic_masks(
@@ -914,6 +1003,37 @@ class UKMeasureResolver:
 
         self._uc_tcl_measures_used: set[str] = set()
         self._uc_paid_measures_used: set[str] = set()
+        self._annual_income_measures_used: set[str] = set()
+        self._annual_income_fallback: str | None = None
+        self._annual_income_simulation_cache: Any | None = None
+        self._annual_income_factors: dict[str, float] = {}
+
+    def use_current_income_for_annual_measures(self, *, reason: str) -> None:
+        """Let a frame without annual income descriptors read current values.
+
+        Only a file built before the descriptors existed (the incumbent a
+        candidate is scored against) takes this: its annual measures are its
+        current ones, a share of 1 and no other spells. A frame that carries
+        the descriptors still reads them, and any other frame without them
+        refuses every annual measure.
+        """
+
+        if not str(reason).strip():
+            raise ValueError("the current-income fallback needs a reason.")
+        self._annual_income_fallback = str(reason)
+
+    def _carries_annual_income_descriptors(self) -> bool:
+        person = self.frame.table("person")
+        present = [
+            column for column in FRS_ANNUAL_INCOME_OUTPUT_COLUMNS if column in person
+        ]
+        if present and len(present) != len(FRS_ANNUAL_INCOME_OUTPUT_COLUMNS):
+            missing = sorted(set(FRS_ANNUAL_INCOME_OUTPUT_COLUMNS) - set(present))
+            raise ValueError(
+                f"The frame carries only some annual income descriptors; missing "
+                f"{missing}."
+            )
+        return bool(present)
 
     def validate_period(self, period: int | str) -> None:
         """Refuse thresholds and simulated inputs from different periods."""
@@ -955,6 +1075,12 @@ class UKMeasureResolver:
             return entity == "person" and all(
                 self.knows("person", name) for name in _LOSS_RELIEF_MEASURE_COMPONENTS
             )
+        if variable in UK_ANNUAL_INCOME_MEASURES:
+            readable = (
+                self._carries_annual_income_descriptors()
+                or self._annual_income_fallback is not None
+            )
+            return readable and self.knows(entity, UK_ANNUAL_INCOME_MEASURES[variable])
         definition = self.simulation.tax_benefit_system.variables.get(variable)
         if definition is None or entity not in _ENTITY_ID:
             return False
@@ -977,6 +1103,8 @@ class UKMeasureResolver:
             return "person"
         if variable in _LOSS_RELIEF_MEASURES or variable in DFE_SPRING_TERM_MEASURES:
             return "person"
+        if variable in UK_ANNUAL_INCOME_MEASURES:
+            return self.entity_for(UK_ANNUAL_INCOME_MEASURES[variable])
         if (
             variable
             in _UC_CALIBRATION_VARIABLES
@@ -990,6 +1118,8 @@ class UKMeasureResolver:
         return str(definition.entity.key)
 
     def compute(self, entity: str, variable: str) -> tuple[np.ndarray, str]:
+        if variable in UK_ANNUAL_INCOME_MEASURES:
+            return self._annual_income_measure(entity, variable)
         result = compute_uk_measure_input(
             self.frame, self.simulation, entity, variable, self.year
         )
@@ -1212,6 +1342,138 @@ class UKMeasureResolver:
         cache[key] = relief
         return relief
 
+    def _annual_income_measure(
+        self, entity: str, variable: str
+    ) -> tuple[np.ndarray, str]:
+        """An annual measure: its current measure on the annual simulation."""
+
+        current = UK_ANNUAL_INCOME_MEASURES[variable]
+        if not self._carries_annual_income_descriptors():
+            if self._annual_income_fallback is None:
+                raise KeyError(
+                    f"{variable} reads the annual income descriptors "
+                    f"(frs_annual_income_spells), which this frame does not carry."
+                )
+            self._annual_income_measures_used.add(variable)
+            values, route = compute_uk_measure_input(
+                self.frame, self.simulation, entity, current, self.year
+            )
+            return values, f"current_values_without_annual_income_descriptors:{route}"
+        simulation = self._annual_income_simulation()
+        self._annual_income_measures_used.add(variable)
+        if current in _LOSS_RELIEF_MEASURES:
+            if entity != "person":
+                raise KeyError(f"{variable} is person-only: {entity}")
+            # Always the engine's components: the frame's stored columns are
+            # the current year's, never the annual one.
+            values, route = _loss_relief_measure_from_engine(
+                self.frame, simulation, current, self.year
+            )
+        else:
+            values, route = compute_uk_measure_input(
+                self.frame, simulation, entity, current, self.year
+            )
+        return values, f"annual_income_simulation:{route}"
+
+    def _dataset_year(self) -> int:
+        metadata = getattr(self.frame, "metadata", None) or {}
+        period = metadata.get(UK_TIME_PERIOD_METADATA_KEY)
+        if isinstance(period, str) and period.strip():
+            return int(period)
+        return self.year
+
+    def _annual_income_simulation(self) -> Any:
+        """The simulation of each person's year, built once from the same source.
+
+        The engine projects a dataset's inputs to its later years as it loads
+        it, so the year's inputs are set at the measurement year: pay, profit,
+        private pensions and the contributory benefits to the engine's current
+        amount times its annual share, plus the other spells carried from the
+        dataset's year by the factor the engine carries the current amount by.
+        The State Pension is set to the share of it paid in the fiscal year,
+        and the earnings-tested carer benefits to their baseline values.
+        Pension contributions and salary sacrifice keep their current values:
+        for a part-year entrant they can be large against the year's pay,
+        which lowers the year's income tax a little.
+        """
+
+        if self._annual_income_simulation_cache is not None:
+            return self._annual_income_simulation_cache
+        person = self.frame.table("person")
+        simulation = self._factory(dataset=str(self._source_path))
+        annual_inputs: dict[str, np.ndarray] = {}
+        for name, share_column, other_column in _ANNUAL_INCOME_INPUTS:
+            current = _values(self.simulation.calculate(name, self.year)).astype(float)
+            share = person[share_column].to_numpy(dtype=float)
+            other = (
+                person[other_column].to_numpy(dtype=float)
+                if other_column is not None
+                else np.zeros(len(person))
+            )
+            if current.shape != share.shape:
+                raise ValueError(
+                    f"{name} must align with the frame's person table to read "
+                    "its annual income descriptors."
+                )
+            factor = self._engine_projection_factor(name) if other.any() else 1.0
+            annual = current * share + other * factor
+            if not np.isfinite(annual).all():
+                raise ValueError(f"The annual {name} must be finite.")
+            simulation.set_input(name, self.year, annual)
+            annual_inputs[name] = annual
+        months = _values(
+            self.simulation.calculate("months_since_state_pension_age", self.year)
+        )
+        pension = _values(self.simulation.calculate("state_pension", self.year))
+        annual_pension = pension.astype(float) * state_pension_annual_share(months)
+        simulation.set_input("state_pension", self.year, annual_pension)
+        annual_inputs["state_pension"] = annual_pension
+        for name in _ANNUAL_INCOME_HELD_VARIABLES:
+            held = _values(self.simulation.calculate(name, self.year)).astype(float)
+            simulation.set_input(name, self.year, held)
+            annual_inputs[name] = held
+        for name, expected in annual_inputs.items():
+            read = _values(simulation.calculate(name, self.year)).astype(float)
+            tolerance = 1e-6 * np.maximum(np.abs(expected), 1.0) + 0.01
+            if (
+                read.shape != expected.shape
+                or (np.abs(read - expected) > tolerance).any()
+            ):
+                raise ValueError(
+                    f"The annual simulation does not read back the {name} set "
+                    f"for {self.year}."
+                )
+        self._annual_income_simulation_cache = simulation
+        return simulation
+
+    def _engine_projection_factor(self, name: str) -> float:
+        """The factor the engine carries ``name`` by from the dataset's year.
+
+        Read off the engine's own projection, so the other spells grow by the
+        series the current amount grows by; a projection that is not one
+        factor for every row refuses, since no single factor then carries the
+        other spells as the engine carries pay.
+        """
+
+        dataset_year = self._dataset_year()
+        then = _values(self.simulation.calculate(name, dataset_year)).astype(float)
+        now = _values(self.simulation.calculate(name, self.year)).astype(float)
+        carried = np.abs(then) > 0
+        if not carried.any():
+            raise ValueError(
+                f"No row carries {name} in {dataset_year}, so the engine's factor "
+                f"to {self.year} for the other spells cannot be read."
+            )
+        factors = now[carried] / then[carried]
+        factor = float(np.median(factors))
+        if (np.abs(factors - factor) > 1e-5 * max(abs(factor), 1.0)).any():
+            raise ValueError(
+                f"The engine does not carry {name} from {dataset_year} to "
+                f"{self.year} by one factor, so the other spells cannot follow it."
+            )
+        self._annual_income_factors[name] = factor
+        return factor
+
     def _counterfactual_simulation(self, zeroed: str, folded: str | None) -> Any:
         key = (zeroed, folded)
         if key in self._counterfactuals:
@@ -1317,7 +1579,41 @@ class UKMeasureResolver:
                 **uc_paid_comparison_contract(self.year),
                 "computed_measures": sorted(self._uc_paid_measures_used),
             }
+        if getattr(self, "_annual_income_measures_used", None):
+            receipt["annual_income_measures"] = self._annual_income_receipt()
         return receipt
+
+    def _annual_income_receipt(self) -> dict[str, Any]:
+        measures = {
+            name: UK_ANNUAL_INCOME_MEASURES[name]
+            for name in sorted(self._annual_income_measures_used)
+        }
+        if not self._carries_annual_income_descriptors():
+            return {
+                "computed_measures": measures,
+                "route": "current_values_without_annual_income_descriptors",
+                "reason": self._annual_income_fallback,
+            }
+        return {
+            "computed_measures": measures,
+            "route": "annual_income_simulation",
+            "descriptors": list(FRS_ANNUAL_INCOME_OUTPUT_COLUMNS),
+            "dataset_year": self._dataset_year(),
+            "measurement_year": self.year,
+            "inputs": {
+                name: {"annual_share": share, "other_spells": other}
+                for name, share, other in _ANNUAL_INCOME_INPUTS
+            },
+            "other_spells_engine_factors": dict(
+                sorted(self._annual_income_factors.items())
+            ),
+            "state_pension": (
+                "state_pension at the measurement year times the share of the "
+                "fiscal year paid: (months_since_state_pension_age + 6) / 12 "
+                "within six months of the year's middle, else 1"
+            ),
+            "held_at_baseline": list(_ANNUAL_INCOME_HELD_VARIABLES),
+        }
 
 
 #: Every field a reviewed measure exclusion must carry (the

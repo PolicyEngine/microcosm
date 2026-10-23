@@ -418,6 +418,10 @@ REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
         "uc_deductions",
         "uc_housing_costs_element",
         "universal_credit",
+        # The annual income measures: the frame stores none of them, and the
+        # resolver computes each on its annual simulation at the calibration
+        # period.
+        *measure_simulation.UK_ANNUAL_INCOME_MEASURES,
     }
 )
 
