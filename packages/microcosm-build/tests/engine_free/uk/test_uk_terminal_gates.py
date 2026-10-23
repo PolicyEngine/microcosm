@@ -447,6 +447,27 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
     assert uk_release_export_frame(exported) is exported
 
 
+def test_no_spine_column_writes_an_input_signed_at_the_engine_default() -> None:
+    """A signed engine default (microcosm#1095) holds only while no stage writes it."""
+
+    import json
+
+    from microcosm.frame.adapters.policyengine_uk_concepts import (
+        UK_ENGINE_DEFAULT_INPUTS,
+    )
+    from test_support.paths import paths_for
+
+    schema = json.loads(
+        (
+            paths_for("microcosm-graph").tests
+            / "fixtures/parity/uk_spine/sources/schema.json"
+        ).read_text()
+    )
+    written = {column for dtypes in schema["dtypes"].values() for column in dtypes}
+    assert "self_employment_income" in written
+    assert not written & set(UK_ENGINE_DEFAULT_INPUTS)
+
+
 def _target_fit_exclusion(
     *,
     approved_on: str = "2026-08-30",

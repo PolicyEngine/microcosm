@@ -22,6 +22,7 @@ from microcosm.frame.adapters.policyengine_uk import (
     PolicyEngineUKEngine,
 )
 from microcosm.frame.adapters.policyengine_uk_concepts import (
+    UK_ENGINE_DEFAULT_INPUTS,
     UK_ENGINE_DEFAULT_TAKE_UP_INPUTS,
 )
 from microcosm.frame.concept_mapping import (
@@ -90,6 +91,16 @@ def test_take_up_bindings_are_the_engines_would_claim_inputs(engine) -> None:
     left = set(UK_ENGINE_DEFAULT_TAKE_UP_INPUTS)
     assert bound.isdisjoint(left)
     assert bound | left == would_claim
+
+
+def test_signed_default_inputs_are_engine_inputs_the_mapping_leaves(engine) -> None:
+    # Each is left at the engine's default as a signed approximation, so it
+    # must be an input the engine reads and the mapping never binds.
+    inputs = set(engine.variables())
+    bound = {binding.engine_input for binding in MAPPING.bindings}
+    assert set(UK_ENGINE_DEFAULT_INPUTS) <= inputs
+    assert bound.isdisjoint(UK_ENGINE_DEFAULT_INPUTS)
+    assert all(reason.strip() for reason in UK_ENGINE_DEFAULT_INPUTS.values())
 
 
 def test_structural_inputs_are_engine_inputs(engine) -> None:

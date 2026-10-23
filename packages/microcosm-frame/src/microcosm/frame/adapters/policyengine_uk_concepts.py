@@ -25,7 +25,11 @@ from microcosm.frame.concept_mapping import (
 )
 from microcosm.frame.concepts import AlignmentRelation
 
-__all__ = ["POLICYENGINE_UK_CONCEPT_MAPPING", "UK_ENGINE_DEFAULT_TAKE_UP_INPUTS"]
+__all__ = [
+    "POLICYENGINE_UK_CONCEPT_MAPPING",
+    "UK_ENGINE_DEFAULT_INPUTS",
+    "UK_ENGINE_DEFAULT_TAKE_UP_INPUTS",
+]
 
 # ---------------------------------------------------------------------------
 # Concept mapping
@@ -183,6 +187,24 @@ _UK_TAKE_UP_EVIDENCE: dict[str, tuple[str, str]] = {
 #: (policyengine-uk 2.128.0, pe-uk#2119), the last of them, is drawn at DWP's
 #: Move to UC claim rates since they became a Chronicle fact (microcosm#1095).
 UK_ENGINE_DEFAULT_TAKE_UP_INPUTS: dict[str, str] = {}
+
+
+#: Other engine inputs the build leaves at the engine's default, each signed as
+#: an approximation with the error it can make (microcosm#1095).
+UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
+    "self_employment_gross_receipts": (
+        "No source of the self-employed's turnover is read yet (the FRS job "
+        "record and the SPI tape are the candidates, as #1145 found landlords' "
+        "receipts). Since policyengine-uk 2.108.0 the trading allowance replaces "
+        "expenses and does not stack on them, so without receipts "
+        "trading_allowance_deduction relieves a profit of GBP 1,000 or less in "
+        "full and gives a larger profit no allowance. Taxable profit is off by at "
+        "most GBP 1,000 a person: too low where receipts above GBP 1,000 leave a "
+        "small profit, too high just above GBP 1,000 where the allowance would "
+        "beat the expenses. Signed as an approximation with the plan for the "
+        "next policyengine-uk bump, approved on 2026-10-23."
+    ),
+}
 
 
 def _uk_take_up(program: str, entity: str) -> InputBinding:
