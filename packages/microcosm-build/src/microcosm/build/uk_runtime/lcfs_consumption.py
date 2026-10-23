@@ -412,6 +412,21 @@ UK_LCFS_EXCISE_OUTPUT_UNITS: Mapping[str, tuple[str, ...]] = {
 #: the national volume: in proportion to the two together, as if a pound
 #: bought as much alcohol in a pub as in a shop, or each channel's published
 #: share of the volume to that channel's spenders.
+#:
+#: The stage declares spending (María's ruling of 2026-10-23, microcosm#1359).
+#: No on-trade share of volume can be archived: MESAS, which publishes one, is
+#: a dashboard of NielsenIQ and Circana data with no fixed file. The rule moves
+#: no total, since the clearances set each level, but it leans towards
+#: drinkers in pubs, where a unit of alcohol costs about three times what it
+#: does in a shop. On the LCFS 2024-25 diary the on-trade is about 43 % of
+#: alcohol spending, against roughly a quarter of the pure alcohol MESAS
+#: counts as sold in England and Wales in 2024. Measured against giving that
+#: quarter of the volume to on-trade spenders and the rest to off-trade
+#: spenders, a pound spent in a pub carries about 1.6 times its volume and a
+#: pound spent in a shop about 0.8 times. About a tenth of the volume, and of
+#: the duty, sits with other households; the bottom three income deciles bear
+#: about 7 % too little of it and the top decile about 7 % too much, because
+#: the on-trade's part of alcohol spending rises with income.
 UK_LCFS_ALCOHOL_VOLUME_BY_SPENDING = "spending"
 UK_LCFS_ALCOHOL_VOLUME_BY_CHANNEL = "published_on_trade_share"
 #: The excise step's receipt key in the stage evidence.
@@ -2222,7 +2237,9 @@ def level_excise_quantities(
     proportion to its tobacco spending, both at prior weights: one factor per
     input, the ``level_road_fuel`` scaling, so the frame's weighted total is
     the published quantity. Under the published on-trade share each channel's
-    volume goes to that channel's spenders. Weekly inputs are the annual
+    volume goes to that channel's spenders; by spending, a pound buys the same
+    volume in either, which leans the alcohol inputs towards drinkers in pubs
+    (``UK_LCFS_ALCOHOL_VOLUME_BY_SPENDING`` records by how much). Weekly inputs are the annual
     quantity over the engine's 52 weeks. The spending is the drawn shares of
     the drawn totals, so no total moves (microcosm#1359).
     """
