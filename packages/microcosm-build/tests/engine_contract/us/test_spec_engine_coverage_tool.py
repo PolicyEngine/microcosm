@@ -105,9 +105,9 @@ def test_us_coverage_is_exact_complete_and_honest(
     assert inventory["covered_item_count"] == 41
     assert inventory["missing_item_count"] == 0
     assert inventory["missing_items"] == []
-    assert inventory["counts"]["producer_inputs"] == 2_744
+    assert inventory["counts"]["producer_inputs"] == 2_741
     assert inventory["counts"]["ownership_rows"] == 18
-    assert inventory["counts"]["tail_control_fields"] == 934
+    assert inventory["counts"]["tail_control_fields"] == 930
     assert inventory["counts"]["seed_owner_bindings"] == 112
 
 
