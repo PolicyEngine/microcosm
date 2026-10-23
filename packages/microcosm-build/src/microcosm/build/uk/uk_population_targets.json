@@ -26,8 +26,8 @@
     "pinned_ref": "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3",
     "pinned_version": "1.56.16",
     "registry_rows": 652,
-    "mapped_rows": 619,
-    "excluded_rows": 33,
+    "mapped_rows": 616,
+    "excluded_rows": 36,
     "mapped": {
       "dwp/benefit_capped_households": "dwp.benefit_cap.capped_households",
       "dwp/esa_claimants": "dwp.esa_claimants",
@@ -365,8 +365,6 @@
       "obr/sdlt": "obr.sdlt",
       "obr/statutory_maternity_pay": "obr.statutory_maternity_pay",
       "obr/tv_licence_fee": "obr.tv_licence_fee",
-      "obr/universal_credit_in_cap": "obr.universal_credit_in_cap",
-      "obr/universal_credit_outside_cap": "obr.universal_credit_outside_cap",
       "obr/vat": "obr.vat",
       "obr/winter_fuel_allowance": "obr.winter_fuel_allowance",
       "ons/corporate_land_value": "ons.land.corporate_land_value",
@@ -544,7 +542,6 @@
       "slc/student_loan_repayment/england/plan_1": "slc.repayments.england_plan_1",
       "slc/student_loan_repayment/england/plan_2": "slc.repayments.england_plan_2",
       "slc/student_loan_repayment/england/plan_5": "slc.repayments.england_plan_5",
-      "slc/student_loan_repayment/england/postgraduate": "slc.repayments.england_postgraduate",
       "slc/student_loan_repayment/northern_ireland": "slc.repayments.devolved_total",
       "slc/student_loan_repayment/scotland": "slc.repayments.devolved_total",
       "slc/student_loan_repayment/wales": "slc.repayments.devolved_total",
@@ -682,7 +679,10 @@
       "dwp/pip_dl_enhanced_claimants": "Diagnostic only (María's ruling of 2026-10-10, microcosm#1095): DWP's England-and-Wales PIP daily living caseload (FOI2025/24990, end of January 2025) resolves at K04000001 and fits within 0.1%, but fitting the two rows takes the calibration over the uk_weight_ratio fence. The exact figure is retained only as diagnostic provenance on obr.pip; no source value is adjusted.",
       "ons/female_15_19": "Split, not dropped (María's ruling of 2026-10-13 (microcosm#1095, uk-data#563)): a fit to the five-year band leaves the ages inside it free to drift, so the contract binds ages 15, 16-17 and 18-19 instead (ons.population.female_15, female_16_17 and female_18_19). The three rows partition this row's population and read the same ONS mid-year estimate by single year of age, so they sum to it. No single contract row has this row's definition.",
       "ons/male_15_19": "Split, not dropped (María's ruling of 2026-10-13 (microcosm#1095, uk-data#563)): a fit to the five-year band leaves the ages inside it free to drift, so the contract binds ages 15, 16-17 and 18-19 instead (ons.population.male_15, male_16_17 and male_18_19). The three rows partition this row's population and read the same ONS mid-year estimate by single year of age, so they sum to it. No single contract row has this row's definition.",
-      "dwp/uc/claimants_with_5+_children": "Diagnostic only (María's ruling of 2026-10-16, microcosm#1095): DWP's count of Universal Credit households with five or more children includes families outside the two-child limit, whose third and later children were all born before 6 April 2017 or who meet an exception, and the bound two-child-limit rows leave them out. Fewer than 10 FRS source households carry that difference, so the row cannot be fitted beside the limit rows. The April 2025 figure is retained only as diagnostic provenance on dwp.uc.two_child_limit.households_5_children; no source value is adjusted."
+      "dwp/uc/claimants_with_5+_children": "Diagnostic only (María's ruling of 2026-10-16, microcosm#1095): DWP's count of Universal Credit households with five or more children includes families outside the two-child limit, whose third and later children were all born before 6 April 2017 or who meet an exception, and the bound two-child-limit rows leave them out. Fewer than 10 FRS source households carry that difference, so the row cannot be fitted beside the limit rows. The April 2025 figure is retained only as diagnostic provenance on dwp.uc.two_child_limit.households_5_children; no source value is adjusted.",
+      "obr/universal_credit_in_cap": "Retired (microcosm#1095, the next policyengine-uk bump): OBR splits Universal Credit spending at the welfare cap, a spending limit, and no household-level concept in the model marks that boundary; the benefit-cap status the incumbent maps the split to is another concept, and on every measured spine the pair sat far outside its bound while their sum fits (microcosm#757). obr.universal_credit binds the sum of the two cells.",
+      "obr/universal_credit_outside_cap": "Retired (microcosm#1095, the next policyengine-uk bump): OBR splits Universal Credit spending at the welfare cap, a spending limit, and no household-level concept in the model marks that boundary; the benefit-cap status the incumbent maps the split to is another concept, and on every measured spine the pair sat far outside its bound while their sum fits (microcosm#757). obr.universal_credit binds the sum of the two cells.",
+      "slc/student_loan_repayment/england/postgraduate": "Retired (microcosm#1095, the next policyengine-uk bump): the student-loans stage assigns no postgraduate plan (its domain is NONE, PLAN_1, PLAN_2 and PLAN_5) and policyengine-uk holds one plan a person, while a postgraduate loan is repaid beside the undergraduate plan most of its borrowers hold, so no record carries postgraduate repayments and no weights can reach SLC's figure (microcosm#757)."
     },
     "unmapped_declarations": {
       "hmrc.salary_sacrifice.it_relief_basic_rate": "New declaration backed by chronicle#139 salary-sacrifice facts; the incumbent source CSV is still 410-Gone at 12a1e028 and its rows are silently suppressed by the bare-except drop in build_loss_matrix.py:376-394.",
@@ -937,8 +937,6 @@
       "obr.pip",
       "obr.statutory_maternity_pay",
       "obr.tv_licence_fee",
-      "obr.universal_credit_in_cap",
-      "obr.universal_credit_outside_cap",
       "obr.winter_fuel_allowance",
       "isc.private_school_students",
       "hmrc.salary_sacrifice.it_relief_basic_rate",
@@ -1116,7 +1114,6 @@
       "slc.repayments.england_total_higher_education",
       "slc.repayments.england_plan_1",
       "slc.repayments.england_plan_2",
-      "slc.repayments.england_postgraduate",
       "slc.repayments.england_plan_5",
       "slc.borrowers.plan_2_above_threshold",
       "slc.borrowers.plan_2_liable",
@@ -3073,166 +3070,6 @@
       },
       "category_id": "obr.efo_expenditure",
       "label": "TV licence fee",
-      "value_operation": "calendar_year_window"
-    },
-    {
-      "target_id": "obr.universal_credit_in_cap",
-      "family": "obr",
-      "geography_levels": [
-        "country"
-      ],
-      "measurement": {
-        "entity": "benunit",
-        "concept": "uk.benefits.universal_credit.amount",
-        "map_to": "household",
-        "filters": [
-          {
-            "concept": "uk.benefits.benefit_cap.reduction",
-            "operator": ">",
-            "value": 0
-          },
-          {
-            "concept": "uk.geography.country",
-            "operator": "in",
-            "value": [
-              "england",
-              "scotland",
-              "wales"
-            ]
-          }
-        ]
-      },
-      "bindings": {
-        "policyengine": {
-          "metric_name": "obr/universal_credit_in_cap",
-          "value_variable": "universal_credit",
-          "from_entity": "benunit",
-          "map_to": "household",
-          "filters": [
-            {
-              "variable": "benefit_cap_reduction",
-              "operator": ">",
-              "value": 0
-            }
-          ],
-          "household_conditions": [
-            {
-              "variable": "region",
-              "entity": "household",
-              "reduce": "any",
-              "operator": "in",
-              "value": [
-                "NORTH_EAST",
-                "NORTH_WEST",
-                "YORKSHIRE",
-                "EAST_MIDLANDS",
-                "WEST_MIDLANDS",
-                "EAST_OF_ENGLAND",
-                "LONDON",
-                "SOUTH_EAST",
-                "SOUTH_WEST",
-                "WALES",
-                "SCOTLAND"
-              ],
-              "map_to": "benunit"
-            }
-          ],
-          "notes": "Split of UC spend by benefit-cap status (compute/benefits.py:119-127). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. Since the abf0921 re-pin the Chronicle fact carries the Great Britain code K03000001 (microcosm#1300)."
-        },
-        "axiom": {
-          "metric_name": "obr/universal_credit_in_cap",
-          "status": "pending",
-          "value_rule": "uk.benefits.universal_credit.amount"
-        }
-      },
-      "assertion_policy": "allow_source_projection",
-      "ledger_selector": {
-        "source_name": "obr",
-        "source_concept": "obr.universal_credit_in_cap",
-        "entity_name": "person"
-      },
-      "category_id": "obr.efo_expenditure",
-      "label": "Universal Credit inside the benefit cap",
-      "value_operation": "calendar_year_window"
-    },
-    {
-      "target_id": "obr.universal_credit_outside_cap",
-      "family": "obr",
-      "geography_levels": [
-        "country"
-      ],
-      "measurement": {
-        "entity": "benunit",
-        "concept": "uk.benefits.universal_credit.amount",
-        "map_to": "household",
-        "filters": [
-          {
-            "concept": "uk.benefits.benefit_cap.reduction",
-            "operator": "==",
-            "value": 0
-          },
-          {
-            "concept": "uk.geography.country",
-            "operator": "in",
-            "value": [
-              "england",
-              "scotland",
-              "wales"
-            ]
-          }
-        ]
-      },
-      "bindings": {
-        "policyengine": {
-          "metric_name": "obr/universal_credit_outside_cap",
-          "value_variable": "universal_credit",
-          "from_entity": "benunit",
-          "map_to": "household",
-          "filters": [
-            {
-              "variable": "benefit_cap_reduction",
-              "operator": "==",
-              "value": 0
-            }
-          ],
-          "household_conditions": [
-            {
-              "variable": "region",
-              "entity": "household",
-              "reduce": "any",
-              "operator": "in",
-              "value": [
-                "NORTH_EAST",
-                "NORTH_WEST",
-                "YORKSHIRE",
-                "EAST_MIDLANDS",
-                "WEST_MIDLANDS",
-                "EAST_OF_ENGLAND",
-                "LONDON",
-                "SOUTH_EAST",
-                "SOUTH_WEST",
-                "WALES",
-                "SCOTLAND"
-              ],
-              "map_to": "benunit"
-            }
-          ],
-          "notes": "Split of UC spend by benefit-cap status (compute/benefits.py:119-127). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. Since the abf0921 re-pin the Chronicle fact carries the Great Britain code K03000001 (microcosm#1300)."
-        },
-        "axiom": {
-          "metric_name": "obr/universal_credit_outside_cap",
-          "status": "pending",
-          "value_rule": "uk.benefits.universal_credit.amount"
-        }
-      },
-      "assertion_policy": "allow_source_projection",
-      "ledger_selector": {
-        "source_name": "obr",
-        "source_concept": "obr.universal_credit_outside_cap",
-        "entity_name": "person"
-      },
-      "category_id": "obr.efo_expenditure",
-      "label": "Universal Credit outside the benefit cap",
       "value_operation": "calendar_year_window"
     },
     {
@@ -15219,67 +15056,6 @@
       "label": "England plan 2"
     },
     {
-      "target_id": "slc.repayments.england_postgraduate",
-      "family": "slc_repayments",
-      "geography_levels": [
-        "country"
-      ],
-      "measurement": {
-        "entity": "person",
-        "map_to": "household",
-        "concept": "uk.finance.student_loan_repayments.amount",
-        "filters": [
-          {
-            "concept": "uk.geography.country",
-            "equals": "england"
-          },
-          {
-            "concept": "uk.finance.student_loan_plan",
-            "equals": "postgraduate"
-          }
-        ]
-      },
-      "bindings": {
-        "policyengine": {
-          "metric_name": "slc/student_loan_repayment/england/postgraduate",
-          "value_variable": "student_loan_repayment",
-          "from_entity": "person",
-          "map_to": "household",
-          "filters": [
-            {
-              "variable": "country",
-              "equals": "ENGLAND"
-            },
-            {
-              "variable": "student_loan_plan",
-              "equals": "POSTGRADUATE"
-            }
-          ],
-          "source_lines": [
-            "plan_3_postgraduate_masters",
-            "plan_3_postgraduate_doctoral"
-          ],
-          "notes": "Publisher splits full-time/part-time (and masters/doctoral) products the model does not distinguish; the listed source lines sum to this target (compute/other.py:116-137)."
-        },
-        "axiom": {
-          "metric_name": "slc/student_loan_repayment/england/postgraduate",
-          "status": "pending",
-          "value_rule": "uk.finance.student_loan_repayments.amount"
-        }
-      },
-      "ledger_selector": {
-        "source_name": "slc",
-        "groupby_dimension": "slc.repayment_plan",
-        "source_measure_id": [
-          "plan_3_postgraduate_masters",
-          "plan_3_postgraduate_doctoral"
-        ],
-        "entity_name": "person"
-      },
-      "category_id": "slc.repayments",
-      "label": "England postgraduate"
-    },
-    {
       "target_id": "slc.repayments.england_plan_5",
       "family": "slc_repayments",
       "geography_levels": [
@@ -18814,7 +18590,7 @@
               "map_to": "benunit"
             }
           ],
-          "notes": "Total UC expenditure: the sum of the OBR EFO welfare-cap cells (universal_credit_in_cap + universal_credit_outside_cap), bound at the calendar-2025 window of the two cells' fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window over the two-concept selector, one series per concept) so the total and its two components share one basis (Vahid's review of microcosm#1006, item 3) against the model's annual award after the benefit cap and deductions at policy year 2025, UK incl. Northern Ireland. The split rows stay excluded: the model cannot attribute spend to the welfare-cap concept (microcosm#757). Cash advances and third-party payments are not modelled (#882). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. Since the abf0921 re-pin the Chronicle fact carries the Great Britain code K03000001 (microcosm#1300)."
+          "notes": "Total UC expenditure: the sum of the OBR EFO welfare-cap cells (universal_credit_in_cap + universal_credit_outside_cap), bound at the calendar-2025 window of the two cells' fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window over the two-concept selector, one series per concept) so the total and its two components share one basis (Vahid's review of microcosm#1006, item 3) against the model's annual award after the benefit cap and deductions at policy year 2025, UK incl. Northern Ireland. The split rows are retired (registry_parity.excluded): the model cannot attribute spend to the welfare-cap concept (microcosm#757, #1095). Cash advances and third-party payments are not modelled (#882). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. Since the abf0921 re-pin the Chronicle fact carries the Great Britain code K03000001 (microcosm#1300)."
         },
         "axiom": {
           "metric_name": "obr/universal_credit",

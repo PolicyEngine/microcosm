@@ -244,8 +244,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # to 6 and England's 0 to 6, and the DfE single-age rows five more
     # funded-childcare counts (working parent 9 to 11 months and ages 1-3,
     # nursery age 3; the age-4 cells are signed out, as the bound rows fix
-    # them).
-    assert len(resource["targets"]) == 437
+    # them). The next policyengine-uk bump retires the OBR welfare-cap split
+    # and the England postgraduate repayments to registry_parity.excluded
+    # (microcosm#1095).
+    assert len(resource["targets"]) == 434
 
     providers = resource["hierarchy"]["providers"]
     categories = resource["hierarchy"]["categories"]
@@ -259,10 +261,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     target_ids = [target["target_id"] for target in resource["targets"]]
     registry_scope = resource["registry_parity"]["scope_target_ids"]
     profile_scope = resource["profile_parity"]["scope_target_ids"]
-    assert len(registry_scope) == 378
+    assert len(registry_scope) == 375
     assert len(profile_scope) == 59
-    assert target_ids[:378] == registry_scope
-    assert target_ids[378:] == profile_scope
+    assert target_ids[:375] == registry_scope
+    assert target_ids[375:] == profile_scope
 
     parity = resource["registry_parity"]
     assert parity["pinned_ref"] == "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3"
@@ -282,8 +284,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # microcosm#1301's three high-value homes region rows have no uk-data
     # metric, nor do microcosm#1278's three single years of age or the eleven
     # the childcare costing fixes add (UK 3 to 6, England 0 to 6), nor the
-    # five DfE funded-childcare single-age rows.
-    assert len(mapped_target_ids) == 186
+    # five DfE funded-childcare single-age rows. The next policyengine-uk bump
+    # retires the OBR welfare-cap split and the England postgraduate
+    # repayments to the excluded rows (microcosm#1095).
+    assert len(mapped_target_ids) == 183
     assert len(unmapped_declarations) == 192
     suppressed_ancestors = parity["suppressed_ancestors"]
     assert len(suppressed_ancestors) == 5
@@ -791,7 +795,7 @@ def test_uk_population_targets_have_unique_target_ids() -> None:
     resource = _load()
 
     target_ids = [target["target_id"] for target in resource["targets"]]
-    assert len(target_ids) == 437
+    assert len(target_ids) == 434
     assert len(target_ids) == len(set(target_ids))
 
 
@@ -1294,7 +1298,7 @@ def test_uc_payment_bands_share_administrative_family_but_keep_source_window() -
 
 def test_paid_joint_diagnostics_do_not_add_active_targets() -> None:
     targets = _load()["targets"]
-    assert len(targets) == 437
+    assert len(targets) == 434
     assert not any(
         f.get("variable") == "uc_calibration_child_entitlement"
         for target in targets

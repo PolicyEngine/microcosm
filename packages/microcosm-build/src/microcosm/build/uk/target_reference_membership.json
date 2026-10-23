@@ -1,11 +1,11 @@
 {
   "source_fact_feed": "chronicle-uk-abf0921-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1360,
-  "contract_target_count": 378,
-  "active_reference_count": 1338,
+  "candidate_count": 1357,
+  "contract_target_count": 375,
+  "active_reference_count": 1335,
   "status_counts": {
-    "active": 1338,
+    "active": 1335,
     "no_fact_at_or_before_period": 5,
     "signed_excluded": 17
   },
@@ -101,14 +101,6 @@
     "obr.tv_licence_fee": {
       "geography_level": "country",
       "geography_id": "K02000001"
-    },
-    "obr.universal_credit_in_cap": {
-      "geography_level": "country",
-      "geography_id": "K03000001"
-    },
-    "obr.universal_credit_outside_cap": {
-      "geography_level": "country",
-      "geography_id": "K03000001"
     },
     "obr.winter_fuel_allowance": {
       "geography_level": "country",
@@ -1949,10 +1941,6 @@
       "geography_id": "E92000001"
     },
     "slc.repayments.england_plan_2": {
-      "geography_level": "country",
-      "geography_id": "E92000001"
-    },
-    "slc.repayments.england_postgraduate": {
       "geography_level": "country",
       "geography_id": "E92000001"
     },
@@ -4657,7 +4645,6 @@
     "slc.repayments.england_plan_1",
     "slc.repayments.england_plan_2",
     "slc.repayments.england_plan_5",
-    "slc.repayments.england_postgraduate",
     "slc.repayments.england_total_higher_education",
     "welshgov.bus.public_support"
   ],
@@ -11228,36 +11215,6 @@
           "resolved_value": 3858750000.0,
           "resolved_fact_period": "2025",
           "resolved_fact_key": "ledger_aggregate_fact_v2_b0f0afcd44c93532837c9f2a"
-        }
-      ]
-    },
-    "obr.universal_credit_in_cap": {
-      "status": "active",
-      "candidates": [
-        {
-          "name": "obr.universal_credit_in_cap",
-          "status": "active",
-          "matched_fact_count_overall": 7,
-          "matched_fact_count_at_or_before_period": 2,
-          "resolved_period": 2025,
-          "resolved_value": 63016849758.31539,
-          "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_0e10f670e44a5d30d75c358f"
-        }
-      ]
-    },
-    "obr.universal_credit_outside_cap": {
-      "status": "active",
-      "candidates": [
-        {
-          "name": "obr.universal_credit_outside_cap",
-          "status": "active",
-          "matched_fact_count_overall": 7,
-          "matched_fact_count_at_or_before_period": 2,
-          "resolved_period": 2025,
-          "resolved_value": 13037904629.457691,
-          "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_d7377a28ca45388650d961e0"
         }
       ]
     },
@@ -19292,21 +19249,6 @@
           "resolved_value": 3234379913.2999997,
           "resolved_fact_period": "2025",
           "resolved_fact_key": "ledger_aggregate_fact_v2_b93d57062e37c3331c56e26c"
-        }
-      ]
-    },
-    "slc.repayments.england_postgraduate": {
-      "status": "active",
-      "candidates": [
-        {
-          "name": "slc.repayments.england_postgraduate",
-          "status": "active",
-          "matched_fact_count_overall": 4,
-          "matched_fact_count_at_or_before_period": 4,
-          "resolved_period": 2025,
-          "resolved_value": 427019983.79,
-          "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_d1ed6adea71769e10e3c3f36"
         }
       ]
     },

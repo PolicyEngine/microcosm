@@ -1,149 +1,86 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "support_floor": {
-    "contract_target_ids": [
-      "dwp.uc.payment_distribution_single",
-      "dwp.uc.payment_distribution_lone_parent",
-      "dwp.uc.payment_distribution_couple_no_children",
-      "dwp.uc.payment_distribution_couple_with_children",
-      "dwp.benefit_cap.capped_households_up_to_100",
-      "dwp.benefit_cap.capped_households_100_01_to_200",
-      "dwp.benefit_cap.capped_households_200_01_to_300",
-      "dwp.benefit_cap.capped_households_300_01_to_400",
-      "dwp.benefit_cap.capped_households_400_01_to_500",
-      "dwp.benefit_cap.capped_households_500_01_to_600",
-      "dwp.benefit_cap.capped_households_600_01_to_700",
-      "dwp.benefit_cap.capped_households_700_01_to_800",
-      "dwp.benefit_cap.capped_households_800_01_to_900",
-      "dwp.benefit_cap.capped_households_900_01_to_1000",
-      "dwp.benefit_cap.capped_households_1000_01_to_1100",
-      "dwp.benefit_cap.capped_households_1100_01_to_1200",
-      "dwp.benefit_cap.capped_households_1200_01_to_1300",
-      "dwp.benefit_cap.capped_households_1300_01_and_above"
-    ],
     "metric": "distinct_source_households_with_positive_prior_weight",
     "floor": 1,
-    "max_dropped_rows": 24,
-    "max_dropped_published_share": 0.05,
-    "reason": "Zero-support floor: a UC payment-distribution band or a benefit-cap amount band whose compiled matrix row reaches no source household (household_source_id) with a positive prior weight cannot be fitted by any weights (the solver's initialiser refuses a nonzero target with no support), so it is dropped from the solve, not pooled. A row that some households carry stays bound however few they are; when fewer than 10 distinct source households carry it, its model figures are withheld from every written surface (the UK Data Service working floor, CD171 section 5.2.1). The floor's receipt reports each target's dropped published total, and the run refuses when the drops pass either ceiling or when a per-row exclusion names a row the floor drops.",
+    "scopes": [
+      {
+        "scope": "uc_payment_and_benefit_cap_bands",
+        "unit": "benefit_units",
+        "contract_target_ids": [
+          "dwp.uc.payment_distribution_single",
+          "dwp.uc.payment_distribution_lone_parent",
+          "dwp.uc.payment_distribution_couple_no_children",
+          "dwp.uc.payment_distribution_couple_with_children",
+          "dwp.benefit_cap.capped_households_up_to_100",
+          "dwp.benefit_cap.capped_households_100_01_to_200",
+          "dwp.benefit_cap.capped_households_200_01_to_300",
+          "dwp.benefit_cap.capped_households_300_01_to_400",
+          "dwp.benefit_cap.capped_households_400_01_to_500",
+          "dwp.benefit_cap.capped_households_500_01_to_600",
+          "dwp.benefit_cap.capped_households_600_01_to_700",
+          "dwp.benefit_cap.capped_households_700_01_to_800",
+          "dwp.benefit_cap.capped_households_800_01_to_900",
+          "dwp.benefit_cap.capped_households_900_01_to_1000",
+          "dwp.benefit_cap.capped_households_1000_01_to_1100",
+          "dwp.benefit_cap.capped_households_1100_01_to_1200",
+          "dwp.benefit_cap.capped_households_1200_01_to_1300",
+          "dwp.benefit_cap.capped_households_1300_01_and_above"
+        ],
+        "max_dropped_rows": 24,
+        "max_dropped_published_share": 0.05
+      },
+      {
+        "scope": "hmrc_spi_income_band_counts",
+        "unit": "people",
+        "contract_target_ids": [
+          "hmrc.spi.employment_income.count_by_total_income_band",
+          "hmrc.spi.self_employment_income.count_by_total_income_band",
+          "hmrc.spi.dividend_income.count_by_total_income_band",
+          "hmrc.spi.property_income.count_by_total_income_band",
+          "hmrc.spi.private_pension_income.count_by_total_income_band",
+          "hmrc.spi.state_pension.count_by_total_income_band",
+          "hmrc.spi.savings_interest_income.count_by_total_income_band"
+        ],
+        "max_dropped_rows": 2,
+        "max_dropped_published_share": 0.01
+      },
+      {
+        "scope": "hmrc_spi_income_band_amounts",
+        "unit": "GBP",
+        "contract_target_ids": [
+          "hmrc.spi.employment_income.amount_by_total_income_band",
+          "hmrc.spi.self_employment_income.amount_by_total_income_band",
+          "hmrc.spi.dividend_income.amount_by_total_income_band",
+          "hmrc.spi.property_income.amount_by_total_income_band",
+          "hmrc.spi.private_pension_income.amount_by_total_income_band",
+          "hmrc.spi.state_pension.amount_by_total_income_band",
+          "hmrc.spi.savings_interest_income.amount_by_total_income_band"
+        ],
+        "max_dropped_rows": 2,
+        "max_dropped_published_share": 0.01
+      },
+      {
+        "scope": "council_tax_band_h_by_region",
+        "unit": "dwellings",
+        "contract_target_ids": [
+          "mhclg.council_tax_stock.band_h"
+        ],
+        "max_dropped_rows": 2,
+        "max_dropped_published_share": 0.1
+      }
+    ],
+    "reason": "Zero-support floor: a row in one of the floor's scopes (the UC payment-distribution and benefit-cap amount bands, the HMRC SPI income bands by total income, and the band-H council-tax rows by English region) whose compiled matrix row reaches no source household (household_source_id) with a positive prior weight cannot be fitted by any weights (the solver's initialiser refuses a nonzero target with no support), so it is dropped from the solve, not pooled. A row that some households carry stays bound however few they are; when fewer than 10 distinct source households carry it, its model figures are withheld from every written surface (the UK Data Service working floor, CD171 section 5.2.1). Each scope holds one unit, because its share ceiling sums published values. The floor's receipt reports each target's dropped published total and each scope's dropped share, and the run refuses when a scope's drops pass either of its ceilings or when a per-row exclusion names a row the floor drops.",
     "tracking": "microcosm#1095",
     "approved_by": "juaristi22",
-    "adjudication": "microcosm#1095 U3, ruled 2026-10-16 with the fifth ports PR (floor 10) and revised 2026-10-21 with #1333: a cell that rests on fewer than 10 records is no reason to leave a row out, only a measured distortion of the calibration is. The floor drops only rows no household carries, the benefit-cap amount bands join its scope and their per-row entries retire, and the figures of rows under 10 source households are withheld, as the BRMA rows' are. The thirteen entries it retired (the eleven benefit-cap amount bands and the two HMRC £500k to £1m cells) and the A/B that retired them: experiments/1095-uk-thin-row-binding-receipts.md.",
-    "approved_on": "2026-10-21",
+    "adjudication": "microcosm#1095 U3, ruled 2026-10-16 with the fifth ports PR (floor 10) and revised 2026-10-21 with #1333: a cell that rests on fewer than 10 records is no reason to leave a row out, only a measured distortion of the calibration is. The floor drops only rows no household carries, the benefit-cap amount bands join its scope and their per-row entries retire, and the figures of rows under 10 source households are withheld, as the BRMA rows' are. The thirteen entries it retired (the eleven benefit-cap amount bands and the two HMRC £500k to £1m cells) and the A/B that retired them: experiments/1095-uk-thin-row-binding-receipts.md. Extended on 2026-10-22 (María's ruling on the next policyengine-uk bump) to the HMRC SPI income-band families and the band-H council-tax rows by region, in scopes of one unit each with their own ceilings. The ten HMRC £1m-and-over entries and the three band-H region entries retire: on #1333's policyengine-uk 2.145.0 spine every one of those rows has carriers, so they bind, with their figures withheld where fewer than 10 source households carry them.",
+    "approved_on": "2026-10-22",
     "expires_on": "2027-01-08"
   },
   "exclusions": [
     {
-      "name": "hmrc/employment_income_income_band_1_000_000_to_inf",
-      "reason": "Zero-support channel on total income (ITA 2007 s.23, which excludes capital gains): zero in-band carrier records with total income above 1m, under both the SPI assessable-income concept and the component-sum proxy, measured identically on spine-i and spine-j (microcosm#807, receipts uk-candidate-eval out/excluded_cell_support_spine_{i,j}.json). The spine carries large capital gains and thousands of records above 1m wealth; the premise is total-income support, never a wealth or gains cap, and a zero-support cell cannot be reached by reweighting.",
-      "tracking": "microcosm#757",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411); reason revised 2026-08-28 per microcosm#807 (the spine-i/j excluded-cell support re-measurement)",
-      "approved_on": "2026-08-26",
-      "expires_on": "2026-11-26"
-    },
-    {
-      "name": "hmrc/dividend_income_income_band_1_000_000_to_inf",
-      "reason": "Zero-support channel on total income (ITA 2007 s.23, which excludes capital gains): zero in-band carrier records with total income above 1m, under both the SPI assessable-income concept and the component-sum proxy, measured identically on spine-i and spine-j (microcosm#807, receipts uk-candidate-eval out/excluded_cell_support_spine_{i,j}.json). The spine carries large capital gains and thousands of records above 1m wealth; the premise is total-income support, never a wealth or gains cap, and a zero-support cell cannot be reached by reweighting.",
-      "tracking": "microcosm#757",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411); reason revised 2026-08-28 per microcosm#807 (the spine-i/j excluded-cell support re-measurement)",
-      "approved_on": "2026-08-26",
-      "expires_on": "2026-11-26"
-    },
-    {
-      "name": "hmrc/dividend_income_count_income_band_1_000_000_to_inf",
-      "reason": "Zero-support channel on total income (ITA 2007 s.23, which excludes capital gains): zero in-band carrier records with total income above 1m, under both the SPI assessable-income concept and the component-sum proxy, measured identically on spine-i and spine-j (microcosm#807, receipts uk-candidate-eval out/excluded_cell_support_spine_{i,j}.json). The spine carries large capital gains and thousands of records above 1m wealth; the premise is total-income support, never a wealth or gains cap, and a zero-support cell cannot be reached by reweighting.",
-      "tracking": "microcosm#757",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411); reason revised 2026-08-28 per microcosm#807 (the spine-i/j excluded-cell support re-measurement)",
-      "approved_on": "2026-08-26",
-      "expires_on": "2026-11-26"
-    },
-    {
-      "name": "hmrc/property_income_count_income_band_1_000_000_to_inf",
-      "reason": "Zero-support channel on total income (ITA 2007 s.23, which excludes capital gains): zero in-band carrier records with total income above 1m, under both the SPI assessable-income concept and the component-sum proxy, measured identically on spine-i and spine-j (microcosm#807, receipts uk-candidate-eval out/excluded_cell_support_spine_{i,j}.json). The spine carries large capital gains and thousands of records above 1m wealth; the premise is total-income support, never a wealth or gains cap, and a zero-support cell cannot be reached by reweighting.",
-      "tracking": "microcosm#757",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411); reason revised 2026-08-28 per microcosm#807 (the spine-i/j excluded-cell support re-measurement)",
-      "approved_on": "2026-08-26",
-      "expires_on": "2026-11-26"
-    },
-    {
-      "name": "hmrc/private_pension_income_income_band_1_000_000_to_inf",
-      "reason": "Zero-support channel on total income (ITA 2007 s.23, which excludes capital gains): zero in-band carrier records with total income above 1m, under both the SPI assessable-income concept and the component-sum proxy, measured identically on spine-i and spine-j (microcosm#807, receipts uk-candidate-eval out/excluded_cell_support_spine_{i,j}.json). The spine carries large capital gains and thousands of records above 1m wealth; the premise is total-income support, never a wealth or gains cap, and a zero-support cell cannot be reached by reweighting.",
-      "tracking": "microcosm#757",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411); reason revised 2026-08-28 per microcosm#807 (the spine-i/j excluded-cell support re-measurement)",
-      "approved_on": "2026-08-26",
-      "expires_on": "2026-11-26"
-    },
-    {
-      "name": "hmrc/private_pension_income_count_income_band_1_000_000_to_inf",
-      "reason": "Zero-support channel on total income (ITA 2007 s.23, which excludes capital gains): zero in-band carrier records with total income above 1m, under both the SPI assessable-income concept and the component-sum proxy, measured identically on spine-i and spine-j (microcosm#807, receipts uk-candidate-eval out/excluded_cell_support_spine_{i,j}.json). The spine carries large capital gains and thousands of records above 1m wealth; the premise is total-income support, never a wealth or gains cap, and a zero-support cell cannot be reached by reweighting.",
-      "tracking": "microcosm#757",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411); reason revised 2026-08-28 per microcosm#807 (the spine-i/j excluded-cell support re-measurement)",
-      "approved_on": "2026-08-26",
-      "expires_on": "2026-11-26"
-    },
-    {
-      "name": "hmrc/state_pension_income_band_1_000_000_to_inf",
-      "reason": "Zero-support channel on total income (ITA 2007 s.23, which excludes capital gains): zero in-band carrier records with total income above 1m, under both the SPI assessable-income concept and the component-sum proxy, measured identically on spine-i and spine-j (microcosm#807, receipts uk-candidate-eval out/excluded_cell_support_spine_{i,j}.json). The spine carries large capital gains and thousands of records above 1m wealth; the premise is total-income support, never a wealth or gains cap, and a zero-support cell cannot be reached by reweighting.",
-      "tracking": "microcosm#757",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411); reason revised 2026-08-28 per microcosm#807 (the spine-i/j excluded-cell support re-measurement)",
-      "approved_on": "2026-08-26",
-      "expires_on": "2026-11-26"
-    },
-    {
-      "name": "hmrc/state_pension_count_income_band_1_000_000_to_inf",
-      "reason": "Zero-support channel on total income (ITA 2007 s.23, which excludes capital gains): zero in-band carrier records with total income above 1m, under both the SPI assessable-income concept and the component-sum proxy, measured identically on spine-i and spine-j (microcosm#807, receipts uk-candidate-eval out/excluded_cell_support_spine_{i,j}.json). The spine carries large capital gains and thousands of records above 1m wealth; the premise is total-income support, never a wealth or gains cap, and a zero-support cell cannot be reached by reweighting.",
-      "tracking": "microcosm#757",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411); reason revised 2026-08-28 per microcosm#807 (the spine-i/j excluded-cell support re-measurement)",
-      "approved_on": "2026-08-26",
-      "expires_on": "2026-11-26"
-    },
-    {
-      "name": "hmrc/self_employment_income_income_band_1_000_000_to_inf",
-      "reason": "Zero-support channel on total income (ITA 2007 s.23, which excludes capital gains): zero in-band carrier records with total income above 1m under the SPI assessable-income concept and fewer than ten under the component-sum proxy, measured identically on spine-i and spine-j (microcosm#807, receipts uk-candidate-eval out/excluded_cell_support_spine_{i,j}.json). The spine carries large capital gains and thousands of records above 1m wealth; the premise is total-income support, never a wealth or gains cap, and a zero-support cell cannot be reached by reweighting.",
-      "tracking": "microcosm#757",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411); reason revised 2026-08-28 per microcosm#807 (the spine-i/j excluded-cell support re-measurement)",
-      "approved_on": "2026-08-26",
-      "expires_on": "2026-11-26"
-    },
-    {
-      "name": "hmrc/self_employment_income_count_income_band_1_000_000_to_inf",
-      "reason": "Zero-support channel on total income (ITA 2007 s.23, which excludes capital gains): zero in-band carrier records with total income above 1m under the SPI assessable-income concept and fewer than ten under the component-sum proxy, measured identically on spine-i and spine-j (microcosm#807, receipts uk-candidate-eval out/excluded_cell_support_spine_{i,j}.json). The spine carries large capital gains and thousands of records above 1m wealth; the premise is total-income support, never a wealth or gains cap, and a zero-support cell cannot be reached by reweighting.",
-      "tracking": "microcosm#757",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411); reason revised 2026-08-28 per microcosm#807 (the spine-i/j excluded-cell support re-measurement)",
-      "approved_on": "2026-08-26",
-      "expires_on": "2026-11-26"
-    },
-    {
-      "name": "slc.repayments.england_postgraduate",
-      "reason": "Zero-support channel: no spine record carries postgraduate-plan repayments (-100%, final estimate 0.0 on the rebind packet); the student-loans stage assigns plans from the SLC liable-stocks resource and the postgraduate stock finds no eligible carriers at spine grain.",
-      "tracking": "microcosm#757",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
-      "approved_on": "2026-08-26",
-      "expires_on": "2026-11-26"
-    },
-    {
       "name": "slc.repayments.england_plan_5",
       "reason": "Structural under-support: the E8 PLAN_5 top-up saturates the eligible pool (rate 1.0), so the plan-5 repayment mass is bound by frame composition, not by weighting (-84.4% on the rebind packet).",
-      "tracking": "microcosm#757",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
-      "approved_on": "2026-08-26",
-      "expires_on": "2026-11-26"
-    },
-    {
-      "name": "slc.borrowers.plan_5_liable",
-      "reason": "Structural under-support: the E8 PLAN_5 top-up saturates the eligible pool (rate 1.0, final England 43,055 vs 230,000 stock); the liable count is bound by frame composition, not by weighting (-81.3% on the rebind packet).",
       "tracking": "microcosm#757",
       "approved_by": "juaristi22",
       "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
@@ -259,24 +196,6 @@
       "expires_on": "2026-11-26"
     },
     {
-      "name": "obr.universal_credit_in_cap",
-      "reason": "The OBR welfare-cap boundary (UC in-cap vs outside-cap) is not measurable on the frame: the model cannot attribute UC spend to the cap concept, so the pair splits one well-measured total into two mis-attributed halves (-96.8% / +286.3% on the rebind packet while total UC spend is within band of the OBR anchor).",
-      "tracking": "microcosm#757",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
-      "approved_on": "2026-08-26",
-      "expires_on": "2026-11-26"
-    },
-    {
-      "name": "obr.universal_credit_outside_cap",
-      "reason": "The OBR welfare-cap boundary (UC in-cap vs outside-cap) is not measurable on the frame: the model cannot attribute UC spend to the cap concept, so the pair splits one well-measured total into two mis-attributed halves (-96.8% / +286.3% on the rebind packet while total UC spend is within band of the OBR anchor).",
-      "tracking": "microcosm#757",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
-      "approved_on": "2026-08-26",
-      "expires_on": "2026-11-26"
-    },
-    {
       "name": "ons.savings_interest_income",
       "reason": "Concept, not a weight question: the ONS UKEA HAXV row is households' (S.14) D.41 interest resources in the national accounts (FISIM-adjusted, including the unincorporated-business part of the sector; GBP 95.5bn at 2025) while the model's savings_interest_income is cash interest, so the row is unreachable by design (-82 percent on the v20 national candidate). From 2026-09-22 the fitting anchor for interest is the SPI 2023-24 Table 3.7 interest rows by total-income band, uprated to the calibration year (hmrc.spi.savings_interest_income.*, PolicyEngine/chronicle#280 lane); this row is measured on every evaluation as the D.41 diagnostic and never fitted. Retire only with a declared D.41-to-cash bridge.",
       "tracking": "microcosm#866",
@@ -320,33 +239,6 @@
       "adjudication": "microcosm#882 (the 2026-09-16 status comment, issuecomment-5694598278, whose next-steps list this repair works, and the repairs plan María approved on 2026-09-16 with her population ruling on the U8 take-up entry; approver as author per the register convention). Expiry 2026-12-08 aligns the whole UC-repair tranche with the zero-band clock already on the register (microcosm#877), so the next spine re-adjudicates them together. Receipts: experiments/882-uc-repairs-receipts.md (R1 and R5, tools/diagnose_uk_legacy_benefits.py on spine-q, the Q50f candidate, FRS 2024-25 and the twins).",
       "approved_on": "2026-09-16",
       "expires_on": "2026-12-08"
-    },
-    {
-      "name": "mhclg.council_tax_stock.band_h@E12000001",
-      "reason": "Spine support absent for band H in the North East region-tier cell: the spine carries no council-tax band-H household there (spine-m held 170 band-H households from 49 raw FRS households, none in the North East, North West or Yorkshire and the Humber; microcosm#762 A14), so the cell measures 0 against the MHCLG taxbase stock (-100% on the #905 spine-q comparison against the VOA row, docs/evidence/uk-region-tier-905/calibration-comparison.json; microcosm#929 re-based the family on the taxbase return and the cell still has no support) while the other 78 composed MHCLG region cells fit within 3.7% on the #929 measurement (experiments/929-council-tax-taxbase-receipts.md Part D). The same class is signed for the local band-H family under council_tax_band_h_spine_support_absent; the cell binds when a spine vintage carries broader band-H support.",
-      "tracking": "microcosm#796",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#905 (region-tier activation; ruling by María 2026-09-14 on PR #906, the #762 A14 spine-support class)",
-      "approved_on": "2026-09-14",
-      "expires_on": "2026-11-26"
-    },
-    {
-      "name": "mhclg.council_tax_stock.band_h@E12000002",
-      "reason": "Spine support absent for band H in the North West region-tier cell: the spine carries no council-tax band-H household there (spine-m held 170 band-H households from 49 raw FRS households, none in the North East, North West or Yorkshire and the Humber; microcosm#762 A14), so the cell measures 0 against the MHCLG taxbase stock (-100% on the #905 spine-q comparison against the VOA row, docs/evidence/uk-region-tier-905/calibration-comparison.json; microcosm#929 re-based the family on the taxbase return and the cell still has no support) while the other 78 composed MHCLG region cells fit within 3.7% on the #929 measurement (experiments/929-council-tax-taxbase-receipts.md Part D). The same class is signed for the local band-H family under council_tax_band_h_spine_support_absent; the cell binds when a spine vintage carries broader band-H support.",
-      "tracking": "microcosm#796",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#905 (region-tier activation; ruling by María 2026-09-14 on PR #906, the #762 A14 spine-support class)",
-      "approved_on": "2026-09-14",
-      "expires_on": "2026-11-26"
-    },
-    {
-      "name": "mhclg.council_tax_stock.band_h@E12000003",
-      "reason": "Spine support absent for band H in the Yorkshire and The Humber region-tier cell: the spine carries no council-tax band-H household there (spine-m held 170 band-H households from 49 raw FRS households, none in the North East, North West or Yorkshire and the Humber; microcosm#762 A14), so the cell measures 0 against the MHCLG taxbase stock (-100% on the #905 spine-q comparison against the VOA row, docs/evidence/uk-region-tier-905/calibration-comparison.json; microcosm#929 re-based the family on the taxbase return and the cell still has no support) while the other 78 composed MHCLG region cells fit within 3.7% on the #929 measurement (experiments/929-council-tax-taxbase-receipts.md Part D). The same class is signed for the local band-H family under council_tax_band_h_spine_support_absent; the cell binds when a spine vintage carries broader band-H support.",
-      "tracking": "microcosm#796",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#905 (region-tier activation; ruling by María 2026-09-14 on PR #906, the #762 A14 spine-support class)",
-      "approved_on": "2026-09-14",
-      "expires_on": "2026-11-26"
     },
     {
       "name": "dwp.uc.households_housing_element",

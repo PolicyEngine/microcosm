@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import date
+from importlib import resources as importlib_resources
 
 import numpy as np
 import pandas as pd
@@ -26,16 +27,26 @@ from microcosm.build.uk_runtime.support_floor import (
 from microcosm.calibrate import TargetRegistry, TargetSpec, build_constraint_matrix
 
 SCOPE = "dwp.uc.payment_distribution_single"
+SCOPE_NAME = "uc_bands"
 EVALUATED = date(2026, 10, 20)
 
 
-def _block(**overrides):
+def _scope(**overrides):
     return {
+        "scope": SCOPE_NAME,
+        "unit": "benefit_units",
         "contract_target_ids": [SCOPE],
-        "metric": "distinct_source_households_with_positive_prior_weight",
-        "floor": 1,
         "max_dropped_rows": 2,
         "max_dropped_published_share": 0.5,
+        **overrides,
+    }
+
+
+def _block(scope=None, **overrides):
+    return {
+        "metric": "distinct_source_households_with_positive_prior_weight",
+        "floor": 1,
+        "scopes": [_scope(**(scope or {}))],
         "reason": "Sparse bands are dropped, not pooled.",
         "tracking": "microcosm#1095",
         "approved_by": "juaristi22",
@@ -149,7 +160,14 @@ def test_the_floor_drops_only_rows_no_household_carries():
     receipt = result.receipt
     assert receipt["dropped"] == ["zero_weight"]
     assert receipt["dropped_by_target"] == {SCOPE: {"rows": 1, "published_total": 5.0}}
-    assert receipt["dropped_published_share"] == pytest.approx(5.0 / 75.0)
+    assert receipt["scopes"] == {
+        SCOPE_NAME: {
+            "unit": "benefit_units",
+            "in_scope_rows": 3,
+            "dropped_rows": 1,
+            "dropped_published_share": pytest.approx(5.0 / 75.0),
+        }
+    }
     assert receipt["solved_register_sha256"] == result.registry.version
     # The receipt carries no row's support: support counts stay local.
     assert set(receipt) == {
@@ -162,7 +180,7 @@ def test_the_floor_drops_only_rows_no_household_carries():
         "in_scope_rows",
         "probed_row_exclusions",
         "dropped_rows",
-        "dropped_published_share",
+        "scopes",
         "dropped_by_target",
         "dropped",
         "solved_register_sha256",
@@ -180,10 +198,58 @@ def test_the_floor_refuses_outside_its_window_and_past_its_ceilings():
         _apply(registry, evaluated_on=date(2026, 10, 15))
     with pytest.raises(ValueError, match="outside its reviewed window"):
         _apply(registry, evaluated_on=date(2027, 1, 9))
-    with pytest.raises(ValueError, match="drops 2 rows"):
-        _apply(registry, block={"max_dropped_rows": 1})
+    with pytest.raises(ValueError, match="drops 2 rows in scope 'uc_bands'"):
+        _apply(registry, block={"scope": {"max_dropped_rows": 1}})
     with pytest.raises(ValueError, match="published total"):
-        _apply(registry, block={"max_dropped_published_share": 0.1})
+        _apply(registry, block={"scope": {"max_dropped_published_share": 0.1}})
+
+
+def test_each_scope_meets_its_own_ceilings():
+    """A share sums published values, so it is taken within one unit's scope."""
+
+    other = "hmrc.spi.dividend_income.amount_by_total_income_band"
+    registry = _registry(
+        _spec("low", "band_low", 40.0),
+        _spec("zero_weight", "band_zero_weight", 5.0),
+        _spec("pounds", "band_low", 9_000.0, target=other),
+        _spec("pounds_none", "band_zero_weight", 1_000.0, target=other),
+    )
+    pounds = {
+        "scope": "spi_amounts",
+        "unit": "GBP",
+        "contract_target_ids": [other],
+        "max_dropped_rows": 1,
+        "max_dropped_published_share": 0.2,
+    }
+    floor = uk_support_floor_from_payload({**_block(), "scopes": [_scope(), pounds]})
+    result = apply_uk_support_floor(
+        registry,
+        _compiled(registry),
+        source_ids=uk_household_source_ids(_frame()),
+        floor=floor,
+        evaluated_on=EVALUATED,
+    )
+    assert result.receipt["dropped"] == ["pounds_none", "zero_weight"]
+    shares = {
+        name: scope["dropped_published_share"]
+        for name, scope in result.receipt["scopes"].items()
+    }
+    # Pooled, the two would read 1,005 of 10,045; each scope reads its own.
+    assert shares == {
+        SCOPE_NAME: pytest.approx(5.0 / 45.0),
+        "spi_amounts": pytest.approx(0.1),
+    }
+    tight = {**pounds, "max_dropped_published_share": 0.05}
+    with pytest.raises(ValueError, match="scope 'spi_amounts'"):
+        apply_uk_support_floor(
+            registry,
+            _compiled(registry),
+            source_ids=uk_household_source_ids(_frame()),
+            floor=uk_support_floor_from_payload(
+                {**_block(), "scopes": [_scope(), tight]}
+            ),
+            evaluated_on=EVALUATED,
+        )
 
 
 def test_a_per_row_exclusion_the_floor_would_cover_refuses():
@@ -237,9 +303,14 @@ def test_lineage_is_read_only_when_a_row_in_scope_needs_it():
         ({"floor": 3}, "must be 1"),
         ({"floor": 10}, "must be 1"),
         ({"floor": True}, "must be 1"),
-        ({"max_dropped_rows": -1}, "count"),
-        ({"max_dropped_published_share": 1.0}, r"\[0, 1\)"),
-        ({"contract_target_ids": [SCOPE, SCOPE]}, "distinct"),
+        ({"scope": {"max_dropped_rows": -1}}, "count"),
+        ({"scope": {"max_dropped_published_share": 1.0}}, r"\[0, 1\)"),
+        ({"scope": {"contract_target_ids": [SCOPE, SCOPE]}}, "distinct"),
+        ({"scope": {"unit": ""}}, "unit is empty"),
+        ({"scope": {"extra": 1}}, "closed-world"),
+        ({"scopes": []}, "non-empty"),
+        ({"scopes": [_scope(), _scope(contract_target_ids=["other"])]}, "distinct"),
+        ({"scopes": [_scope(), _scope(scope="again")]}, "disjoint"),
         ({"approved_by": " "}, "approved_by is empty"),
         ({"expires_on": "2027-1-8"}, "canonical ISO"),
         ({"expires_on": "2026-10-16"}, "after approved_on"),
@@ -261,42 +332,91 @@ def test_the_packaged_floor_drops_only_unsupported_bands_and_binds_thin_ones():
         *(f"{low}_01_to_{low + 100}" for low in range(100, 1300, 100)),
         "1300_01_and_above",
     )
-    assert floor.contract_target_ids == {
-        *(
-            f"dwp.uc.payment_distribution_{family}"
-            for family in (
-                "single",
-                "lone_parent",
-                "couple_no_children",
-                "couple_with_children",
-            )
-        ),
-        *(f"dwp.benefit_cap.capped_households_{band}" for band in bands),
+    spi = (
+        "employment_income",
+        "self_employment_income",
+        "dividend_income",
+        "property_income",
+        "private_pension_income",
+        "state_pension",
+        "savings_interest_income",
+    )
+    scopes = {scope.scope: scope for scope in floor.scopes}
+    assert {name: scope.contract_target_ids for name, scope in scopes.items()} == {
+        "uc_payment_and_benefit_cap_bands": {
+            *(
+                f"dwp.uc.payment_distribution_{family}"
+                for family in (
+                    "single",
+                    "lone_parent",
+                    "couple_no_children",
+                    "couple_with_children",
+                )
+            ),
+            *(f"dwp.benefit_cap.capped_households_{band}" for band in bands),
+        },
+        # Extended on María's ruling of 2026-10-22 (the next policyengine-uk bump).
+        "hmrc_spi_income_band_counts": {
+            f"hmrc.spi.{family}.count_by_total_income_band" for family in spi
+        },
+        "hmrc_spi_income_band_amounts": {
+            f"hmrc.spi.{family}.amount_by_total_income_band" for family in spi
+        },
+        "council_tax_band_h_by_region": {"mhclg.council_tax_stock.band_h"},
     }
     assert floor.floor == 1
     assert (floor.approved_by, floor.approved_on, floor.expires_on) == (
         "juaristi22",
-        date(2026, 10, 21),
+        date(2026, 10, 22),
         date(2027, 1, 8),
     )
-    # The rows once left out for thin support are bound again.
+    # The rows once left out for thin support are bound again; the floor
+    # covers the ones no household carries.
     named = {entry["name"] for entry in load_uk_calibration_measure_exclusions()}
     assert not {name for name in named if name.startswith("dwp.benefit_cap.")}
+    assert not {name for name in named if "income_band_1_000_000_to_inf" in name}
+    assert not {name for name in named if name.startswith("mhclg.council_tax_stock.")}
     assert not named & {
         "hmrc/dividend_income_income_band_500_000_to_1_000_000",
         "hmrc/property_income_count_income_band_500_000_to_1_000_000",
     }
 
 
-def test_only_schema_3_registers_carry_a_floor(tmp_path):
+def test_each_packaged_scope_holds_one_unit():
+    """A share ceiling sums published values, so no scope mixes units."""
+
+    targets = {
+        target["target_id"]: target
+        for target in json.loads(
+            importlib_resources.files("microcosm.build.uk")
+            .joinpath("uk_population_targets.json")
+            .read_text()
+        )["targets"]
+    }
+    floor = uk_support_floor_from_payload(load_uk_support_floor_declaration())
+    for scope in floor.scopes:
+        units = {
+            (
+                targets[target_id]["measurement"]["entity"],
+                targets[target_id]["measurement"]["concept"].rsplit(".", 1)[-1],
+            )
+            for target_id in scope.contract_target_ids
+        }
+        assert len(units) == 1, (scope.scope, units)
+
+
+def test_only_schema_4_registers_carry_a_floor(tmp_path):
     path = tmp_path / "exclusions.json"
+    for version in (2, 3):
+        path.write_text(
+            json.dumps(
+                {"schema_version": version, "support_floor": _block(), "exclusions": []}
+            )
+        )
+        with pytest.raises(ValueError, match="support_floor|schema_version"):
+            load_uk_calibration_measure_exclusions(path)
     path.write_text(
-        json.dumps({"schema_version": 2, "support_floor": _block(), "exclusions": []})
-    )
-    with pytest.raises(ValueError, match="support_floor"):
-        load_uk_calibration_measure_exclusions(path)
-    path.write_text(
-        json.dumps({"schema_version": 3, "support_floor": _block(), "exclusions": []})
+        json.dumps({"schema_version": 4, "support_floor": _block(), "exclusions": []})
     )
     assert load_uk_calibration_measure_exclusions(path) == ()
     assert load_uk_support_floor_declaration(path) == _block()
@@ -327,8 +447,8 @@ def test_readers_narrow_by_the_recorded_drops_under_the_declared_floor():
         narrow_uk_registry_by_support_floor(
             registry, {"thin": {**record, "approved_by": "someone"}}, floor
         )
-    tight = uk_support_floor_from_payload(_block(max_dropped_rows=0))
-    with pytest.raises(ValueError, match="signed ceiling"):
+    tight = uk_support_floor_from_payload(_block(scope={"max_dropped_rows": 0}))
+    with pytest.raises(ValueError, match="in scope 'uc_bands', more than its signed"):
         narrow_uk_registry_by_support_floor(registry, {"thin": record}, tight)
 
 

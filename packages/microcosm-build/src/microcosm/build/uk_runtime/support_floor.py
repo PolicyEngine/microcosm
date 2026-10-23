@@ -12,13 +12,16 @@ fewer than ten distinct source households carry
 (:func:`microcosm.build.uk_runtime.diagnostics.uk_withheld_rows`).
 
 The floor is declared once, in the ``support_floor`` block of
-``uk/calibration_measure_exclusions.json`` (schema 3), and signed there; its
-``floor`` is 1, the only value it may take. On a built frame, a row in its
-scope whose matrix row reaches no source household (``household_source_id``)
-with a positive prior weight is dropped, not pooled; each target's dropped
-published total is reported. The run refuses outside the block's approval window, when the
-dropped rows pass either declared ceiling, and when a per-row exclusion names
-a row the floor would drop (the floor covers it, so the entry must retire).
+``uk/calibration_measure_exclusions.json`` (schema 4), and signed there; its
+``floor`` is 1, the only value it may take. Its scope is a list of scopes, one
+per unit (benefit units, people, households, pounds), each with its own
+ceilings: a ceiling on the dropped share sums published values, so a scope
+never mixes units. On a built frame, a row in a scope whose matrix row reaches
+no source household (``household_source_id``) with a positive prior weight is
+dropped, not pooled; each target's dropped published total is reported. The
+run refuses outside the block's approval window, when a scope's dropped rows
+pass either of its ceilings, and when a per-row exclusion names a row the
+floor would drop (the floor covers it, so the entry must retire).
 The dropped set joins the calibration's measure exclusions as
 ``kind: support_floor``, so the gates, the written register and the
 certifier read it back rather than recompute support, which they cannot.
@@ -50,11 +53,9 @@ UK_SUPPORT_FLOOR_METRIC = "distinct_source_households_with_positive_prior_weight
 #: The spine household each row was built from; every clone shares it.
 UK_SUPPORT_LINEAGE_COLUMN = "household_source_id"
 _FIELDS = (
-    "contract_target_ids",
     "metric",
     "floor",
-    "max_dropped_rows",
-    "max_dropped_published_share",
+    "scopes",
     "reason",
     "tracking",
     "approved_by",
@@ -63,6 +64,13 @@ _FIELDS = (
     "expires_on",
 )
 _TEXT_FIELDS = ("reason", "tracking", "approved_by", "adjudication")
+_SCOPE_FIELDS = (
+    "scope",
+    "unit",
+    "contract_target_ids",
+    "max_dropped_rows",
+    "max_dropped_published_share",
+)
 #: The record fields a dropped row carries, as a per-row exclusion carries its
 #: own (``measure_simulation._UK_MEASURE_EXCLUSION_FIELDS`` less the name).
 _RECORD_FIELDS = (
@@ -76,13 +84,22 @@ _RECORD_FIELDS = (
 
 
 @dataclass(frozen=True)
-class UKSupportFloor:
-    """The signed floor: its scope, threshold, ceilings and approval window."""
+class UKSupportFloorScope:
+    """The targets of one unit, with the ceilings their drops may not pass."""
 
+    scope: str
+    unit: str
     contract_target_ids: frozenset[str]
-    floor: int
     max_dropped_rows: int
     max_dropped_published_share: float
+
+
+@dataclass(frozen=True)
+class UKSupportFloor:
+    """The signed floor: its scopes, threshold and approval window."""
+
+    scopes: tuple[UKSupportFloorScope, ...]
+    floor: int
     reason: str
     tracking: str
     approved_by: str
@@ -90,8 +107,19 @@ class UKSupportFloor:
     approved_on: date
     expires_on: date
 
+    @property
+    def contract_target_ids(self) -> frozenset[str]:
+        return frozenset().union(*(scope.contract_target_ids for scope in self.scopes))
+
+    def scope_of(self, spec: Any) -> UKSupportFloorScope | None:
+        target = spec.metadata.get("contract_target_id")
+        for scope in self.scopes:
+            if target in scope.contract_target_ids:
+                return scope
+        return None
+
     def in_scope(self, spec: Any) -> bool:
-        return spec.metadata.get("contract_target_id") in self.contract_target_ids
+        return self.scope_of(spec) is not None
 
     def record(self, evaluated_on: date) -> dict[str, str]:
         """The measure-exclusion record a dropped row carries."""
@@ -134,17 +162,7 @@ def uk_support_floor_from_payload(block: Mapping[str, Any]) -> UKSupportFloor:
             f"UK support floor metric must be {UK_SUPPORT_FLOOR_METRIC!r}, got "
             f"{block['metric']!r}."
         )
-    targets = block["contract_target_ids"]
-    if (
-        not isinstance(targets, list)
-        or not targets
-        or len(set(targets)) != len(targets)
-        or not all(isinstance(target, str) and target for target in targets)
-    ):
-        raise ValueError("UK support floor scope must list distinct target ids.")
     floor = block["floor"]
-    rows = block["max_dropped_rows"]
-    share = block["max_dropped_published_share"]
     if (
         not isinstance(floor, int)
         or isinstance(floor, bool)
@@ -155,16 +173,7 @@ def uk_support_floor_from_payload(block: Mapping[str, Any]) -> UKSupportFloor:
             "household carries stays bound however few they are (María's rule of "
             "2026-10-21), and the figures of a thin row are withheld, not the row."
         )
-    if not isinstance(rows, int) or isinstance(rows, bool) or rows < 0:
-        raise ValueError("UK support floor max_dropped_rows must be a count.")
-    if (
-        not isinstance(share, (int, float))
-        or isinstance(share, bool)
-        or not 0.0 <= float(share) < 1.0
-    ):
-        raise ValueError(
-            "UK support floor max_dropped_published_share must be in [0, 1)."
-        )
+    scopes = _scopes_from_payload(block["scopes"])
     for field in _TEXT_FIELDS:
         if not isinstance(block[field], str) or not block[field].strip():
             raise ValueError(f"UK support floor {field} is empty.")
@@ -183,10 +192,8 @@ def uk_support_floor_from_payload(block: Mapping[str, Any]) -> UKSupportFloor:
     if dates["expires_on"] <= dates["approved_on"]:
         raise ValueError("UK support floor expires_on must be after approved_on.")
     return UKSupportFloor(
-        contract_target_ids=frozenset(targets),
+        scopes=scopes,
         floor=floor,
-        max_dropped_rows=rows,
-        max_dropped_published_share=float(share),
         reason=block["reason"],
         tracking=block["tracking"],
         approved_by=block["approved_by"],
@@ -194,6 +201,71 @@ def uk_support_floor_from_payload(block: Mapping[str, Any]) -> UKSupportFloor:
         approved_on=dates["approved_on"],
         expires_on=dates["expires_on"],
     )
+
+
+def _scopes_from_payload(payload: Any) -> tuple[UKSupportFloorScope, ...]:
+    """Validate the scopes closed-world: named once, one unit each, disjoint."""
+
+    if not isinstance(payload, list) or not payload:
+        raise ValueError("UK support floor scopes must be a non-empty list.")
+    scopes: list[UKSupportFloorScope] = []
+    seen_targets: set[str] = set()
+    for entry in payload:
+        if not isinstance(entry, Mapping):
+            raise ValueError("UK support floor scope must be an object.")
+        unknown = sorted(set(entry) - set(_SCOPE_FIELDS))
+        missing = sorted(set(_SCOPE_FIELDS) - set(entry))
+        if unknown or missing:
+            raise ValueError(
+                f"UK support floor scope fields are closed-world: unknown "
+                f"{unknown}, missing {missing}."
+            )
+        for field in ("scope", "unit"):
+            if not isinstance(entry[field], str) or not entry[field].strip():
+                raise ValueError(f"UK support floor scope {field} is empty.")
+        targets = entry["contract_target_ids"]
+        if (
+            not isinstance(targets, list)
+            or not targets
+            or len(set(targets)) != len(targets)
+            or not all(isinstance(target, str) and target for target in targets)
+        ):
+            raise ValueError(
+                f"UK support floor scope {entry['scope']!r} must list distinct "
+                "target ids."
+            )
+        shared = sorted(seen_targets.intersection(targets))
+        if shared:
+            raise ValueError(
+                f"UK support floor scopes must be disjoint; {shared} sit in more "
+                "than one."
+            )
+        seen_targets.update(targets)
+        rows = entry["max_dropped_rows"]
+        share = entry["max_dropped_published_share"]
+        if not isinstance(rows, int) or isinstance(rows, bool) or rows < 0:
+            raise ValueError("UK support floor max_dropped_rows must be a count.")
+        if (
+            not isinstance(share, (int, float))
+            or isinstance(share, bool)
+            or not 0.0 <= float(share) < 1.0
+        ):
+            raise ValueError(
+                "UK support floor max_dropped_published_share must be in [0, 1)."
+            )
+        scopes.append(
+            UKSupportFloorScope(
+                scope=entry["scope"],
+                unit=entry["unit"],
+                contract_target_ids=frozenset(targets),
+                max_dropped_rows=rows,
+                max_dropped_published_share=float(share),
+            )
+        )
+    names = [scope.scope for scope in scopes]
+    if len(set(names)) != len(names):
+        raise ValueError("UK support floor scope names must be distinct.")
+    return tuple(scopes)
 
 
 def load_uk_support_floor_declaration(
@@ -264,17 +336,20 @@ class UKSupportFloorResult:
     receipt: dict[str, Any]
 
 
-def _assert_within_ceilings(floor: UKSupportFloor, dropped: int, share: float) -> None:
-    if dropped > floor.max_dropped_rows:
+def _assert_within_ceilings(
+    floor: UKSupportFloor, scope: UKSupportFloorScope, dropped: int, share: float
+) -> None:
+    if dropped > scope.max_dropped_rows:
         raise ValueError(
-            f"UK support floor drops {dropped} rows, more than its signed "
-            f"ceiling of {floor.max_dropped_rows} ({floor.tracking})."
+            f"UK support floor drops {dropped} rows in scope {scope.scope!r}, "
+            f"more than its signed ceiling of {scope.max_dropped_rows} "
+            f"({floor.tracking})."
         )
-    if share > floor.max_dropped_published_share:
+    if share > scope.max_dropped_published_share:
         raise ValueError(
-            f"UK support floor drops {share:.4f} of its scope's published "
-            "total, more than its signed ceiling of "
-            f"{floor.max_dropped_published_share} ({floor.tracking})."
+            f"UK support floor drops {share:.4f} of scope {scope.scope!r}'s "
+            "published total, more than its signed ceiling of "
+            f"{scope.max_dropped_published_share} ({floor.tracking})."
         )
 
 
@@ -346,10 +421,20 @@ def apply_uk_support_floor(
             f"exclusion; retire those entries ({floor.tracking}): {redundant}."
         )
     dropped = [position for position in in_scope if support[position] < floor.floor]
-    scope_total = math.fsum(float(specs[position].value) for position in in_scope)
-    dropped_total = math.fsum(float(specs[position].value) for position in dropped)
-    share = dropped_total / scope_total if scope_total > 0.0 else 0.0
-    _assert_within_ceilings(floor, len(dropped), share)
+    by_scope: dict[str, dict[str, Any]] = {}
+    for scope in floor.scopes:
+        members = [p for p in in_scope if floor.scope_of(specs[p]) == scope]
+        gone = [p for p in dropped if floor.scope_of(specs[p]) == scope]
+        scope_total = math.fsum(float(specs[p].value) for p in members)
+        dropped_total = math.fsum(float(specs[p].value) for p in gone)
+        share = dropped_total / scope_total if scope_total > 0.0 else 0.0
+        _assert_within_ceilings(floor, scope, len(gone), share)
+        by_scope[scope.scope] = {
+            "unit": scope.unit,
+            "in_scope_rows": len(members),
+            "dropped_rows": len(gone),
+            "dropped_published_share": share,
+        }
     record = floor.record(evaluated_on)
     exclusions = {specs[position].name: dict(record) for position in dropped}
     leaving = probes | set(dropped)
@@ -370,7 +455,7 @@ def apply_uk_support_floor(
         "in_scope_rows": len(in_scope),
         "probed_row_exclusions": len(probes),
         "dropped_rows": len(dropped),
-        "dropped_published_share": share,
+        "scopes": by_scope,
         "dropped_by_target": _dropped_by_target([specs[p] for p in dropped]),
         "dropped": sorted(exclusions),
         "solved_register_sha256": narrowed.version,
@@ -442,11 +527,14 @@ def narrow_uk_registry_by_support_floor(
             "The run's support-floor drops do not match the declared floor: "
             + "; ".join(failures)
         )
-    if len(names) > floor.max_dropped_rows:
-        raise ValueError(
-            f"The run's support floor dropped {len(names)} rows, more than its "
-            f"signed ceiling of {floor.max_dropped_rows} ({floor.tracking})."
-        )
+    for scope in floor.scopes:
+        count = sum(1 for name in names if floor.scope_of(by_name[name][0]) == scope)
+        if count > scope.max_dropped_rows:
+            raise ValueError(
+                f"The run's support floor dropped {count} rows in scope "
+                f"{scope.scope!r}, more than its signed ceiling of "
+                f"{scope.max_dropped_rows} ({floor.tracking})."
+            )
     return TargetRegistry(
         [spec for spec in registry.specs if spec.name not in names],
         country=registry.country,

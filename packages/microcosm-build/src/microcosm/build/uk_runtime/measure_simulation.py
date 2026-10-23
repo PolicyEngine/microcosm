@@ -1701,18 +1701,20 @@ def load_uk_calibration_measure_exclusions(
     else:
         text = Path(path).read_text(encoding="utf-8")
     payload = json.loads(text)
-    # Schema 3 adds the signed sparse-band support floor (microcosm#1095 U3),
-    # which ``support_floor.load_uk_support_floor_declaration`` reads.
+    # Schema 4 carries the signed zero-support floor (microcosm#1095 U3) in
+    # scopes of one unit each, which
+    # ``support_floor.load_uk_support_floor_declaration`` reads; schema 3's
+    # single-scope floor is retired with it.
     schema_version = payload.get("schema_version")
     allowed_top = {"schema_version", "exclusions"}
-    if schema_version == 3:
+    if schema_version == 4:
         allowed_top.add("support_floor")
     unknown = sorted(set(payload) - allowed_top)
     if unknown:
         raise ValueError(f"unknown top-level exclusion key(s): {unknown}")
-    if schema_version not in (2, 3):
+    if schema_version not in (2, 4):
         raise ValueError(
-            "UK calibration measure exclusions schema_version must be 2 or 3."
+            "UK calibration measure exclusions schema_version must be 2 or 4."
         )
     exclusions = payload.get("exclusions")
     if not isinstance(exclusions, list):

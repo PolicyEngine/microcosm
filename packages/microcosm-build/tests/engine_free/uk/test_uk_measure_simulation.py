@@ -593,8 +593,14 @@ _PACKAGED_EXCLUSION_CENSUS = {
     # a band test that reads the Scottish bands; microcosm#1095 binds them by
     # rate class, so no salary-sacrifice entry remains.
     "hmrc.salary_sacrifice.": 0,
-    "_1_000_000_to_inf": 10,
-    "slc.": 5,
+    # The next policyengine-uk bump (María's ruling of 2026-10-22): every HMRC
+    # £1m-and-over cell has carriers on #1333's 2.145.0 spine, so the ten
+    # entries retire and the cells bind under the zero-support floor's HMRC
+    # scopes. Of the five SLC rows, the postgraduate repayments row retired
+    # from the targets (the stage assigns no postgraduate plan) and Plan 5's
+    # liable stock binds; the Plan 5 repayments and the two Plan 2 stocks stay.
+    "_1_000_000_to_inf": 0,
+    "slc.": 3,
     # microcosm#1095 (2026-10-07): two bands whose few supporting awards
     # policyengine-uk 2.122.2 moves out join the uk-data#452 class.
     # microcosm#1095 U3 (2026-10-16): the sparse-band support floor drops
@@ -603,7 +609,9 @@ _PACKAGED_EXCLUSION_CENSUS = {
     # zero-support bands); twelve well-supported bands remain held out per
     # row, each on its own renewal.
     "dwp/uc_payment_dist/": 12,
-    "obr.universal_credit_": 2,
+    # The OBR welfare-cap split retired from the targets with the next bump:
+    # obr.universal_credit binds the sum of the two cells.
+    "obr.universal_credit_": 0,
     # microcosm#890 E1 (2026-09-11): the all-road-users obr.fuel_duties row
     # is signed out of the reference surface (target_reference_signed_
     # exclusions.json) and obr.fuel_duties_cars binds the cars receipts, so
@@ -686,22 +694,15 @@ def test_packaged_exclusions_load():
     # plus the employer NICs diagnostic (microcosm#1301) and the rail-support
     # hold-out (microcosm#1278), less the thirteen rows bound again under
     # María's rule of 2026-10-21 (the eleven benefit-cap amount bands and the
-    # HMRC £500k to £1m dividend and property-income-count rows).
-    assert len(names) == len(set(names)) == 45
+    # HMRC £500k to £1m dividend and property-income-count rows), less the
+    # seventeen the next policyengine-uk bump retires: the ten HMRC £1m-and-over
+    # cells, the three band-H region cells and Plan 5's liable stock bind, and
+    # the OBR welfare-cap split and the postgraduate repayments leave the
+    # targets.
+    assert len(names) == len(set(names)) == 28
     assert not [name for name in names if name.startswith("dwp.benefit_cap.")]
-    band_h_region_cells = [
-        entry
-        for entry in exclusions
-        if entry["name"].startswith("mhclg.council_tax_stock.band_h@E12")
-    ]
-    assert [entry["name"] for entry in band_h_region_cells] == [
-        "mhclg.council_tax_stock.band_h@E12000001",
-        "mhclg.council_tax_stock.band_h@E12000002",
-        "mhclg.council_tax_stock.band_h@E12000003",
-    ]
-    assert {entry["approved_on"] for entry in band_h_region_cells} == {"2026-09-14"}
-    assert {entry["tracking"] for entry in band_h_region_cells} == {"microcosm#796"}
-    assert {entry["expires_on"] for entry in band_h_region_cells} == {"2026-11-26"}
+    # The band-H region cells bind under the floor's band-H scope.
+    assert not [name for name in names if name.startswith("mhclg.council_tax_stock.")]
 
     for marker, expected in _PACKAGED_EXCLUSION_CENSUS.items():
         matched = [name for name in names if marker in name]
@@ -729,9 +730,13 @@ def test_packaged_exclusions_load():
     # signed out of the reference surface and the cars receipts bind instead.
     tranche = [e for e in exclusions if e["approved_on"] == "2026-08-26"]
     # Three 2026-08-26 rows retired 2026-09-21 on the v20 measurement, three
-    # payment bands retired 2026-10-16 under the support floor, and the two
-    # thin HMRC 500k-1m cells retired 2026-10-21, bound again.
-    assert len(tranche) == 27
+    # payment bands retired 2026-10-16 under the support floor, the two thin
+    # HMRC 500k-1m cells retired 2026-10-21, bound again, and fourteen more
+    # with the next bump: the ten HMRC £1m-and-over cells and Plan 5's liable
+    # stock bind, and the OBR welfare-cap split and the postgraduate
+    # repayments leave the targets. The twelve payment bands and Plan 5's
+    # repayments remain.
+    assert len(tranche) == 13
     for entry in tranche:
         assert "5427936411" in entry["adjudication"], entry["name"]
         assert entry["expires_on"] == "2026-11-26", entry["name"]
