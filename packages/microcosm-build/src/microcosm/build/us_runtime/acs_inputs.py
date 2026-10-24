@@ -648,6 +648,20 @@ _SELF_EMPLOYMENT_LEAVES = (
     "self_employment_income_before_lsr",
     *ACS_SELF_EMPLOYMENT_COMPONENT_INPUTS,
 )
+#: The two leaves an ACS row's SEMP may sit on. QBI reconciliation
+#: (``qbi_inputs.with_us_qbi_input_reconciliation``) routes their sum wholly
+#: to one of them, so at most one is nonzero.
+_SEMP_ROUTED_LEAVES = (
+    "self_employment_income_before_lsr",
+    "sstb_self_employment_income_before_lsr",
+)
+#: Components no ACS producer separates from SEMP; on an ACS row they can only
+#: be donor draws.
+_NON_ACS_COMPONENTS = tuple(
+    column
+    for column in ACS_SELF_EMPLOYMENT_COMPONENT_INPUTS
+    if column not in _SEMP_ROUTED_LEAVES
+)
 
 
 def acs_self_employment_identity_gate(
@@ -656,18 +670,22 @@ def acs_self_employment_identity_gate(
     rows: np.ndarray | pd.Series,
     tolerance: float = ACS_SELF_EMPLOYMENT_IDENTITY_TOLERANCE,
 ) -> GateResult:
-    """Require each ACS person's self-employment leaves to sum to their SEMP.
+    """Require each ACS person's self-employment to be exactly their SEMP.
 
     ``rows`` selects the ACS person rows; the caller owns that provenance, so
     this check reads no origin tags. On a row that reports SEMP, the base
     self-employment leaf plus every self-employment component must equal
-    ``SEMP * ADJINC / 1_000_000`` within ``tolerance`` dollars. Splitting SEMP
-    across the leaves passes; a donor draw added on top of it fails
-    (microcosm#1380). A row with blank SEMP is outside the ACS
-    self-employment universe and must carry no self-employment; its blank
-    leaves are reviewed structural nulls. A blank or infinite leaf or
-    ``ADJINC`` on a row that reports SEMP fails, because the identity cannot
-    be checked there, and so does an infinite SEMP, which is not a blank.
+    ``SEMP * ADJINC / 1_000_000`` within ``tolerance`` dollars, so a donor
+    draw added on top of SEMP fails (microcosm#1380). The sum alone would
+    let draws cancel, so the gate also checks where SEMP sits: on the base
+    leaf or, after QBI reconciliation, wholly on the SSTB leaf, never on
+    both, and never on farm operations income or partnership self-employment
+    net earnings, which ACS reports only inside SEMP. A row with blank SEMP
+    is outside the ACS self-employment universe and must carry no
+    self-employment; its blank leaves are reviewed structural nulls. A blank
+    or infinite leaf or ``ADJINC`` on a row that reports SEMP fails, because
+    the identity cannot be checked there, and so does an infinite SEMP,
+    which is not a blank.
     """
 
     name = "acs_self_employment_identity"
@@ -714,6 +732,13 @@ def acs_self_employment_identity_gate(
     # Negated so a gap that overflows to a nonfinite value also fails.
     mismatched = checkable & ~(np.abs(gap) <= tolerance)
     outside_nonzero = blank_semp & (filled != 0.0).any(axis=1)
+    position = {column: index for index, column in enumerate(_SELF_EMPLOYMENT_LEAVES)}
+    non_acs_component = reported & np.column_stack(
+        [filled[:, position[column]] != 0.0 for column in _NON_ACS_COMPONENTS]
+    ).any(axis=1)
+    split_across_routed = reported & np.column_stack(
+        [filled[:, position[column]] != 0.0 for column in _SEMP_ROUTED_LEAVES]
+    ).all(axis=1)
 
     failures: list[str] = []
     if not selected.any():
@@ -730,6 +755,18 @@ def acs_self_employment_identity_gate(
         failures.append(
             f"{int(outside_nonzero.sum())} ACS person row(s) with blank SEMP "
             "carry nonzero self-employment."
+        )
+    if non_acs_component.any():
+        failures.append(
+            f"{int(non_acs_component.sum())} ACS person row(s) reporting SEMP "
+            f"carry nonzero {' or '.join(_NON_ACS_COMPONENTS)}, which ACS "
+            "reports only inside SEMP; only a donor draw puts it there."
+        )
+    if split_across_routed.any():
+        failures.append(
+            f"{int(split_across_routed.sum())} ACS person row(s) reporting SEMP "
+            "carry both base and SSTB self-employment; QBI reconciliation "
+            "routes SEMP wholly to one of them."
         )
     if infinite_semp.any():
         failures.append(
@@ -758,6 +795,8 @@ def acs_self_employment_identity_gate(
             "excess_over_semp": float(gap[mismatched].clip(min=0.0).sum()),
             "blank_semp_rows": int(blank_semp.sum()),
             "blank_semp_nonzero_rows": int(outside_nonzero.sum()),
+            "non_acs_component_rows": int(non_acs_component.sum()),
+            "base_and_sstb_rows": int(split_across_routed.sum()),
             "infinite_semp_rows": int(infinite_semp.sum()),
             "nonfinite_leaf_rows": int(nonfinite_leaf.sum()),
             "nonfinite_adjinc_rows": int(nonfinite_adjinc.sum()),

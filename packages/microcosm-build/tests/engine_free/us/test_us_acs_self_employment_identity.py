@@ -18,10 +18,13 @@ table and imputation mask:
 
 Invariants of :func:`acs_self_employment_identity_gate`:
 
-* **Splits pass.** Any division of ``SEMP * ADJINC / 1e6`` across the base
-  leaf and the three components passes.
+* **Routing passes.** ``SEMP * ADJINC / 1e6`` carried wholly on the base leaf
+  or wholly on the SSTB leaf, as QBI reconciliation leaves it, passes.
 * **Additions fail.** Moving one reporting row's leaves off that total by more
   than the tolerance fails, and the gate counts exactly that row.
+* **No cancelling.** A nonzero farm or partnership self-employment leaf, or
+  SEMP spread over both the base and SSTB leaves, fails on exactly that row
+  even when the leaves still sum to SEMP.
 * **Selection.** Rows outside ``rows`` never affect the verdict.
 * **Finite only.** An infinite SEMP, leaf or ADJINC never passes, even when
   opposing infinities would cancel.
@@ -50,6 +53,8 @@ from microcosm.build.us_runtime.acs_transfer import (
 )
 
 _TOTAL = "self_employment_income_before_lsr"
+_SSTB = "sstb_self_employment_income_before_lsr"
+_NON_ACS = ("farm_operations_income", "partnership_self_employment_net_earnings")
 _LEAVES = (_TOTAL, *ACS_SELF_EMPLOYMENT_COMPONENT_INPUTS)
 _TOLERANCE = ACS_SELF_EMPLOYMENT_IDENTITY_TOLERANCE
 
@@ -145,7 +150,7 @@ def _all(person: pd.DataFrame) -> np.ndarray:
     return np.ones(len(person), dtype=bool)
 
 
-def test_gate_passes_native_semp_and_splits_of_it() -> None:
+def test_gate_passes_semp_on_the_base_or_the_sstb_leaf() -> None:
     person = _person(
         SEMP=[1_000.0, 2_000.0, 0.0, -500.0, np.nan],
         ADJINC=[1_010_000.0] * 5,
@@ -175,6 +180,10 @@ def test_gate_refuses_a_component_drawn_on_top_of_semp(component: str) -> None:
     assert gate.details["mismatched_rows"] == 1
     assert gate.details["excess_over_semp"] == 4_000.0
     assert "counts that income twice" in gate.failures[0]
+    # Row 0 reports SEMP of zero, so a farm or partnership draw there is also a
+    # non-ACS component; SSTB there sits beside a zero base and is not a split.
+    assert gate.details["non_acs_component_rows"] == int(component in _NON_ACS)
+    assert gate.details["base_and_sstb_rows"] == 0
 
 
 def test_gate_refuses_self_employment_outside_the_semp_universe() -> None:
@@ -217,12 +226,13 @@ def test_gate_refuses_opposing_infinite_leaves() -> None:
 
     assert not gate.passed
     assert gate.details["nonfinite_leaf_rows"] == 1
-    assert "blank or infinite self-employment leaf" in gate.failures[0]
+    assert gate.details["non_acs_component_rows"] == 1
+    assert any(
+        "blank or infinite self-employment leaf" in failure for failure in gate.failures
+    )
 
 
-def test_gate_refuses_infinite_semp_adjinc_and_leaves_outside_the_universe() -> (
-    None
-):
+def test_gate_refuses_infinite_semp_adjinc_and_leaves_outside_the_universe() -> None:
     person = _person(
         SEMP=[np.inf, 100.0, np.nan],
         ADJINC=[1_000_000.0, np.inf, 1_000_000.0],
@@ -316,37 +326,99 @@ def _split_rows(draw):
             max_size=rows,
         )
     )
-    shares = draw(
-        st.lists(
-            st.lists(
-                st.floats(min_value=0.0, max_value=1.0, allow_nan=False),
-                min_size=3,
-                max_size=3,
-            ),
-            min_size=rows,
-            max_size=rows,
-        )
+    on_sstb = np.asarray(
+        draw(st.lists(st.booleans(), min_size=rows, max_size=rows)), dtype=bool
     )
     total = np.asarray(semp, dtype=np.float64) * np.asarray(adjinc) / 1_000_000
-    components = np.asarray(shares) / 3.0 * total[:, None]
     person = pd.DataFrame(
         {
             "SEMP": np.asarray(semp, dtype=np.float64),
             "ADJINC": np.asarray(adjinc, dtype=np.float64),
-            _TOTAL: total - components.sum(axis=1),
+            _TOTAL: np.where(on_sstb, 0.0, total),
+            _SSTB: np.where(on_sstb, total, 0.0),
+            **{column: np.zeros(rows) for column in _NON_ACS},
         }
     )
-    for index, column in enumerate(ACS_SELF_EMPLOYMENT_COMPONENT_INPUTS):
-        person[column] = components[:, index]
     return person
 
 
 @given(_split_rows())
 @settings(max_examples=300, deadline=None)
-def test_any_split_of_semp_passes(person: pd.DataFrame) -> None:
+def test_semp_on_either_routed_leaf_passes(person: pd.DataFrame) -> None:
     gate = acs_self_employment_identity_gate(person, rows=_all(person))
 
     assert gate.passed, gate.failures
+
+
+@given(
+    _split_rows(),
+    st.data(),
+    st.floats(min_value=0.01, max_value=1e6, allow_nan=False),
+    st.booleans(),
+)
+@settings(max_examples=300, deadline=None)
+def test_a_cancelling_non_acs_component_fails_on_exactly_that_row(
+    person: pd.DataFrame, data, amount: float, negative: bool
+) -> None:
+    row = data.draw(st.integers(min_value=0, max_value=len(person) - 1))
+    component = data.draw(st.sampled_from(_NON_ACS))
+    carrier = _SSTB if person.loc[row, _SSTB] != 0.0 else _TOTAL
+    moved = -amount if negative else amount
+    # Move the amount from the row's carrier leaf, so the sum still equals SEMP.
+    person.loc[row, component] = moved
+    person.loc[row, carrier] -= moved
+
+    gate = acs_self_employment_identity_gate(person, rows=_all(person))
+
+    assert not gate.passed
+    assert gate.details["mismatched_rows"] == 0
+    assert gate.details["non_acs_component_rows"] == 1
+
+
+@given(
+    _split_rows(),
+    st.data(),
+    st.floats(min_value=0.01, max_value=1e6, allow_nan=False),
+)
+@settings(max_examples=300, deadline=None)
+def test_semp_on_both_routed_leaves_fails_on_exactly_that_row(
+    person: pd.DataFrame, data, amount: float
+) -> None:
+    row = data.draw(st.integers(min_value=0, max_value=len(person) - 1))
+    total = person.loc[row, _TOTAL] + person.loc[row, _SSTB]
+    person.loc[row, _TOTAL] = total - amount
+    person.loc[row, _SSTB] = amount
+    if person.loc[row, _TOTAL] == 0.0:
+        person.loc[row, _TOTAL] = -amount
+        person.loc[row, _SSTB] = total + amount
+
+    gate = acs_self_employment_identity_gate(person, rows=_all(person))
+
+    assert not gate.passed
+    assert gate.details["mismatched_rows"] == 0
+    assert gate.details["base_and_sstb_rows"] == 1
+
+
+def test_gate_refuses_farm_and_partnership_draws_that_cancel() -> None:
+    """The round-2 review's counterexample: the sum matches, the mix does not.
+
+    Farm operations income enters gross income and partnership self-employment
+    net earnings do not, so the pair still changes the engine's income.
+    """
+
+    person = _person(
+        SEMP=[100.0],
+        self_employment_income_before_lsr=[100.0],
+        farm_operations_income=[50.0],
+        partnership_self_employment_net_earnings=[-50.0],
+    )
+
+    gate = acs_self_employment_identity_gate(person, rows=_all(person))
+
+    assert not gate.passed
+    assert gate.details["mismatched_rows"] == 0
+    assert gate.details["non_acs_component_rows"] == 1
+    assert "which ACS reports only inside SEMP" in gate.failures[0]
 
 
 @given(
