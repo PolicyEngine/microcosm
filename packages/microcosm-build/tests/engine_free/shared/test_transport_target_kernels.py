@@ -20,6 +20,7 @@ any country's data.
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 
@@ -338,6 +339,82 @@ def test_compile_replay_refuses_rehashed_factor_application_tampering(tmp_path, 
     receipt.pop("receipt_sha256")
     receipt["receipt_sha256"] = reference_document_sha256(receipt)
     with pytest.raises(ValueError, match="roster role|count value semantics"):
+        compile_target_surface(
+            path,
+            document,
+            country=COUNTRY,
+            references_sha256=reference_document_sha256(document),
+            feed_pin=pin,
+            reference_resolution=receipt,
+        )
+
+
+@pytest.mark.parametrize("target", ["count", "money"])
+def test_compile_refuses_rehashed_companion_role_with_unchanged_selection(
+    tmp_path, target
+):
+    path, pin, document, receipt, _ = factor_transport_fixture(tmp_path, activate=True)
+    name = f"toy-{target}"
+    companion = receipt["factor_companions"][name]
+    role = "count" if target == "money" else "money"
+    companion["role"] = role
+    companion["source"]["metadata"]["reference_value_kind"] = role
+    row = next(row for row in document["target_references"] if row["name"] == name)
+    action = receipt["transformations"][name]
+    # Make the forged role internally consistent. Its original selection hash
+    # must still refuse even when the action and effective row agree with it.
+    operation = "linear_combination" if role == "money" else "identity"
+    rational = action["operational_factor"]
+    operands = (
+        [
+            {
+                "aggregate_fact_key": row["ledger_selector"]["aggregate_fact_key"],
+                "expected_member_count": 1,
+                "weight": rational["numerator"] / rational["denominator"],
+            }
+        ]
+        if role == "money"
+        else []
+    )
+    row["metadata"]["reference_value_kind"] = role
+    row["value_operation"] = operation
+    row["value_operands"] = operands
+    action["operation"] = operation
+    action["operand_selectors"] = operands
+    receipt["factor_companions_sha256"] = reference_document_sha256(
+        receipt["factor_companions"]
+    )
+    receipt["effective_references_sha256"] = reference_document_sha256(document)
+    receipt.pop("receipt_sha256")
+    receipt["receipt_sha256"] = reference_document_sha256(receipt)
+    with pytest.raises(ValueError, match="Reference selection identity mismatch"):
+        compile_target_surface(
+            path,
+            document,
+            country=COUNTRY,
+            references_sha256=reference_document_sha256(document),
+            feed_pin=pin,
+            reference_resolution=receipt,
+        )
+
+
+def test_compile_refuses_outside_roster_row_with_residual_action(tmp_path):
+    path, pin, document, receipt, _ = factor_transport_fixture(tmp_path, activate=True)
+    extra = deepcopy(document["target_references"][0])
+    previous = extra["name"]
+    extra["name"] = "unlisted-count"
+    document["target_references"].append(extra)
+    action = deepcopy(receipt["transformations"][previous])
+    action.pop("factor_id")
+    action["operation"] = "allocated_residual_by_ratio"
+    receipt["transformations"][extra["name"]] = action
+    receipt["transformed_names"] = sorted(receipt["transformations"])
+    receipt["effective_references_sha256"] = reference_document_sha256(document)
+    receipt.pop("receipt_sha256")
+    receipt["receipt_sha256"] = reference_document_sha256(receipt)
+    with pytest.raises(
+        ValueError, match="selection identity|outside its companion roster"
+    ):
         compile_target_surface(
             path,
             document,

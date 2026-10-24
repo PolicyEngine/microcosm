@@ -16,6 +16,8 @@ from microcosm.build.reference_profiles import (
     resolve_reference_profiles,
     validate_reference_resolution,
 )
+from microcosm.graph.canonical import canonical_json
+from test_support.paths import paths_for
 
 
 def _selector(key, category=None):
@@ -434,6 +436,7 @@ def test_counts_are_invariant_and_every_money_row_uses_one_common_factor(
         "mismatched_filter",
         "overlap",
         "duplicate",
+        "duplicate_count",
         "source_period",
         "target_period",
         "diagnostic_factor",
@@ -472,6 +475,8 @@ def test_invalid_factor_profiles_and_companions_refuse(mutation):
         )
     elif mutation == "duplicate":
         transform["reference_names"].append(transform["reference_names"][0])
+    elif mutation == "duplicate_count":
+        transform["count_reference_names"].append(transform["count_reference_names"][0])
     elif mutation in {"source_period", "target_period"}:
         key = "ledger_selector" if mutation == "source_period" else "period"
         for row in references["target_references"]:
@@ -581,6 +586,51 @@ def test_legacy_receipt_remains_version_one_without_factor_fields():
     assert receipt["resolver_version"] == "reference-profiles-v1"
     assert "selected_factors" not in receipt
     assert "selected_factor_identities" not in receipt
+    assert "factor_companions" not in receipt
+    assert "factor_companions_sha256" not in receipt
+    # Canonical bytes produced by the v1 resolver at 1d5fff46.
+    assert reference_document_sha256(receipt) == (
+        "753fe7ddb2bc5e00cc4d70a74e0cac8295af266ffbc05511101540e39ae21508"
+    )
+
+
+def test_nz_default_factor_receipt_is_compact_and_covers_the_exact_roster():
+    spec = paths_for("microcosm-build").package / "src/microcosm/build/nz"
+    base = json.loads((spec / "target_references.json").read_text())
+    declarations = json.loads((spec / "reference_profiles.json").read_text())
+    context = json.loads((spec / "reference_aging.json").read_text())
+    _, _, receipt = resolve_reference_profiles(
+        base, declarations, {}, factor_context=context
+    )
+    assert "selected_declarations" not in receipt
+    assert "base_reference_document" not in receipt
+    companions = receipt["factor_companions"]
+    expected_names = {
+        f"ird_taxable_income_{kind}_by_band__row_{index}"
+        for kind in ("people", "total")
+        for index in range(8, 245)
+    }
+    assert len(companions) == 474
+    assert set(companions) == expected_names
+    source_rows = {row["name"]: row for row in base["target_references"]}
+    for name, companion in companions.items():
+        source = source_rows[name]
+        role = source["metadata"]["reference_value_kind"]
+        assert companion == {
+            "role": role,
+            "factor_id": "ird_ty2024_to_ty2027_central",
+            "dimension": "aging_index",
+            "profile": "central",
+            "source": {
+                "ledger_selector": source["ledger_selector"],
+                "period": source.get("period"),
+                "value_operation": source.get("value_operation", "identity"),
+                "value_operands": source.get("value_operands", []),
+                "metadata": {"reference_value_kind": role},
+            },
+        }
+    assert receipt["factor_companions_sha256"] == reference_document_sha256(companions)
+    assert len(canonical_json(receipt)) < 2_600_000
 
 
 def test_unrelated_direct_fact_references_are_outside_companion_rosters():
@@ -636,6 +686,28 @@ def test_rehashed_factor_application_cannot_bypass_companion_role(target):
         validate_reference_resolution(effective, receipt)
 
 
+def test_rehashed_action_label_cannot_change_money_into_a_count():
+    references, declarations, context = _scaling_inputs()
+    effective, _, receipt = resolve_reference_profiles(
+        references, declarations, {}, factor_context=context
+    )
+    row = next(
+        row for row in effective["target_references"] if row["name"] == "money_0"
+    )
+    source = receipt["factor_companions"][row["name"]]["source"]
+    row["metadata"]["reference_value_kind"] = "count"
+    row["value_operation"] = source["value_operation"]
+    row["value_operands"] = copy.deepcopy(source["value_operands"])
+    action = receipt["transformations"][row["name"]]
+    action["operation"] = "identity"
+    action["operand_selectors"] = copy.deepcopy(source["value_operands"])
+    receipt["effective_references_sha256"] = reference_document_sha256(effective)
+    receipt.pop("receipt_sha256")
+    receipt["receipt_sha256"] = reference_document_sha256(receipt)
+    with pytest.raises(ValueError, match="roster role"):
+        validate_reference_resolution(effective, receipt)
+
+
 def test_count_preserves_original_weighted_operation_and_refuses_changed_weight():
     references, declarations, context = _scaling_inputs()
     source = references["target_references"][0]
@@ -675,11 +747,12 @@ def test_count_preserves_original_weighted_operation_and_refuses_changed_weight(
         "count_kind",
         "outside_roster",
         "outside_roster_without_factor",
+        "outside_roster_with_residual_label",
         "source_values",
         "roster",
     ],
 )
-def test_factor_roles_and_count_semantics_use_hash_bound_source_documents(mutation):
+def test_factor_roles_and_count_semantics_use_hash_bound_companion_record(mutation):
     references, declarations, context = _scaling_inputs()
     effective, _, receipt = resolve_reference_profiles(
         references, declarations, {}, factor_context=context
@@ -696,7 +769,10 @@ def test_factor_roles_and_count_semantics_use_hash_bound_source_documents(mutati
             previous
         )
         receipt["transformed_names"] = sorted(receipt["transformations"])
-    elif mutation == "outside_roster_without_factor":
+    elif mutation in {
+        "outside_roster_without_factor",
+        "outside_roster_with_residual_label",
+    }:
         extra = copy.deepcopy(row)
         extra["name"] = "unlisted_count"
         effective["target_references"].append(extra)
@@ -704,18 +780,135 @@ def test_factor_roles_and_count_semantics_use_hash_bound_source_documents(mutati
             receipt["transformations"][row["name"]]
         )
         receipt["transformations"][extra["name"]].pop("factor_id")
+        if mutation == "outside_roster_with_residual_label":
+            receipt["transformations"][extra["name"]]["operation"] = (
+                "allocated_residual_by_ratio"
+            )
         receipt["transformed_names"] = sorted(receipt["transformations"])
     elif mutation == "source_values":
-        receipt["base_reference_document"]["target_references"][0]["value_operands"] = [
+        receipt["factor_companions"][row["name"]]["source"]["value_operands"] = [
             {"aggregate_fact_key": "count-fact-0", "weight": 2}
         ]
     elif mutation == "roster":
-        transform = receipt["selected_declarations"]["aging_index"]["declaration"][
-            "transformations"
-        ][0]
-        transform["count_reference_names"][0] = "unlisted_count"
+        receipt["factor_companions"]["unlisted_count"] = receipt[
+            "factor_companions"
+        ].pop(row["name"])
     receipt["effective_references_sha256"] = reference_document_sha256(effective)
     receipt.pop("receipt_sha256")
     receipt["receipt_sha256"] = reference_document_sha256(receipt)
-    with pytest.raises(ValueError, match="roster|source.*identity|source semantics"):
+    with pytest.raises(
+        ValueError,
+        match=(
+            "roster|companion.*hash|source.*identity|source semantics"
+            "|selection identity mismatch"
+        ),
+    ):
+        validate_reference_resolution(effective, receipt)
+
+
+@pytest.mark.parametrize("target", ["money", "count"])
+def test_rehashed_forged_companion_role_requires_the_bound_selection_identity(target):
+    references, declarations, context = _scaling_inputs()
+    effective, _, receipt = resolve_reference_profiles(
+        references, declarations, {}, factor_context=context
+    )
+    row = next(
+        row for row in effective["target_references"] if row["name"] == f"{target}_0"
+    )
+    companion = receipt["factor_companions"][row["name"]]
+    forged_role = "count" if target == "money" else "money"
+    companion["role"] = forged_role
+    companion["source"]["metadata"]["reference_value_kind"] = forged_role
+    row["metadata"]["reference_value_kind"] = forged_role
+    action = receipt["transformations"][row["name"]]
+    if forged_role == "money":
+        rational = action["operational_factor"]
+        operation = "linear_combination"
+        operands = [
+            {
+                "aggregate_fact_key": row["ledger_selector"]["aggregate_fact_key"],
+                "expected_member_count": 1,
+                "weight": rational["numerator"] / rational["denominator"],
+            }
+        ]
+    else:
+        operation = companion["source"]["value_operation"]
+        operands = companion["source"]["value_operands"]
+    row["value_operation"] = operation
+    row["value_operands"] = copy.deepcopy(operands)
+    action["operation"] = "linear_combination" if forged_role == "money" else "identity"
+    action["operand_selectors"] = copy.deepcopy(operands)
+    # Rehash every mutable attachment while retaining the original selection.
+    receipt["factor_companions_sha256"] = reference_document_sha256(
+        receipt["factor_companions"]
+    )
+    receipt["effective_references_sha256"] = reference_document_sha256(effective)
+    receipt.pop("receipt_sha256")
+    receipt["receipt_sha256"] = reference_document_sha256(receipt)
+    with pytest.raises(ValueError, match="selection identity mismatch"):
+        validate_reference_resolution(effective, receipt)
+
+
+def test_factor_companion_hash_must_be_covered_by_the_selection_identity():
+    references, declarations, context = _scaling_inputs()
+    effective, _, receipt = resolve_reference_profiles(
+        references, declarations, {}, factor_context=context
+    )
+    incomplete_identity = {
+        key: receipt[key]
+        for key in (
+            "resolver_version",
+            "base_references_sha256",
+            "base_intervals_sha256",
+            "selected_declarations_sha256",
+            "selection",
+            "selected_factor_identities",
+            "transformed_names",
+        )
+    }
+    selection_hash = reference_document_sha256(incomplete_identity)
+    receipt["reference_selection_sha256"] = selection_hash
+    for row in effective["target_references"]:
+        row["metadata"]["reference_selection_sha256"] = selection_hash
+    receipt["effective_references_sha256"] = reference_document_sha256(effective)
+    receipt.pop("receipt_sha256")
+    receipt["receipt_sha256"] = reference_document_sha256(receipt)
+    with pytest.raises(ValueError, match="selection identity mismatch"):
+        validate_reference_resolution(effective, receipt)
+
+
+@pytest.mark.parametrize("mutation", ["missing_record", "untransformed_record"])
+def test_factor_companion_record_and_transformed_rows_cover_each_other(mutation):
+    references, declarations, context = _scaling_inputs()
+    effective, _, receipt = resolve_reference_profiles(
+        references, declarations, {}, factor_context=context
+    )
+    companions = receipt["factor_companions"]
+    if mutation == "missing_record":
+        companions.pop("count_0")
+    else:
+        companions["untransformed_count"] = copy.deepcopy(companions["count_0"])
+    receipt["factor_companions_sha256"] = reference_document_sha256(companions)
+    # Rebind the changed record so this checks roster coverage after identity.
+    identity = {
+        key: receipt[key]
+        for key in (
+            "resolver_version",
+            "base_references_sha256",
+            "base_intervals_sha256",
+            "selected_declarations_sha256",
+            "selection",
+            "selected_factor_identities",
+            "factor_companions_sha256",
+            "transformed_names",
+        )
+    }
+    selection_hash = reference_document_sha256(identity)
+    receipt["reference_selection_sha256"] = selection_hash
+    for row in effective["target_references"]:
+        row["metadata"]["reference_selection_sha256"] = selection_hash
+    receipt["effective_references_sha256"] = reference_document_sha256(effective)
+    receipt.pop("receipt_sha256")
+    receipt["receipt_sha256"] = reference_document_sha256(receipt)
+    with pytest.raises(ValueError, match="roster|missing factor companion"):
         validate_reference_resolution(effective, receipt)

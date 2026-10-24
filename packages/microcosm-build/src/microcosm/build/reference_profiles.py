@@ -65,6 +65,8 @@ def _selection_identity(receipt: Mapping) -> dict:
     }
     if receipt.get("resolver_version") == FACTOR_REFERENCE_PROFILE_RESOLVER_VERSION:
         identity["selected_factor_identities"] = receipt["selected_factor_identities"]
+        identity["factor_companions_sha256"] = receipt["factor_companions_sha256"]
+        identity["transformed_names"] = receipt["transformed_names"]
     return identity
 
 
@@ -73,7 +75,15 @@ def validate_reference_factor_evidence(receipt: Mapping) -> dict:
     from microcosm.build.reference_factors import validate_factor_context
 
     if receipt.get("resolver_version") == REFERENCE_PROFILE_RESOLVER_VERSION:
-        if "selected_factors" in receipt or "selected_factor_identities" in receipt:
+        if any(
+            key in receipt
+            for key in (
+                "selected_factors",
+                "selected_factor_identities",
+                "factor_companions",
+                "factor_companions_sha256",
+            )
+        ):
             raise ValueError("Legacy resolution cannot carry factor evidence.")
         return {}
     factors = _mapping(receipt.get("selected_factors"), "selected factors")
@@ -184,6 +194,43 @@ def _validate_companions(transform: Mapping, by_name: Mapping) -> tuple[list, li
     }:
         raise ValueError("Money and count companions must select distinct measures.")
     return money, counts
+
+
+def _factor_companions(chosen: Mapping, by_name: Mapping) -> dict:
+    """Capture roster roles and source value semantics before transforming rows."""
+    companions = {}
+    for dimension, choice in chosen.items():
+        for transform in choice["declaration"].get("transformations", []):
+            if transform.get("operation") != SCALE_MONEY_AND_INTERVALS:
+                continue
+            money, counts = _validate_companions(transform, by_name)
+            for role, names in (("money", money), ("count", counts)):
+                for name in names:
+                    if name in companions:
+                        raise ValueError("Duplicate factor companion roster entry.")
+                    row = by_name[name]
+                    companions[name] = {
+                        "role": role,
+                        "factor_id": transform["factor_id"],
+                        "dimension": dimension,
+                        "profile": choice["name"],
+                        "source": _copy(
+                            {
+                                "ledger_selector": row["ledger_selector"],
+                                "period": row.get("period"),
+                                "value_operation": row.get(
+                                    "value_operation", "identity"
+                                ),
+                                "value_operands": row.get("value_operands", []),
+                                "metadata": {
+                                    "reference_value_kind": row["metadata"][
+                                        "reference_value_kind"
+                                    ]
+                                },
+                            }
+                        ),
+                    }
+    return companions
 
 
 def _satisfy_factor_prerequisite(row: dict, dimension: str, binding: str) -> list:
@@ -310,10 +357,22 @@ def resolve_reference_profiles(
         "selection": resolved_selection,
     }
     if selected_factors:
+        companions = _factor_companions(chosen, by_name)
         receipt.update(
             resolver_version=FACTOR_REFERENCE_PROFILE_RESOLVER_VERSION,
-            selected_declarations=_copy(chosen),
-            base_reference_document=_copy(base),
+            factor_companions=companions,
+            factor_companions_sha256=reference_document_sha256(companions),
+            transformed_names=sorted(
+                name
+                for choice in chosen.values()
+                for transform in choice["declaration"].get("transformations", [])
+                for field in (
+                    ("reference_names", "count_reference_names")
+                    if transform.get("operation") == SCALE_MONEY_AND_INTERVALS
+                    else ("reference_names",)
+                )
+                for name in _explicit_names(transform, field)
+            ),
             selected_factors=_copy(selected_factors),
             selected_factor_identities={
                 factor_id: {
@@ -513,43 +572,30 @@ def resolve_reference_profiles(
     return effective, intervals, receipt
 
 
-def _factor_reference_bindings(resolution: Mapping) -> tuple[dict, set]:
-    """Recover each factor row's role and source behavior from bound documents."""
+def _factor_reference_bindings(resolution: Mapping) -> dict:
+    """Validate the compact roster bound into the v2 selection identity."""
     if resolution["resolver_version"] == REFERENCE_PROFILE_RESOLVER_VERSION:
-        return {}, set()
-    chosen = _mapping(resolution.get("selected_declarations"), "selected declarations")
-    base = _mapping(resolution.get("base_reference_document"), "base references")
-    if reference_document_sha256(chosen) != resolution.get(
-        "selected_declarations_sha256"
-    ) or reference_document_sha256(base) != resolution.get("base_references_sha256"):
-        raise ValueError("Factor companion source document identity mismatch.")
-    if {
-        dimension: choice.get("name") for dimension, choice in chosen.items()
-    } != resolution.get("selection"):
-        raise ValueError("Selected profile declaration identity mismatch.")
-    source_rows = _sequence(base.get("target_references"), "base target references")
-    by_name = {row["name"]: row for row in source_rows}
-    if len(by_name) != len(source_rows):
-        raise ValueError("Base reference names must be unique.")
-    bindings, other_names = {}, set()
-    for dimension, choice in chosen.items():
-        for transform in choice["declaration"].get("transformations", []):
-            if transform.get("operation") != SCALE_MONEY_AND_INTERVALS:
-                other_names.update(_explicit_names(transform, "reference_names"))
-                continue
-            money, counts = _validate_companions(transform, by_name)
-            for role, names in (("money", money), ("count", counts)):
-                for name in names:
-                    if name in bindings:
-                        raise ValueError("Duplicate factor companion roster entry.")
-                    bindings[name] = {
-                        "dimension": dimension,
-                        "profile": choice["name"],
-                        "factor_id": transform["factor_id"],
-                        "role": role,
-                        "source": by_name[name],
-                    }
-    return bindings, other_names
+        return {}
+    bindings = _mapping(resolution.get("factor_companions"), "factor companions")
+    if reference_document_sha256(bindings) != resolution.get(
+        "factor_companions_sha256"
+    ):
+        raise ValueError("Factor companion source record identity mismatch.")
+    for name, raw_binding in bindings.items():
+        binding = _mapping(raw_binding, "factor companion")
+        source = _mapping(binding.get("source"), "factor companion source")
+        if (
+            not isinstance(name, str)
+            or not name
+            or binding.get("role") not in {"money", "count"}
+            or binding.get("profile")
+            != resolution["selection"].get(binding.get("dimension"))
+            or source.get("metadata", {}).get("reference_value_kind") != binding["role"]
+        ):
+            raise ValueError(
+                "Factor companion roster role or profile identity mismatch."
+            )
+    return bindings
 
 
 def validate_reference_resolution(
@@ -586,9 +632,13 @@ def validate_reference_resolution(
         interval_document
     ) != resolution.get("effective_intervals_sha256"):
         raise ValueError("Effective interval document hash mismatch.")
-    factor_bindings, other_names = _factor_reference_bindings(resolution)
-    names, used_factors = [], set()
+    factor_bindings = _factor_reference_bindings(resolution)
+    other_names = set(resolution["transformed_names"]) - set(factor_bindings)
+    names, used_factors, seen_names = [], set(), set()
     for row in document.get("target_references", ()):
+        if factors and row["name"] in seen_names:
+            raise ValueError("Duplicate factor companion reference roster name.")
+        seen_names.add(row["name"])
         metadata = row.get("metadata", {})
         if metadata.get("reference_profiles_resolved"):
             names.append(row["name"])
