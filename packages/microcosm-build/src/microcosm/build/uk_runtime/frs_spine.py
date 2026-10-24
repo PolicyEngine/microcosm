@@ -756,9 +756,12 @@ FRS_BONUS_JOB_COLUMNS = tuple(
 )
 #: Each adult's gross occasional bonuses over the last 12 months, the carrier
 #: salary_sacrifice's bonus conversion reads (microcosm#1340). It is no engine
-#: input and leaves at the release boundary. The FRS's earnings already hold
-#: the bonuses (UGRSPAY adds occasional bonuses to pay), so the conversion
-#: lowers pay by what it moves.
+#: input and leaves at the release boundary. The FRS's earnings hold the
+#: bonuses a respondent received (the FRS 2024-25 derived-variable notes, SN
+#: 9563: UGRSPAY's final adjustments add them), but a sacrificed bonus is never
+#: received, so it is in neither; the conversion reads a received bonus as a
+#: sign of a bonus-paying job and its size, and adds the sacrifice beside pay
+#: (María's ruling of 2026-10-24).
 FRS_BONUS_CARRIER_COLUMN = "frs_bonus_amount"
 FRS_BONUS_AFTER_TAX = 2
 

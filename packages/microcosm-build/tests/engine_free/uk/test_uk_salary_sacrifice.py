@@ -609,6 +609,10 @@ def test_anchor_is_self_consistent() -> None:
                 "candidates",
                 "move",
                 "move_pay_share_cap",
+                "spi_bonus_draw",
+                "spi_cell_quantiles",
+                "spi_min_donor_sources",
+                "spi_salt",
                 "threshold",
                 "solve",
                 "seed",
@@ -685,10 +689,9 @@ def _conversion(target: float, **kwargs):
     defaults = dict(
         bonus=np.asarray([10_000.0, 10_000.0, 10_000.0, 10_000.0, 0.0, 10_000.0]),
         employment_income=np.asarray(
-            [100_000.0, 100_000.0, 100_000.0, 100_000.0, 100_000.0, 55_000.0]
+            [100_000.0, 100_000.0, 100_000.0, 100_000.0, 100_000.0, 45_000.0]
         ),
         salary_sacrifice=np.zeros(6),
-        employee_contributions=np.zeros(6),
         weights=np.ones(6),
         uniforms=np.asarray([0.4, 0.1, 0.3, 0.2, 0.05, 0.01]),
         anchor=_toy_bonus_anchor(obr_base_above_threshold=target),
@@ -697,9 +700,11 @@ def _conversion(target: float, **kwargs):
     return convert_bonuses_to_bonus_sacrifice(**defaults)
 
 
-def test_bonus_candidates_have_a_bonus_and_pay_without_it_at_the_limit() -> None:
+def test_bonus_candidates_have_a_bonus_and_pay_at_the_limit() -> None:
+    """A sacrificed bonus sits beside pay, so pay itself must reach the limit."""
+
     result = _conversion(0.0)
-    # No bonus (row 4), and pay without the bonus under the limit (row 5).
+    # No bonus (row 4), and pay under the limit (row 5).
     np.testing.assert_array_equal(
         result.candidates, [True, True, True, True, False, False]
     )
@@ -736,23 +741,107 @@ def test_every_candidate_converts_where_all_fall_short() -> None:
     assert result.all_candidates_fall_short is True
 
 
-def test_a_bonus_moves_within_half_the_pay_and_the_room_above_the_other_routes() -> (
-    None
-):
+def test_a_bonus_is_sacrificed_whole_up_to_half_the_pay() -> None:
+    """María's ruling of 2026-10-24 (Vahid's review of #1383, item 5).
+
+    The sacrifice is added beside pay, so no other route's share of the pay
+    limits it: only half the pay does, as an imputation bound.
+    """
+
     result = _conversion(
         1e12,
         bonus=np.asarray([80_000.0, 10_000.0, 10_000.0, 0.0, 0.0, 0.0]),
         employment_income=np.asarray([140_000.0, 100_000.0, 100_000.0, 0.0, 0.0, 0.0]),
         salary_sacrifice=np.asarray([0.0, 0.0, 95_000.0, 0.0, 0.0, 0.0]),
     )
-    # Half of 140,000; the whole bonus; the 5,000 left above the salary route.
-    np.testing.assert_allclose(result.sacrificed, [70_000, 10_000, 5_000, 0, 0, 0])
+    # Half of 140,000; the whole bonus twice, the salary route beside it.
+    np.testing.assert_allclose(result.sacrificed, [70_000, 10_000, 10_000, 0, 0, 0])
     np.testing.assert_array_equal(
-        result.pay_share_capped, [True, False, True, False, False, False]
+        result.pay_share_capped, [True, False, False, False, False, False]
     )
 
 
-def test_the_stage_converts_bonuses_out_of_pay(monkeypatch: pytest.MonkeyPatch) -> None:
+def _spi_draw(**kwargs):
+    from microcosm.build.uk_runtime.salary_sacrifice import draw_spi_bonuses
+
+    n_donors = 25
+    defaults = dict(
+        # 25 FRS donors at 100,000 with a tenth of pay as bonus, then two
+        # SPI adults (one paid, one not) and one FRS adult with a bonus of
+        # its own.
+        bonus=np.asarray([10_000.0] * n_donors + [99_000.0, 5_000.0, 7_000.0]),
+        employment_income=np.asarray(
+            [100_000.0] * n_donors + [300_000.0, 0.0, 80_000.0]
+        ),
+        weights=np.ones(n_donors + 3),
+        person_ids=np.arange(1, n_donors + 4),
+        source_ids=np.arange(1, n_donors + 4),
+        donors=np.asarray([True] * n_donors + [False, False, False]),
+        spi=np.asarray([False] * n_donors + [True, True, False]),
+    )
+    defaults.update(kwargs)
+    return draw_spi_bonuses(**defaults)
+
+
+def test_an_spi_adult_draws_a_bonus_share_of_its_own_pay() -> None:
+    """Vahid's review of #1383, item 6, and María's ruling of 2026-10-24.
+
+    The SPI adult's twin's bonus is set aside: it takes a donor's tenth of
+    pay, on its own pay. One without pay has none, and an FRS adult that is
+    no donor keeps its own.
+    """
+
+    draw = _spi_draw()
+    np.testing.assert_allclose(draw.bonus[-3:], [30_000.0, 0.0, 7_000.0])
+    np.testing.assert_array_equal(draw.recipients[-3:], [True, False, False])
+    np.testing.assert_allclose(draw.bonus[:-3], 10_000.0)
+
+
+def test_spi_bonus_cells_hold_the_donor_floor_and_the_draw_is_keyed() -> None:
+    """A cell with fewer than 20 donor households joins the one below.
+
+    Five high-paid donors with half their pay as bonus are too few for a cell
+    of their own, so they draw with the others. The draw is keyed on person
+    ids, so shuffling the rows leaves each SPI adult's bonus where it was.
+    """
+
+    bonus = np.asarray([10_000.0] * 25 + [250_000.0] * 5 + [0.0])
+    pay = np.asarray([100_000.0] * 25 + [500_000.0] * 5 + [600_000.0])
+    ids = np.arange(1, 32)
+    donors = np.asarray([True] * 30 + [False])
+    spi = np.asarray([False] * 30 + [True])
+    draw = _spi_draw(
+        bonus=bonus,
+        employment_income=pay,
+        weights=np.ones(31),
+        person_ids=ids,
+        source_ids=ids,
+        donors=donors,
+        spi=spi,
+    )
+    assert draw.cells == 1
+    assert draw.bonus[-1] in {60_000.0, 300_000.0}
+    order = np.random.default_rng(7).permutation(31)
+    shuffled = _spi_draw(
+        bonus=bonus[order],
+        employment_income=pay[order],
+        weights=np.ones(31),
+        person_ids=ids[order],
+        source_ids=ids[order],
+        donors=donors[order],
+        spi=spi[order],
+    )
+    assert shuffled.bonus[np.flatnonzero(order == 30)[0]] == draw.bonus[-1]
+
+
+def test_spi_bonuses_need_paid_frs_donors() -> None:
+    with pytest.raises(ValueError, match="base-FRS adults with pay"):
+        _spi_draw(donors=np.zeros(28, dtype=bool))
+
+
+def test_the_stage_adds_bonus_sacrifice_beside_pay(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _Fitted.value = 0.0
     monkeypatch.setattr(salary_sacrifice, "QRF", _FakeQRF)
     n = 12
@@ -771,11 +860,12 @@ def test_the_stage_converts_bonuses_out_of_pay(monkeypatch: pytest.MonkeyPatch) 
     # Each converted bonus adds 18,000 above the threshold: five is nearest.
     assert int(converted.sum()) == 5
     assert (person.loc[converted, BONUS_SACRIFICE_OUTPUT] == 20_000.0).all()
-    assert (person.loc[converted, "employment_income"] == 100_000.0).all()
-    assert (person.loc[~converted, "employment_income"] == 120_000.0).all()
-    assert (person.loc[converted, SALSAC_PRE_CONVERSION_PAY_COLUMN] == 120_000.0).all()
-    assert (person.loc[~converted, SALSAC_PRE_CONVERSION_PAY_COLUMN] == 0.0).all()
+    # A sacrificed bonus is never received, so pay stays as it is.
+    assert (person["employment_income"] == 120_000.0).all()
+    assert (person[SALSAC_PRE_CONVERSION_PAY_COLUMN] == 0.0).all()
     receipt = result.evidence()["bonus_sacrifice_receipt"]
+    assert receipt["pay"] == "unchanged: a sacrificed bonus is never received"
+    assert receipt["spi_drawn_support"] == 0
     assert receipt["target_base"] == 90_000.0
     # Five sources: the base and the band are withheld under ten.
     assert receipt["participant_support"] == "<10"

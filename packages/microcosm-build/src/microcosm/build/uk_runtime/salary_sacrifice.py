@@ -136,20 +136,52 @@ BONUS_SACRIFICE_UEL_INSTANT = f"{BONUS_SACRIFICE_DATA_YEAR}-04-30"
 BONUS_SACRIFICE_THRESHOLD = 2_000.0
 #: Whom the conversion may convert. The OBR's costing applies employee NICs of
 #: 2% to bonus sacrifice, the rate above the upper earnings limit, so a
-#: candidate's pay without the bonus reaches that limit and the whole bonus
-#: sits above it. The FRS records no bonus sacrifice (HMRC builds the base from
-#: scheme returns), so a candidate is an adult with an FRS bonus.
+#: candidate's pay reaches that limit and the sacrificed bonus sits above it.
+#: The FRS records no bonus sacrifice (HMRC builds the base from scheme
+#: returns), so a candidate is an adult with a bonus: an FRS adult's own, or
+#: the share of pay an SPI-channel adult draws (``BONUS_SACRIFICE_SPI_DRAW``).
 BONUS_SACRIFICE_CANDIDATES = (
-    "frs_bonus_amount > 0 and employment_income - frs_bonus_amount at least "
-    "the anchor's annual upper earnings limit, after the salary conversion"
+    "a bonus (frs_bonus_amount, or an SPI-channel adult's drawn bonus) > 0 and "
+    "employment_income at least the anchor's annual upper earnings limit, after "
+    "the salary conversion"
 )
+#: A bonus sacrificed is never received, so the FRS records it in neither pay
+#: nor its bonus amounts, and the stage adds it beside pay (María's ruling of
+#: 2026-10-24 on Vahid's review of #1383, item 5). A received bonus marks a
+#: bonus-paying job and its size; the salary route differs, since the FRS's
+#: gross pay holds the contribution it converts.
 BONUS_SACRIFICE_MOVE = (
-    "the whole FRS bonus, at most move_pay_share_cap of employment_income and "
-    "at most the pay left above the salary sacrifice and the employee "
-    "contribution, to pension_contributions_via_bonus_sacrifice; "
-    "employment_income lowered by the amount sacrificed; the record's pay "
-    "before the stage's conversions kept on salary_sacrifice_pre_conversion_pay"
+    "the bonus, at most move_pay_share_cap of employment_income, to "
+    "pension_contributions_via_bonus_sacrifice; employment_income unchanged, "
+    "since a sacrificed bonus is never received"
 )
+#: An SPI-channel adult's pay is the tape's, and the FRS bonus it carries is
+#: its twin's, so the two do not belong together (Vahid's review of #1383,
+#: item 6). It draws a bonus share of pay from a base-FRS adult paid alike
+#: instead (María's ruling of 2026-10-24); FRS rows keep their own bonus.
+BONUS_SACRIFICE_SPI_DRAW = (
+    "an SPI-channel adult with pay draws the bonus share of pay "
+    "(frs_bonus_amount over employment_income) of a base-FRS adult with pay in "
+    "the same pay cell, by person weight, keyed on person_id; the cells are the "
+    "base-FRS paid adults' weighted pay quantiles at spi_cell_quantiles, and a "
+    "cell with fewer than spi_min_donor_sources donor source households joins "
+    "the one below"
+)
+BONUS_SACRIFICE_SPI_CELL_QUANTILES = (
+    0.1,
+    0.2,
+    0.3,
+    0.4,
+    0.5,
+    0.6,
+    0.7,
+    0.8,
+    0.9,
+    0.95,
+    0.99,
+)
+BONUS_SACRIFICE_SPI_MIN_DONOR_SOURCES = 20
+BONUS_SACRIFICE_SPI_DRAW_SALT = "bonus_sacrifice_spi_bonus_share"
 BONUS_SACRIFICE_SOLVE = (
     "the candidates in the order of their identity-keyed uniforms, taken while "
     "the projected base is nearer the anchor's OBR base: the anchor's weight "
@@ -223,22 +255,22 @@ def convert_bonuses_to_bonus_sacrifice(
     bonus: np.ndarray,
     employment_income: np.ndarray,
     salary_sacrifice: np.ndarray,
-    employee_contributions: np.ndarray,
     weights: np.ndarray,
     uniforms: np.ndarray,
     anchor: Mapping[str, Any],
 ) -> UKBonusSacrificeConversion:
-    """Convert the bonuses the OBR's base needs into bonus sacrifice.
+    """Add the bonus sacrifice the OBR's base needs beside pay.
 
-    Candidates are taken in the order of their identity-keyed uniforms, so a
-    person's draw moves only with their own inputs, while the projected base
-    comes nearer the anchor's (``BONUS_SACRIFICE_SOLVE``).
+    A candidate sacrifices its bonus, at most half its pay, and its pay stays
+    as it is (``BONUS_SACRIFICE_MOVE``). Candidates are taken in the order of
+    their identity-keyed uniforms while the projected base comes nearer the
+    anchor's (``BONUS_SACRIFICE_SOLVE``): a person's place in the order is
+    their own, but where it stops depends on everyone's contributions.
     """
 
     bonus = np.maximum(np.asarray(bonus, dtype=float), 0.0)
     pay = np.asarray(employment_income, dtype=float)
     salary = np.asarray(salary_sacrifice, dtype=float)
-    employee = np.asarray(employee_contributions, dtype=float)
     weights = np.asarray(weights, dtype=float)
     uniforms = np.asarray(uniforms, dtype=float)
     limit = float(anchor["upper_earnings_limit"]["annual"])
@@ -246,9 +278,8 @@ def convert_bonuses_to_bonus_sacrifice(
     weight_growth = float(anchor["weight_growth"]["factor"])
     target = float(anchor["obr_base_above_threshold"])
     threshold = float(anchor["threshold"])
-    candidates = (bonus > 0.0) & (pay - bonus >= limit) & (weights > 0.0)
-    room = np.maximum(pay - np.maximum(salary, employee), 0.0)
-    amount = np.minimum.reduce([bonus, SALSAC_MOVE_PAY_SHARE_CAP * pay, room])
+    candidates = (bonus > 0.0) & (pay >= limit) & (weights > 0.0)
+    amount = np.minimum(bonus, SALSAC_MOVE_PAY_SHARE_CAP * np.maximum(pay, 0.0))
     amount = np.where(candidates, np.maximum(amount, 0.0), 0.0)
     pay_share_capped = candidates & (amount < bonus)
     contribution = (
@@ -277,6 +308,100 @@ def convert_bonuses_to_bonus_sacrifice(
         target_base=target,
         all_candidates_fall_short=bool(totals[-1] < target),
     )
+
+
+@dataclass(frozen=True)
+class UKSpiBonusDraw:
+    """The bonuses the conversion reads: FRS rows' own, SPI rows' drawn."""
+
+    bonus: np.ndarray
+    recipients: np.ndarray
+    cells: int
+
+
+def draw_spi_bonuses(
+    *,
+    bonus: np.ndarray,
+    employment_income: np.ndarray,
+    weights: np.ndarray,
+    person_ids: np.ndarray,
+    source_ids: np.ndarray,
+    donors: np.ndarray,
+    spi: np.ndarray,
+) -> UKSpiBonusDraw:
+    """Each SPI-channel adult's bonus, as a share of pay drawn from FRS adults.
+
+    ``donors`` marks the base-FRS adults (no clone, no support copy) and
+    ``spi`` the SPI-channel adults. Each SPI adult with pay takes the bonus
+    share of pay of one donor with pay in its pay cell, drawn by person weight
+    on a uniform keyed on its own ``person_id`` (``BONUS_SACRIFICE_SPI_DRAW``);
+    an SPI adult without pay has no bonus. Every other row keeps its own.
+    """
+
+    bonus = np.maximum(np.asarray(bonus, dtype=float), 0.0)
+    pay = np.asarray(employment_income, dtype=float)
+    weights = np.asarray(weights, dtype=float)
+    spi = np.asarray(spi, dtype=bool)
+    paid_donors = np.asarray(donors, dtype=bool) & (pay > 0.0) & (weights > 0.0)
+    recipients = spi & (pay > 0.0)
+    drawn = np.where(spi, 0.0, bonus)
+    if not recipients.any():
+        return UKSpiBonusDraw(bonus=drawn, recipients=recipients, cells=0)
+    if not paid_donors.any():
+        raise ValueError("SPI-channel bonuses need base-FRS adults with pay to draw.")
+    donor_rows = np.flatnonzero(paid_donors)
+    order = donor_rows[np.argsort(pay[donor_rows], kind="stable")]
+    cumulative = np.cumsum(weights[order]) / weights[order].sum()
+    edges = np.unique(
+        [
+            pay[order[min(np.searchsorted(cumulative, q), len(order) - 1)]]
+            for q in BONUS_SACRIFICE_SPI_CELL_QUANTILES
+        ]
+    )
+    raw_cells = np.searchsorted(edges, pay, side="right")
+    # A cell with too few donor source households joins the one below, and the
+    # lowest joins the one above, so every cell draws from at least the floor.
+    sources = np.asarray(source_ids)
+    groups = [[cell] for cell in range(len(edges) + 1)]
+
+    def donor_sources(group: list[int]) -> int:
+        return len(pd.unique(sources[paid_donors & np.isin(raw_cells, group)]))
+
+    position = len(groups) - 1
+    while len(groups) > 1 and position >= 0:
+        if donor_sources(groups[position]) >= BONUS_SACRIFICE_SPI_MIN_DONOR_SOURCES:
+            position -= 1
+        elif position > 0:
+            groups[position - 1] += groups.pop(position)
+            position -= 1
+        else:
+            lowest = groups.pop(0)
+            groups[0] = lowest + groups[0]
+    lookup = np.empty(len(edges) + 1, dtype=int)
+    for index, group in enumerate(groups):
+        lookup[group] = index
+    cells = lookup[raw_cells]
+    share = np.zeros(len(pay))
+    share[paid_donors] = np.minimum(bonus[paid_donors] / pay[paid_donors], 1.0)
+    uniforms = stable_identity_uniforms(
+        np.asarray(person_ids),
+        seed=SALSAC_CONVERSION_SEED,
+        salt=BONUS_SACRIFICE_SPI_DRAW_SALT,
+    )
+    ids = np.asarray(person_ids)
+    for cell in np.unique(cells[recipients]):
+        pool = np.flatnonzero(paid_donors & (cells == cell))
+        if not len(pool):
+            raise ValueError("An SPI-channel bonus pay cell has no donor to draw.")
+        pool = pool[np.argsort(ids[pool], kind="stable")]
+        pool_cumulative = np.cumsum(weights[pool]) / weights[pool].sum()
+        takers = np.flatnonzero(recipients & (cells == cell))
+        picks = np.minimum(
+            np.searchsorted(pool_cumulative, uniforms[takers], side="right"),
+            len(pool) - 1,
+        )
+        drawn[takers] = share[pool[picks]] * pay[takers]
+    return UKSpiBonusDraw(bonus=drawn, recipients=recipients, cells=len(groups))
 
 
 @dataclass(frozen=True)
@@ -559,8 +684,9 @@ def impute_salary_sacrifice(
     employment_income = employment_income.copy()
     employment_income[converted] = employment_income[converted] - moved[converted]
     employee[converted] = employee[converted] - moved[converted]
-    # Bonus sacrifice (microcosm#1340): the bonuses that OBR's 2027-28 base
-    # above the threshold needs, converted out of pay as the salary route is.
+    # Bonus sacrifice (microcosm#1340): the bonus sacrifice that OBR's 2027-28
+    # base above the threshold needs, added beside pay, since a sacrificed
+    # bonus is never received (María's ruling of 2026-10-24).
     if BONUS_SACRIFICE_SOURCE not in person.columns:
         raise ValueError(
             f"Salary-sacrifice person column missing: {BONUS_SACRIFICE_SOURCE!r}."
@@ -579,11 +705,27 @@ def impute_salary_sacrifice(
             f"{bonus_resource['data_year']}, but the frame's period is "
             f"{uk_time_period(frame)!r}."
         )
-    bonus = convert_bonuses_to_bonus_sacrifice(
+    source_ids = person_households.map(
+        pd.Series(
+            source_household_ids(household, stage="The salary-sacrifice stage"),
+            index=household["household_id"].to_numpy(),
+        )
+    ).to_numpy()
+    spi_draw = draw_spi_bonuses(
         bonus=bonus_source,
         employment_income=employment_income,
+        weights=person_weights,
+        person_ids=person["person_id"].to_numpy(),
+        source_ids=source_ids,
+        donors=(
+            channels.eq("frs") & ~clones.astype(bool) & ~support_copies.astype(bool)
+        ).to_numpy(),
+        spi=channels.ne("frs").to_numpy(),
+    )
+    bonus = convert_bonuses_to_bonus_sacrifice(
+        bonus=spi_draw.bonus,
+        employment_income=employment_income,
         salary_sacrifice=final_ss,
-        employee_contributions=employee,
         weights=person_weights,
         uniforms=stable_identity_uniforms(
             person["person_id"].to_numpy(),
@@ -592,9 +734,6 @@ def impute_salary_sacrifice(
         ),
         anchor=bonus_resource,
     )
-    bonus_only = bonus.participants & ~converted
-    pre_conversion_pay[bonus_only] = employment_income[bonus_only]
-    employment_income = employment_income - bonus.sacrificed
     if (final_ss > np.maximum(employment_income, 0.0)).any():
         raise ValueError(
             "Salary-sacrifice amounts must not exceed the pay that remains."
@@ -609,10 +748,11 @@ def impute_salary_sacrifice(
         raise ValueError(
             "Employee pension contributions must not exceed the pay that remains."
         )
-    if (bonus.sacrificed > np.maximum(employment_income, 0.0)).any():
-        raise ValueError(
-            "Bonus-sacrifice amounts must not exceed the pay that remains."
-        )
+    if (
+        bonus.sacrificed
+        > SALSAC_MOVE_PAY_SHARE_CAP * np.maximum(employment_income, 0.0) + 1e-6
+    ).any():
+        raise ValueError("Bonus-sacrifice amounts must not exceed half the pay.")
     person[SALSAC_OUTPUT] = final_ss
     person[BONUS_SACRIFICE_OUTPUT] = bonus.sacrificed
     person["employee_pension_contributions"] = employee
@@ -620,12 +760,6 @@ def impute_salary_sacrifice(
     person[SALSAC_PRE_CONVERSION_PAY_COLUMN] = pre_conversion_pay
     # Weighted aggregates only, banded on distinct source households; a figure
     # one to nine of them carry is "<10" (UKDS disclosure control).
-    source_ids = person_households.map(
-        pd.Series(
-            source_household_ids(household, stage="The salary-sacrifice stage"),
-            index=household["household_id"].to_numpy(),
-        )
-    ).to_numpy()
 
     def bonus_sources(mask: np.ndarray) -> int:
         return distinct_count(source_ids, mask, person_weights)
@@ -645,6 +779,12 @@ def impute_salary_sacrifice(
         ),
         "all_candidates_fall_short": bonus.all_candidates_fall_short,
         "pay_share_capped_support": support_band(bonus_sources(bonus.pay_share_capped)),
+        "pay": "unchanged: a sacrificed bonus is never received",
+        "spi_drawn_support": support_band(bonus_sources(spi_draw.recipients)),
+        "spi_drawn_participant_support": support_band(
+            bonus_sources(spi_draw.recipients & bonus.participants)
+        ),
+        "spi_cells": spi_draw.cells,
         "weights": "household weights at the stage, before calibration, per person",
     }
     post_headcount = float(person_weights[final_ss > 0.0].sum())
@@ -781,6 +921,10 @@ def salary_sacrifice_operation_parameters() -> tuple[
                 "candidates": BONUS_SACRIFICE_CANDIDATES,
                 "move": BONUS_SACRIFICE_MOVE,
                 "move_pay_share_cap": SALSAC_MOVE_PAY_SHARE_CAP,
+                "spi_bonus_draw": BONUS_SACRIFICE_SPI_DRAW,
+                "spi_cell_quantiles": list(BONUS_SACRIFICE_SPI_CELL_QUANTILES),
+                "spi_min_donor_sources": BONUS_SACRIFICE_SPI_MIN_DONOR_SOURCES,
+                "spi_salt": BONUS_SACRIFICE_SPI_DRAW_SALT,
                 "threshold": int(BONUS_SACRIFICE_THRESHOLD),
                 "solve": BONUS_SACRIFICE_SOLVE,
                 "seed": SALSAC_CONVERSION_SEED,

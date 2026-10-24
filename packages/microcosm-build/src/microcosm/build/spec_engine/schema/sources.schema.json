@@ -9702,6 +9702,10 @@
       "candidates",
       "move",
       "move_pay_share_cap",
+      "spi_bonus_draw",
+      "spi_cell_quantiles",
+      "spi_min_donor_sources",
+      "spi_salt",
       "threshold",
       "solve",
       "seed",
@@ -9732,6 +9736,23 @@
       },
       "move_pay_share_cap": {
        "type": "number"
+      },
+      "spi_bonus_draw": {
+       "type": "string"
+      },
+      "spi_cell_quantiles": {
+       "type": "array",
+       "items": {
+        "type": "number"
+       },
+       "minItems": 1
+      },
+      "spi_min_donor_sources": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "spi_salt": {
+       "type": "string"
       },
       "threshold": {
        "type": "number"

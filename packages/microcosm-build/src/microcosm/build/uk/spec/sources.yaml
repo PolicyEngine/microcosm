@@ -5418,9 +5418,24 @@ stages:
     facts: obr_salary_sacrifice_costing_facts.json
     source: frs_bonus_amount
     output: pension_contributions_via_bonus_sacrifice
-    candidates: frs_bonus_amount > 0 and employment_income - frs_bonus_amount at least the anchor's annual upper earnings limit, after the salary conversion
-    move: the whole FRS bonus, at most move_pay_share_cap of employment_income and at most the pay left above the salary sacrifice and the employee contribution, to pension_contributions_via_bonus_sacrifice; employment_income lowered by the amount sacrificed; the record's pay before the stage's conversions kept on salary_sacrifice_pre_conversion_pay
+    candidates: a bonus (frs_bonus_amount, or an SPI-channel adult's drawn bonus) > 0 and employment_income at least the anchor's annual upper earnings limit, after the salary conversion
+    move: the bonus, at most move_pay_share_cap of employment_income, to pension_contributions_via_bonus_sacrifice; employment_income unchanged, since a sacrificed bonus is never received
     move_pay_share_cap: 0.5
+    spi_bonus_draw: an SPI-channel adult with pay draws the bonus share of pay (frs_bonus_amount over employment_income) of a base-FRS adult with pay in the same pay cell, by person weight, keyed on person_id; the cells are the base-FRS paid adults' weighted pay quantiles at spi_cell_quantiles, and a cell with fewer than spi_min_donor_sources donor source households joins the one below
+    spi_cell_quantiles:
+    - 0.1
+    - 0.2
+    - 0.3
+    - 0.4
+    - 0.5
+    - 0.6
+    - 0.7
+    - 0.8
+    - 0.9
+    - 0.95
+    - 0.99
+    spi_min_donor_sources: 20
+    spi_salt: bonus_sacrifice_spi_bonus_share
     threshold: 2000
     solve: 'the candidates in the order of their identity-keyed uniforms, taken while the projected base is nearer the anchor''s OBR base: the anchor''s weight growth times the sum of person weight times (max(0, g (S + B) - threshold) - max(0, g S - threshold)), with g the anchor''s earnings growth, S the salary sacrifice and B the bonus sacrificed; every candidate where even all fall short'
     seed: 2024
@@ -5442,7 +5457,7 @@ stages:
   - pension_contributions_via_salary_sacrifice
   - employee_pension_contributions
   - employment_income
-  notes: The QRF trains only on the 2024-25 FRS asked subset with pay. Salary sacrifice is pay given up, so every amount, reported or predicted, is limited to the pay the person still receives, and a person without pay has none (uk-data#518, microcosm#1095); the limit bites above all on SPI-channel rows, which keep their FRS twin's answer beside pay redrawn from the SPI. The second arm creates support toward the reviewed 5.4m staging target by moving contributors' pension amounts, up to half their pay, into salary sacrifice and lowering their pay by the same amount, since the engine reads employment_income after sacrifice; what does not move stays an employee contribution, so the sacrifice never exceeds the pay that remains. Before microcosm#1069 c9 the pay stayed whole and the converted record lost its net-pay relief.
+  notes: The QRF trains only on the 2024-25 FRS asked subset with pay. Salary sacrifice is pay given up, so every amount, reported or predicted, is limited to the pay the person still receives, and a person without pay has none (uk-data#518, microcosm#1095); the limit bites above all on SPI-channel rows, which keep their FRS twin's answer beside pay redrawn from the SPI. The second arm creates support toward the reviewed 5.4m staging target by moving contributors' pension amounts, up to half their pay, into salary sacrifice and lowering their pay by the same amount, since the engine reads employment_income after sacrifice; what does not move stays an employee contribution, so the sacrifice never exceeds the pay that remains. Before microcosm#1069 c9 the pay stayed whole and the converted record lost its net-pay relief. The third arm adds bonus sacrifice beside pay toward the OBR's 2027-28 base above GBP 2,000 (microcosm#1340). A sacrificed bonus is never received, so the FRS records it in neither pay nor its bonus amounts, and pay stays as it is (María's ruling of 2026-10-24 on Vahid's review of microcosm#1383); a received FRS bonus marks a bonus-paying job and its size. An SPI-channel adult's FRS bonus is its twin's, beside the tape's pay, so it draws a bonus share of pay from a base-FRS adult in its pay cell instead.
 - stage: student_loans
   survey: Family Resources Survey 2024-25 and Student Loans Company borrower forecasts for England
   source: Explore Education Statistics Table 6a, Higher education total
