@@ -12391,6 +12391,255 @@
      "additionalProperties": false,
      "required": [
       "kind",
+      "resource",
+      "period_type",
+      "period_value",
+      "fiscal_start",
+      "geography_id",
+      "weeks_per_year",
+      "alcohol_volume_weights",
+      "outputs"
+     ],
+     "properties": {
+      "kind": {
+       "const": "level_excise_quantities"
+      },
+      "resource": {
+       "type": "string"
+      },
+      "period_type": {
+       "const": "fiscal_year"
+      },
+      "period_value": {
+       "type": "integer"
+      },
+      "fiscal_start": {
+       "type": "string"
+      },
+      "geography_id": {
+       "type": "string"
+      },
+      "weeks_per_year": {
+       "type": "integer"
+      },
+      "alcohol_volume_weights": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "rule"
+       ],
+       "properties": {
+        "rule": {
+         "enum": [
+          "spending",
+          "published_on_trade_share"
+         ]
+        },
+        "concept": {
+         "type": "string"
+        },
+        "geography_id": {
+         "type": "string"
+        },
+        "dimensions": {
+         "type": "object",
+         "additionalProperties": {
+          "type": "string"
+         }
+        }
+       }
+      },
+      "outputs": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "concept",
+         "dimensions",
+         "unit"
+        ],
+        "properties": {
+         "concept": {
+          "type": "string"
+         },
+         "dimensions": {
+          "type": "object",
+          "additionalProperties": {
+           "type": "string"
+          },
+          "minProperties": 1
+         },
+         "unit": {
+          "type": "string"
+         },
+         "share": {
+          "type": "number"
+         },
+         "strength": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+           "value",
+           "parameter_path"
+          ],
+          "properties": {
+           "value": {
+            "type": "number"
+           },
+           "parameter_path": {
+            "type": "string"
+           }
+          }
+         }
+        }
+       }
+      },
+      "draught_shares": {
+       "type": "object",
+       "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "concept",
+         "unit",
+         "numerator",
+         "denominator"
+        ],
+        "properties": {
+         "concept": {
+          "type": "string"
+         },
+         "unit": {
+          "type": "string"
+         },
+         "numerator": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+           "type": "object",
+           "additionalProperties": {
+            "type": "string"
+           },
+           "minProperties": 1
+          }
+         },
+         "denominator": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+           "type": "object",
+           "additionalProperties": {
+            "type": "string"
+           },
+           "minProperties": 1
+          }
+         }
+        }
+       }
+      },
+      "gambling": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "receipts",
+        "machine_games_liabilities",
+        "yield",
+        "rates"
+       ],
+       "properties": {
+        "receipts": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "concept"
+         ],
+         "properties": {
+          "concept": {
+           "type": "string"
+          },
+          "geography_id": {
+           "type": "string"
+          },
+          "dimensions": {
+           "type": "object",
+           "additionalProperties": {
+            "type": "string"
+           }
+          }
+         }
+        },
+        "machine_games_liabilities": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "concept"
+         ],
+         "properties": {
+          "concept": {
+           "type": "string"
+          },
+          "geography_id": {
+           "type": "string"
+          },
+          "dimensions": {
+           "type": "object",
+           "additionalProperties": {
+            "type": "string"
+           }
+          }
+         }
+        },
+        "yield": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "concept"
+         ],
+         "properties": {
+          "concept": {
+           "type": "string"
+          },
+          "geography_id": {
+           "type": "string"
+          },
+          "dimensions": {
+           "type": "object",
+           "additionalProperties": {
+            "type": "string"
+           }
+          }
+         }
+        },
+        "rates": {
+         "type": "object",
+         "additionalProperties": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+           "value",
+           "parameter_path"
+          ],
+          "properties": {
+           "value": {
+            "type": "number"
+           },
+           "parameter_path": {
+            "type": "string"
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
       "columns",
       "flag",
       "rule",

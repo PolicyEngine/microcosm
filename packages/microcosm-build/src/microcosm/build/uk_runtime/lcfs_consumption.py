@@ -451,9 +451,10 @@ UK_LCFS_GAMBLING_BASES: Mapping[str, tuple[str, str, str]] = {
 #: between horse racing and the rest by the horse-racing share of all remote
 #: betting yield, since the Commission publishes no activity by event; its
 #: horse racing is not only UK racing, which is the part the 2027 remote rate
-#: leaves out. On-course bets are not dutiable, and spread betting, which the
-#: Commission does not regulate, has no published base, so both inputs stay
-#: at the engine's zero.
+#: leaves out, and its pool betting can hold pools on other events, which pay
+#: Pool Betting Duty. On-course bets are not dutiable, and spread betting,
+#: which the Commission does not regulate, has no published base, so both
+#: inputs stay at the engine's zero.
 UK_LCFS_GENERAL_BETTING_YIELD_CELLS: Mapping[str, tuple[str, str, str]] = {
     "over_the_counter": ("betting_non_remote", "off_course_over_the_counter", "all"),
     "remote_fixed_odds": ("betting_remote", "betting", "all"),
@@ -717,10 +718,29 @@ UK_LCFS_RECOMPOSED_DRAWN_COLUMNS = tuple(
         for column in subtracted
     )
 )
+#: The excise inputs the stage's declared ``level_excise_quantities`` step
+#: writes (microcosm#1359): litres of the five alcohol products HMRC publishes
+#: clearances of, the beer and cider draught shares, the four tobacco products
+#: and every gambling base. Sparkling cider, heated tobacco and spread betting
+#: have no published quantity of their own and keep the engine's zero.
+UK_LCFS_EXCISE_DECLARED_OUTPUTS = (
+    "beer_litres",
+    "cider_litres",
+    "wine_litres",
+    "spirits_litres",
+    "other_fermented_litres",
+    *UK_LCFS_EXCISE_DRAUGHT_OUTPUTS,
+    "cigarettes_per_week",
+    "hand_rolling_tobacco_grams_per_week",
+    "cigars_grams_per_week",
+    "other_tobacco_grams_per_week",
+    *UK_LCFS_EXCISE_GAMBLING_OUTPUTS,
+)
 UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS = (
     *UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
     "has_fuel_consumption",
     UK_LCFS_PREPAYMENT_METER_COLUMN,
+    *UK_LCFS_EXCISE_DECLARED_OUTPUTS,
 )
 UK_LCFS_CONSUMPTION_NONNEGATIVE_OUTPUT_COLUMNS = UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS
 UK_LCFS_CONSUMPTION_FIT_NAME = "uk_lcfs_2024_25_consumption"
@@ -987,14 +1007,18 @@ class UKLCFSConsumptionStageTransform:
         household = frame.table("household").copy()
         for column in UK_LCFS_CONSUMPTION_TARGET_COLUMNS:
             household[column] = household_draws[column].to_numpy()
-        if quantities is not None:
-            for column in quantities.columns:
-                household[column] = quantities[column].to_numpy(dtype=float)
         household["has_fuel_consumption"] = recipient["has_fuel_consumption"].to_numpy(
             dtype=bool
         )
         if prepayment is not None:
             household[UK_LCFS_PREPAYMENT_METER_COLUMN] = prepayment.flags
+        if quantities is not None:
+            # In the declared output order, which the stage's outputs and the
+            # graph's typed cells follow; an undeclared input fails here.
+            for column in sorted(
+                quantities.columns, key=UK_LCFS_EXCISE_DECLARED_OUTPUTS.index
+            ):
+                household[column] = quantities[column].to_numpy(dtype=float)
         result = uk_national_frame(
             person=frame.table("person").copy(),
             benunit=frame.table("benunit").copy(),

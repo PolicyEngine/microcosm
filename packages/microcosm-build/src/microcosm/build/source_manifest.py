@@ -152,6 +152,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "impute_prepayment_meter",
         "iterative_proportional_fit",
         "level_road_fuel",
+        "level_excise_quantities",
         "redraw_zero_road_fuel",
         "recompose_from_remainder",
         "pair_clone_households_to_originals",

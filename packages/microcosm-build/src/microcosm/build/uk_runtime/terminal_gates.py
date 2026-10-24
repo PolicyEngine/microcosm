@@ -220,6 +220,34 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     # older engine ignores the column; the incumbent does not carry it yet
     # (uk-data#539).
     "household.uses_energy_prepayment_meter",
+    # microcosm#1359: the LCFS excise step's policyengine-uk inputs (the
+    # alcohol and tobacco ones from 2.145.0, the gambling duty bases from
+    # 2.151.0); an older engine ignores a column it does not know, and the
+    # incumbent carries none of them.
+    "household.beer_litres",
+    "household.cider_litres",
+    "household.wine_litres",
+    "household.spirits_litres",
+    "household.other_fermented_litres",
+    "household.beer_draught_share",
+    "household.cider_draught_share",
+    "household.cigarettes_per_week",
+    "household.hand_rolling_tobacco_grams_per_week",
+    "household.cigars_grams_per_week",
+    "household.other_tobacco_grams_per_week",
+    "household.remote_gaming_net_losses",
+    "household.pool_betting_net_receipts",
+    "household.bingo_net_receipts",
+    "household.national_lottery_ticket_spending",
+    "household.land_based_casino_net_losses",
+    "household.machine_games_lower_rate_net_takings",
+    "household.machine_games_standard_rate_net_takings",
+    "household.machine_games_higher_rate_net_takings",
+    "household.land_based_fixed_odds_betting_net_losses",
+    "household.remote_uk_horseracing_betting_net_losses",
+    "household.remote_other_betting_net_losses",
+    "household.betting_exchange_commission",
+    "household.horse_and_dog_pool_betting_net_losses",
     "household.household_is_capital_gains_clone",
     "household.household_is_cgt_support_copy",
     "household.household_is_spi_income_band_donor",
