@@ -233,6 +233,7 @@ def test_nz_generation_zero_views_come_from_the_country_spec_seam() -> None:
         "geography_spine.json",
         "holdout_references.json",
         "precal_references.json",
+        "reference_aging.json",
         "reference_inventory.json",
         "reference_profiles.json",
         "release_contract.json",

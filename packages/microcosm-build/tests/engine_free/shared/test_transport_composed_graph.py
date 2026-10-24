@@ -94,6 +94,9 @@ from microcosm.graph import (
 from microcosm.graph.canonical import canonical_json
 from microcosm.graph.keys import node_key, source_content_key
 from test_support.microcosm_build.chronicle_feed import write_pinned_artifact
+from test_support.microcosm_build.reference_factor_transport import (
+    factor_transport_fixture,
+)
 from test_support.microcosm_build.transport_composed import (
     FAMILY_INPUTS,
     PROGRAMS,
@@ -962,6 +965,143 @@ def test_preflight_checks_the_selected_variant_reference_status(composed):
         match="placeholder reference target_references\\." + re.escape(row["name"]),
     ):
         validate_transport_activation(spec)
+
+
+def test_factor_context_is_read_without_composition_feed_io(tmp_path, monkeypatch):
+    _, pin, _, _, spec = factor_transport_fixture(tmp_path)
+    spec["resources"]["chronicle_feed"] = pin
+
+    def no_feed_io(*args, **kwargs):
+        raise AssertionError("Composition must not load the consumer artifact.")
+
+    monkeypatch.setattr(
+        "microcosm.build.ledger_artifact.load_ledger_consumer_artifact", no_feed_io
+    )
+    view = compose_module.reference_profile_view(spec)
+    assert view[2]["selected_factors"]["toy_factor"]["operational_factor"] == {
+        "numerator": 1100000,
+        "denominator": 1000000,
+    }
+    assert all(
+        row["metadata"]["activation_status"] == "requires_prerequisites"
+        for row in view[0]["target_references"]
+    )
+    assert compose_module.transport_resource(spec, "target_references") == view[0]
+
+
+def test_factor_context_ignores_feed_pin_prose(tmp_path):
+    _, pin, _, _, spec = factor_transport_fixture(tmp_path)
+    spec["resources"]["chronicle_feed"] = pin
+    before = compose_module.reference_profile_view(spec)
+    pin["build"] = "Reviewed prose edit"
+    pin["source_repo"] = "Reviewed repository description"
+    assert compose_module.reference_profile_view(spec) == before
+
+
+@pytest.mark.parametrize(
+    "defect",
+    ["missing", "wrong_feed", "wrong_commit", "wrong_manifest", "wrong_factor"],
+)
+def test_preflight_refuses_missing_or_incompatible_default_factor_context(
+    tmp_path, defect
+):
+    _, pin, _, _, spec = factor_transport_fixture(tmp_path)
+    spec["resources"]["chronicle_feed"] = pin
+    if defect == "missing":
+        spec["resources"].pop("factor_context")
+    elif defect == "wrong_feed":
+        spec["resources"]["chronicle_feed"] = {**pin, "facts_sha256": "0" * 64}
+    elif defect == "wrong_commit":
+        pin["source_commit"] = "d" * 40
+    elif defect == "wrong_manifest":
+        pin["manifest_sha256"] = "0" * 64
+    else:
+        spec["resources"]["factor_context"]["factors"][0]["operational_factor"][
+            "numerator"
+        ] += 1
+    with pytest.raises(
+        ValueError, match="missing resource|incompatible|factor differs"
+    ):
+        validate_transport_activation(spec)
+
+
+def test_preflight_resolves_empty_knobs_only_once(tmp_path, monkeypatch):
+    _, _, _, _, spec = factor_transport_fixture(tmp_path)
+    original = compose_module.reference_profile_view
+    selections = []
+
+    def recording_view(spec, selection=None):
+        selections.append(selection)
+        return original(spec, selection)
+
+    monkeypatch.setattr(compose_module, "reference_profile_view", recording_view)
+    with pytest.raises(ValueError, match="Transport spec is not activated"):
+        validate_transport_activation(spec)
+    assert selections
+    assert all(selection is None for selection in selections)
+
+
+def test_preflight_validates_scenario_factor_context_before_activation(tmp_path):
+    _, _, _, _, spec = factor_transport_fixture(tmp_path)
+    profiles = spec["resources"]["reference_profiles"]["dimensions"]["index"][
+        "profiles"
+    ]
+    profiles["low"]["transformations"][0]["factor_id"] = "missing-scenario-factor"
+    assert compose_module.reference_profile_view(spec)[2]["selection"] == {
+        "index": "central"
+    }
+    spec["resources"]["scenarios"]["scenarios"].append(
+        {"id": "variant", "knobs": {"index": "low"}}
+    )
+    with pytest.raises(ValueError, match="Missing selected factor"):
+        validate_transport_activation(spec)
+
+
+def test_declared_ageing_scenarios_bind_selected_evidence_and_preserve_locality():
+    spec = load_transport_spec("nz")
+    profiles = spec["resources"]["reference_profiles"]
+    receipts = {}
+    for scenario in spec["resources"]["scenarios"]["scenarios"]:
+        receipt = compose_module.reference_profile_view(spec, scenario["knobs"])[2]
+        receipts[scenario["id"]] = receipt
+        profile = {"V1": "low", "V2": "high"}.get(scenario["id"], "central")
+        factor_id = f"ird_ty2024_to_ty2027_{profile}"
+        assert receipt["selection"] == {
+            "aging_index": profile,
+            "census_residual_allocation": (
+                "small_households" if scenario["id"] == "V4" else "mar"
+            ),
+        }
+        assert set(receipt["selected_factors"]) == {factor_id}
+        entry = next(
+            entry
+            for entry in spec["resources"]["reference_aging"]["factors"]
+            if entry["declaration"]["id"] == factor_id
+        )
+        assert receipt["selected_factors"][factor_id] == entry
+        chosen = {
+            dimension: {
+                "name": name,
+                "declaration": profiles["dimensions"][dimension]["profiles"][name],
+            }
+            for dimension, name in receipt["selection"].items()
+        }
+        assert (
+            receipt["selected_declarations_sha256"]
+            == hashlib.sha256(canonical_json(chosen)).hexdigest()
+        )
+    profiles["dimensions"]["aging_index"]["profiles"]["high"]["notes"] = (
+        "Reviewed edit confined to the unselected high profile."
+    )
+    for scenario in spec["resources"]["scenarios"]["scenarios"]:
+        revised = compose_module.reference_profile_view(spec, scenario["knobs"])[2]
+        if scenario["id"] == "V2":
+            assert (
+                revised["reference_selection_sha256"]
+                != receipts["V2"]["reference_selection_sha256"]
+            )
+        else:
+            assert revised == receipts[scenario["id"]]
 
 
 class _IllegalOwner(KernelBase):
