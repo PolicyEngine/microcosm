@@ -17,6 +17,7 @@ from microcosm.build.us_runtime.geography_ladder import (
 from microcosm.build.us_runtime.puma_ladder import (
     UsPumaLadder,
     assign_us_puma_ladder,
+    us_puma_ladder_gate,
 )
 from microcosm.data.stored_inputs import undefined_stored_inputs
 
@@ -132,6 +133,41 @@ def test_new_county_column_is_registered_stored_geography() -> None:
             [COUNTY_FIPS_2023_COLUMN], engine_variables={"county_fips"}
         )
         == ()
+    )
+
+
+@pytest.mark.parametrize("empty_tract", ["", None, np.nan, pd.NA])
+def test_puma_gate_checks_retained_donor_tracts_with_tractless_acs_rows(
+    empty_tract,
+) -> None:
+    donor_tract = "09013890203"
+    donor_region = load_ct_planning_region_by_tract()[donor_tract]
+    household = pd.DataFrame(
+        {
+            "state_fips": [9, 36, 9, 36],
+            "puma": ["0920301", "3603801", "0920301", "3600100"],
+            "congressional_district_geoid": [902, 3612, 902, 3620],
+            "county_fips": ["09013", "36061", "09013", "36001"],
+            COUNTY_FIPS_2023_COLUMN: [donor_region, "36061", "09110", "36001"],
+            "tract_geoid": [donor_tract, "36061000100", empty_tract, empty_tract],
+        },
+        index=[1000, 2000, 3000, 4000],
+    )
+    weights = np.array([48.0, 1.0, 49.0, 2.0])
+
+    result = us_puma_ladder_gate(household, weights, assign_tract=False)
+    assert result.passed, result.failures
+
+    household.loc[1000, COUNTY_FIPS_2023_COLUMN] = next(
+        region
+        for region in load_ct_planning_region_by_tract().values()
+        if region != donor_region
+    )
+    result = us_puma_ladder_gate(household, weights, assign_tract=False)
+
+    assert not result.passed
+    assert result.failures == (
+        "county_fips_2023: 1 row(s) disagree with tract_geoid's 2023 county-equivalent.",
     )
 
 

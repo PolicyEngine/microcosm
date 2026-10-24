@@ -543,6 +543,17 @@ def us_puma_ladder_gate(
             tracts=household[US_PUMA_LADDER_TRACT_COLUMN] if assign_tract else None,
         )
     )
+    if not assign_tract and US_PUMA_LADDER_TRACT_COLUMN in household.columns:
+        # Pooled donors retain tracts even when fresh ACS rows have none.
+        tracts = household[US_PUMA_LADDER_TRACT_COLUMN]
+        retained = household.loc[tracts.notna() & tracts.ne("")]
+        failures.extend(
+            county_fips_2023_assignment_failures(
+                retained[COUNTY_FIPS_2023_COLUMN],
+                retained["county_fips"],
+                tracts=retained[US_PUMA_LADDER_TRACT_COLUMN],
+            )
+        )
     if non_text is not None:
         failures.append(non_text)
     puma = household["puma"].astype(str).to_numpy()

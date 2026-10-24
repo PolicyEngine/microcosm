@@ -9,6 +9,10 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.us_runtime.acs_pums import ACS_2024_1YR_SPINE
+from microcosm.build.us_runtime.county_vintage import (
+    COUNTY_FIPS_2023_COLUMN,
+    county_fips_2023_from_tracts,
+)
 from microcosm.build.us_runtime.puf_support import (
     support_channel_column,
     support_clone_index_column,
@@ -684,6 +688,11 @@ def _assign_pooled_puma_ladder(
         assert preserved_cd is not None and preserved_county is not None
         assigned.loc[donor_rows, "congressional_district_geoid"] = preserved_cd
         assigned.loc[donor_rows, "county_fips"] = preserved_county
+        # The sampled county is overwritten above; the retained tract also
+        # determines the donor's calibration county, including CT regions.
+        assigned.loc[donor_rows, COUNTY_FIPS_2023_COLUMN] = (
+            county_fips_2023_from_tracts(assigned.loc[donor_rows, "tract_geoid"])
+        )
     assigned.drop(columns=[_PUMA_LADDER_ANCHOR_COLUMN], inplace=True)
     tables["household"] = assigned
 
