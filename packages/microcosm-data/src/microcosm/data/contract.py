@@ -49,6 +49,7 @@ from packaging.version import InvalidVersion, Version
 from pydantic import ValidationError
 
 from microcosm.data.denied_pools import denied_pool_publication_for
+from microcosm.data.gate_signing_keys import unregistered_gate_signing_key_problem
 from microcosm.data.stored_inputs import is_model_named
 from microcosm.data.us_critical_targets import (
     US_CRITICAL_TARGET_FIT_REQUIREMENTS as _US_CRITICAL_TARGET_FIT_REQUIREMENTS,
@@ -1081,15 +1082,39 @@ def _uk_release_key_from_env(env_var: str, failures: list[str]) -> bytes | None:
 
 
 def _uk_terminal_verification_key(failures: list[str]) -> bytes | None:
-    """The legacy aggregator's trust root (schema-3 reports)."""
+    """The legacy aggregator's trust root (schema-3 reports).
 
-    return _uk_release_key_from_env(_UK_TERMINAL_GATE_SIGNING_KEY_ENV, failures)
+    Bound to the same committed registry as schema 4: no schema-3 report is
+    published (every UK terminal report on the Hub is schema 4), so a
+    legacy report verifies only under a registered key.
+    """
+
+    key = _uk_release_key_from_env(_UK_TERMINAL_GATE_SIGNING_KEY_ENV, failures)
+    if key is None:
+        return None
+    problem = unregistered_gate_signing_key_problem("uk", key, purpose="verify")
+    if problem is not None:
+        failures.append(f"{_UK_TERMINAL_GATE_SIGNING_KEY_ENV}: {problem}")
+        return None
+    return key
 
 
 def _uk_gate_battery_verification_key(failures: list[str]) -> bytes | None:
-    """The shared executor's trust root (schema-4 reports)."""
+    """The shared executor's trust root (schema-4 reports).
 
-    return _uk_release_key_from_env(_UK_GATE_BATTERY_SIGNING_KEY_ENV, failures)
+    The key in the environment must also be registered (active or retired)
+    in ``microcosm.data.gate_signing_keys``: without that, any key that
+    signed a report would verify it.
+    """
+
+    key = _uk_release_key_from_env(_UK_GATE_BATTERY_SIGNING_KEY_ENV, failures)
+    if key is None:
+        return None
+    problem = unregistered_gate_signing_key_problem("uk", key, purpose="verify")
+    if problem is not None:
+        failures.append(f"{_UK_GATE_BATTERY_SIGNING_KEY_ENV}: {problem}")
+        return None
+    return key
 
 
 def _reject_json_constant(token: str) -> None:

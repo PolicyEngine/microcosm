@@ -3604,6 +3604,7 @@ def _national_attempt(
         # These checks must precede input loading. The emitter is already
         # running so a refusal is visible as a failed attempt.
         refuse_occupied_national_output(args)
+        national_role.require_signing_key()
         preflight_staged_dataset(args)
         predecessor = resolve_predecessor(args.logbook_prev_row_digest)
         telemetry = create_staging_run_bundle(args, build_id=state.build_id)
