@@ -447,15 +447,20 @@ UK_LCFS_RECOMPOSED_PARENTS: Mapping[str, tuple[tuple[str, ...], tuple[str, ...]]
 #: range plus levelled parts larger than the drawn ones cannot leave the range
 #: the terminal support gate holds the emitted totals to.
 UK_LCFS_RECOMPOSED_MAXIMUM_TOTAL = "donor_support"
-#: The declared levelling of the divisions' relative over-draw (María's ruling
-#: of 2026-10-23, microcosm#1278): each COICOP division whose frame total per
-#: household stands above its donor's by more than the twelve divisions
-#: together do is brought down to that shared ratio, and no other moves. Only
-#: the chain's own draws move: a division's whole draw, or a recomposed
-#: total's remainder, so the levelled energy, road fuel and priced fares keep
-#: their published levels.
-UK_LCFS_LEVEL_DIVISION_EXCESS = "excess_over_total_ratio"
-UK_LCFS_LEVEL_DIVISION_BASIS = "frame_over_donor_per_household"
+#: The declared levelling of the divisions' relative over-draw (María's rulings
+#: of 2026-10-23 and 2026-10-24, microcosm#1278; Vahid's review of #1383, item
+#: 9). A division's ratio is the spend the chain drew for it per frame
+#: household over the donor's mean of the same spend per donor household: a
+#: recomposed total's remainder against the donor's total less the same parts,
+#: since its levelled energy, road fuel and priced fares keep their published
+#: levels and are no over-draw, and any other division's whole draw. A
+#: division above the divisions' shared ratio, measured once before any
+#: levelling, comes down to it; no other moves. Measured again after each
+#: cut, the shared ratio would fall until every division sat at the lowest
+#: one's, close to levelling to the donor totals (María's ruling of
+#: 2026-10-24). Only the chain's own draws move.
+UK_LCFS_LEVEL_DIVISION_EXCESS = "excess_over_shared_ratio"
+UK_LCFS_LEVEL_DIVISION_BASIS = "drawn_spend_over_donor_spend_per_household"
 #: The chain draws a recomposition subtracts, kept before any step re-levels them.
 UK_LCFS_RECOMPOSED_DRAWN_COLUMNS = tuple(
     dict.fromkeys(
@@ -679,7 +684,7 @@ class UKLCFSConsumptionStageTransform:
             weights=weights,
             donor_support=donor_realized_ranges(donor),
             uprating_factors=uprating_factors,
-            donor_division_means=lcfs_donor_division_means(donor),
+            donor_division_means=lcfs_donor_drawn_means(donor),
         )
         energy_split = donor.attrs.get(UK_LCFS_ENERGY_SPLIT_RECEIPT)
         if recomposed_totals_receipt is not None and isinstance(energy_split, Mapping):
@@ -1984,9 +1989,11 @@ def recompose_parent_totals(
     receipt counts the rows held and the weighted mass taken.
 
     Where the declaration levels the divisions' relative over-draw
-    (``level_division_excess``), each division above the shared ratio is
-    brought down to it before the hold (:func:`division_excess_factors`):
-    a recomposed total by its remainder alone, any other division by its draw.
+    (``level_division_excess``), each division above the shared ratio of the
+    spend the chain drew is brought down to it before the hold
+    (:func:`division_excess_factors`; ``donor_division_means`` is then the
+    donor's drawn spend, :func:`lcfs_donor_drawn_means`): a recomposed total
+    by its remainder alone, any other division by its draw.
     """
 
     check_recomposed_parents(parameters)
@@ -2008,29 +2015,21 @@ def recompose_parent_totals(
             raise ValueError(
                 "Levelling the divisions' excess needs the donor's division means."
             )
-        frame_totals = {
+        # The spend the chain drew: a recomposed total's remainder, any other
+        # division's whole draw.
+        frame_drawn = {
             division: float(
                 np.dot(
                     weight,
-                    split[division][2] + split[division][3]
+                    split[division][2]
                     if division in split
                     else result[division].to_numpy(dtype=float),
                 )
             )
             for division in UK_LCFS_COICOP_DIVISION_COLUMNS
         }
-        parts_totals = {
-            parent: float(np.dot(weight, split[parent][3])) for parent in split
-        }
-        rest_totals = {
-            parent: float(np.dot(weight, split[parent][2])) for parent in split
-        }
         levelling = division_excess_factors(
-            frame_totals,
-            donor_division_means,
-            households=float(weight.sum()),
-            levelled_parts=parts_totals,
-            drawn_rest=rest_totals,
+            frame_drawn, donor_division_means, households=float(weight.sum())
         )
         level_factors = {
             division: entry["factor"]
@@ -2096,50 +2095,56 @@ def recompose_parent_totals(
 
 
 def division_excess_factors(
-    frame_totals: Mapping[str, float],
-    donor_division_means: Mapping[str, float],
+    frame_drawn: Mapping[str, float],
+    donor_drawn_means: Mapping[str, float],
     *,
     households: float,
-    levelled_parts: Mapping[str, float],
-    drawn_rest: Mapping[str, float],
 ) -> dict[str, Any]:
     """Each division's factor bringing its relative over-draw to the shared ratio.
 
-    A division's ratio is its frame total per frame household over its
-    donor's mean per donor household; the shared ratio is the twelve
-    divisions' together. A division above it is brought down to it, and no
-    other moves (María's ruling of 2026-10-23). A recomposed total moves by
-    its remainder alone, so its factor is what takes the remainder to the
-    shared ratio less its levelled parts, at least zero: the parts keep their
-    published levels.
+    ``frame_drawn`` is each division's weighted frame spend the chain drew (a
+    recomposed total's remainder, any other division's whole draw), and
+    ``donor_drawn_means`` the donor's mean of the same per household
+    (:func:`lcfs_donor_drawn_means`). A division's ratio is the one over the
+    other; the shared ratio is the divisions' together, measured once. A
+    division above it comes down to it, and every other keeps its draw
+    (``UK_LCFS_LEVEL_DIVISION_EXCESS``).
     """
 
     expected = {
-        division: households * float(donor_division_means[division])
+        division: households * float(donor_drawn_means[division])
+        for division in UK_LCFS_COICOP_DIVISION_COLUMNS
+    }
+    ratios = {
+        division: (
+            float(frame_drawn[division]) / expected[division]
+            if expected[division] > 0
+            else None
+        )
         for division in UK_LCFS_COICOP_DIVISION_COLUMNS
     }
     total_expected = sum(expected.values())
     if not total_expected > 0:
         raise ValueError("The donor's divisions hold no spend to level against.")
-    shared = sum(frame_totals.values()) / total_expected
-    divisions: dict[str, dict[str, float | None]] = {}
-    for division in UK_LCFS_COICOP_DIVISION_COLUMNS:
-        frame = float(frame_totals[division])
-        donor = expected[division]
-        ratio = frame / donor if donor > 0 else None
-        factor = 1.0
-        if ratio is not None and ratio > shared:
-            target = shared * donor
-            if division in drawn_rest:
-                rest = float(drawn_rest[division])
-                factor = (
-                    min(1.0, max(0.0, (target - levelled_parts[division]) / rest))
-                    if rest > 0
-                    else 1.0
-                )
-            else:
-                factor = target / frame
-        divisions[division] = {"ratio": ratio, "factor": factor}
+    shared = sum(float(frame_drawn[division]) for division in expected) / (
+        total_expected
+    )
+    above = {
+        division
+        for division, ratio in ratios.items()
+        if ratio is not None and ratio > shared
+    }
+    divisions = {
+        division: {
+            "ratio": ratios[division],
+            "factor": (
+                shared * expected[division] / float(frame_drawn[division])
+                if division in above
+                else 1.0
+            ),
+        }
+        for division in UK_LCFS_COICOP_DIVISION_COLUMNS
+    }
     return {
         "rule": UK_LCFS_LEVEL_DIVISION_EXCESS,
         "basis": UK_LCFS_LEVEL_DIVISION_BASIS,
@@ -2174,22 +2179,29 @@ def lcfs_recompose_from_remainder(
     )
 
 
-def lcfs_donor_division_means(donor: pd.DataFrame) -> dict[str, float]:
-    """Each COICOP division's mean per donor household, at the donor's weights.
+def lcfs_donor_drawn_means(donor: pd.DataFrame) -> dict[str, float]:
+    """Each division's drawn spend per donor household, at the donor's weights.
 
-    The donor is the annualised one the chain drew from, carried to the base
-    year, as :func:`division_capture` reads it.
+    A recomposed total's is the division less the parts the stage levels,
+    floored at zero per household as the frame's remainder is; any other
+    division's is the division. The donor is the one the chain drew from.
     """
 
     weight = _numeric(donor["household_weight"]).to_numpy(dtype=float)
     mass = float(weight.sum())
     if not mass > 0:
         raise ValueError("The LCFS donor carries no weight.")
-    return {
-        division: float(np.dot(weight, _numeric(donor[division]).to_numpy(dtype=float)))
-        / mass
-        for division in UK_LCFS_COICOP_DIVISION_COLUMNS
-    }
+    means: dict[str, float] = {}
+    for division in UK_LCFS_COICOP_DIVISION_COLUMNS:
+        spend = _numeric(donor[division]).to_numpy(dtype=float)
+        if division in UK_LCFS_RECOMPOSED_PARENTS:
+            subtracted, _ = UK_LCFS_RECOMPOSED_PARENTS[division]
+            parts = sum(
+                _numeric(donor[column]).to_numpy(dtype=float) for column in subtracted
+            )
+            spend = np.maximum(spend - parts, 0.0)
+        means[division] = float(np.dot(weight, spend)) / mass
+    return means
 
 
 @dataclass(frozen=True)

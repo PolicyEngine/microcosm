@@ -2376,50 +2376,38 @@ def _recompose_declaration(*, levelled: bool = False) -> dict:
 def test_division_excess_factors_bring_only_the_over_drawn_to_the_shared_ratio() -> (
     None
 ):
-    """María's ruling of 2026-10-23 (microcosm#1278): a division above the
-    twelve's shared frame-over-donor ratio comes down to it; none other moves."""
+    """María's rulings of 2026-10-23 and 2026-10-24 (microcosm#1278).
+
+    A division above the shared ratio of the drawn spend comes down to it;
+    none other moves, and the shared ratio is measured once. Housing's
+    levelled parts are no over-draw (Vahid's review of #1383, item 9): its
+    remainder is set against the donor's remainder, so it keeps its draw.
+    """
 
     from microcosm.build.uk_runtime.lcfs_consumption import (
         UK_LCFS_COICOP_DIVISION_COLUMNS,
         division_excess_factors,
     )
 
-    food, *others = UK_LCFS_COICOP_DIVISION_COLUMNS
-    housing = "housing_water_and_electricity_consumption"
-    # Ten households; every donor mean is 10, so each division expects 100.
+    food = UK_LCFS_COICOP_DIVISION_COLUMNS[0]
+    # Ten households; every donor drawn mean is 10, so each division expects
+    # 100 of drawn spend. Housing's remainder is 120 whatever its levelled
+    # parts add to its total.
     means = dict.fromkeys(UK_LCFS_COICOP_DIVISION_COLUMNS, 10.0)
-    frame = dict.fromkeys(UK_LCFS_COICOP_DIVISION_COLUMNS, 120.0)
-    frame[food] = 240.0
-    frame[housing] = 180.0
-    levelled = {housing: 60.0, "transport_consumption": 0.0}
-    rest = {housing: 120.0, "transport_consumption": 120.0}
-    result = division_excess_factors(
-        frame, means, households=10.0, levelled_parts=levelled, drawn_rest=rest
-    )
-    shared = (240.0 + 180.0 + 120.0 * 10) / 1200.0
+    drawn = dict.fromkeys(UK_LCFS_COICOP_DIVISION_COLUMNS, 120.0)
+    drawn[food] = 240.0
+    result = division_excess_factors(drawn, means, households=10.0)
+    shared = (240.0 + 120.0 * 11) / 1200.0
     assert result["shared_ratio"] == pytest.approx(shared)
     divisions = result["divisions"]
-    # Food: 240 down to the shared ratio's 135 by its draw.
     assert divisions[food]["ratio"] == pytest.approx(2.4)
     assert divisions[food]["factor"] == pytest.approx(shared * 100.0 / 240.0)
-    # Housing: its remainder alone takes it to the shared ratio, beside its
-    # levelled 60: (135 - 60) / 120.
-    assert divisions[housing]["factor"] == pytest.approx(
-        (shared * 100.0 - 60.0) / 120.0
-    )
-    # The rest sit below the shared ratio and keep their draws.
-    for division in others:
-        if division != housing:
-            assert divisions[division]["factor"] == 1.0
-    # Levelled parts above the shared level leave the remainder at zero.
-    floored = division_excess_factors(
-        frame,
-        means,
-        households=10.0,
-        levelled_parts={housing: 170.0, "transport_consumption": 0.0},
-        drawn_rest={housing: 10.0, "transport_consumption": 120.0},
-    )
-    assert floored["divisions"][housing]["factor"] == 0.0
+    for division in UK_LCFS_COICOP_DIVISION_COLUMNS[1:]:
+        assert divisions[division]["ratio"] == pytest.approx(1.2)
+        assert divisions[division]["factor"] == 1.0
+    # One pass: the levelled food leaves the shared ratio below the others'
+    # 1.2, and they keep their draws all the same.
+    assert "passes" not in result
 
 
 def test_recompose_levels_the_divisions_excess_before_the_hold() -> None:
@@ -2456,7 +2444,10 @@ def test_recompose_levels_the_divisions_excess_before_the_hold() -> None:
             "bus_fare_spending": [0.0, 0.0],
         }
     )
+    # The donor's drawn spend per household: housing's is its total less the
+    # parts the stage levels.
     means = dict.fromkeys(UK_LCFS_COICOP_DIVISION_COLUMNS, 100.0)
+    means[housing] = 80.0
     out, receipt = recompose_parent_totals(
         draws,
         drawn=drawn,
@@ -2470,7 +2461,8 @@ def test_recompose_levels_the_divisions_excess_before_the_hold() -> None:
     # Food alone stands above the shared ratio and comes down to it.
     assert levelling["divisions"][food]["factor"] < 1.0
     assert out[food].tolist() == pytest.approx([shared * 100.0, shared * 100.0])
-    # Housing (80 remainder + 20 electricity) sits below it and keeps its draw.
+    # Housing's 80 remainder against the donor's 80 sits below it, and keeps
+    # its draw beside its 20 of electricity.
     assert receipt["parents"][housing]["levelling_factor"] == 1.0
     assert out[housing].tolist() == [100.0, 100.0]
     with pytest.raises(ValueError, match="division means"):

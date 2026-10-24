@@ -12487,12 +12487,12 @@
        "properties": {
         "rule": {
          "enum": [
-          "excess_over_total_ratio"
+          "excess_over_shared_ratio"
          ]
         },
         "basis": {
          "enum": [
-          "frame_over_donor_per_household"
+          "drawn_spend_over_donor_spend_per_household"
          ]
         },
         "divisions": {
