@@ -13,6 +13,7 @@ from tools.repin_us_spec_engine_contracts import (
     _replace_length_assertions,
     _replace_literal_assertions,
     _replace_literals,
+    _replace_unclaimed_count,
 )
 
 
@@ -171,6 +172,18 @@ def test_scalar_pins_refuse_missing_duplicate_or_nonliteral_assertions() -> None
         _replace_asserted_scalar("assert x == EXPECTED\n", "x", 2)
     with pytest.raises(ValueError, match="not an integer literal"):
         _replace_asserted_scalar("assert x == True\n", "x", 2)
+
+
+def test_unclaimed_count_expectation_follows_the_observed_expansion() -> None:
+    source = 'with raises(E, match=r"87 unclaimed normative field"):\n# 87 stays\n'
+    assert _replace_unclaimed_count(source, 90) == source.replace(
+        'r"87 unclaimed', 'r"90 unclaimed'
+    )
+    assert _replace_unclaimed_count(source, 87) == source
+    with pytest.raises(ValueError, match="found 0"):
+        _replace_unclaimed_count("x = 1\n", 90)
+    with pytest.raises(ValueError, match="found 2"):
+        _replace_unclaimed_count(source + source, 90)
 
 
 def test_calibration_pin_hashes_the_fixture_contract_not_the_loaded_bundle() -> None:

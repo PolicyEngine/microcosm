@@ -368,7 +368,8 @@ EXPECTED_HASHES = {
     # keeps the US bracket, and the budget search, which the US solve does
     # not run, changes its probes, so again no US solve changes. #454: the
     # meps_esi_premiums stage joins the attested sources and the source
-    # manifest.
+    # manifest. #1376: the puma_county_vintage draw module joins the seed
+    # protocol's attested kernel modules.
     "seed_map": "58741b7c6c8ca8f0ead476ec9893355419c9550d9bdb9287bec57928ce345afb",
     "seed_protocol": "b4c450a618c5ca3116f806d1ae270ae6fb410517404c204e505d10418bc1181f",
     "source_manifest": "87b1e124969ec11b836740c027d28dc2a9d319d279ed55be1d9fc1523390f634",

@@ -22,6 +22,7 @@ import argparse
 import ast
 import hashlib
 import json
+import re
 import sys
 import tokenize
 from io import StringIO
@@ -275,6 +276,34 @@ def _replace_asserted_scalar(source: str, target: str, value: int) -> str:
     if not (isinstance(pin, ast.Constant) and type(pin.value) is int):
         raise ValueError(f"{target}: the asserted pin is not an integer literal")
     return source if pin.value == value else _replace_node(source, pin, value)
+
+
+def _replace_unclaimed_count(source: str, count: int) -> str:
+    """Refresh the one ``"<N> unclaimed normative field"`` expectation.
+
+    Every field has exactly one primary claim, so dropping a claim leaves
+    exactly its observed expansion unclaimed.
+    """
+
+    pattern = re.compile(r"\d+ unclaimed normative field")
+    hits = []
+    for token in tokenize.generate_tokens(StringIO(source).readline):
+        if token.type != tokenize.STRING:
+            continue
+        try:
+            text = ast.literal_eval(token.string)
+        except (ValueError, SyntaxError):
+            continue
+        if isinstance(text, str) and pattern.fullmatch(text):
+            hits.append(token)
+    if len(hits) != 1:
+        raise ValueError(f"expected one unclaimed-field expectation, found {len(hits)}")
+    (token,) = hits
+    lines = source.splitlines(keepends=True)
+    start = sum(map(len, lines[: token.start[0] - 1])) + token.start[1]
+    end = sum(map(len, lines[: token.end[0] - 1])) + token.end[1]
+    literal = re.sub(r"\d+", str(count), token.string, count=1)
+    return source[:start] + literal + source[end:]
 
 
 def fixture_calibration_contract() -> dict:
@@ -573,6 +602,11 @@ def _compiler_pins(*, check: bool) -> None:
                 f"{prefix}{name}" if prefix.endswith(".") else f"{prefix}[{name!r}]"
             )
             rendered[path] = _replace_asserted_counts(rendered[path], target, observed)
+    # The identity test drops the selection claim and expects its fields back
+    # as unclaimed.
+    rendered[FIELD_TEST] = _replace_unclaimed_count(
+        rendered[FIELD_TEST], expansions["selection"][0]
+    )
     observed_counts = report["counts"]
     column_count = observed_counts["typed_columns"]
     artifact_count = observed_counts["typed_artifacts"]
