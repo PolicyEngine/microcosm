@@ -605,7 +605,14 @@ def validate_reference_resolution(
     references_sha256: str | None = None,
     interval_document: Mapping | None = None,
 ) -> dict:
-    """Refuse stale effective documents, receipts or interval companions."""
+    """Refuse stale effective documents, receipts or interval companions.
+
+    The checks bind the effective rows to the receipt and the receipt's
+    factor companions to its selection identity. They assume that identity is
+    trusted, as when composition resolves a fresh receipt: a forger who also
+    replaces the selection identity is outside this layer. Selected factors
+    are anchored independently by replay against the authenticated feed.
+    """
     resolution = _copy(_mapping(receipt, "reference resolution receipt"))
     if (
         resolution.get("resolver_version")
@@ -633,12 +640,18 @@ def validate_reference_resolution(
     ) != resolution.get("effective_intervals_sha256"):
         raise ValueError("Effective interval document hash mismatch.")
     factor_bindings = _factor_reference_bindings(resolution)
-    other_names = set(resolution["transformed_names"]) - set(factor_bindings)
+    transformed_names = resolution.get("transformed_names")
+    if not isinstance(transformed_names, list) or not all(
+        isinstance(name, str) for name in transformed_names
+    ):
+        raise ValueError("Resolution receipt transformed names are malformed.")
+    other_names = set(transformed_names) - set(factor_bindings)
     names, used_factors, seen_names = [], set(), set()
     for row in document.get("target_references", ()):
-        if factors and row["name"] in seen_names:
-            raise ValueError("Duplicate factor companion reference roster name.")
-        seen_names.add(row["name"])
+        if factors:
+            if row.get("name") in seen_names:
+                raise ValueError("Duplicate factor companion reference roster name.")
+            seen_names.add(row.get("name"))
         metadata = row.get("metadata", {})
         if metadata.get("reference_profiles_resolved"):
             names.append(row["name"])

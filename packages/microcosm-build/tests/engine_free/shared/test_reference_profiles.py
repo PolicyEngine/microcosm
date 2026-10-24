@@ -6,7 +6,7 @@ import copy
 import json
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 from microcosm_build.reference_factors import factor_context_fixture
 
@@ -401,7 +401,14 @@ def test_factor_scales_money_once_keeps_counts_and_measurement_prerequisite():
     pair_count=st.integers(min_value=1, max_value=16),
     anchor=st.integers(min_value=1, max_value=500),
 )
-@settings(max_examples=16, database=None, deadline=None)
+# Two integers are cheap to draw; a 31 s draw under host load tripped
+# too_slow in review, so only wall-clock health is suppressed.
+@settings(
+    max_examples=16,
+    database=None,
+    deadline=None,
+    suppress_health_check=[HealthCheck.too_slow],
+)
 def test_counts_are_invariant_and_every_money_row_uses_one_common_factor(
     pair_count, anchor
 ):
@@ -592,6 +599,26 @@ def test_legacy_receipt_remains_version_one_without_factor_fields():
     assert reference_document_sha256(receipt) == (
         "753fe7ddb2bc5e00cc4d70a74e0cac8295af266ffbc05511101540e39ae21508"
     )
+
+
+def test_legacy_receipt_without_transformed_names_refuses_as_a_value_error():
+    references, declarations = _inputs()
+    effective, _, receipt = resolve_reference_profiles(references, declarations, {})
+    receipt.pop("transformed_names")
+    receipt.pop("receipt_sha256")
+    receipt["receipt_sha256"] = reference_document_sha256(receipt)
+    with pytest.raises(ValueError, match="transformed names"):
+        validate_reference_resolution(effective, receipt)
+
+
+def test_unnamed_unresolved_rows_still_validate_without_factor_evidence():
+    references, declarations = _inputs()
+    effective, _, receipt = resolve_reference_profiles(references, declarations, {})
+    effective["target_references"].append({"entity": "household", "metadata": {}})
+    receipt.pop("receipt_sha256")
+    receipt["effective_references_sha256"] = reference_document_sha256(effective)
+    receipt["receipt_sha256"] = reference_document_sha256(receipt)
+    assert validate_reference_resolution(effective, receipt) == receipt
 
 
 def test_nz_default_factor_receipt_is_compact_and_covers_the_exact_roster():
