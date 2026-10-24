@@ -541,6 +541,32 @@ def test_distinct_fact_reusing_an_atom_key_cannot_replace_the_atom(direct):
         _compile(facts, reference, direct)
 
 
+@pytest.mark.parametrize("direct", [False, True])
+def test_distinct_base_fact_reusing_an_atom_key_cannot_replace_the_atom(direct):
+    # Delta-review counterexample: a base selector pinned to a different
+    # record that reuses atom 1's key and carries 66 instead of 72 would
+    # otherwise displace the validated atom (76.8 became 72.33).
+    facts, reference = _case(growth=False)
+    assert _compile(facts, reference, direct).value == pytest.approx(76.8)
+    facts[0]["source_record_id"] = "original-atom-record"
+    alternate = deepcopy(facts[0])
+    alternate["source_record_id"] = "different-base-record"
+    alternate["value"] = 66
+    facts.append(alternate)
+    selector = deepcopy(reference.ledger_selector)
+    selector["source_record_id"] = alternate["source_record_id"]
+    operands = deepcopy(list(reference.value_operands))
+    operands[2]["member_selectors"][0]["source_record_id"] = facts[0][
+        "source_record_id"
+    ]
+    reference = replace(
+        reference, ledger_selector=selector, value_operands=tuple(operands)
+    )
+    match = "distinct facts share" if direct else "distinct facts share|exactly once"
+    with pytest.raises(ValueError, match=match):
+        _compile(facts, reference, direct)
+
+
 # Cold local-constant discovery on the shared build machine can dominate data
 # generation; retain every generated example and numerical assertion.
 @settings(

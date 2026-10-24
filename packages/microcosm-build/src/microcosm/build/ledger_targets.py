@@ -2763,18 +2763,16 @@ def _resolve_allocation_reference_facts(
         if _numeric_fact_value(fact, reference) < 0:
             raise ValueError(f"{prefix} requires finite nonnegative counts.")
         _validate_fact_aggregation(fact, reference)
-    base_keys = {_fact_key(fact) for fact in base}
     labelled_facts = (
         *sorted(base, key=_fact_key),
-        *sorted(
-            (fact for fact in atoms if _fact_key(fact) not in base_keys), key=_fact_key
-        ),
+        *sorted(atoms, key=_fact_key),
         total,
         *growth,
     )
     # A published cell may serve more than one operand role. Preserve each
     # fact once after checking every input selector's exact cardinality, but
-    # never let a different fact that reuses a key replace a validated one.
+    # never let a different fact that reuses a key replace a validated one:
+    # every base, atom, total and growth fact enters this comparison.
     by_key: dict[str, object] = {}
     for fact in labelled_facts:
         key = _fact_key(fact)
