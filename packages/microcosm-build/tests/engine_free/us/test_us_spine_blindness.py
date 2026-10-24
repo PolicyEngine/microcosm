@@ -261,6 +261,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "congressional_district_geography.py",
         "congressional_district_vintage.py",
         "congressional_district_vintage_crosswalk.py",
+        # 2020 tract/county -> 2023 county-equivalent metadata and its gate;
+        # writes calibration geography only, no population treatment.
+        "county_vintage.py",
         "cps_carried.py",
         "demographics.py",
         "education_assistance_source.py",
@@ -295,6 +298,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "puf_qrf_worker.py",
         "puf_source_agi.py",
         "puf_support.py",
+        # 2023 county for the PUMA ladder's rows, drawn after its original
+        # draws (CT only, without a tract); no population treatment.
+        "puma_county_vintage.py",
         "puma_ladder.py",
         "puma_ladder_sources.py",
         "reform_coverage_smoke.py",
