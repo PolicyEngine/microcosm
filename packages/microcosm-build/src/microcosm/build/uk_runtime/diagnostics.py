@@ -18,6 +18,7 @@ import functools
 import json
 import math
 import sys
+import time
 import warnings
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
@@ -1155,20 +1156,34 @@ def _row_blocks(
 
     A local row whose carriers span regions, or that has none, is checked in
     its own grain and area. Local rows need the frame's household region, so
-    a frame without one refuses. :func:`uk_withheld_row_sets` runs the blocks
-    until none withholds a row another needs.
+    a frame without one refuses, and each local row needs its contract
+    target, which ties it to its family and parents, so a row without one
+    refuses too rather than join no family block (Vahid's third review of
+    #1383, item 33). :func:`uk_withheld_row_sets` runs the blocks until none
+    withholds a row another needs.
     """
 
     level = _row_level(geography_levels)
     national: set[str] = set()
     local: dict[tuple[str, str], set[str]] = {}
+    untied: list[str] = []
     for row in target_rows:
         name = str(row["name"])
         grain = level(name)
         if grain in UK_AREA_SUPPORT_LEVELS:
             local.setdefault((grain, _row_area(row)), set()).add(name)
+            metadata = row.get("metadata")
+            if not (
+                isinstance(metadata, Mapping) and metadata.get("contract_target_id")
+            ):
+                untied.append(name)
         else:
             national.add(name)
+    if untied:
+        raise ValueError(
+            "UK local rows are checked with their family's parents, matched by "
+            f"contract target, but {len(untied)} name none: {sorted(untied)[:5]}."
+        )
     blocks = [sorted(national)] if national else []
     if not local:
         return blocks
@@ -1224,7 +1239,9 @@ def _family_blocks(
     A family is the local targets the cross-grain declarations' partitions
     or a nested measurement tie together (:func:`uk_local_family_parents`);
     its parents are the higher-grain targets tied to it. A row is matched to
-    its target by ``metadata.contract_target_id``.
+    its target by ``metadata.contract_target_id``, which :func:`_row_blocks`
+    requires of every local row. A parent the build does not bind is not
+    published, so its absence needs no refusal.
     """
 
     by_target: dict[str, set[str]] = {}
@@ -1513,6 +1530,7 @@ def uk_withheld_row_sets(
 
     if not target_rows:
         return set(), set()
+    started = time.perf_counter()
     span = _CarrierSpan.build(problem, weights, frame, geography_levels)
     blocks = _row_blocks(target_rows, geography_levels, span)
     block_rows = [span.rows(block) for block in blocks]
@@ -1533,6 +1551,7 @@ def uk_withheld_row_sets(
     withheld = set(thin)
     checked: dict[int, frozenset[str]] = {}
     pending = list(range(len(blocks)))
+    checks = 0
     while pending:
         position = pending.pop(0)
         names = block_rows[position][0]
@@ -1543,6 +1562,7 @@ def uk_withheld_row_sets(
         added = _withheld_in_block(
             *block_rows[position], held=held, protected=protected
         )
+        checks += 1
         checked[position] = held | added
         for name in added:
             owners.setdefault(name, set()).add(position)
@@ -1550,6 +1570,14 @@ def uk_withheld_row_sets(
             for other in membership[name]:
                 if other != position and other not in pending:
                     pending.append(other)
+    if len(blocks) > 1:
+        # A local surface checks overlapping blocks, each a dense span; the
+        # build's log times it (Vahid's third review of #1383, item 32).
+        print(
+            f"UK withholding: {len(blocks)} blocks, {checks} block checks, "
+            f"{len(withheld)} rows withheld, {time.perf_counter() - started:.1f} s.",
+            file=sys.stderr,
+        )
     return thin, withheld - thin
 
 

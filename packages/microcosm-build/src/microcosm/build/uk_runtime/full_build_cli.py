@@ -3157,6 +3157,14 @@ def _execute_national_build(
         "score_vs_enhanced_frs": None,
     }
     stage(telemetry, "diagnostics", "started")
+    # The national gates flagged the rows whose model figures stay in the
+    # build; the diagnostics take that set rather than count it again, so it
+    # is computed once per build (Vahid's third review of #1383, item 32).
+    withheld = frozenset(
+        str(row["name"])
+        for row in evidence["diagnostics"]
+        if row.get("model_figures_withheld") is True
+    )
     diagnostics_outcome = write_uk_calibration_diagnostics(
         result,
         paths["calibration_diagnostics"],
@@ -3164,6 +3172,7 @@ def _execute_national_build(
         target_geography_levels=evidence["target_geography_levels"],
         target_registry=solved_registry,
         build=build_block,
+        withheld=withheld,
     )
     if isinstance(diagnostics_outcome, DiagnosticsWriteFailure):
         raise RuntimeError(

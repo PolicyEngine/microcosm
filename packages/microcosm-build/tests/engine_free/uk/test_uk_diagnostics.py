@@ -1541,7 +1541,14 @@ def test_a_thin_row_is_withheld_at_every_level() -> None:
         EntitySchema(group_entities=("household",)),
         {"household": Weights(np.ones(n), WeightKind.DESIGN)},
     )
-    rows = [{"name": "thin_row@E14000001@2025"}]
+    # A local row names its contract target (Vahid's third review of #1383,
+    # item 33); this one ties to no family.
+    rows = [
+        {
+            "name": "thin_row@E14000001@2025",
+            "metadata": {"contract_target_id": "fixture.thin_row"},
+        }
+    ]
     for level, withheld in (
         ("national", True),
         ("region", True),
@@ -1565,13 +1572,16 @@ def _withheld_sets(
     levels: dict[str, str] | None = None,
     regions: list[str] | None = None,
     targets: dict[str, str] | None = None,
+    tie_targets: bool = True,
 ) -> tuple[set[str], set[str]]:
     """``uk_withheld_row_sets`` over rows given by the households that carry them.
 
     Every household is its own source household (or ``sources``) and carries
     weight one. A row's entries are one, or its ``values`` (one for all its
     households, or one each). ``regions`` gives each household's region, and
-    ``targets`` a row's contract target.
+    ``targets`` a row's contract target. Any other row gets a contract target
+    no family holds, as a local row must name one; ``tie_targets=False``
+    leaves the other rows without one.
     """
 
     from types import SimpleNamespace
@@ -1608,10 +1618,15 @@ def _withheld_sets(
         EntitySchema(group_entities=("household",)),
         {"household": Weights(np.ones(n), WeightKind.DESIGN)},
     )
+    tied = {
+        name: (targets or {}).get(name)
+        or (f"test:{name.split('@')[0]}" if tie_targets else None)
+        for name in names
+    }
     target_rows = [
         {"name": name}
-        if name not in (targets or {})
-        else {"name": name, "metadata": {"contract_target_id": targets[name]}}
+        if tied[name] is None
+        else {"name": name, "metadata": {"contract_target_id": tied[name]}}
         for name in names
     ]
     return uk_withheld_row_sets(problem, np.ones(n), frame, target_rows, levels)
@@ -2842,9 +2857,49 @@ def test_a_national_row_less_a_familys_published_cells_withholds_one_more() -> N
     )
     assert thin == {"dwp.uc.households_by_area@E14000003@2025"}
     assert beside == {"dwp.uc.households_by_area@E14000002@2025"}
-    # Without the contract targets no family block forms, and nothing is
-    # withheld beside the thin cell: the gap this closes.
-    assert _withheld_sets(rows, 60, levels=levels, regions=regions) == (thin, set())
+    # Without its contract target a local row would join no family block and
+    # nothing would be withheld beside the thin cell, so it refuses (Vahid's
+    # third review of #1383, item 33).
+    with pytest.raises(ValueError, match="name none"):
+        _withheld_sets(rows, 60, levels=levels, regions=regions, tie_targets=False)
+
+
+def test_no_parentless_local_family_shares_its_measurement_with_a_higher_row() -> None:
+    """A local family with no parent has no higher-grain row of its measurement.
+
+    The family check ties a family to its parents through the cross-grain
+    declarations or a nested measurement. A national or regional row of the
+    same measurement left untied would let a published total less the
+    family's cells give a thin cell back unchecked (Vahid's third review of
+    #1383, item 33). Today the parentless families are the two DESNZ kWh
+    families, the three equivalised income and housing cost families and the
+    two private rent families; the national energy rows are spend, not kWh.
+    """
+
+    from microcosm.build.uk_runtime.cross_grain_declarations import (
+        UK_LOCAL_GEOGRAPHY_LEVELS,
+    )
+    from microcosm.build.uk_runtime.diagnostics import uk_local_family_parents
+    from microcosm.build.uk_runtime.ledger_targets import (
+        uk_cross_grain_contract_signatures,
+    )
+
+    contract = uk_cross_grain_contract_signatures()
+
+    def concept(target_id: str) -> object:
+        return (contract[target_id].get("measurement") or {}).get("concept")
+
+    higher: dict[object, set[str]] = {}
+    for target_id, target in contract.items():
+        if set(target.get("geography_levels") or ()) - UK_LOCAL_GEOGRAPHY_LEVELS:
+            higher.setdefault(concept(target_id), set()).add(target_id)
+    parentless = [
+        members for members, parents in uk_local_family_parents() if not parents
+    ]
+    assert parentless
+    for members in parentless:
+        for target_id in members:
+            assert not higher.get(concept(target_id), set()) - members, target_id
 
 
 def test_a_row_one_block_withholds_stays_hidden_in_another() -> None:

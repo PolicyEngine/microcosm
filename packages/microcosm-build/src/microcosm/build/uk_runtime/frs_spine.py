@@ -1134,7 +1134,10 @@ def _add_benefits(
     # Any other amount, above the allowance's rate and at no rate (a lump sum,
     # a part month or a misreport), stays the payment, which is neither taxed
     # nor means-tested (Vahid's review of #1383, item 12); an allowance with an
-    # inherited additional pension above its rate reads as the payment too.
+    # inherited additional pension above its rate reads as the payment too,
+    # which the FRS 2024-25 leaves rare: fewer than ten code-6 amounts sit
+    # above the allowance's rate at no rate of the payment (his third review,
+    # item 34).
     code_6 = benefit == 6
     wpa = code_6 & ~bsp_rate_match(amount) & wpa_rate_match(amount)
     bsp = code_6 & ~wpa
