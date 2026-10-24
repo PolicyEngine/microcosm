@@ -39,7 +39,8 @@ from pathlib import Path
 import modal
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parents[1]
+#: The repo root locally; inside a container this file sits at /root/pilot.py.
+REPO = HERE.parents[1] if modal.is_local() else HERE
 
 HF_REPO = "policyengine/populace-us"
 HF_REVISION = "fb8ba90e7f576ad0bb3f29b5aff2d1ec7007e912"
