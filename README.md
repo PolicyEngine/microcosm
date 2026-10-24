@@ -367,8 +367,9 @@ the historical `record` and `projection`) penalize distance from the design
 weights; see [penalized calibration toward the design weights](docs/calibration-l2-basis.md)
 for the algebra, the evidence and the measured frontier.
 
-National and ACS local-area builds now use the same typed schema-8 calibration
-diagnostics writer. The local builder adds its Census population marginals to a
+National and ACS local-area builds now use the same typed calibration
+diagnostics writer, which publishes schema 9: the schema-8 document builders
+assemble, with each hierarchy label declared once in `hierarchy_catalogs`. The local builder adds its Census population marginals to a
 versioned `TargetRegistry`, including provider, category, geography, and target
 hierarchy, before calibration. Both builders always attempt diagnostics after
 the calibrated dataset exists. If construction, validation, serialization, or
@@ -383,11 +384,11 @@ UK release workflows stop when diagnostics are unavailable because their later
 release checks require that evidence; historical schema-6 and schema-7 UK
 artifacts remain readable through isolated compatibility validation.
 
-A Draft 2020-12 JSON Schema for schema 8, generated from those models, is
-committed at
-`packages/microcosm-diagnostics/src/microcosm/diagnostics/schemas/calibration_diagnostics.v8.schema.json`
-for consumers that check the file without importing them, such as the
-collector. Its description lists the model rules a JSON Schema cannot express;
+Draft 2020-12 JSON Schemas for schema 9 and schema 8, generated from those
+models, are committed at
+`packages/microcosm-diagnostics/src/microcosm/diagnostics/schemas/calibration_diagnostics.v9.schema.json`
+and `calibration_diagnostics.v8.schema.json` beside it, for consumers that check
+the file without importing them, such as the collector. Its description lists the model rules a JSON Schema cannot express;
 see the [package README](packages/microcosm-diagnostics/README.md).
 
 Standard publication uploads the locally built `releases/<id>/` artifacts to

@@ -36,6 +36,7 @@ from microcosm.calibrate import (
     effective_sample_size,
 )
 from microcosm.calibrate.diagnostics import past_cap_census
+from microcosm.calibrate.hierarchy_labels import UK_HIERARCHY_LABEL_CHOICES
 from microcosm.calibrate.solve import CalibrationResult
 from microcosm.diagnostics import (
     UK_DIAGNOSTICS_SCHEMA_VERSION,
@@ -45,6 +46,7 @@ from microcosm.diagnostics import (
     UK_WITHHELD_PUBLISHED_OPTIONS,
     CalibrationDiagnosticsV8,
     DiagnosticsWriteOutcome,
+    HierarchyLabelChoices,
     failed_diagnostics_outcome,
 )
 from microcosm.diagnostics import (
@@ -52,10 +54,13 @@ from microcosm.diagnostics import (
 )
 from microcosm.frame import Frame
 
+from .local_authority_input import load_uk_local_authority_names_resource
+
 __all__ = [
     "UK_DIAGNOSTICS_SCHEMA_VERSION",
     "UK_TARGET_GEOGRAPHY_LEVELS",
     "uk_calibration_diagnostics_payload",
+    "uk_hierarchy_label_choices",
     "uk_consumption_drift",
     "uk_fit_by_family",
     "uk_support_limited_misses",
@@ -2331,6 +2336,25 @@ def uk_calibration_diagnostics_payload(
     )
 
 
+def uk_hierarchy_label_choices() -> HierarchyLabelChoices:
+    """The UK's label choices, with the ONS April 2023 local-authority names.
+
+    UK publishers name one area several ways, and Chronicle's local facts
+    carry the area as a ``geography`` dimension value (HMRC "Hartlepool UA",
+    ONS "Hartlepool"). Diagnostics schema 9 holds one label per area: the
+    payload's own geography label for that code, else Microcosm's catalogs,
+    ``UK_GEOGRAPHY_ID_TO_LABEL`` and ``local_authority_names.json``
+    (:mod:`microcosm.calibrate.hierarchy_labels`).
+    """
+
+    areas = load_uk_local_authority_names_resource()["areas"]
+    return UK_HIERARCHY_LABEL_CHOICES.merged(
+        HierarchyLabelChoices(
+            geographies={code: str(entry["name"]) for code, entry in areas.items()}
+        )
+    )
+
+
 def write_uk_calibration_diagnostics(
     result: CalibrationResult,
     path: Path | str,
@@ -2372,4 +2396,6 @@ def write_uk_calibration_diagnostics(
         )
     except Exception as error:  # diagnostics must not escape without validation
         return failed_diagnostics_outcome(error, path=output)
-    return write_typed_calibration_diagnostics(diagnostics, output)
+    return write_typed_calibration_diagnostics(
+        diagnostics, output, label_choices=uk_hierarchy_label_choices()
+    )

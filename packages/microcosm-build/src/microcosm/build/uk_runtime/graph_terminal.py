@@ -946,8 +946,14 @@ class UKFullGateKernel(KernelBase):
             )
             diagnostics = evidence.artifacts["target_diagnostics"]
             support = support_frame.to_dict(orient="records")
+            from microcosm.diagnostics import (
+                CalibrationDiagnosticsV8,
+                catalog_calibration_diagnostics,
+            )
+
             from .diagnostics import (
                 uk_calibration_diagnostics_payload,
+                uk_hierarchy_label_choices,
                 uk_withhold_brma_figures,
             )
 
@@ -995,10 +1001,18 @@ class UKFullGateKernel(KernelBase):
                 },
                 withheld=withheld,
             )
+            # Published as schema 9, as the canonical writer publishes it:
+            # one label per area, whichever publisher named it
+            # (uk_hierarchy_label_choices); an unresolved second label is
+            # refused (HierarchyLabelConflictError).
+            published_diagnostics = catalog_calibration_diagnostics(
+                CalibrationDiagnosticsV8.model_validate(complete_diagnostics),
+                label_choices=uk_hierarchy_label_choices(),
+            ).model_dump(mode="python", exclude_defaults=True)
             output_artifacts.update(
                 {
                     "calibration_diagnostics": encode_stage_evidence(
-                        _json_safe(complete_diagnostics)
+                        _json_safe(published_diagnostics)
                     ),
                     "target_diagnostics_csv": pd.DataFrame(
                         uk_withhold_brma_figures(diagnostics, withheld)

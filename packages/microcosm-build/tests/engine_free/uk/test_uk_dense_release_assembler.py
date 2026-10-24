@@ -493,16 +493,22 @@ def _candidate_dir(
     return candidate, spine, incumbent_manifest
 
 
+@pytest.mark.parametrize("schema_version", [8, 9])
 def test_current_diagnostics_are_validated_then_copied_without_rewriting(
     tmp_path: Path,
     monkeypatch,
+    schema_version: int,
 ) -> None:
+    # A candidate written before schema 9 carries schema 8; both carry the
+    # calibration hierarchy and are copied byte for byte.
     assembler = _load("assemble_uk_dense_release_dir")
     source = tmp_path / "source.json"
     destination = tmp_path / "release.json"
-    source_bytes = b'{"schema_version":8,"source":"exact bytes"}\n'
+    source_bytes = (
+        f'{{"schema_version":{schema_version},"source":"exact bytes"}}\n'.encode()
+    )
     source.write_bytes(source_bytes)
-    diagnostics = {"schema_version": 8, "source": "exact bytes"}
+    diagnostics = {"schema_version": schema_version, "source": "exact bytes"}
     captured: dict[str, object] = {}
 
     def canonical_parser(payload: object) -> object:
