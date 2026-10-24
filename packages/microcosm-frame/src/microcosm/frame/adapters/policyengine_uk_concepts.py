@@ -204,6 +204,18 @@ UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
         "beat the expenses. Signed as an approximation with the plan for the "
         "next policyengine-uk bump, approved on 2026-10-23."
     ),
+    "housing_benefit_residential_capital_exception": (
+        "The working-age residential capital tariff exception (Housing Benefit "
+        "Regulations 2006 reg. 52(4)-(5), (8)-(9); NI reg. 49) covers residents "
+        "of the residential accommodation and saved circumstances it lists, and "
+        "policyengine-uk 2.148.4 asks for it pre-assessed. The FRS samples "
+        "private households, so it holds almost no such resident, and it records "
+        "no assessment of the circumstances, so the input stays False. A "
+        "qualifying working-age resident takes tariff income on capital above "
+        "GBP 6,000 instead of GBP 10,000, so Housing Benefit is understated for "
+        "such residents alone; eligibility, capital and the upper limit do not "
+        "move (Vahid's review of #1383, item 4)."
+    ),
 }
 
 
