@@ -1,0 +1,6 @@
+The UK LCFS stage now writes policyengine-uk's excise inputs, so alcohol, tobacco and gambling duty no longer score zero on Microcosm data (#1359). The chain draws three shares on the donor (tobacco within P602's off-trade lines, on-trade alcohol within P611 and gambling stakes within P609), appended after its eighteen spend targets so every existing draw is unchanged. The new `level_excise_quantities` step then shares FY2024-25 national figures out to households in proportion to that spending, at prior weights:
+- HMRC's alcohol clearances by product over the engine's strengths, with beer and cider draught shares from the draught-relief clearances;
+- HMRC's tobacco clearances;
+- each gambling duty's dutiable base: HMRC's receipts, or Machine Games Duty's liabilities, over the engine's rate. General Betting Duty's base is split by the Gambling Commission's gross gambling yield.
+
+No spending column moves, the VAT base included. `household_tax` rises by the three duties for every analysis on the data; HBAI incomes do not move. Alcohol volume follows spending, which leans it towards pub drinkers; the stage notes give the size of the lean. The gambling inputs need policyengine-uk 2.151.0 or later. The new stage-health gate `uk_stage_lcfs_consumption_excise_quantities` recomputes every level from the vendored `excise_facts.json`.

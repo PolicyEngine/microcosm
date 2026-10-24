@@ -707,7 +707,10 @@ def uk_consumption_drift(
     (microcosm#1207: no bound row holds the VAT base, so this is where its
     drift shows). Where it carries the household's region, they also hold
     the electricity and gas kWh the stage raked, read back from the spend at
-    the stage's declared prices (microcosm#1207).
+    the stage's declared prices (microcosm#1207). Where it carries the excise
+    step's inputs, they also hold each alcohol and tobacco quantity and
+    gambling base as stored (the tobacco inputs a week), which the stage
+    levels at design weights (microcosm#1359).
     """
 
     from microcosm.build.uk_runtime.domestic_energy_targets import (
@@ -717,6 +720,8 @@ def uk_consumption_drift(
     from microcosm.build.uk_runtime.etb_vat import UK_ETB_VAT_OUTPUT_COLUMNS
     from microcosm.build.uk_runtime.lcfs_consumption import (
         UK_LCFS_COICOP_DIVISION_COLUMNS,
+        UK_LCFS_EXCISE_DRAUGHT_OUTPUTS,
+        UK_LCFS_EXCISE_OUTPUT_COLUMNS,
     )
 
     needed = {
@@ -760,6 +765,9 @@ def uk_consumption_drift(
         )
         for name, values in kwh.items():
             totals[name] = _drift_value(design @ values, final @ values)
+    for name in UK_LCFS_EXCISE_OUTPUT_COLUMNS:
+        if name in household.columns and name not in UK_LCFS_EXCISE_DRAUGHT_OUTPUTS:
+            totals[name] = _drift_value(design @ column(name), final @ column(name))
     road_fuel = column("petrol_spending") + column("diesel_spending")
     flagged = household["has_fuel_consumption"].to_numpy(dtype=bool)
 

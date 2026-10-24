@@ -3501,11 +3501,12 @@ def _excise_quantities_gate(
     must reproduce it from the household spending, to
     ``maximum_relative_deviation``; an input is positive exactly where its
     spending is; each draught share written is the published ratio; the basis
-    is the declared fiscal year over the engine's 52 weeks. The shares the spending comes from must have stayed in
-    [0, 1] on the frame, each must rest on ``required_support_band`` donors,
-    and the donor share whose published total sits beside its diary lines
-    must be at most ``maximum_parent_residual_share`` (a share withheld for
-    resting on under ten donors is under it).
+    is the declared fiscal year over the engine's 52 weeks. The shares the
+    spending comes from must have stayed in [0, 1] on the frame, each must
+    rest on ``required_support_band`` donors, and the donor share whose
+    published total sits beside its diary lines must be at most
+    ``maximum_parent_residual_share`` (a share withheld for resting on under
+    ten donors is under it).
     """
 
     from microcosm.build.country_spec import load_country_spec

@@ -839,6 +839,35 @@ def test_consumption_drift_carries_the_stage_s_kwh() -> None:
     assert "electricity_kwh" not in without_region["totals"]
 
 
+def test_consumption_drift_carries_the_excise_quantities() -> None:
+    """Each excise quantity and base as stored, at both weights (#1359)."""
+
+    from microcosm.build.uk_runtime.diagnostics import uk_consumption_drift
+
+    household = pd.DataFrame(_consumption_columns(4))
+    household["beer_litres"] = [100.0, 0.0, 50.0, 10.0]
+    household["cigarettes_per_week"] = [20.0, 0.0, 0.0, 40.0]
+    household["remote_gaming_net_losses"] = [0.0, 30.0, 0.0, 0.0]
+    household["beer_draught_share"] = 0.4
+    design = np.array([1.0, 1.0, 1.0, 1.0])
+    final = np.array([2.0, 0.0, 1.0, 1.0])
+
+    totals = uk_consumption_drift(household, design, final)["totals"]
+
+    assert totals["beer_litres"]["design"] == pytest.approx(160.0)
+    assert totals["beer_litres"]["final"] == pytest.approx(260.0)
+    assert totals["cigarettes_per_week"]["final"] == pytest.approx(80.0)
+    assert totals["remote_gaming_net_losses"]["relative_change"] == -1.0
+    # A draught share is a ratio, not a quantity, and no other input is on
+    # the frame.
+    assert "beer_draught_share" not in totals
+    assert "wine_litres" not in totals
+    plain = uk_consumption_drift(pd.DataFrame(_consumption_columns(4)), design, final)[
+        "totals"
+    ]
+    assert "beer_litres" not in plain
+
+
 def test_payload_carries_the_consumption_drift_when_the_frame_has_it() -> None:
     result, frame, registry, geography = _diagnostics_case(with_consumption=True)
 

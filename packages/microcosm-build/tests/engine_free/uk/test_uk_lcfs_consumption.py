@@ -1471,11 +1471,12 @@ def _synthetic_lcfs_donor(
     return person, pd.DataFrame(household)
 
 
-def _synthetic_lcfs_stage(household_columns=None):
+def _synthetic_lcfs_stage(household_columns=None, *, excise=True):
     """The committed lcfs_consumption stage on synthetic inputs, minus the engine.
 
     The uprating step needs the installed engine and is dropped; the QRF is
-    shrunk to four trees. ``household_columns(n)`` adds frame columns.
+    shrunk to four trees. ``household_columns(n)`` adds frame columns; with
+    ``excise=False`` the excise step is dropped too.
     """
 
     import dataclasses
@@ -1488,6 +1489,8 @@ def _synthetic_lcfs_stage(household_columns=None):
     operations = []
     for operation in committed.operations:
         if operation.kind == "uprate_donor_columns":
+            continue
+        if not excise and operation.kind == "level_excise_quantities":
             continue
         if operation.kind == "fit_weighted_qrf_chain":
             operation = SourceOperationSpec(
@@ -3780,10 +3783,20 @@ def test_published_on_trade_share_gives_each_channel_its_volume(monkeypatch) -> 
 
 
 def test_excise_quantities_step_is_a_no_op_when_undeclared() -> None:
+    import dataclasses
+
     from microcosm.build.country_spec import load_country_spec
     from microcosm.build.uk_runtime.lcfs_consumption import lcfs_excise_quantities
 
-    stage = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    committed = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    stage = dataclasses.replace(
+        committed,
+        operations=tuple(
+            operation
+            for operation in committed.operations
+            if operation.kind != "level_excise_quantities"
+        ),
+    )
 
     assert lcfs_excise_quantities(stage, pd.DataFrame(), weights=[], shares={}) == (
         None,
@@ -3811,6 +3824,7 @@ def test_stage_writes_the_engines_excise_inputs_when_declared(monkeypatch) -> No
 
     from microcosm.build.uk_runtime.lcfs_consumption import (
         UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS,
+        UK_LCFS_EXCISE_DECLARED_OUTPUTS,
         UK_LCFS_EXCISE_GAMBLING_OUTPUTS,
     )
     from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
@@ -3820,15 +3834,20 @@ def test_stage_writes_the_engines_excise_inputs_when_declared(monkeypatch) -> No
         patch_excise_facts,
     )
 
-    plain = _synthetic_lcfs_stage()
+    plain = _synthetic_lcfs_stage(excise=False)
     before = plain.transform(plain.frame).table("household")
+    assert not set(UK_LCFS_EXCISE_DECLARED_OUTPUTS) & set(before.columns)
     patch_excise_facts(monkeypatch, excise_declaration())
     synthetic = _synthetic_lcfs_stage()
     result = synthetic.transform(synthetic.frame)
 
     out = result.table("household")
     weights = result.weights_for("household").values
-    columns = list(UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS)
+    columns = [
+        column
+        for column in UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS
+        if column not in UK_LCFS_EXCISE_DECLARED_OUTPUTS
+    ]
     pd.testing.assert_frame_equal(out[columns], before[columns])
     evidence = synthetic.transform.checkpoint_metadata()["evidence"]
     receipt = evidence["excise_quantities"]
