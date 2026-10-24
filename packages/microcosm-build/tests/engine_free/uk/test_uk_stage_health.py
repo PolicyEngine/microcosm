@@ -832,6 +832,8 @@ def _wealth_coherence_evidence() -> dict:
             "gross_financial_wealth_violation_rows": 0,
             "net_financial_wealth_violation_rows": 0,
             "mortgage_debt_violation_rows": 0,
+            "share_split_violation_rows": 0,
+            "secured_debt_violation_rows": 0,
             "property_wealth_capped_rows": 3,
         },
     }
@@ -872,6 +874,8 @@ def test_wealth_coherence_gate_passes_a_coherent_receipt() -> None:
         ("identities", "gross_financial_wealth_violation_rows"),
         ("identities", "net_financial_wealth_violation_rows"),
         ("identities", "mortgage_debt_violation_rows"),
+        ("identities", "share_split_violation_rows"),
+        ("identities", "secured_debt_violation_rows"),
     ],
 )
 def test_wealth_coherence_gate_requires_every_count_and_requires_it_zero(

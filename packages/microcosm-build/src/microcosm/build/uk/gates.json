@@ -143,7 +143,7 @@
         "check": "wealth_coherence",
         "maximum_owner_share_without_main_residence_excess": 0.005
       },
-      "notes": "Stage-time coherence gate over the WAS wealth receipt (microcosm#1063). Zero rows may carry a main-residence mortgage off the mortgaged tenure or main_residence_value off an owner tenure: both columns are fitted and drawn inside their tenure stratum, so a non-zero count is a defect of the stage, not of a draw; mortgage_debt itself is the main-residence mortgage plus the mortgages on other property, held on any tenure. Every derived total must equal its components on every row (property_wealth, corporate_wealth, gross_financial_wealth, mortgage_debt, and net_financial_wealth as gross less consumer debt and the student loan balance); the stage derives them, so only a support clip of a total can open a gap, and the support gate allows none. The weighted share of owner households without a main-residence value may exceed the donor's own share by at most the reviewed excess (the donor's share is zero on the pinned round-8 tab, where every owner reports a value). The receipt's donor comparisons (positive shares by tenure, the mortgaged share owing more than the main-residence value, the mortgage mass held off the mortgaged tenure on each side) and the rows the donor-range cap adjusted are recorded in the details and carry no threshold."
+      "notes": "Stage-time coherence gate over the WAS wealth receipt (microcosm#1063). Zero rows may carry a main-residence mortgage off the mortgaged tenure or main_residence_value off an owner tenure: both columns are fitted and drawn inside their tenure stratum, so a non-zero count is a defect of the stage, not of a draw; mortgage_debt itself is the main-residence mortgage plus the mortgages on other property, held on any tenure. Every derived total must equal its components on every row (property_wealth, corporate_wealth, gross_financial_wealth, mortgage_debt, and net_financial_wealth as gross less consumer debt and the student loan balance); the stage derives them, so only a support clip of a total can open a gap, and the support gate allows none. The share split and the stocks-and-shares ISA must sum to corporate_wealth, and every debt secured on other property must sit on a held asset of its class, be non-negative, and with the other within the mortgages on other property (share_split_violation_rows, secured_debt_violation_rows; the WAS property draw of microcosm#1095), all written by the stage on the final totals. The weighted share of owner households without a main-residence value may exceed the donor's own share by at most the reviewed excess (the donor's share is zero on the pinned round-8 tab, where every owner reports a value). The receipt's donor comparisons (positive shares by tenure, the mortgaged share owing more than the main-residence value, the mortgage mass held off the mortgaged tenure on each side) and the rows the donor-range cap adjusted are recorded in the details and carry no threshold."
     },
     {
       "id": "uk_stage_was_lisa_support",
@@ -972,6 +972,10 @@
             ],
             "owners": "household_reference_person_unit",
             "valuation": 0.9,
+            "secured_debt": {
+              "other_residential_property_value": "other_residential_property_secured_debt",
+              "non_residential_property_value": "non_residential_property_secured_debt"
+            },
             "units_reporting_universal_credit": "no_share"
           },
           "pension_credit_reported_capital": {
@@ -981,12 +985,16 @@
               "non_residential_property_value"
             ],
             "owners": "household_reference_person_unit",
-            "valuation": 0.9
+            "valuation": 0.9,
+            "secured_debt": {
+              "other_residential_property_value": "other_residential_property_secured_debt",
+              "non_residential_property_value": "non_residential_property_secured_debt"
+            }
           }
         },
         "sum_tolerance": 0.01
       },
-      "notes": "Benunit-aggregated reported Universal Credit must imply would_claim_uc. Both recorded capitals, uc_reported_capital and pension_credit_reported_capital, are bounded below by the named -1 unavailable sentinel and may use it only where the FRS carrier frs_benunit_capital is unavailable. Otherwise each equals the carrier plus the household property the unit holds, re-derived here with the stage's own rule (microcosm#1095): the household reference person's benefit unit holds the household's property at 90% of its value, market value less 10% for the costs of sale, and no other unit holds any. UC counts other residential and non-residential property, and a unit that reports Universal Credit keeps its receipt and carries none; Pension Credit counts those and owned land. The sum may differ by GBP 0.01 plus one float32 step of the expected value, so a float32 round-trip of the export does not fail it. No unit may sit on the -1 sentinel beside a unit that records a property share for either scheme: since policyengine-uk 2.136.1 the sentinel unit would take its own share of property the recording unit already holds, so the engine would count it twice (Vahid's review of microcosm#1333)."
+      "notes": "Benunit-aggregated reported Universal Credit must imply would_claim_uc. Both recorded capitals, uc_reported_capital and pension_credit_reported_capital, are bounded below by the named -1 unavailable sentinel and may use it only where the FRS carrier frs_benunit_capital is unavailable. Otherwise each equals the carrier plus the household property the unit holds, re-derived here with the stage's own rule (microcosm#1095): the household reference person's benefit unit holds the household's property at 90% of its value, market value less 10% for the costs of sale, less the debt secured on it class by class and floored at zero per class (UC Regs 2013 reg 49(1)(b); SPC Regs 2002 reg 19(b); the WAS property draw of microcosm#1095, owned land carrying none), and no other unit holds any. UC counts other residential and non-residential property, and a unit that reports Universal Credit keeps its receipt and carries none; Pension Credit counts those and owned land. The sum may differ by GBP 0.01 plus one float32 step of the expected value, so a float32 round-trip of the export does not fail it. No unit may sit on the -1 sentinel beside a unit that records a property share for either scheme: since policyengine-uk 2.136.1 the sentinel unit would take its own share of property the recording unit already holds, so the engine would count it twice (Vahid's review of microcosm#1333)."
     },
     {
       "id": "uk_support",
@@ -1230,7 +1238,11 @@
           "person.spousal_maintenance_income",
           "person.pension_contributions_via_bonus_sacrifice",
           "household.liquid_fuel_consumption",
-          "household.solid_fuel_consumption"
+          "household.solid_fuel_consumption",
+          "household.directly_held_shares",
+          "household.unit_and_investment_trusts",
+          "household.other_residential_property_secured_debt",
+          "household.non_residential_property_secured_debt"
         ],
         "reviewed_exclusions": {
           "person.incapacity_benefit_reported": "The enhanced FRS stores this legacy reported-benefit input as an all-zero layer; the candidate must drop dead zero layers.",

@@ -411,7 +411,7 @@ class TestDeclaredOutputsAreWrittenColumns:
         )
         from microcosm.build.uk_runtime.was_wealth import (
             UK_WAS_WEALTH_NONNEGATIVE_OUTPUT_COLUMNS,
-            UK_WAS_WEALTH_OUTPUT_COLUMNS,
+            UK_WAS_WEALTH_STAGE_OUTPUT_COLUMNS,
         )
 
         spec = load_country_spec("uk")
@@ -446,7 +446,7 @@ class TestDeclaredOutputsAreWrittenColumns:
             stages["frs_household_draws"].outputs == FRS_HOUSEHOLD_DRAW_OUTPUT_COLUMNS
         )
         assert stages["frs_brma"].outputs == FRS_BRMA_OUTPUT_COLUMNS
-        assert stages["was_wealth"].outputs == UK_WAS_WEALTH_OUTPUT_COLUMNS
+        assert stages["was_wealth"].outputs == UK_WAS_WEALTH_STAGE_OUTPUT_COLUMNS
         assert (
             stages["was_wealth"].nonnegative_outputs
             == UK_WAS_WEALTH_NONNEGATIVE_OUTPUT_COLUMNS
@@ -970,8 +970,10 @@ class TestE3ManifestLockstep:
 
     def test_e5_tenure_strata_and_derived_totals_lockstep(self) -> None:
         from microcosm.build.uk_runtime.was_wealth import (
+            UK_WAS_APPENDED_DRAWN_COLUMNS,
             UK_WAS_DERIVED_TOTALS,
             UK_WAS_DRAWN_ONLY_COLUMNS,
+            UK_WAS_HOLDER_STRATA,
             UK_WAS_INTERNAL_COMPONENT_COLUMNS,
             UK_WAS_NET_FINANCIAL_LIABILITIES,
             UK_WAS_STRATIFIED_TARGETS,
@@ -1010,10 +1012,16 @@ class TestE3ManifestLockstep:
         )
         # The chain order names every output and every drawn-only column (the
         # internal components, the dropped share-like component and the
-        # main-residence mortgage) exactly once.
-        assert sorted(qrf.parameters["chain_order"]) == sorted(
+        # main-residence mortgage) exactly once, then the appended draws in
+        # chain order (microcosm#1095).
+        order = list(qrf.parameters["chain_order"])
+        assert sorted(order[: -len(UK_WAS_APPENDED_DRAWN_COLUMNS)]) == sorted(
             {*UK_WAS_WEALTH_OUTPUT_COLUMNS, *UK_WAS_DRAWN_ONLY_COLUMNS}
         )
+        assert tuple(order[-len(UK_WAS_APPENDED_DRAWN_COLUMNS) :]) == (
+            UK_WAS_APPENDED_DRAWN_COLUMNS
+        )
+        assert dict(qrf.parameters["holder_strata"]) == dict(UK_WAS_HOLDER_STRATA)
 
     def test_e5_qrf_operation_declares_integer_seed(self) -> None:
         spec = load_country_spec("uk")

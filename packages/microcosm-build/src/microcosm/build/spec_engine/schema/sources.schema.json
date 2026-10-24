@@ -8575,6 +8575,43 @@
         "type": "string"
        }
       },
+      "holder_strata": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "string"
+       }
+      },
+      "share_split": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "fraction",
+        "outputs",
+        "undrawn_fraction"
+       ],
+       "properties": {
+        "fraction": {
+         "type": "string"
+        },
+        "outputs": {
+         "type": "array",
+         "minItems": 2,
+         "maxItems": 2,
+         "items": {
+          "type": "string"
+         }
+        },
+        "undrawn_fraction": {
+         "type": "number",
+         "minimum": 0,
+         "maximum": 1
+        }
+       }
+      },
+      "secured_debt_within": {
+       "type": "string"
+      },
       "derived_totals": {
        "type": "object",
        "minProperties": 1,

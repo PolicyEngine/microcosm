@@ -415,6 +415,14 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     # draws no fuel beside electricity and gas.
     "household.liquid_fuel_consumption",
     "household.solid_fuel_consumption",
+    # The share split inside corporate_wealth (pe-uk#1974) and the debt
+    # secured on other property (UC Regs 2013 reg 49(1)(b)), from the WAS
+    # property draw (microcosm#1095): the enhanced FRS carries corporate_wealth
+    # alone and no secured debt.
+    "household.directly_held_shares",
+    "household.unit_and_investment_trusts",
+    "household.other_residential_property_secured_debt",
+    "household.non_residential_property_secured_debt",
 )
 
 UK_KNOWN_MISSING_REFERENCE_EXPORT_COLUMNS: tuple[str, ...] = (

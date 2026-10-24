@@ -438,6 +438,9 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("household", "owned_land"),
             ("household", "other_residential_property_value"),
             ("household", "non_residential_property_value"),
+            # Netted off the property each is secured on (microcosm#1095).
+            ("household", "other_residential_property_secured_debt"),
+            ("household", "non_residential_property_secured_debt"),
             ("benunit", "benunit_support_channel"),
             ("benunit", "dependent_children"),
             ("benunit", "frs_benunit_capital"),
@@ -835,6 +838,16 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         *_cells("household", ("cash_isa", "stocks_and_shares_isa")),
         *_cells("household", ("mortgage_debt", "consumer_debt")),
         _Cell("person", "student_loan_balance", "float64"),
+        # The share split and the secured debts (microcosm#1095).
+        *_cells(
+            "household",
+            (
+                "directly_held_shares",
+                "unit_and_investment_trusts",
+                "other_residential_property_secured_debt",
+                "non_residential_property_secured_debt",
+            ),
+        ),
     ),
     "was_lisa": (
         _Cell("person", "has_lifetime_isa", "bool"),
@@ -1716,7 +1729,7 @@ def uk_spine_operation_inventory(
                 "artifact_outputs": [output.name for output in node.artifact_outputs],
                 "randomness": "Existing literal/child seeds and draw order are preserved inside the registered transform.",
                 "coupling": (
-                    "Donor and recipient region and tenure encoding, seven segmented fit/draw chains with their child seeds, the tenure strata and the totals derived from drawn components remain coupled."
+                    "Donor and recipient region and tenure encoding, eleven segmented fit/draw chains with their child seeds, the tenure and holder strata and the totals derived from drawn components remain coupled."
                     if stage.stage == "was_wealth"
                     else "Source assembly, declared household sample selection and same-kind mass normalization execute once in CREATE."
                     if stage.stage == "frs_spine"

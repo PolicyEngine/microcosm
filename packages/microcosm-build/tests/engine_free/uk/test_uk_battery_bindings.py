@@ -163,6 +163,15 @@ def _tables(*, n: int = 4, weights=None):
     other_property = 1_000.0 * (np.arange(n) % 2)
     non_residential = 500.0 * (np.arange(n) % 2)
     land = 250.0 * (np.arange(n) % 2)
+    # Debt secured on the last unit's property (microcosm#1095): the shares
+    # net it class by class, the non-residential debt above 90% of its
+    # property's value flooring that class at zero.
+    last = np.arange(n) == n - 1
+    other_property_debt = np.where(last, 300.0, 0.0)
+    non_residential_debt = np.where(last, 600.0, 0.0)
+    property_share = np.maximum(0.9 * other_property - other_property_debt, 0.0) + (
+        np.maximum(0.9 * non_residential - non_residential_debt, 0.0)
+    )
     carrier = np.arange(n, dtype=float)
     person = pd.DataFrame(
         {
@@ -184,9 +193,8 @@ def _tables(*, n: int = 4, weights=None):
             "benunit_id": np.arange(201, 201 + n, dtype=np.int64),
             "would_claim_uc": np.asarray([True, False] * n)[:n],
             "frs_benunit_capital": carrier,
-            "uc_reported_capital": carrier + 0.9 * (other_property + non_residential),
-            "pension_credit_reported_capital": carrier
-            + 0.9 * (land + other_property + non_residential),
+            "uc_reported_capital": carrier + property_share,
+            "pension_credit_reported_capital": carrier + 0.9 * land + property_share,
         }
     )
     household = pd.DataFrame(
@@ -198,6 +206,8 @@ def _tables(*, n: int = 4, weights=None):
             "owned_land": land,
             "other_residential_property_value": other_property,
             "non_residential_property_value": non_residential,
+            "other_residential_property_secured_debt": other_property_debt,
+            "non_residential_property_secured_debt": non_residential_debt,
         }
     )
     return person, benunit, household

@@ -2501,6 +2501,9 @@ _WEALTH_IDENTITY_ZERO_KEYS = (
     "gross_financial_wealth_violation_rows",
     "net_financial_wealth_violation_rows",
     "mortgage_debt_violation_rows",
+    # The share split and the secured debts (microcosm#1095).
+    "share_split_violation_rows",
+    "secured_debt_violation_rows",
 )
 
 
@@ -2518,8 +2521,10 @@ def _wealth_coherence_gate(
     re-reads the receipt so the battery, not only the transform, holds that
     no household off a mortgaged tenure carries a main-residence mortgage,
     none off an owner tenure carries a main-residence value, every total
-    equals its components, and owners without a main-residence value are no
-    more common than on the donor beyond the reviewed excess.
+    equals its components, the share split and the ISA sum to corporate
+    wealth, every secured debt sits on a held asset within the mortgages on
+    other property, and owners without a main-residence value are no more
+    common than on the donor beyond the reviewed excess.
     """
 
     check = "wealth_coherence"

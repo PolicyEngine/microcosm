@@ -185,7 +185,8 @@ def test_the_liquid_asset_reason_names_the_household_wealth_inputs(engine) -> No
     # Shares and funds sit on the household too, in corporate_wealth. Since
     # policyengine-uk 2.147.0 Universal Credit counts them, alongside savings,
     # as share_like_capital: corporate_wealth unless its two household
-    # components, which the build leaves unset, add up to more. Its one
+    # components, which the WAS stage writes to sum to it with the ISA, add up
+    # to more (microcosm#1095). Its one
     # person-level source is the Lifetime ISA at its surrender value.
     reason = MAPPING.unmapped["fact:person.liquid_financial_assets"]
     inputs = set(engine.variables())
