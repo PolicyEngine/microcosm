@@ -369,8 +369,8 @@ EXPECTED_HASHES = {
     # not run, changes its probes, so again no US solve changes. #454: the
     # meps_esi_premiums stage joins the attested sources and the source
     # manifest.
-    "seed_map": "3cf71bdd3e6df567a4f9eb8d182bea160108cc9941e6ff08b8a0eee4e9fc8ba2",
-    "seed_protocol": "15e9b110999c37a0a78ecd001d6b79bbd860b408cf08a1e0ea435690f0a5f041",
+    "seed_map": "58741b7c6c8ca8f0ead476ec9893355419c9550d9bdb9287bec57928ce345afb",
+    "seed_protocol": "b4c450a618c5ca3116f806d1ae270ae6fb410517404c204e505d10418bc1181f",
     "source_manifest": "87b1e124969ec11b836740c027d28dc2a9d319d279ed55be1d9fc1523390f634",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "256947cd7c1bbd85f5d1fa3911a07a170ae87830f098110a40ed25d93f78347c",

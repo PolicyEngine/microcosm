@@ -922,7 +922,7 @@ def test_soi_mode_defaults_to_state_and_totals_and_full_are_explicit_opt_ins(
     asking for them."""
 
     module = _load_tool_module()
-    assert module.SOI_MODES == ("state", "totals", "full", "state_cd")
+    assert module.SOI_MODES == ("state", "totals", "full", "state_cd", "state_county")
     assert module.DEFAULT_SOI_MODE == module.SOI_MODE_STATE == "state"
     assert module._parse_args(_materialize_argv(tmp_path)).soi_mode == "state"
     for mode in ("totals", "full", "state_cd"):

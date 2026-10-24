@@ -25,7 +25,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 
-# Everything the compiled registry depends on besides the two feeds.
+# The compiler's sources, whose cleanliness the report records. This script
+# (its target period and serialization) and uv.lock also shape the registry
+# and its digests but are not checked; compiler.commit pins them only when
+# they are unmodified there.
 COMPILER_PATHS = ("packages", "tools")
 
 CONFIGURATIONS = {
