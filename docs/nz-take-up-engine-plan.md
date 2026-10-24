@@ -129,9 +129,12 @@ tenure targets close to each region's published Census household total before
 the existing ERP bridge. Calibration variant V4 concentrates only the size
 residual onto one- and two-person households. The implementation preserves raw
 discrepancies and independent national diagnostics, and supplies validated size
-columns before activation. G8-r2 reuses the same resolver for ageing profiles
-and interval preparation; central ageing remains explicitly deferred and V1/V2
-ageing transformations remain unavailable until that work lands.
+columns before activation. G8-r2 reuses the same resolver for ageing: each
+low, central or high profile scales the IRD money references and, exactly, the
+national taxable-income band cuts by its own feed-derived factor, and the
+interval tables declare Microcosm's band convention (see
+[the target inventory](nz-calibration-targets.md)). The 474 IRD references
+stay parked until the B4 stand-in measure's producer lands (G8-r2c).
 - **Pre-calibration:** IRD wage and salary bands, MBIE bond rents by TA, Stats
   NZ household financial net worth, TA population, and the same MSD recipient
   facts as the calibration set (the take-up draws calibrate to them).

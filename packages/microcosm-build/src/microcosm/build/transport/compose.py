@@ -1240,9 +1240,17 @@ def _node(
     ):
         view = reference_profile_view(spec, profile_selection)
         if view is not None:
-            references, _, receipt = view
+            references, intervals, receipt = view
             if canonical_json(references).decode("utf-8") == params["references"]:
                 params["reference_resolution"] = canonical_json(receipt).decode("utf-8")
+                # Preparation receives the exact effective interval companion.
+                if kernel == "calibration.prepare@1" and intervals is not None:
+                    companion = canonical_json(intervals).decode("utf-8")
+                    if params.setdefault("intervals", companion) != companion:
+                        raise ValueError(
+                            f"Node {row.get('id')!r} supplies an interval document "
+                            "that differs from its effective interval companion."
+                        )
     if "rules_binding" in row:
         params = _rules_params(spec, row, params, config)
     elif kernel == RULES_ROUTER:

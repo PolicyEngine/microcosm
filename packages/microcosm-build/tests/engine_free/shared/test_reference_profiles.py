@@ -9,8 +9,9 @@ from datetime import date
 import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
-from microcosm_build.reference_factors import factor_context_fixture
+from microcosm_build.reference_factors import factor_context_fixture, factor_fixture
 
+from microcosm.build.reference_factors import resolve_reference_factor
 from microcosm.build.reference_profiles import (
     REFERENCE_DOCUMENT_KEYS,
     reference_document_sha256,
@@ -545,14 +546,326 @@ def test_invalid_factor_profiles_and_companions_refuse(mutation):
         resolve_reference_profiles(references, declarations, {}, factor_context=context)
 
 
-def test_nonempty_interval_roster_refuses_until_interval_implementation():
-    references, declarations, _ = _scaling_inputs()
+def _interval_document(pair_count=2, *, table_id="reviewed_table", companions=True):
+    bands = []
+    for index in range(pair_count):
+        band = {
+            "id": f"band_{index}",
+            "kind": "positive",
+            "upper_cent": None if index == pair_count - 1 else 10_000 * (index + 1),
+            "indicator": f"band_{index}",
+        }
+        if companions:
+            band.update(
+                count_reference=f"count_{index}", amount_reference=f"money_{index}"
+            )
+        bands.append(band)
+    return {
+        "schema_version": 1,
+        "tables": [
+            {
+                "id": table_id,
+                "entity": "household",
+                "currency": "XTS",
+                "input_unit": "integer_cent",
+                "income_column": "household_income_cents",
+                "universe_column": "household_income_universe",
+                "source_period": 2001,
+                "target_period": 2002,
+                "positive_band_closure": "right",
+                "nil_band": "absent",
+                "negative_income_policy": "floor_zero",
+                "first_lower_cut_cents": 0,
+                "source_locator": "Toy!A1:A2",
+                "diagnostics": {
+                    "boundary_window_cents": 100,
+                    "alternative_positive_band_closure": "left",
+                },
+                "bands": bands,
+            }
+        ],
+    }
+
+
+def _interval_inputs(pair_count=2):
+    references, declarations, context = _scaling_inputs(pair_count)
+    for profile in declarations["dimensions"]["aging_index"]["profiles"].values():
+        profile["transformations"][0]["interval_table_ids"] = ["reviewed_table"]
+    return references, declarations, context, _interval_document(pair_count)
+
+
+def _effective_cuts(intervals, table_id="reviewed_table"):
+    from fractions import Fraction
+
+    table = next(table for table in intervals["tables"] if table["id"] == table_id)
+    return [
+        None
+        if band["upper_cent"] is None
+        else Fraction(
+            band["upper_cent"]["numerator"], band["upper_cent"]["denominator"]
+        )
+        for band in table["bands"]
+    ]
+
+
+def test_named_interval_tables_scale_once_with_their_money_factor():
+    references, declarations, context, intervals = _interval_inputs(3)
+    original = copy.deepcopy((references, declarations, context, intervals))
+    effective, effective_intervals, receipt = resolve_reference_profiles(
+        references, declarations, {}, intervals, factor_context=context
+    )
+    assert (references, declarations, context, intervals) == original
+    rational = context["factors"][0]["operational_factor"]
+    factor = rational["numerator"] / rational["denominator"]
+    # One factor covers each money/cut triple.
+    money = [
+        row
+        for row in effective["target_references"]
+        if row["name"] in {"money_0", "money_1", "money_2"}
+    ]
+    assert {row["value_operands"][0]["weight"] for row in money} == {factor}
+    assert _effective_cuts(effective_intervals) == [11_000, 22_000, None]
+    table = effective_intervals["tables"][0]
+    assert table["scaling"]["factor_id"] == "toy_factor"
+    assert table["scaling"]["operational_factor"] == rational
+    assert [band.get("source_upper_cent") for band in table["bands"]] == [
+        10_000,
+        20_000,
+        None,
+    ]
+    assert receipt["base_intervals_sha256"] == reference_document_sha256(intervals)
+    assert receipt["effective_intervals_sha256"] == reference_document_sha256(
+        effective_intervals
+    )
+    assert receipt["effective_intervals_sha256"] != receipt["base_intervals_sha256"]
+    assert receipt["interval_tables"]["reviewed_table"]["factor_id"] == "toy_factor"
+    assert receipt["interval_tables_sha256"] == reference_document_sha256(
+        receipt["interval_tables"]
+    )
+    assert receipt["receipt_sha256"] not in json.dumps(effective_intervals)
+    for row in effective["target_references"]:
+        assert (
+            row["metadata"]["effective_intervals_sha256"]
+            == (receipt["effective_intervals_sha256"])
+        )
+        if row["metadata"]["reference_value_kind"] == "count":
+            source = next(
+                item
+                for item in references["target_references"]
+                if item["name"] == row["name"]
+            )
+            assert row["value_operation"] == source["value_operation"]
+            assert row["value_operands"] == source["value_operands"]
+    assert (
+        validate_reference_resolution(
+            effective, receipt, interval_document=effective_intervals
+        )
+        == receipt
+    )
+    with pytest.raises(ValueError, match="interval document hash mismatch"):
+        validate_reference_resolution(effective, receipt, interval_document=intervals)
+    with pytest.raises(ValueError, match="already been resolved"):
+        resolve_reference_profiles(
+            effective, declarations, {}, effective_intervals, factor_context=context
+        )
+    with pytest.raises(ValueError, match="cannot contain scaled tables"):
+        resolve_reference_profiles(
+            references, declarations, {}, effective_intervals, factor_context=context
+        )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "missing_document",
+        "unknown_table",
+        "duplicate_table_id",
+        "omitted_band",
+        "extra_band",
+        "cross_pair",
+        "swapped_roles",
+        "duplicate_reference",
+        "wrong_filter",
+        "wrong_entity",
+        "no_companions",
+        "source_period",
+        "target_period",
+        "second_transformation",
+    ],
+)
+def test_interval_companions_must_be_exactly_the_scaled_rosters(mutation):
+    references, declarations, context, intervals = _interval_inputs(3)
     transform = declarations["dimensions"]["aging_index"]["profiles"]["central"][
         "transformations"
     ][0]
-    transform["interval_table_ids"] = ["reviewed_table"]
-    with pytest.raises(ValueError, match="interval scaling lands in r2b"):
-        resolve_reference_profiles(references, declarations, {})
+    table = intervals["tables"][0]
+    bands = table["bands"]
+    if mutation == "missing_document":
+        intervals = None
+    elif mutation == "unknown_table":
+        transform["interval_table_ids"] = ["missing_table"]
+    elif mutation == "duplicate_table_id":
+        transform["interval_table_ids"] = ["reviewed_table", "reviewed_table"]
+    elif mutation == "omitted_band":
+        bands.pop(1)
+    elif mutation == "extra_band":
+        bands.insert(
+            2,
+            {
+                "id": "band_extra",
+                "kind": "positive",
+                "upper_cent": 30_000,
+                "indicator": "band_extra",
+                "count_reference": "other_count",
+                "amount_reference": "other_money",
+            },
+        )
+    elif mutation == "cross_pair":
+        bands[0]["amount_reference"], bands[1]["amount_reference"] = (
+            bands[1]["amount_reference"],
+            bands[0]["amount_reference"],
+        )
+    elif mutation == "swapped_roles":
+        bands[0]["amount_reference"], bands[0]["count_reference"] = (
+            bands[0]["count_reference"],
+            bands[0]["amount_reference"],
+        )
+    elif mutation == "duplicate_reference":
+        bands[1]["count_reference"] = bands[0]["count_reference"]
+    elif mutation == "wrong_filter":
+        bands[0]["indicator"] = "another_indicator"
+    elif mutation == "wrong_entity":
+        table["entity"] = "person"
+    elif mutation == "no_companions":
+        intervals = _interval_document(3, companions=False)
+    elif mutation in {"source_period", "target_period"}:
+        table[mutation] = 1999
+    else:
+        declarations["dimensions"]["another"] = {
+            "default": "only",
+            "profiles": {"only": {"transformations": [copy.deepcopy(transform)]}},
+        }
+    with pytest.raises(ValueError):
+        resolve_reference_profiles(
+            references, declarations, {}, intervals, factor_context=context
+        )
+
+
+def test_tables_without_companions_validate_but_profiles_do_not_scale_them():
+    references, declarations, context, intervals = _interval_inputs(2)
+    unscaled = _interval_document(3, table_id="declared_only", companions=False)[
+        "tables"
+    ][0]
+    for band in unscaled["bands"]:
+        band["indicator"] = f"declared_{band['indicator']}"
+    intervals["tables"].append(unscaled)
+    _, effective_intervals, receipt = resolve_reference_profiles(
+        references, declarations, {}, intervals, factor_context=context
+    )
+    assert effective_intervals["tables"][1] == unscaled
+    assert set(receipt["interval_tables"]) == {"reviewed_table"}
+
+
+def test_unnamed_interval_tables_pass_through_and_effective_equals_base():
+    references, declarations, context = _scaling_inputs()
+    intervals = _interval_document(2)
+    _, effective_intervals, receipt = resolve_reference_profiles(
+        references, declarations, {}, intervals, factor_context=context
+    )
+    assert effective_intervals == intervals
+    assert "interval_tables" not in receipt
+    assert receipt["effective_intervals_sha256"] == receipt["base_intervals_sha256"]
+
+
+def test_interval_scaling_is_local_to_the_selected_profile():
+    references, declarations, context, intervals = _interval_inputs(2)
+    declaration, facts, identity = factor_fixture(anchor_level="105")
+    declaration["id"] = "toy_low"
+    factor, factor_receipt = resolve_reference_factor(declaration, facts, identity)
+    context["factors"].append(
+        {
+            "declaration": declaration,
+            "operational_factor": factor,
+            "receipt": factor_receipt,
+        }
+    )
+    profiles = declarations["dimensions"]["aging_index"]["profiles"]
+    profiles["low"]["transformations"][0]["factor_id"] = "toy_low"
+    low = resolve_reference_profiles(
+        references,
+        declarations,
+        {"aging_index": "low"},
+        intervals,
+        factor_context=context,
+    )
+    central = resolve_reference_profiles(
+        references, declarations, {}, intervals, factor_context=context
+    )
+    assert _effective_cuts(low[1]) == [10_500, None]
+    assert _effective_cuts(central[1]) == [11_000, None]
+    profiles["high"]["notes"] = "edited unselected high declaration"
+    assert (
+        resolve_reference_profiles(
+            references,
+            declarations,
+            {"aging_index": "low"},
+            intervals,
+            factor_context=context,
+        )
+        == low
+    )
+    assert (
+        resolve_reference_profiles(
+            references, declarations, {}, intervals, factor_context=context
+        )
+        == central
+    )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "record_factor",
+        "record_profile",
+        "record_hash",
+        "drop_records",
+        "document_table",
+        "unscaled_document",
+    ],
+)
+def test_rehashed_interval_scaling_records_still_refuse(mutation):
+    references, declarations, context, intervals = _interval_inputs(2)
+    effective, effective_intervals, receipt = resolve_reference_profiles(
+        references, declarations, {}, intervals, factor_context=context
+    )
+    receipt = copy.deepcopy(receipt)
+    document = copy.deepcopy(effective_intervals)
+    record = receipt["interval_tables"]["reviewed_table"]
+    if mutation == "record_factor":
+        record["operational_factor"] = {"numerator": 1, "denominator": 1}
+        receipt["interval_tables_sha256"] = reference_document_sha256(
+            receipt["interval_tables"]
+        )
+    elif mutation == "record_profile":
+        record["profile"] = "high"
+        receipt["interval_tables_sha256"] = reference_document_sha256(
+            receipt["interval_tables"]
+        )
+    elif mutation == "record_hash":
+        record["effective_table_sha256"] = "0" * 64
+    elif mutation == "drop_records":
+        receipt.pop("interval_tables")
+        receipt.pop("interval_tables_sha256")
+    elif mutation == "document_table":
+        document["tables"][0]["scaling"]["factor_receipt_sha256"] = "0" * 64
+        receipt["effective_intervals_sha256"] = reference_document_sha256(document)
+    else:
+        document = copy.deepcopy(intervals)
+        receipt["effective_intervals_sha256"] = reference_document_sha256(document)
+    receipt.pop("receipt_sha256")
+    receipt["receipt_sha256"] = reference_document_sha256(receipt)
+    with pytest.raises(ValueError):
+        validate_reference_resolution(effective, receipt, interval_document=document)
 
 
 def test_factor_evidence_and_unselected_profile_locality():
@@ -714,8 +1027,13 @@ def test_nz_default_factor_receipt_is_compact_and_covers_the_exact_roster():
     base = json.loads((spec / "target_references.json").read_text())
     declarations = json.loads((spec / "reference_profiles.json").read_text())
     context = json.loads((spec / "reference_aging.json").read_text())
+    intervals = json.loads((spec / "reference_intervals.json").read_text())
     _, _, receipt = resolve_reference_profiles(
-        base, declarations, {}, factor_context=context
+        base, declarations, {}, intervals, factor_context=context
+    )
+    assert set(receipt["interval_tables"]) == {"ird_taxable_income_national_ty2024"}
+    assert (
+        receipt["interval_tables"]["ird_taxable_income_national_ty2024"]["bands"] == 237
     )
     assert "selected_declarations" not in receipt
     assert "base_reference_document" not in receipt
@@ -761,11 +1079,17 @@ def test_nz_default_factor_resolution_validates_after_declaration_expiry(monkeyp
     base = json.loads((spec / "target_references.json").read_text())
     declarations = json.loads((spec / "reference_profiles.json").read_text())
     context = json.loads((spec / "reference_aging.json").read_text())
-    effective, _, receipt = resolve_reference_profiles(
-        base, declarations, {}, factor_context=context
+    intervals = json.loads((spec / "reference_intervals.json").read_text())
+    effective, effective_intervals, receipt = resolve_reference_profiles(
+        base, declarations, {}, intervals, factor_context=context
     )
     assert receipt["selected_factors"]
-    assert validate_reference_resolution(effective, receipt) == receipt
+    assert (
+        validate_reference_resolution(
+            effective, receipt, interval_document=effective_intervals
+        )
+        == receipt
+    )
 
 
 def test_unrelated_direct_fact_references_are_outside_companion_rosters():

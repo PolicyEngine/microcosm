@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
   "factor_context_resource": "reference_aging.json",
+  "interval_resource": "reference_intervals.json",
   "dimensions": {
     "census_residual_allocation": {
       "default": "mar",
@@ -71085,7 +71086,9 @@
                 "ird_taxable_income_people_by_band__row_243",
                 "ird_taxable_income_people_by_band__row_244"
               ],
-              "interval_table_ids": [],
+              "interval_table_ids": [
+                "ird_taxable_income_national_ty2024"
+              ],
               "required_measurement_binding": "ird_taxable_income_ty2027_v1"
             }
           ]
@@ -71573,7 +71576,9 @@
                 "ird_taxable_income_people_by_band__row_243",
                 "ird_taxable_income_people_by_band__row_244"
               ],
-              "interval_table_ids": [],
+              "interval_table_ids": [
+                "ird_taxable_income_national_ty2024"
+              ],
               "required_measurement_binding": "ird_taxable_income_ty2027_v1"
             }
           ]
@@ -72061,7 +72066,9 @@
                 "ird_taxable_income_people_by_band__row_243",
                 "ird_taxable_income_people_by_band__row_244"
               ],
-              "interval_table_ids": [],
+              "interval_table_ids": [
+                "ird_taxable_income_national_ty2024"
+              ],
               "required_measurement_binding": "ird_taxable_income_ty2027_v1"
             }
           ]

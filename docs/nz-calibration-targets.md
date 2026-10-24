@@ -98,6 +98,46 @@ All statistical spreadsheets on the un-gated `ird.govt.nz` CDN (HTTP 200 confirm
 
 Notes: **I1, I3, I4 are the load-bearing IRD targets.** IRD income tables are **individual-level** — joint/couple income unpublished. **FamilyBoost: no public statistics dataset confirmed** — only a modelled `Value_Type` in Treasury DistributionExplorer [UNCONFIRMED — re-check].
 
+### I1 taxable-income bands: a declared convention (G8-r2b, 2026-10-24)
+
+IRD publishes no band closure or cents semantics for the I1 tables. The
+workbook introduces an "income between $0.01 and $100" band, and four label
+pairs share an endpoint ($20,000, $50,000, $80,000 and $300,000: national rows
+29/30, 59/60, 89/90 and 229/230; age rows 27/28, 57/58 and 87/88). Microcosm
+therefore applies its own declared convention, not IRD's semantics (G8-r open
+rulings 2, section 1):
+
+- t = max(0, x) in integer cents, with no dollar rounding;
+- t == 0 is the nil band, including qualifying loss records;
+- each positive band is `previous_upper < t <= upper`, and the open tail is
+  `t > its lower cut` (national top band over $1,000,000, age table over
+  $180,000);
+- the ordered right-closed cuts give each shared endpoint to the lower band.
+
+`build/nz/reference_intervals.json` holds the two tables: the national table
+(237 bands, rows 8–244, each naming its parked count and amount references)
+and the age table (183 bands, rows 6–188, no references and no fit rows).
+`tools/generate_nz_target_references.py` generates both from the row formulas
+and checks every cut against the pinned feed's own band labels. Ageing scales
+the national cuts exactly by the selected factor and keeps fractional cents:
+under the central factor 1.117109, $100 becomes 11,171.09 cents and $1,000
+becomes 111,710.9 cents. Before matrix construction the calibration problem
+reports, for every cut, the weighted mass within $1, and for every band the
+fixed-weight change under the left-closed alternative. These diagnostics never
+change a target, and publisher reclassification is unavailable, because the
+published histogram does not identify mass exactly on a cut.
+
+The shared diagnostics also report records below a table's first lower cut,
+including their weighted count and amount. Floored negative records retain
+their separate count and signed pre-floor amount, grouped by destination.
+These are fixed-weight, pre-fit measurements; reporting the later weight
+changes on these unfitted records remains G8-r2c/G8-x work.
+
+The income and universe columns (`ird_taxable_income_proxy_cents`,
+`ird_taxable_income_proxy_universe_status`) name the d1952 stand-in measure
+rather than IRD's definition. No producer exists yet (G8-r2c), no active row
+requests them, and all 474 IRD rows stay parked.
+
 ## 3. MSD
 
 **Critical structural finding:** the **quarterly Benefit Fact Sheets are COUNT-ONLY** (every sheet opened; only hardship reports dollars). **Dollar-level data comes from the Annual Report** expenditure schedule (explicit CC BY 4.0).

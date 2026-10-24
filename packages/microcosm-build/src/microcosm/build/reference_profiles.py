@@ -67,6 +67,8 @@ def _selection_identity(receipt: Mapping) -> dict:
         identity["selected_factor_identities"] = receipt["selected_factor_identities"]
         identity["factor_companions_sha256"] = receipt["factor_companions_sha256"]
         identity["transformed_names"] = receipt["transformed_names"]
+        if "interval_tables" in receipt:
+            identity["interval_tables_sha256"] = receipt["interval_tables_sha256"]
     return identity
 
 
@@ -233,6 +235,190 @@ def _factor_companions(chosen: Mapping, by_name: Mapping) -> dict:
     return companions
 
 
+def _interval_table_ids(transform: Mapping) -> list[str]:
+    tables = _sequence(transform.get("interval_table_ids"), "interval table ids")
+    if any(not isinstance(table, str) or not table for table in tables) or len(
+        set(tables)
+    ) != len(tables):
+        raise ValueError("Interval table ids must be unique nonempty text.")
+    return tables
+
+
+def _validate_interval_companions(
+    transform: Mapping, tables: Mapping, by_name: Mapping, declaration: Mapping
+) -> None:
+    """Every scaled band names exactly one count/money companion pair."""
+    money, counts = _validate_companions(transform, by_name)
+    band_money, band_counts = [], []
+    for table_id in _interval_table_ids(transform):
+        table = tables[table_id]
+        if (
+            table.declaration["source_period"] != declaration["source_period"]
+            or table.declaration["target_period"] != declaration["target_period"]
+        ):
+            raise ValueError(
+                "Factor and interval table source/target periods are incompatible."
+            )
+        for band in table.declaration["bands"]:
+            if "count_reference" not in band:
+                raise ValueError(
+                    "An interval table without companion references cannot be scaled."
+                )
+            pair = (band["count_reference"], band["amount_reference"])
+            for name in pair:
+                row = by_name.get(name)
+                if (
+                    row is None
+                    or row.get("entity") != table.entity
+                    or row.get("filter") != band["indicator"]
+                ):
+                    raise ValueError(
+                        "Interval companions must filter on their band indicator."
+                    )
+            if _companion_key(by_name[pair[0]]) != _companion_key(by_name[pair[1]]):
+                raise ValueError(
+                    "A band's count and money references are not companions."
+                )
+            band_counts.append(pair[0])
+            band_money.append(pair[1])
+    if (
+        len(set(band_money)) != len(band_money)
+        or len(set(band_counts)) != len(band_counts)
+        or set(band_money) != set(money)
+        or set(band_counts) != set(counts)
+    ):
+        raise ValueError(
+            "Interval band companions must be exactly the money and count rosters."
+        )
+
+
+def _scaled_intervals(
+    chosen: Mapping,
+    intervals: Mapping | None,
+    by_name: Mapping,
+    selected_factors: Mapping,
+) -> tuple[dict | None, dict]:
+    """Scale each named table once with its transformation's selected factor."""
+    requests = {}
+    for dimension, choice in chosen.items():
+        for transform in choice["declaration"].get("transformations", []):
+            if transform.get("operation") != SCALE_MONEY_AND_INTERVALS:
+                continue
+            for table_id in _interval_table_ids(transform):
+                if table_id in requests:
+                    raise ValueError(
+                        f"Interval table {table_id!r} is scaled by more than one "
+                        "transformation."
+                    )
+                requests[table_id] = (dimension, choice["name"], transform)
+    if not requests:
+        return intervals, {}
+    if intervals is None:
+        raise ValueError("Interval scaling needs the declared interval document.")
+    from microcosm.build.reference_intervals import (
+        scale_interval_document,
+        validate_interval_document,
+    )
+
+    tables = validate_interval_document(intervals)
+    if set(requests) - set(tables):
+        raise ValueError("A profile names an undeclared interval table.")
+    scalings, records, checked = {}, {}, set()
+    for table_id, (dimension, profile, transform) in sorted(requests.items()):
+        factor_id = transform["factor_id"]
+        entry = selected_factors[factor_id]
+        if id(transform) not in checked:
+            _validate_interval_companions(
+                transform, tables, by_name, entry["declaration"]
+            )
+            checked.add(id(transform))
+        scalings[table_id] = {
+            "factor": entry["operational_factor"],
+            "factor_id": factor_id,
+            "factor_declaration_sha256": reference_document_sha256(
+                entry["declaration"]
+            ),
+            "factor_receipt_sha256": entry["receipt"]["receipt_sha256"],
+        }
+        records[table_id] = {
+            "dimension": dimension,
+            "profile": profile,
+            "factor_id": factor_id,
+            "operational_factor": _copy(entry["operational_factor"]),
+            "source_table_sha256": reference_document_sha256(
+                tables[table_id].declaration
+            ),
+            "bands": len(tables[table_id].band_ids),
+        }
+    effective = scale_interval_document(intervals, scalings)
+    for raw in effective["tables"]:
+        if raw["id"] in records:
+            records[raw["id"]]["effective_table_sha256"] = reference_document_sha256(
+                raw
+            )
+    return effective, records
+
+
+def _validate_interval_resolution(
+    resolution: Mapping, factors: Mapping, interval_document: Mapping | None
+) -> None:
+    """Bind recorded interval scaling to selected factors and the document."""
+    records = resolution.get("interval_tables")
+    if records is None:
+        if "interval_tables_sha256" in resolution or resolution.get(
+            "effective_intervals_sha256"
+        ) != resolution.get("base_intervals_sha256"):
+            raise ValueError(
+                "Unscaled effective intervals must equal their base document."
+            )
+        return
+    records = _mapping(records, "interval scaling records")
+    if (
+        resolution.get("resolver_version") != FACTOR_REFERENCE_PROFILE_RESOLVER_VERSION
+        or not records
+        or reference_document_sha256(records)
+        != resolution.get("interval_tables_sha256")
+        or resolution.get("effective_intervals_sha256")
+        == resolution.get("base_intervals_sha256")
+    ):
+        raise ValueError("Interval scaling record identity mismatch.")
+    identities = resolution.get("selected_factor_identities", {})
+    for record in records.values():
+        record = _mapping(record, "interval scaling record")
+        factor_id = record.get("factor_id")
+        if (
+            factor_id not in factors
+            or record.get("operational_factor")
+            != factors[factor_id]["operational_factor"]
+            or record.get("profile")
+            != resolution["selection"].get(record.get("dimension"))
+        ):
+            raise ValueError("Interval scaling disagrees with its selected factor.")
+    if interval_document is None:
+        return
+    from microcosm.build.reference_intervals import validate_interval_document
+
+    tables = validate_interval_document(interval_document)
+    scaled = {table_id for table_id, table in tables.items() if table.scaled}
+    if scaled != set(records):
+        raise ValueError("Effective interval tables differ from their scaling records.")
+    for table_id in scaled:
+        record, declaration = records[table_id], tables[table_id].declaration
+        scaling = declaration["scaling"]
+        identity = identities.get(record["factor_id"], {})
+        if (
+            reference_document_sha256(declaration)
+            != record.get("effective_table_sha256")
+            or scaling["source_table_sha256"] != record.get("source_table_sha256")
+            or scaling["factor_id"] != record["factor_id"]
+            or scaling["operational_factor"] != record["operational_factor"]
+            or scaling["factor_receipt_sha256"] != identity.get("receipt_sha256")
+            or scaling["factor_declaration_sha256"]
+            != identity.get("declaration_sha256")
+        ):
+            raise ValueError("Effective interval table scaling identity mismatch.")
+
+
 def _satisfy_factor_prerequisite(row: dict, dimension: str, binding: str) -> list:
     metadata = row.setdefault("metadata", {})
     if metadata.get("activation_status") != REQUIRES_PREREQUISITES:
@@ -280,8 +466,9 @@ def resolve_reference_profiles(
     Only selected declarations enter selection identity. An unavailable profile
     refuses; an explicitly deferred dimension is reported without claiming its
     transformations ran. Money scaling consumes declared factor evidence;
-    compilation authenticates it against the feed. Interval scaling is reserved
-    for the subsequent interval implementation.
+    compilation authenticates it against the feed. Named interval tables are
+    scaled by the same selected factor as their money companions; without
+    named tables the interval document passes through unchanged.
     Resource headers are bound into the base identity; effective references use
     the compiler's closed document shape.
     """
@@ -336,8 +523,7 @@ def resolve_reference_profiles(
         for raw_transform in choice["declaration"].get("transformations", []):
             transform = _mapping(raw_transform, "reference transformation")
             if transform.get("operation") == SCALE_MONEY_AND_INTERVALS:
-                if _sequence(transform.get("interval_table_ids"), "interval table ids"):
-                    raise ValueError("interval scaling lands in r2b")
+                _interval_table_ids(transform)
                 factor_id = transform.get("factor_id")
                 if not isinstance(factor_id, str) or not factor_id:
                     raise ValueError("Money scaling needs a declared factor id.")
@@ -347,12 +533,16 @@ def resolve_reference_profiles(
         from microcosm.build.reference_factors import validate_factor_context
 
         selected_factors = validate_factor_context(factor_context, sorted(factor_ids))
+    base_intervals_hash = (
+        None if intervals is None else reference_document_sha256(intervals)
+    )
+    intervals, interval_records = _scaled_intervals(
+        chosen, intervals, by_name, selected_factors
+    )
     receipt = {
         "resolver_version": REFERENCE_PROFILE_RESOLVER_VERSION,
         "base_references_sha256": reference_document_sha256(base),
-        "base_intervals_sha256": (
-            None if intervals is None else reference_document_sha256(intervals)
-        ),
+        "base_intervals_sha256": base_intervals_hash,
         "selected_declarations_sha256": reference_document_sha256(chosen),
         "selection": resolved_selection,
     }
@@ -384,6 +574,11 @@ def resolve_reference_profiles(
                 for factor_id, entry in sorted(selected_factors.items())
             },
         )
+        if interval_records:
+            receipt.update(
+                interval_tables=interval_records,
+                interval_tables_sha256=reference_document_sha256(interval_records),
+            )
     selection_hash = reference_document_sha256(_selection_identity(receipt))
     interval_hash = None if intervals is None else reference_document_sha256(intervals)
     transformed, policies = {}, []
@@ -420,11 +615,6 @@ def resolve_reference_profiles(
             if _carried_value_keys(transform):
                 raise ValueError("Reference transformations carry observed values.")
             if operation == SCALE_MONEY_AND_INTERVALS:
-                tables = _sequence(
-                    transform.get("interval_table_ids"), "interval table ids"
-                )
-                if tables:
-                    raise ValueError("interval scaling lands in r2b")
                 binding = transform.get("required_measurement_binding")
                 if not isinstance(binding, str) or not binding:
                     raise ValueError(
@@ -639,6 +829,7 @@ def validate_reference_resolution(
         interval_document
     ) != resolution.get("effective_intervals_sha256"):
         raise ValueError("Effective interval document hash mismatch.")
+    _validate_interval_resolution(resolution, factors, interval_document)
     factor_bindings = _factor_reference_bindings(resolution)
     transformed_names = resolution.get("transformed_names")
     if not isinstance(transformed_names, list) or not all(
