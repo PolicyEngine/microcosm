@@ -368,6 +368,10 @@ can replay it. See
 The ACS local-area release can build its fresh staging H5 on Modal with
 `us-acs-multispine-staging`, then consume its verified H5 and summary through
 `us-acs-local-release`; see [the Modal stage runbook](us-modal-stage-runbook.md#acs-multispine-staging).
+Its optional [county calibration rung](us-acs-local-county-rung.md) uses
+`--geographies state,cd,county --soi-mode state_county`, a county-inclusive
+Ledger feed, and matching county boundaries. Full runs require all 3,144
+county-equivalents and write `county_reliability.json`; the base year is 2024.
 
 The independent US annual static-aging candidate builder lives in
 `microcosm.build.us_annual_static_aging`; it consumes a pinned published parent

@@ -99,6 +99,7 @@ if str(_TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(_TOOLS_DIR))
 
 import us_acs_local_cd_surface as cd_surface  # noqa: E402 - needs tools/ on sys.path
+import us_acs_local_county_surface as county_surface  # noqa: E402
 
 PERIOD = 2024
 RELEASE_NAMESPACE = "buildo_acs_local"
@@ -144,7 +145,8 @@ SOI_MODE_STATE = "state"
 SOI_MODE_TOTALS = "totals"
 SOI_MODE_FULL = "full"
 SOI_MODE_STATE_CD = "state_cd"
-SOI_MODES = (SOI_MODE_STATE, SOI_MODE_TOTALS, SOI_MODE_FULL, SOI_MODE_STATE_CD)
+SOI_MODE_STATE_COUNTY = county_surface.SOI_MODE
+SOI_MODES = (SOI_MODE_STATE, SOI_MODE_TOTALS, SOI_MODE_FULL, SOI_MODE_STATE_CD, SOI_MODE_STATE_COUNTY)
 DEFAULT_SOI_MODE = SOI_MODE_STATE
 #: Ledger record-set specs from a congressional-district file start with this;
 #: ``state`` mode excludes them, which is what Build O's switch did.
@@ -309,6 +311,8 @@ def soi_surface_predicate(soi_mode: str):
     _require_soi_mode(soi_mode)
     if soi_mode == SOI_MODE_STATE_CD:
         soi_mode = SOI_MODE_FULL
+    elif soi_mode == SOI_MODE_STATE_COUNTY:
+        soi_mode = SOI_MODE_STATE
 
     def selected(spec) -> bool:
         metadata = spec.metadata
@@ -1046,7 +1050,7 @@ def ladder_population(ladder_path: Path, geographies: list[str]):
     ladder = load_us_puma_ladder(ladder_path)
     puma_states = (ladder.puma // 100_000).astype(int)
     populations: dict[str, dict[int, float]] = {}
-    if "state" in geographies:
+    if "state" in geographies or "county" in geographies:
         populations["state"] = {
             int(state): float(ladder.puma_population[puma_states == state].sum())
             for state in np.unique(puma_states)
@@ -1058,7 +1062,7 @@ def ladder_population(ladder_path: Path, geographies: list[str]):
             )
             for cd in np.unique(ladder.cd_overlap_cd)
         }
-    return populations
+    return county_surface.with_county_populations(ladder, populations, geographies)
 
 
 def household_sizes(frame) -> np.ndarray:
@@ -1069,7 +1073,9 @@ def household_sizes(frame) -> np.ndarray:
     return households["household_id"].map(size).fillna(0).to_numpy(np.float32)
 
 
-def population_targets(frame, ladder_populations, geographies: list[str]):
+def population_targets(
+    frame, ladder_populations, geographies: list[str], *, county_column="county_fips"
+):
     """Household-grain population marginals as sparse target rows.
 
     Population in a geography = sum over persons-in-geo of household weight;
@@ -1086,6 +1092,7 @@ def population_targets(frame, ladder_populations, geographies: list[str]):
         household_sizes(frame),
         ladder_populations,
         geographies,
+        county_column=county_column,
     )
 
 
@@ -1120,6 +1127,9 @@ def population_target_specs(names, values):
     )
     specs = []
     for name, value in zip(names, values, strict=True):
+        if name.startswith("pop_county_"):
+            specs.append(county_surface.population_spec(name, value, period=PERIOD))
+            continue
         if name.startswith("pop_state_"):
             fips = name.removeprefix("pop_state_")
             label = US_STATE_FIPS_TO_NAME.get(fips)
@@ -1216,13 +1226,14 @@ TARGET_MATRIX_FILENAME = "target_matrix.npz"
 TARGET_ROLES_FILENAME = "target_roles.json"
 
 
-def extract_struct_tables(frame):
+def extract_struct_tables(frame, *, county_column="county_fips"):
     """Small structural/geography copies so the big frame can be freed early."""
 
     households = frame.table("household")
     struct_columns = [
         column for column in LEAN_HOUSEHOLD_COLUMNS if column in households.columns
     ]
+    struct_columns += county_surface.struct_columns(households, struct_columns, county_column=county_column)
     person_columns = [
         column for column in PERSON_STRUCT if column in frame.table("person").columns
     ]
@@ -1424,7 +1435,7 @@ def do_materialize(args) -> None:
         )
     started = time.time()
     if args.feed_sha256:
-        actual = _sha256(args.feed)
+        actual = _sha256(county_surface.feed_path(args.feed))
         if actual != args.feed_sha256:
             raise SystemExit(
                 f"Ledger feed sha256 mismatch: {args.feed} is {actual}, "
@@ -1437,6 +1448,7 @@ def do_materialize(args) -> None:
         f"RI substitution records={len(surface.ri_substitutions)}"
     )
     populations = ladder_population(args.ladder, sorted(set(geographies) | {"cd"}))
+    county_surface.prepare_run(args, geographies, populations, surface=surface)
     require_one_label_per_geography(registry, populations, geographies)
     summary_path = _staging_summary_path(args)
     if not summary_path.exists():
@@ -1466,6 +1478,7 @@ def do_materialize(args) -> None:
         (args.checkpoint_dir / name).unlink(missing_ok=True)
     if getattr(args, "gate_report", None) is not None:
         Path(args.gate_report).unlink(missing_ok=True)
+    county_surface.check_support(frame, populations, args)
     materialized = materialize_chunked(
         frame,
         registry.specs,
@@ -1490,13 +1503,17 @@ def do_materialize(args) -> None:
             f"{len(registry)} specs were declared; admin targets must never "
             "disappear silently between compile and materialization."
         )
-    admin_roles = [cd_surface.target_record(spec) for spec in compiled_specs]
+    compiled_specs, admin_matrix = county_surface.attach_surface(
+        surface, materialized, frame, populations, args
+    )
+    admin_roles = [county_surface.target_record(spec) for spec in compiled_specs]
 
     if args.soi_mode == SOI_MODE_STATE_CD:
         _attach_pro_rata_populations(admin_roles, populations["cd"])
         _require_pro_rata_populations(admin_roles)
     pop_roles, pop_matrix, pop_dropped = population_targets(
-        frame, populations, geographies
+        frame, populations, geographies,
+        county_column=getattr(args, "county_column", "county_fips"),
     )
     if pop_dropped:
         message = (
@@ -1517,13 +1534,14 @@ def do_materialize(args) -> None:
     log(f"population measures: {len(pop_specs)} ({geographies})")
     roles = admin_roles + pop_roles
     holdout = cd_surface.assign_target_roles(roles, fraction=holdout_fraction)
+    county_holdout = county_surface.assign_roles(roles, args)
     log(
         f"CD holdout: {holdout['held_units']}/{holdout['eligible_units']} units, "
         f"{holdout['held_targets']} district targets held out of calibration"
     )
     matrix = sparse.vstack([admin_matrix, pop_matrix], format="csr")
     del admin_matrix, pop_matrix
-    struct = extract_struct_tables(frame)
+    struct = extract_struct_tables(frame, county_column=getattr(args, "county_column", "county_fips"))
     n_households = frame.n("household")
     del frame
     gc.collect()
@@ -1547,6 +1565,8 @@ def do_materialize(args) -> None:
         json.dumps(
             {
                 "staging_h5": str(Path(args.staging_h5).resolve()),
+                "feed": str(Path(args.feed).resolve()),
+                "feed_sha256": _sha256(county_surface.feed_path(args.feed)),
                 "staging_sha256": staging_sha,
                 "ladder_sha256": ladder_sha,
                 "households": n_households,
@@ -1566,6 +1586,7 @@ def do_materialize(args) -> None:
                 "population_cells_dropped": pop_dropped,
                 "soi_mode": args.soi_mode,
                 "cd_holdout": holdout_identity,
+                **county_surface.run_metadata(args, county_holdout),
                 "sampling": sampling,
             },
             indent=2,
@@ -1585,6 +1606,7 @@ def do_materialize(args) -> None:
                 "carrier_check": materialized.carrier_check,
                 "soi_surface": surface.soi_receipt,
                 "cd_holdout": holdout,
+                **county_surface.run_metadata(args, county_holdout),
                 "sampling": sampling,
                 "materialize_peak_rss_gb": round(rss(), 3),
             },
@@ -1622,6 +1644,7 @@ CALIBRATION_OUTPUT_FILENAMES = (
     "weights_latest.npz",
     "calibration_summary.json",
     "calibration_diagnostics.json",
+    "county_reliability.json",
     "consumer_export.json",
     "consumer_reviewed_null_fills.json",
     "spine_qa.json",
@@ -1669,14 +1692,14 @@ def release_target_loss_weights(args, train_specs) -> tuple[np.ndarray, dict]:
 
     multipliers = dict(args.target_family_loss_multipliers)
     try:
-        weights = loss_weighting.us_acs_local_target_loss_weights(
+        weights = county_surface.target_loss_weights(
             train_specs, multipliers
         )
     except ValueError as error:
         raise SystemExit(f"Target loss weights: {error}") from error
     stamp = {
         "weighting": loss_weighting.US_FISCAL_TARGET_LOSS_WEIGHTING,
-        "row_mapping": loss_weighting.US_ACS_LOCAL_TARGET_LOSS_ROW_MAPPING.mapping_id,
+        "row_mapping": county_surface.loss_row_mapping(train_specs).mapping_id,
         "family_multipliers": {
             family: float(multiplier)
             for family, multiplier in sorted(multipliers.items())
@@ -2002,6 +2025,9 @@ def calibration_evidence(
             final_weights=weights,
             cap=target_loss_cap,
         ),
+        **county_surface.calibration_evidence(
+            frame, roles, matrix, design_weights, weights, target_loss_cap
+        ),
     }
 
 
@@ -2026,7 +2052,7 @@ def do_calibrate(args) -> None:
     loss_distribution = loss_weighting.target_loss_weight_distribution(
         train_specs,
         loss_weights,
-        row_mapping=loss_weighting.US_ACS_LOCAL_TARGET_LOSS_ROW_MAPPING,
+        row_mapping=county_surface.loss_row_mapping(train_specs),
     )
     log(
         f"calibrate: households={n_households}, targets={len(target_set)} "
@@ -2088,6 +2114,7 @@ def do_calibrate(args) -> None:
             _write_calibrated_artifact(
                 args, np.asarray(warm, dtype=np.float64), identity, settings
             )
+            county_surface.write_reports(args.checkpoint_dir, previous, identity=identity)
             return
         raise SystemExit(
             f"weights_latest.npz reports {done} epochs (>= --epochs "
@@ -2147,7 +2174,7 @@ def do_calibrate(args) -> None:
         "households": n_households,
         "n_targets": result.problem.n_targets,
         "families": args.families,
-        "geographies": args.geographies,
+        "geographies": identity.get("geographies", args.geographies),
         "soi_mode": identity.get("soi_mode"),
         "matrix_format": result.options["matrix_format"],
         "matrix_shape": [int(x) for x in result.problem.matrix.shape],
@@ -2187,6 +2214,7 @@ def do_calibrate(args) -> None:
         "total_wall_seconds": round(time.time() - started, 1),
         "peak_rss_gb": round(rss(), 3),
     }
+    county_surface.write_reports(args.checkpoint_dir, summary, identity=identity)
     _write_calibrated_artifact(
         args, np.asarray(result.weights, dtype=np.float64), identity, settings
     )
@@ -2199,7 +2227,7 @@ def do_calibrate(args) -> None:
         build={
             "dataset_role": "non_default_local_area",
             "families": args.families,
-            "geographies": args.geographies,
+            "geographies": identity.get("geographies", args.geographies),
             "soi_mode": identity.get("soi_mode"),
             "epochs": args.epochs,
             "epoch_batch": args.epoch_batch,
@@ -3576,6 +3604,9 @@ def do_package(args) -> dict:
             f"--artifact-root <run> --repo-id {HF_REPO_ID}"
         ),
     }
+    refresh_recipe["release"] = county_surface.refresh_recipe(
+        refresh_recipe["release"], materialize_rss
+    )
 
     build_manifest = {
         "build_id": release_id,
@@ -3665,6 +3696,7 @@ def do_package(args) -> dict:
         "run_identity.json": identity,
     }
     contract_files["spine_qa.json"] = spine_qa
+    county_surface.package_reports(contract_files, args.checkpoint_dir, identity)
     contract_files["consumer_export.json"] = consumer_export
     consumer_fills = _load_json(
         args.checkpoint_dir / "consumer_reviewed_null_fills.json"
@@ -3836,7 +3868,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=_REPO_ROOT / "build" / "us" / "us_puma_ladder_2020.npz",
     )
     parser.add_argument("--families", default="snap,medicaid,soi")
-    parser.add_argument("--geographies", default="state,cd")
+    parser.add_argument("--geographies", default="state,cd", help="state, cd, county")
+    county_surface.add_arguments(parser)
     parser.add_argument(
         "--soi-mode",
         choices=SOI_MODES,
@@ -3849,7 +3882,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "total); 'full' keeps every state-bearing spec, both vintages "
             "of each state concept included. 'state_cd' adds the district "
             "file's district rows to 'state' with one vintage per state "
-            "concept, and holds a hash-assigned block of them out "
+            "concept, and holds a hash-assigned block of them out. "
+            "'state_county' adds county shares of the state SOI targets "
             "(docs/us-acs-local-soi-target-surface.md). Later stages use the "
             "mode the checkpoint recorded."
         ),
@@ -4007,6 +4041,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             f"[0, {cd_surface.MAX_CD_HOLDOUT_FRACTION}]."
         )
     args.stages = stages
+    county_surface.validate_arguments(args, parser)
 
     return args
 
