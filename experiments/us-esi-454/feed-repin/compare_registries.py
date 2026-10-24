@@ -8,7 +8,9 @@ crosswalk and the reviewed Medicaid substitutions, once the way
 tools/build_us_target_parity_manifest.py does (targets aged) and once with
 aging off (dollar targets allowed unaged). Each registry is compared as an
 ordered list, so a repeated, reordered, added, dropped or changed target shows
-up; every field of every target is serialized.
+up; every field of every target is serialized. The report records the commit
+the compiler ran at and whether its sources were clean there, since the
+registry digests move whenever main changes the compiler.
 """
 
 from __future__ import annotations
@@ -17,10 +19,14 @@ import dataclasses
 import hashlib
 import importlib.util
 import json
+import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
+
+# Everything the compiled registry depends on besides the two feeds.
+COMPILER_PATHS = ("packages", "tools")
 
 CONFIGURATIONS = {
     "aged": {"age_targets": True},
@@ -58,12 +64,27 @@ def _registry(generator, facts: list[dict], **options) -> list[str]:
     return rows
 
 
+def _git(*args: str) -> str:
+    return subprocess.run(
+        ["git", "-C", str(ROOT), *args], check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+
+def _compiler() -> dict:
+    dirty = _git("status", "--porcelain", "--", *COMPILER_PATHS).splitlines()
+    return {
+        "commit": _git("rev-parse", "HEAD"),
+        "paths": list(COMPILER_PATHS),
+        "sources_clean": not dirty,
+    }
+
+
 def main() -> None:
     previous_path, new_path, report_path = (Path(arg) for arg in sys.argv[1:4])
     generator = _generator()
     previous_facts, _ = generator._load_feed(previous_path)
     new_facts, _ = generator._load_feed(new_path)
-    report: dict[str, dict] = {}
+    report: dict[str, dict] = {"compiler": _compiler()}
     differs = False
     for label, options in CONFIGURATIONS.items():
         previous = _registry(generator, previous_facts, **options)
