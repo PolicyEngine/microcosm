@@ -1,4 +1,4 @@
-"""Generate the reviewed NZ G8-r1 selector inventory from a pinned artifact.
+"""Generate the reviewed NZ G8-r1b selector inventory from a pinned artifact.
 
 Run with ``NZ_CHRONICLE_ARTIFACT`` or ``--artifact``. Observations stay in
 Chronicle: references contain selectors only; the separate inventory resource
@@ -62,7 +62,22 @@ TENURE = {
         "rent_free",
     ],
 }
-SIZE_REASON = "Eight Census household-size leaves sum 61,725 households (3.5%) below the published national total, unexplained; no residual category is permitted."
+RESIDUAL_REASON = "Requires the shared reference-profile resolver to apply d1886 Census not-stated residual allocation before the single ERP bridge; raw size and tenure rows cannot compile."
+RESIDUAL_DISCLOSURE = (
+    "d1886 modelling convention, 23 October 2026. Microcosm allocates Census "
+    "counts with unstated household size across stated size categories in "
+    "proportion to their stated counts, assuming missing at random. Each region's "
+    "computed residual is its independently published household total minus its "
+    "stated leaves. The national size calculation is 61,725 households; regional "
+    "calculations sum to 61,713. Tenure uses the same proportional convention: "
+    "the national difference is 426 and regional differences sum to 429. These "
+    "regional differences and allocated leaves are Microcosm calculations, not "
+    "Stats NZ published residual cells or allocated estimates. The sensitivity "
+    "allocates size residuals only to one- and two-person households in their "
+    "stated proportions. Fractional targets are retained. Allocation precedes "
+    "one application of B2 ERP growth. Region 99 remains separate and uses the "
+    "disclosed national-growth proxy."
+)
 FAMILY_REASON = "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities."
 IRD_REASON = "G8-r2: reviewed IRD-definition taxable-income binding, component closure, record universe, numerical intervals and B5 ageing remain required."
 RECEIPT_REASON = "G8-w: age-stratified receipt assignment is not supported by the current total-only receipt kernel; preserve the source snapshot and age filters."
@@ -262,6 +277,25 @@ def calibration_bindings():
                 }
             )
     for region in regions:
+        for size in range(1, 9):
+            columns.append(
+                {
+                    "entity": "household",
+                    "name": f"household_region_{region}_size_{size}_indicator",
+                    "predicates": [
+                        {
+                            "column": "household_region_code",
+                            "operator": "eq",
+                            "value": region,
+                        },
+                        {
+                            "column": "household_size",
+                            "operator": "ge" if size == 8 else "eq",
+                            "value": size,
+                        },
+                    ],
+                }
+            )
         for tenure, values in TENURE.items():
             columns.append(
                 {
@@ -292,15 +326,29 @@ def calibration_bindings():
         "schema_version": 1,
         "country": "nz",
         "required_inputs": {
-            "person": ["age", "region_code"],
-            "household": ["household_region_code", "tenure"],
+            "person": ["age", "region_code", "person_id", "person_household_id"],
+            "household": ["household_region_code", "tenure", "household_id"],
         },
+        "roster_counts": [
+            {
+                "entity": "household",
+                "name": "household_size",
+                "member_entity": "person",
+                "entity_id": "household_id",
+                "member_id": "person_id",
+                "membership": "person_household_id",
+                "representation": "Model roster represents usual-resident household membership.",
+            }
+        ],
         "input_domains": {
             "person": {
+                "person_id": {"kind": "identity"},
+                "person_household_id": {"kind": "identity"},
                 "age": {"kind": "nonnegative_integer"},
                 "region_code": {"values": regions},
             },
             "household": {
+                "household_id": {"kind": "identity"},
                 "household_region_code": {"values": regions},
                 "tenure": {"values": list(TENURE_DOMAIN)},
             },
@@ -388,8 +436,8 @@ def build_reference_documents(artifact, *, package_dir=SPEC):
             8,
             "stats_nz_census_households_by_size_region",
             "household_structure",
-            "requires_explained_census_household_size_universe",
-            SIZE_REASON,
+            "requires_reference_profile_resolution",
+            RESIDUAL_REASON,
         ),
         (
             "family_type",
@@ -425,6 +473,18 @@ def build_reference_documents(artifact, *, package_dir=SPEC):
                     label=f"{fact['geography']['name']} Census {'family type' if is_family else 'household size'} {code}, ERP-density bridge to June 2025",
                 )
                 _bridge(row, region, erp)
+                if not is_family:
+                    row["metadata"]["required_reference_profile"] = (
+                        "census_residual_allocation"
+                    )
+                    row["hierarchy"]["target_label"] += (
+                        "; d1886 profile-resolved allocation"
+                    )
+                    if region == "99":
+                        row["metadata"]["growth_geography_proxy"] = (
+                            "national-growth proxy"
+                        )
+                        row["hierarchy"]["target_label"] += " (national-growth proxy)"
                 targets.append(row)
     for region in (*REGIONS, "99"):
         for tenure, codes in (("owned", [1, 3]), ("not_owned", [2])):
@@ -451,10 +511,16 @@ def build_reference_documents(artifact, *, package_dir=SPEC):
                 entity="household",
                 measure="households",
                 family="housing_tenure",
+                status="requires_reference_profile_resolution",
+                reason=RESIDUAL_REASON,
                 filter_column=f"household_region_{region}_{tenure}_indicator",
                 label=label,
             )
             _bridge(row, region, erp, members=codes if tenure == "owned" else None)
+            row["metadata"]["required_reference_profile"] = "census_residual_allocation"
+            row["hierarchy"]["target_label"] += "; d1886 profile-resolved allocation"
+            if region == "99":
+                row["metadata"]["growth_geography_proxy"] = "national-growth proxy"
             targets.append(row)
     for measure, contract, column in (
         ("individuals", "ird_taxable_income_people_by_band", "people"),
@@ -634,18 +700,193 @@ def build_reference_documents(artifact, *, package_dir=SPEC):
         documents[filename] = {
             "country": "nz",
             "reference_set": reference_set,
-            "description": "Generated by tools/generate_nz_target_references.py from the pinned Chronicle feed. G8-r1 selector inventory; active demography and tenure use prepared columns, TA ERP is support input. Named parked rows refuse direct compilation. No observation is carried by a reference.",
-            "allowed_value_operations": ["identity", "rolled_forward_by_ratio"]
+            "description": "Generated by tools/generate_nz_target_references.py from the pinned Chronicle feed. Size and tenure require d1886 profile resolution; demography uses prepared columns and TA ERP is support input. Named parked rows refuse direct compilation. No observation is carried by a reference.",
+            "allowed_value_operations": [
+                "identity",
+                "rolled_forward_by_ratio",
+                "allocated_residual_by_ratio",
+            ]
             if reference_set == "calibration"
             else ["identity"],
             "target_references": rows,
             "target_profile": {"schema_version": 1, "hierarchy_reconciliations": []},
         }
     documents["calibration_bindings.json"] = calibration_bindings()
+    documents["reference_profiles.json"] = _reference_profiles(inventory, targets)
     documents["reference_inventory.json"] = _receipts(
         inventory, erp, documents, feed_pin, ta_facts
     )
     return documents
+
+
+def _allocation_operands(inventory, row, recipients):
+    selector = row["ledger_selector"]
+    region = selector["geography_id"]
+    size = "households_by_size" in row["name"]
+    table = "household_size" if size else "tenure"
+    dimension = f"nz_census_2023.{'household_size' if size else 'household_tenure'}_source_label"
+    leaves = [
+        inventory.one(
+            f"stats_nz.census_2023.rc_{region}.{table}",
+            dimensions={dimension: code},
+        )
+        for code in range(1, 9 if size else 4)
+    ]
+    codes = selector["dimension_values"][dimension]
+    return [
+        {
+            "role": "base",
+            "expected_member_count": len(codes) if isinstance(codes, list) else 1,
+        },
+        {
+            "role": "total",
+            **_selector(
+                inventory.one(
+                    f"stats_nz.census_2023.rc_{region}.households", dimensions={}
+                )
+            ),
+        },
+        {
+            "role": "partition",
+            "member_selectors": [_selector(fact) for fact in leaves],
+            "allocation_member_keys": [
+                fact["aggregate_fact_key"]
+                for fact in leaves
+                if fact["dimensions"][dimension] in recipients
+            ],
+        },
+        *copy.deepcopy(row["value_operands"][1:]),
+    ]
+
+
+def _reference_profiles(inventory, rows):
+    profiles = {}
+    for profile in ("mar", "small_households"):
+        transformations = []
+        for row in rows:
+            if (
+                row["metadata"]["activation_status"]
+                != "requires_reference_profile_resolution"
+            ):
+                continue
+            size = "households_by_size" in row["name"]
+            recipients = (
+                [1, 2]
+                if size and profile == "small_households"
+                else list(range(1, 9 if size else 4))
+            )
+            transformations.append(
+                {
+                    "reference_names": [row["name"]],
+                    "operation": "allocated_residual_by_ratio",
+                    "value_operands": _allocation_operands(inventory, row, recipients),
+                    "metadata": {
+                        "allocation_ruling": "d1886",
+                        "census_residual_allocation": profile,
+                    },
+                    "notes": f"d1886 modelling convention: {'missing at random proportional size and tenure allocation' if profile == 'mar' else 'size residual only to one- and two-person households; tenure remains proportional'}. Computed regional residuals and fractional targets; allocation precedes one B2 ERP bridge.",
+                    "target_label": row["hierarchy"]["target_label"] + f" ({profile})",
+                }
+            )
+        profiles[profile] = {"transformations": transformations}
+    return {
+        "schema_version": 1,
+        "dimensions": {
+            "census_residual_allocation": {"default": "mar", "profiles": profiles},
+            "aging_index": {
+                "default": "central",
+                "profiles": {
+                    "central": {"transformations": [], "deferred": True},
+                    "low": {"available": False, "transformations": []},
+                    "high": {"available": False, "transformations": []},
+                },
+            },
+        },
+    }
+
+
+def _residual_receipts(inventory, erp):
+    receipts = []
+    for region in (*REGIONS, "99"):
+        total = inventory.one(
+            f"stats_nz.census_2023.rc_{region}.households", dimensions={}
+        )
+        growth = erp["NZ" if region == "99" else region]
+        ratio = growth[2025]["value"] / growth[2023]["value"]
+        for table, dimension, codes in (
+            ("household_size", "household_size", range(1, 9)),
+            ("tenure", "household_tenure", range(1, 4)),
+        ):
+            leaves = [
+                inventory.one(
+                    f"stats_nz.census_2023.rc_{region}.{table}",
+                    dimensions={f"nz_census_2023.{dimension}_source_label": code},
+                )
+                for code in codes
+            ]
+            leaf_sum = math.fsum(fact["value"] for fact in leaves)
+            residual = total["value"] - leaf_sum
+            if residual < 0:
+                raise ValueError(f"Negative {table} residual for {region}")
+            for profile in ("mar", "small_households"):
+                recipients = (
+                    [1, 2]
+                    if table == "household_size" and profile == "small_households"
+                    else list(codes)
+                )
+                mass = math.fsum(
+                    fact["value"]
+                    for code, fact in zip(codes, leaves, strict=True)
+                    if code in recipients
+                )
+                allocated = [
+                    fact["value"]
+                    + (
+                        residual * fact["value"] / mass
+                        if code in recipients and residual
+                        else 0
+                    )
+                    for code, fact in zip(codes, leaves, strict=True)
+                ]
+                closure = math.fsum(allocated)
+                final_closure = math.fsum(count * ratio for count in allocated)
+                if not math.isclose(
+                    closure, total["value"], rel_tol=1e-12, abs_tol=1e-7
+                ) or not math.isclose(
+                    final_closure, total["value"] * ratio, rel_tol=1e-12, abs_tol=1e-7
+                ):
+                    raise ValueError(
+                        f"Allocation does not close for {region} {table} {profile}"
+                    )
+                receipts.append(
+                    {
+                        "geography_id": region,
+                        "table": table,
+                        "profile": profile,
+                        "classification": "Microcosm computed regional residual and allocated outputs; not published Stats NZ cells",
+                        "allocation_ruling": "d1886",
+                        "total_selector": _selector(total),
+                        "leaf_selectors": [_selector(fact) for fact in leaves],
+                        "published_total": total["value"],
+                        "raw_leaf_sum": leaf_sum,
+                        "computed_residual": residual,
+                        "recipient_codes": recipients,
+                        "allocation_policy": "proportional to stated recipient counts",
+                        "allocated_counts": allocated,
+                        "allocated_closure": closure,
+                        "numerator_selector": _selector(growth[2025]),
+                        "denominator_selector": _selector(growth[2023]),
+                        "growth_ratio": ratio,
+                        "growth_applications": 1,
+                        "bridge": "national-growth proxy"
+                        if region == "99"
+                        else "regional ERP growth",
+                        "final_closure": final_closure,
+                        "expected_final_closure": total["value"] * ratio,
+                        "tolerance": {"rel_tol": 1e-12, "abs_tol": 1e-7},
+                    }
+                )
+    return receipts
 
 
 def _receipts(inventory, erp, documents, feed_pin, ta_facts):
@@ -688,12 +929,12 @@ def _receipts(inventory, erp, documents, feed_pin, ta_facts):
                 "published_national_total": total["value"],
                 "published_national_leaf_sum": source_sum,
                 "deficit": total["value"] - source_sum,
-                "handling": "Preserve the published discrepancy; no residual category or hidden reconciliation.",
-                "activation": "parked: " + SIZE_REASON
-                if table == "household_size"
-                else "parked: " + FAMILY_REASON
+                "handling": "Preserve raw published discrepancies and allocate each region's independently computed residual under d1886; national calculations remain separate diagnostics."
+                if table != "family_type"
+                else "Preserve the published discrepancy; no residual category or hidden reconciliation.",
+                "activation": "parked: " + FAMILY_REASON
                 if table == "family_type"
-                else "Tenure leaves active; published total diagnostic only.",
+                else "Requires d1886 reference-profile resolution; total is an allocation operand and never an additional fitted target.",
             }
         )
         diagnostics.append(
@@ -739,7 +980,7 @@ def _receipts(inventory, erp, documents, feed_pin, ta_facts):
         ),
         (
             "census_national_and_regional_totals",
-            "Diagnostic receipts only; do not select totals with leaves.",
+            "Allocation operands or diagnostic receipts only; do not select totals as fitted rows with leaves.",
         ),
         (
             "ird_taxable_income_total_row_246",
@@ -772,11 +1013,11 @@ def _receipts(inventory, erp, documents, feed_pin, ta_facts):
         ),
         (
             "region_99_erp",
-            "No regional ERP series exists; Census region 99 uses the explicit national-growth proxy, without residual inference.",
+            "No regional ERP series exists; Census region 99 keeps its local total and computed residual, then uses the explicit national-growth proxy.",
         ),
         (
             "qes_prefu_and_b5_ageing",
-            "G8-r2; QES/PREFU rows are absent from this pinned artifact.",
+            "G8-r2; QES/PREFU rows are present in the pinned artifact but unused by this residual-allocation task.",
         ),
         (
             "wff_tripwires",
@@ -804,6 +1045,12 @@ def _receipts(inventory, erp, documents, feed_pin, ta_facts):
             for region, values in erp.items()
         ],
         "source_discrepancies": discrepancies,
+        "modelling_convention": {
+            "ruling": "d1886",
+            "date": "2026-10-23",
+            "disclosure": RESIDUAL_DISCLOSURE,
+        },
+        "regional_profile_allocations": _residual_receipts(inventory, erp),
         "national_bridge_diagnostics": diagnostics,
         "ta_support": {
             "count": len(ta_facts),
