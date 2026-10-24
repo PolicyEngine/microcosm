@@ -96,6 +96,9 @@ _COMPLEMENT_NOTE = (
     "model figures withheld: with the published rows they would give back a row "
     "or a cell that fewer than 10 distinct source households carry"
 )
+_LOCAL_PUBLICATION_NOTE = (
+    "model figures withheld: cross-geography publication safety is not certified"
+)
 
 _COUNTRY_BY_AREA_PREFIX = {
     "E": "England",
@@ -1025,10 +1028,12 @@ def _declared_target_partition(
 #: like every other row's (María's ruling of 2026-10-23 on the local line):
 #: the support rule still decides which local rows bind, the floor which
 #: published figures are withheld. A local surface binds many families in
-#: each area, so its rows are checked one grain and area at a time, and the
-#: report guard matches a withheld local row by its own key, never by its
-#: bare area code as it does a BRMA's one family.
+#: each area. Per-area checks do not cover regional or national controls, or
+#: overlapping local grains, so all local model figures stay unpublished
+#: until a joint publication check is available (#1383). The report guard
+#: matches a withheld local row by its own key, never by its bare area code.
 UK_AREA_SUPPORT_LEVELS = frozenset({"constituency", "local_authority"})
+_UNCERTIFIED_LOCAL_PUBLICATION_LEVELS = UK_AREA_SUPPORT_LEVELS | {"brma"}
 
 
 #: How near a combination of withheld rows may come to the published rows'
@@ -1062,7 +1067,7 @@ def _row_level(geography_levels: Mapping[str, object] | None):
 
 
 def _row_area(row: Mapping[str, object]) -> str:
-    """A local row's area code: its own field, its metadata's, or its name's."""
+    """A local row's explicit geography, falling back to its canonical name."""
 
     area = str(row.get("area_code") or "").strip()
     if not area:
@@ -1070,7 +1075,13 @@ def _row_area(row: Mapping[str, object]) -> str:
         if isinstance(metadata, Mapping):
             area = str(metadata.get("geography_id") or "").strip()
     if not area:
-        # Local row names are ``target_id@area_code@period``.
+        hierarchy = row.get("hierarchy")
+        geography = (
+            hierarchy.get("geography") if isinstance(hierarchy, Mapping) else None
+        )
+        if isinstance(geography, Mapping):
+            area = str(geography.get("id") or "").strip()
+    if not area:
         parts = str(row["name"]).split("@")
         area = parts[-2] if len(parts) >= 3 else ""
     if not area:
@@ -1078,17 +1089,31 @@ def _row_area(row: Mapping[str, object]) -> str:
     return area
 
 
+def uk_uncertified_local_rows(
+    target_rows: Sequence[Mapping[str, object]],
+    geography_levels: Mapping[str, object] | None,
+) -> set[str]:
+    """Local model figures without a joint cross-geography publication proof."""
+
+    level = _row_level(geography_levels)
+    return {
+        str(row["name"])
+        for row in target_rows
+        if level(str(row["name"])) in _UNCERTIFIED_LOCAL_PUBLICATION_LEVELS
+    }
+
+
 def _row_blocks(
     target_rows: Sequence[Mapping[str, object]],
     geography_levels: Mapping[str, object] | None,
 ) -> list[list[str]]:
-    """The rows each withholding check spans, sorted.
+    """Carrier-count blocks and the nonlocal publication span, sorted.
 
     The national, regional and BRMA rows form one block, as one span holds
-    them. A local surface is too large for one dense span and binds many
-    families in each area, so its rows form one block per grain and area
-    (María's ruling of 2026-10-23 on the local line); a difference that runs
-    across areas or grains is outside this check.
+    them. Local rows form one block per grain and area for private fit checks.
+    Those checks cannot certify publication across areas or grains.
+    ``uk_withheld_row_sets`` therefore withholds every local row, pending a
+    joint publication check.
     """
 
     level = _row_level(geography_levels)
@@ -1241,13 +1266,50 @@ def uk_withheld_row_sets(
     the UC family total less its bound bands gives back the unbound band
     above GBP 2,500 a month, which is no row and may rest on a handful of
     households. What neither check sees is set out in :class:`_ResidualCheck`.
-    Both checks run per block (:func:`_row_blocks`; María's ruling of
-    2026-10-23): the national, regional and BRMA rows together, and the
-    constituency and local-authority rows one grain and area at a time, so a
-    local family total less its published local bands is caught, and a
-    difference across areas or against a national row is not.
+    Both checks run over the national, regional and BRMA rows together.
+    Constituency, local-authority and BRMA model figures are withheld in full:
+    per-area spans cannot certify differences against regional or national
+    controls, or overlapping local grains (#1383). Reopening local publication
+    requires a joint proof of those relationships; family labels and area
+    boundaries alone do not establish independence. This restriction affects
+    publication only, not calibration, carrier floors or internal figures.
     """
 
+    thin, complementary = _row_withholding(
+        problem, weights, frame, target_rows, geography_levels, publication=True
+    )
+    complementary |= uk_uncertified_local_rows(target_rows, geography_levels) - thin
+    return thin, complementary
+
+
+def uk_fit_gate_withheld_rows(
+    problem: Any,
+    weights: Sequence[float] | np.ndarray,
+    frame: Frame,
+    target_rows: Sequence[Mapping[str, object]],
+    geography_levels: Mapping[str, object] | None = None,
+) -> set[str]:
+    """Existing carrier and per-area suppression for private fit-gate evaluation.
+
+    This is not a publication decision. Local publication additionally requires
+    ``uk_uncertified_local_rows`` until joint geography safety is certified.
+    """
+
+    thin, complementary = _row_withholding(
+        problem, weights, frame, target_rows, geography_levels, publication=False
+    )
+    return thin | complementary
+
+
+def _row_withholding(
+    problem: Any,
+    weights: Sequence[float] | np.ndarray,
+    frame: Frame,
+    target_rows: Sequence[Mapping[str, object]],
+    geography_levels: Mapping[str, object] | None,
+    *,
+    publication: bool,
+) -> tuple[set[str], set[str]]:
     blocks = _row_blocks(target_rows, geography_levels)
     if not blocks:
         return set(), set()
@@ -1255,7 +1317,18 @@ def uk_withheld_row_sets(
     thin: set[str] = set()
     complementary: set[str] = set()
     for block in blocks:
-        block_thin, block_complementary = _withheld_in_block(*span.rows(block))
+        names, matrix, sources, carriers, floors = span.rows(block)
+        if publication and span.level(names[0]) in UK_AREA_SUPPORT_LEVELS:
+            block_thin = {
+                name
+                for name, count, floor in zip(names, carriers, floors, strict=True)
+                if count < floor
+            }
+            block_complementary = set(names) - block_thin
+        else:
+            block_thin, block_complementary = _withheld_in_block(
+                names, matrix, sources, carriers, floors
+            )
         thin |= block_thin
         complementary |= block_complementary
     return thin, complementary
@@ -2385,6 +2458,8 @@ def uk_calibration_diagnostics_payload(
     ``withheld`` names the rows whose model figures stay in the build
     (:func:`uk_withheld_rows`); the gate kernel passes the set its gate
     evidence carries, and by default it is counted here on the same rule.
+    Local model figures always stay unpublished until their joint geography
+    relationships are certified, including when a caller supplies this set.
     """
 
     registry = _require_uk_target_registry(target_registry)
@@ -2413,6 +2488,7 @@ def uk_calibration_diagnostics_payload(
         raise RuntimeError("Shared calibration diagnostics returned malformed targets.")
     declared, _, skipped = _declared_target_partition(result, target_rows, registry)
     geography = _geography_mapping(declared, target_geography_levels)
+    local_unverified = uk_uncertified_local_rows(target_rows, geography)
     weights = uk_weight_summary(result_weights)
     if withheld is None:
         thin, complementary = uk_withheld_row_sets(
@@ -2420,7 +2496,7 @@ def uk_calibration_diagnostics_payload(
         )
         withheld = frozenset(thin | complementary)
     else:
-        withheld = frozenset(withheld)
+        withheld = frozenset(withheld) | local_unverified
         # The floor's own verdict, so a row the caller withholds beside a
         # thin one is told apart from the thin row itself.
         thin = (
@@ -2445,9 +2521,18 @@ def uk_calibration_diagnostics_payload(
             row["metadata"] = {
                 **dict(row.get("metadata") or {}),
                 "model_figures_withheld": (
-                    _WITHHELD_NOTE if name in thin else _COMPLEMENT_NOTE
+                    _WITHHELD_NOTE
+                    if name in thin
+                    else _LOCAL_PUBLICATION_NOTE
+                    if name in local_unverified
+                    else _COMPLEMENT_NOTE
                 ),
                 **({} if name in thin else {"complementary_withholding": True}),
+                **(
+                    {"publication_safety": "cross_geography_not_certified"}
+                    if name in local_unverified
+                    else {}
+                ),
             }
     pass_rates = _target_pass_rates(target_rows, skipped, geography, withheld)
     withheld_block = (

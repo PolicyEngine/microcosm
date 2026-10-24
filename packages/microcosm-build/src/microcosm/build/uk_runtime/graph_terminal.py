@@ -1018,20 +1018,34 @@ class UKFullGateKernel(KernelBase):
         )
         from .diagnostics import (
             uk_refuse_named_withheld_rows,
+            uk_uncertified_local_rows,
             uk_withheld_gate_areas,
             uk_withheld_gate_keys,
             uk_withhold_brma_figures,
         )
+        from .full_gates import uk_published_fit_gate_report
 
         report_payload = gate_phase_report_payload(report, gates=gates)
-        # The gates decide on the published rows and count the withheld ones
-        # (María's ruling of 2026-10-19); a report that names one fails the
-        # build rather than leaving it.
+        report_payload = uk_published_fit_gate_report(
+            report_payload,
+            local_figures_withheld=bool(
+                uk_uncertified_local_rows(
+                    diagnostics,
+                    {
+                        str(row["name"]): str(row["geography_level"])
+                        for row in diagnostics
+                    },
+                )
+            ),
+        )
+        published_diagnostics = uk_withhold_brma_figures(diagnostics, withheld)
+        # Private fit verdicts survive publication redaction. Any other gate
+        # that names a withheld row still refuses publication.
         uk_refuse_named_withheld_rows(
             report_payload,
             names=withheld,
-            keys=uk_withheld_gate_keys(diagnostics),
-            areas=uk_withheld_gate_areas(diagnostics),
+            keys=uk_withheld_gate_keys(published_diagnostics),
+            areas=uk_withheld_gate_areas(published_diagnostics),
         )
         payload = {
             "schema_version": 1,
@@ -1042,9 +1056,7 @@ class UKFullGateKernel(KernelBase):
             "scope": uk_full_gate_scope_receipt(selection),
             "report": report_payload,
             "upstream_phase_reports": upstream_reports,
-            "target_diagnostics": _json_safe(
-                uk_withhold_brma_figures(diagnostics, withheld)
-            ),
+            "target_diagnostics": _json_safe(published_diagnostics),
             "area_support": _json_safe(support),
             "artifacts": {name: value.key for name, value in context.artifacts.items()},
         }

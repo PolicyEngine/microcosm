@@ -319,9 +319,8 @@ def _consumption_columns(n: int) -> dict[str, np.ndarray]:
 def _diagnostics_case(*, with_skipped: bool = False, with_consumption: bool = False):
     """One row per geography level, each carried by one household.
 
-    Every row rests on fewer than ten source households, so a test that is not
-    about withholding passes an empty withheld set; the withheld path has its
-    own tests (María's rule of 2026-10-21 withholds a thin row's figures).
+    Every row rests on fewer than ten source households. Tests may explicitly
+    skip the nonlocal floor, but local publication remains closed (#1383).
     """
 
     levels_and_weights = (
@@ -335,6 +334,7 @@ def _diagnostics_case(*, with_skipped: bool = False, with_consumption: bool = Fa
     household = pd.DataFrame(
         {
             "household_id": np.arange(n_households, dtype=np.int64),
+            "source_household_id": np.arange(n_households, dtype=np.int64),
             _SPI_COLUMN: [False] * 5 + [True] * 5,
             _CG_COLUMN: [False, False, True, True, False] * 2,
         }
@@ -586,6 +586,7 @@ def test_payload_preserves_common_schema_and_adds_versioned_uk_evidence() -> Non
         "zero_weight_rows_by_stratum",
         "target_pass_rates_by_geography_level",
         "target_observation_basis",
+        "model_figures_withheld",
     }
     assert uk["schema_version"] == UK_DIAGNOSTICS_SCHEMA_VERSION
     assert set(uk["weights"]) == {
@@ -645,8 +646,8 @@ def test_payload_preserves_common_schema_and_adds_versioned_uk_evidence() -> Non
             "n_targets": 1,
             "n_scored": 1,
             "n_skipped": 0,
-            "n_within_10pct": 1,
-            "pass_rate": 1.0,
+            "n_within_10pct": 0,
+            "pass_rate": 0.0,
         },
         # Every level is written; Scotland's BRMA rows bind no target here.
         {
@@ -831,6 +832,18 @@ def test_payload_carries_the_consumption_drift_when_the_frame_has_it() -> None:
 def test_uk_payload_shared_layer_matches_shared_diagnostics_format() -> None:
     result, frame, registry, geography = _diagnostics_case()
     build = {"release_id": "fixture"}
+    # The unchanged shared layer is observable when no local rows require
+    # conservative suppression; local rows and restated losses have their own test.
+    geography = {
+        name: level
+        for name, level in geography.items()
+        if level not in {"la", "constituency"}
+    }
+    registry = TargetRegistry(
+        [spec for spec in registry.specs if spec.to_target().row_name in geography],
+        country="uk",
+    )
+    result = score_targets(frame, registry.to_target_set(), weights=result.weights)
 
     shared = diagnostics_payload(result, target_registry=registry, build=build)
     uk = uk_calibration_diagnostics_payload(
@@ -1347,15 +1360,16 @@ def test_a_thin_brma_row_keeps_its_place_but_not_its_model_figures() -> None:
     assert thin["final_estimate"] is None and thin["relative_error"] is None
     assert thin["within_tolerance"] is None
     assert "model_figures_withheld" in thin["metadata"]
-    assert wide["final_estimate"] == pytest.approx(14.0)
+    assert wide["final_estimate"] is None
+    assert wide["metadata"]["carrier_floor_met"] is True
+    assert wide["metadata"]["publication_safety"] == "cross_geography_not_certified"
     (brma,) = [
         row
         for row in payload["uk_diagnostics"]["target_pass_rates_by_geography_level"]
         if row["geography_level"] == "brma"
     ]
     assert (brma["n_targets"], brma["n_scored"], brma["n_within_10pct"]) == (2, 2, 0)
-    (family,) = payload["uk_diagnostics"]["weakest_families"]
-    assert family["n_targets"] == 1 and family["worst_target"] == wide["name"]
+    assert payload["uk_diagnostics"]["weakest_families"] == []
 
 
 def test_a_thin_national_row_keeps_its_place_but_not_its_model_figures() -> None:
@@ -2193,17 +2207,17 @@ def test_a_row_withheld_beside_a_thin_one_says_so_and_meets_the_schema(
     assert "complementary_withholding" not in thin
     assert beside["carrier_floor_met"] is True
     assert beside["complementary_withholding"] is True
-    assert beside["model_figures_withheld"].startswith(
-        "model figures withheld: with the published rows"
-    )
-    assert "a row or a cell" in beside["model_figures_withheld"]
+    assert "not certified" in beside["model_figures_withheld"]
     assert rows["band_b"]["final_estimate"] is None
-    assert rows["total"]["final_estimate"] == pytest.approx(30.0)
-    assert document["uk_diagnostics"]["model_figures_withheld"]["targets"] == 2
+    assert rows["total"]["final_estimate"] is None
+    assert document["uk_diagnostics"]["model_figures_withheld"]["targets"] == 4
 
 
-def _thin_and_wide_brma_payload(
-    thin_values=(1.0,) * 6 + (0.0,) * 8, extra_options=None, thin_target=10.0
+def _thin_and_wide_payload(
+    thin_values=(1.0,) * 6 + (0.0,) * 8,
+    extra_options=None,
+    thin_target=10.0,
+    geography_level="region",
 ):
     """The thin/wide BRMA fixture's diagnostics payload and its result.
 
@@ -2232,7 +2246,7 @@ def _thin_and_wide_brma_payload(
             period=2023,
             source="Synthetic UK diagnostics fixture",
             family="private_rent",
-            hierarchy=_fixture_hierarchy(name, "brma"),
+            hierarchy=_fixture_hierarchy(name, geography_level),
         )
         for name, measure, value in (
             ("thin_brma_target", "thin_measure", thin_target),
@@ -2240,7 +2254,7 @@ def _thin_and_wide_brma_payload(
             ("other_brma_target", "other_measure", 7.5),
         )
     ]
-    geography = {f"{spec.name}@2023": "brma" for spec in specs}
+    geography = {f"{spec.name}@2023": geography_level for spec in specs}
     weights = np.ones(n)
     frame = Frame(
         {
@@ -2291,7 +2305,7 @@ def test_no_published_total_gives_a_withheld_row_back() -> None:
 
     import math
 
-    payload, result = _thin_and_wide_brma_payload()
+    payload, result = _thin_and_wide_payload()
     rows = {row["target_name"]: row for row in payload["targets"]}
     thin = rows.pop("thin_brma_target")
     assert thin["final_estimate"] is None
@@ -2322,7 +2336,7 @@ def test_no_published_total_gives_a_withheld_row_back() -> None:
     block = payload["uk_diagnostics"]["model_figures_withheld"]
     assert block["targets"] == 1 and block["totals_basis"] == "published_rows"
     # A build with nothing withheld keeps the solve's own totals.
-    payload, result = _thin_and_wide_brma_payload(thin_values=(1.0,) * 14)
+    payload, result = _thin_and_wide_payload(thin_values=(1.0,) * 14)
     assert payload["final_loss"] == pytest.approx(result.final_loss, rel=1e-12)
     assert payload["loss_trajectory"] == pytest.approx(list(result.loss_trajectory))
     assert "model_figures_withheld" not in payload["uk_diagnostics"]
@@ -2349,14 +2363,14 @@ def test_a_withheld_row_inside_ten_percent_counts_nowhere() -> None:
     numerator over every row would make it one.
     """
 
-    payload, _ = _thin_and_wide_brma_payload(thin_target=6.2)
+    payload, _ = _thin_and_wide_payload(thin_target=6.2)
     rows = {row["target_name"]: row for row in payload["targets"]}
     assert rows["thin_brma_target"]["final_estimate"] is None
     assert payload["fraction_within_10pct"] == 0.5
     (brma,) = [
         row
         for row in payload["uk_diagnostics"]["target_pass_rates_by_geography_level"]
-        if row["geography_level"] == "brma"
+        if row["geography_level"] == "region"
     ]
     assert brma["n_within_10pct"] == 1
 
@@ -2369,7 +2383,7 @@ def test_every_brma_row_states_its_ten_household_verdict() -> None:
     the build never flagged.
     """
 
-    payload, _ = _thin_and_wide_brma_payload()
+    payload, _ = _thin_and_wide_payload(geography_level="brma")
     verdicts = {
         row["target_name"]: row["metadata"]["carrier_floor_met"]
         for row in payload["targets"]
@@ -2450,7 +2464,7 @@ def test_no_loss_over_every_row_survives_in_the_payload() -> None:
         "budget_search": {"probes": [{"loss": 0.3119}]},
         "an_outcome_nobody_listed": 0.2903,
     }
-    payload, result = _thin_and_wide_brma_payload(extra_options=extra)
+    payload, result = _thin_and_wide_payload(extra_options=extra)
     options = payload["options"]
     assert options["iterate_selection_receipt"] == {
         **receipt,
@@ -2464,9 +2478,7 @@ def test_no_loss_over_every_row_survives_in_the_payload() -> None:
     for number in _numbers(payload):
         assert not any(math.isclose(number, loss, rel_tol=1e-9) for loss in every_row)
     # With nothing withheld the options stay as the solve wrote them.
-    payload, _ = _thin_and_wide_brma_payload(
-        thin_values=(1.0,) * 14, extra_options=extra
-    )
+    payload, _ = _thin_and_wide_payload(thin_values=(1.0,) * 14, extra_options=extra)
     assert payload["options"]["iterate_selection_receipt"] == receipt
     assert payload["options"]["an_outcome_nobody_listed"] == 0.2903
 
@@ -2656,14 +2668,8 @@ def test_an_explicit_zero_in_a_brma_row_carries_nothing() -> None:
     }
 
 
-def test_the_local_line_withholds_one_grain_and_area_at_a_time() -> None:
-    """María's ruling of 2026-10-23: thin local rows are withheld, by block.
-
-    In one constituency a family total less its published band gives a thin
-    band back, so the next-smallest band is withheld beside it, as nationally.
-    A thin row in another area is withheld on its own, and no row of one area
-    is withheld for a difference with another's.
-    """
+def test_local_figures_fail_closed_without_a_joint_geography_proof() -> None:
+    """Per-area checks cannot certify publication across areas and grains."""
 
     rows = {
         "fam.total@E14000001@2025": list(range(30)),
@@ -2675,11 +2681,142 @@ def test_the_local_line_withholds_one_grain_and_area_at_a_time() -> None:
     levels = {name: "constituency" for name in rows}
     thin, beside = _withheld_sets(rows, 60, levels=levels)
     assert thin == {"fam.band_2@E14000001@2025", "other.total@E14000002@2025"}
-    assert beside == {"fam.band_1@E14000001@2025"}
-    # The same rows as one national block would give the same verdict; the
-    # block split changes only which differences are looked for.
-    national = _withheld_sets(rows, 60)
-    assert national == (thin, beside)
+    assert thin | beside == set(rows)
+    # The numerical carrier floor has not changed; only publication is closed.
+    assert _withheld_sets(rows, 60)[0] == thin
+
+
+@pytest.mark.parametrize(
+    ("parent_level", "local_level"),
+    [
+        ("region", "local_authority"),
+        ("national", "constituency"),
+        ("constituency", "la"),
+        ("region", "brma"),
+        ("region", "statistical_scope"),
+    ],
+)
+def test_a_parent_cannot_give_a_thin_local_cell_back_by_difference(
+    parent_level: str, local_level: str
+) -> None:
+    """Synthetic counterexample to the per-area publication checks (#1383).
+
+    The parent less the wide child gives exactly five source households.
+    No actual survey records or withheld values are used.
+    """
+
+    rows = {
+        "parent@E12000001@2025": list(range(30)),
+        "child@E06000001@2025": list(range(5)),
+        "child@E06000002@2025": list(range(5, 30)),
+    }
+    levels = {
+        "parent@E12000001@2025": parent_level,
+        "child@E06000001@2025": local_level,
+        "child@E06000002@2025": local_level,
+    }
+    thin, complementary = _withheld_sets(rows, 30, levels=levels)
+    assert thin == {"child@E06000001@2025"}
+    # At least one necessary giver is unavailable to a reader of the publication.
+    assert complementary & {
+        "parent@E12000001@2025",
+        "child@E06000002@2025",
+    }
+
+
+@pytest.mark.parametrize("provided_withheld", [None, frozenset()])
+def test_local_publication_closes_rows_and_rollups_even_with_a_stale_caller(
+    provided_withheld,
+) -> None:
+    """A published JSON's losses and rollups must not restore local figures."""
+
+    from microcosm.diagnostics import UK_MODEL_FIGURE_FIELDS
+
+    n = 30
+    membership = {
+        "parent": ("region", list(range(n))),
+        "thin_local": ("local_authority", list(range(5))),
+        "wide_local": ("local_authority", list(range(5, n))),
+    }
+    household = pd.DataFrame(
+        {
+            "household_id": np.arange(n),
+            "source_household_id": np.arange(n),
+            _SPI_COLUMN: False,
+            _CG_COLUMN: False,
+        }
+    )
+    specs = []
+    for name, (level, carriers) in membership.items():
+        household[name] = 0.0
+        household.loc[carriers, name] = 1.0
+        specs.append(
+            TargetSpec(
+                name=name,
+                entity="household",
+                value=float(len(carriers)),
+                measure=name,
+                period=2023,
+                source="Synthetic cross-geography publication fixture",
+                family="fixture",
+                hierarchy=_fixture_hierarchy(name, level),
+            )
+        )
+    weights = np.full(n, 2.0)
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {"person_id": np.arange(n), "person_household_id": np.arange(n)}
+            ),
+            "household": household,
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(weights, WeightKind.DESIGN)},
+    )
+    registry = TargetRegistry(specs, country="uk")
+    result = score_targets(frame, registry.to_target_set(), weights=weights)
+    # The private numerical result retains both local cells and their errors.
+    original = [(row.name, row.final_estimate) for row in result.diagnostics]
+    payload = uk_calibration_diagnostics_payload(
+        result,
+        frame,
+        target_geography_levels={
+            f"{name}@2023": level for name, (level, _) in membership.items()
+        },
+        target_registry=registry,
+        withheld=provided_withheld,
+        local_area_support=pd.DataFrame(
+            columns=[
+                "geography_level",
+                "area_code",
+                "nonzero_households",
+                "nonzero_source_households",
+                "effective_sample_size",
+            ]
+        ),
+    )
+    assert published_json_schema_errors(payload) == []
+    rows = {row["target_name"]: row for row in payload["targets"]}
+    for name in ("thin_local", "wide_local"):
+        assert all(rows[name].get(field) is None for field in UK_MODEL_FIGURE_FIELDS)
+        assert rows[name]["metadata"]["publication_safety"] == (
+            "cross_geography_not_certified"
+        )
+    assert "not certified" in rows["wide_local"]["metadata"]["model_figures_withheld"]
+    assert rows["parent"]["final_estimate"] == 60.0
+    assert payload["final_loss"] == rows["parent"]["final_loss_contribution"]
+    assert payload["loss_trajectory"] == []
+    uk = payload["uk_diagnostics"]
+    assert uk["model_figures_withheld"]["targets"] == 2
+    local_rate = next(
+        row
+        for row in uk["target_pass_rates_by_geography_level"]
+        if row["geography_level"] == "local_authority"
+    )
+    assert local_rate["n_scored"] == 2
+    assert local_rate["n_within_10pct"] == 0 and local_rate["pass_rate"] == 0.0
+    assert uk["weakest_areas_by_fit"]["bottom_by_fit"] == []
+    assert [(row.name, row.final_estimate) for row in result.diagnostics] == original
 
 
 def test_the_report_guard_matches_a_withheld_local_row_by_its_key(capsys) -> None:

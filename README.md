@@ -375,6 +375,17 @@ UK release workflows stop when diagnostics are unavailable because their later
 release checks require that evidence; historical schema-6 and schema-7 UK
 artifacts remain readable through isolated compatibility validation.
 
+UK constituency, local-authority and BRMA model figures are withheld from published
+diagnostics until a joint check can certify their relationships with regional
+and national controls and with overlapping local grains. Per-area checks cannot
+prevent a regional total minus its published local cells from revealing a thin
+cell. This conservative restriction leaves calibration and private numerical
+checks and their pass/fail decisions intact. Local fit-gate reports retain those
+decisions without numerical details. Suppressed rows carry the metadata value
+`publication_safety: cross_geography_not_certified`; model estimates, errors and
+loss contributions are blank, and fit summaries and total losses cover only
+the rows whose figures are published. Administrative target values remain visible.
+
 A Draft 2020-12 JSON Schema for schema 8, generated from those models, is
 committed at
 `packages/microcosm-diagnostics/src/microcosm/diagnostics/schemas/calibration_diagnostics.v8.schema.json`

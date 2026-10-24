@@ -1306,7 +1306,7 @@ def test_final_gate_kernel_diagnostics_match_the_published_json_schema(
 
     assert published_json_schema_errors(document) == []
     if brma_row:
-        assert document["uk_diagnostics"]["model_figures_withheld"]["targets"] == 1
+        assert document["uk_diagnostics"]["model_figures_withheld"]["targets"] == 2
 
 
 def test_the_gate_kernel_keeps_a_withheld_brma_row_out_of_its_gates(monkeypatch):
@@ -1329,12 +1329,12 @@ def test_the_gate_kernel_keeps_a_withheld_brma_row_out_of_its_gates(monkeypatch)
     document = json.loads(stored.artifacts["gate_report"])
     outcomes = {row["id"]: row for row in document["report"]["outcomes"]}
     fit = outcomes["uk_local_target_fit"]
-    assert fit["details"]["withheld_targets"] == 1
-    assert key not in fit["details"]["failing_targets"]
+    assert fit["details"]["publication_safety"] == "cross_geography_not_certified"
+    assert "failing_targets" not in fit["details"]
     assert not any(key in line for line in fit["failures"])
     family = outcomes["uk_local_per_family_fit"]["details"]
-    assert family["withheld_targets"] == {"private_rent": 1}
-    assert "private_rent" not in family["family_sizes"]
+    assert family["publication_safety"] == "cross_geography_not_certified"
+    assert "family_sizes" not in family
     (embedded,) = [
         row for row in document["target_diagnostics"] if row["family"] == "private_rent"
     ]
@@ -1347,7 +1347,7 @@ def test_the_gate_kernel_keeps_a_withheld_brma_row_out_of_its_gates(monkeypatch)
     flags = dict(zip(table["family"], table["model_figures_withheld"], strict=True))
     assert flags == {
         "households": False,
-        "census_households": False,
+        "census_households": True,
         "private_rent": True,
     }
     withheld = table.loc[table["family"] == "private_rent"].iloc[0]
@@ -1360,7 +1360,7 @@ def test_the_gate_kernel_keeps_a_withheld_brma_row_out_of_its_gates(monkeypatch)
     # no loss over every row survives, in the options or anywhere else (the
     # third review of #1305).
     assert diagnostics["loss_trajectory"] == []
-    assert diagnostics["uk_diagnostics"]["model_figures_withheld"]["targets"] == 1
+    assert diagnostics["uk_diagnostics"]["model_figures_withheld"]["targets"] == 2
     (result,) = solved
     receipt = dict(result.options.get("iterate_selection_receipt") or {})
     every_row = [
@@ -1394,15 +1394,22 @@ def test_the_gate_kernel_keeps_a_withheld_brma_row_out_of_its_gates(monkeypatch)
             )
 
 
-def test_the_gate_kernel_fails_closed_on_a_binding_that_leaks(monkeypatch):
-    """A binding that wrote a withheld row's error stops the build."""
+def test_the_gate_kernel_removes_local_fit_details_even_if_a_binding_leaks(monkeypatch):
+    """A binding cannot republish a withheld error in a local fit summary."""
+    import json
+
     from microcosm.build.uk_runtime import battery_bindings
 
     monkeypatch.setattr(
         battery_bindings, "uk_withheld_gate_keys", lambda rows: frozenset()
     )
-    with pytest.raises(ValueError, match="names a withheld row"):
-        _run_final_gate_kernel(monkeypatch, brma_row=True)
+    stored = _run_final_gate_kernel(monkeypatch, brma_row=True)
+    document = json.loads(stored.artifacts["gate_report"])
+    outcomes = {row["id"]: row for row in document["report"]["outcomes"]}
+    fit = outcomes["uk_local_target_fit"]
+    assert fit["status"] == "failed"
+    assert fit["details"]["publication_safety"] == "cross_geography_not_certified"
+    assert "S33999999" not in json.dumps(document["report"])
 
 
 def test_package_validates_materialized_evidence_against_graph_bytes(tmp_path):
