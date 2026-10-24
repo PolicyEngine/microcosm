@@ -278,9 +278,10 @@ calibration and 22–23% after.
    households, population and earnings. Calibration brings 88.4–99.1% of
    counties within 10% of their within-state share targets on every trained
    family. Against published levels it's 70.5–98.5%, lowest for households,
-   where the release itself is 6.0% short nationally. District holds stay
-   within about 0.2% at the median, and achieved state totals within 0.1–1.4%
-   at the median.
+   where the release itself is 6.0% short nationally. The district rows are
+   soft targets: they stay within about 0.2% at the median, but 10–19 of the
+   436 district household totals move more than 10%. Achieved state totals
+   stay within 0.1–1.4% at the median.
 2. **Held-out families improve, mostly through county size.** Median county
    error on households with earnings, SOI wages and household income falls
    from 58–59% to 8–14%. A rescaling baseline that changes no weights gets to
@@ -339,7 +340,8 @@ calibration and 22–23% after.
 
 ### Limits of this pilot
 
-- The solve holds only district households and population. It omits the
+- Besides the county rows, the solve trains only district households and
+  population, as soft targets at their release values. It omits the
   release's national, state and district SOI and administrative families, so
   the donor-to-ACS shift in these runs may cost fit on tax targets (top
   incomes, capital gains) that donor records carry. Only a solve that trains

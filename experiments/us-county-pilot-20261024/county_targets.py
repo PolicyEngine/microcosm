@@ -20,7 +20,8 @@ Trained families:
   wages plus all self-employment: on ACS records the base leaf, which is SEMP;
   on donor records also the SSTB and farm self-employment leaves.
 * ``cd_households`` / ``cd_population``: each congressional district's total
-  under ``w0``, held so the county rows cannot undo the district fit.
+  under ``w0``, trained as soft targets so the county rows don't move district
+  totals freely; the fit tables report how far they move.
 
 Held-out families (never trained; scored before and after):
 
