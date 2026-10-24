@@ -53,6 +53,26 @@ measure. Each derived output must be produced by one of the stage's nodes
 upstream of calibration. The composed graph is checked when there is one,
 otherwise the declaration.
 
+With stages listed, every field the checks read is validated before either
+pass uses it, on every declared node and rules binding:
+
+- **Nodes.** `id` and `kernel` are text, and ids are distinct. `population`,
+  `base` and `rules_binding` are text or null. `params` is an object. Each
+  resource selection in it names a text resource, a list `path` and a known
+  encoding, as activation requires. Each binding selection (an object with
+  `binding` and `field`) names both as text. `inputs`, `outputs` and
+  `artifact_inputs` are lists of objects with a text `entity`, a list of text
+  `columns`, a text `column` and a text `producer` respectively. `sources` is
+  a list of text.
+- **Rules bindings.** Each names a distinct text `id`, a text `entity` and
+  `rulespec_path`, and a list of text `variables`.
+- **The calibration endpoint**, when given, is text.
+
+A malformed field refuses, naming the node: for example "node 'mid' has
+malformed inputs". Read character by character, a string column, source or
+path list would otherwise drop a read, a hold-out source or a selection, and
+a repeated id would hide a node. The guard without stages is unchanged.
+
 ## Which nodes belong to a stage
 
 In the declaration pass, a node belongs to a stage when its `rules_binding` is
@@ -121,3 +141,5 @@ These are tested, as properties and examples, in
   selection that calibration reaches only through column reads.
 - With stages listed, a refusal names the first offending node in declaration
   order.
+- With stages listed, a malformed declaration never admits. Every field the
+  checks read is validated first, and a malformed one refuses naming its node.

@@ -710,6 +710,135 @@ def _carries_engine_ref_inventory(value: object) -> bool:
     return decoded != value and _carries_engine_ref_inventory(decoded)
 
 
+def _is_text(value: object) -> bool:
+    return isinstance(value, str) and bool(value)
+
+
+def _is_list(value: object, item: object = None) -> bool:
+    """A JSON list (never a string), each item passing ``item`` when given."""
+    return (
+        not isinstance(value, str | bytes)
+        and isinstance(value, Sequence)
+        and (item is None or all(item(entry) for entry in value))
+    )
+
+
+def _is_rows(value: object, **fields: object) -> bool:
+    """A list of objects whose named fields each pass their check."""
+    return _is_list(
+        value,
+        lambda row: isinstance(row, Mapping)
+        and all(check(row.get(key)) for key, check in fields.items()),
+    )
+
+
+def _precalibration_params(params: object) -> bool:
+    """Whether every resource or binding selection the stage checks read is well formed.
+
+    A resource selection names text, a list path and a known encoding, as
+    activation requires. A binding selection (an object with binding and
+    field) names both as text; engine-reference documents carry no field.
+    """
+    if not isinstance(params, Mapping):
+        return False
+    for value in params.values():
+        for selection in _precalibration_selections(value):
+            encoding = selection.get("encoding", "value")
+            if "resource" in selection and not (
+                _is_text(selection["resource"])
+                and _is_list(selection.get("path", ()))
+                and isinstance(encoding, str)
+                and encoding in _ENCODINGS
+            ):
+                return False
+            if (
+                "binding" in selection
+                and "field" in selection
+                and not (
+                    _is_text(selection["binding"]) and _is_text(selection["field"])
+                )
+            ):
+                return False
+    return True
+
+
+def _precalibration_bindings(spec: Mapping[str, object]) -> dict[str, Mapping]:
+    """The rules bindings, refusing any field the stage checks read malformed.
+
+    The registry validates bindings in full only when it builds engines, after
+    these checks run; a string ``variables`` would otherwise be read character
+    by character.
+    """
+
+    bindings: dict[str, Mapping] = {}
+    for item in _sequence(
+        transport_resource(spec, "axiom_rules_bindings").get("bindings"),
+        "axiom_rules_bindings.bindings",
+    ):
+        row = _mapping(item, "rules binding")
+        name = row.get("id")
+        if not _is_text(name) or name in bindings:
+            raise ValueError("precalibration_stages needs distinct rules binding ids.")
+        if not (
+            _is_text(row.get("entity"))
+            and _is_text(row.get("rulespec_path"))
+            and _is_list(row.get("variables"), _is_text)
+        ):
+            raise ValueError(
+                f"precalibration_stages needs rules binding {name!r} to name its "
+                "entity, rulespec_path and variables."
+            )
+        bindings[name] = row
+    return bindings
+
+
+def _precalibration_rows(document: Mapping) -> dict[str, Mapping]:
+    """The declared nodes, refusing any field the stage checks read malformed.
+
+    The declaration pass runs before the nodes are parsed. Read character by
+    character, a string column, source or path list would drop a read, a
+    hold-out source or a selection, and a repeated id would hide a node.
+    """
+
+    rows: dict[str, Mapping] = {}
+    for item in _sequence(document.get("nodes"), "transport nodes"):
+        row = _mapping(item, "transport node")
+        name = row.get("id")
+        if not _is_text(name) or name in rows:
+            raise ValueError(
+                "Transport calibration ancestry: node ids must be distinct text."
+            )
+        checks = {
+            "kernel": _is_text(row.get("kernel")),
+            # Null is the same as absent for the optional links.
+            **{
+                field: row.get(field) is None or _is_text(row[field])
+                for field in ("population", "base", "rules_binding")
+            },
+            "params": _precalibration_params(row.get("params", {})),
+            "inputs": _is_rows(
+                row.get("inputs", ()),
+                entity=_is_text,
+                columns=lambda columns: _is_list(columns, _is_text),
+            ),
+            "outputs": _is_rows(
+                row.get("outputs", ()), entity=_is_text, column=_is_text
+            ),
+            "artifact_inputs": _is_rows(
+                row.get("artifact_inputs", ()), producer=_is_text
+            ),
+            "sources": _is_list(row.get("sources", ()), _is_text),
+        }
+        malformed = [field for field, valid in checks.items() if not valid]
+        if malformed:
+            raise ValueError(
+                f"Transport calibration ancestry: node {name!r} has malformed "
+                f"{', '.join(malformed)}."
+            )
+        rows[name] = row
+    return rows
+
+
 def _precalibration_stages(spec: Mapping[str, object]) -> dict[str, Mapping]:
     """Validate stage declarations before inspecting either graph."""
 
@@ -730,10 +859,7 @@ def _precalibration_stages(spec: Mapping[str, object]) -> dict[str, Mapping]:
         not isinstance(entity, str) or not entity for entity in _unit_entities(spec)
     ):
         raise ValueError("precalibration_stages needs a named benefit-unit entity.")
-    bindings = {
-        row["id"]: row
-        for row in transport_resource(spec, "axiom_rules_bindings")["bindings"]
-    }
+    bindings = _precalibration_bindings(spec)
     holdout = (
         transport_resource(spec, "holdout_references").get("target_references", ())
         if _has_resource(spec, "holdout_references")
@@ -867,11 +993,8 @@ def _validate_precalibration_ancestry(
     config: TransportGraphConfig | None,
 ) -> None:
     document = transport_graph_document(spec)
-    rows = {row["id"]: row for row in document["nodes"]}
-    bindings = {
-        row["id"]: row
-        for row in transport_resource(spec, "axiom_rules_bindings")["bindings"]
-    }
+    rows = _precalibration_rows(document)
+    bindings = _precalibration_bindings(spec)
     unit_entities = _unit_entities(spec)
     unit_bindings = {
         name: row for name, row in bindings.items() if row["entity"] in unit_entities
@@ -904,8 +1027,14 @@ def _validate_precalibration_ancestry(
     roots = {
         name for name, row in rows.items() if row["kernel"].startswith("calibrate.")
     }
-    endpoint = document["endpoints"].get("calibration")
-    if isinstance(endpoint, str):
+    endpoint = _mapping(document.get("endpoints"), "transport endpoints").get(
+        "calibration"
+    )
+    if endpoint is not None and not _is_text(endpoint):
+        raise ValueError(
+            "Transport calibration ancestry: the calibration endpoint must name a node."
+        )
+    if endpoint is not None:
         roots.add(endpoint)
     predecessors = {name: set() for name in rows}
     producers = {

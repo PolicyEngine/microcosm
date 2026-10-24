@@ -3502,6 +3502,22 @@ def test_precalibration_ancestry_stage_artifact_is_not_a_declared_output(
     }
 
 
+@pytest.mark.parametrize("entity", ["family", "person"])
+def test_precalibration_ancestry_composed_stage_artifact_read_refuses(entity):
+    """Only the composed graph reads the stage artifact, as an extension node can."""
+    spec, nodes = _stage_artifact_case(entity, "calibration")
+    rows = spec["resources"]["transport_graph"]["nodes"]
+    del next(row for row in rows if row["id"] == "cal")["artifact_inputs"]
+    assert _synthetic_outcomes(spec, nodes, {"u": "u-ref"}) == {
+        "declaration": None,
+        "composed": (
+            ValueError,
+            "Transport calibration ancestry: node 'cal' carries undeclared "
+            "pre-calibration stage output.",
+        ),
+    }
+
+
 def _variant_calibration_case(post, feeds_variant):
     """A node after the central fit, and a variant calibration that may read it."""
     tax = _synthetic_binding("tax", "person", ["tax_out"])
@@ -4013,4 +4029,205 @@ def test_precalibration_ancestry_malformed_entities_match_today(
             compose_module.validate_transport_calibration_ancestry, spec
         )
         == expected
+    )
+
+
+def _shape_case():
+    """A listed unit stage and one reader of its declared output, well formed."""
+    binding = _synthetic_binding("u", "family", ["u_out", "u_priv"])
+    rows = [
+        {
+            "id": "probe",
+            "kernel": "synthetic.probe@1",
+            "population": "create",
+            "params": {"engine_ref": {"binding": "u", "field": "engine_ref"}},
+            "outputs": [
+                {"entity": "family", "column": "u_out"},
+                {"entity": "family", "column": "u_priv"},
+            ],
+        },
+        {
+            "id": "mid",
+            "kernel": "synthetic.mid@1",
+            "population": "create",
+            "inputs": [{"entity": "family", "columns": ["u_out"]}],
+            "outputs": [{"entity": "person", "column": "mid_out"}],
+        },
+        {
+            "id": "cal",
+            "kernel": "calibrate.synthetic@1",
+            "population": "create",
+            "inputs": [{"entity": "person", "columns": ["mid_out"]}],
+        },
+    ]
+    binding["engine_ref"] = "u-ref"
+    stage = _synthetic_stage(binding, ["u_out"])
+    spec = _synthetic_stage_spec([binding], [stage], rows)
+    # Data a non-stage node may select; it embeds the stage's engine reference.
+    spec["resources"]["probe_refs"] = {"refs": {"u": "u-ref"}}
+    return spec
+
+
+def _shape_rows(spec):
+    return {row["id"]: row for row in spec["resources"]["transport_graph"]["nodes"]}
+
+
+def _shape_outcome(guard, spec):
+    """Any refusal, so today's guard compares even where it raises KeyError."""
+    try:
+        guard(spec)
+    except Exception as error:
+        return type(error), str(error)
+    return None
+
+
+#: A malformed field the declaration pass reads, by the node that carries it.
+_MALFORMED_NODE_FIELDS = {
+    "string_columns": ("mid", "inputs", [{"entity": "family", "columns": "u_priv"}]),
+    "missing_columns": ("mid", "inputs", [{"entity": "family"}]),
+    "string_inputs": ("mid", "inputs", "u_out"),
+    "output_without_entity": ("mid", "outputs", [{"column": "mid_out"}]),
+    "edge_without_producer": ("cal", "artifact_inputs", [{"name": "trace"}]),
+    "string_edges": ("cal", "artifact_inputs", "probe"),
+    "missing_kernel": ("probe", "kernel", None),
+    "list_population": ("mid", "population", ["create"]),
+    "list_rules_binding": ("mid", "rules_binding", ["u"]),
+    "list_params": ("probe", "params", ["engine_ref"]),
+    "string_path": (
+        "mid",
+        "params",
+        {"rows": {"resource": "probe_refs", "path": "refs"}},
+    ),
+    "string_sources": ("mid", "sources", "synthetic_holdout_facts"),
+    "list_resource": ("mid", "params", {"rows": {"resource": ["holdout_references"]}}),
+    "unknown_encoding": (
+        "mid",
+        "params",
+        {"rows": {"resource": "probe_refs", "encoding": ["sha256"]}},
+    ),
+    "list_binding_selector": (
+        "mid",
+        "params",
+        {"ref": {"binding": ["u"], "field": "engine_ref"}},
+    ),
+}
+
+
+def test_precalibration_ancestry_shape_case_is_accepted():
+    assert (
+        _shape_outcome(
+            compose_module.validate_transport_calibration_ancestry, _shape_case()
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize("case", sorted(_MALFORMED_NODE_FIELDS))
+def test_precalibration_ancestry_malformed_node_field_refuses_naming_the_node(case):
+    """With stages, a malformed field refuses before it can drop a read or edge."""
+    node, field, value = _MALFORMED_NODE_FIELDS[case]
+    spec = _shape_case()
+    _shape_rows(spec)[node][field] = value
+    guard = compose_module.validate_transport_calibration_ancestry
+    assert _shape_outcome(guard, spec) == (
+        ValueError,
+        f"Transport calibration ancestry: node {node!r} has malformed {field}.",
+    )
+    # Without stages the guard is today's, malformed declarations included.
+    spec["resources"]["precalibration_stages"]["stages"] = []
+    assert _shape_outcome(guard, spec) == _shape_outcome(
+        _precalibration_reference_guard, spec
+    )
+
+
+@pytest.mark.parametrize(
+    ("case", "value", "reason"),
+    [
+        (
+            "string_columns",
+            [{"entity": "family", "columns": ["u_priv"]}],
+            "undeclared pre-calibration stage output",
+        ),
+        (
+            "string_path",
+            {"rows": {"resource": "probe_refs", "path": ["refs"]}},
+            "not a declared pre-calibration stage",
+        ),
+        ("string_sources", ["synthetic_holdout_facts"], "hold-out source"),
+        (
+            "list_resource",
+            {"rows": {"resource": "holdout_references"}},
+            "holdout_references selection",
+        ),
+    ],
+)
+def test_precalibration_ancestry_malformed_spelling_hid_a_refusal(case, value, reason):
+    """Read character by character, these spellings used to be accepted."""
+    node, field, _ = _MALFORMED_NODE_FIELDS[case]
+    spec = _shape_case()
+    _shape_rows(spec)[node][field] = value
+    assert _shape_outcome(
+        compose_module.validate_transport_calibration_ancestry, spec
+    ) == (
+        ValueError,
+        f"Transport calibration ancestry: node {node!r} carries {reason}.",
+    )
+
+
+def test_precalibration_ancestry_repeated_node_id_refuses():
+    """A repeated id would hide the first node's read of an undeclared output."""
+    spec = _shape_case()
+    rows = spec["resources"]["transport_graph"]["nodes"]
+    _shape_rows(spec)["mid"]["inputs"] = [{"entity": "family", "columns": ["u_priv"]}]
+    rows.insert(
+        rows.index(_shape_rows(spec)["cal"]),
+        {"id": "mid", "kernel": "synthetic.mid@1", "population": "create"},
+    )
+    assert _shape_outcome(
+        compose_module.validate_transport_calibration_ancestry, spec
+    ) == (
+        ValueError,
+        "Transport calibration ancestry: node ids must be distinct text.",
+    )
+
+
+@pytest.mark.parametrize(
+    ("case", "change"),
+    [
+        ("string_variables", {"variables": "u_out_total"}),
+        ("list_entity", {"entity": ["family"]}),
+        ("missing_rulespec_path", {"rulespec_path": None}),
+    ],
+)
+def test_precalibration_ancestry_malformed_binding_refuses(case, change):
+    """A string variable list would match stage outputs by substring."""
+    spec = _shape_case()
+    (binding,) = spec["resources"]["axiom_rules_bindings"]["bindings"]
+    binding.update(change)
+    assert _shape_outcome(
+        compose_module.validate_transport_calibration_ancestry, spec
+    ) == (
+        ValueError,
+        "precalibration_stages needs rules binding 'u' to name its entity, "
+        "rulespec_path and variables.",
+    )
+
+
+def test_precalibration_ancestry_repeated_binding_id_refuses():
+    spec = _shape_case()
+    bindings = spec["resources"]["axiom_rules_bindings"]["bindings"]
+    bindings.append(_synthetic_binding("u", "person", ["other"]))
+    assert _shape_outcome(
+        compose_module.validate_transport_calibration_ancestry, spec
+    ) == (ValueError, "precalibration_stages needs distinct rules binding ids.")
+
+
+def test_precalibration_ancestry_malformed_calibration_endpoint_refuses():
+    spec = _shape_case()
+    spec["resources"]["transport_graph"]["endpoints"]["calibration"] = ["cal"]
+    assert _shape_outcome(
+        compose_module.validate_transport_calibration_ancestry, spec
+    ) == (
+        ValueError,
+        "Transport calibration ancestry: the calibration endpoint must name a node.",
     )
