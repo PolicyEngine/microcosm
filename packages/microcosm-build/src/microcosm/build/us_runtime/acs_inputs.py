@@ -18,8 +18,12 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from microcosm.build.gates import GateResult
 from microcosm.build.us_runtime.acs_release_predictors import (
     crosswalk_acs_occupation_and_work_experience,
+)
+from microcosm.build.us_runtime.acs_transfer import (
+    ACS_SELF_EMPLOYMENT_COMPONENT_INPUTS,
 )
 from microcosm.build.us_runtime.spm_role_source import (
     NATIVE_SPM_ROLE,
@@ -36,7 +40,9 @@ __all__ = [
     "ACS_GROUP_QUARTERS_CHILD_RULE",
     "AcsGroupQuartersChildrenResult",
     "AcsNativeInputResult",
+    "ACS_SELF_EMPLOYMENT_IDENTITY_TOLERANCE",
     "AcsSpmRoleResult",
+    "acs_self_employment_identity_gate",
     "map_acs_native_inputs",
     "with_acs_spm_independence_role",
     "without_acs_group_quarters_children",
@@ -630,6 +636,176 @@ def without_acs_group_quarters_children(
     if not child.any():
         return AcsGroupQuartersChildrenResult(frame, provenance)
     return AcsGroupQuartersChildrenResult(frame.select(~child), provenance)
+
+
+#: Dollar tolerance for :func:`acs_self_employment_identity_gate`. The native
+#: mapping derives the base leaf from the same two columns, so a passing row
+#: agrees to floating-point rounding; $1 absorbs storage round trips without
+#: hiding a donor draw.
+ACS_SELF_EMPLOYMENT_IDENTITY_TOLERANCE = 1.0
+
+_SELF_EMPLOYMENT_LEAVES = (
+    "self_employment_income_before_lsr",
+    *ACS_SELF_EMPLOYMENT_COMPONENT_INPUTS,
+)
+#: The two leaves an ACS row's SEMP may sit on. QBI reconciliation
+#: (``qbi_inputs.with_us_qbi_input_reconciliation``) routes their sum wholly
+#: to one of them, so at most one is nonzero.
+_SEMP_ROUTED_LEAVES = (
+    "self_employment_income_before_lsr",
+    "sstb_self_employment_income_before_lsr",
+)
+#: Components no ACS producer separates from SEMP; on an ACS row they can only
+#: be donor draws.
+_NON_ACS_COMPONENTS = tuple(
+    column
+    for column in ACS_SELF_EMPLOYMENT_COMPONENT_INPUTS
+    if column not in _SEMP_ROUTED_LEAVES
+)
+
+
+def acs_self_employment_identity_gate(
+    person: pd.DataFrame,
+    *,
+    rows: np.ndarray | pd.Series,
+    tolerance: float = ACS_SELF_EMPLOYMENT_IDENTITY_TOLERANCE,
+) -> GateResult:
+    """Require each ACS person's self-employment to be exactly their SEMP.
+
+    ``rows`` selects the ACS person rows; the caller owns that provenance, so
+    this check reads no origin tags. On a row that reports SEMP, the base
+    self-employment leaf plus every self-employment component must equal
+    ``SEMP * ADJINC / 1_000_000`` within ``tolerance`` dollars, so a donor
+    draw added on top of SEMP fails (microcosm#1380). The sum alone would
+    let draws cancel, so the gate also checks where SEMP sits: on the base
+    leaf or, after QBI reconciliation, wholly on the SSTB leaf, never on
+    both, and never on farm operations income or partnership self-employment
+    net earnings, which ACS reports only inside SEMP. A row with blank SEMP
+    is outside the ACS self-employment universe and must carry no
+    self-employment; its blank leaves are reviewed structural nulls. A blank
+    or infinite leaf or ``ADJINC`` on a row that reports SEMP fails, because
+    the identity cannot be checked there, and so does an infinite SEMP,
+    which is not a blank.
+    """
+
+    name = "acs_self_employment_identity"
+    selected = np.asarray(rows, dtype=bool)
+    if selected.shape != (len(person),):
+        raise ValueError("rows must be a one-dimensional mask aligned to person.")
+    missing = [
+        column
+        for column in ("SEMP", "ADJINC", *_SELF_EMPLOYMENT_LEAVES)
+        if column not in person.columns
+    ]
+    if missing:
+        return GateResult(
+            name=name,
+            passed=False,
+            failures=(
+                "ACS self-employment identity needs person column(s) "
+                f"{missing}; refusing to treat them as zero.",
+            ),
+            details={"missing_columns": missing},
+        )
+
+    subset = person.loc[selected]
+
+    def numeric(column: str) -> np.ndarray:
+        return pd.to_numeric(subset[column], errors="coerce").to_numpy(
+            dtype=np.float64, na_value=np.nan
+        )
+
+    semp = numeric("SEMP")
+    adjinc = numeric("ADJINC")
+    leaves = np.column_stack([numeric(column) for column in _SELF_EMPLOYMENT_LEAVES])
+    reported = np.isfinite(semp)
+    blank_semp = np.isnan(semp)
+    infinite_semp = np.isinf(semp)
+    nonfinite_leaf = reported & ~np.isfinite(leaves).all(axis=1)
+    nonfinite_adjinc = reported & ~np.isfinite(adjinc)
+    checkable = reported & ~nonfinite_leaf & ~nonfinite_adjinc
+    filled = np.where(np.isnan(leaves), 0.0, leaves)
+    gap = np.zeros(len(subset), dtype=np.float64)
+    gap[checkable] = filled[checkable].sum(axis=1) - (
+        semp[checkable] * adjinc[checkable] / _INFLATION_FACTOR_DENOMINATOR
+    )
+    # Negated so a gap that overflows to a nonfinite value also fails.
+    mismatched = checkable & ~(np.abs(gap) <= tolerance)
+    outside_nonzero = blank_semp & (filled != 0.0).any(axis=1)
+    position = {column: index for index, column in enumerate(_SELF_EMPLOYMENT_LEAVES)}
+    non_acs_component = reported & np.column_stack(
+        [filled[:, position[column]] != 0.0 for column in _NON_ACS_COMPONENTS]
+    ).any(axis=1)
+    split_across_routed = reported & np.column_stack(
+        [filled[:, position[column]] != 0.0 for column in _SEMP_ROUTED_LEAVES]
+    ).all(axis=1)
+
+    failures: list[str] = []
+    if not selected.any():
+        failures.append("No ACS person rows were selected for the check.")
+    if mismatched.any():
+        failures.append(
+            f"{int(mismatched.sum())} ACS person row(s) reporting SEMP carry "
+            "self-employment leaves that differ from SEMP * ADJINC / 1e6 by "
+            f"more than ${tolerance:g} (largest gap "
+            f"${float(np.abs(gap).max()):,.2f}); a donor component drawn on "
+            "top of SEMP counts that income twice."
+        )
+    if outside_nonzero.any():
+        failures.append(
+            f"{int(outside_nonzero.sum())} ACS person row(s) with blank SEMP "
+            "carry nonzero self-employment."
+        )
+    if non_acs_component.any():
+        failures.append(
+            f"{int(non_acs_component.sum())} ACS person row(s) reporting SEMP "
+            f"carry nonzero {' or '.join(_NON_ACS_COMPONENTS)}, which ACS "
+            "reports only inside SEMP; only a donor draw puts it there."
+        )
+    if split_across_routed.any():
+        failures.append(
+            f"{int(split_across_routed.sum())} ACS person row(s) reporting SEMP "
+            "carry both base and SSTB self-employment; QBI reconciliation "
+            "routes SEMP wholly to one of them."
+        )
+    if infinite_semp.any():
+        failures.append(
+            f"{int(infinite_semp.sum())} ACS person row(s) have an infinite SEMP."
+        )
+    if nonfinite_leaf.any():
+        failures.append(
+            f"{int(nonfinite_leaf.sum())} ACS person row(s) reporting SEMP have a "
+            "blank or infinite self-employment leaf."
+        )
+    if nonfinite_adjinc.any():
+        failures.append(
+            f"{int(nonfinite_adjinc.sum())} ACS person row(s) reporting SEMP have "
+            "a blank or infinite ADJINC."
+        )
+    return GateResult(
+        name=name,
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "tolerance": float(tolerance),
+            "acs_person_rows": int(selected.sum()),
+            "semp_reported_rows": int(reported.sum()),
+            "mismatched_rows": int(mismatched.sum()),
+            "max_abs_gap": float(np.abs(gap).max()) if len(gap) else 0.0,
+            "excess_over_semp": float(gap[mismatched].clip(min=0.0).sum()),
+            "blank_semp_rows": int(blank_semp.sum()),
+            "blank_semp_nonzero_rows": int(outside_nonzero.sum()),
+            "non_acs_component_rows": int(non_acs_component.sum()),
+            "base_and_sstb_rows": int(split_across_routed.sum()),
+            "infinite_semp_rows": int(infinite_semp.sum()),
+            "nonfinite_leaf_rows": int(nonfinite_leaf.sum()),
+            "nonfinite_adjinc_rows": int(nonfinite_adjinc.sum()),
+            "nonzero_rows_by_leaf": {
+                column: int((filled[:, index] != 0.0).sum())
+                for index, column in enumerate(_SELF_EMPLOYMENT_LEAVES)
+            },
+        },
+    )
 
 
 def _refuse_units(offending: pd.Index, problem: str) -> None:

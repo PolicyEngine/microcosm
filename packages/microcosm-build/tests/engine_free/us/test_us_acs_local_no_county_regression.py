@@ -283,6 +283,9 @@ def test_no_county_materialization_matches_pre_county_surface(
     )
     monkeypatch.setattr(module, "_load_staging_frame", lambda *_: frame)
     monkeypatch.setattr(module, "_require_local_hours", lambda *_: None)
+    monkeypatch.setattr(
+        module, "_require_acs_self_employment_identity", lambda *_: None
+    )
     monkeypatch.setattr(module, "log", lambda *_: None)
 
     def materialize(_frame, specs, **_kwargs):

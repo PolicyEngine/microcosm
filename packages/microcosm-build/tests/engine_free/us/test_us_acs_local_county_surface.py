@@ -657,6 +657,9 @@ def test_county_hooks_materialize_a_fixture_and_preserve_configured_geography(
     monkeypatch.setattr(module, "_load_staging_frame", lambda *_a: frame)
     monkeypatch.setattr(module, "_require_local_hours", lambda *_a: None)
     monkeypatch.setattr(
+        module, "_require_acs_self_employment_identity", lambda *_a: None
+    )
+    monkeypatch.setattr(
         module.cd_surface,
         "sample_staging_frame",
         lambda current, **_k: (

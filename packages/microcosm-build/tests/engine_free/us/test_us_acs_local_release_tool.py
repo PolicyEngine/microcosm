@@ -58,6 +58,10 @@ _PACKAGE_ENGINE = stored_inputs.CertifiedEngine(
             "weekly_hours_worked_before_lsr",
             "hours_worked_last_week",
             "takes_up_wic_if_eligible",
+            "self_employment_income_before_lsr",
+            "sstb_self_employment_income_before_lsr",
+            "farm_operations_income",
+            "partnership_self_employment_net_earnings",
             *US_ORG_OCCUPATION_AND_WORK_EXPERIENCE_OUTPUT_COLUMNS,
         }
     ),
@@ -508,6 +512,62 @@ def test_local_hours_gate_refuses_missing_source_audit() -> None:
         module._require_local_hours(None, {})
 
 
+class _SelfEmploymentFrame:
+    """A staging stand-in: one ACS row per case plus an ignored ASEC row."""
+
+    def __init__(self, person: pd.DataFrame) -> None:
+        self._person = person
+
+    def table(self, entity: str) -> pd.DataFrame:
+        assert entity == "person"
+        return self._person
+
+
+def _self_employment_person(sstb_on_acs: float) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "person_spine": ["acs_2024_1yr", "acs_2024_1yr", "asec_puf"],
+            "SEMP": [0.0, 1_000.0, np.nan],
+            "ADJINC": [1_000_000.0, 1_000_000.0, np.nan],
+            "self_employment_income_before_lsr": [0.0, 1_000.0, 50_000.0],
+            "sstb_self_employment_income_before_lsr": [sstb_on_acs, 0.0, 9_000.0],
+            "farm_operations_income": [0.0, 0.0, 700.0],
+            "partnership_self_employment_net_earnings": [0.0, 0.0, 300.0],
+        }
+    )
+
+
+def test_release_refuses_staging_that_stacks_self_employment_on_semp() -> None:
+    module = _load_tool_module()
+
+    module._require_acs_self_employment_identity(
+        _SelfEmploymentFrame(_self_employment_person(0.0))
+    )
+    with pytest.raises(SystemExit, match="counts that income twice"):
+        module._require_acs_self_employment_identity(
+            _SelfEmploymentFrame(_self_employment_person(2_500.0))
+        )
+    with pytest.raises(SystemExit, match="no person_spine"):
+        module._require_acs_self_employment_identity(
+            _SelfEmploymentFrame(
+                _self_employment_person(0.0).drop(columns=["person_spine"])
+            )
+        )
+
+
+def test_release_checks_self_employment_wherever_it_loads_staging() -> None:
+    module = _load_tool_module()
+
+    for stage in (module.do_materialize, module._write_calibrated_artifact):
+        lines = [line.strip() for line in inspect.getsource(stage).splitlines()]
+        hours = next(
+            index
+            for index, line in enumerate(lines)
+            if line.startswith("_require_local_hours(frame")
+        )
+        assert lines[hours + 1] == "_require_acs_self_employment_identity(frame)"
+
+
 def test_local_hours_failure_propagates_to_release_boundary(monkeypatch) -> None:
     from microcosm.build.gates import GateResult
 
@@ -650,6 +710,84 @@ def test_package_requires_a_passing_hours_gate_in_the_finalize_report(
     with pytest.raises(SystemExit, match="Re-run --stage finalize"):
         module.do_package(args)
     assert not (args.out / "package_result.json").exists()
+
+
+def _with_person_columns(frame, **columns):
+    from microcosm.frame import Frame
+
+    return Frame(
+        {
+            **{entity: frame.table(entity) for entity in frame.entities},
+            "person": frame.table("person").assign(**columns),
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+
+
+def test_package_refuses_a_checkpoint_calibrated_from_stacked_staging(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A historical checkpoint cannot reach a release through qa and finalize.
+
+    Its run identity authenticates the old staging hash and its finalize
+    report is green, but the calibrated rows still carry a donor SSTB draw on
+    top of SEMP (#1380). The package stage grades those bytes and ships
+    nothing.
+    """
+
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    stacked = _with_person_columns(
+        _plausible_hours_frame(),
+        sstb_self_employment_income_before_lsr=[0.0, 0.0, 5_000.0, *[0.0] * 5],
+    )
+    loaded = []
+
+    def load_frame(path, *_a, **_k):
+        loaded.append(Path(path))
+        return stacked
+
+    monkeypatch.setattr(module, "_load_staging_frame", load_frame)
+    with pytest.raises(
+        SystemExit, match="ACS self-employment identity failed: 1 ACS person row"
+    ):
+        module.do_package(args)
+    assert loaded == [Path(args.out_h5)]
+    assert not (args.out / "package_result.json").exists()
+    assert not list((args.out / "releases").rglob("*.json"))
+    assert not (args.out / module.ARTIFACT_FILENAME).exists()
+
+
+def test_package_binds_the_self_employment_gate_to_the_packaged_bytes(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    result = module.do_package(args)
+    release_dir = Path(result["release_dir"])
+    expected_sha = module._sha256(args.out_h5)
+    for name in ("build_manifest.json", "gate_summary.json"):
+        gate = json.loads((release_dir / name).read_text())["gates"][
+            "acs_self_employment_identity"
+        ]
+        assert gate["passed"] is True
+        assert gate["failures"] == []
+        assert gate["artifact_sha256"] == expected_sha
+        assert gate["checked_at_stage"] == "package"
+        assert gate["detail"]["acs_person_rows"] == 8
+        assert gate["detail"]["semp_reported_rows"] == 6
+        assert gate["detail"]["mismatched_rows"] == 0
 
 
 def test_package_binds_the_hours_gate_to_the_packaged_bytes(
@@ -1304,9 +1442,37 @@ def _write_frame_h5(path: Path, frame) -> None:
 
 
 def _plausible_hours_frame():
-    return _staging_frame_with_hours(
+    """The hours frame as ACS rows whose self-employment leaves split SEMP.
+
+    The package stage grades the identity on the bytes it ships (#1380), so
+    the frame the package tests load carries the spine tag, SEMP, ADJINC and
+    the four self-employment leaves, all consistent.
+    """
+
+    from microcosm.frame import Frame
+
+    frame = _staging_frame_with_hours(
         [40.0, 38.0, 20.0, 45.0, 0.0, 0.0, 0.0, 0.0],
         [40.0, 35.0, 22.0, 40.0, 0.0, 0.0, 0.0, 5.0],
+    )
+    semp = np.asarray([0.0, 0.0, 12_000.0, 0.0, 0.0, 0.0, np.nan, np.nan])
+    adjinc = np.full(len(semp), 1_021_000.0)
+    person = frame.table("person").assign(
+        person_spine="acs_2024_1yr",
+        SEMP=semp,
+        ADJINC=adjinc,
+        self_employment_income_before_lsr=np.nan_to_num(semp * adjinc / 1e6),
+        sstb_self_employment_income_before_lsr=0.0,
+        farm_operations_income=0.0,
+        partnership_self_employment_net_earnings=0.0,
+    )
+    return Frame(
+        {
+            **{entity: frame.table(entity) for entity in frame.entities},
+            "person": person,
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
     )
 
 
@@ -1696,7 +1862,8 @@ def test_package_records_the_stored_input_gate_bound_to_the_packaged_bytes(
             "failures": [],
             "engine": "policyengine-us 2.2.1",
             "register_sha256": stored_inputs.register_sha256(),
-            "registered_non_variables": [],
+            # The ACS rows' base-spine tag, a reviewed register entry.
+            "registered_non_variables": ["person_spine"],
             "artifact_sha256": result["root_artifact"]["sha256"],
             "checked_at_stage": "package",
         }
