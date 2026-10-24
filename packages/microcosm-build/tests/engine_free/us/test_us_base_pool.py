@@ -370,6 +370,30 @@ def test__given_donor_assigned_geography__then_pool_preserves_it_and_derives_pum
     assert acs_row["county_fips"].tolist() == ["01001"]
 
 
+def _single_puma_ladder(
+    puma: str, tracts: list[str], counties: list[str], district: int
+) -> UsPumaLadder:
+    """A one-PUMA ladder whose tracts and counties are the given donors'."""
+
+    county_values, county_populations = np.unique(
+        np.asarray(counties, dtype=np.int64), return_counts=True
+    )
+    return UsPumaLadder(
+        puma=np.asarray([int(puma)]),
+        puma_population=np.asarray([2.0]),
+        cd_overlap_puma=np.asarray([int(puma)]),
+        cd_overlap_cd=np.asarray([district]),
+        cd_overlap_population=np.asarray([2.0]),
+        county_overlap_puma=np.full(len(county_values), int(puma)),
+        county_overlap_county=county_values,
+        county_overlap_population=county_populations.astype(float),
+        tract_overlap_puma=np.full(len(tracts), int(puma)),
+        tract_overlap_tract=np.asarray(tracts, dtype=np.int64),
+        tract_overlap_population=np.ones(len(tracts)),
+        metadata=_test_puma_ladder().metadata,
+    )
+
+
 @pytest.mark.parametrize("carry_county_2023", [False, True])
 @pytest.mark.parametrize(
     ("puma", "tracts", "counties"),
@@ -384,23 +408,7 @@ def test__given_preserved_donors__then_2023_county_follows_each_tract(
 ) -> None:
     state = int(puma[:2])
     district = state * 100 + 1
-    county_values, county_populations = np.unique(
-        np.asarray(counties, dtype=np.int64), return_counts=True
-    )
-    ladder = UsPumaLadder(
-        puma=np.asarray([int(puma)]),
-        puma_population=np.asarray([2.0]),
-        cd_overlap_puma=np.asarray([int(puma)]),
-        cd_overlap_cd=np.asarray([district]),
-        cd_overlap_population=np.asarray([2.0]),
-        county_overlap_puma=np.full(len(county_values), int(puma)),
-        county_overlap_county=county_values,
-        county_overlap_population=county_populations.astype(float),
-        tract_overlap_puma=np.full(len(tracts), int(puma)),
-        tract_overlap_tract=np.asarray(tracts, dtype=np.int64),
-        tract_overlap_population=np.ones(len(tracts)),
-        metadata=_test_puma_ladder().metadata,
-    )
+    ladder = _single_puma_ladder(puma, tracts, counties, district)
     expected = county_fips_2023_from_tracts(tracts)
     base = _assigned_geography_base_frame(
         state_fips=state,
@@ -436,6 +444,36 @@ def test__given_preserved_donors__then_2023_county_follows_each_tract(
         assert donor[COUNTY_FIPS_2023_COLUMN].tolist() == counties
     acs = household[household[spine_column("household")].eq(ACS_2024_1YR_SPINE)]
     assert acs["tract_geoid"].isna().all()
+
+
+def test__given_integer_donor_tracts__then_2023_county_still_follows_each_tract() -> (
+    None
+):
+    # Integer tract GEOIDs become floats once pooled beside tractless ACS
+    # rows; the 2023 county must still come from each validated tract,
+    # including Tolland's split across two planning regions.
+    puma = "0920301"
+    tracts = ["09013890203", "09013890202"]
+    counties = ["09013", "09013"]
+    district = 901
+    base = _assigned_geography_base_frame(
+        state_fips=9,
+        tracts=[int(tract) for tract in tracts],
+        congressional_districts=[district, district + 1],
+        counties=counties,
+    )
+
+    result = with_optional_acs_spine(
+        base,
+        _acs_frame(state_fips=9, puma=puma),
+        puma_ladder=_single_puma_ladder(puma, tracts, counties, district),
+        geography_seed=1,
+        expected_congressional_district_vintage="119th_congress",
+    )
+
+    household = result.table("household")
+    donor = household[household[spine_column("household")].eq(ASEC_PUF_SPINE)]
+    assert donor[COUNTY_FIPS_2023_COLUMN].tolist() == ["09150", "09110"]
 
 
 def test__given_partial_donor_assigned_geography_columns__then_pool_fails() -> None:

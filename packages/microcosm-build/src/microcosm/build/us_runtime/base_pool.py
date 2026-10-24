@@ -690,8 +690,13 @@ def _assign_pooled_puma_ladder(
         assigned.loc[donor_rows, "county_fips"] = preserved_county
         # The sampled county is overwritten above; the retained tract also
         # determines the donor's calibration county, including CT regions.
+        # _derived_donor_puma validated the tracts as integral, but pooling
+        # beside tractless ACS rows can leave them as floats.
+        tracts = pd.to_numeric(assigned.loc[donor_rows, "tract_geoid"])
         assigned.loc[donor_rows, COUNTY_FIPS_2023_COLUMN] = (
-            county_fips_2023_from_tracts(assigned.loc[donor_rows, "tract_geoid"])
+            county_fips_2023_from_tracts(
+                [f"{tract:011d}" for tract in tracts.astype(np.int64).tolist()]
+            )
         )
     assigned.drop(columns=[_PUMA_LADDER_ANCHOR_COLUMN], inplace=True)
     tables["household"] = assigned
