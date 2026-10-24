@@ -274,6 +274,11 @@ def convert_bonuses_to_bonus_sacrifice(
     weights = np.asarray(weights, dtype=float)
     uniforms = np.asarray(uniforms, dtype=float)
     limit = float(anchor["upper_earnings_limit"]["annual"])
+    # Amounts grow with OBR average earnings and weights with ONS population
+    # to 2027-28, while the OBR grows its base with employment and earnings,
+    # and employment need not grow as the population does (Vahid's review of
+    # #1383, item 7). The base is met at stage weights; calibration does not
+    # bind it.
     earnings_growth = float(anchor["earnings_growth"]["factor"])
     weight_growth = float(anchor["weight_growth"]["factor"])
     target = float(anchor["obr_base_above_threshold"])
