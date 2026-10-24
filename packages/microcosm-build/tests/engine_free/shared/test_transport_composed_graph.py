@@ -42,6 +42,7 @@ import json
 import re
 import shutil
 import time
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
 from unittest.mock import Mock
@@ -75,9 +76,11 @@ from microcosm.frame.kernels import SimulateRulesKernel
 from microcosm.graph import (
     ArtifactInput,
     ArtifactOutput,
+    ArtifactType,
     Capabilities,
     ContentStore,
     Determinism,
+    Graph,
     GraphError,
     KernelBase,
     KernelRegistry,
@@ -87,6 +90,7 @@ from microcosm.graph import (
     Slice,
     SourceRef,
     StoreMissError,
+    StructuralDelta,
     compile_graph,
     graph_to_json,
     run_graph,
@@ -239,6 +243,269 @@ def _selectors(spec: dict, resource: str) -> set[str]:
     return found
 
 
+# The pre-S5 implementation is intentionally retained for differential checks.
+def _precalibration_reference_selections(value: object) -> Iterator[Mapping]:
+    """Every explicit selection inside a declared parameter value."""
+
+    if isinstance(value, Mapping):
+        yield value
+    elif isinstance(value, list | tuple):
+        for item in value:
+            yield from _precalibration_reference_selections(item)
+
+
+def _precalibration_reference_ancestors(
+    predecessors: Mapping[str, Sequence[str]], roots: set[str]
+) -> set[str]:
+    ancestors = set()
+    pending = list(roots)
+    while pending:
+        name = pending.pop()
+        if name in ancestors:
+            continue
+        if name not in predecessors:
+            raise ValueError(f"Calibration endpoint {name!r} is not a declared node.")
+        ancestors.add(name)
+        pending.extend(predecessors[name])
+    return ancestors
+
+
+def _precalibration_reference_embeds(
+    value: object,
+    references: set[str],
+    unit_modules: frozenset[str] = frozenset(),
+) -> bool:
+    if not references and not unit_modules:
+        return False
+    if isinstance(value, Mapping):
+        if unit_modules:
+            from microcosm.build.transport.registry import PYTHON_ENGINE_REF_FORMAT
+            from microcosm.frame.adapters.axiom import _ENGINE_REF_SCHEMA
+
+            module = None
+            if value.get("format") == _ENGINE_REF_SCHEMA:
+                module = value.get("module")
+            elif value.get("format") == PYTHON_ENGINE_REF_FORMAT:
+                binding = value.get("binding")
+                if isinstance(binding, Mapping):
+                    module = binding.get("rulespec_path")
+            if isinstance(module, str) and module in unit_modules:
+                return True
+        return any(
+            _precalibration_reference_embeds(item, references, unit_modules)
+            for pair in value.items()
+            for item in pair
+        )
+    if isinstance(value, list | tuple):
+        return any(
+            _precalibration_reference_embeds(item, references, unit_modules)
+            for item in value
+        )
+    if not isinstance(value, str):
+        return False
+    if any(
+        reference in value or json.dumps(reference, ensure_ascii=False)[1:-1] in value
+        for reference in references
+    ):
+        return True
+    try:
+        decoded = json.loads(value)
+    except (ValueError, TypeError):
+        decoder = json.JSONDecoder()
+        for index, character in enumerate(value):
+            if character not in {"{", '"'}:
+                continue
+            try:
+                embedded, _ = decoder.raw_decode(value, index)
+            except ValueError:
+                continue
+            if _precalibration_reference_embeds(embedded, references, unit_modules):
+                return True
+        return False
+    return decoded != value and _precalibration_reference_embeds(
+        decoded, references, unit_modules
+    )
+
+
+def _precalibration_reference_guard(
+    spec: Mapping[str, object],
+    *,
+    graph: Graph | None = None,
+    config: TransportGraphConfig | None = None,
+) -> None:
+    """Refuse hold-out or benefit-unit engine semantics upstream of calibration.
+
+    Without a graph, check the declaration's structural-base membership and
+    artifact ancestry. This permits a packaged declaration check before donor
+    preparation. Canonical engine-reference documents are matched to the
+    benefit-unit bindings' module paths even before references are prepared.
+    A composed graph also checks its exact compiled predecessors and the
+    prepared references, including references embedded in JSON text.
+    Benefit-unit attributes remain allowed; excluded columns are the unit
+    rules bindings' outputs and the group encoder's declared outputs.
+    """
+    if not compose_module._has_resource(spec, compose_module.GRAPH_RESOURCE):
+        return
+    document = compose_module.transport_graph_document(spec)
+    rows = {
+        row["id"]: row
+        for row in (
+            compose_module._mapping(item, "transport node")
+            for item in compose_module._sequence(
+                document.get("nodes"), "transport nodes"
+            )
+        )
+    }
+    unit_entity = compose_module.transport_resource(spec, "benefit_unit_rule").get(
+        "entity"
+    )
+    bindings = compose_module.transport_resource(spec, "axiom_rules_bindings").get(
+        "bindings", ()
+    )
+    unit_bindings = {
+        row["id"]: row
+        for row in compose_module._sequence(bindings, "axiom_rules_bindings.bindings")
+        if isinstance(row, Mapping) and row.get("entity") == unit_entity
+    }
+    unit_modules = frozenset(
+        row["rulespec_path"]
+        for row in unit_bindings.values()
+        if isinstance(row.get("rulespec_path"), str)
+    )
+    forbidden_columns = {
+        (unit_entity, variable)
+        for row in unit_bindings.values()
+        for variable in row.get("variables", ())
+    }
+    for row in rows.values():
+        if row.get("kernel") == "concepts.encode_groups@1":
+            forbidden_columns.update(
+                (output["entity"], output["column"])
+                for output in row.get("outputs", ())
+                if output.get("entity") == unit_entity
+            )
+    references = {
+        row["engine_ref"]
+        for row in unit_bindings.values()
+        if isinstance(row.get("engine_ref"), str) and row["engine_ref"]
+    }
+    if config is not None:
+        references.update(
+            config.engine_refs[name]
+            for name in unit_bindings
+            if name in config.engine_refs
+        )
+    endpoints = compose_module._mapping(
+        document.get("endpoints"), "transport endpoints"
+    )
+    roots = {
+        row["id"]
+        for row in rows.values()
+        if isinstance(row.get("kernel"), str) and row["kernel"].startswith("calibrate.")
+    }
+    if isinstance(endpoints.get("calibration"), str):
+        roots.add(endpoints["calibration"])
+    predecessors = {name: set() for name in rows}
+    for name, row in rows.items():
+        base = row.get("base")
+        if isinstance(base, str):
+            predecessors[name].add(base)
+            predecessors[name].update(
+                item["id"] for item in rows.values() if item.get("population") == base
+            )
+        elif isinstance(row.get("population"), str):
+            predecessors[name].add(row["population"])
+        predecessors[name].update(
+            edge["producer"] for edge in row.get("artifact_inputs", ())
+        )
+    for name in _precalibration_reference_ancestors(predecessors, roots):
+        row = rows[name]
+        reason = None
+        if row.get("rules_binding") in unit_bindings:
+            reason = "benefit-unit rules binding"
+        for value in compose_module._mapping(
+            row.get("params", {}), "node params"
+        ).values():
+            for selection in _precalibration_reference_selections(value):
+                if selection.get("prepared") == "engine_refs":
+                    reason = "prepared engine_refs map"
+                if isinstance(selection.get("resource"), str):
+                    resource = compose_module._stem(selection["resource"])
+                    if resource == "holdout_references":
+                        reason = "holdout_references selection"
+                    if (
+                        resource == compose_module.GRAPH_RESOURCE
+                        and selection.get("encoding") == "sha256"
+                    ):
+                        reason = "graph resource's own digest"
+                    if selection.get(
+                        "encoding", "value"
+                    ) != "sha256" and compose_module._has_resource(spec, resource):
+                        selected = compose_module.transport_resource(spec, resource)
+                        for component in selection.get("path", ()):
+                            if (
+                                not isinstance(selected, Mapping)
+                                or component not in selected
+                            ):
+                                selected = None
+                                break
+                            selected = selected[component]
+                        if _precalibration_reference_embeds(
+                            selected, references, unit_modules
+                        ):
+                            reason = "selected data embedding a benefit-unit engine reference"
+        columns = {
+            (item["entity"], column)
+            for item in row.get("inputs", ())
+            for column in item["columns"]
+        }
+        columns.update(
+            (item["entity"], item["column"]) for item in row.get("outputs", ())
+        )
+        if columns & forbidden_columns:
+            reason = "benefit-unit engine input or output column"
+        if any(
+            isinstance(source, str) and "holdout" in source.lower()
+            for source in row.get("sources", ())
+        ):
+            reason = "hold-out source"
+        if _precalibration_reference_embeds(
+            row.get("params", {}), references, unit_modules
+        ):
+            reason = "embedded benefit-unit engine reference"
+        if reason:
+            raise ValueError(
+                f"Transport calibration ancestry: node {name!r} carries {reason}."
+            )
+    if graph is None:
+        return
+    compiled = compile_graph(graph)
+    roots.update(
+        node.id for node in graph.nodes if node.kernel.startswith("calibrate.")
+    )
+    for node in graph.nodes:
+        if node.kernel == "concepts.encode_groups@1":
+            forbidden_columns.update(
+                (item.entity, item.column)
+                for item in node.outputs
+                if item.entity == unit_entity
+            )
+    for name in _precalibration_reference_ancestors(compiled.predecessors, roots):
+        node = graph.node(name)
+        columns = {
+            (item.entity, column) for item in node.inputs for column in item.columns
+        }
+        columns.update((item.entity, item.column) for item in node.outputs)
+        if (
+            any("holdout" in source.lower() for source in node.sources)
+            or _precalibration_reference_embeds(node.params, references, unit_modules)
+            or columns & forbidden_columns
+        ):
+            raise ValueError(
+                f"Transport calibration ancestry: node {name!r} carries hold-out or benefit-unit engine semantics."
+            )
+
+
 # ---------------------------------------------------------------------------
 # Shared fixtures (built once; tests that edit inputs copy what they change)
 # ---------------------------------------------------------------------------
@@ -247,6 +514,16 @@ def _selectors(spec: dict, resource: str) -> set[str]:
 @pytest.fixture(scope="module")
 def composed(tmp_path_factory):
     return make_composed_fixture(tmp_path_factory.mktemp("composed"))
+
+
+@pytest.fixture(scope="module")
+def calibration_ancestry_composed(tmp_path_factory):
+    """Prepare real engine references without unrelated gate binding identities."""
+    from microcosm.build.transport import registry as registry_module
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(registry_module, "register_gate_kernel", lambda *args: None)
+        return make_composed_fixture(tmp_path_factory.mktemp("calibration-ancestry"))
 
 
 @pytest.fixture(scope="module")
@@ -633,7 +910,10 @@ def test_c2_gate_and_holdout_edits_move_no_calibration_key(
     assert calibration.isdisjoint(expected)
 
 
-def test_holdout_and_family_semantics_have_no_calibration_ancestry(composed):
+def test_holdout_and_family_semantics_have_no_calibration_ancestry(
+    calibration_ancestry_composed,
+):
+    composed = calibration_ancestry_composed
     graph = composed.graph(extended=True)
     family_ref = composed.registry.engine_refs["family_housing"]
     family_columns = set(FAMILY_INPUTS) | set(PROGRAMS["family_housing"]["outputs"])
@@ -658,7 +938,11 @@ def test_holdout_and_family_semantics_have_no_calibration_ancestry(composed):
     "violation",
     ["prepared", "embedded_ref", "holdout_resource", "holdout_source", "graph_digest"],
 )
-def test_compose_refuses_contaminated_calibration_ancestry(composed, violation):
+@pytest.mark.parametrize("guard", ["reference", "absent", "empty"])
+def test_compose_refuses_contaminated_calibration_ancestry(
+    calibration_ancestry_composed, monkeypatch, violation, guard
+):
+    composed = calibration_ancestry_composed
     spec = copy.deepcopy(composed.spec)
     row = next(
         row
@@ -679,8 +963,576 @@ def test_compose_refuses_contaminated_calibration_ancestry(composed, violation):
             },
             "graph_digest": {"resource": "transport_graph", "encoding": "sha256"},
         }[violation]
-    with pytest.raises(ValueError, match="calibration ancestry|graph resource.*digest"):
+    with monkeypatch.context() as reference:
+        reference.setattr(
+            compose_module,
+            "validate_transport_calibration_ancestry",
+            _precalibration_reference_guard,
+        )
+        expected = _precalibration_outcome(
+            lambda document: compose_transport_graph(document, composed.config), spec
+        )
+    _precalibration_guard_variant(spec, guard, monkeypatch)
+    with pytest.raises(
+        ValueError, match="calibration ancestry|graph resource.*digest"
+    ) as error:
         compose_transport_graph(spec, composed.config)
+    assert (type(error.value), str(error.value)) == expected
+
+
+def _precalibration_stage(spec, binding, columns=None):
+    row = next(
+        item
+        for item in spec["resources"]["axiom_rules_bindings"]["bindings"]
+        if item["id"] == binding
+    )
+    return {
+        "id": f"toy.precal.{binding}",
+        "rules_binding": binding,
+        "rulespec_path": row["rulespec_path"],
+        "outputs": [
+            {
+                "entity": row["entity"],
+                "column": column,
+                "purpose": "classification"
+                if column.endswith("eligible")
+                else "calibration_measure",
+            }
+            for column in (row["variables"] if columns is None else columns)
+        ],
+        "citation": "Synthetic pre-calibration method card.",
+    }
+
+
+def _precalibration_spec(composed, binding="family_housing"):
+    spec = copy.deepcopy(composed.spec)
+    nodes = spec["resources"]["transport_graph"]["nodes"]
+    calibration = next(row for row in nodes if row["id"] == CALIBRATION)
+    if binding == "family_housing":
+        encoder = next(row for row in nodes if row["id"] == "nz.as.inputs")
+        encoder["population"] = "nz.open"
+        nodes.append(
+            {
+                "id": "nz.precal.family",
+                "kernel": RULES,
+                "population": "nz.open",
+                "sources": ["rulespec_nz"],
+                "inputs": [{"entity": "family", "columns": list(FAMILY_INPUTS)}],
+                "outputs": [
+                    {"entity": "family", "column": name, "dtype": output["dtype"]}
+                    for name, output in PROGRAMS[binding]["outputs"].items()
+                ],
+                "rules_binding": binding,
+            }
+        )
+        columns = ["toy_family_weekly_amount"]
+        entity = "family"
+    else:
+        columns = list(PROGRAMS[binding]["outputs"])
+        entity = "person"
+    measure = next(column for column in columns if not column.endswith("eligible"))
+    calibration["inputs"].append({"entity": entity, "columns": [measure]})
+    spec["resources"]["precalibration_stages"] = {
+        "schema_version": 1,
+        "stages": [_precalibration_stage(spec, binding, columns)],
+    }
+    return spec
+
+
+def _precalibration_outcome(guard, spec, **kwargs):
+    try:
+        guard(spec, **kwargs)
+    except (TypeError, ValueError) as error:
+        return type(error), str(error)
+    return None
+
+
+def _precalibration_guard_variant(spec, guard, monkeypatch):
+    if guard == "empty":
+        spec["resources"]["precalibration_stages"] = {"schema_version": 1, "stages": []}
+    if guard == "reference":
+        monkeypatch.setattr(
+            compose_module,
+            "validate_transport_calibration_ancestry",
+            _precalibration_reference_guard,
+        )
+
+
+@pytest.mark.parametrize("guard", ["reference", "absent", "empty"])
+def test_precalibration_ancestry_unlisted_person_differential(
+    calibration_ancestry_composed, monkeypatch, guard
+):
+    composed = calibration_ancestry_composed
+    spec = copy.deepcopy(composed.spec)
+    original = graph_to_json(composed.graph())
+    _precalibration_guard_variant(spec, guard, monkeypatch)
+    graph = compose_transport_graph(spec, composed.config)
+    assert graph_to_json(graph) == original
+    assert (
+        graph.node("nz.rules.main_benefits").params["engine_ref"]
+        == (composed.config.engine_refs["main_benefit"])
+    )
+    assert _precalibration_outcome(
+        compose_module.validate_transport_calibration_ancestry,
+        spec,
+        graph=graph,
+        config=composed.config,
+    ) == _precalibration_outcome(
+        _precalibration_reference_guard, spec, graph=graph, config=composed.config
+    )
+
+
+def test_precalibration_ancestry_listed_unit_stage_composes(
+    calibration_ancestry_composed,
+):
+    composed = calibration_ancestry_composed
+    spec = _precalibration_spec(composed)
+    graph = compose_transport_graph(spec, composed.config)
+    declared = {("family", "toy_family_weekly_amount")}
+    actual = {
+        (item.entity, column)
+        for item in graph.node(CALIBRATION).inputs
+        for column in item.columns
+        if item.entity == "family"
+    }
+    assert actual == declared
+    assert {item.column for item in graph.node("nz.precal.family").outputs} == set(
+        PROGRAMS["family_housing"]["outputs"]
+    )
+    assert len(declared) < len(graph.node("nz.precal.family").outputs)
+
+
+def test_precalibration_ancestry_listed_person_stage_composes(
+    calibration_ancestry_composed,
+):
+    composed = calibration_ancestry_composed
+    spec = _precalibration_spec(composed, "main_benefit")
+    graph = compose_transport_graph(spec, composed.config)
+    assert Slice("person", ("toy_main_payment",)) in graph.node(CALIBRATION).inputs
+    assert (
+        Slice(
+            "person",
+            (
+                "take_up_seed",
+                "toy_main_eligible",
+                "toy_main_payment",
+                "toy_pension_eligible",
+                "toy_pension_payment",
+            ),
+        )
+        in graph.node("nz.takeup.assign").inputs
+    )
+
+
+@pytest.mark.parametrize("nested", [False, True])
+def test_precalibration_ancestry_selector_stage_in_both_passes(
+    calibration_ancestry_composed, nested
+):
+    composed = calibration_ancestry_composed
+    spec = _precalibration_spec(composed)
+    graph = compose_transport_graph(spec, composed.config)
+    row = next(
+        item
+        for item in spec["resources"]["transport_graph"]["nodes"]
+        if item["id"] == "nz.precal.family"
+    )
+    del row["rules_binding"]
+    row["kernel"] = "simulate.solve_zero@1"
+    selector = {"binding": "family_housing", "field": "engine_ref"}
+    row["params"] = {"engine_ref": [{"nested": selector}] if nested else selector}
+    compose_module.validate_transport_calibration_ancestry(spec, config=composed.config)
+    reference = composed.config.engine_refs["family_housing"]
+    graph = replace(
+        graph,
+        nodes=tuple(
+            replace(
+                node,
+                kernel="simulate.solve_zero@1",
+                params={
+                    "engine_ref": json.dumps({"nested": [reference]})
+                    if nested
+                    else reference
+                },
+            )
+            if node.id == row["id"]
+            else node
+            for node in graph.nodes
+        ),
+    )
+    compose_module.validate_transport_calibration_ancestry(
+        spec, graph=graph, config=composed.config
+    )
+
+
+def test_precalibration_ancestry_unlisted_unit_stage_refuses(
+    calibration_ancestry_composed,
+):
+    composed = calibration_ancestry_composed
+    spec = _precalibration_spec(composed)
+    spec["resources"]["precalibration_stages"]["stages"] = [
+        _precalibration_stage(spec, "main_benefit")
+    ]
+    with pytest.raises(ValueError, match="not a declared pre-calibration stage"):
+        compose_transport_graph(spec, composed.config)
+
+
+@pytest.mark.parametrize("contamination", ["holdout_source", "holdout_selection"])
+@pytest.mark.parametrize("compiled", [False, True])
+def test_precalibration_ancestry_holdout_fed_stage_refuses(
+    calibration_ancestry_composed, contamination, compiled
+):
+    composed = calibration_ancestry_composed
+    spec = _precalibration_spec(composed)
+    graph = compose_transport_graph(spec, composed.config)
+    if compiled:
+        graph = replace(
+            graph,
+            nodes=tuple(
+                replace(
+                    node,
+                    sources=("nz_holdout_facts",)
+                    if contamination == "holdout_source"
+                    else node.sources,
+                )
+                if node.id == "nz.as.inputs"
+                else node
+                for node in graph.nodes
+            ),
+        )
+        if contamination == "holdout_selection":
+            row = next(
+                item
+                for item in spec["resources"]["transport_graph"]["nodes"]
+                if item["id"] == "nz.as.inputs"
+            )
+            # Its declaration lies after calibration, while the compiled
+            # population makes it a predecessor. Selection provenance belongs
+            # to the declaration; resolved parameter objects stay literal.
+            row["population"] = "nz.as"
+            row["params"]["holdout"] = {
+                "resource": "holdout_references",
+                "encoding": "json",
+            }
+    else:
+        row = next(
+            item
+            for item in spec["resources"]["transport_graph"]["nodes"]
+            if item["id"] == "nz.as.inputs"
+        )
+        if contamination == "holdout_source":
+            row["sources"] = ["nz_holdout_facts"]
+        else:
+            row["params"]["holdout"] = {
+                "resource": "holdout_references",
+                "encoding": "json",
+            }
+    reason = "hold-out source|holdout_references selection"
+    with pytest.raises(ValueError, match=f"node 'nz.as.inputs'.*({reason})"):
+        compose_module.validate_transport_calibration_ancestry(
+            spec, graph=graph if compiled else None, config=composed.config
+        )
+
+
+@pytest.mark.parametrize("module", [False, True])
+def test_precalibration_ancestry_holdout_output_or_module_refuses(
+    calibration_ancestry_composed, module
+):
+    composed = calibration_ancestry_composed
+    spec = _precalibration_spec(composed)
+    holdout = spec["resources"]["holdout_references"]["target_references"][0]
+    holdout["entity"] = "family"
+    if module:
+        holdout["measure"] = "toy_family_holdout"
+        bindings = spec["resources"]["axiom_rules_bindings"]["bindings"]
+        extra = copy.deepcopy(
+            next(row for row in bindings if row["id"] == "family_housing")
+        )
+        extra.update(id="family_evaluation", variables=[holdout["measure"]])
+        bindings.append(extra)
+    else:
+        holdout["measure"] = "toy_family_weekly_amount"
+    with pytest.raises(ValueError, match="precalibration_stages.*holdout"):
+        compose_module.validate_transport_calibration_ancestry(spec)
+
+
+@pytest.mark.parametrize("binding", ["family_housing", "main_benefit"])
+@pytest.mark.parametrize("compiled", [False, True])
+def test_precalibration_ancestry_undeclared_stage_variable_refuses(
+    calibration_ancestry_composed, binding, compiled
+):
+    composed = calibration_ancestry_composed
+    spec = _precalibration_spec(composed, binding)
+    graph = compose_transport_graph(spec, composed.config)
+    stage = spec["resources"]["precalibration_stages"]["stages"][0]
+    if binding == "main_benefit":
+        stage["outputs"] = [
+            row for row in stage["outputs"] if row["column"] != "toy_main_eligible"
+        ]
+        entity, variable = "person", "toy_main_eligible"
+    else:
+        entity, variable = "family", "toy_family_eligible"
+    if compiled:
+        # Keep the declaration clean: only this extension consumes the omitted
+        # variable, so refusal must come from the compiled predecessor pass.
+        if binding == "main_benefit":
+            nodes = spec["resources"]["transport_graph"]["nodes"]
+            for row in nodes:
+                if "inputs" in row:
+                    row["inputs"] = [
+                        {
+                            **item,
+                            "columns": [
+                                column
+                                for column in item["columns"]
+                                if column != variable
+                            ],
+                        }
+                        for item in row["inputs"]
+                        if any(column != variable for column in item["columns"])
+                    ]
+            graph = replace(
+                graph,
+                nodes=tuple(
+                    replace(
+                        node,
+                        inputs=tuple(
+                            Slice(
+                                item.entity,
+                                tuple(
+                                    column
+                                    for column in item.columns
+                                    if column != variable
+                                ),
+                            )
+                            for item in node.inputs
+                            if any(column != variable for column in item.columns)
+                        ),
+                    )
+                    for node in graph.nodes
+                ),
+            )
+        consumer = Node(
+            "nz.precal.extension.reader",
+            "transport.probe@1",
+            population="nz.open",
+            inputs=(Slice(entity, (variable,)),),
+        )
+        graph = replace(graph, nodes=(*graph.nodes, consumer))
+        name = consumer.id
+    else:
+        name = "nz.takeup.assign" if binding == "main_benefit" else "nz.targets.problem"
+        row = next(
+            item
+            for item in spec["resources"]["transport_graph"]["nodes"]
+            if item["id"] == name
+        )
+        if binding == "family_housing":
+            row["inputs"].append({"entity": entity, "columns": [variable]})
+    with pytest.raises(
+        ValueError,
+        match=f"node '{name}' carries undeclared pre-calibration stage output",
+    ):
+        compose_module.validate_transport_calibration_ancestry(
+            spec, graph=graph if compiled else None, config=composed.config
+        )
+
+
+@pytest.mark.parametrize("compiled", [False, True])
+def test_precalibration_ancestry_shared_encode_output_refuses(
+    calibration_ancestry_composed, compiled
+):
+    composed = calibration_ancestry_composed
+    spec = _precalibration_spec(composed)
+    graph = compose_transport_graph(spec, composed.config)
+    if compiled:
+        reader = Node(
+            "nz.precal.extension.reader",
+            "transport.probe@1",
+            population="nz.open",
+            inputs=(Slice("family", ("input_rent",)),),
+        )
+        graph = replace(graph, nodes=(*graph.nodes, reader))
+        name = reader.id
+    else:
+        name = "nz.targets.problem"
+        row = next(
+            item
+            for item in spec["resources"]["transport_graph"]["nodes"]
+            if item["id"] == name
+        )
+        row["inputs"].append({"entity": "family", "columns": ["input_rent"]})
+    with pytest.raises(ValueError, match=f"node '{name}' carries"):
+        compose_module.validate_transport_calibration_ancestry(
+            spec, graph=graph if compiled else None, config=composed.config
+        )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "resource_key",
+        "stage_key",
+        "output_key",
+        "duplicate_id",
+        "empty_id",
+        "unsafe_id",
+        "missing_binding",
+        "path_mismatch",
+        "duplicate_binding",
+        "schema_bool",
+        "schema_float",
+        "schema_version",
+        "purpose",
+        "variable",
+        "wrong_entity",
+        "empty_outputs",
+        "duplicate_output",
+        "stages_type",
+    ],
+)
+def test_precalibration_ancestry_stage_schema_refuses(
+    calibration_ancestry_composed, mutation
+):
+    composed = calibration_ancestry_composed
+    spec = _precalibration_spec(composed)
+    resource = spec["resources"]["precalibration_stages"]
+    stage = resource["stages"][0]
+    output = stage["outputs"][0]
+    if mutation == "resource_key":
+        resource["unknown"] = True
+    elif mutation == "stage_key":
+        stage["unknown"] = True
+    elif mutation == "output_key":
+        output["unknown"] = True
+    elif mutation in {"duplicate_id", "duplicate_binding"}:
+        other = copy.deepcopy(stage)
+        if mutation == "duplicate_binding":
+            other["id"] += ".again"
+        resource["stages"].append(other)
+    elif mutation in {"empty_id", "unsafe_id"}:
+        stage["id"] = "" if mutation == "empty_id" else "../unsafe"
+    elif mutation == "missing_binding":
+        stage["rules_binding"] = "absent"
+    elif mutation == "path_mismatch":
+        stage["rulespec_path"] = "toy/other.yaml"
+    elif mutation.startswith("schema_"):
+        resource["schema_version"] = {
+            "schema_bool": True,
+            "schema_float": 1.0,
+            "schema_version": 2,
+        }[mutation]
+    elif mutation == "purpose":
+        output["purpose"] = "evaluation"
+    elif mutation == "variable":
+        output["column"] = "not_a_binding_variable"
+    elif mutation == "wrong_entity":
+        output["entity"] = "person"
+    elif mutation == "empty_outputs":
+        stage["outputs"] = []
+    elif mutation == "duplicate_output":
+        stage["outputs"].append(dict(output))
+    else:
+        resource["stages"] = {}
+    with pytest.raises((TypeError, ValueError), match="precalibration_stages"):
+        compose_module.validate_transport_calibration_ancestry(spec)
+
+
+@pytest.mark.parametrize("compiled", [False, True])
+def test_precalibration_ancestry_unlisted_selector_refuses(
+    calibration_ancestry_composed, compiled
+):
+    composed = calibration_ancestry_composed
+    spec = _precalibration_spec(composed, "main_benefit")
+    graph = compose_transport_graph(spec, composed.config)
+    name = "nz.precal.unlisted.solve"
+    if compiled:
+        graph = replace(
+            graph,
+            nodes=(
+                *graph.nodes,
+                Node(
+                    name,
+                    "simulate.solve_zero@1",
+                    population="nz.open",
+                    params={
+                        "engine_ref": composed.config.engine_refs["family_housing"]
+                    },
+                ),
+            ),
+        )
+    else:
+        spec["resources"]["transport_graph"]["nodes"].append(
+            {
+                "id": name,
+                "kernel": "simulate.solve_zero@1",
+                "population": "nz.open",
+                "params": {
+                    "engine_ref": {"binding": "family_housing", "field": "engine_ref"}
+                },
+            }
+        )
+    with pytest.raises(
+        ValueError, match=f"node '{name}' carries not a declared pre-calibration stage"
+    ):
+        compose_module.validate_transport_calibration_ancestry(
+            spec, graph=graph if compiled else None, config=composed.config
+        )
+
+
+@pytest.mark.parametrize("compiled", [False, True])
+def test_precalibration_ancestry_mixed_unit_bindings_refuses(
+    calibration_ancestry_composed, compiled
+):
+    composed = calibration_ancestry_composed
+    spec = _precalibration_spec(composed)
+    bindings = spec["resources"]["axiom_rules_bindings"]["bindings"]
+    other = copy.deepcopy(
+        next(row for row in bindings if row["id"] == "family_housing")
+    )
+    other.update(
+        id="other_family",
+        rulespec_path="toy/other_family.yaml",
+        variables=["other_result"],
+    )
+    bindings.append(other)
+    config = replace(
+        composed.config,
+        engine_refs={
+            **composed.config.engine_refs,
+            "other_family": "synthetic-other-family-engine-ref",
+        },
+    )
+    graph = compose_transport_graph(spec, config)
+    name = "nz.precal.family"
+    if compiled:
+        graph = replace(
+            graph,
+            nodes=tuple(
+                replace(
+                    node,
+                    params={**node.params, "other": config.engine_refs["other_family"]},
+                )
+                if node.id == name
+                else node
+                for node in graph.nodes
+            ),
+        )
+    else:
+        row = next(
+            item
+            for item in spec["resources"]["transport_graph"]["nodes"]
+            if item["id"] == name
+        )
+        row["params"] = {
+            "components": [{"binding": "other_family", "field": "engine_ref"}]
+        }
+    with pytest.raises(
+        ValueError,
+        match=f"node '{name}' carries mixes listed and unlisted unit bindings",
+    ):
+        compose_module.validate_transport_calibration_ancestry(
+            spec, graph=graph if compiled else None, config=config
+        )
 
 
 @pytest.mark.parametrize(
@@ -1195,7 +2047,10 @@ def test_cli_main_refuses_the_packaged_spec_and_writes_nothing(tmp_path, capsys)
     assert not out.exists()
 
 
-def test_packaged_holdout_references_are_disjoint_from_calibration_references():
+@pytest.mark.parametrize("guard", ["reference", "absent", "empty"])
+def test_packaged_holdout_references_are_disjoint_from_calibration_references(
+    monkeypatch, guard
+):
     spec = load_transport_spec("nz")
 
     def names(resource):
@@ -1204,6 +2059,8 @@ def test_packaged_holdout_references_are_disjoint_from_calibration_references():
 
     calibration = names("target_references") | names("precal_references")
     assert names("holdout_references").isdisjoint(calibration)
+    _precalibration_guard_variant(spec, guard, monkeypatch)
+    assert _precalibration_outcome(_precalibration_reference_guard, spec) is None
     compose_module.validate_transport_calibration_ancestry(spec)
 
 
@@ -1924,3 +2781,471 @@ def test_cli_main_refuses_unavailable_rules_engine(
         "transport build refused: rules engine unavailable" in capsys.readouterr().err
     )
     assert not (out / EXPORT_FILENAME).exists()
+
+
+@st.composite
+def _precalibration_ancestry_dags(draw):
+    """Small DAGs with independent binding declarations and column edges."""
+    kinds = draw(
+        st.lists(
+            st.sampled_from(("encode", "unit", "person", "selector", "holdout")),
+            min_size=1,
+            max_size=7,
+        )
+    )
+    nodes = []
+    bindings = {}
+    for index, kind in enumerate(kinds):
+        binding = None
+        entity = "family" if kind in {"encode", "unit"} else "person"
+        if kind in {"unit", "person", "selector"}:
+            if kind == "selector":
+                entity = draw(st.sampled_from(("person", "family")))
+            available = [
+                name for name, row in bindings.items() if row["entity"] == entity
+            ]
+            if kind == "selector" and available and draw(st.booleans()):
+                binding = draw(st.sampled_from(available))
+            else:
+                binding = f"binding_{index}"
+                bindings[binding] = {"entity": entity, "variables": []}
+        outputs = [f"value_{index}"]
+        if binding is not None:
+            outputs.append(f"private_{index}")
+            bindings[binding]["variables"].extend(outputs)
+        reads = []
+        dependencies = []
+        for predecessor, earlier in enumerate(nodes):
+            edge = draw(st.integers(min_value=0, max_value=3))
+            if edge:
+                dependencies.append(predecessor)
+            if edge > 1:
+                columns = earlier["outputs"] if edge == 3 else earlier["outputs"][:1]
+                reads.extend((predecessor, column) for column in columns)
+        nodes.append(
+            {
+                "kind": kind,
+                "binding": binding,
+                "entity": entity,
+                "outputs": outputs,
+                "reads": reads,
+                "dependencies": dependencies,
+                "holdout_selection": kind == "holdout" and draw(st.booleans()),
+            }
+        )
+    declared = {}
+    for binding, row in bindings.items():
+        if draw(st.booleans()):
+            declared[binding] = draw(
+                st.sets(st.sampled_from(row["variables"]), min_size=1)
+            )
+    dependencies = []
+    reads = []
+    for predecessor, earlier in enumerate(nodes):
+        edge = draw(st.integers(min_value=0, max_value=3))
+        if edge:
+            dependencies.append(predecessor)
+        if edge > 1:
+            columns = earlier["outputs"] if edge == 3 else earlier["outputs"][:1]
+            reads.extend((predecessor, column) for column in columns)
+    nodes.append(
+        {
+            "kind": "calibrate",
+            "binding": None,
+            "entity": "person",
+            "outputs": [],
+            "reads": reads,
+            "dependencies": dependencies,
+            "holdout_selection": False,
+        }
+    )
+    return nodes, bindings, declared
+
+
+def _precalibration_reference_accepts(model):
+    """The stage rules, expressed on generated kinds and column-use edges."""
+    nodes, _, declared = model
+    relevant = {len(nodes) - 1}
+    relevant.update(
+        index for index, node in enumerate(nodes) if node["binding"] in declared
+    )
+    for index in range(len(nodes) - 1, -1, -1):
+        if index in relevant:
+            relevant.update(nodes[index]["dependencies"])
+    for index in relevant:
+        node = nodes[index]
+        binding = node["binding"]
+        if node["kind"] == "holdout":
+            return False
+        if (
+            binding is not None
+            and node["entity"] == "family"
+            and binding not in declared
+        ):
+            return False
+        if node["kind"] == "encode":
+            consumers = [
+                nodes[consumer]
+                for consumer in relevant
+                if any(producer == index for producer, _ in nodes[consumer]["reads"])
+            ]
+            if not consumers or any(
+                consumer["binding"] not in declared or consumer["entity"] != "family"
+                for consumer in consumers
+            ):
+                return False
+        for producer, column in node["reads"]:
+            source_binding = nodes[producer]["binding"]
+            if (
+                source_binding in declared
+                and source_binding != binding
+                and column not in declared[source_binding]
+            ):
+                return False
+    return True
+
+
+def _precalibration_synthetic_graph(model):
+    """Render the same model as declarations and compiled extension nodes."""
+    nodes, bindings, declared = model
+    references = {name: f"synthetic-engine:{name}:end" for name in bindings}
+    seed = Owned("person", "seed", "float64")
+    trace = ArtifactType("synthetic.precalibration.trace", 1)
+    graph_nodes = [
+        Node(
+            "p1.create",
+            "synthetic.create@1",
+            structural=StructuralDelta.CREATE,
+            outputs=(seed,),
+            sources=("synthetic_donor",),
+        )
+    ]
+    rows = [
+        {
+            "id": "p1.create",
+            "kernel": "synthetic.create@1",
+            "outputs": [{"entity": "person", "column": "seed"}],
+        }
+    ]
+    for index, item in enumerate(nodes):
+        name = "p1.calibrate" if item["kind"] == "calibrate" else f"p1.node_{index}"
+        kernel = {
+            "encode": "concepts.encode_groups@1",
+            "unit": RULES,
+            "person": RULES,
+            "selector": "simulate.solve_zero@1",
+            "holdout": "synthetic.holdout@1",
+            "calibrate": "calibrate.synthetic@1",
+        }[item["kind"]]
+        inputs = {}
+        for producer, column in item["reads"]:
+            inputs.setdefault(nodes[producer]["entity"], []).append(column)
+        binding = item["binding"]
+        params = {}
+        prepared_params = {}
+        if binding is not None:
+            prepared_params["engine_ref"] = references[binding]
+            if item["kind"] == "selector":
+                params["engine_ref"] = {"binding": binding, "field": "engine_ref"}
+        sources = ()
+        if item["kind"] == "holdout":
+            if item["holdout_selection"]:
+                params["selection"] = {"resource": "holdout_references"}
+                # Resource selectors disappear during parameter preparation.
+                prepared_params["selection"] = "{}"
+            else:
+                sources = ("synthetic_holdout_facts",)
+        edges = tuple(
+            ArtifactInput(f"edge_{producer}", f"p1.node_{producer}", "trace", trace)
+            for producer in item["dependencies"]
+        )
+        graph_nodes.append(
+            Node(
+                name,
+                kernel,
+                population="p1.create",
+                inputs=tuple(
+                    Slice(entity, tuple(columns)) for entity, columns in inputs.items()
+                ),
+                outputs=tuple(
+                    Owned(item["entity"], column, "float64")
+                    for column in item["outputs"]
+                ),
+                params=prepared_params,
+                sources=sources,
+                artifact_inputs=edges,
+                artifact_outputs=(ArtifactOutput("trace", trace),),
+            )
+        )
+        row = {
+            "id": name,
+            "kernel": kernel,
+            "population": "p1.create",
+            "inputs": [
+                {"entity": entity, "columns": columns}
+                for entity, columns in inputs.items()
+            ],
+            "outputs": [
+                {"entity": item["entity"], "column": column}
+                for column in item["outputs"]
+            ],
+            "params": params,
+            "sources": list(sources),
+            "artifact_inputs": [
+                {"producer": f"p1.node_{producer}"} for producer in item["dependencies"]
+            ],
+        }
+        if binding is not None and item["kind"] != "selector":
+            row["rules_binding"] = binding
+        rows.append(row)
+    spec = {
+        "country": "synthetic",
+        "resources": {
+            "benefit_unit_rule": {"entity": "family"},
+            "axiom_rules_bindings": {
+                "bindings": [
+                    {"id": name, "rulespec_path": f"synthetic/{name}.yaml", **row}
+                    for name, row in bindings.items()
+                ]
+            },
+            "holdout_references": {"target_references": []},
+            "precalibration_stages": {
+                "schema_version": 1,
+                "stages": [
+                    {
+                        "id": f"stage.{name}",
+                        "rules_binding": name,
+                        "rulespec_path": f"synthetic/{name}.yaml",
+                        "outputs": [
+                            {
+                                "entity": bindings[name]["entity"],
+                                "column": column,
+                                "purpose": "calibration_measure",
+                            }
+                            for column in bindings[name]["variables"]
+                            if column in columns
+                        ],
+                        "citation": "Synthetic stage contract.",
+                    }
+                    for name, columns in declared.items()
+                ],
+            },
+            "transport_graph": {
+                "schema_version": 1,
+                "country": "synthetic",
+                "nodes": rows,
+                "endpoints": {"calibration": "p1.calibrate"},
+            },
+        },
+    }
+    graph = Graph(
+        "synthetic",
+        (
+            SourceRef("synthetic_donor", "synthetic@1"),
+            SourceRef("synthetic_holdout_facts", "synthetic@1"),
+        ),
+        tuple(graph_nodes),
+    )
+    config = TransportGraphConfig(engine_refs=references, create_outputs=(seed,))
+    return spec, graph, config
+
+
+@settings(max_examples=2000, deadline=None, database=None)
+@given(model=_precalibration_ancestry_dags())
+def test_precalibration_stages_calibration_ancestry_property(model):
+    expected = _precalibration_reference_accepts(model)
+    spec, graph, config = _precalibration_synthetic_graph(model)
+    compile_graph(graph)
+    extension_spec = copy.deepcopy(spec)
+    extension_spec["resources"]["transport_graph"]["nodes"] = [
+        spec["resources"]["transport_graph"]["nodes"][0],
+        {
+            "id": "p1.calibrate",
+            "kernel": "calibrate.synthetic@1",
+            "population": "p1.create",
+        },
+    ]
+    # A selected hold-out resource leaves no marker in compiled params. Keep
+    # those source declarations so this path still checks their provenance.
+    extension_spec["resources"]["transport_graph"]["nodes"].extend(
+        row
+        for row, node in zip(
+            spec["resources"]["transport_graph"]["nodes"][1:], model[0], strict=True
+        )
+        if node["holdout_selection"]
+    )
+    if not model[2]:
+        extension_spec = spec
+    for label, document, compiled in (
+        ("declaration", spec, None),
+        ("compiled extensions", extension_spec, graph),
+    ):
+        try:
+            compose_module.validate_transport_calibration_ancestry(
+                document, graph=compiled, config=config
+            )
+        except ValueError:
+            actual = False
+        else:
+            actual = True
+        assert actual == expected, (label, model)
+
+
+@pytest.mark.parametrize("shared_module", [False, True])
+def test_precalibration_ancestry_stage_own_selected_reference_is_allowed(
+    calibration_ancestry_composed, shared_module
+):
+    composed = calibration_ancestry_composed
+    spec = _precalibration_spec(composed)
+    reference = composed.config.engine_refs["family_housing"]
+    config = composed.config
+    if shared_module:
+        bindings = spec["resources"]["axiom_rules_bindings"]["bindings"]
+        other = copy.deepcopy(
+            next(item for item in bindings if item["id"] == "family_housing")
+        )
+        other.update(id="other_family", variables=["other_result"])
+        bindings.append(other)
+        other_reference = json.loads(reference)
+        other_reference["binding"].update(id="other_family", variables=["other_result"])
+        config = replace(
+            config,
+            engine_refs={
+                **config.engine_refs,
+                "other_family": canonical_json(other_reference).decode(),
+            },
+        )
+    graph = compose_transport_graph(spec, config)
+    spec["resources"]["stage_engine_data"] = {"nested": [reference]}
+    row = next(
+        item
+        for item in spec["resources"]["transport_graph"]["nodes"]
+        if item["id"] == "nz.precal.family"
+    )
+    row["params"] = {"context": {"resource": "stage_engine_data", "encoding": "json"}}
+    compose_module.validate_transport_calibration_ancestry(spec, config=config)
+    compose_module.validate_transport_calibration_ancestry(
+        spec, graph=graph, config=config
+    )
+
+
+@pytest.mark.parametrize(
+    "literal",
+    [
+        {"resource": "holdout_references", "encoding": "sha256"},
+        {"prepared": "engine_refs"},
+        {"binding": "family_housing", "field": "engine_ref"},
+    ],
+)
+def test_precalibration_ancestry_person_stage_preserves_selected_literal_objects(
+    calibration_ancestry_composed, literal
+):
+    composed = calibration_ancestry_composed
+    spec = _precalibration_spec(composed, "main_benefit")
+    spec["resources"]["calibration"]["literal"] = {"items": [[literal]]}
+    row = next(
+        item
+        for item in spec["resources"]["transport_graph"]["nodes"]
+        if item["id"] == "nz.targets.problem"
+    )
+    row["params"]["literal"] = {
+        "resource": "calibration",
+        "path": ["literal"],
+        "encoding": "json",
+    }
+    graph = compose_transport_graph(spec, composed.config)
+    assert json.loads(graph.node(row["id"]).params["literal"]) == {"items": [[literal]]}
+
+
+@pytest.mark.parametrize("first", ["nz.targets.problem", "nz.as.inputs"])
+def test_precalibration_ancestry_refusal_follows_declaration_order(
+    calibration_ancestry_composed, first
+):
+    composed = calibration_ancestry_composed
+    spec = _precalibration_spec(composed)
+    document = spec["resources"]["transport_graph"]
+    for row in document["nodes"]:
+        if row["id"] in {"nz.targets.problem", "nz.as.inputs"}:
+            row["sources"] = ["nz_holdout_facts"]
+    document["nodes"].sort(key=lambda row: row["id"] != first)
+    outcomes = [
+        _precalibration_outcome(
+            compose_module.validate_transport_calibration_ancestry,
+            spec,
+            config=composed.config,
+        )
+        for _ in range(3)
+    ]
+    assert outcomes == [
+        (
+            ValueError,
+            f"Transport calibration ancestry: node {first!r} carries hold-out source.",
+        )
+    ] * len(outcomes)
+
+
+def test_precalibration_ancestry_schema_checked_before_graph(
+    calibration_ancestry_composed,
+):
+    composed = calibration_ancestry_composed
+    spec = _precalibration_spec(composed)
+    del spec["resources"]["transport_graph"]
+    spec["resources"]["precalibration_stages"]["stages"][0]["outputs"][0]["purpose"] = (
+        "evaluation"
+    )
+    with pytest.raises(ValueError, match="precalibration_stages"):
+        compose_module.validate_transport_calibration_ancestry(spec)
+
+
+def test_precalibration_ancestry_postcalibration_stage_checks_sibling_producer(
+    calibration_ancestry_composed,
+):
+    composed = calibration_ancestry_composed
+    spec = _precalibration_spec(composed)
+    nodes = spec["resources"]["transport_graph"]["nodes"]
+    for row in nodes:
+        if row["id"] in {"nz.as.inputs", "nz.precal.family"}:
+            row["population"] = "nz.as"
+        if row["id"] == "nz.as.inputs":
+            row["sources"] = ["nz_holdout_facts"]
+        if row["id"] == CALIBRATION:
+            row["inputs"] = [
+                item for item in row["inputs"] if item["entity"] != "family"
+            ]
+    with pytest.raises(ValueError, match="node 'nz.as.inputs' carries hold-out source"):
+        compose_module.validate_transport_calibration_ancestry(
+            spec, config=composed.config
+        )
+
+
+@pytest.mark.parametrize("name", ["nz.targets.problem", "nz.precal.family"])
+@pytest.mark.parametrize("encoding", ["string", "tuple"])
+def test_precalibration_ancestry_compiled_prepared_map_still_refuses(
+    calibration_ancestry_composed, name, encoding
+):
+    composed = calibration_ancestry_composed
+    spec = _precalibration_spec(composed)
+    graph = compose_transport_graph(spec, composed.config)
+    prepared = canonical_json(
+        {"engine_refs": dict(sorted(composed.config.engine_refs.items()))}
+    ).decode()
+    if encoding == "tuple":
+        prepared = (prepared,)
+    graph = replace(
+        graph,
+        nodes=tuple(
+            replace(node, params={**node.params, "inventory": prepared})
+            if node.id == name
+            else node
+            for node in graph.nodes
+        ),
+    )
+    reason = (
+        "prepared engine_refs map"
+        if name == "nz.precal.family"
+        else "not a declared pre-calibration stage"
+    )
+    with pytest.raises(ValueError, match=f"node '{name}' carries {reason}"):
+        compose_module.validate_transport_calibration_ancestry(
+            spec, graph=graph, config=composed.config
+        )
