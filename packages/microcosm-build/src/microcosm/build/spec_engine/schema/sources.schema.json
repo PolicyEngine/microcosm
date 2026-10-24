@@ -7787,6 +7787,12 @@
       },
       "seed": {
        "type": "integer"
+      },
+      "gate_calibration": {
+       "enum": [
+        "in_sample",
+        "cross_fitted"
+       ]
       }
      }
     },
