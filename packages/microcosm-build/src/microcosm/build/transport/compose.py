@@ -175,6 +175,11 @@ _NODE_FIELDS = frozenset(
 )
 _ENCODINGS = frozenset({"value", "json", "sha256"})
 _PREPARED = frozenset({"engine_refs"})
+_PRECALIBRATION_SCHEMA_VERSION = 1
+_PRECALIBRATION_PURPOSES = frozenset({"calibration_measure", "classification"})
+_PRECALIBRATION_STAGE_FIELDS = frozenset(
+    {"id", "rules_binding", "rulespec_path", "outputs", "citation"}
+)
 #: Typed outputs each skeleton kernel must declare, when the declaration
 #: leaves them implicit.
 _OUTPUT_TYPES: Mapping[str, Mapping[str, ArtifactType]] = MappingProxyType(
@@ -601,10 +606,18 @@ def _embeds_engine_ref(
     value: object,
     references: set[str],
     unit_modules: frozenset[str] = frozenset(),
+    allowed_references: frozenset[str] = frozenset(),
 ) -> bool:
     if not references and not unit_modules:
         return False
+    if isinstance(value, str) and value in allowed_references:
+        return False
     if isinstance(value, Mapping):
+        if (
+            allowed_references
+            and canonical_json(value).decode("utf-8") in allowed_references
+        ):
+            return False
         if unit_modules:
             from microcosm.frame.adapters.axiom import _ENGINE_REF_SCHEMA
 
@@ -620,12 +633,15 @@ def _embeds_engine_ref(
             if isinstance(module, str) and module in unit_modules:
                 return True
         return any(
-            _embeds_engine_ref(item, references, unit_modules)
+            _embeds_engine_ref(item, references, unit_modules, allowed_references)
             for pair in value.items()
             for item in pair
         )
     if isinstance(value, list | tuple):
-        return any(_embeds_engine_ref(item, references, unit_modules) for item in value)
+        return any(
+            _embeds_engine_ref(item, references, unit_modules, allowed_references)
+            for item in value
+        )
     if not isinstance(value, str):
         return False
     if any(
@@ -644,10 +660,502 @@ def _embeds_engine_ref(
                 embedded, _ = decoder.raw_decode(value, index)
             except ValueError:
                 continue
-            if _embeds_engine_ref(embedded, references, unit_modules):
+            if _embeds_engine_ref(
+                embedded, references, unit_modules, allowed_references
+            ):
                 return True
         return False
-    return decoded != value and _embeds_engine_ref(decoded, references, unit_modules)
+    return decoded != value and _embeds_engine_ref(
+        decoded, references, unit_modules, allowed_references
+    )
+
+
+def _unit_entities(spec: Mapping[str, object]) -> tuple[object, ...]:
+    """The declared benefit-unit entities (S2-d PR 1 adds every unit kind)."""
+    return (transport_resource(spec, "benefit_unit_rule").get("entity"),)
+
+
+def _is_unit_entity(entity: object, unit_entities: tuple[object, ...]) -> bool:
+    # Compare, never hash, so a malformed entity behaves as it always did.
+    return any(entity == unit for unit in unit_entities)
+
+
+def _carries_engine_ref_inventory(value: object) -> bool:
+    """Whether a value carries a prepared ``engine_refs`` map, in any JSON spelling."""
+
+    if isinstance(value, Mapping):
+        return "engine_refs" in value or any(
+            _carries_engine_ref_inventory(item)
+            for pair in value.items()
+            for item in pair
+        )
+    if isinstance(value, list | tuple):
+        return any(_carries_engine_ref_inventory(item) for item in value)
+    if not isinstance(value, str) or "{" not in value:
+        return False
+    try:
+        decoded = json.loads(value)
+    except (ValueError, TypeError):
+        decoder = json.JSONDecoder()
+        for index, character in enumerate(value):
+            if character not in {"{", '"'}:
+                continue
+            try:
+                embedded, _ = decoder.raw_decode(value, index)
+            except ValueError:
+                continue
+            if _carries_engine_ref_inventory(embedded):
+                return True
+        return False
+    return decoded != value and _carries_engine_ref_inventory(decoded)
+
+
+def _precalibration_stages(spec: Mapping[str, object]) -> dict[str, Mapping]:
+    """Validate stage declarations before inspecting either graph."""
+
+    if not _has_resource(spec, "precalibration_stages"):
+        return {}
+    resource = transport_resource(spec, "precalibration_stages")
+    if set(resource) != {"schema_version", "stages"} or (
+        type(resource.get("schema_version")) is not int
+        or resource["schema_version"] != _PRECALIBRATION_SCHEMA_VERSION
+    ):
+        raise ValueError(
+            "precalibration_stages must declare exactly schema_version 1 and stages."
+        )
+    stages = _sequence(resource["stages"], "precalibration_stages.stages")
+    if not stages:
+        return {}
+    if any(
+        not isinstance(entity, str) or not entity for entity in _unit_entities(spec)
+    ):
+        raise ValueError("precalibration_stages needs a named benefit-unit entity.")
+    bindings = {
+        row["id"]: row
+        for row in transport_resource(spec, "axiom_rules_bindings")["bindings"]
+    }
+    holdout = (
+        transport_resource(spec, "holdout_references").get("target_references", ())
+        if _has_resource(spec, "holdout_references")
+        else ()
+    )
+    holdout_columns = {(row["entity"], row["measure"]) for row in holdout}
+    holdout_modules = {
+        row["rulespec_path"]
+        for row in bindings.values()
+        if any(
+            (row["entity"], variable) in holdout_columns
+            for variable in row["variables"]
+        )
+    }
+    result = {}
+    identifiers = set()
+    for item in stages:
+        stage = _mapping(item, "precalibration_stages stage")
+        if not _PRECALIBRATION_STAGE_FIELDS <= set(stage) or set(stage) - (
+            _PRECALIBRATION_STAGE_FIELDS | {"derived_outputs"}
+        ):
+            raise ValueError(
+                "precalibration_stages stage has missing or unknown fields."
+            )
+        try:
+            identifier = _safe_node_id(stage["id"])
+        except ValueError as error:
+            raise ValueError(f"precalibration_stages stage id: {error}") from error
+        if identifier in identifiers:
+            raise ValueError("precalibration_stages stage ids must be distinct.")
+        identifiers.add(identifier)
+        name = stage["rules_binding"]
+        if not isinstance(name, str) or name not in bindings:
+            raise ValueError(f"precalibration_stages names unknown binding {name!r}.")
+        if name in result:
+            raise ValueError("precalibration_stages bindings must be distinct.")
+        binding = bindings[name]
+        if stage["rulespec_path"] != binding["rulespec_path"]:
+            raise ValueError(
+                "precalibration_stages rulespec_path must match its binding."
+            )
+        outputs = _sequence(stage["outputs"], "precalibration_stages outputs")
+        derived = _sequence(
+            stage.get("derived_outputs", []), "precalibration_stages derived_outputs"
+        )
+        # A stage whose binding variables stay internal lists only derived ones.
+        if not outputs and not derived:
+            raise ValueError(
+                "precalibration_stages stage declares no outputs or derived outputs."
+            )
+        columns = set()
+        for item in outputs:
+            output = _mapping(item, "precalibration_stages output")
+            if set(output) != {"entity", "column", "purpose"}:
+                raise ValueError(
+                    "precalibration_stages output has missing or unknown fields."
+                )
+            if (
+                output["entity"] != binding["entity"]
+                or output["column"] not in binding["variables"]
+            ):
+                raise ValueError(
+                    "precalibration_stages output must name a binding variable on its entity."
+                )
+            if (
+                not isinstance(output["purpose"], str)
+                or output["purpose"] not in _PRECALIBRATION_PURPOSES
+            ):
+                raise ValueError("precalibration_stages output has unknown purpose.")
+            column = (output["entity"], output["column"])
+            if column in columns:
+                raise ValueError(
+                    "precalibration_stages outputs must be nonempty and distinct."
+                )
+            columns.add(column)
+        for item in derived:
+            output = _mapping(item, "precalibration_stages derived output")
+            if set(output) != {"entity", "column", "purpose"}:
+                raise ValueError(
+                    "precalibration_stages derived output has missing or unknown fields."
+                )
+            if any(
+                not isinstance(output[key], str) or not output[key]
+                for key in ("entity", "column")
+            ):
+                raise ValueError(
+                    "precalibration_stages derived output must name an entity and a column."
+                )
+            if (
+                output["entity"] == binding["entity"]
+                and output["column"] in binding["variables"]
+            ):
+                raise ValueError(
+                    "precalibration_stages derived output is a binding variable; "
+                    "list it in outputs."
+                )
+            if (
+                not isinstance(output["purpose"], str)
+                or output["purpose"] not in _PRECALIBRATION_PURPOSES
+            ):
+                raise ValueError(
+                    "precalibration_stages derived output has unknown purpose."
+                )
+            column = (output["entity"], output["column"])
+            if column in columns:
+                raise ValueError(
+                    "precalibration_stages outputs must be nonempty and distinct."
+                )
+            columns.add(column)
+        if columns & holdout_columns:
+            raise ValueError("precalibration_stages output is a holdout measure.")
+        if stage["rulespec_path"] in holdout_modules:
+            raise ValueError("precalibration_stages module produces a holdout measure.")
+        result[name] = stage
+    return result
+
+
+def _precalibration_selections(value: object) -> Iterator[Mapping]:
+    """Walk nested stage parameters without interpreting selected resource data."""
+
+    for selection in _selections(value):
+        yield selection
+        for item in selection.values():
+            yield from _precalibration_selections(item)
+
+
+def _validate_precalibration_ancestry(
+    spec: Mapping[str, object],
+    stages: Mapping[str, Mapping],
+    graph: Graph | None,
+    config: TransportGraphConfig | None,
+) -> None:
+    document = transport_graph_document(spec)
+    rows = {row["id"]: row for row in document["nodes"]}
+    bindings = {
+        row["id"]: row
+        for row in transport_resource(spec, "axiom_rules_bindings")["bindings"]
+    }
+    unit_entities = _unit_entities(spec)
+    unit_bindings = {
+        name: row for name, row in bindings.items() if row["entity"] in unit_entities
+    }
+    binding_columns = {
+        name: {(row["entity"], variable) for variable in row["variables"]}
+        for name, row in bindings.items()
+    }
+    stage_columns = {
+        name: {(row["entity"], row["column"]) for row in stage["outputs"]}
+        for name, stage in stages.items()
+    }
+    derived_columns = {
+        name: {
+            (row["entity"], row["column"]) for row in stage.get("derived_outputs", ())
+        }
+        for name, stage in stages.items()
+    }
+    binding_refs = {
+        name: {
+            reference
+            for reference in (
+                row.get("engine_ref"),
+                None if config is None else config.engine_refs.get(name),
+            )
+            if isinstance(reference, str) and reference
+        }
+        for name, row in bindings.items()
+    }
+    roots = {
+        name for name, row in rows.items() if row["kernel"].startswith("calibrate.")
+    }
+    endpoint = document["endpoints"].get("calibration")
+    if isinstance(endpoint, str):
+        roots.add(endpoint)
+    predecessors = {name: set() for name in rows}
+    producers = {
+        (row.get("population"), output["entity"], output["column"]): name
+        for name, row in rows.items()
+        if isinstance(row.get("population"), str)
+        for output in row.get("outputs", ())
+    }
+    for name, row in rows.items():
+        base = row.get("base")
+        if isinstance(base, str):
+            predecessors[name].add(base)
+            predecessors[name].update(
+                item["id"] for item in rows.values() if item.get("population") == base
+            )
+        elif isinstance(row.get("population"), str):
+            predecessors[name].add(row["population"])
+        predecessors[name].update(
+            edge["producer"] for edge in row.get("artifact_inputs", ())
+        )
+        predecessors[name].update(
+            producer
+            for item in row.get("inputs", ())
+            for column in item["columns"]
+            if (
+                producer := producers.get(
+                    (row.get("population"), item["entity"], column)
+                )
+            )
+            is not None
+            and producer != name
+        )
+
+    declarations = rows
+
+    def check(
+        rows: Mapping[str, Mapping],
+        predecessors: Mapping,
+        *,
+        composed: bool,
+        derived: bool,
+    ) -> None:
+        node_bindings = {}
+        for name, row in rows.items():
+            if composed:
+                node_bindings[name] = {
+                    binding
+                    for binding in bindings
+                    if config is not None
+                    and binding in config.engine_refs
+                    and _embeds_engine_ref(
+                        row.get("params", {}), {config.engine_refs[binding]}
+                    )
+                }
+            else:
+                node_bindings[name] = {
+                    selection["binding"]
+                    for value in row.get("params", {}).values()
+                    for selection in _precalibration_selections(value)
+                    if isinstance(selection.get("binding"), str)
+                    and selection["binding"] in bindings
+                }
+                if row.get("rules_binding") in bindings:
+                    node_bindings[name].add(row["rules_binding"])
+        # Only nodes upstream of calibration are pre-calibration. A stage node
+        # there brings its own ancestors into this closure, so each listed
+        # stage's ancestry passes the same checks; a stage binding's nodes
+        # after calibration (extension checkpoints) are outputs, not inputs.
+        ancestors = _ancestor_closure(predecessors, roots)
+        # A stage restricts only what its own upstream nodes produce: a column
+        # of the same name from elsewhere is not the stage's output.
+        produced = {
+            binding: {
+                (item["entity"], item["column"])
+                for name, row in rows.items()
+                if name in ancestors and binding in node_bindings[name]
+                for item in row.get("outputs", ())
+            }
+            for binding in stages
+        }
+        if derived:
+            for binding, stage in stages.items():
+                for entity, column in sorted(
+                    derived_columns[binding] - produced[binding]
+                ):
+                    raise ValueError(
+                        f"precalibration_stages derived output {entity}.{column} of "
+                        f"{stage['id']!r} is not produced by a stage node upstream "
+                        "of calibration."
+                    )
+        restricted = {
+            binding: produced[binding]
+            - stage_columns[binding]
+            - derived_columns[binding]
+            for binding in stages
+        }
+        inputs = {
+            name: {
+                (item["entity"], column)
+                for item in row.get("inputs", ())
+                for column in item["columns"]
+            }
+            for name, row in rows.items()
+        }
+        encoded = {
+            (output["entity"], output["column"])
+            for row in rows.values()
+            if row["kernel"] == "concepts.encode_groups@1"
+            for output in row.get("outputs", ())
+            if output["entity"] in unit_entities
+        }
+        unit_stages = set(stages).intersection(unit_bindings)
+        declared_columns = set().union(*(stage_columns[name] for name in unit_stages))
+        unit_columns = set().union(
+            *(binding_columns[binding] for binding in unit_bindings)
+        )
+        for name, row in rows.items():
+            if name not in ancestors:
+                continue
+            named = node_bindings[name]
+            own = named.intersection(stages)
+            own_units = own.intersection(unit_bindings)
+            forbidden = set(unit_bindings) - own_units
+            forbidden_refs = set().union(
+                *(binding_refs[binding] for binding in forbidden)
+            )
+            forbidden_modules = frozenset(
+                bindings[binding]["rulespec_path"] for binding in forbidden
+            )
+            allowed_refs = frozenset().union(
+                *(binding_refs[binding] for binding in own_units)
+            )
+            reason = None
+            if named.intersection(unit_bindings) - own_units:
+                reason = (
+                    "mixes listed and unlisted unit bindings"
+                    if own_units
+                    else "not a declared pre-calibration stage"
+                )
+            # The prepared map carries every engine: never a stage's own.
+            if _carries_engine_ref_inventory(row.get("params", {})):
+                reason = "prepared engine_refs map"
+            params = (
+                declarations.get(name, {}).get("params", {})
+                if composed
+                else row.get("params", {})
+            )
+            selections = (
+                selection
+                for value in params.values()
+                for selection in _precalibration_selections(value)
+            )
+            for selection in selections:
+                if selection.get("prepared") == "engine_refs":
+                    reason = "prepared engine_refs map"
+                if isinstance(selection.get("resource"), str):
+                    resource = _stem(selection["resource"])
+                    if resource == "holdout_references":
+                        reason = "holdout_references selection"
+                    if (
+                        resource == GRAPH_RESOURCE
+                        and selection.get("encoding") == "sha256"
+                    ):
+                        reason = "graph resource's own digest"
+                    if selection.get("encoding", "value") != "sha256" and _has_resource(
+                        spec, resource
+                    ):
+                        selected = transport_resource(spec, resource)
+                        for component in selection.get("path", ()):
+                            if (
+                                not isinstance(selected, Mapping)
+                                or component not in selected
+                            ):
+                                selected = None
+                                break
+                            selected = selected[component]
+                        if _embeds_engine_ref(
+                            selected,
+                            forbidden_refs,
+                            forbidden_modules,
+                            allowed_refs,
+                        ):
+                            reason = reason or "not a declared pre-calibration stage"
+            outputs = {
+                (item["entity"], item["column"]) for item in row.get("outputs", ())
+            }
+            own_columns = set().union(
+                *(binding_columns[binding] for binding in own_units)
+            )
+            if (
+                inputs[name] & unit_columns - own_columns - declared_columns
+                or outputs & unit_columns - own_columns
+                or (inputs[name] & encoded and not own_units)
+            ):
+                reason = reason or "not a declared pre-calibration stage"
+            if row["kernel"] == "concepts.encode_groups@1":
+                for column in outputs & encoded:
+                    consumers = [
+                        consumer
+                        for consumer in rows
+                        if consumer in ancestors and column in inputs[consumer]
+                    ]
+                    if not consumers:
+                        reason = reason or "not a declared pre-calibration stage"
+            elif outputs & encoded:
+                reason = reason or "not a declared pre-calibration stage"
+            for binding in stages:
+                if binding not in own and inputs[name] & restricted[binding]:
+                    reason = "undeclared pre-calibration stage output"
+            if _embeds_engine_ref(
+                row.get("params", {}),
+                forbidden_refs,
+                forbidden_modules,
+                allowed_refs,
+            ):
+                reason = reason or "not a declared pre-calibration stage"
+            if any(
+                isinstance(source, str) and "holdout" in source.lower()
+                for source in row.get("sources", ())
+            ):
+                reason = "hold-out source"
+            if reason:
+                raise ValueError(
+                    f"Transport calibration ancestry: node {name!r} carries {reason}."
+                )
+
+    # A derived output is checked against the fullest view: the composed graph
+    # when there is one, otherwise the declaration.
+    check(rows, predecessors, composed=False, derived=graph is None)
+    if graph is None:
+        return
+    compiled = compile_graph(graph)
+    roots.update(
+        node.id for node in graph.nodes if node.kernel.startswith("calibrate.")
+    )
+    compiled_rows = {
+        node.id: {
+            "kernel": node.kernel,
+            "inputs": [
+                {"entity": item.entity, "columns": item.columns} for item in node.inputs
+            ],
+            "outputs": [
+                {"entity": item.entity, "column": item.column} for item in node.outputs
+            ],
+            "params": node.params,
+            "sources": node.sources,
+        }
+        for node in graph.nodes
+    }
+    check(compiled_rows, compiled.predecessors, composed=True, derived=True)
 
 
 def validate_transport_calibration_ancestry(
@@ -666,8 +1174,14 @@ def validate_transport_calibration_ancestry(
     prepared references, including references embedded in JSON text.
     Benefit-unit attributes remain allowed; excluded columns are the unit
     rules bindings' outputs and the group encoder's declared outputs.
+    Declared pre-calibration stages admit their own unit semantics, restrict
+    outputs flowing onward and recursively check each stage's ancestry.
     """
+    stages = _precalibration_stages(spec)
     if not _has_resource(spec, GRAPH_RESOURCE):
+        return
+    if stages:
+        _validate_precalibration_ancestry(spec, stages, graph, config)
         return
     document = transport_graph_document(spec)
     rows = {
@@ -677,12 +1191,13 @@ def validate_transport_calibration_ancestry(
             for item in _sequence(document.get("nodes"), "transport nodes")
         )
     }
-    unit_entity = transport_resource(spec, "benefit_unit_rule").get("entity")
+    unit_entities = _unit_entities(spec)
     bindings = transport_resource(spec, "axiom_rules_bindings").get("bindings", ())
     unit_bindings = {
         row["id"]: row
         for row in _sequence(bindings, "axiom_rules_bindings.bindings")
-        if isinstance(row, Mapping) and row.get("entity") == unit_entity
+        if isinstance(row, Mapping)
+        and _is_unit_entity(row.get("entity"), unit_entities)
     }
     unit_modules = frozenset(
         row["rulespec_path"]
@@ -690,7 +1205,7 @@ def validate_transport_calibration_ancestry(
         if isinstance(row.get("rulespec_path"), str)
     )
     forbidden_columns = {
-        (unit_entity, variable)
+        (row.get("entity"), variable)
         for row in unit_bindings.values()
         for variable in row.get("variables", ())
     }
@@ -699,7 +1214,7 @@ def validate_transport_calibration_ancestry(
             forbidden_columns.update(
                 (output["entity"], output["column"])
                 for output in row.get("outputs", ())
-                if output.get("entity") == unit_entity
+                if _is_unit_entity(output.get("entity"), unit_entities)
             )
     references = {
         row["engine_ref"]
@@ -797,7 +1312,7 @@ def validate_transport_calibration_ancestry(
             forbidden_columns.update(
                 (item.entity, item.column)
                 for item in node.outputs
-                if item.entity == unit_entity
+                if _is_unit_entity(item.entity, unit_entities)
             )
     for name in _ancestor_closure(compiled.predecessors, roots):
         node = graph.node(name)

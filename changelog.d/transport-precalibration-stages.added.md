@@ -1,0 +1,1 @@
+Allow transport specs to declare pre-calibration rules stages with explicit outputs, optional derived outputs that stage nodes compute, recursive ancestry checks and holdout isolation for person and unit bindings. Only nodes in the ancestry of a calibration node are checked, so a stage binding's nodes after every calibration are unaffected.
