@@ -338,7 +338,12 @@ def _source_bytes() -> dict[str, bytes]:
 
 
 @app.local_entrypoint()
-def main(step: str = "extract", label: str = "run1", epochs: int = 800) -> None:
+def main(
+    step: str = "extract",
+    label: str = "run1",
+    epochs: int = 800,
+    max_weight_ratio: float = 5.0,
+) -> None:
     if step == "extract":
         ct = ARTIFACTS / "ct_sources"
         report = extract.remote(
@@ -363,7 +368,7 @@ def main(step: str = "extract", label: str = "run1", epochs: int = 800) -> None:
                 "epochs": epochs,
                 "epoch_batch": 200,
                 "learning_rate": 0.02,
-                "max_weight_ratio": 5.0,
+                "max_weight_ratio": max_weight_ratio,
                 "target_loss_cap": 1.0,
                 "seed": 0,
             },
