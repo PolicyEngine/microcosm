@@ -59,6 +59,7 @@ __all__ = [
     "uk_calibration_diagnostics_payload",
     "uk_consumption_drift",
     "uk_consumption_drift_flags",
+    "uk_consumption_drift_warnings",
     "uk_fit_by_family",
     "uk_support_limited_misses",
     "uk_target_geography_levels",
@@ -785,8 +786,9 @@ def uk_consumption_drift_flags(drift: Mapping[str, object]) -> dict[str, object]
 
     A total that moves more than ``UK_DRIFT_TOTAL_FLAG`` of its design value,
     or a share that moves more than ``UK_DRIFT_SHARE_FLAG``, between the design
-    and the final weights. Report only: the receipts read them, nothing is
-    gated on them, and the diagnostics payload's schema stays as it is.
+    and the final weights. Report only: the calibration diagnostics carry them
+    as warnings (:func:`uk_consumption_drift_warnings`), nothing is gated on
+    them, and the diagnostics payload's schema stays as it is.
     """
 
     totals = drift.get("totals") or {}
@@ -806,6 +808,49 @@ def uk_consumption_drift_flags(drift: Mapping[str, object]) -> dict[str, object]
             if abs(float(value["change"])) > UK_DRIFT_SHARE_FLAG
         ),
     }
+
+
+#: The ``diagnostic_warnings`` code of a consumption drift flag.
+UK_CONSUMPTION_DRIFT_WARNING_CODE = "uk_consumption_drift"
+
+
+def uk_consumption_drift_warnings(drift: Mapping[str, object]) -> list[dict[str, str]]:
+    """The drift flags as the payload's warn-only ``diagnostic_warnings``.
+
+    One warning per flagged total or share (:func:`uk_consumption_drift_flags`),
+    naming it and the threshold it passed, never its figures (Vahid's review
+    of #1383, item 11). Nothing is gated on them.
+    """
+
+    flags = uk_consumption_drift_flags(drift)
+    total = float(flags["total_relative_change_above"])
+    share = float(flags["share_change_above"])
+    return [
+        *(
+            {
+                "code": UK_CONSUMPTION_DRIFT_WARNING_CODE,
+                "severity": "warning",
+                "message": (
+                    f"Consumption drift (warn-only, microcosm#1278 R1): the total "
+                    f"{name} moves by more than {total:.0%} of its design value "
+                    "between the design and the final weights."
+                ),
+            }
+            for name in flags["totals"]
+        ),
+        *(
+            {
+                "code": UK_CONSUMPTION_DRIFT_WARNING_CODE,
+                "severity": "warning",
+                "message": (
+                    f"Consumption drift (warn-only, microcosm#1278 R1): the share "
+                    f"{name} moves by more than {share * 100:g} points between "
+                    "the design and the final weights."
+                ),
+            }
+            for name in flags["shares"]
+        ),
+    ]
 
 
 def uk_zero_weight_strata(
@@ -2572,6 +2617,10 @@ def uk_calibration_diagnostics_payload(
     drift = uk_consumption_drift(household, result.initial_weights, result_weights)
     if drift is not None:
         uk_diagnostics["consumption_drift"] = drift
+        payload["diagnostic_warnings"] = [
+            *(payload.get("diagnostic_warnings") or []),
+            *uk_consumption_drift_warnings(drift),
+        ]
     if withheld_block is not None:
         uk_diagnostics["model_figures_withheld"] = withheld_block
     payload["uk_diagnostics"] = uk_diagnostics

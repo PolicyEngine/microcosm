@@ -750,6 +750,45 @@ def test_drift_flags_mark_totals_past_two_percent_and_shares_past_half_a_point()
     assert flags["shares"] == ["moves"]
 
 
+def test_drift_flags_reach_the_payload_as_warnings() -> None:
+    """Vahid's review of #1383, item 11: the flags are wired, not a hand run.
+
+    Each flagged total or share is one warn-only diagnostic warning, naming it
+    and the threshold, never its figures.
+    """
+
+    from microcosm.build.uk_runtime.diagnostics import (
+        UK_CONSUMPTION_DRIFT_WARNING_CODE,
+        uk_consumption_drift_warnings,
+    )
+
+    drift = {
+        "totals": {"solid_fuel_consumption": {"relative_change": -0.3, "change": -1.0}},
+        "shares": {"gas_connected_households": {"change": 0.0001}},
+    }
+    (warning,) = uk_consumption_drift_warnings(drift)
+    assert warning["code"] == UK_CONSUMPTION_DRIFT_WARNING_CODE
+    assert warning["severity"] == "warning"
+    assert "solid_fuel_consumption" in warning["message"]
+    assert "2%" in warning["message"] and "-0.3" not in warning["message"]
+    result, frame, registry, geography = _diagnostics_case(with_consumption=True)
+    payload = uk_calibration_diagnostics_payload(
+        result,
+        frame,
+        target_geography_levels=geography,
+        target_registry=registry,
+        withheld=frozenset(),
+    )
+    flagged = [
+        warning
+        for warning in payload["diagnostic_warnings"]
+        if warning["code"] == UK_CONSUMPTION_DRIFT_WARNING_CODE
+    ]
+    assert flagged == uk_consumption_drift_warnings(
+        payload["uk_diagnostics"]["consumption_drift"]
+    )
+
+
 def test_consumption_drift_carries_the_full_rate_vat_base() -> None:
     """Consumption times the ETB VAT stage's full-rate share (#1207)."""
 
