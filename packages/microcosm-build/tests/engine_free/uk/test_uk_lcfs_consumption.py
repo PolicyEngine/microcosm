@@ -191,6 +191,8 @@ def test_stage_declares_the_unmapped_code_refusal() -> None:
 TOBACCO_SHARE = "tobacco_share_of_alcohol_and_tobacco"
 ON_TRADE_SHARE = "on_trade_alcohol_share_of_restaurants_and_hotels"
 GAMBLING_SHARE = "gambling_stakes_share_of_recreation"
+LOTTERY_SHARE = "national_lottery_share_of_gambling_stakes"
+BETTING_SHARE = "betting_and_gaming_share_of_other_gambling_stakes"
 
 
 def _excise_household() -> pd.DataFrame:
@@ -199,7 +201,10 @@ def _excise_household() -> pd.DataFrame:
     P602 and P611 are 1, 2, 3 and 4 a week. The first donor splits P602 a
     quarter tobacco and has half its P611 in drinks; the second's tobacco is a
     refund and its drinks pass P611 by three pence; the third has no lines
-    under its P602; the fourth's P602 is all tobacco.
+    under its P602; the fourth's P602 is all tobacco. The first stakes three
+    quarters on the National Lottery and the rest on bingo, the second
+    bets two thirds of its stakes and puts the rest on a society lottery, the
+    third stakes nothing and the fourth only on the Irish Lottery.
     """
 
     from microcosm.build.uk_runtime.lcfs_consumption import (
@@ -225,6 +230,11 @@ def _excise_household() -> pd.DataFrame:
     for code in UK_LCFS_GAMBLING_STAKE_CODES:
         household[code] = 0.0
     household["c94319"] = [0.5, 0.0, 0.0, 0.0]
+    household["c94316"] = [0.25, 0.0, 0.0, 0.0]
+    household["c94312"] = [0.25, 0.0, 0.0, 0.0]
+    household["c94314"] = [0.0, 1.0, 0.0, 0.0]
+    household["c94313"] = [0.0, 0.5, 0.0, 0.0]
+    household["c94315"] = [0.0, 0.0, 0.0, 1.0]
     return household
 
 
@@ -239,6 +249,12 @@ def test_donor_excise_shares_read_the_diary_lines() -> None:
     # drinks past P611's rounding are held at one.
     assert donor[TOBACCO_SHARE].tolist() == [0.25, 0.0, 0.0, 1.0]
     assert donor[ON_TRADE_SHARE].tolist() == [0.5, 1.0, 0.0, 0.0]
+    # The stakes split by their own lines: the National Lottery's share of all
+    # seven, then the betting and gaming share of the other five, which the
+    # Irish-Lottery-only donor holds none of.
+    assert donor[GAMBLING_SHARE].tolist() == [1.0, 0.75, 0.0, 0.25]
+    assert donor[LOTTERY_SHARE].tolist() == [0.75, 0.0, 0.0, 0.0]
+    assert donor[BETTING_SHARE].tolist() == pytest.approx([1.0, 2.0 / 3.0, 0.0, 0.0])
     # A ratio carries no price: uprating the totals leaves the shares alone.
     uprated = clean_lcfs_consumption_table(
         _person(),
@@ -266,6 +282,14 @@ def test_donor_excise_shares_read_the_diary_lines() -> None:
     on_trade = receipt[ON_TRADE_SHARE]
     assert on_trade["clipped_at_one"] == "<10"
     assert "total_beside_lines" not in on_trade
+    # A share of the stakes has no published total to sit beside.
+    lottery = receipt[LOTTERY_SHARE]
+    assert lottery["total"] == "gambling_stakes"
+    assert lottery["positive_support"] == "<10"
+    assert "total_beside_lines" not in lottery
+    assert receipt[BETTING_SHARE]["share_of_denominator"] == pytest.approx(
+        (1.5 * 0.25 + 2.0 * 1.0) / (1.5 * 0.25 + 2.0 * 1.5 + 3.0 * 1.0)
+    )
     # Undeclared, the donor carries no share and no receipt.
     plain = clean_lcfs_consumption_table(_person(), _excise_household())
     assert not set(UK_LCFS_EXCISE_SHARES) & set(plain.columns)
@@ -289,6 +313,8 @@ def test_stage_draws_the_declared_excise_shares_after_its_spend_targets() -> Non
         TOBACCO_SHARE,
         ON_TRADE_SHARE,
         GAMBLING_SHARE,
+        LOTTERY_SHARE,
+        BETTING_SHARE,
     )
 
 
@@ -421,6 +447,8 @@ def test_excise_spending_splits_each_drawn_total() -> None:
             TOBACCO_SHARE: [0.25, 1.0, 0.4],
             ON_TRADE_SHARE: [0.1, 0.5, 1.0],
             GAMBLING_SHARE: [0.05, 0.0, 0.3],
+            LOTTERY_SHARE: [0.25, 1.0, 0.5],
+            BETTING_SHARE: [0.6, 0.2, 1.0],
         }
     )
 
@@ -430,9 +458,19 @@ def test_excise_spending_splits_each_drawn_total() -> None:
     assert spending["off_trade_alcohol_spending"].tolist() == [75.0, 0.0, 0.0]
     assert spending["on_trade_alcohol_spending"].tolist() == [20.0, 0.0, 30.0]
     assert spending["gambling_stakes"].tolist() == [20.0, 0.0, 0.0]
+    # The stakes split in turn: the National Lottery's share, then the betting
+    # and gaming share of the rest, which leaves the society and Irish
+    # lotteries the remainder.
+    assert spending["national_lottery_stakes"].tolist() == [5.0, 0.0, 0.0]
+    assert spending["other_gambling_stakes"].tolist() == [15.0, 0.0, 0.0]
+    assert spending["betting_and_gaming_stakes"].tolist() == [9.0, 0.0, 0.0]
     np.testing.assert_allclose(
         spending["tobacco_spending"] + spending["off_trade_alcohol_spending"],
         draws["alcohol_and_tobacco_consumption"],
+    )
+    np.testing.assert_allclose(
+        spending["national_lottery_stakes"] + spending["other_gambling_stakes"],
+        spending["gambling_stakes"],
     )
 
 
@@ -447,6 +485,8 @@ def test_clip_holds_drawn_shares_to_the_unit_interval() -> None:
             TOBACCO_SHARE: [0.2, 1.2, -0.1],
             ON_TRADE_SHARE: [0.5] * 3,
             GAMBLING_SHARE: [0.1] * 3,
+            LOTTERY_SHARE: [0.4] * 3,
+            BETTING_SHARE: [1.0] * 3,
         }
     )
 
@@ -454,7 +494,13 @@ def test_clip_holds_drawn_shares_to_the_unit_interval() -> None:
 
     assert held[TOBACCO_SHARE].tolist() == [0.2, 1.0, 0.0]
     assert held[ON_TRADE_SHARE].tolist() == [0.5] * 3
-    assert outside == {TOBACCO_SHARE: "<10", ON_TRADE_SHARE: 0, GAMBLING_SHARE: 0}
+    assert outside == {
+        TOBACCO_SHARE: "<10",
+        ON_TRADE_SHARE: 0,
+        GAMBLING_SHARE: 0,
+        LOTTERY_SHARE: 0,
+        BETTING_SHARE: 0,
+    }
 
 
 def test_energy_split_sums_each_fuels_labelled_parts() -> None:
@@ -1617,20 +1663,22 @@ def test_stage_transform_prices_bus_fares_from_journeys() -> None:
     out = result.table("household")
     assert set(UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS) <= set(out.columns)
     # The 20 chain targets (the heating fuels after the spend targets,
-    # pe-uk#2572) and the three excise shares (microcosm#1359), the road-fuel
+    # pe-uk#2572) and the five excise shares (microcosm#1359), the road-fuel
     # redraw's total and petrol share, the prepayment-meter flag
     # (microcosm#1110), then the gas-payer classifier and amount model the
     # connection walk reads (microcosm#1164).
-    assert len(transform.fit_weight_records) == 28
+    assert len(transform.fit_weight_records) == 30
     assert [
         record.fit_name.rsplit(":", 1)[1]
-        for record in transform.fit_weight_records[18:23]
+        for record in transform.fit_weight_records[18:25]
     ] == [
         "liquid_fuel_consumption",
         "solid_fuel_consumption",
         "tobacco_share_of_alcohol_and_tobacco",
         "on_trade_alcohol_share_of_restaurants_and_hotels",
         "gambling_stakes_share_of_recreation",
+        "national_lottery_share_of_gambling_stakes",
+        "betting_and_gaming_share_of_other_gambling_stakes",
     ]
     assert transform.fit_weight_records[-4].fit_name.endswith(
         ":petrol_share_of_road_fuel"
@@ -3537,7 +3585,9 @@ def _excise_draws() -> tuple[pd.DataFrame, np.ndarray]:
 
     Tobacco spending is 250, 500, 0 and 0; off-trade alcohol 750, 0, 0 and
     800; on-trade alcohol 200, 0, 300 and 0; gambling stakes 60, 0, 0 and
-    100.
+    100, of which the National Lottery's are 30, 0, 0 and 0 and the betting
+    and gaming stakes 0, 0, 0 and 75 (the first household's other 30 are
+    society lotteries).
     """
 
     draws = pd.DataFrame(
@@ -3548,6 +3598,8 @@ def _excise_draws() -> tuple[pd.DataFrame, np.ndarray]:
             TOBACCO_SHARE: [0.25, 1.0, 0.0, 0.0],
             ON_TRADE_SHARE: [0.1, 0.0, 0.5, 0.0],
             GAMBLING_SHARE: [0.02, 0.0, 0.0, 0.05],
+            LOTTERY_SHARE: [0.5, 0.0, 0.0, 0.0],
+            BETTING_SHARE: [0.0, 0.0, 0.0, 0.75],
         }
     )
     return draws, np.array([1.0e3, 2.0e3, 3.0e3, 4.0e3])
@@ -3701,13 +3753,30 @@ def test_level_excise_quantities_gives_each_household_its_part(monkeypatch) -> N
     )
     # The step writes only the engine's inputs: no spending, no total.
     assert list(quantities.columns) == [*levels, *resolved.draught]
-    # Gambling bases follow the stakes; the draught share is the published one.
-    stakes = np.array([60.0, 0.0, 0.0, 100.0])
+    # Lottery Duty's base follows the National Lottery's stakes and every other
+    # gambling base the betting and gaming stakes, so the household whose
+    # other stakes are society lotteries carries none of them; the draught
+    # share is the published one.
+    lottery = np.array([30.0, 0.0, 0.0, 0.0])
+    betting = np.array([0.0, 0.0, 0.0, 75.0])
     np.testing.assert_allclose(
-        quantities["remote_gaming_net_losses"],
-        levels["remote_gaming_net_losses"].annual * stakes / (weights @ stakes),
+        quantities["national_lottery_ticket_spending"],
+        levels["national_lottery_ticket_spending"].annual
+        * lottery
+        / (weights @ lottery),
     )
-    assert receipt["keys"]["gambling"]["positive_share"] == pytest.approx(0.5)
+    for column in (
+        "remote_gaming_net_losses",
+        "land_based_fixed_odds_betting_net_losses",
+    ):
+        np.testing.assert_allclose(
+            quantities[column], levels[column].annual * betting / (weights @ betting)
+        )
+    assert receipt["keys"]["national_lottery"]["positive_share"] == pytest.approx(0.1)
+    assert receipt["keys"]["betting_and_gaming"]["positive_share"] == pytest.approx(0.4)
+    assert receipt["components"]["gambling_stakes"]["weighted_total"] == (
+        pytest.approx(weights @ np.array([60.0, 0.0, 0.0, 100.0]))
+    )
     assert (quantities["beer_draught_share"] == 0.25).all()
     assert receipt["draught_shares"]["beer_draught_share"]["share"] == 0.25
 
@@ -3883,7 +3952,13 @@ def test_gambling_bases_are_receipts_over_rates_with_betting_split_by_yield(
     horse = levels["remote_uk_horseracing_betting_net_losses"].receipt
     assert horse["remote_horse_racing_share"] == pytest.approx(0.25)
     assert horse["split_by"]["remote_horses"]["geography_id"] == "K03000001"
-    assert {levels[c].key for c in UK_LCFS_EXCISE_GAMBLING_OUTPUTS} == {"gambling"}
+    # Lottery Duty's base is shared by the National Lottery's stakes, every
+    # other base by the betting and gaming stakes.
+    assert {
+        column: levels[column].key
+        for column in UK_LCFS_EXCISE_GAMBLING_OUTPUTS
+        if levels[column].key != "betting_and_gaming"
+    } == {"national_lottery_ticket_spending": "national_lottery"}
     # Spread betting has no published base and stays at the engine's zero.
     assert "financial_spread_betting_net_losses" not in levels
     assert "other_spread_betting_net_losses" not in levels
