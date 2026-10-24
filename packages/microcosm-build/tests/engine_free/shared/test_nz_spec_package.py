@@ -158,7 +158,11 @@ import pytest
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
+from microcosm.build.chronicle_epoch import (
+    is_accepted_consumer_artifact_schema_version,
+)
 from microcosm.build.country_spec import load_country_spec
+from microcosm.build.ledger_artifact import chronicle_feed_identity
 from microcosm.build.ledger_targets import (
     LedgerTargetReference,
     compile_ledger_target_references,
@@ -305,7 +309,8 @@ def rulespec_commit_mentions(value: object) -> set[str]:
       "rulespec" in any case);
     - the value, at any depth, of a key that contains "commit" in any case,
       unless the key's mapping is a foreign record (its repository
-      attribution lacks "rulespec") and neither the key nor an enclosing
+      attribution lacks "rulespec", or a complete Chronicle identity below
+      ``feed_identity``) and neither the key nor an enclosing
       key contains "rulespec".
 
     A foreign record cancels the context it sits in, except that its commit
@@ -316,7 +321,13 @@ def rulespec_commit_mentions(value: object) -> set[str]:
 
     found: set[str] = set()
 
-    def visit(node: object, *, rulespec_context: bool, commit_value: bool) -> None:
+    def visit(
+        node: object,
+        *,
+        rulespec_context: bool,
+        commit_value: bool,
+        feed_identity_record: bool = False,
+    ) -> None:
         if isinstance(node, Mapping):
             repositories = [
                 repository
@@ -327,7 +338,17 @@ def rulespec_commit_mentions(value: object) -> set[str]:
             rulespec_record = any(
                 "rulespec" in repository.lower() for repository in repositories
             )
-            foreign = named and not rulespec_record
+            artifact_identity = False
+            if feed_identity_record and is_accepted_consumer_artifact_schema_version(
+                node.get("artifact_schema_version")
+            ):
+                try:
+                    chronicle_feed_identity(node)
+                except ValueError:
+                    pass
+                else:
+                    artifact_identity = True
+            foreign = (named or artifact_identity) and not rulespec_record
             if rulespec_record:
                 commit_value = True
             elif foreign:
@@ -344,6 +365,7 @@ def rulespec_commit_mentions(value: object) -> set[str]:
                     child,
                     rulespec_context=rulespec_context or "rulespec" in name,
                     commit_value=commit_value or commit_key or "rulespec" in name,
+                    feed_identity_record=name == "feed_identity",
                 )
         elif isinstance(node, list):
             for child in node:
@@ -1193,7 +1215,12 @@ class TestReferenceSets:
         assert document["country"] == "nz"
         assert document["reference_set"] == reference_set
         expected_operations = (
-            ["identity", "rolled_forward_by_ratio", "allocated_residual_by_ratio"]
+            [
+                "identity",
+                "rolled_forward_by_ratio",
+                "allocated_residual_by_ratio",
+                "linear_combination",
+            ]
             if reference_set == "calibration"
             else ["identity"]
         )
@@ -1452,6 +1479,43 @@ _RULESPEC_REPOSITORIES = (
 
 
 class TestRulespecPin:
+    @pytest.mark.parametrize(
+        "case",
+        [
+            "canonical",
+            "unattributed",
+            "incomplete",
+            "explicit_commit",
+            "prose",
+            "rulespec_context",
+            "wrong_schema",
+        ],
+    )
+    def test_chronicle_identity_scope_preserves_rulespec_mentions(self, case) -> None:
+        identity = _load("reference_aging.json")["feed_identity"]
+        commit = identity["source_commit"]
+        payload = {"feed_identity": identity}
+        expected = set()
+        if case == "unattributed":
+            payload = {"other": identity}
+            expected = {commit}
+        elif case == "incomplete":
+            identity.pop("manifest_sha256")
+            expected = {commit}
+        elif case == "explicit_commit":
+            identity["rulespec_nz_commit"] = "c0ffee1"
+            expected = {"c0ffee1"}
+        elif case == "prose":
+            identity["notes"] = "RuleSpec-nz deadbee"
+            expected = {"deadbee"}
+        elif case == "rulespec_context":
+            payload = {"rulespec": payload}
+            expected = {commit}
+        elif case == "wrong_schema":
+            identity["artifact_schema_version"] = "unknown"
+            expected = {commit}
+        assert rulespec_commit_mentions(payload) == expected
+
     def test_every_rulespec_commit_named_anywhere_was_reviewed_on_main(self) -> None:
         pin = _load("axiom_rules_bindings.json")["rulespec"]
         mentions = rulespec_commit_mentions(_package_payloads())

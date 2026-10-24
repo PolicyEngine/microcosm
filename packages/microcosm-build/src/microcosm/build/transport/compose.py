@@ -68,7 +68,10 @@ from microcosm.build.graph_atomic_geography import (
     ATOMIC_GEOGRAPHY_VALIDATION_TYPE,
     ATOMIC_SUPPORT_TYPE,
 )
-from microcosm.build.ledger_artifact import CHRONICLE_FEED_RESOURCE
+from microcosm.build.ledger_artifact import (
+    CHRONICLE_FEED_RESOURCE,
+    chronicle_feed_identity,
+)
 from microcosm.build.reference_profiles import resolve_reference_profiles
 from microcosm.calibrate.ordered_kernels import OUTPUT_TYPES
 from microcosm.graph import (
@@ -386,14 +389,28 @@ def reference_profile_view(
         else {name: value for name, value in selection.items() if name in dimensions}
     )
     intervals = declarations.get("interval_resource")
-    return resolve_reference_profiles(
+    factor_context_resource = declarations.get("factor_context_resource")
+    view = resolve_reference_profiles(
         _raw_transport_resource(spec, resource),
         declarations,
         selected,
         interval_document=None
         if intervals is None
         else _raw_transport_resource(spec, intervals),
+        factor_context=None
+        if factor_context_resource is None
+        else _raw_transport_resource(spec, factor_context_resource),
     )
+    if _has_resource(spec, CHRONICLE_FEED_RESOURCE):
+        feed_pin = _raw_transport_resource(spec, CHRONICLE_FEED_RESOURCE)
+        for entry in view[2].get("selected_factors", {}).values():
+            if entry["declaration"]["feed_identity"] != chronicle_feed_identity(
+                feed_pin
+            ):
+                raise ValueError(
+                    "Selected factor context is incompatible with the declared feed."
+                )
+    return view
 
 
 def transport_resource(
@@ -536,6 +553,16 @@ def validate_transport_activation(spec: Mapping[str, object]) -> None:
     missing = []
     # Resolve first so activation never inspects an executable profile's raw rows.
     reference_profile_view(spec)
+    if _has_resource(spec, "reference_profiles") and _has_resource(spec, "scenarios"):
+        checked_selections = {canonical_json({})}
+        for scenario in _sequence(
+            _raw_transport_resource(spec, "scenarios").get("scenarios"), "scenarios"
+        ):
+            knobs = _mapping(_mapping(scenario, "scenario").get("knobs", {}), "knobs")
+            identity = canonical_json(knobs)
+            if identity not in checked_selections:
+                reference_profile_view(spec, knobs)
+                checked_selections.add(identity)
     selections = (
         tuple(_declared_resource_selections(transport_resource(spec, GRAPH_RESOURCE)))
         if _has_resource(spec, GRAPH_RESOURCE)

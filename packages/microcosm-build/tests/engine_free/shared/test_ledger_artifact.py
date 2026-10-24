@@ -5,8 +5,10 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import pickle
 import runpy
 from argparse import ArgumentParser, Namespace
+from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 
@@ -18,6 +20,7 @@ from microcosm.build.ledger_artifact import (
     CONSUMER_ARTIFACT_SCHEMA_VERSION,
     ChronicleFeedPinMismatchError,
     LedgerConsumerArtifact,
+    LexicalFloat,
     add_ledger_artifact_args,
     load_ledger_consumer_artifact,
     resolve_ledger_artifact,
@@ -85,6 +88,65 @@ def test_loads_bare_consumer_facts_file(tmp_path):
     provenance = artifact.provenance()
     assert provenance["facts_sha256"] == facts_sha
     assert provenance["schema_version"] is None
+
+
+def test_authenticated_float_retains_lexical_token_without_changing_json(tmp_path):
+    facts_path = tmp_path / "consumer_facts.jsonl"
+    original = '{"aggregate_fact_key":"decimal","value":1.2500e2}\n'
+    facts_path.write_text(original)
+    facts_sha = hashlib.sha256(original.encode()).hexdigest()
+    artifact = load_ledger_consumer_artifact(
+        facts_path, expected_facts_sha256=facts_sha
+    )
+    value = artifact.facts[0]["value"]
+    assert isinstance(value, LexicalFloat)
+    assert not hasattr(value, "__dict__")
+    assert value.lexical_token == "1.2500e2"
+    assert value == 125.0
+    assert hash(value) == hash(125.0)
+    assert json.dumps(value).encode() == json.dumps(125.0).encode()
+    assert json.dumps(artifact.facts[0], sort_keys=True) == json.dumps(
+        json.loads(original), sort_keys=True
+    )
+    assert artifact.facts_sha256 == facts_sha
+
+
+@pytest.mark.parametrize("protocol", range(pickle.HIGHEST_PROTOCOL + 1))
+def test_authenticated_float_pickle_preserves_lexical_token(tmp_path, protocol):
+    facts_path = tmp_path / "consumer_facts.jsonl"
+    facts_path.write_text('{"aggregate_fact_key":"decimal","value":1.2500e2}\n')
+    value = load_ledger_consumer_artifact(facts_path).facts[0]["value"]
+
+    restored = pickle.loads(pickle.dumps(value, protocol=protocol))
+
+    assert isinstance(restored, LexicalFloat)
+    assert restored.lexical_token == "1.2500e2"
+    assert restored == value
+    assert not hasattr(restored, "__dict__")
+
+
+def test_authenticated_float_deepcopy_preserves_lexical_token(tmp_path):
+    facts_path = tmp_path / "consumer_facts.jsonl"
+    facts_path.write_text('{"aggregate_fact_key":"decimal","value":1.2500e2}\n')
+    value = load_ledger_consumer_artifact(facts_path).facts[0]["value"]
+
+    restored = deepcopy(value)
+
+    assert isinstance(restored, LexicalFloat)
+    assert restored.lexical_token == "1.2500e2"
+    assert restored == value
+    assert not hasattr(restored, "__dict__")
+
+
+@pytest.mark.parametrize("token", ["125", "9007199254740993", str(10**100 + 1)])
+def test_authenticated_integer_tokens_stay_exact_integers(tmp_path, token):
+    facts_path = tmp_path / "consumer_facts.jsonl"
+    facts_path.write_text('{"aggregate_fact_key":"integer","value":' + token + "}\n")
+
+    value = load_ledger_consumer_artifact(facts_path).facts[0]["value"]
+
+    assert type(value) is int
+    assert value == int(token)
 
 
 def test_loads_artifact_directory_and_records_provenance(tmp_path):

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -28,6 +29,8 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
+import microcosm.build.reference_factors as reference_factors_module
+import microcosm.build.reference_profiles as reference_profiles_module
 from microcosm.build.ledger_artifact import ChronicleFeedPinMismatchError
 from microcosm.build.reference_profiles import (
     reference_document_sha256,
@@ -62,6 +65,9 @@ from microcosm.graph import (
 )
 from microcosm.graph.canonical import canonical_json
 from test_support.microcosm_build.chronicle_feed import write_pinned_artifact
+from test_support.microcosm_build.reference_factor_transport import (
+    factor_transport_fixture,
+)
 from test_support.microcosm_build.transport_graph import (
     CALIBRATION_TARGETS,
     COUNTRY,
@@ -165,6 +171,150 @@ def test_kernels_declare_honest_country_neutral_contracts() -> None:
         )
         == 4
     )
+
+
+@pytest.mark.parametrize(
+    "kernel", [TARGETS_COMPILE, TAKEUP_COMPARE], ids=lambda k: k.ref
+)
+def test_factor_verifier_source_changes_compilation_identity(
+    tmp_path, monkeypatch, kernel
+):
+    before = kernel.implementation_hash()
+    source = Path(reference_factors_module.__file__)
+    changed = tmp_path / source.name
+    changed.write_bytes(source.read_bytes() + b"\n# verifier implementation mutation\n")
+    monkeypatch.setattr(reference_factors_module, "__file__", str(changed))
+    assert kernel.implementation_hash() != before
+
+
+def test_compiler_replays_factor_and_applies_one_common_money_weight(tmp_path):
+    path, pin, document, receipt, _ = factor_transport_fixture(tmp_path, activate=True)
+    payload, registry = compile_target_surface(
+        path,
+        document,
+        country=COUNTRY,
+        references_sha256=reference_document_sha256(document),
+        feed_pin=pin,
+        reference_resolution=receipt,
+    )
+    assert registry.specs[0].value == 3
+    assert registry.specs[1].value == pytest.approx(110)
+    assert decode_target_surface(payload).reference_resolution == receipt
+
+
+def test_compile_replay_refuses_self_consistent_forged_factor(tmp_path):
+    path, pin, document, receipt, _ = factor_transport_fixture(
+        tmp_path, forged=True, activate=True
+    )
+    # Composition has accepted all declaration/receipt hashes; only feed replay
+    # can distinguish this forged level from the authenticated source operand.
+    with pytest.raises(ValueError, match="expected factor mismatch"):
+        compile_target_surface(
+            path,
+            document,
+            country=COUNTRY,
+            references_sha256=reference_document_sha256(document),
+            feed_pin=pin,
+            reference_resolution=receipt,
+        )
+
+
+def test_compile_replays_correct_factor_without_pin_when_manifest_binds_commit(
+    tmp_path,
+):
+    path, _, document, receipt, _ = factor_transport_fixture(
+        tmp_path, activate=True, manifest_commit=True
+    )
+    _, registry = compile_target_surface(
+        path,
+        document,
+        country=COUNTRY,
+        references_sha256=reference_document_sha256(document),
+        reference_resolution=receipt,
+    )
+    assert registry.specs[1].value == pytest.approx(110)
+
+
+@pytest.mark.parametrize("manifest_commit", [False, True])
+def test_compile_without_pin_refuses_unauthenticated_or_different_feed(
+    tmp_path, manifest_commit
+):
+    path, _, document, receipt, _ = factor_transport_fixture(
+        tmp_path, activate=True, manifest_commit=manifest_commit
+    )
+    if manifest_commit:
+        # The declaration still has a valid receipt for its original artifact.
+        manifest_path = path / "manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        manifest["source_commit"] = "d" * 40
+        manifest_path.write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match="cannot be authenticated|manifest_sha256"):
+        compile_target_surface(
+            path,
+            document,
+            country=COUNTRY,
+            references_sha256=reference_document_sha256(document),
+            reference_resolution=receipt,
+        )
+
+
+def test_compile_factor_ignores_pin_prose(tmp_path):
+    path, pin, document, receipt, _ = factor_transport_fixture(tmp_path, activate=True)
+    arguments = dict(
+        country=COUNTRY,
+        references_sha256=reference_document_sha256(document),
+        reference_resolution=receipt,
+    )
+    before, _ = compile_target_surface(path, document, feed_pin=pin, **arguments)
+    after, _ = compile_target_surface(
+        path, document, feed_pin={**pin, "build": "Reviewed prose edit"}, **arguments
+    )
+    assert before == after
+
+
+@pytest.mark.parametrize("field", ["source_commit", "facts_sha256", "manifest_sha256"])
+def test_compile_factor_refuses_changed_pin_identity(tmp_path, field):
+    path, pin, document, receipt, _ = factor_transport_fixture(tmp_path, activate=True)
+    pin[field] = "d" * len(pin[field])
+    with pytest.raises(ValueError, match="feed identity mismatch|pin mismatch"):
+        compile_target_surface(
+            path,
+            document,
+            country=COUNTRY,
+            references_sha256=reference_document_sha256(document),
+            feed_pin=pin,
+            reference_resolution=receipt,
+        )
+
+
+def test_compile_replay_refuses_tampered_evidence_with_recomputed_hashes(tmp_path):
+    path, pin, document, receipt, _ = factor_transport_fixture(tmp_path, activate=True)
+    factor_receipt = receipt["selected_factors"]["toy_factor"]["receipt"]
+    factor_receipt["source_schedule"][0]["decimal_operand"] = "99"
+    factor_receipt.pop("receipt_sha256")
+    factor_receipt["receipt_sha256"] = reference_document_sha256(factor_receipt)
+    receipt["selected_factor_identities"]["toy_factor"]["receipt_sha256"] = (
+        factor_receipt["receipt_sha256"]
+    )
+    receipt["reference_selection_sha256"] = reference_document_sha256(
+        reference_profiles_module._selection_identity(receipt)
+    )
+    for row in document["target_references"]:
+        row["metadata"]["reference_selection_sha256"] = receipt[
+            "reference_selection_sha256"
+        ]
+    receipt["effective_references_sha256"] = reference_document_sha256(document)
+    receipt.pop("receipt_sha256")
+    receipt["receipt_sha256"] = reference_document_sha256(receipt)
+    with pytest.raises(ValueError, match="Factor replay differs"):
+        compile_target_surface(
+            path,
+            document,
+            country=COUNTRY,
+            references_sha256=reference_document_sha256(document),
+            feed_pin=pin,
+            reference_resolution=receipt,
+        )
 
 
 def test_compile_emits_a_traced_surface_bound_to_facts_not_paths(tmp_path) -> None:

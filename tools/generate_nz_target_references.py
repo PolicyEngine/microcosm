@@ -79,7 +79,11 @@ RESIDUAL_DISCLOSURE = (
     "disclosed national-growth proxy."
 )
 FAMILY_REASON = "Stats NZ Census-family nucleus standard and deterministic roster producer are not encoded; MC7 benefit units and family labels cannot substitute for Census multiplicities."
-IRD_REASON = "G8-r2: reviewed IRD-definition taxable-income binding, component closure, record universe, numerical intervals and B5 ageing remain required."
+IRD_REASON = "B4: reviewed IRD-definition taxable-income measurement, annual component closure and record universe remain required. Ageing resolution does not establish that measurement."
+IRD_MEASUREMENT_BINDING = "ird_taxable_income_ty2027_v1"
+# Reviewed national detail-row map: nil row 8 through open tail row 244.
+# Published national total row 246 is diagnostic and is deliberately absent.
+IRD_NATIONAL_ROWS = tuple(f"row_{row}" for row in range(8, 245))
 RECEIPT_REASON = "G8-w: age-stratified receipt assignment is not supported by the current total-only receipt kernel; preserve the source snapshot and age filters."
 NZS_REASON = "NZ Super receipt binding and prepared receipt flag are not implemented."
 VP_REASON = "Veterans Pension is unsupported: no veteran facts or producer; a missing flag must refuse, never default to false."
@@ -537,8 +541,10 @@ def build_reference_documents(artifact, *, package_dir=SPEC):
             (f for f in facts if f["layout"]["table_record_kind"] == "detail"),
             key=lambda f: int(f["layout"]["source_row_id"].removeprefix("row_")),
         )
-        if len(details) != 237:
-            raise ValueError("Expected 237 taxable-income detail bands")
+        if tuple(f["layout"]["source_row_id"] for f in details) != IRD_NATIONAL_ROWS:
+            raise ValueError(
+                "Expected the reviewed 237 taxable-income detail rows 8–244"
+            )
         for fact in details:
             row_id = fact["layout"]["source_row_id"]
             targets.append(
@@ -550,11 +556,25 @@ def build_reference_documents(artifact, *, package_dir=SPEC):
                     measure=column,
                     family="income",
                     period=2027,
-                    status="requires_g8r2_taxable_income_contract_intervals_and_ageing",
+                    status="requires_prerequisites",
                     reason=IRD_REASON,
                     filter_column=f"taxable_income_band_{row_id}_indicator",
                     label=f"TY2026-27 {contract.replace('_', ' ')} {fact['dimensions']['taxable_income_band_source_label']} (parked)",
                 )
+            )
+            targets[-1]["metadata"].update(
+                {
+                    "reference_prerequisites": json.dumps(
+                        [
+                            "reference_profile:aging_index",
+                            f"measurement:{IRD_MEASUREMENT_BINDING}",
+                        ],
+                        separators=(",", ":"),
+                    ),
+                    "required_reference_profile": "aging_index",
+                    "required_measurement_binding": IRD_MEASUREMENT_BINDING,
+                    "reference_value_kind": "count" if column == "people" else "money",
+                }
             )
     wage_facts = inventory.cells(
         "ird_wage_salary_distribution.ty2026.income_bands", measure="individuals"
@@ -705,6 +725,7 @@ def build_reference_documents(artifact, *, package_dir=SPEC):
                 "identity",
                 "rolled_forward_by_ratio",
                 "allocated_residual_by_ratio",
+                "linear_combination",
             ]
             if reference_set == "calibration"
             else ["identity"],
@@ -791,14 +812,31 @@ def _reference_profiles(inventory, rows):
         profiles[profile] = {"transformations": transformations}
     return {
         "schema_version": 1,
+        "factor_context_resource": "reference_aging.json",
         "dimensions": {
             "census_residual_allocation": {"default": "mar", "profiles": profiles},
             "aging_index": {
                 "default": "central",
                 "profiles": {
-                    "central": {"transformations": [], "deferred": True},
-                    "low": {"available": False, "transformations": []},
-                    "high": {"available": False, "transformations": []},
+                    profile: {
+                        "transformations": [
+                            {
+                                "operation": "scale_money_and_intervals",
+                                "factor_id": f"ird_ty2024_to_ty2027_{profile}",
+                                "reference_names": [
+                                    f"ird_taxable_income_total_by_band__{row_id}"
+                                    for row_id in IRD_NATIONAL_ROWS
+                                ],
+                                "count_reference_names": [
+                                    f"ird_taxable_income_people_by_band__{row_id}"
+                                    for row_id in IRD_NATIONAL_ROWS
+                                ],
+                                "interval_table_ids": [],
+                                "required_measurement_binding": IRD_MEASUREMENT_BINDING,
+                            }
+                        ]
+                    }
+                    for profile in ("low", "central", "high")
                 },
             },
         },
@@ -1017,7 +1055,7 @@ def _receipts(inventory, erp, documents, feed_pin, ta_facts):
         ),
         (
             "qes_prefu_and_b5_ageing",
-            "G8-r2; QES/PREFU rows are present in the pinned artifact but unused by this residual-allocation task.",
+            "QES/PREFU feed rows support the declared factor calculations in reference_aging.json; they never become direct calibration references or carried target values.",
         ),
         (
             "wff_tripwires",

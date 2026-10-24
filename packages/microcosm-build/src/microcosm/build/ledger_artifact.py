@@ -64,7 +64,9 @@ __all__ = [
     "CHRONICLE_FEED_RESOURCE",
     "ChronicleFeedPinMismatchError",
     "LedgerConsumerArtifact",
+    "LexicalFloat",
     "add_ledger_artifact_args",
+    "chronicle_feed_identity",
     "load_ledger_consumer_artifact",
     "resolve_ledger_artifact",
     "validate_chronicle_feed_pin",
@@ -78,6 +80,50 @@ CONSUMER_ARTIFACT_SCHEMA_VERSION = MICROCOSM_CONSUMER_ARTIFACT_SCHEMA_VERSION
 ALLOWED_LEDGER_ASSERTIONS = frozenset(("observation", "source_projection"))
 DEFAULT_LEDGER_ASSERTION = "observation"
 CHRONICLE_FEED_RESOURCE = "chronicle_feed.json"
+_FEED_IDENTITY_FIELDS = (
+    "source_commit",
+    "facts_sha256",
+    "manifest_sha256",
+    "artifact_schema_version",
+    "consumer_fact_schema_versions",
+    "consumer_fact_schema_sha256",
+    "fact_row_count",
+)
+
+
+def chronicle_feed_identity(feed_pin: Mapping[str, Any]) -> dict[str, Any]:
+    """Select reviewed source commit and loader-verified fields, excluding prose.
+
+    The source commit is a caller declaration unless the authenticated manifest
+    also carries it; the artifact loader verifies the remaining six fields.
+    """
+    missing = sorted(set(_FEED_IDENTITY_FIELDS) - feed_pin.keys())
+    if missing:
+        raise ValueError(
+            f"Chronicle factor feed identity is missing fields: {missing}."
+        )
+    if not isinstance(feed_pin["source_commit"], str) or not feed_pin["source_commit"]:
+        raise ValueError("Chronicle factor feed identity requires a source commit.")
+    return {field: feed_pin[field] for field in _FEED_IDENTITY_FIELDS}
+
+
+class LexicalFloat(float):
+    """An ordinary float retaining its authenticated JSON numeric token.
+
+    Existing consumers and JSON serialization retain their float behavior.
+    Exact-arithmetic consumers can inspect ``lexical_token`` and prove that
+    converting the float back to decimal reproduces the published operand.
+    """
+
+    __slots__ = ("lexical_token",)
+
+    def __new__(cls, token: str):
+        instance = super().__new__(cls, token)
+        instance.lexical_token = token
+        return instance
+
+    def __reduce__(self):
+        return type(self), (self.lexical_token,)
 
 
 class ChronicleFeedPinMismatchError(ValueError):
@@ -397,7 +443,7 @@ def _load_fact_rows(path: Path) -> tuple[dict[str, Any], ...]:
             if not stripped:
                 continue
             try:
-                row = json.loads(stripped)
+                row = json.loads(stripped, parse_float=LexicalFloat)
             except json.JSONDecodeError as exc:
                 raise ValueError(
                     f"Invalid Ledger facts JSONL row {line_number}: {exc.msg}"
