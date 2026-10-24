@@ -383,7 +383,9 @@ def test_a_pool_on_the_stage_scale_is_returned_unchanged(frame: Frame) -> None:
     assert receipt["scale_factor"] == pytest.approx(1.0, rel=1e-12)
 
 
-@given(_pools(), st.floats(min_value=1e-3, max_value=1e3, allow_nan=False))
+# Up to 1e150 either way: multiplying the source total by the transferred
+# mass before dividing by the source mass overflowed well inside this range.
+@given(_pools(), st.floats(min_value=1e-150, max_value=1e150, allow_nan=False))
 @_SETTINGS
 def test_rescaling_every_household_weight_leaves_each_value_where_it_was(
     frame: Frame, factor: float
@@ -710,6 +712,62 @@ def test_a_transferred_side_far_below_rounding_is_still_scaled() -> None:
     assert receipt["transferred_household_mass"] == 1.0
     assert receipt["scale_factor"] == pytest.approx(2.5, rel=1e-12)
     np.testing.assert_allclose(_column(anchored, EMPLOYER), [100.0, 100.0], rtol=1e-12)
+
+
+@pytest.mark.parametrize("mass", [1.0, 1e-300, 1e-200, 1e152, 1e153, 1e300])
+def test_the_factor_and_targets_stay_finite_wherever_the_correct_ones_are(
+    mass: float,
+) -> None:
+    # Equal household mass on each side, $10,000 and $5,000 of employer premium
+    # per unit of it: the factor is 2 at every scale. Multiplying the source
+    # total by the transferred mass before dividing by the source mass gave an
+    # infinite target at 1e152, an infinite factor at 1e153 and a zero one at
+    # 1e-200.
+    frame = _pool(
+        [
+            {"source": True, "weight": mass, "people": [(10_000.0, 1.0)]},
+            {"source": False, "weight": mass, "people": [(5_000.0, 1.0)]},
+        ]
+    )
+
+    anchored, receipt = with_us_esi_premium_pool_anchor(frame)
+
+    assert receipt["status"] == "scaled"
+    assert receipt["scale_factor"] == pytest.approx(2.0, rel=1e-12)
+    # ``abs=0``: approx's default absolute tolerance would pass anything at 1e-300.
+    assert receipt["transferred_employer_premium_target"] == pytest.approx(
+        1e4 * mass, rel=1e-12, abs=0.0
+    )
+    assert receipt["pool_employer_premium_target"] == pytest.approx(
+        2e4 * mass, rel=1e-12, abs=0.0
+    )
+    assert receipt["employer_premium_total"] == pytest.approx(
+        2e4 * mass, rel=1e-12, abs=0.0
+    )
+    np.testing.assert_allclose(
+        _column(anchored, EMPLOYER), [10_000.0, 10_000.0], rtol=1e-12
+    )
+
+
+@pytest.mark.parametrize(
+    "mass",
+    [
+        # The source total itself is past the largest float.
+        1e306,
+        # Each side's total is finite; the pool's is not.
+        1.5e304,
+    ],
+)
+def test_a_pool_whose_correct_total_is_not_finite_is_refused(mass: float) -> None:
+    frame = _pool(
+        [
+            {"source": True, "weight": mass, "people": [(10_000.0, 1.0)]},
+            {"source": False, "weight": mass, "people": [(10_000.0, 1.0)]},
+        ]
+    )
+
+    with pytest.raises(SourceRuntimeError, match="target is not finite"):
+        with_us_esi_premium_pool_anchor(frame)
 
 
 def test_a_missing_wage_on_a_source_derived_row_is_not_read() -> None:
@@ -1351,6 +1409,39 @@ def test_the_gates_grade_a_tiny_transferred_side_against_its_own_mass(
     assert summary["transferred_to_source_per_household_mass_ratio"] == pytest.approx(
         1.0, rel=1e-9
     )
+
+
+def test_a_transferred_side_whose_mass_share_rounds_to_zero_is_still_gated(
+    stacked_pool,
+) -> None:
+    # Household masses about 1e340 apart: the transferred side's share of the
+    # pool underflows to zero though that side holds mass, so both gates read
+    # whether it is weighed from its absolute mass. A tenth of the premium on
+    # it must still fail them.
+    anchored = stacked_pool["anchored"]
+    household = anchored.table("household")
+    transferred_households = household["household_id"].isin(
+        anchored.table("person").loc[~_source_rows(anchored), "person_household_id"]
+    )
+    tilted = _reweighted(
+        _with_transferred_scaled(anchored, 0.1),
+        np.where(transferred_households, 1e-170, 1e170),
+    )
+
+    summary = us_esi_premiums_summary(tilted)
+    signal = us_esi_premiums_signal_gate(tilted)
+    anchor = us_esi_premiums_anchor_gate(tilted, time_period=2024)
+
+    assert summary["transferred_household_mass_share"] == 0.0
+    assert summary["transferred_household_mass"] > 0
+    assert summary["transferred_to_source_per_household_mass_ratio"] == pytest.approx(
+        0.1, rel=1e-9
+    )
+    assert any(
+        "mean per positive person on the rows without raw ASEC columns" in failure
+        for failure in signal.failures
+    )
+    assert any("per unit of household mass" in failure for failure in anchor.failures)
 
 
 def test_a_row_with_only_some_raw_columns_fails_both_gates(stacked_pool) -> None:

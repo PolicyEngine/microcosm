@@ -1244,7 +1244,7 @@ def with_us_esi_premium_pool_anchor(frame: Frame) -> tuple[Frame, dict[str, obje
        stage's universe is people employed by an employer); and
     3. scales the employer premiums by one factor so those rows carry the same
        weighted total per unit of household mass as the source-derived rows:
-       ``source total x transferred mass / source mass``, with each side's
+       ``source total / source mass x transferred mass``, with each side's
        household mass summed on its own.
 
     A transferred person's source record must report a wage. A missing wage
@@ -1303,7 +1303,19 @@ def with_us_esi_premium_pool_anchor(frame: Frame) -> tuple[Frame, dict[str, obje
             "US ESI premium pool anchor: the source-derived rows hold no "
             "employer premium mass."
         )
-    pool_target = source_total * (source_mass + transferred_mass) / source_mass
+    # Premium per unit of household mass on the source-derived rows, divided
+    # out first so every intermediate stays on the scale of the result: any
+    # finite weights whose correct totals are finite give finite targets.
+    intensity = source_total / source_mass
+    target = intensity * transferred_mass
+    pool_target = source_total + target
+    if not (
+        np.isfinite(intensity) and np.isfinite(target) and np.isfinite(pool_target)
+    ):
+        raise SourceRuntimeError(
+            "US ESI premium pool anchor: the employer premium target is not "
+            "finite at these household weights."
+        )
     receipt: dict[str, object] = {
         "source_household_mass_share": share,
         "source_household_mass": source_mass,
@@ -1338,7 +1350,6 @@ def with_us_esi_premium_pool_anchor(frame: Frame) -> tuple[Frame, dict[str, obje
     reset = {column: drawn[column] != outputs[column] for column in outputs}
     no_wages = transferred & ~(wages > 0)
     cleared = {column: no_wages & (values > 0) for column, values in drawn.items()}
-    target = source_total * transferred_mass / source_mass
     before = _weighted(
         weights, drawn[US_ESI_EMPLOYER_PREMIUM_COLUMN], transferred & ~no_wages
     )
@@ -1349,6 +1360,11 @@ def with_us_esi_premium_pool_anchor(frame: Frame) -> tuple[Frame, dict[str, obje
         )
     # Transferred rows without household mass have no total to be held to.
     factor = target / before if before > 0 else 1.0
+    if not (np.isfinite(factor) and factor >= 0):
+        raise SourceRuntimeError(
+            "US ESI premium pool anchor: the transferred rows' scale factor "
+            f"{factor!r} is not a finite nonnegative number."
+        )
     receipt |= {
         "transferred_household_mass_share": transferred_mass
         / (source_mass + transferred_mass),
@@ -1381,8 +1397,17 @@ def with_us_esi_premium_pool_anchor(frame: Frame) -> tuple[Frame, dict[str, obje
     for values in outputs.values():
         values[no_wages] = 0.0
     outputs[US_ESI_EMPLOYER_PREMIUM_COLUMN][transferred] *= factor
+    if not np.isfinite(outputs[US_ESI_EMPLOYER_PREMIUM_COLUMN]).all():
+        raise SourceRuntimeError(
+            "US ESI premium pool anchor: scaling left a transferred employer "
+            "premium that is not finite."
+        )
     total = _weighted(weights, outputs[US_ESI_EMPLOYER_PREMIUM_COLUMN])
-    if not np.isclose(total, pool_target, rtol=_POOL_ANCHOR_RTOL, atol=0.0):
+    # Matching infinities would pass isclose, so a total must be finite first.
+    if not (
+        np.isfinite(total)
+        and np.isclose(total, pool_target, rtol=_POOL_ANCHOR_RTOL, atol=0.0)
+    ):
         raise SourceRuntimeError(
             f"US ESI premium pool anchor: the pool totals ${total / 1e9:,.6f}B "
             f"after scaling, not ${pool_target / 1e9:,.6f}B."
@@ -1491,6 +1516,10 @@ def _transferred_row_summary(
         "source_household_mass_share": share,
         "transferred_household_mass_share": transferred_mass
         / (source_mass + transferred_mass),
+        # Absolute masses: a share can round to zero while its side holds mass,
+        # so whether the transferred side is weighed is read from these.
+        "source_household_mass": source_mass,
+        "transferred_household_mass": transferred_mass,
         "transferred_clone_disagreement_source_records": clone_disagreements,
         "source_employer_premium_total": source_total,
         "transferred_employer_premium_total": transferred_total,
@@ -1755,7 +1784,7 @@ def us_esi_premiums_signal_gate(frame: Frame) -> GateResult:
         failures.append(
             f"employer premium positive share {share:.4f} outside [{low}, {high}]."
         )
-    if float(summary.get("transferred_household_mass_share", 0.0)) > 0:
+    if float(summary.get("transferred_household_mass", 0.0)) > 0:
         low, high = _TRANSFERRED_TO_SOURCE_BAND
         for key, label in (
             ("transferred_to_source_positive_share_ratio", "positive share"),
@@ -1912,6 +1941,8 @@ def us_esi_premiums_anchor_gate(frame: Frame, *, time_period: int) -> GateResult
                     "transferred_rows",
                     "source_household_mass_share",
                     "transferred_household_mass_share",
+                    "source_household_mass",
+                    "transferred_household_mass",
                     "source_employer_premium_total",
                     "transferred_employer_premium_total",
                     "transferred_to_source_per_household_mass_ratio",
@@ -1924,7 +1955,7 @@ def us_esi_premiums_anchor_gate(frame: Frame, *, time_period: int) -> GateResult
             )
             ratio = float(summary["transferred_to_source_per_household_mass_ratio"])
             low, high = _TRANSFERRED_PER_MASS_BAND
-            weighed = float(summary["transferred_household_mass_share"]) > 0
+            weighed = float(summary["transferred_household_mass"]) > 0
             if weighed and not low <= ratio <= high:
                 failures.append(
                     "rows without raw ASEC columns carry "

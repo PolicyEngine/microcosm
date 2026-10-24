@@ -331,7 +331,16 @@ def main() -> None:
     parser.add_argument("--sample-fraction", type=float, default=0.10)
     parser.add_argument("--sample-seed", type=int, default=578)
     parser.add_argument("--n-estimators", type=int, default=100)
-    parser.add_argument("--target-year", type=int, default=pool.POOL_TIME_PERIOD)
+    parser.add_argument(
+        "--target-year",
+        type=int,
+        default=pool.POOL_TIME_PERIOD,
+        choices=[pool.POOL_TIME_PERIOD],
+        help=(
+            "The pool prices its ESI stage at its own time period, so the "
+            "reference build, gates and receipt use that year too."
+        ),
+    )
     args = parser.parse_args()
     started = time.perf_counter()
 

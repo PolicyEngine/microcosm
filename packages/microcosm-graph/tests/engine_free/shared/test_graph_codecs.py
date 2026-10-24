@@ -146,6 +146,58 @@ def test_csv_tables_reads_a_declared_string_column_as_written(tmp_path: Path) ->
     assert record.iloc[3] == "   "
 
 
+def test_csv_tables_weights_table_reads_string_ids_as_the_entity_does(
+    tmp_path: Path,
+) -> None:
+    # Household ids declared as strings, one with leading zeros and one too
+    # long for a float, repeated in a separate weights table that declares no
+    # dtype of its own: both tables must read them as the same text. A frame
+    # wants its ids ascending, and as text "0001..." sorts before "0004...".
+    source = tmp_path / "source"
+    source.mkdir()
+    ids = ["000110339935153371101", "00042"]
+    (source / "person.csv").write_text(
+        f"person_id,person_household_id\n1,{ids[0]}\n2,{ids[0]}\n3,{ids[1]}\n"
+    )
+    (source / "household.csv").write_text(f"household_id\n{ids[0]}\n{ids[1]}\n")
+    (source / "weights.csv").write_text(
+        f"household_id,design_weight\n{ids[0]},2.5\n{ids[1]},4.0\n"
+    )
+    (source / "schema.json").write_text(
+        json.dumps(
+            {
+                "person_entity": "person",
+                "group_entities": ["household"],
+                "dtypes": {
+                    "person": {
+                        "person_id": "int64",
+                        "person_household_id": "string[python]",
+                    },
+                    "household": {"household_id": "string[python]"},
+                },
+                "weights": {
+                    "entity": "household",
+                    "column": "design_weight",
+                    "kind": "design",
+                },
+                "weights_table": "weights.csv",
+            }
+        )
+    )
+
+    loaded = load_source("csv-tables", source)
+
+    assert loaded.table("household")["household_id"].tolist() == ids
+    assert loaded.table("person")["person_household_id"].tolist() == [
+        ids[0],
+        ids[0],
+        ids[1],
+    ]
+    np.testing.assert_array_equal(
+        loaded.weights_for("household").values, np.asarray([2.5, 4.0])
+    )
+
+
 def test_csv_tables_loads_tables_mapping_and_weights_csv_layout(
     tmp_path: Path,
 ) -> None:
