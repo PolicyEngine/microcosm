@@ -3912,13 +3912,24 @@ class TestDeclaredResources:
         }
 
     def test_currency_bridge_is_one_declared_multiplication(self) -> None:
+        # The executable rate lives once, as cited decimal text, in
+        # money_normalization.json; the MC4 record points to it.
         bridge = _load("currency_bridge.json")
         assert (bridge["from_currency"], bridge["to_currency"]) == ("USD", "NZD")
         assert bridge["operation"] == "multiply"
-        assert bridge["rounding"] == {"decimal_places": 2}
-        assert isinstance(bridge["rate"], float) and bridge["rate"] > 0
-        assert bridge["source"]["url"].startswith("https://www.irs.gov/")
-        assert bridge["source"]["column"] == str(bridge["rate_year"])
+        assert bridge["rate"] == {
+            "resource": "money_normalization.json",
+            "path": ["rate"],
+        }
+        money = _load("money_normalization.json")
+        rate = money[bridge["rate"]["path"][0]]
+        assert money["quote"] == "to_per_from"
+        assert money["rounding"] == {"digits": 2, "mode": "half_even"}
+        assert rate["form"] == "decimal_text"
+        assert isinstance(rate["text"], str) and float(rate["text"]) > 0
+        assert rate["citation"]["url"].startswith("https://www.irs.gov/")
+        assert rate["citation"]["column"] == str(bridge["rate_year"])
+        assert "awaiting D1" not in bridge["status"]
 
     def test_benefit_unit_rule_declares_the_settled_dependent_child_age(self) -> None:
         rule = _load("benefit_unit_rule.json")

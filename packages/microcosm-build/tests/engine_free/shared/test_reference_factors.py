@@ -12,6 +12,7 @@ from microcosm_build.reference_factors import factor_context_fixture, factor_fix
 
 from microcosm.build.ledger_artifact import LexicalFloat
 from microcosm.build.reference_factors import (
+    FACTOR_PURPOSES,
     certified_nth_root_bounds,
     factor_document_sha256,
     replay_reference_factor,
@@ -605,3 +606,19 @@ def test_root_refinement_stays_within_exact_receipt_precision_budget(monkeypatch
     with pytest.raises(ValueError, match="supported exact receipt precision"):
         resolve_reference_factor(declaration, facts, identity)
     assert precisions == [26, 52, 104, 208]
+
+
+@pytest.mark.parametrize("purpose", sorted(FACTOR_PURPOSES))
+def test_factor_purposes_are_closed_and_additive(purpose):
+    assert FACTOR_PURPOSES == {
+        "profile_input",
+        "diagnostic",
+        "money_normalization_input",
+    }
+    declaration, facts, identity = factor_fixture()
+    declaration["purpose"] = purpose
+    factor, receipt = resolve_reference_factor(declaration, facts, identity)
+    assert factor == declaration["expected_operational_factor"]
+    declaration["purpose"] = "money"
+    with pytest.raises(ValueError, match="Unknown factor purpose"):
+        resolve_reference_factor(declaration, facts, identity)

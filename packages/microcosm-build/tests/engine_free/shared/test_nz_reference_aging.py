@@ -41,7 +41,15 @@ _EXPECTED = {
     "p1_ty2026_to_ty2027_central": 1028580,
     "p1_ty2026_to_ty2027_high": 1030467,
     "observed_ty2026_over_ty2024": 1086069,
+    "donor_cy2024_to_ty2027_low": 1077090,
+    "donor_cy2024_to_ty2027_central": 1079073,
+    "donor_cy2024_to_ty2027_high": 1081052,
 }
+_DENOMINATORS = {
+    "p1_": Fraction("1670.0725"),
+    "donor_": Fraction("1591.925"),
+}
+_PURPOSES = {"observed_": "diagnostic", "donor_": "money_normalization_input"}
 
 
 def _document():
@@ -127,7 +135,7 @@ def test_factor_currency_uses_inclusive_declared_boundaries(today, current):
 
 
 @pytest.mark.parametrize("factor_id", list(_EXPECTED))
-def test_all_six_factors_and_observed_diagnostic_are_exact(factor_id, operand_facts):
+def test_all_nine_factors_and_observed_diagnostic_are_exact(factor_id, operand_facts):
     entry = _entry(factor_id)
     declaration = entry["declaration"]
     expected = {"numerator": _EXPECTED[factor_id], "denominator": 1000000}
@@ -139,11 +147,17 @@ def test_all_six_factors_and_observed_diagnostic_are_exact(factor_id, operand_fa
     assert receipt["operation"] == "projected_period_average_ratio"
     assert receipt["operation_version"] == 1
     assert receipt["subperiods_per_year"] == 4
-    assert _fraction(receipt["denominator_mean"]) == (
-        Fraction("1670.0725") if factor_id.startswith("p1_") else Fraction("1537.7225")
+    assert _fraction(receipt["denominator_mean"]) == next(
+        (
+            value
+            for prefix, value in _DENOMINATORS.items()
+            if factor_id.startswith(prefix)
+        ),
+        Fraction("1537.7225"),
     )
-    assert declaration["purpose"] == (
-        "diagnostic" if factor_id.startswith("observed_") else "profile_input"
+    assert declaration["purpose"] == next(
+        (value for prefix, value in _PURPOSES.items() if factor_id.startswith(prefix)),
+        "profile_input",
     )
     replay_reference_factor(
         declaration, operand_facts, _document()["feed_identity"], factor, receipt
@@ -288,3 +302,50 @@ def test_september_observation_reanchors_and_requires_reviewed_redeclaration(
         assert slot["projection_anchor"] == {
             "aggregate_fact_key": september["aggregate_fact_key"]
         }
+
+
+def test_donor_factors_average_calendar_2024_and_share_the_tax_year_numerator(
+    operand_facts,
+):
+    """Hub-recomputed values (G8-w rulings 4, H1); the feed calculation governs."""
+    for profile, numerator in (
+        ("low", 1077090),
+        ("central", 1079073),
+        ("high", 1081052),
+    ):
+        entry = _entry(f"donor_cy2024_to_ty2027_{profile}")
+        ird = _entry(f"ird_ty2024_to_ty2027_{profile}")
+        declaration = entry["declaration"]
+        assert [
+            slot["validation"]["period_coverage"]
+            for slot in declaration["source_schedule"]
+        ][0]["start_date"] == "2024-01-01"
+        assert (
+            declaration["source_schedule"][-1]["validation"]["period_coverage"][
+                "end_date"
+            ]
+            == "2024-12-31"
+        )
+        assert declaration["target_schedule"] == ird["declaration"]["target_schedule"]
+        assert declaration["growth"] == ird["declaration"]["growth"]
+        assert declaration["validity"] == ird["declaration"]["validity"]
+        factor, receipt = resolve_reference_factor(
+            declaration, operand_facts, _document()["feed_identity"]
+        )
+        assert factor == {"numerator": numerator, "denominator": 1000000}
+        mean = (
+            Fraction("1563.54")
+            + Fraction("1586.32")
+            + Fraction("1595.11")
+            + Fraction("1622.73")
+        ) / 4
+        assert mean == Fraction("1591.925") == _fraction(receipt["denominator_mean"])
+        for bound in ("lower", "upper"):
+            assert (
+                round(
+                    _fraction(ird["receipt"]["numerator_mean_bounds"][bound])
+                    / mean
+                    * 1000000
+                )
+                == numerator
+            )

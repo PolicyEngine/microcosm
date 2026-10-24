@@ -915,6 +915,36 @@ def test_legacy_receipt_remains_version_one_without_factor_fields():
     )
 
 
+@pytest.mark.parametrize(
+    ("selection", "digest"),
+    [
+        ({}, "e0e36d480868e0d45cb1862e21b00753ba55f5d8500d8fa4c1b1fdcf442395e0"),
+        (
+            {"aging_index": "low"},
+            "406d07423c76eddbbc08601b5bd43e9f84b6b60831d5b18fb22edf3121de03c6",
+        ),
+        (
+            {"aging_index": "high"},
+            "bcf613d7d3ea17c063cfd944bf6df132c9526700d3da2679d5e943113a3e83c8",
+        ),
+    ],
+)
+def test_nz_factor_receipts_are_byte_identical_after_additive_factors(
+    selection, digest
+):
+    # Canonical v2 receipts produced at d28817ff, before the donor factors and
+    # the money_normalization_input purpose were added to the factor document.
+    spec = paths_for("microcosm-build").package / "src/microcosm/build/nz"
+    _, _, receipt = resolve_reference_profiles(
+        json.loads((spec / "target_references.json").read_text()),
+        json.loads((spec / "reference_profiles.json").read_text()),
+        selection,
+        factor_context=json.loads((spec / "reference_aging.json").read_text()),
+    )
+    assert receipt["resolver_version"] == "reference-profiles-v2"
+    assert receipt["receipt_sha256"] == digest
+
+
 def test_legacy_receipt_without_transformed_names_refuses_as_a_value_error():
     references, declarations = _inputs()
     effective, _, receipt = resolve_reference_profiles(references, declarations, {})

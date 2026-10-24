@@ -1,8 +1,10 @@
 """Generate NZ's reviewed ageing declarations and authenticated factor receipts.
 
-Run with ``NZ_CHRONICLE_ARTIFACT`` or ``--artifact``. The six operational
+Run with ``NZ_CHRONICLE_ARTIFACT`` or ``--artifact``. The nine operational
 expectations are assertions of the feed calculation, never arithmetic inputs.
-The observed-only ratio is diagnostic and is not available to profiles.
+The observed-only ratio is diagnostic and is not available to profiles. The
+three donor factors age calendar-2024 donor money to tax year 2026-27; only
+money normalization may apply them.
 """
 
 from __future__ import annotations
@@ -29,6 +31,9 @@ _OPERANDS = (
     (12030, "2023-Q3", "f9f4f127d080fe2f06617947", "1528.92"),
     (12032, "2023-Q4", "fb5938810b7b37ae8534e5f7", "1556.16"),
     (12034, "2024-Q1", "854e91ec1dd95e396659ad8e", "1563.54"),
+    (12036, "2024-Q2", "c07fd9ce3137fa20386bafe0", "1586.32"),
+    (12038, "2024-Q3", "54a0eeb64049ba4c15e397bf", "1595.11"),
+    (12040, "2024-Q4", "7fc35ba9682ceb04504f2ef9", "1622.73"),
     (12044, "2025-Q2", "86ce22ba42a6e2a36b889f9b", "1652.72"),
     (12046, "2025-Q3", "434e7b2736b4b16589034c72", "1661.12"),
     (12048, "2025-Q4", "bc87e53157eaf53c846879dc", "1681.06"),
@@ -37,6 +42,7 @@ _OPERANDS = (
 )
 _TY2024 = ("2023-Q2", "2023-Q3", "2023-Q4", "2024-Q1")
 _TY2026 = ("2025-Q2", "2025-Q3", "2025-Q4", "2026-Q1")
+_CY2024 = ("2024-Q1", "2024-Q2", "2024-Q3", "2024-Q4")
 _TARGET = ("2026-Q2", "2026-Q3", "2026-Q4", "2027-Q1")
 _EXPECTED = {
     "ird_ty2024_to_ty2027_low": 1115056,
@@ -46,10 +52,18 @@ _EXPECTED = {
     "p1_ty2026_to_ty2027_central": 1028580,
     "p1_ty2026_to_ty2027_high": 1030467,
     "observed_ty2026_over_ty2024": 1086069,
+    "donor_cy2024_to_ty2027_low": 1077090,
+    "donor_cy2024_to_ty2027_central": 1079073,
+    "donor_cy2024_to_ty2027_high": 1081052,
 }
 _DECISIONS = [
     "d1599; IRD band ageing factors, 22 October 2026",
     "G8-r2 hub rulings 3, 23 October 2026, sections 1–2",
+]
+_DONOR_DECISIONS = [
+    "d1952 card; NZ money year build item: donor money is calendar-2024 dollars",
+    "G8-w hub rulings 5, 24 October 2026, items H1–H3",
+    "G8-r2 hub rulings 3, 23 October 2026, section 1",
 ]
 
 
@@ -199,6 +213,35 @@ def build_aging_declarations(artifact, *, package_dir=SPEC):
         }
     )
     declarations.append(diagnostic)
+    for profile in ("low", "central", "high"):
+        donor = copy.deepcopy(
+            next(
+                row
+                for row in declarations
+                if row["id"] == f"ird_ty2024_to_ty2027_{profile}"
+            )
+        )
+        factor_id = f"donor_cy2024_to_ty2027_{profile}"
+        donor.update(
+            {
+                "id": factor_id,
+                "purpose": "money_normalization_input",
+                "source_period": "CY2024",
+                "source_schedule": schedule(_CY2024),
+                "expected_operational_factor": {
+                    "numerator": _EXPECTED[factor_id],
+                    "denominator": 1000000,
+                },
+                "evidence": [
+                    *donor["evidence"],
+                    "Declared calendar-2024 money convention (H1), covering "
+                    "flows and asset stocks; the recorded _time_period is a "
+                    "consistency check, not authentication",
+                ],
+                "decision_references": list(_DONOR_DECISIONS),
+            }
+        )
+        declarations.append(donor)
     return feed_pin, declarations
 
 

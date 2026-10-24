@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "description": "Exact normalization of the donor's money columns to New Zealand dollars at the tax year 2026-27 money level (MC4, MC5). Each normalized column is converted once at the declared rate and then aged once by its index family's donor factor, both rounded half-even to cents. Earnings, rent and liquid assets are quantile-mapped onto New Zealand distributions instead (MC4) and are never converted at the rate.",
+  "status": "Declared, not active: no New Zealand transport graph reads it yet (G8-w3).",
+  "from_currency": "USD",
+  "to_currency": "NZD",
+  "rate": {
+    "form": "decimal_text",
+    "text": "1.654",
+    "citation": {
+      "publisher": "Internal Revenue Service",
+      "title": "Yearly average currency exchange rates",
+      "url": "https://www.irs.gov/individuals/international-taxpayers/yearly-average-currency-exchange-rates",
+      "table": "Yearly average exchange rates for converting foreign currencies into U.S. dollars",
+      "row": "New Zealand, Dollar",
+      "column": "2024",
+      "conversion_rule": "\"To convert from U.S. dollars to foreign currency, multiply the U.S. dollar amount by the applicable yearly average exchange rate in the table below.\"",
+      "page_last_reviewed": "2026-09-17",
+      "retrieved_on": "2026-10-07",
+      "retrieved_sha256": "8c765c8c88a6a6ad4fe325a0344ff69d2fa2ab174dcac2e8c13e1a5ea747fff8",
+      "retrieved_note": "SHA-256 of the HTML bytes fetched on the retrieval date; the page is re-rendered by the publisher, so it is a receipt, not a stable content key."
+    }
+  },
+  "quote": "to_per_from",
+  "rounding": {
+    "digits": 2,
+    "mode": "half_even"
+  },
+  "donor_money_period": {
+    "type": "calendar_year",
+    "value": 2024,
+    "basis": "declared_convention",
+    "evidence": [
+      "tools/build_us_fiscal_refresh_release.py:410 declares PERIOD = 2024; lines 4320-4328 pass PERIOD as time_period to USSingleYearDataset.",
+      "packages/microcosm-frame/src/microcosm/frame/adapters/policyengine_us.py:1230-1234 writes the supplied model period as a one-row integer _time_period table. This is model-period lineage evidence, not authentication of the monetary basis of donor amounts."
+    ]
+  },
+  "columns": {
+    "person": [
+      "nonfarm_self_employment_income",
+      "farm_self_employment_income",
+      "interest_income",
+      "dividend_income",
+      "rental_income",
+      "realized_capital_gains",
+      "private_pension_income"
+    ],
+    "household": [
+      "mortgage_interest",
+      "mortgage_principal",
+      "property_tax"
+    ]
+  },
+  "factor_profile": {
+    "dimension": "aging_index",
+    "profiles": [
+      "low",
+      "central",
+      "high"
+    ],
+    "central_profile": "central"
+  },
+  "index_family_factors": {
+    "mixed_income": {
+      "factors": {
+        "low": "donor_cy2024_to_ty2027_low",
+        "central": "donor_cy2024_to_ty2027_central",
+        "high": "donor_cy2024_to_ty2027_high"
+      },
+      "disclosure": "Self-employment income (both columns, signed) is aged by Stats NZ QES ordinary-time average weekly earnings growth, the AWE convention; provisional pending Max's ruling on non-wage ageing (H3). No separate mixed-income index is used."
+    },
+    "capital_income": {
+      "factors": {
+        "low": "donor_cy2024_to_ty2027_low",
+        "central": "donor_cy2024_to_ty2027_central",
+        "high": "donor_cy2024_to_ty2027_high"
+      },
+      "disclosure": "Interest, dividends, rental income and realized capital gains are aged by AWE growth; provisional pending Max's ruling on non-wage ageing (H3). No asset-return or price index is used."
+    },
+    "pensions": {
+      "factors": {
+        "low": "donor_cy2024_to_ty2027_low",
+        "central": "donor_cy2024_to_ty2027_central",
+        "high": "donor_cy2024_to_ty2027_high"
+      },
+      "disclosure": "Private pension income is aged by AWE growth; provisional pending Max's ruling on non-wage ageing (H3)."
+    },
+    "owner_housing_costs": {
+      "factors": {
+        "low": "donor_cy2024_to_ty2027_low",
+        "central": "donor_cy2024_to_ty2027_central",
+        "high": "donor_cy2024_to_ty2027_high"
+      },
+      "disclosure": "Mortgage interest, mortgage principal and property tax are aged by AWE growth as an interim index; provisional pending Max's ruling on non-wage ageing (H3)."
+    }
+  },
+  "cents_suffix": "_cents",
+  "quantile_mapped": {
+    "person": {
+      "employment_income": {
+        "awaits": [
+          "P1: precal_references ird_wage_salary_people_by_band rows 7 to 241"
+        ],
+        "reason": "MC4 quantile-maps earnings onto IRD wage bands; P1 is parked until its source-period wage bridge and intervals exist (d1952 option A, earnings first)."
+      },
+      "liquid_financial_assets": {
+        "awaits": [
+          "P3: precal_references stats_nz_household_financial_net_worth_distribution",
+          "C2: an all-household liquid-asset distribution"
+        ],
+        "reason": "MC4 quantile-maps liquid assets; no all-household distribution exists yet (C2), and any interim producer is Max's call (M1)."
+      }
+    },
+    "household": {
+      "rent": {
+        "awaits": [
+          "C1: Census 2023 household weekly rent bands (G8-d1)"
+        ],
+        "reason": "MC4 quantile-maps rent onto the Census 2023 weekly-rent bands for renting households (C1); the MBIE bond reference P2 is parked."
+      }
+    }
+  },
+  "pending": {},
+  "notes": "The rate is the IRS 2024 yearly average for the New Zealand dollar, quoted in NZD per USD, so a donor amount is multiplied by it. Calendar-2024 money is a declared convention covering flows and asset stocks; the donor monetary basis has not been authenticated against a producing manifest. The US build's PERIOD = 2024 and the exporter's _time_period write provide model-period lineage evidence. Money normalization refuses a donor whose recorded _time_period differs from calendar 2024 (G8-w H1); this runtime check is a consistency check, not authentication. No donor file is opened to establish this declaration. Variants V1 and V2 age with their own aging_index profile (G8-w H2). public_pension_income is dropped at CREATE and is not declared."
+}
