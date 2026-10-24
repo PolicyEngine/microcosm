@@ -48,25 +48,24 @@ from test_support.microcosm_build.uk_local_rowwise import _clone_frame
 
 
 @pytest.fixture(autouse=True)
-def _toy_rows_bypass_carrier_span_selection(monkeypatch):
-    """Isolate carrier-span selection in the three-household toy graph.
+def _every_toy_row_published(monkeypatch):
+    """Publish every row of the three-household toy graph.
 
     A row's model figures leave a build only when ten distinct source
     households carry it (María's rule of 2026-10-21 binds a thin row and
     withholds its figures). The toy graph declares its columns exactly and
-    carries no source lineage to count, so these graph tests bypass only
-    the private carrier-span helper used by fit and publication selectors.
-    The public selector and its mandatory local publication union stay
-    active; their withheld paths have their own tests in
-    test_uk_diagnostics.py and test_uk_orrery_contract.py.
+    carries no source lineage to count, so these graph tests publish every
+    row; the withheld path has its own tests in test_uk_diagnostics.py and
+    test_uk_orrery_contract.py.
     """
 
-    from microcosm.build.uk_runtime import diagnostics
+    from microcosm.build.uk_runtime import diagnostics, full_gates
 
     def none_withheld(*args, **kwargs):
-        return set(), set()
+        return set()
 
-    monkeypatch.setattr(diagnostics, "_row_withholding", none_withheld)
+    monkeypatch.setattr(diagnostics, "uk_withheld_rows", none_withheld)
+    monkeypatch.setattr(full_gates, "uk_withheld_rows", none_withheld)
 
 
 def source_frame():
@@ -777,14 +776,3 @@ def test_summary_provider_failure_is_diagnostic_in_capture_and_strict_at_export(
         collect_execution_evidence(
             graph_schema(graph), runs=[run], store=store, artifact_summaries=providers
         )
-
-
-@pytest.mark.parametrize("level", ["local_authority", "constituency", "brma"])
-def test_toy_fixture_keeps_mandatory_local_publication_withholding(level):
-    from microcosm.build.uk_runtime import diagnostics
-
-    rows = [{"name": "toy-country"}, {"name": "toy-local"}]
-    levels = {"toy-country": "country", "toy-local": level}
-
-    assert diagnostics.uk_fit_gate_withheld_rows(None, [], None, rows, levels) == set()
-    assert diagnostics.uk_withheld_rows(None, [], None, rows, levels) == {"toy-local"}

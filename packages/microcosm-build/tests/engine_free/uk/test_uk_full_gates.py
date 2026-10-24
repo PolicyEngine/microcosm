@@ -1,7 +1,6 @@
 """Scope and population identity checks for the complete UK gate context."""
 
 from dataclasses import replace
-from datetime import date
 from types import SimpleNamespace
 
 import numpy as np
@@ -16,7 +15,7 @@ from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.calibrate.artifacts import OrderedProblem, OrderedSolution
 from microcosm.calibrate.matrix import CalibrationProblem
 from microcosm.calibrate.solve import CalibrationResult
-from microcosm.frame import Frame, WeightKind, Weights
+from microcosm.frame import WeightKind, Weights
 
 
 def _selection(levels=None):
@@ -180,67 +179,6 @@ def test_gate_diagnostics_use_bound_matrix_and_row_identity(evidence):
     assert context.artifacts["local_target_diagnostics"][0]["relative_error"] == 0.0
     assert context.artifacts["national_calibration"]["matrix_target_count"] == 2
     assert context.artifacts["rules_engine"] is context.artifacts["coverage_engine"]
-
-
-def test_local_publication_suppression_preserves_a_failing_private_fit_gate(
-    evidence, monkeypatch
-):
-    """Withholding publication cannot waive the local release fit fence (#1383)."""
-
-    from microcosm.build.uk_runtime import battery_bindings, diagnostics
-
-    monkeypatch.setattr(diagnostics, "UK_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS", 1)
-    monkeypatch.setattr(
-        battery_bindings, "uk_default_local_target_fit_reviewed_exclusions", lambda: {}
-    )
-    solution = replace(evidence[2], weights=np.full(2, 2.0))
-    original = evidence[0]
-    frame = Frame(
-        {entity: original.table(entity) for entity in original.entities},
-        original.schema,
-        {"household": Weights(solution.weights, WeightKind.CALIBRATED)},
-        metadata=original.metadata,
-    )
-    context = _context((frame, *evidence[1:]), solution=solution)
-    context.artifacts["exclusions_evaluated_on"] = date(2026, 10, 24)
-    row = context.artifacts["local_target_diagnostics"][0]
-    assert row["relative_error"] == 1.0
-    assert not row.get("model_figures_withheld", False)
-    assert row["name"] in context.artifacts["model_figures_withheld"]
-    entry = next(
-        gate
-        for gate in load_country_spec("uk").gates.gates
-        if gate.id == "uk_local_target_fit"
-    )
-    result = battery_bindings._evaluate_target_fit(context, entry.parameters)
-    assert result.passed is False
-    assert result.details["failing_targets"]
-
-
-def test_published_fit_report_keeps_failure_without_mirrored_errors():
-    """A one-cell summary can expose a withheld local estimate through its error."""
-
-    original = {
-        "phase": "terminal",
-        "outcomes": [
-            {
-                "id": "uk_local_target_fit",
-                "status": "failed",
-                "failures": ["fixture/area/metric +100%"],
-                "details": {"failing_targets": {"fixture/area/metric": 1.0}},
-                "evidence_sha256": "a" * 64,
-            }
-        ],
-    }
-    published = runtime.uk_published_fit_gate_report(
-        original, local_figures_withheld=True
-    )
-    row = published["outcomes"][0]
-    assert row["status"] == "failed"
-    assert row["failures"] == ["Local fit check failed; numerical details withheld."]
-    assert row["details"]["publication_safety"] == "cross_geography_not_certified"
-    assert row["evidence_sha256"] is None
-    assert original["outcomes"][0]["details"]["failing_targets"]
 
 
 def test_gate_context_subtracts_the_support_floor_drops(evidence):

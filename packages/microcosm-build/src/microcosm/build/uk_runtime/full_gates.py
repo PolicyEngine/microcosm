@@ -23,10 +23,7 @@ from microcosm.build.uk_runtime.calibration_run import (
     uk_cgt_projection_artifact,
 )
 from microcosm.build.uk_runtime.cgt_projection import UK_CGT_PROJECTION_ARTIFACT_KEY
-from microcosm.build.uk_runtime.diagnostics import (
-    uk_fit_gate_withheld_rows,
-    uk_uncertified_local_rows,
-)
+from microcosm.build.uk_runtime.diagnostics import uk_withheld_rows
 from microcosm.build.uk_runtime.graph_evidence import uk_spine_gate_artifacts
 from microcosm.build.uk_runtime.national_frame import uk_release_export_frame
 from microcosm.build.uk_runtime.parity_reference import load_efrs_parity_reference
@@ -38,10 +35,9 @@ from microcosm.calibrate.solve import CalibrationResult, _build_diagnostics
 from microcosm.frame import Frame
 from microcosm.graph.canonical import canonical_json
 
-_LOCAL_NUMERICAL_FIT_GATES = frozenset(
-    {"uk_local_target_fit", "uk_local_per_family_fit"}
+_LOCAL_FIT_GATES = frozenset(
+    {"uk_local_target_fit", "uk_local_per_family_fit", "uk_local_area_support"}
 )
-_LOCAL_FIT_GATES = _LOCAL_NUMERICAL_FIT_GATES | {"uk_local_area_support"}
 _LOCAL_LEVELS = frozenset({"constituency", "local_authority", "la", "brma"})
 
 
@@ -244,23 +240,18 @@ def build_full_gate_context(
     # households carry them: María's ruling of 2026-10-17 for BRMA rows
     # (microcosm#1262), extended to national and regional rows by her rule of
     # 2026-10-21, which binds a thin row rather than leave it out (local rows
-    # keep the area-support rule). Private fit gates retain that row set;
-    # broader publication suppression is applied independently below.
-    geography_levels = {
-        str(row["name"]): str(row["geography_level"]) for row in diagnostics
-    }
-    fit_withheld = uk_fit_gate_withheld_rows(
+    # keep the area-support rule). The fit gates decide on the published rows
+    # and count the withheld ones (her ruling of 2026-10-19); the flag tells
+    # the bindings and the writers which rows those are.
+    withheld = uk_withheld_rows(
         problem,
         solution.weights,
         frame,
         diagnostics,
-        geography_levels,
+        {str(row["name"]): str(row["geography_level"]) for row in diagnostics},
     )
-    # Preserve private fit-gate decisions. The broader publication set must
-    # not turn a failing local fit gate into a pass (#1383).
-    withheld = fit_withheld | uk_uncertified_local_rows(diagnostics, geography_levels)
     for row in diagnostics:
-        if row["name"] in fit_withheld:
+        if row["name"] in withheld:
             row["model_figures_withheld"] = True
     reference_registry = supporting_evidence.get("reference_registry")
     if not isinstance(reference_registry, TargetRegistry):
@@ -319,7 +310,7 @@ def build_full_gate_context(
                 candidate_targets=set(national_errors),
                 reference_targets=national_reference,
                 target_relative_errors=national_errors,
-                withheld_targets=frozenset(fit_withheld),
+                withheld_targets=frozenset(withheld),
             ),
             "local_target_diagnostics": local_rows,
             "target_diagnostics": diagnostics,
@@ -338,39 +329,6 @@ def build_full_gate_context(
         for name, value in uk_spine_gate_artifacts(artifacts["rules_engine"]).items():
             artifacts.setdefault(name, value)
     return EvidenceContext(frame=frame, artifacts=artifacts)
-
-
-def uk_published_fit_gate_report(
-    payload: Mapping[str, Any], *, local_figures_withheld: bool
-) -> dict[str, Any]:
-    """Keep fit verdicts and enforcement without publishing local numerical details.
-
-    A fit summary over one local cell can restore its withheld error even if
-    it omits the cell's name. The private report is unchanged; its published
-    copy keeps pass/fail status and replaces details and failures together.
-    """
-
-    published = dict(payload)
-    if not local_figures_withheld:
-        return published
-    outcomes = []
-    for original in payload["outcomes"]:
-        row = dict(original)
-        if row["id"] in _LOCAL_NUMERICAL_FIT_GATES:
-            row["details"] = {
-                "publication_safety": "cross_geography_not_certified",
-                "model_figures_withheld": True,
-            }
-            row["failures"] = (
-                ["Local fit check failed; numerical details withheld."]
-                if row["status"] == "failed"
-                else []
-            )
-            row["reason"] = None
-            row["evidence_sha256"] = None
-        outcomes.append(row)
-    published["outcomes"] = outcomes
-    return published
 
 
 def classify_full_gate_outcomes(

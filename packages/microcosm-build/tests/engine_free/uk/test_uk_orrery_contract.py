@@ -274,8 +274,8 @@ def _brma_problem(n: int = 12, level: str = "brma"):
     """An ordered problem over ``n`` households binding one constituency row on
     all of them and one Scottish BRMA row on four, its level spelt ``level``.
 
-    The BRMA row is thin, but the supported constituency row also stays
-    unpublished: neither local grain has a joint publication proof (#1383).
+    Every row with fewer than ten source households is withheld (María's
+    rule of 2026-10-21), so the constituency row needs the twelve to publish.
     """
     import numpy as np
     import pandas as pd
@@ -328,9 +328,9 @@ def _brma_problem(n: int = 12, level: str = "brma"):
 def test_the_published_result_summary_withholds_a_thin_brma_row():
     """microcosm#1262: Orrery publishes no figure a build withholds.
 
-    Both the supported constituency row and the thin BRMA row keep their
-    targets and lose their model figures under the mandatory local rule
-    (#1383). The final loss covers no published terms.
+    The BRMA row rests on four source households, so its summary row keeps
+    its target and loses its figures, and the final loss covers the
+    published row (María's rulings of 2026-10-17 and 2026-10-18).
     """
     from types import SimpleNamespace
 
@@ -379,23 +379,16 @@ def test_the_published_result_summary_withholds_a_thin_brma_row():
         },
     }
     _withhold_summary_rows(data, result, ordered)
-    rows = data["tables"]["targets"]
-    assert [row["target"] for row in rows] == [4.0, 40.0]
-    assert all(row["model_figures_withheld"] is True for row in rows)
+    published, withheld = data["tables"]["targets"]
+    assert published["achieved"] == 4.0
+    assert withheld["target"] == 40.0 and withheld["model_figures_withheld"] is True
     assert all(
-        row[field] is None
-        for row in rows
-        for field in (
-            "initial",
-            "achieved",
-            "residual",
-            "relative_error",
-            "within_tolerance",
-        )
+        withheld[field] is None
+        for field in ("initial", "achieved", "residual", "relative_error")
     )
     assert data["overview"]["final_loss"] == 0.0
     assert data["overview"]["model_figures_withheld"] == {
-        "targets": 2,
+        "targets": 1,
         "totals_basis": "published_rows",
     }
 
@@ -463,8 +456,7 @@ def test_the_registered_result_provider_withholds_a_thin_brma_row(level, monkeyp
     """The third review of #1305: through the provider, not the helper alone.
 
     Deleting the withholding call from the registered provider failed no
-    test, and a row spelt ``statistical_scope`` escaped it. Both that BRMA
-    row and the supported constituency row now stay unpublished (#1383).
+    test, and a row spelt ``statistical_scope`` escaped it.
     """
     from types import SimpleNamespace
 
@@ -520,19 +512,9 @@ def test_the_registered_result_provider_withholds_a_thin_brma_row(level, monkeyp
         (RESULT_TYPE.name, RESULT_TYPE.schema_version)
     ]
     data = provider(context)
-    rows = data["tables"]["targets"]
-    assert [row["target"] for row in rows] == [4.0, 40.0]
-    assert all(row["model_figures_withheld"] is True for row in rows)
-    assert all(
-        row[field] is None
-        for row in rows
-        for field in (
-            "initial",
-            "achieved",
-            "residual",
-            "relative_error",
-            "within_tolerance",
-        )
-    )
+    published, withheld = data["tables"]["targets"]
+    assert published["achieved"] == 4.0
+    assert withheld["model_figures_withheld"] is True
+    assert withheld["achieved"] is None and withheld["relative_error"] is None
     assert data["overview"]["final_loss"] == 0.0
-    assert data["overview"]["model_figures_withheld"]["targets"] == 2
+    assert data["overview"]["model_figures_withheld"]["targets"] == 1
