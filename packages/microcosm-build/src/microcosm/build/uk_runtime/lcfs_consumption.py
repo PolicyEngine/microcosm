@@ -243,10 +243,10 @@ UK_LCFS_OTHER_FUELS_COLUMN = "lcfs_other_fuels"
 #: (COICOP 04.5.4), coal, coke, wood and peat. COICOP puts liquefied
 #: hydrocarbons under 04.5.2 (gas), and c45222 is a 04.5.2 code, so ONS's 04.5.3
 #: leaves out the bottled gas the liquid column holds; the receipt reports it
-#: apart (Vahid's review of #1383, item 8). Both columns stay at the diary's
-#: level, about twice ONS's, unlevelled, where electricity and gas are
-#: levelled: no engine formula reads them yet, but a costing on them would come
-#: out near twice ONS's spend.
+#: apart (Vahid's review of #1383, item 8). Neither column is levelled to ONS,
+#: unlike electricity and gas: the donor's diary totals are about twice ONS's,
+#: and the frame's draws reach neither those nor ONS's. No engine formula reads
+#: them yet; a costing on either needs levelling to ONS first.
 UK_LCFS_FUEL_PARTS: Mapping[str, tuple[str, ...]] = MappingProxyType(
     {
         "liquid_fuel_consumption": ("b017", "c45312", "b018", "c45222"),
@@ -1886,8 +1886,8 @@ def published_fuel_spend(parameters: Mapping[str, Any]) -> dict[str, Any]:
     ONS Consumer Trends classes read from the vendored rows the declaration
     names: the liquid and solid fuels of COICOP 04.5, each beside the column
     that carries it (``UK_LCFS_FUEL_PARTS``). Report-only: the stage draws the
-    two at the donor's level, and the receipt records how much of the
-    published spend that reaches.
+    two from the donor without levelling them, and the receipt records how
+    much of the published spend the donor and the frame reach.
     """
 
     spec = parameters.get("published_fuels")

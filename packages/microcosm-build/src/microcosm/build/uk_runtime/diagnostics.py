@@ -669,7 +669,7 @@ _UK_DRIFT_TOTAL_COLUMNS: tuple[str, ...] = (
     "petrol_spending",
     "diesel_spending",
 )
-#: The heating fuels the stage draws at the donor's level (pe-uk#2572), read
+#: The heating fuels the stage draws without levelling (pe-uk#2572), read
 #: where the frame carries them: a spine built before them has a drift block
 #: without them.
 _UK_DRIFT_OPTIONAL_TOTAL_COLUMNS: tuple[str, ...] = (

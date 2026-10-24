@@ -23,7 +23,8 @@ def test_the_engine_relabels_course_dated_plans_by_age_at_2025() -> None:
     either side of a plan boundary, or the age rule writes the loan off, the
     engine's plan is the one the calibration measures at 2025. This pins which,
     so an engine that starts to keep the stage's dating fails it and the SLC
-    rows are re-measured (microcosm#1095)."""
+    rows are re-measured (microcosm#1095). The engine fix is tracked in
+    PolicyEngine/policyengine-uk#2636, item 4."""
 
     from policyengine_uk.data import UKSingleYearDataset
     from policyengine_uk.data.economic_assumptions import uprate_student_loan_plans
