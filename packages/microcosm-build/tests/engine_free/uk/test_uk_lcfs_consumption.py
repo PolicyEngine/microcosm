@@ -436,6 +436,59 @@ def test_appending_the_excise_shares_moves_no_spend_draw() -> None:
     assert ((shares >= 0.0) & (shares <= 1.0)).all()
 
 
+def test_the_chain_fits_the_gate_calibration_it_declares(monkeypatch) -> None:
+    """The committed chain cross-fits its gates; an undeclared one stays in sample."""
+
+    import dataclasses
+
+    import microcosm.fit
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.lcfs_consumption import _qrf_gate_calibration
+
+    stage = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    assert _qrf_gate_calibration(stage) == "cross_fitted"
+    undeclared = {
+        key: value
+        for key, value in next(
+            operation.parameters
+            for operation in stage.operations
+            if operation.kind == "fit_weighted_qrf_chain"
+        ).items()
+        if key != "gate_calibration"
+    }
+    plain = dataclasses.replace(
+        stage,
+        operations=tuple(
+            dataclasses.replace(operation, parameters=undeclared)
+            if operation.kind == "fit_weighted_qrf_chain"
+            else operation
+            for operation in stage.operations
+        ),
+    )
+    assert _qrf_gate_calibration(plain) == "in_sample"
+
+    built = []
+    real = microcosm.fit.RegimeGatedQRF
+
+    def recording(**kwargs):
+        built.append(kwargs.get("gate_calibration"))
+        return real(**kwargs)
+
+    monkeypatch.setattr(microcosm.fit, "RegimeGatedQRF", recording)
+    person, household = _synthetic_lcfs_donor()
+    donor = clean_lcfs_consumption_table(person, household)
+    recipient = donor.iloc[:20].loc[:, list(UK_LCFS_CONSUMPTION_PREDICTORS)]
+    impute_lcfs_consumption(
+        donor,
+        recipient,
+        seed=0,
+        n_estimators=2,
+        record_ids=np.arange(1, 21),
+        gate_calibration=_qrf_gate_calibration(stage),
+    )
+    assert built == ["cross_fitted"]
+
+
 def test_excise_spending_splits_each_drawn_total() -> None:
     from microcosm.build.uk_runtime.lcfs_consumption import excise_spending
 

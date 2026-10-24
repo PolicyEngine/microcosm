@@ -937,6 +937,7 @@ class UKLCFSConsumptionStageTransform:
             n_estimators=_qrf_n_estimators(self.stage),
             record_ids=frame.table("household")["household_id"].to_numpy(),
             targets=lcfs_chain_targets(self.stage, shares),
+            gate_calibration=_qrf_gate_calibration(self.stage),
         )
         clip_result = support_clip_to_donor(
             imputation.draws, donor, exempt=support_clip_exempt(self.stage)
@@ -4533,6 +4534,7 @@ def impute_lcfs_consumption(
     n_estimators: int,
     record_ids: Sequence[object] | np.ndarray,
     targets: Sequence[str] = UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
+    gate_calibration: str = "in_sample",
 ) -> UKLCFSConsumptionImputationResult:
     """Chain-draw the targets in the declared order.
 
@@ -4545,7 +4547,10 @@ def impute_lcfs_consumption(
     household's consumption moves only when its own predictors do.
     ``targets`` is the spend targets, optionally followed by the declared
     excise shares (microcosm#1359): a target appended after them leaves every
-    earlier draw as it was.
+    earlier draw as it was. ``gate_calibration`` is the chain's declared
+    :class:`~microcosm.fit.GateCalibration`: cross-fitted gates draw a rare
+    spending at the donor's rate on households they were not fitted to, and
+    move no forest and no uniform.
     """
 
     targets = tuple(targets)
@@ -4567,7 +4572,9 @@ def impute_lcfs_consumption(
         raise ValueError(
             "LCFS record_ids must name every recipient once, in recipient row order."
         )
-    model = RegimeGatedQRF(n_estimators=n_estimators, seed=seed)
+    model = RegimeGatedQRF(
+        n_estimators=n_estimators, seed=seed, gate_calibration=gate_calibration
+    )
     state = model.start_chain(
         donor_encoded,
         list(predictors),
@@ -4753,6 +4760,14 @@ def _qrf_n_estimators(stage: SourceStageSpec) -> int:
             if isinstance(value, int) and value > 0:
                 return value
     return 100
+
+
+def _qrf_gate_calibration(stage: SourceStageSpec) -> str:
+    """The chain's declared gate calibration; the in-sample gate when undeclared."""
+    for operation in stage.operations:
+        if operation.kind == "fit_weighted_qrf_chain":
+            return str(operation.parameters.get("gate_calibration", "in_sample"))
+    return "in_sample"
 
 
 def _require_path(path: str | Path | None) -> Path:
