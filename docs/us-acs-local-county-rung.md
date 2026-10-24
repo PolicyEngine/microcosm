@@ -265,3 +265,26 @@ tests with at most four workers, the related release/district tests, the test
 layout verifier, and `uv run ruff check .`; report actual results in the PR.
 No release build, full materialization, annual projection, publication, or
 county-inclusive feed regeneration is part of this implementation's validation.
+
+## Validation record
+
+Validated in a separate `.venv-engine-free` environment with no country engine
+installed, after the requested US setup completed:
+
+- County fixture suite: **36 passed**, including five Hypothesis properties
+  with up to 60 generated examples each. The materialization smoke uses three
+  fixture households, a fake engine pass, and real sparse checkpoint/H5 I/O.
+- Existing release, sparse district, district property, geography-label, and
+  loss-weight suites: **125 passed, 2 skipped**, using `-n 2 --dist loadfile`.
+  The skips are optional checks requiring an explicitly configured pinned
+  Chronicle feed; the actual feed inventory was audited separately above.
+- `uv run ruff check .`: clean.
+- `uv run --no-sync python tools/ci_test_plan.py verify`: clean, 772 test files
+  in registered directories.
+
+The tests cover county/state conservation, exact household partitioning and
+parent-row reuse, complete source blocks and support refusal, deterministic
+holdout without training leakage, monotone grades, custom county-column
+persistence, state/concept loss budgets, and current-versus-stale report
+packaging. No production materialization, release build, annual projection,
+feed rebuild, or publication was run.
