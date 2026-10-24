@@ -65,8 +65,12 @@ refuses upstream of calibration.
 
 ## Rules
 
-Only nodes upstream of calibration are checked. A stage binding's nodes after
-calibration, such as extension checkpoints, are outputs and are unaffected.
+Only nodes in the ancestry of a calibration node are checked. The calibration
+nodes are every `calibrate.*` node and the calibration endpoint, in the
+declaration and in the composed graph. A node outside the ancestry of every
+calibration node, such as a stage binding's extension checkpoint after the
+fit, is an output and is unaffected. A node after the central fit that a
+variant calibration reads is in that variant's ancestry, so it is checked.
 
 - Absent, or `"stages": []`, is the guard without stages, outcomes and messages
   alike.

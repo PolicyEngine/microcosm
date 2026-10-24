@@ -3385,6 +3385,88 @@ def test_precalibration_ancestry_stage_binding_after_calibration_is_not_checked(
         )
 
 
+def _variant_calibration_case(post, feeds_variant):
+    """A node after the central fit, and a variant calibration that may read it."""
+    tax = _synthetic_binding("tax", "person", ["tax_out"])
+    family = _synthetic_binding("fam", "family", ["fam_out"])
+    fit = ArtifactType("synthetic.fit", 1)
+    holdout = post == "holdout"
+    entity, column = ("person", "post_value") if holdout else ("family", "fam_out")
+    post_row = {
+        "id": "post",
+        "kernel": "synthetic.holdout@1" if holdout else RULES,
+        "population": "create",
+        "outputs": [{"entity": entity, "column": column}],
+        "artifact_inputs": [{"producer": "cal"}],
+        **(
+            {"sources": ["synthetic_holdout_facts"]}
+            if holdout
+            else {"rules_binding": "fam"}
+        ),
+    }
+    rows = [
+        {"id": "cal", "kernel": "calibrate.synthetic@1", "population": "create"},
+        post_row,
+        {
+            "id": "variant",
+            "kernel": "calibrate.variant@1",
+            "population": "create",
+            "artifact_inputs": [{"producer": "post"}] if feeds_variant else [],
+        },
+    ]
+    nodes = [
+        Node(
+            "cal",
+            "calibrate.synthetic@1",
+            population="create",
+            artifact_outputs=(ArtifactOutput("fit", fit),),
+        ),
+        Node(
+            "post",
+            post_row["kernel"],
+            population="create",
+            params={} if holdout else {"engine_ref": "fam-ref"},
+            sources=("synthetic_holdout_facts",) if holdout else (),
+            outputs=(Owned(entity, column, "float64"),),
+            artifact_inputs=(ArtifactInput("fit", "cal", "fit", fit),),
+            artifact_outputs=(ArtifactOutput("fit", fit),),
+        ),
+        Node(
+            "variant",
+            "calibrate.variant@1",
+            population="create",
+            artifact_inputs=(
+                (ArtifactInput("fit", "post", "fit", fit),) if feeds_variant else ()
+            ),
+        ),
+    ]
+    stages = [_synthetic_stage(tax, ["tax_out"])]
+    return _synthetic_stage_spec([tax, family], stages, rows), nodes
+
+
+@pytest.mark.parametrize("feeds_variant", [False, True])
+@pytest.mark.parametrize("post", ["holdout", "unlisted_unit"])
+def test_precalibration_ancestry_node_after_central_fit_feeding_a_variant_is_checked(
+    post, feeds_variant
+):
+    """After the central fit is not after calibration when a variant reads it."""
+    spec, nodes = _variant_calibration_case(post, feeds_variant)
+    reason = (
+        "hold-out source"
+        if post == "holdout"
+        else ("not a declared pre-calibration stage")
+    )
+    expected = (
+        (ValueError, f"Transport calibration ancestry: node 'post' carries {reason}.")
+        if feeds_variant
+        else None
+    )
+    assert _synthetic_outcomes(spec, nodes, {"tax": "tax-ref", "fam": "fam-ref"}) == {
+        "declaration": expected,
+        "composed": expected,
+    }
+
+
 def _precalibration_inventory(engine_refs, encoding):
     """The prepared engine_refs map, spelled the ways a parameter can carry it."""
     inventory = {"engine_refs": dict(sorted(engine_refs.items()))}
