@@ -320,6 +320,17 @@ columns:
     domain: puf_tax_itemization
     public_stability: internal
     unit_waiver: policyengine_us_unit_unavailable
+- key: person.employer_sponsored_insurance_premiums
+  contract:
+    entity: person
+    dtype: float64
+    unit: unit_not_declared_by_engine_metadata
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: source_operator_esi_premiums
+    public_stability: internal
+    unit_waiver: policyengine_us_unit_unavailable
 - key: person.employment_income_before_lsr
   contract:
     entity: person

@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 
 import microcosm.build.us_runtime.capital_gain_distributions as distributions_module
+import microcosm.build.us_runtime.esi_premiums as esi_premiums_module
 import microcosm.build.us_runtime.multispine_pool as multispine_pool_module
 import microcosm.build.us_runtime.qbi_inputs as qbi_inputs_module
 import microcosm.build.us_runtime.stacked_spine as stacked_spine_module
@@ -345,6 +346,7 @@ class USPostTransferDeriveKernel(KernelBase):
             multispine_pool_module,
             qbi_inputs_module,
             distributions_module,
+            esi_premiums_module,
             dependencies=self.capabilities.dependencies,
         )
 

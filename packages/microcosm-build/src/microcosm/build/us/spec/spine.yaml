@@ -24,6 +24,7 @@ pipeline_contract:
   - with_us_relationship_inputs
   - with_us_housing_inputs
   - with_us_eligibility_inputs
+  - with_us_esi_premium_inputs
   post_clone_source_operator_order:
   - with_us_prior_year_income_inputs
   - with_us_medicare_take_up_input
@@ -43,6 +44,7 @@ pipeline_contract:
   - with_us_education_inputs
   derive_operator_order:
   - _complete_schedule_d_input
+  - with_us_esi_premium_pool_anchor
   - with_us_qbi_input_reconciliation
   auxiliary_operations:
   - calibrate

@@ -1,6 +1,6 @@
-person.schedule_d_capital_gain_distributions,tax_unit.takes_up_eitc,person.ssi
-7.0,False,0.0
-0.0,False,0.0
-7.0,False,0.0
-0.0,False,0.0
-0.0,False,0.0
+person.schedule_d_capital_gain_distributions,person.employer_sponsored_insurance_premiums,tax_unit.takes_up_eitc,person.ssi
+7.0,8000.0,False,0.0
+0.0,8000.0,False,0.0
+7.0,8000.0,False,0.0
+0.0,8000.0,False,0.0
+0.0,8000.0,False,0.0

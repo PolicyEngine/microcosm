@@ -1143,8 +1143,8 @@ def build_catalogs() -> dict[str, Any]:
         seen.add(key)
     if not deferred <= {key.split(".", 1)[1] for key in seen}:
         raise ValueError("Deferred pool inputs are absent from the generated catalog.")
-    if len(seen) != 176:
-        raise ValueError(f"Closed US catalog must contain 176 keys, got {len(seen)}.")
+    if len(seen) != 177:
+        raise ValueError(f"Closed US catalog must contain 177 keys, got {len(seen)}.")
     return {
         "metadata_waivers": [
             {

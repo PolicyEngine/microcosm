@@ -358,6 +358,33 @@ def _dtype_map(
     return result
 
 
+def _is_text_dtype(dtype: str) -> bool:
+    """Whether a declared CSV dtype is a pandas string dtype."""
+
+    try:
+        resolved = pd.api.types.pandas_dtype(dtype)
+    except TypeError:
+        return False
+    return isinstance(resolved, pd.StringDtype)
+
+
+def _read_declared_csv(
+    path: Path, declared: Callable[[pd.Index], dict[str, str]]
+) -> tuple[pd.DataFrame, dict[str, str]]:
+    """Read a CSV and the dtypes ``declared`` gives its header.
+
+    A column declared as a string is read as one: inferring a number first
+    would round a long numeric identifier and drop its leading zeros before
+    the declared dtype could apply. Entity tables and a separate weights
+    table both read through here, so an identifier they share is parsed the
+    same way on each side.
+    """
+
+    dtypes = declared(pd.read_csv(path, nrows=0).columns)
+    text = {column: dtype for column, dtype in dtypes.items() if _is_text_dtype(dtype)}
+    return pd.read_csv(path, dtype=text or None), dtypes
+
+
 def _read_tables(
     source: Path,
     document: Mapping[str, Any],
@@ -365,8 +392,9 @@ def _read_tables(
 ) -> dict[str, pd.DataFrame]:
     tables: dict[str, pd.DataFrame] = {}
     for name, path in _table_files(source, document, schema).items():
-        table = pd.read_csv(path)
-        dtypes = _dtype_map(document, name, table.columns)
+        table, dtypes = _read_declared_csv(
+            path, lambda header, name=name: _dtype_map(document, name, header)
+        )
         if dtypes:
             try:
                 table = table.astype(dtypes)
@@ -478,8 +506,22 @@ def _load_weights(
     ):
         raise ValueError("schema.json weights_table must be a safe filename.")
     specs = _weight_specs(document.get("weights"))
-    weight_table = pd.read_csv(source / raw_table)
-    dtypes = _dtype_map(document, "weights", weight_table.columns)
+
+    def declared(header: pd.Index) -> dict[str, str]:
+        dtypes = _dtype_map(document, "weights", header)
+        # An entity id the weights table repeats takes the entity's declared
+        # dtype unless the weights declare their own, so the alignment check
+        # compares identifiers parsed the same way.
+        for spec in specs:
+            entity = spec.get("entity")
+            if not isinstance(entity, str) or entity not in tables:
+                continue
+            id_column = schema.entity_id_column(entity)
+            if id_column in header and id_column not in dtypes:
+                dtypes |= _dtype_map(document, entity, pd.Index([id_column]))
+        return dtypes
+
+    weight_table, dtypes = _read_declared_csv(source / raw_table, declared)
     if dtypes:
         weight_table = weight_table.astype(dtypes)
     weights: dict[str, Weights] = {}

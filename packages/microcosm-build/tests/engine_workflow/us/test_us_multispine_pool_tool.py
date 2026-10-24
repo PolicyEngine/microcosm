@@ -345,8 +345,9 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # fit_draw_next's caller-owned uniforms (microcosm#1332) move it,
             # and so do microcosm#454's meps_esi_premiums stage and
             # microcosm#1376's puma_county_vintage draw module, and
-            # microcosm#1380's self-employment post-transfer contract.
-            "spec_sha256": "c677d50bd0bbcd76c8c141c2c281a7bd49145369f08da8d5db324f2febbada5f",
+            # microcosm#1380's self-employment post-transfer contract, and the
+            # pool's ESI premium operator and anchor (microcosm#1199).
+            "spec_sha256": "24ca0447f1c31c7fd64143c4dbd4728e01e5fbd7e72fc776f8185f6e9fbc3bbb",
         },
     }
 
@@ -771,7 +772,7 @@ def test_stacked_checkpoint_identity_binds_both_scale_controls_and_manifest(
     producer_schedule = identities["base"]["pool_code"]["gap_fill_producer_schedule"]
     assert producer_schedule["status"] == "all_producers_precede_activation"
     assert producer_schedule["direction_count"] == 2
-    assert producer_schedule["target_count"] == 48
+    assert producer_schedule["target_count"] == 49
     digests = {
         name: pool_tool._pool_checkpoint_identity_sha256(value)
         for name, value in identities.items()

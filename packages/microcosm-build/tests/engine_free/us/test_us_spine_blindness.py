@@ -169,6 +169,11 @@ _SPINE_BLIND_OPERATOR_MODULES = (
     "education_inputs.py",
     "educator_expenses.py",
     "energy_subsidy.py",
+    # MEPS-IC employer-premium input (#454): a pool pre-clone operator and
+    # the whole-pool anchor. It tells the rows it derived from the rows a
+    # transfer filled by whether the raw ASEC fields are present, never by a
+    # spine or support-channel column.
+    "esi_premiums.py",
     "farm_business_income.py",
     "form_4952.py",
     "housing_inputs.py",
@@ -269,11 +274,6 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "education_assistance_source.py",
         "eligibility_inputs.py",
         "engine_lifecycle.py",
-        # MEPS-IC employer-premium input (#454): a base-builder pre-clone
-        # stage keyed on restored ASEC coverage fields,
-        # not yet a multispine pool operator. Reads no spine or support-channel
-        # column and remains subject to the all-runtime source-identity scan.
-        "esi_premiums.py",
         "exact_k_ladder.py",  # Calibration/selection seam; no source treatment.
         "fiscal_targets.py",
         "geography_ladder.py",
@@ -3506,19 +3506,19 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
 
     for tool in _SPINE_BLIND_BUILD_TOOLS:
         runtime_graph, missing_modules = _us_runtime_import_graph(tool)
-        # 77 = main's 70 plus spm_independence_role.py, spm_role_source.py and
+        # 80 = main's 70 plus spm_independence_role.py, spm_role_source.py and
         # spm_composition.py, reached because the pool's engine-input
         # projection names the SPM role as a required source input (#893),
         # plus asec_sources.py, whose default ASEC pool the education sidecar
         # loader now defaults to, plus esi_premiums.py, whose output family
-        # operator_boundary registers so a raw source frame that already
-        # carries it is refused (#454), plus acs_release_predictors.py and
+        # operator_boundary registers and which the pool runs as an operator
+        # (#454), plus acs_release_predictors.py and
         # asec_census_person_columns.py, reached through the shared native ACS
         # occupation/work-experience crosswalk (#719), and county_vintage.py and
         # puma_county_vintage.py, which write county_fips_2023, with
         # block_ladder_sources.py, whose CT_STATE_FIPS they import (#1376). All
-        # are classified by the runtime registries and scanned below like every
-        # reached module.
+        # are classified by the runtime registries (esi_premiums.py as a
+        # spine-blind operator) and scanned below like every reached module.
         assert len(runtime_graph) == 80, (
             f"{tool.name} must reach the pinned 80-module runtime graph; "
             f"reached {len(runtime_graph)}"
