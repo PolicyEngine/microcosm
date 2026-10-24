@@ -217,6 +217,49 @@ def _replace_asserted_dictionary_value(
     return source if old == value else _replace_node(source, node, value)
 
 
+def _replace_asserted_counts(source: str, target: str, observed: dict) -> str:
+    """Refresh every entry of one asserted count dictionary by its key.
+
+    Keying by name rather than by the old value keeps a merge that already
+    moved the evidence JSON, but left a conflicted test on the other side,
+    from hiding a stale literal. The asserted keys must match the observed
+    ledger exactly.
+    """
+
+    matching = [
+        node.test.comparators[0]
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Assert)
+        and isinstance(node.test, ast.Compare)
+        and len(node.test.ops) == 1
+        and isinstance(node.test.ops[0], ast.Eq)
+        and len(node.test.comparators) == 1
+        and ast.unparse(node.test.left) == target
+    ]
+    if len(matching) != 1 or not isinstance(matching[0], ast.Dict):
+        raise ValueError(f"expected one asserted count dictionary: {target}")
+    node = matching[0]
+    if None in node.keys:
+        raise ValueError(f"{target}: dictionary unpacking is not a count pin")
+    keys = [ast.literal_eval(key) for key in node.keys]
+    if len(set(keys)) != len(keys) or set(keys) != set(observed):
+        raise ValueError(
+            f"{target}: asserted keys {sorted(keys)} differ from the observed "
+            f"{sorted(observed)}"
+        )
+    stale = [
+        (value, observed[key])
+        for key, value in zip(keys, node.values, strict=True)
+        if ast.literal_eval(value) != observed[key]
+    ]
+    # Rewrite from the end so earlier offsets stay valid.
+    for value, new in sorted(
+        stale, key=lambda item: (item[0].lineno, item[0].col_offset), reverse=True
+    ):
+        source = _replace_node(source, value, new)
+    return source
+
+
 def fixture_calibration_contract() -> dict:
     """Build the calibration contract exactly as its semantics test fixture does.
 
@@ -456,23 +499,36 @@ def _compiler_pins(*, check: bool) -> None:
 
     # Tests deliberately pin literal counts, so derive their corresponding
     # expectations from the same validated ledger rather than weakening them.
-    old_report = json.loads(
-        (ROOT / "docs/evidence/spec-engine/us-f0-coverage.json").read_text()
-    )
+    # Totals move by value transition from the module's own pins; the asserted
+    # breakdowns are rewritten by key from the ledger.
     replacements = {}
     for name, value in counts.items():
         _add_count_replacement(replacements, old_counts[name], value)
-    for group, observed in (
-        ("mode_counts", ledger.mode_counts),
-        ("generation0_effect_counts", ledger.generation0_effect_counts),
-    ):
-        for key, value in observed.items():
-            _add_count_replacement(
-                replacements, old_report["field_usage"][group][key], value
-            )
     _add_count_replacement(replacements, old_tail, new_tail)
     for path in (FIELD_TEST, COVERAGE_TEST):
         rendered[path] = _replace_literals(path.read_text(), replacements)
+    source_counts = {
+        "authored": counts["EXPECTED_AUTHORED_FIELD_COUNT"],
+        "resolved_bindings": counts["EXPECTED_RESOLVED_BINDING_FIELD_COUNT"],
+    }
+    for path, prefix, breakdowns in (
+        (
+            FIELD_TEST,
+            "field_ledger.",
+            {"source_counts": source_counts},
+        ),
+        (COVERAGE_TEST, "fields", {}),
+    ):
+        breakdowns = {
+            **breakdowns,
+            "mode_counts": dict(ledger.mode_counts),
+            "generation0_effect_counts": dict(ledger.generation0_effect_counts),
+        }
+        for name, observed in breakdowns.items():
+            target = (
+                f"{prefix}{name}" if prefix.endswith(".") else f"{prefix}[{name!r}]"
+            )
+            rendered[path] = _replace_asserted_counts(rendered[path], target, observed)
     observed_counts = report["counts"]
     column_count = observed_counts["typed_columns"]
     artifact_count = observed_counts["typed_artifacts"]

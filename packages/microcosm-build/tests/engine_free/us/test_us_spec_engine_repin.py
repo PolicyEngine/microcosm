@@ -6,6 +6,7 @@ import pytest
 
 from tools.repin_us_spec_engine_contracts import (
     _add_count_replacement,
+    _replace_asserted_counts,
     _replace_asserted_dictionary_value,
     _replace_assignment,
     _replace_dictionary,
@@ -116,6 +117,44 @@ def test_nested_receipt_pin_refuses_duplicate_assertions_or_dictionary_keys() ->
             ("sha256",),
             "new",
         )
+
+
+def test_count_breakdowns_are_rewritten_by_key_not_by_old_value() -> None:
+    # A merge can move the evidence JSON to the new count while a conflicted
+    # test keeps the old one; a value transition taken from the JSON would then
+    # see no change. Keying by name refreshes the stale literal regardless.
+    source = (
+        "assert ledger.mode_counts == {\n"
+        '    "legacy_behavior": 14_054,\n'
+        '    "compiler_semantic": 27_717,\n'
+        "}\n"
+        "# 27_717 is historical\n"
+    )
+    observed = {"legacy_behavior": 14_054, "compiler_semantic": 27_718}
+    assert _replace_asserted_counts(source, "ledger.mode_counts", observed) == (
+        source.replace('"compiler_semantic": 27_717', '"compiler_semantic": 27718')
+    )
+    assert _replace_asserted_counts(
+        source.replace("27_717,", "27_718,"), "ledger.mode_counts", observed
+    ) == source.replace("27_717,", "27_718,")
+    subscripted = source.replace("ledger.mode_counts", "fields['mode_counts']")
+    assert "27718" in _replace_asserted_counts(
+        subscripted, "fields['mode_counts']", observed
+    )
+
+
+def test_count_breakdowns_refuse_missing_extra_or_duplicate_keys() -> None:
+    source = 'assert ledger.counts == {"a": 1, "b": 2}\n'
+    with pytest.raises(ValueError, match="differ from the observed"):
+        _replace_asserted_counts(source, "ledger.counts", {"a": 1})
+    with pytest.raises(ValueError, match="differ from the observed"):
+        _replace_asserted_counts(source, "ledger.counts", {"a": 1, "b": 2, "c": 3})
+    with pytest.raises(ValueError, match="differ from the observed"):
+        _replace_asserted_counts(
+            'assert ledger.counts == {"a": 1, "a": 2}\n', "ledger.counts", {"a": 1}
+        )
+    with pytest.raises(ValueError, match="expected one asserted count dictionary"):
+        _replace_asserted_counts(source + source, "ledger.counts", {"a": 1, "b": 2})
 
 
 def test_calibration_pin_hashes_the_fixture_contract_not_the_loaded_bundle() -> None:
