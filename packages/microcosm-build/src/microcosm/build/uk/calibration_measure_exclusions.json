@@ -62,7 +62,7 @@
       },
       {
         "scope": "council_tax_band_h_by_region",
-        "unit": "dwellings",
+        "unit": "households",
         "contract_target_ids": [
           "mhclg.council_tax_stock.band_h"
         ],

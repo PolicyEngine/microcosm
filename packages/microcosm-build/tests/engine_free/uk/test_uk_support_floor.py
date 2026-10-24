@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.uk_runtime.full_targets import _support_floor_input
 from microcosm.build.uk_runtime.measure_simulation import (
     load_uk_calibration_measure_exclusions,
 )
@@ -17,12 +18,14 @@ from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.support_floor import (
     UK_SUPPORT_FLOOR_KIND,
     apply_uk_support_floor,
+    assert_uk_support_floor_units,
     load_uk_support_floor_declaration,
     narrow_uk_registry_by_support_floor,
     uk_household_source_ids,
     uk_row_support,
     uk_support_floor_from_payload,
     uk_support_floor_names,
+    uk_support_floor_target_unit,
 )
 from microcosm.calibrate import TargetRegistry, TargetSpec, build_constraint_matrix
 
@@ -411,6 +414,79 @@ def test_each_packaged_scope_holds_one_unit():
             for target_id in scope.contract_target_ids
         }
         assert len(units) == 1, (scope.scope, units)
+
+
+def _contract_targets():
+    return {
+        target["target_id"]: target
+        for target in json.loads(
+            importlib_resources.files("microcosm.build.uk")
+            .joinpath("uk_population_targets.json")
+            .read_text()
+        )["targets"]
+    }
+
+
+def test_each_packaged_scope_is_labelled_in_its_targets_unit():
+    """Band H counts occupied dwellings, one household each (Vahid on microcosm#1383)."""
+
+    floor = uk_support_floor_from_payload(load_uk_support_floor_declaration())
+    assert_uk_support_floor_units(floor, _contract_targets())
+    assert {scope.scope: scope.unit for scope in floor.scopes} == {
+        "uc_payment_and_benefit_cap_bands": "benefit_units",
+        "hmrc_spi_income_band_counts": "people",
+        "hmrc_spi_income_band_amounts": "GBP",
+        "council_tax_band_h_by_region": "households",
+    }
+
+
+def test_a_scope_labelled_in_another_unit_refuses():
+    contract = _contract_targets()
+    band_h = _scope(
+        scope="band_h",
+        unit="dwellings",
+        contract_target_ids=["mhclg.council_tax_stock.band_h"],
+    )
+    mislabelled = uk_support_floor_from_payload({**_block(), "scopes": [band_h]})
+    with pytest.raises(ValueError, match="counted in households, not dwellings"):
+        assert_uk_support_floor_units(mislabelled, contract)
+    unknown = uk_support_floor_from_payload(
+        _block(scope={"contract_target_ids": ["no.such.target"]})
+    )
+    with pytest.raises(ValueError, match="no.such.target is no contract target"):
+        assert_uk_support_floor_units(unknown, contract)
+    assert (
+        uk_support_floor_target_unit(
+            {"entity": "household", "concept": "uk.household.count"}
+        )
+        == "households"
+    )
+    assert (
+        uk_support_floor_target_unit(
+            {"entity": "person", "concept": "uk.income.employment.amount"}
+        )
+        == "GBP"
+    )
+    with pytest.raises(ValueError, match="counts and amounts only"):
+        uk_support_floor_target_unit(
+            {"entity": "household", "concept": "uk.energy.electricity.kwh"}
+        )
+
+
+def test_the_run_refuses_a_floor_labelled_in_another_unit(tmp_path):
+    payload = json.loads(
+        importlib_resources.files("microcosm.build.uk")
+        .joinpath("calibration_measure_exclusions.json")
+        .read_text()
+    )
+    for scope in payload["support_floor"]["scopes"]:
+        if scope["scope"] == "council_tax_band_h_by_region":
+            scope["unit"] = "dwellings"
+    path = tmp_path / "exclusions.json"
+    path.write_text(json.dumps(payload))
+    with pytest.raises(ValueError, match="counted in households, not dwellings"):
+        _support_floor_input(path, date(2026, 10, 24))
+    assert _support_floor_input(None, date(2026, 10, 24)) is not None
 
 
 def test_only_schema_4_registers_carry_a_floor(tmp_path):

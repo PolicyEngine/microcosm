@@ -16,12 +16,15 @@ The floor is declared once, in the ``support_floor`` block of
 ``floor`` is 1, the only value it may take. Its scope is a list of scopes, one
 per unit (benefit units, people, households, pounds), each with its own
 ceilings: a ceiling on the dropped share sums published values, so a scope
-never mixes units. On a built frame, a row in a scope whose matrix row reaches
-no source household (``household_source_id``) with a positive prior weight is
-dropped, not pooled; each target's dropped published total is reported. The
-run refuses outside the block's approval window, when a scope's dropped rows
-pass either of its ceilings, and when a per-row exclusion names a row the
-floor would drop (the floor covers it, so the entry must retire).
+never mixes units. A scope's ``unit`` is the one its targets' contract
+measurements give (:func:`uk_support_floor_target_unit`). On a built frame, a
+row in a scope whose matrix row reaches no source household
+(``household_source_id``) with a positive prior weight is dropped, not pooled;
+each target's dropped published total is reported. The run refuses outside the
+block's approval window, when a scope's ``unit`` is not its targets' unit
+(:func:`assert_uk_support_floor_units`), when a scope's dropped rows pass
+either of its ceilings, and when a per-row exclusion names a row the floor
+would drop (the floor covers it, so the entry must retire).
 The dropped set joins the calibration's measure exclusions as
 ``kind: support_floor``, so the gates, the written register and the
 certifier read it back rather than recompute support, which they cannot.
@@ -71,6 +74,14 @@ _SCOPE_FIELDS = (
     "max_dropped_rows",
     "max_dropped_published_share",
 )
+#: The unit of a count, by the entity its contract measurement counts.
+UK_SUPPORT_FLOOR_COUNT_UNITS = {
+    "benunit": "benefit_units",
+    "person": "people",
+    "household": "households",
+}
+#: The unit of an amount, whatever entity carries it.
+UK_SUPPORT_FLOOR_AMOUNT_UNIT = "GBP"
 #: The record fields a dropped row carries, as a per-row exclusion carries its
 #: own (``measure_simulation._UK_MEASURE_EXCLUSION_FIELDS`` less the name).
 _RECORD_FIELDS = (
@@ -266,6 +277,49 @@ def _scopes_from_payload(payload: Any) -> tuple[UKSupportFloorScope, ...]:
     if len(set(names)) != len(names):
         raise ValueError("UK support floor scope names must be distinct.")
     return tuple(scopes)
+
+
+def uk_support_floor_target_unit(measurement: Mapping[str, Any]) -> str:
+    """The unit a contract target's published values are counted in.
+
+    A count (``uk.<entity>.count``) is in its entity; an amount is in pounds.
+    Any other concept is no unit the floor's share ceilings can sum.
+    """
+
+    kind = str(measurement.get("concept", "")).rsplit(".", 1)[-1]
+    entity = measurement.get("entity")
+    if kind == "amount":
+        return UK_SUPPORT_FLOOR_AMOUNT_UNIT
+    if kind == "count" and entity in UK_SUPPORT_FLOOR_COUNT_UNITS:
+        return UK_SUPPORT_FLOOR_COUNT_UNITS[str(entity)]
+    raise ValueError(
+        f"UK support floor sums counts and amounts only; {entity!r} "
+        f"{measurement.get('concept')!r} is neither."
+    )
+
+
+def assert_uk_support_floor_units(
+    floor: UKSupportFloor, contract_targets: Mapping[str, Mapping[str, Any]]
+) -> None:
+    """Refuse a scope whose ``unit`` is not the unit its targets are counted in."""
+
+    failures = []
+    for scope in floor.scopes:
+        for target_id in sorted(scope.contract_target_ids):
+            target = contract_targets.get(target_id)
+            if target is None:
+                failures.append(f"{scope.scope}: {target_id} is no contract target")
+                continue
+            unit = uk_support_floor_target_unit(target["measurement"])
+            if unit != scope.unit:
+                failures.append(
+                    f"{scope.scope}: {target_id} is counted in {unit}, not {scope.unit}"
+                )
+    if failures:
+        raise ValueError(
+            "UK support floor scope units do not match their targets: "
+            + "; ".join(failures)
+        )
 
 
 def load_uk_support_floor_declaration(
