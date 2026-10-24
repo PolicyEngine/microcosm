@@ -222,6 +222,26 @@ feed hash in the execution environment. This example uses the planning-region
 column; use `county_fips` only with a feed and ladder matching that column.
 The following is documentation only and has not been executed:
 
+County rows activate a separate solver profile: `--county-target-loss-cap 10`
+and `--county-max-weight-ratio 5` by default. The calibrator accepts a scalar
+loss cap, so the override applies to the joint run, including tax targets.
+Without county geographies or `--soi-mode state_county`, the historical loss
+cap of 1 and per-record weight cap of 5 (or their explicit overrides) remain
+unchanged. Later calibration stages resolve the profile from the checkpoint's
+recorded surface. Effective values and the run-level scope are stamped into
+the calibration summary, resume settings, build manifest and refresh recipe.
+
+Start with loss cap **10** and weight cap **5**, then compare a weight cap of
+**20**. The [county pilot (microcosm#1377)](https://github.com/PolicyEngine/microcosm/pull/1377),
+[`experiments/us-county-pilot-20261024/README.md` on `lwi-county-pilot`](https://github.com/PolicyEngine/microcosm/blob/lwi-county-pilot/experiments/us-county-pilot-20261024/README.md),
+found that 297 counties (9.4%) started more than 100% off and received no
+corrective gradient under cap 1. Cap 10 left only one such county. The 5×
+weight cap bound; with loss cap 10 and weight cap 20, 98–99% of counties were
+within 10% on the trained families. The pilot omitted the release's tax
+families, and 57,240 donor households carried 68% of the starting weight.
+The **tax-target cost is unmeasured until the joint solve runs**; these are
+starting settings, not evidence that the production tradeoff is acceptable.
+
 ```bash
 export COUNTY_FEED=/path/to/consumer_facts_county.jsonl
 export COUNTY_FEED_SHA256='<new-reviewed-64-hex-feed-sha256>'
@@ -240,6 +260,7 @@ uv run python tools/build_us_acs_local_release.py \
   --families snap,medicaid,soi --geographies state,cd,county \
   --soi-mode state_county --county-column "$COUNTY_COLUMN" \
   --county-holdout-fraction 0.1 --county-holdout-salt acs-local-county-v1 \
+  --county-target-loss-cap 10 --county-max-weight-ratio 5 \
   --sample-fraction 1.0 --hh-chunk 20000 \
   --checkpoint-dir "$COUNTY_RUN/checkpoints" \
   --out-h5 "$COUNTY_RUN/populace_us_2024_acs_local.h5" \
@@ -261,8 +282,9 @@ weights, so the base county fit does not establish future-year county fit.
 
 Engine-free fixture and Hypothesis coverage belongs in the existing
 `packages/microcosm-build/tests/engine_free/us/` layout. Run the focused county
-tests with at most four workers, the related release/district tests, the test
-layout verifier, and `uv run ruff check .`; report actual results in the PR.
+tests with at most two workers, the related release/district tests, the test
+layout verifier, `uv run ruff check .`, and `uv run ruff format --check` on
+touched Python files; report actual results in the PR.
 No release build, full materialization, annual projection, publication, or
 county-inclusive feed regeneration is part of this implementation's validation.
 

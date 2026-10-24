@@ -146,7 +146,13 @@ SOI_MODE_TOTALS = "totals"
 SOI_MODE_FULL = "full"
 SOI_MODE_STATE_CD = "state_cd"
 SOI_MODE_STATE_COUNTY = county_surface.SOI_MODE
-SOI_MODES = (SOI_MODE_STATE, SOI_MODE_TOTALS, SOI_MODE_FULL, SOI_MODE_STATE_CD, SOI_MODE_STATE_COUNTY)
+SOI_MODES = (
+    SOI_MODE_STATE,
+    SOI_MODE_TOTALS,
+    SOI_MODE_FULL,
+    SOI_MODE_STATE_CD,
+    SOI_MODE_STATE_COUNTY,
+)
 DEFAULT_SOI_MODE = SOI_MODE_STATE
 #: Ledger record-set specs from a congressional-district file start with this;
 #: ``state`` mode excludes them, which is what Build O's switch did.
@@ -1233,7 +1239,9 @@ def extract_struct_tables(frame, *, county_column="county_fips"):
     struct_columns = [
         column for column in LEAN_HOUSEHOLD_COLUMNS if column in households.columns
     ]
-    struct_columns += county_surface.struct_columns(households, struct_columns, county_column=county_column)
+    struct_columns += county_surface.struct_columns(
+        households, struct_columns, county_column=county_column
+    )
     person_columns = [
         column for column in PERSON_STRUCT if column in frame.table("person").columns
     ]
@@ -1512,7 +1520,9 @@ def do_materialize(args) -> None:
         _attach_pro_rata_populations(admin_roles, populations["cd"])
         _require_pro_rata_populations(admin_roles)
     pop_roles, pop_matrix, pop_dropped = population_targets(
-        frame, populations, geographies,
+        frame,
+        populations,
+        geographies,
         county_column=getattr(args, "county_column", "county_fips"),
     )
     if pop_dropped:
@@ -1541,7 +1551,9 @@ def do_materialize(args) -> None:
     )
     matrix = sparse.vstack([admin_matrix, pop_matrix], format="csr")
     del admin_matrix, pop_matrix
-    struct = extract_struct_tables(frame, county_column=getattr(args, "county_column", "county_fips"))
+    struct = extract_struct_tables(
+        frame, county_column=getattr(args, "county_column", "county_fips")
+    )
     n_households = frame.n("household")
     del frame
     gc.collect()
@@ -1656,6 +1668,38 @@ SOLVER_METHOD = "adam"
 SOLVER_LEARNING_RATE = 0.02
 SOLVER_MASS = "conserve"
 
+# Starting values from microcosm#1377's county pilot. The calibrator accepts
+# only one scalar loss cap, so these apply to the joint run, not county rows
+# individually. Ordinary ACS-local builds retain their historical settings.
+COUNTY_TARGET_LOSS_CAP = 10.0
+COUNTY_MAX_WEIGHT_RATIO = 5.0
+
+
+def _apply_county_solver_profile(args, *, identity=None) -> None:
+    """Resolve the opt-in profile against the checkpoint for later stages."""
+    for key in ("target_loss_cap", "max_weight_ratio"):
+        requested = f"_requested_{key}"
+        if not hasattr(args, requested):
+            setattr(args, requested, getattr(args, key))
+        setattr(args, key, getattr(args, requested))
+    recorded = identity or {}
+    geographies = recorded.get("geographies", args.geographies)
+    county_requested = "county" in {item.strip() for item in geographies.split(",")}
+    county_requested |= recorded.get("soi_mode", args.soi_mode) == SOI_MODE_STATE_COUNTY
+    args.county_solver_profile = None
+    if county_requested:
+        args.target_loss_cap = getattr(
+            args, "county_target_loss_cap", COUNTY_TARGET_LOSS_CAP
+        )
+        args.max_weight_ratio = getattr(
+            args, "county_max_weight_ratio", COUNTY_MAX_WEIGHT_RATIO
+        )
+        args.county_solver_profile = {
+            "scope": "run",
+            "target_loss_cap": args.target_loss_cap,
+            "max_weight_ratio": args.max_weight_ratio,
+        }
+
 
 def _solver_settings(args, target_loss: dict) -> dict:
     """The calibrate-stage settings a resume or reuse must share.
@@ -1677,6 +1721,11 @@ def _solver_settings(args, target_loss: dict) -> dict:
         "seed": args.seed,
         "epoch_batch": args.epoch_batch,
         "target_loss": target_loss,
+        **(
+            {"county_solver_profile": args.county_solver_profile}
+            if getattr(args, "county_solver_profile", None) is not None
+            else {}
+        ),
     }
 
 
@@ -1692,9 +1741,7 @@ def release_target_loss_weights(args, train_specs) -> tuple[np.ndarray, dict]:
 
     multipliers = dict(args.target_family_loss_multipliers)
     try:
-        weights = county_surface.target_loss_weights(
-            train_specs, multipliers
-        )
+        weights = county_surface.target_loss_weights(train_specs, multipliers)
     except ValueError as error:
         raise SystemExit(f"Target loss weights: {error}") from error
     stamp = {
@@ -2035,6 +2082,7 @@ def do_calibrate(args) -> None:
     from microcosm.calibrate import write_calibration_diagnostics
 
     identity = _verify_run_identity(args)
+    _apply_county_solver_profile(args, identity=identity)
     frame, design_weights, registry, roles, matrix = load_checkpoint_surface(
         args.checkpoint_dir, identity
     )
@@ -2114,7 +2162,9 @@ def do_calibrate(args) -> None:
             _write_calibrated_artifact(
                 args, np.asarray(warm, dtype=np.float64), identity, settings
             )
-            county_surface.write_reports(args.checkpoint_dir, previous, identity=identity)
+            county_surface.write_reports(
+                args.checkpoint_dir, previous, identity=identity
+            )
             return
         raise SystemExit(
             f"weights_latest.npz reports {done} epochs (>= --epochs "
@@ -3607,6 +3657,14 @@ def do_package(args) -> dict:
     refresh_recipe["release"] = county_surface.refresh_recipe(
         refresh_recipe["release"], materialize_rss
     )
+    county_profile = (diagnostics.get("solver_settings") or {}).get(
+        "county_solver_profile"
+    )
+    if county_profile is not None:
+        refresh_recipe["release"] += (
+            f" --county-target-loss-cap {float(county_profile['target_loss_cap'])!r}"
+            f" --county-max-weight-ratio {float(county_profile['max_weight_ratio'])!r}"
+        )
 
     build_manifest = {
         "build_id": release_id,
@@ -3676,6 +3734,12 @@ def do_package(args) -> dict:
         "staging_orchestration": staging_orchestration,
         "refresh_recipe": refresh_recipe,
     }
+
+    if county_profile is not None:
+        build_manifest["calibration"].update(
+            target_loss_cap=diagnostics["target_loss_cap"],
+            county_solver_profile=county_profile,
+        )
 
     source_coverage = {
         "schema_version": 1,
@@ -3918,6 +3982,24 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--max-weight-ratio", type=float, default=5.0)
     parser.add_argument("--target-loss-cap", type=float, default=1.0)
     parser.add_argument(
+        "--county-target-loss-cap",
+        type=float,
+        default=COUNTY_TARGET_LOSS_CAP,
+        help=(
+            "Run-level loss cap when county rows are requested (default 10); "
+            "overrides --target-loss-cap only for county builds."
+        ),
+    )
+    parser.add_argument(
+        "--county-max-weight-ratio",
+        type=float,
+        default=COUNTY_MAX_WEIGHT_RATIO,
+        help=(
+            "Per-record weight cap for a county solve (default 5; pilot also "
+            "tested 20); overrides --max-weight-ratio only for county builds."
+        ),
+    )
+    parser.add_argument(
         "--target-family-loss-multiplier",
         action="append",
         default=[],
@@ -4042,6 +4124,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         )
     args.stages = stages
     county_surface.validate_arguments(args, parser)
+    for flag in ("county_target_loss_cap", "county_max_weight_ratio"):
+        value = getattr(args, flag)
+        if not np.isfinite(value) or value <= 0:
+            parser.error(f"--{flag.replace('_', '-')} must be positive and finite.")
+    _apply_county_solver_profile(args)
 
     return args
 
