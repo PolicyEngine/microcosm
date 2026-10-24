@@ -22,7 +22,7 @@ from microcosm.build.uk_runtime.national_frame import (
 from microcosm.frame import MassChangeRecord, WeightKind
 
 
-def _frame():
+def _frame(**extra):
     household = pd.DataFrame(
         {
             "household_id": np.asarray([11, 12], dtype="int64"),
@@ -30,6 +30,7 @@ def _frame():
             "electricity_consumption": [900.0, 1_100.0],
             "gas_consumption": [700.0, 0.0],
             "domestic_energy_consumption": [1_600.0, 1_100.0],
+            **extra,
         }
     )
     return uk_national_frame(
@@ -72,3 +73,48 @@ def test_policyengine_uk_reads_the_written_declaration(tmp_path: Path) -> None:
 
     path = write_uk_national_frame(_frame(), tmp_path / "energy.h5")
     assert read_energy_price_basis(path) == EnergyPriceBasis("calendar_year", 2024)
+
+
+def test_the_engine_projects_declared_energy_spending_by_its_price_index(
+    tmp_path: Path,
+) -> None:
+    """End to end through Microsimulation (Vahid's review of #1383, item 3).
+
+    A written file declares calendar-2024 prices, so the engine carries each
+    household's energy spending to a later year by its energy price index,
+    every household and column alike. The same file without the declaration
+    keeps its stored spending in every year.
+    """
+
+    import h5py
+    from policyengine_uk import Microsimulation
+    from policyengine_uk.data.economic_assumptions import ENERGY_PRICE_INDEX
+    from policyengine_uk.data.energy_price_basis import ENERGY_PRICE_BASIS_ATTRIBUTE
+
+    # The household inputs the engine's yearly uprating reads.
+    frame = _frame(
+        region=["LONDON", "WALES"],
+        tenure_type=["OWNED_OUTRIGHT", "RENT_PRIVATELY"],
+        council_tax=[0.0, 0.0],
+        rent=[0.0, 0.0],
+    )
+    stored = frame.table("household").set_index("household_id")
+    declared = write_uk_national_frame(frame, tmp_path / "declared.h5")
+    undeclared = write_uk_national_frame(frame, tmp_path / "undeclared.h5")
+    with h5py.File(undeclared, "a") as handle:
+        del handle.attrs[ENERGY_PRICE_BASIS_ATTRIBUTE]
+
+    simulation = Microsimulation(dataset=str(declared))
+    index = simulation.tax_benefit_system.parameters.get_child(ENERGY_PRICE_INDEX)
+    flat = Microsimulation(dataset=str(undeclared))
+    for year in (2025, 2026):
+        ratio = index(f"{year}-01-01") / index("2024-01-01")
+        assert ratio > 1.0
+        for column in UK_ENERGY_PRICE_BASIS_COLUMNS:
+            np.testing.assert_allclose(
+                simulation.calculate(column, year).values,
+                stored[column].to_numpy() * ratio,
+            )
+            np.testing.assert_allclose(
+                flat.calculate(column, year).values, stored[column].to_numpy()
+            )
