@@ -1,0 +1,78 @@
+{
+ "incidence": {
+  "betting_and_gaming": {
+   "donor_positive": 0.035838439975528005,
+   "donor_rate_within_parent": 0.46450448799454047,
+   "frame_positive": 0.019563867703070097,
+   "frame_rate_within_parent": 0.466385750470268,
+   "parent": "other_gambling_stakes"
+  },
+  "gambling_stakes": {
+   "donor_positive": 0.17031459280906752,
+   "donor_rate_within_parent": 0.1751019221960336,
+   "frame_positive": 0.14629307418887494,
+   "frame_rate_within_parent": 0.14779666533001104,
+   "parent": "recreation"
+  },
+  "national_lottery": {
+   "donor_positive": 0.11424026447367308,
+   "donor_rate_within_parent": 0.6707602830119378,
+   "frame_positive": 0.10681009830639804,
+   "frame_rate_within_parent": 0.7301104231940501,
+   "parent": "gambling_stakes"
+  },
+  "other_gambling_stakes": {
+   "donor_positive": 0.0771541306958249,
+   "donor_rate_within_parent": 0.45300951270992457,
+   "frame_positive": 0.041947824699496886,
+   "frame_rate_within_parent": 0.28673828157674236,
+   "parent": "gambling_stakes"
+  },
+  "tobacco": {
+   "donor_positive": 0.10336413849687878,
+   "donor_rate_within_parent": 0.18929547031982005,
+   "frame_positive": 0.08163306670501938,
+   "frame_rate_within_parent": 0.1548156913128009,
+   "parent": "alcohol_and_tobacco"
+  }
+ },
+ "multiples": {
+  "alcohol": {
+   "carrying_share": 0.576136105053031,
+   "duty": 13062476800.0,
+   "duty_over_spending": 0.4086255087088696,
+   "spending": 31966865801.58295
+  },
+  "betting_and_gaming": {
+   "bases_over_spending": 34.197707062499674,
+   "carrying_share": 0.019563867703070097,
+   "duty": 2687416960.0,
+   "duty_over_spending": 6.352034826741068,
+   "spending": 423079695.45229775
+  },
+  "national_lottery": {
+   "bases_over_spending": 4.664037411892696,
+   "carrying_share": 0.10681009830639804,
+   "duty": 931886976.0,
+   "duty_over_spending": 0.5596844750128998,
+   "spending": 1665022021.5211823
+  },
+  "tobacco": {
+   "carrying_share": 0.08163306670501938,
+   "duty": 8166694912.0,
+   "duty_over_spending": 2.2187698892678007,
+   "spending": 3680730909.276504
+  }
+ },
+ "parents_positive": {
+  "alcohol_and_tobacco": {
+   "donor": 0.5460465499900349,
+   "frame": 0.527291943166678
+  },
+  "recreation": {
+   "donor": 0.9726597553760349,
+   "frame": 0.9898266233694869
+  }
+ },
+ "weights": "frame at prior weights; donor at its survey weights"
+}
