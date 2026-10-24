@@ -253,7 +253,9 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
         )
     )
     | frozenset({("benunit", "is_married")}),
-    "frs_person_draws": frozenset({("person", "age")}),
+    # is_apprentice draws employees aged 21 to 24 at a rate set by the
+    # frame's weights (microcosm#1372).
+    "frs_person_draws": frozenset({("person", "age"), ("person", "employment_status")}),
     "frs_household_draws": frozenset(),
     "frs_brma": None,
     "was_wealth": None,
@@ -801,6 +803,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("person", "would_claim_scp", "bool"),
         _Cell("person", "attends_private_school_random_draw", "float64"),
         _Cell("person", "tax_free_childcare_spend_routed_share", "float64"),
+        _Cell("person", "is_apprentice", "bool"),
     ),
     "frs_household_draws": _cells(
         "household",

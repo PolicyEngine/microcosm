@@ -619,6 +619,7 @@ class TestE3ManifestLockstep:
             "assign_binary_from_banded_rates",
             "assign_uniform_draw",
             "assign_period_constant",
+            "assign_binary_from_rate",
         ]
         assert [op.kind for op in stages["frs_household_draws"].operations] == [
             "assign_binary_from_rate",
@@ -939,6 +940,7 @@ class TestE3ManifestLockstep:
             "extended_childcare_age_0_usage",
             "extended_childcare_age_1_usage",
             "marriage_allowance",
+            "apprenticeship_participation_19_to_24",
             "tv_ownership_rate",
             "tv_licence_evasion_rate",
             "first_time_buyer_rate",

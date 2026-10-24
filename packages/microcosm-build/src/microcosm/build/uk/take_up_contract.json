@@ -965,6 +965,28 @@
         "derivation": "sum(monthly children with used accounts) / annual-unique children / 12, per HMRC financial year; quality report defines a used account",
         "citation": "A calibration adjustment, not a measured routed-expenditure share: an account-active-duration proxy assuming uniform spend through the year and full routing in active months; HMRC warns payment dates need not be care dates. Assigned as the published mean, no invented distribution. Denominator is the whole year; the engine defines the share over the eligible period, and the two coincide while tax_free_childcare_eligible_declaration_periods is 0 or 4. HMRC's used-account definition changed from April 2025 and applies to annual figures from FY2024-25."
       }
+    },
+    {
+      "key": "apprenticeship_participation_19_to_24",
+      "output": "is_apprentice",
+      "entity": "person",
+      "values": {
+        "2019-08-01": 0.06017,
+        "2020-08-01": 0.06101,
+        "2021-08-01": 0.06295,
+        "2022-08-01": 0.06244,
+        "2023-08-01": 0.05976,
+        "2024-08-01": 0.05992
+      },
+      "source": {
+        "source": "DfE Apprenticeships statistics, academic year 2024/25, data set 'Geography Region - starts, achievements, participation, population by age, level' (app-geography-population-202425-q4.csv), National rows, apps_level Total, age_summary 19-24",
+        "agency": "Department for Education",
+        "status": "sourced_administrative_derived",
+        "url": "https://explore-education-statistics.service.gov.uk/data-catalogue/data-set/e5a4761f-434a-423a-bb0a-73ca3092dfc3",
+        "csv_sha256": "be614d4acb481b661623f613df310a5148c1500279bdedd193af5d3571972cf8",
+        "derivation": "participation_rate_per_100000_population / 100000 for England, ages 19 to 24, per academic year (2024/25: 252,960 participants over a population estimate of 4,221,504 gives 5,992 per 100,000)",
+        "citation": "Apprentices per head of population aged 19 to 24 in England. DfE ages are age at the start of the apprenticeship and participation counts everyone in learning at any point in the academic year, so the rate likely overstates the share of 21- to 24-year-olds who are apprentices at a point in time, though age at start works the other way. DfE publishes no single-year split of 19 to 24, so the rate is taken as uniform across those ages, and England's rate is applied UK-wide until the Scottish (SDS Modern Apprenticeships), Welsh (Medr) and Northern Irish (ApprenticeshipsNI) series are added. frs_person_draws converts it to a rate among employees aged 21 to 24 at the frame's weights."
+      }
     }
   ],
   "continuous": [

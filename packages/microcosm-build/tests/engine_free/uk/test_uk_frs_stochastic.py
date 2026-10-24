@@ -79,7 +79,9 @@ def test_under_two_usage_draws_children_in_claiming_units_only() -> None:
 def test_person_draws_pin_scp_age_six_boundary_and_uniform_draw() -> None:
     person = _frame().table("person")
 
-    derived = derive_frs_person_draws(person, contract=_Contract())
+    derived = derive_frs_person_draws(
+        person, contract=_Contract(), person_weights=np.ones(len(person))
+    )
 
     draws = stable_identity_uniforms(
         person["person_id"].to_numpy(), seed=0, salt="would_claim_scp"

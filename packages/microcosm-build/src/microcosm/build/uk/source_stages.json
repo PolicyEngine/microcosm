@@ -1181,19 +1181,30 @@
      "contract_key": "tax_free_childcare_spend_routed_share",
      "period_source": "build_year",
      "dtype": "float64"
+    },
+    {
+     "kind": "assign_binary_from_rate",
+     "output": "is_apprentice",
+     "draw": "is_apprentice",
+     "rate_key": "apprenticeship_participation_19_to_24",
+     "assignment_unit": "person",
+     "eligibility": "employees (employment_status FT_EMPLOYED or PT_EMPLOYED, from frs_employment) aged 21 to 24: SSCBA 1992 s.9A already zero-rates every earner under 21 and s.9B ends the apprentice zero rate at 25, so no other age changes employer NICs, and leaving them False keeps is_in_non_advanced_education, minimum_wage, Care to Learn and the 16 to 19 Bursary Fund unchanged",
+     "rate_derivation": "the contract's apprenticeship_participation_19_to_24 is DfE's England participation per head aged 19 to 24, taken as uniform across those ages and UK-wide; at the frame's household weights it becomes the rate among the eligible, p = min(1, r * W(age 21 to 24) / W(eligible)), and is_apprentice = eligible AND u < p, so the weighted flags equal r times the weighted population aged 21 to 24",
+     "seed": 0
     }
    ],
    "outputs": [
     "would_claim_marriage_allowance",
     "would_claim_scp",
     "attends_private_school_random_draw",
-    "tax_free_childcare_spend_routed_share"
+    "tax_free_childcare_spend_routed_share",
+    "is_apprentice"
    ],
    "nonnegative_outputs": [
     "attends_private_school_random_draw",
     "tax_free_childcare_spend_routed_share"
    ],
-   "notes": "Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; higher_earner_tie_break is intentionally not produced."
+   "notes": "Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; higher_earner_tie_break is intentionally not produced. is_apprentice has no FRS source (no apprenticeship variable in the 2022-23 to 2024-25 adult tables; TRAIN2, NI3TRAIN and TRAINEE code government employment schemes) and is drawn from the DfE rate for employees aged 21 to 24 only."
   },
   {
    "stage": "frs_household_draws",
