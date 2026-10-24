@@ -810,6 +810,11 @@ def test_packaged_exclusions_load():
     assert "microcosm#890 G" in rail["reason"]
     assert "never fitted" in rail["reason"]
     assert "within 10 percent" in rail["adjudication"]
+    # Bound on table 7271, the plan's default of 2026-10-22, the row failed
+    # the weight-ratio gate on arm 2c of the next policyengine-uk bump, so
+    # the hold stands and the basis ruling stays open.
+    assert "uk_weight_ratio failed" in rail["reason"]
+    assert "arm 2c" in rail["adjudication"]
     # So did the two bands the engine bump of microcosm#1095 (policyengine-uk
     # 2.122.2) emptied, the 2026-10-07 entries.
     assert [e for e in exclusions if e["approved_on"] == "2026-10-07"] == []
