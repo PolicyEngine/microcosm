@@ -9,21 +9,26 @@ policyengine-uk 2.151.0). The export-surface gate checks a column only
 against the enhanced-FRS reference, so these checks hold the step to the
 engine it is locked with: every column it can write is a household input
 there, the engine's week is the step's, the strengths and rates a
-declaration divides by are the ones the engine multiplies back, and the
+declaration divides by are the ones the engine multiplies back, the
 duties the engine charges on the inputs are linear in them and reach
-household tax.
+household tax and net income, and on the committed declaration's national
+levels they sit at the gaps from OBR's receipts the measure exclusions state.
 """
 
 from __future__ import annotations
 
 import importlib
+import importlib.resources
+import json
 
 import pytest
 
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.uk_runtime.lcfs_consumption import (
     UK_LCFS_EXCISE_OUTPUT_COLUMNS,
+    UK_LCFS_EXCISE_TOBACCO_OUTPUTS,
     UK_PE_UK_WEEKS_IN_YEAR,
+    excise_levels,
     excise_quantities_operation,
 )
 from microcosm.build.uk_runtime.national_frame import (
@@ -123,7 +128,7 @@ def _simulate(year: int, inputs: dict[str, float], variables: tuple[str, ...]):
 
 @pytest.mark.parametrize("year", [2024, 2025, 2026])
 def test_the_engine_charges_duty_in_proportion_to_the_quantities(year: int) -> None:
-    names = ("alcohol_duty", "tobacco_duty", "household_tax")
+    names = ("alcohol_duty", "tobacco_duty", "household_tax", "household_net_income")
     none, one, two = (
         _simulate(year, {k: v * scale for k, v in QUANTITIES.items()}, names)
         for scale in (0.0, 1.0, 2.0)
@@ -133,15 +138,17 @@ def test_the_engine_charges_duty_in_proportion_to_the_quantities(year: int) -> N
     assert one[0] > 0 and one[1] > 0
     assert two[0] == pytest.approx(2 * one[0])
     assert two[1] == pytest.approx(2 * one[1])
-    # Household tax carries both duties.
+    # Household tax carries both duties, and net income loses them (to the
+    # penny: the engine stores net income in single precision).
     assert one[2] - none[2] == pytest.approx(one[0] + one[1])
+    assert none[3] - one[3] == pytest.approx(one[0] + one[1], abs=0.01)
 
 
 @pytest.mark.parametrize("year", [2024, 2025, 2026])
 def test_the_engine_charges_gambling_duty_in_proportion_to_the_bases(
     year: int,
 ) -> None:
-    names = ("gambling_duty", "household_tax")
+    names = ("gambling_duty", "household_tax", "household_net_income")
     none, one, two = (
         _simulate(year, {k: v * scale for k, v in GAMBLING_BASES.items()}, names)
         for scale in (0.0, 1.0, 2.0)
@@ -151,3 +158,83 @@ def test_the_engine_charges_gambling_duty_in_proportion_to_the_bases(
     assert one[0] > 0
     assert two[0] == pytest.approx(2 * one[0])
     assert one[1] - none[1] == pytest.approx(one[0])
+    assert none[2] - one[2] == pytest.approx(one[0], abs=0.01)
+
+
+#: Each OBR row the excise inputs are measured against, with the gap its
+#: measure exclusion states between the engine's duty on the committed
+#: declaration's national levels and OBR's FY2024-25 receipts (microcosm#1359):
+#: alcohol and tobacco above the receipts by the strengths, reliefs and
+#: products the engine leaves out, betting and gaming at them by construction
+#: but for Machine Games Duty's liabilities over its cash receipts.
+OBR_DUTY_GAPS = {
+    "obr.beer_and_cider_duties": 0.081,
+    "obr.wine_duties": 0.026,
+    "obr.spirits_duties": 0.022,
+    "obr.tobacco_duties": 0.030,
+    "obr.betting_and_gaming_duties": 0.001,
+}
+
+
+def _uk_resource(name: str) -> dict:
+    return json.loads(
+        importlib.resources.files("microcosm.build.uk").joinpath(name).read_text()
+    )
+
+
+def test_the_national_levels_sit_at_the_stated_gaps_from_obr() -> None:
+    """The engine's duty on the national levels, against OBR's receipts.
+
+    One household holds every national level the committed declaration
+    resolves to. Every duty is linear in its inputs, so this is the frame's
+    duty at prior weights however the levels are shared out. A rate,
+    strength or relief that moves in the engine, or a level that moves in the
+    vendored rows, moves a gap the exclusion reasons state, and fails here.
+    OBR's values are the pinned feed's, as the national compile-parity
+    receipt records them; each row's variables are its own binding's.
+    """
+
+    committed = excise_quantities_operation(
+        load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    )
+    assert committed is not None
+    resolved = excise_levels(committed)
+    year = int(committed["period_value"])
+    inputs = {
+        column: level.annual / UK_PE_UK_WEEKS_IN_YEAR
+        if column in UK_LCFS_EXCISE_TOBACCO_OUTPUTS
+        else level.annual
+        for column, level in resolved.quantities.items()
+    }
+    inputs.update(
+        {
+            column: float(draught["share"])
+            for column, draught in resolved.draught.items()
+        }
+    )
+    targets = {
+        target["target_id"]: target["bindings"]["policyengine"]
+        for target in _uk_resource("uk_population_targets.json")["targets"]
+    }
+    published = {
+        row["name"]: row["ledger_value"]
+        for row in _uk_resource(
+            "ledger_compile_parity_incumbent_2025_signed_differences.json"
+        )["differences"]
+        if row["name"] in OBR_DUTY_GAPS
+    }
+    variables = {}
+    for name in OBR_DUTY_GAPS:
+        binding = targets[name]
+        assert binding["measurement_period"] == year, name
+        variables[name] = (
+            tuple(binding["value_expression"].split(" + "))
+            if "value_expression" in binding
+            else (binding["value_variable"],)
+        )
+    names = tuple(dict.fromkeys(v for row in variables.values() for v in row))
+    duty = dict(zip(names, _simulate(year, inputs, names), strict=True))
+
+    for name, gap in OBR_DUTY_GAPS.items():
+        engine = sum(duty[variable] for variable in variables[name])
+        assert engine / published[name] - 1.0 == pytest.approx(gap, abs=0.005), name
