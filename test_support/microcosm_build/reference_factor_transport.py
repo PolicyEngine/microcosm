@@ -97,7 +97,7 @@ def factor_transport_fixture(
         manifest["source_commit"] = pin["source_commit"]
         manifest_path.write_text(json.dumps(manifest, sort_keys=True) + "\n")
         pin["manifest_sha256"] = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
-    artifact = load_ledger_consumer_artifact(path, feed_pin=pin)
+    artifact = load_ledger_consumer_artifact(path, feed_pin=pin, lexical_floats=True)
     identity = chronicle_feed_identity(pin)
     declaration, _, _ = factor_fixture(feed_identity=identity)
     evidence_facts = artifact.facts

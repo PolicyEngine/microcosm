@@ -309,9 +309,9 @@ def rulespec_commit_mentions(value: object) -> set[str]:
       "rulespec" in any case);
     - the value, at any depth, of a key that contains "commit" in any case,
       unless the key's mapping is a foreign record (its repository
-      attribution lacks "rulespec", or a complete Chronicle identity below
-      ``feed_identity``) and neither the key nor an enclosing
-      key contains "rulespec".
+      attribution lacks "rulespec") or the key is one of the seven fields
+      of a complete Chronicle identity below ``feed_identity``, and neither
+      the key nor an enclosing key contains "rulespec".
 
     A foreign record cancels the context it sits in, except that its commit
     keys still count below a rulespec key. Integers count where hex strings
@@ -338,33 +338,37 @@ def rulespec_commit_mentions(value: object) -> set[str]:
             rulespec_record = any(
                 "rulespec" in repository.lower() for repository in repositories
             )
-            artifact_identity = False
+            artifact_identity_fields: set[str] = set()
             if feed_identity_record and is_accepted_consumer_artifact_schema_version(
                 node.get("artifact_schema_version")
             ):
                 try:
-                    chronicle_feed_identity(node)
+                    artifact_identity_fields = set(chronicle_feed_identity(node))
                 except ValueError:
                     pass
-                else:
-                    artifact_identity = True
-            foreign = (named or artifact_identity) and not rulespec_record
+            foreign = named and not rulespec_record
             if rulespec_record:
                 commit_value = True
             elif foreign:
                 commit_value = False
             for key, child in node.items():
                 name = str(key).lower()
-                commit_key = "commit" in name and (rulespec_context or not foreign)
+                identity_field = key in artifact_identity_fields
+                field_commit_value = commit_value and (
+                    rulespec_context or not identity_field
+                )
+                commit_key = "commit" in name and (
+                    rulespec_context or (not foreign and not identity_field)
+                )
                 visit(
                     str(key),
                     rulespec_context=rulespec_context,
-                    commit_value=commit_value,
+                    commit_value=field_commit_value,
                 )
                 visit(
                     child,
                     rulespec_context=rulespec_context or "rulespec" in name,
-                    commit_value=commit_value or commit_key or "rulespec" in name,
+                    commit_value=field_commit_value or commit_key or "rulespec" in name,
                     feed_identity_record=name == "feed_identity",
                 )
         elif isinstance(node, list):
@@ -1486,6 +1490,8 @@ class TestRulespecPin:
             "unattributed",
             "incomplete",
             "explicit_commit",
+            "extra_commit",
+            "rulespec_extra_revision",
             "prose",
             "rulespec_context",
             "wrong_schema",
@@ -1505,6 +1511,13 @@ class TestRulespecPin:
         elif case == "explicit_commit":
             identity["rulespec_nz_commit"] = "c0ffee1"
             expected = {"c0ffee1"}
+        elif case == "extra_commit":
+            identity["commit"] = "deadbee"
+            expected = {"deadbee"}
+        elif case == "rulespec_extra_revision":
+            identity["revision"] = "deadbee"
+            payload = {"rulespec": payload}
+            expected = {commit, "deadbee"}
         elif case == "prose":
             identity["notes"] = "RuleSpec-nz deadbee"
             expected = {"deadbee"}

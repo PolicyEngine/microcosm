@@ -399,7 +399,12 @@ def compile_target_surface(
             document, reference_resolution, references_sha256=references_sha256
         )
     artifact = load_ledger_consumer_artifact(
-        facts_path, expected_facts_sha256=expected_facts_sha256, feed_pin=feed_pin
+        facts_path,
+        expected_facts_sha256=expected_facts_sha256,
+        feed_pin=feed_pin,
+        lexical_floats=bool(
+            reference_resolution and reference_resolution.get("selected_factors")
+        ),
     )
     if reference_resolution is not None:
         for entry in reference_resolution.get("selected_factors", {}).values():

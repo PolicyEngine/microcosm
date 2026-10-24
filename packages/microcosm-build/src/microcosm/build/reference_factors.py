@@ -24,6 +24,12 @@ from microcosm.graph.canonical import canonical_json
 
 OPERATION = "projected_period_average_ratio"
 OPERATION_VERSION = 1
+# Exact powers in projected receipts grow with both schedule size and root
+# precision. Keep ordinary schedules within the stock integer serialization
+# budget, including when rounding needs a finer root enclosure.
+_MAX_SUBPERIODS_PER_YEAR = 12
+_MAX_ROUNDING_DIGITS = 18
+_MAX_RECEIPT_ROOT_PLACES = 256
 _DECLARATION_FIELDS = frozenset(
     {
         "schema_version",
@@ -186,11 +192,20 @@ def _declaration(declaration: object) -> dict:
     if row["projection_policy"] != "observed_preferred_latest_contiguous":
         raise ValueError("Unknown factor projection policy.")
     frequency = row["subperiods_per_year"]
-    if type(frequency) is not int or not 1 <= frequency <= 366:
-        raise ValueError("subperiods_per_year must be a declared positive integer.")
+    if type(frequency) is not int or not 1 <= frequency <= _MAX_SUBPERIODS_PER_YEAR:
+        raise ValueError(
+            "subperiods_per_year must be an integer from 1 to "
+            f"{_MAX_SUBPERIODS_PER_YEAR} for serializable exact receipts."
+        )
     rounding = _closed(row["rounding"], {"digits", "mode"}, "factor rounding")
-    if type(rounding.get("digits")) is not int or not 0 <= rounding["digits"] <= 100:
-        raise ValueError("Factor rounding digits must be an integer from 0 to 100.")
+    if (
+        type(rounding.get("digits")) is not int
+        or not 0 <= rounding["digits"] <= _MAX_ROUNDING_DIGITS
+    ):
+        raise ValueError(
+            "Factor rounding digits must be an integer from 0 to "
+            f"{_MAX_ROUNDING_DIGITS} for serializable exact receipts."
+        )
     if rounding.get("mode") != "nearest_half_even":
         raise ValueError("Factor rounding must be nearest_half_even.")
     expected = _read_rational(row["expected_operational_factor"], "expected factor")
@@ -403,7 +418,10 @@ def _operand(
             "decimal_values_equal": True,
         }
     else:
-        raise ValueError("Factor operand lacks an authenticated lexical numeric token.")
+        raise ValueError(
+            "Factor operand lacks an authenticated lexical numeric token; "
+            "load the artifact with lexical_floats=True."
+        )
     numeric = _decimal(token, "feed numeric token")
     return numeric, {
         "selector": selector,
@@ -539,7 +557,7 @@ def resolve_reference_factor(
 
     digits = row["rounding"]["digits"]
     precision = digits + 8
-    while precision <= 4096:
+    while precision <= _MAX_RECEIPT_ROOT_PLACES:
         lower, upper, exact = certified_nth_root_bounds(
             1 + effective_growth, frequency, precision
         )
@@ -556,7 +574,10 @@ def resolve_reference_factor(
             break
         precision *= 2
     else:
-        raise ValueError("Factor rounding cannot be certified unambiguously.")
+        raise ValueError(
+            "Factor rounding cannot be certified within the supported exact receipt "
+            "precision."
+        )
     factor = {"numerator": rounded_lower, "denominator": 10**digits}
     if rounded_lower <= 0:
         raise ValueError("Operational factor must be positive.")

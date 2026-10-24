@@ -312,6 +312,8 @@ def resolve_reference_profiles(
     if selected_factors:
         receipt.update(
             resolver_version=FACTOR_REFERENCE_PROFILE_RESOLVER_VERSION,
+            selected_declarations=_copy(chosen),
+            base_reference_document=_copy(base),
             selected_factors=_copy(selected_factors),
             selected_factor_identities={
                 factor_id: {
@@ -511,6 +513,45 @@ def resolve_reference_profiles(
     return effective, intervals, receipt
 
 
+def _factor_reference_bindings(resolution: Mapping) -> tuple[dict, set]:
+    """Recover each factor row's role and source behavior from bound documents."""
+    if resolution["resolver_version"] == REFERENCE_PROFILE_RESOLVER_VERSION:
+        return {}, set()
+    chosen = _mapping(resolution.get("selected_declarations"), "selected declarations")
+    base = _mapping(resolution.get("base_reference_document"), "base references")
+    if reference_document_sha256(chosen) != resolution.get(
+        "selected_declarations_sha256"
+    ) or reference_document_sha256(base) != resolution.get("base_references_sha256"):
+        raise ValueError("Factor companion source document identity mismatch.")
+    if {
+        dimension: choice.get("name") for dimension, choice in chosen.items()
+    } != resolution.get("selection"):
+        raise ValueError("Selected profile declaration identity mismatch.")
+    source_rows = _sequence(base.get("target_references"), "base target references")
+    by_name = {row["name"]: row for row in source_rows}
+    if len(by_name) != len(source_rows):
+        raise ValueError("Base reference names must be unique.")
+    bindings, other_names = {}, set()
+    for dimension, choice in chosen.items():
+        for transform in choice["declaration"].get("transformations", []):
+            if transform.get("operation") != SCALE_MONEY_AND_INTERVALS:
+                other_names.update(_explicit_names(transform, "reference_names"))
+                continue
+            money, counts = _validate_companions(transform, by_name)
+            for role, names in (("money", money), ("count", counts)):
+                for name in names:
+                    if name in bindings:
+                        raise ValueError("Duplicate factor companion roster entry.")
+                    bindings[name] = {
+                        "dimension": dimension,
+                        "profile": choice["name"],
+                        "factor_id": transform["factor_id"],
+                        "role": role,
+                        "source": by_name[name],
+                    }
+    return bindings, other_names
+
+
 def validate_reference_resolution(
     document: Mapping,
     receipt: Mapping,
@@ -545,6 +586,7 @@ def validate_reference_resolution(
         interval_document
     ) != resolution.get("effective_intervals_sha256"):
         raise ValueError("Effective interval document hash mismatch.")
+    factor_bindings, other_names = _factor_reference_bindings(resolution)
     names, used_factors = [], set()
     for row in document.get("target_references", ()):
         metadata = row.get("metadata", {})
@@ -556,8 +598,35 @@ def validate_reference_resolution(
             ):
                 raise ValueError("Effective reference profile identity mismatch.")
             action = resolution.get("transformations", {}).get(row["name"], {})
-            if "factor_id" in action:
-                factor_id = action["factor_id"]
+            binding = factor_bindings.get(row["name"])
+            if factors and binding is None and row["name"] not in other_names:
+                raise ValueError(
+                    "Factor action names a row outside its companion roster."
+                )
+            if binding is not None or "factor_id" in action:
+                if binding is None:
+                    raise ValueError(
+                        "Factor action names a row outside its companion roster."
+                    )
+                role = binding["role"]
+                operation = "linear_combination" if role == "money" else "identity"
+                if action.get("operation") != operation or any(
+                    action.get(key) != binding[key]
+                    for key in ("dimension", "profile", "factor_id")
+                ):
+                    raise ValueError(
+                        "Factor action disagrees with its companion roster role."
+                    )
+                source = binding["source"]
+                if (
+                    metadata.get("reference_value_kind") != role
+                    or row.get("ledger_selector") != source.get("ledger_selector")
+                    or row.get("period") != source.get("period")
+                ):
+                    raise ValueError(
+                        "Effective factor companion source semantics changed."
+                    )
+                factor_id = binding["factor_id"]
                 if factor_id not in factors:
                     raise ValueError(
                         "A transformed reference has missing factor evidence."
@@ -572,10 +641,10 @@ def validate_reference_resolution(
                     or action.get("target_period") != declaration["target_period"]
                 ):
                     raise ValueError("Effective reference factor identity mismatch.")
-                if action.get("operation") == "linear_combination":
+                if role == "money":
                     expected = [
                         {
-                            "aggregate_fact_key": row.get("ledger_selector", {}).get(
+                            "aggregate_fact_key": source.get("ledger_selector", {}).get(
                                 "aggregate_fact_key"
                             ),
                             "expected_member_count": 1,
@@ -585,14 +654,25 @@ def validate_reference_resolution(
                     if (
                         row.get("value_operation") != "linear_combination"
                         or row.get("value_operands") != expected
+                        or action.get("operand_selectors") != expected
                     ):
                         raise ValueError(
                             "Effective money factor must be applied exactly once."
                         )
-                elif action.get("operation") != "identity":
-                    raise ValueError("Unsupported factor transformation action.")
+                elif (
+                    row.get("value_operation", "identity")
+                    != source.get("value_operation", "identity")
+                    or row.get("value_operands", []) != source.get("value_operands", [])
+                    or action.get("operand_selectors")
+                    != source.get("value_operands", [])
+                ):
+                    raise ValueError(
+                        "Effective count value semantics must remain unchanged."
+                    )
     if sorted(names) != resolution.get("transformed_names"):
         raise ValueError("Resolution receipt transformed names mismatch.")
     if used_factors != set(factors):
         raise ValueError("Resolution receipt has unused selected factor evidence.")
+    if set(factor_bindings) - set(names):
+        raise ValueError("Resolution receipt is missing factor companion rows.")
     return resolution

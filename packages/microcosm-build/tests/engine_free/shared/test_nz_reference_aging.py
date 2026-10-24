@@ -62,7 +62,7 @@ def artifact():
     root = os.environ.get("NZ_CHRONICLE_ARTIFACT")
     if not root:
         pytest.skip("NZ_CHRONICLE_ARTIFACT is not set")
-    loaded = load_ledger_consumer_artifact(Path(root))
+    loaded = load_ledger_consumer_artifact(Path(root), lexical_floats=True)
     validate_chronicle_feed_pin(loaded, _document()["feed_identity"])
     return loaded
 

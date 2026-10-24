@@ -608,3 +608,114 @@ def test_self_consistent_effective_money_tampering_still_refuses():
     receipt["receipt_sha256"] = reference_document_sha256(receipt)
     with pytest.raises(ValueError, match="must be applied exactly once"):
         validate_reference_resolution(effective, receipt)
+
+
+@pytest.mark.parametrize("target", ["count", "money"])
+def test_rehashed_factor_application_cannot_bypass_companion_role(target):
+    references, declarations, context = _scaling_inputs()
+    effective, _, receipt = resolve_reference_profiles(
+        references, declarations, {}, factor_context=context
+    )
+    row = next(
+        row for row in effective["target_references"] if row["name"] == f"{target}_0"
+    )
+    row["value_operation"] = "linear_combination"
+    row["value_operands"] = [
+        {
+            "aggregate_fact_key": row["ledger_selector"]["aggregate_fact_key"],
+            "expected_member_count": 1,
+            "weight": 2,
+        }
+    ]
+    if target == "money":
+        receipt["transformations"][row["name"]]["operation"] = "identity"
+    receipt["effective_references_sha256"] = reference_document_sha256(effective)
+    receipt.pop("receipt_sha256")
+    receipt["receipt_sha256"] = reference_document_sha256(receipt)
+    with pytest.raises(ValueError, match="roster role|count value semantics"):
+        validate_reference_resolution(effective, receipt)
+
+
+def test_count_preserves_original_weighted_operation_and_refuses_changed_weight():
+    references, declarations, context = _scaling_inputs()
+    source = references["target_references"][0]
+    source["value_operation"] = "linear_combination"
+    source["value_operands"] = [
+        {
+            "aggregate_fact_key": source["ledger_selector"]["aggregate_fact_key"],
+            "expected_member_count": 1,
+            "weight": 1,
+        }
+    ]
+    effective, _, receipt = resolve_reference_profiles(
+        references, declarations, {}, factor_context=context
+    )
+    row = effective["target_references"][0]
+    assert row["value_operation"] == source["value_operation"]
+    assert row["value_operands"] == source["value_operands"]
+    assert row["metadata"]["reference_value_kind"] == "count"
+    action = receipt["transformations"][row["name"]]
+    assert action["operation"] == "identity"
+    assert action["operand_selectors"] == source["value_operands"]
+    assert validate_reference_resolution(effective, receipt) == receipt
+
+    row["value_operands"][0]["weight"] = 2
+    action["operand_selectors"][0]["weight"] = 2
+    receipt["effective_references_sha256"] = reference_document_sha256(effective)
+    receipt.pop("receipt_sha256")
+    receipt["receipt_sha256"] = reference_document_sha256(receipt)
+    with pytest.raises(ValueError, match="count value semantics"):
+        validate_reference_resolution(effective, receipt)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "count_action",
+        "count_kind",
+        "outside_roster",
+        "outside_roster_without_factor",
+        "source_values",
+        "roster",
+    ],
+)
+def test_factor_roles_and_count_semantics_use_hash_bound_source_documents(mutation):
+    references, declarations, context = _scaling_inputs()
+    effective, _, receipt = resolve_reference_profiles(
+        references, declarations, {}, factor_context=context
+    )
+    row = effective["target_references"][0]
+    if mutation == "count_action":
+        receipt["transformations"][row["name"]]["operation"] = "linear_combination"
+    elif mutation == "count_kind":
+        row["metadata"]["reference_value_kind"] = "money"
+    elif mutation == "outside_roster":
+        previous = row["name"]
+        row["name"] = "unlisted_count"
+        receipt["transformations"][row["name"]] = receipt["transformations"].pop(
+            previous
+        )
+        receipt["transformed_names"] = sorted(receipt["transformations"])
+    elif mutation == "outside_roster_without_factor":
+        extra = copy.deepcopy(row)
+        extra["name"] = "unlisted_count"
+        effective["target_references"].append(extra)
+        receipt["transformations"][extra["name"]] = copy.deepcopy(
+            receipt["transformations"][row["name"]]
+        )
+        receipt["transformations"][extra["name"]].pop("factor_id")
+        receipt["transformed_names"] = sorted(receipt["transformations"])
+    elif mutation == "source_values":
+        receipt["base_reference_document"]["target_references"][0]["value_operands"] = [
+            {"aggregate_fact_key": "count-fact-0", "weight": 2}
+        ]
+    elif mutation == "roster":
+        transform = receipt["selected_declarations"]["aging_index"]["declaration"][
+            "transformations"
+        ][0]
+        transform["count_reference_names"][0] = "unlisted_count"
+    receipt["effective_references_sha256"] = reference_document_sha256(effective)
+    receipt.pop("receipt_sha256")
+    receipt["receipt_sha256"] = reference_document_sha256(receipt)
+    with pytest.raises(ValueError, match="roster|source.*identity|source semantics"):
+        validate_reference_resolution(effective, receipt)

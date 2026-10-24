@@ -108,11 +108,12 @@ def chronicle_feed_identity(feed_pin: Mapping[str, Any]) -> dict[str, Any]:
 
 
 class LexicalFloat(float):
-    """An ordinary float retaining its authenticated JSON numeric token.
+    """An opt-in float retaining its authenticated JSON numeric token.
 
-    Existing consumers and JSON serialization retain their float behavior.
-    Exact-arithmetic consumers can inspect ``lexical_token`` and prove that
-    converting the float back to decimal reproduces the published operand.
+    Request ``lexical_floats=True`` when loading operands for exact arithmetic.
+    The default loader returns plain floats, avoiding the instance and token
+    overhead and preserving compatibility with serializers requiring exact
+    float types. Standard JSON serialization retains the same numeric bytes.
     """
 
     __slots__ = ("lexical_token",)
@@ -296,6 +297,7 @@ def load_ledger_consumer_artifact(
     expected_facts_sha256: str | None = None,
     expected_manifest_sha256: str | None = None,
     feed_pin: Mapping[str, Any] | None = None,
+    lexical_floats: bool = False,
 ) -> LedgerConsumerArtifact:
     """Load a Ledger consumer artifact directory or bare consumer-facts file.
 
@@ -305,6 +307,8 @@ def load_ledger_consumer_artifact(
     reviewed against; any mismatch raises before facts are used. ``feed_pin``
     additionally checks all six reviewed artifact fields, without replacing
     the manifest integrity checks or either optional hash check.
+    ``lexical_floats=True`` retains numeric tokens for factor verification;
+    otherwise JSON decimals load as plain ``float`` instances.
     """
     artifact_path = Path(path)
     if not artifact_path.exists():
@@ -360,7 +364,7 @@ def load_ledger_consumer_artifact(
     if feed_pin is not None:
         artifact = LedgerConsumerArtifact(
             path=artifact_path,
-            facts=_load_fact_rows(facts_path),
+            facts=_load_fact_rows(facts_path, lexical_floats=lexical_floats),
             facts_sha256=facts_sha256,
             manifest=manifest,
             manifest_sha256=manifest_sha256,
@@ -386,7 +390,7 @@ def load_ledger_consumer_artifact(
     if artifact is None:
         artifact = LedgerConsumerArtifact(
             path=artifact_path,
-            facts=_load_fact_rows(facts_path),
+            facts=_load_fact_rows(facts_path, lexical_floats=lexical_floats),
             facts_sha256=facts_sha256,
             manifest=manifest,
             manifest_sha256=manifest_sha256,
@@ -435,7 +439,9 @@ def resolve_ledger_artifact(args: Namespace) -> LedgerConsumerArtifact | None:
     )
 
 
-def _load_fact_rows(path: Path) -> tuple[dict[str, Any], ...]:
+def _load_fact_rows(
+    path: Path, *, lexical_floats: bool = False
+) -> tuple[dict[str, Any], ...]:
     rows: list[dict[str, Any]] = []
     with path.open() as file:
         for line_number, line in enumerate(file, start=1):
@@ -443,7 +449,9 @@ def _load_fact_rows(path: Path) -> tuple[dict[str, Any], ...]:
             if not stripped:
                 continue
             try:
-                row = json.loads(stripped, parse_float=LexicalFloat)
+                row = json.loads(
+                    stripped, parse_float=LexicalFloat if lexical_floats else float
+                )
             except json.JSONDecodeError as exc:
                 raise ValueError(
                     f"Invalid Ledger facts JSONL row {line_number}: {exc.msg}"

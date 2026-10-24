@@ -227,7 +227,7 @@ def main():
     args = parser.parse_args()
     if not args.artifact:
         parser.error("--artifact or NZ_CHRONICLE_ARTIFACT is required")
-    artifact = load_ledger_consumer_artifact(args.artifact)
+    artifact = load_ledger_consumer_artifact(args.artifact, lexical_floats=True)
     document = build_reference_aging(artifact)
     encoded = json.dumps(document, ensure_ascii=False, indent=2) + "\n"
     if args.check:

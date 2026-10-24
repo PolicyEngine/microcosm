@@ -31,6 +31,7 @@ from hypothesis import strategies as st
 
 import microcosm.build.reference_factors as reference_factors_module
 import microcosm.build.reference_profiles as reference_profiles_module
+import microcosm.build.transport.target_kernels as target_kernels_module
 from microcosm.build.ledger_artifact import ChronicleFeedPinMismatchError
 from microcosm.build.reference_profiles import (
     reference_document_sha256,
@@ -315,6 +316,80 @@ def test_compile_replay_refuses_tampered_evidence_with_recomputed_hashes(tmp_pat
             feed_pin=pin,
             reference_resolution=receipt,
         )
+
+
+@pytest.mark.parametrize("target", ["count", "money"])
+def test_compile_replay_refuses_rehashed_factor_application_tampering(tmp_path, target):
+    path, pin, document, receipt, _ = factor_transport_fixture(tmp_path, activate=True)
+    row = next(
+        row for row in document["target_references"] if row["name"] == f"toy-{target}"
+    )
+    row["value_operation"] = "linear_combination"
+    row["value_operands"] = [
+        {
+            "aggregate_fact_key": row["ledger_selector"]["aggregate_fact_key"],
+            "expected_member_count": 1,
+            "weight": 2,
+        }
+    ]
+    if target == "money":
+        receipt["transformations"][row["name"]]["operation"] = "identity"
+    receipt["effective_references_sha256"] = reference_document_sha256(document)
+    receipt.pop("receipt_sha256")
+    receipt["receipt_sha256"] = reference_document_sha256(receipt)
+    with pytest.raises(ValueError, match="roster role|count value semantics"):
+        compile_target_surface(
+            path,
+            document,
+            country=COUNTRY,
+            references_sha256=reference_document_sha256(document),
+            feed_pin=pin,
+            reference_resolution=receipt,
+        )
+
+
+@pytest.mark.parametrize(
+    "resolved", [False, True], ids=["unresolved", "legacy-resolution"]
+)
+def test_no_factor_compilation_is_identical_with_or_without_lexical_loading(
+    tmp_path, monkeypatch, resolved
+):
+    facts = toy_facts(CALIBRATION_TARGETS)
+    path = write_facts(tmp_path / "facts.jsonl", facts)
+    document = references_for(CALIBRATION_TARGETS)
+    receipt = None
+    if resolved:
+        document, _, receipt = resolve_reference_profiles(
+            document, {"schema_version": 1, "dimensions": {}}, {}
+        )
+    original_loader = target_kernels_module.load_ledger_consumer_artifact
+    requests = []
+    outputs = []
+    registries = []
+    for force_lexical in (False, True):
+
+        def load_with_selected_representation(*args, lexical=force_lexical, **kwargs):
+            requests.append(kwargs.get("lexical_floats", False))
+            kwargs["lexical_floats"] = lexical
+            return original_loader(*args, **kwargs)
+
+        monkeypatch.setattr(
+            target_kernels_module,
+            "load_ledger_consumer_artifact",
+            load_with_selected_representation,
+        )
+        payload, registry = compile_target_surface(
+            path,
+            document,
+            country=COUNTRY,
+            references_sha256=reference_document_sha256(document),
+            reference_resolution=receipt,
+        )
+        outputs.append(payload)
+        registries.append([spec.value for spec in registry.specs])
+    assert requests == [False, False]
+    assert outputs[0] == outputs[1]
+    assert registries[0] == registries[1]
 
 
 def test_compile_emits_a_traced_surface_bound_to_facts_not_paths(tmp_path) -> None:

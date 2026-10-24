@@ -5,7 +5,7 @@ from decimal import Decimal
 from fractions import Fraction
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import example, given, settings
 from hypothesis import strategies as st
 from microcosm_build.reference_factors import factor_context_fixture, factor_fixture
 
@@ -17,6 +17,7 @@ from microcosm.build.reference_factors import (
     resolve_reference_factor,
     validate_factor_context,
 )
+from microcosm.graph.canonical import canonical_json
 
 
 def _fraction(row):
@@ -39,7 +40,10 @@ def _oracle_root(radicand, degree, places=50):
             low = middle
         else:
             high = middle
-    return Fraction(low, denominator), Fraction(high, denominator)
+    lower = Fraction(low, denominator)
+    if lower**degree == radicand:
+        return lower, lower
+    return lower, Fraction(high, denominator)
 
 
 def _oracle_round(number, digits):
@@ -52,22 +56,35 @@ def _oracle_round(number, digits):
     return quotient
 
 
-def _oracle_factor(source, anchor, growth, frequency, digits):
-    low, high = _oracle_root(1 + Fraction(growth) / 100, frequency)
-    lower = (
-        Fraction(anchor)
-        / Fraction(source)
-        * sum(low**index for index in range(frequency))
-        / frequency
+def _oracle_factor(source, anchor, growth, frequency, digits, *, places=50):
+    while places <= 4096:
+        low, high = _oracle_root(1 + Fraction(growth) / 100, frequency, places)
+        lower = (
+            Fraction(anchor)
+            / Fraction(source)
+            * sum(low**index for index in range(frequency))
+            / frequency
+        )
+        upper = (
+            Fraction(anchor)
+            / Fraction(source)
+            * sum(high**index for index in range(frequency))
+            / frequency
+        )
+        if _oracle_round(lower, digits) == _oracle_round(upper, digits):
+            return _oracle_round(lower, digits), (low, high)
+        places = max(1, places * 2)
+    raise AssertionError("Independent oracle could not enclose a rounded factor.")
+
+
+def test_independent_oracle_refines_ambiguous_rounding():
+    coarse = _oracle_root(Fraction(103, 100), 2, places=1)
+    assert _oracle_round((1 + coarse[0]) / 2, 6) != _oracle_round(
+        (1 + coarse[1]) / 2, 6
     )
-    upper = (
-        Fraction(anchor)
-        / Fraction(source)
-        * sum(high**index for index in range(frequency))
-        / frequency
-    )
-    assert _oracle_round(lower, digits) == _oracle_round(upper, digits)
-    return _oracle_round(lower, digits), (low, high)
+    expected, bounds = _oracle_factor("1", "1", "3", 2, 6, places=1)
+    assert expected == 1007445
+    assert bounds[1] - bounds[0] < coarse[1] - coarse[0]
 
 
 def test_factor_resolves_exact_operands_once_and_replays():
@@ -242,7 +259,7 @@ def test_closed_declaration_guards(field, mutation, message):
         ("coverage", "coverage mismatch"),
         ("boolean", "Boolean"),
         ("nan", "finite"),
-        ("float_without_token", "lexical numeric token"),
+        ("float_without_token", "lexical_floats=True"),
         ("lossy_float", "does not reproduce"),
         ("negative", "positive"),
     ],
@@ -479,6 +496,7 @@ def test_receipt_tampering_refuses_and_unselected_edits_are_local():
 
 
 @settings(max_examples=70, deadline=None)
+@example(source=32, anchor=1, growth=0, frequency=2, digits=4)
 @given(
     source=st.integers(1, 10**9),
     anchor=st.integers(1, 10**9),
@@ -533,3 +551,51 @@ def test_very_large_integer_cross_products_do_not_overflow():
     factor, receipt = resolve_reference_factor(declaration, facts, identity)
     assert factor["numerator"] == 3000000
     assert _fraction(receipt["denominator_mean"]) == huge
+
+
+@pytest.mark.parametrize(
+    "frequency,digits,message",
+    [
+        (13, 6, "subperiods_per_year.*1 to 12.*serializable"),
+        (365, 6, "subperiods_per_year.*1 to 12.*serializable"),
+        (12, 19, "rounding digits.*0 to 18.*serializable"),
+    ],
+)
+def test_unsupported_exact_receipt_schedule_refuses_at_declaration(
+    frequency, digits, message
+):
+    declaration, facts, identity = factor_fixture()
+    declaration["subperiods_per_year"] = frequency
+    declaration["rounding"]["digits"] = digits
+    # A malformed schedule is intentional: range validation must precede it.
+    declaration["source_schedule"] = []
+    with pytest.raises(ValueError, match=message):
+        resolve_reference_factor(declaration, facts, identity)
+
+
+def test_largest_supported_schedule_and_rounding_have_serializable_exact_receipt():
+    expected, _ = _oracle_factor("100", "110", "3", 12, 18)
+    declaration, facts, identity = factor_fixture(
+        frequency=12, growth="3", digits=18, expected_numerator=expected
+    )
+    factor, receipt = resolve_reference_factor(declaration, facts, identity)
+    assert factor == {"numerator": expected, "denominator": 10**18}
+    encoded = canonical_json(receipt)
+    assert encoded and factor_document_sha256(receipt)
+    replay_reference_factor(declaration, facts, identity, factor, receipt)
+
+
+def test_root_refinement_stays_within_exact_receipt_precision_budget(monkeypatch):
+    precisions = []
+
+    def ambiguous_bounds(value, degree, decimal_places):
+        precisions.append(decimal_places)
+        return Fraction(1), Fraction(2), False
+
+    monkeypatch.setattr(
+        "microcosm.build.reference_factors.certified_nth_root_bounds", ambiguous_bounds
+    )
+    declaration, facts, identity = factor_fixture(frequency=12, digits=18)
+    with pytest.raises(ValueError, match="supported exact receipt precision"):
+        resolve_reference_factor(declaration, facts, identity)
+    assert precisions == [26, 52, 104, 208]

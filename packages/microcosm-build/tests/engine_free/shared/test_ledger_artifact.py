@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import os
@@ -26,6 +27,7 @@ from microcosm.build.ledger_artifact import (
     resolve_ledger_artifact,
     validate_chronicle_feed_pin,
 )
+from microcosm.graph.canonical import canonical_json
 from test_support.microcosm_build.chronicle_feed import write_pinned_artifact
 from test_support.paths import paths_for
 
@@ -96,7 +98,7 @@ def test_authenticated_float_retains_lexical_token_without_changing_json(tmp_pat
     facts_path.write_text(original)
     facts_sha = hashlib.sha256(original.encode()).hexdigest()
     artifact = load_ledger_consumer_artifact(
-        facts_path, expected_facts_sha256=facts_sha
+        facts_path, expected_facts_sha256=facts_sha, lexical_floats=True
     )
     value = artifact.facts[0]["value"]
     assert isinstance(value, LexicalFloat)
@@ -111,11 +113,53 @@ def test_authenticated_float_retains_lexical_token_without_changing_json(tmp_pat
     assert artifact.facts_sha256 == facts_sha
 
 
+@pytest.mark.parametrize("pinned", [False, True])
+def test_default_float_loading_returns_exact_builtin_float(tmp_path, pinned):
+    path, pin = write_pinned_artifact(tmp_path / "artifact", [_fact_row(value=0.1)])
+    artifact = load_ledger_consumer_artifact(
+        path, **({"feed_pin": pin} if pinned else {})
+    )
+
+    assert type(artifact.facts[0]["value"]) is float
+
+
+def test_lexical_float_opt_in_is_limited_to_factor_consumers():
+    repository = paths_for("microcosm-build").repository
+    sources = list((repository / "packages").glob("*/src/**/*.py"))
+    sources.extend((repository / "tools").rglob("*.py"))
+    opt_ins = set()
+    for path in sources:
+        for node in ast.walk(ast.parse(path.read_text())):
+            if not isinstance(node, ast.Call):
+                continue
+            for keyword in node.keywords:
+                if keyword.arg != "lexical_floats":
+                    continue
+                # A loader forwarding its caller's choice is not an opt-in.
+                if (
+                    isinstance(keyword.value, ast.Name)
+                    and keyword.value.id == "lexical_floats"
+                ):
+                    continue
+                if (
+                    isinstance(keyword.value, ast.Constant)
+                    and keyword.value.value is False
+                ):
+                    continue
+                opt_ins.add(path.relative_to(repository).as_posix())
+    assert opt_ins == {
+        "packages/microcosm-build/src/microcosm/build/transport/target_kernels.py",
+        "tools/generate_nz_reference_aging.py",
+    }
+
+
 @pytest.mark.parametrize("protocol", range(pickle.HIGHEST_PROTOCOL + 1))
 def test_authenticated_float_pickle_preserves_lexical_token(tmp_path, protocol):
     facts_path = tmp_path / "consumer_facts.jsonl"
     facts_path.write_text('{"aggregate_fact_key":"decimal","value":1.2500e2}\n')
-    value = load_ledger_consumer_artifact(facts_path).facts[0]["value"]
+    value = load_ledger_consumer_artifact(facts_path, lexical_floats=True).facts[0][
+        "value"
+    ]
 
     restored = pickle.loads(pickle.dumps(value, protocol=protocol))
 
@@ -128,7 +172,9 @@ def test_authenticated_float_pickle_preserves_lexical_token(tmp_path, protocol):
 def test_authenticated_float_deepcopy_preserves_lexical_token(tmp_path):
     facts_path = tmp_path / "consumer_facts.jsonl"
     facts_path.write_text('{"aggregate_fact_key":"decimal","value":1.2500e2}\n')
-    value = load_ledger_consumer_artifact(facts_path).facts[0]["value"]
+    value = load_ledger_consumer_artifact(facts_path, lexical_floats=True).facts[0][
+        "value"
+    ]
 
     restored = deepcopy(value)
 
@@ -582,3 +628,38 @@ def test_real_nz_artifact_matches_committed_feed_pin():
     assert artifact.fact_row_count == pin["fact_row_count"]
     assert artifact.schema_version == pin["artifact_schema_version"]
     assert list(artifact.fact_schema_versions) == pin["consumer_fact_schema_versions"]
+
+
+def test_real_nz_lexical_opt_in_preserves_canonical_bytes():
+    artifact_path = os.environ.get("NZ_CHRONICLE_ARTIFACT")
+    if not artifact_path:
+        pytest.skip("NZ_CHRONICLE_ARTIFACT is unset")
+    pin_path = (
+        paths_for("microcosm-build").package
+        / "src/microcosm/build/nz/chronicle_feed.json"
+    )
+    pin = json.loads(pin_path.read_text())
+    plain = load_ledger_consumer_artifact(artifact_path, feed_pin=pin)
+    lexical = load_ledger_consumer_artifact(
+        artifact_path, feed_pin=pin, lexical_floats=True
+    )
+
+    def floats(value):
+        if isinstance(value, float):
+            yield value
+        elif isinstance(value, dict):
+            for child in value.values():
+                yield from floats(child)
+        elif isinstance(value, (list, tuple)):
+            for child in value:
+                yield from floats(child)
+
+    plain_values, lexical_values = (
+        list(floats(plain.facts)),
+        list(floats(lexical.facts)),
+    )
+    assert plain_values
+    assert all(type(value) is float for value in plain_values)
+    assert all(type(value) is LexicalFloat for value in lexical_values)
+    assert [float(value.lexical_token) for value in lexical_values] == plain_values
+    assert canonical_json(plain.facts) == canonical_json(lexical.facts)
