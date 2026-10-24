@@ -1505,6 +1505,7 @@ def test_a_thin_row_is_withheld_at_every_level() -> None:
                 {
                     "household_id": np.arange(n, dtype=np.int64),
                     "source_household_id": np.arange(n, dtype=np.int64),
+                    "region": ["LONDON"] * n,
                 }
             ),
         },
@@ -1533,12 +1534,15 @@ def _withheld_sets(
     values: dict[str, float | list[float]] | None = None,
     sources: list[float] | None = None,
     levels: dict[str, str] | None = None,
+    regions: list[str] | None = None,
+    targets: dict[str, str] | None = None,
 ) -> tuple[set[str], set[str]]:
     """``uk_withheld_row_sets`` over rows given by the households that carry them.
 
     Every household is its own source household (or ``sources``) and carries
     weight one. A row's entries are one, or its ``values`` (one for all its
-    households, or one each).
+    households, or one each). ``regions`` gives each household's region, and
+    ``targets`` a row's contract target.
     """
 
     from types import SimpleNamespace
@@ -1568,15 +1572,20 @@ def _withheld_sets(
                         if sources is None
                         else np.asarray(sources)
                     ),
+                    **({} if regions is None else {"region": regions}),
                 }
             ),
         },
         EntitySchema(group_entities=("household",)),
         {"household": Weights(np.ones(n), WeightKind.DESIGN)},
     )
-    return uk_withheld_row_sets(
-        problem, np.ones(n), frame, [{"name": name} for name in names], levels
-    )
+    target_rows = [
+        {"name": name}
+        if name not in (targets or {})
+        else {"name": name, "metadata": {"contract_target_id": targets[name]}}
+        for name in names
+    ]
+    return uk_withheld_row_sets(problem, np.ones(n), frame, target_rows, levels)
 
 
 def test_a_band_its_total_gives_back_withholds_the_next_smallest_band() -> None:
@@ -2695,13 +2704,13 @@ def test_an_explicit_zero_in_a_brma_row_carries_nothing() -> None:
     }
 
 
-def test_the_local_line_withholds_one_grain_and_area_at_a_time() -> None:
+def test_the_local_line_withholds_thin_local_rows_by_block() -> None:
     """María's ruling of 2026-10-23: thin local rows are withheld, by block.
 
     In one constituency a family total less its published band gives a thin
     band back, so the next-smallest band is withheld beside it, as nationally.
     A thin row in another area is withheld on its own, and no row of one area
-    is withheld for a difference with another's.
+    is withheld for a difference with another's that gives nothing back.
     """
 
     rows = {
@@ -2712,13 +2721,131 @@ def test_the_local_line_withholds_one_grain_and_area_at_a_time() -> None:
         "other.total@E14000003@2025": list(range(35, 60)),
     }
     levels = {name: "constituency" for name in rows}
-    thin, beside = _withheld_sets(rows, 60, levels=levels)
+    thin, beside = _withheld_sets(rows, 60, levels=levels, regions=["LONDON"] * 60)
     assert thin == {"fam.band_2@E14000001@2025", "other.total@E14000002@2025"}
     assert beside == {"fam.band_1@E14000001@2025"}
     # The same rows as one national block would give the same verdict; the
     # block split changes only which differences are looked for.
     national = _withheld_sets(rows, 60)
     assert national == (thin, beside)
+
+
+def test_a_region_row_less_its_published_local_cells_withholds_one_more() -> None:
+    """Vahid's review of #1383, item 1: the region and its cells are one block.
+
+    The region row binds beside its local-authority cells, so the region less
+    the published cell gives the thin one back, and the next-smallest giver
+    is withheld beside it. Per area, nothing was withheld beside it.
+    """
+
+    rows = {
+        "fam.region@E12000007@2025": list(range(30)),
+        "fam.cell@E09000001@2025": list(range(25, 30)),
+        "fam.cell@E09000002@2025": list(range(25)),
+        "fam.region@E12000008@2025": list(range(30, 60)),
+    }
+    levels = {
+        "fam.region@E12000007@2025": "region",
+        "fam.region@E12000008@2025": "region",
+        "fam.cell@E09000001@2025": "local_authority",
+        "fam.cell@E09000002@2025": "local_authority",
+    }
+    regions = ["LONDON"] * 30 + ["SOUTH_EAST"] * 30
+    thin, beside = _withheld_sets(rows, 60, levels=levels, regions=regions)
+    assert thin == {"fam.cell@E09000001@2025"}
+    assert beside == {"fam.cell@E09000002@2025"}
+
+
+def test_a_regions_constituencies_less_its_authorities_withhold_one_more() -> None:
+    """Both local grains partition a region, so each gives the other back."""
+
+    rows = {
+        "fam.cell@E14000001@2025": list(range(20)),
+        "fam.cell@E14000002@2025": list(range(20, 40)),
+        "fam.cell@E06000001@2025": list(range(35)),
+        "fam.cell@E06000002@2025": list(range(35, 40)),
+    }
+    levels = {
+        "fam.cell@E14000001@2025": "constituency",
+        "fam.cell@E14000002@2025": "constituency",
+        "fam.cell@E06000001@2025": "local_authority",
+        "fam.cell@E06000002@2025": "local_authority",
+    }
+    thin, beside = _withheld_sets(rows, 40, levels=levels, regions=["WALES"] * 40)
+    assert thin == {"fam.cell@E06000002@2025"}
+    # The constituencies less the larger authority give the thin one back;
+    # the smaller constituency is withheld (ties go by name), and what is left
+    # (the thin cell with it) rests on 25 households.
+    assert beside == {"fam.cell@E14000001@2025"}
+
+
+def _uc_family_rows() -> tuple[dict[str, list[int]], dict[str, str], dict[str, str]]:
+    # The national UC caseload and its constituency cells share one
+    # measurement, so they are one family with its parent (the contract).
+    rows = {
+        "dwp.uc.households@2025": list(range(60)),
+        "dwp.uc.households_by_area@E14000001@2025": list(range(30)),
+        "dwp.uc.households_by_area@E14000002@2025": list(range(30, 55)),
+        "dwp.uc.households_by_area@E14000003@2025": list(range(55, 60)),
+    }
+    levels = {name: "constituency" for name in rows}
+    levels["dwp.uc.households@2025"] = "country"
+    targets = {
+        name: "dwp.uc.households"
+        if name.startswith("dwp.uc.households@")
+        else ("dwp.uc.households_by_area")
+        for name in rows
+    }
+    return rows, levels, targets
+
+
+def test_a_national_row_less_a_familys_published_cells_withholds_one_more() -> None:
+    """A national parent less its family's cells across regions gives one back.
+
+    No region row binds, so no region block sees it: the family's own block
+    with its parent, the contract's national UC caseload, does.
+    """
+
+    rows, levels, targets = _uc_family_rows()
+    regions = ["NORTH_EAST"] * 30 + ["NORTH_WEST"] * 30
+    thin, beside = _withheld_sets(
+        rows, 60, levels=levels, regions=regions, targets=targets
+    )
+    assert thin == {"dwp.uc.households_by_area@E14000003@2025"}
+    assert beside == {"dwp.uc.households_by_area@E14000002@2025"}
+    # Without the contract targets no family block forms, and nothing is
+    # withheld beside the thin cell: the gap this closes.
+    assert _withheld_sets(rows, 60, levels=levels, regions=regions) == (thin, set())
+
+
+def test_a_row_one_block_withholds_stays_hidden_in_another() -> None:
+    """A row withheld beside a thin one is protected in every block holding it.
+
+    The family block withholds the second cell beside the thin third. A row
+    of the region's own, on exactly that cell's households, would give it
+    back, and with it the thin cell, so the region block withholds that too.
+    """
+
+    rows, levels, targets = _uc_family_rows()
+    rows["other.cell@E14000002@2025"] = list(range(30, 55))
+    levels["other.cell@E14000002@2025"] = "constituency"
+    regions = ["NORTH_EAST"] * 30 + ["NORTH_WEST"] * 30
+    thin, beside = _withheld_sets(
+        rows, 60, levels=levels, regions=regions, targets=targets
+    )
+    assert thin == {"dwp.uc.households_by_area@E14000003@2025"}
+    assert beside == {
+        "dwp.uc.households_by_area@E14000002@2025",
+        "other.cell@E14000002@2025",
+    }
+
+
+def test_local_rows_without_household_regions_refuse() -> None:
+    """A local row is checked against its region's rows, so it needs regions."""
+
+    rows = {"fam.cell@E14000001@2025": list(range(20))}
+    with pytest.raises(ValueError, match="household table needs a region column"):
+        _withheld_sets(rows, 20, levels={"fam.cell@E14000001@2025": "constituency"})
 
 
 def test_the_report_guard_matches_a_withheld_local_row_by_its_key(capsys) -> None:
