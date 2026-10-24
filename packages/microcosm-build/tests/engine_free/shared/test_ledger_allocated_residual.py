@@ -9,7 +9,7 @@ from dataclasses import replace
 from fractions import Fraction
 
 import pytest
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
 
 from microcosm.build.ledger_targets import (
@@ -523,6 +523,24 @@ def test_growth_roles_may_reuse_total_or_atom_without_double_counting(
         _compile([*facts, deepcopy(facts[0])], reference, direct)
 
 
+@pytest.mark.parametrize("direct", [False, True])
+def test_distinct_fact_reusing_an_atom_key_cannot_replace_the_atom(direct):
+    # Review counterexample: a growth numerator that reuses atom 1's key
+    # passes its own selector, so key-only deduplication would swap the
+    # 72-household atom for the 66-person growth fact.
+    facts, reference = _case(group=(1, 2))
+    facts[-2]["value"] = 66
+    facts[-1]["value"] = 60
+    assert _compile(facts, reference, direct).value == pytest.approx(186.56)
+    facts[-2]["aggregate_fact_key"] = facts[0]["aggregate_fact_key"]
+    operands = deepcopy(list(reference.value_operands))
+    operands[-2]["aggregate_fact_key"] = facts[0]["aggregate_fact_key"]
+    reference = replace(reference, value_operands=tuple(operands))
+    match = "distinct facts share" if direct else "distinct facts share|exactly once"
+    with pytest.raises(ValueError, match=match):
+        _compile(facts, reference, direct)
+
+
 # Cold local-constant discovery on the shared build machine can dominate data
 # generation; retain every generated example and numerical assertion.
 @settings(
@@ -538,6 +556,9 @@ def test_growth_roles_may_reuse_total_or_atom_without_double_counting(
     group_mask=st.integers(1, 255),
     numerator=st.integers(51, 200),
 )
+# Independently scaled totals leave a rounding residual of each sign.
+@example(counts=[1, 2], residual=0, recipient_mask=3, group_mask=1, numerator=55)
+@example(counts=[1, 2], residual=0, recipient_mask=3, group_mask=1, numerator=58)
 def test_exact_rational_oracle_for_partitions_recipients_groups_and_growth(
     counts, residual, recipient_mask, group_mask, numerator
 ):
@@ -585,21 +606,31 @@ def test_exact_rational_oracle_for_partitions_recipients_groups_and_growth(
         rel_tol=1e-12,
         abs_tol=1e-7,
     )
-    # Scaling the Census total and leaves commutes with allocation. The
-    # separate growth pair is omitted on this path so scaling happens once.
+    # Scaling the Census total and leaves commutes with allocation in exact
+    # arithmetic. The scaled total is computed independently as q*T, not from
+    # the scaled leaves, and the separate growth pair is omitted so scaling
+    # happens once. In floating point a zero residual can round to a tiny
+    # negative one (counts 1, 2 at q=0.55); that must still refuse, never clip.
+    q = Fraction(numerator, 100)
+    scaled_counts = [float(x * q) for x in counts]
     scaled_facts, scaled_reference = _case(
-        [Fraction(x * numerator, 100) for x in counts],
-        Fraction(residual * numerator, 100),
-        recipients,
-        group,
-        growth=False,
+        scaled_counts, 0, recipients, group, growth=False
     )
-    assert math.isclose(
-        _compile(scaled_facts, scaled_reference).value,
-        value,
-        rel_tol=1e-12,
-        abs_tol=1e-7,
-    )
+    scaled_facts[len(counts)]["value"] = float((sum(counts) + residual) * q)
+    scaled_residual = scaled_facts[len(counts)]["value"] - math.fsum(scaled_counts)
+    if scaled_residual < 0:
+        with pytest.raises(ValueError, match="negative.*residual"):
+            _compile(scaled_facts, scaled_reference)
+    elif scaled_residual > 0 and not mass:
+        with pytest.raises(ValueError, match="positive recipient mass"):
+            _compile(scaled_facts, scaled_reference)
+    else:
+        assert math.isclose(
+            _compile(scaled_facts, scaled_reference).value,
+            value,
+            rel_tol=1e-12,
+            abs_tol=1e-7,
+        )
 
 
 @settings(

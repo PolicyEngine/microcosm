@@ -21,10 +21,12 @@ inventory M5).
 The spec-only [NZ country package](../packages/microcosm-build/src/microcosm/build/nz/country_package.json)
 compiles through the shared country seam. It declares active demographic
 references and profile-resolved Census size and tenure references, with other
-unresolved target definitions parked. Production graph assembly and calibrated
-population evidence remain separate; threshold-bearing gates still read
-"awaiting D1". Donor records are US support records and are never presented as
-New Zealand microdata.
+unresolved target definitions parked. The release gates carry reviewed
+thresholds (d1376: every calibration target within 5%, demography within 2%,
+administrative anchors within 5%); no production fit evidence exists for them
+yet, and graph assembly and calibrated population evidence remain separate.
+Donor records are US support records and are never presented as New Zealand
+microdata.
 
 The package replaces the stage-era scaffold of
 [#821](https://github.com/PolicyEngine/microcosm/pull/821). It keeps #821's

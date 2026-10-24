@@ -661,6 +661,13 @@ def _require_executable_reference(reference: LedgerTargetReference) -> None:
     singleton input or become ambiguous as soon as the next cell arrived.
     Rows requiring a reference profile also carry the resolver's selection
     identity before an active status permits compilation.
+
+    Those resolution markers are trusted declarations at this layer: this
+    check sees that they are present, not that they match a resolution
+    receipt. ``reference_profiles.validate_reference_resolution`` and the
+    transport's effective-document binding authenticate a resolved document;
+    callers compiling resolved references outside transport must run that
+    validation first.
     """
 
     activation_status = reference.metadata.get("activation_status", "")
@@ -2766,8 +2773,17 @@ def _resolve_allocation_reference_facts(
         *growth,
     )
     # A published cell may serve more than one operand role. Preserve each
-    # fact once after checking every input selector's exact cardinality.
-    return tuple({_fact_key(fact): fact for fact in labelled_facts}.values())
+    # fact once after checking every input selector's exact cardinality, but
+    # never let a different fact that reuses a key replace a validated one.
+    by_key: dict[str, object] = {}
+    for fact in labelled_facts:
+        key = _fact_key(fact)
+        kept = by_key.setdefault(key, fact)
+        if kept is not fact and kept != fact:
+            raise ValueError(
+                f"{prefix} distinct facts share aggregate_fact_key {key!r}."
+            )
+    return tuple(by_key.values())
 
 
 def _allocated_residual_value(
