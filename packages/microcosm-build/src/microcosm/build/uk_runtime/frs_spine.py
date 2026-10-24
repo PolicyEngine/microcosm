@@ -1048,6 +1048,19 @@ BSP_MONTHLY_RATES = (350.0, 100.0)
 BSP_RATE_MATCH_TOLERANCE = 0.01
 
 
+#: Widowed Parent's Allowance's weekly rate in 2024-25, the FRS 2024-25 year
+#: (DWP, Benefit and pension rates 2024 to 2025: GBP 148.40, from GBP 139.10
+#: in 2023-24). An award below it is a reduced one (Vahid's review of #1383,
+#: item 12).
+WPA_WEEKLY_RATE = 148.40
+
+
+def wpa_rate_match(weekly: pd.Series) -> pd.Series:
+    """Whether each weekly amount is Widowed Parent's Allowance's rate or below it."""
+
+    return weekly <= WPA_WEEKLY_RATE * (1.0 + BSP_RATE_MATCH_TOLERANCE)
+
+
 def bsp_rate_match(weekly: pd.Series) -> pd.Series:
     """Whether each weekly amount is one of Bereavement Support Payment's rates."""
 
@@ -1108,18 +1121,22 @@ def _add_benefits(
         benefits, person_id, person["person_id"]
     )
     # FRS code 6 is Bereavement Support Payment with its predecessors. A weekly
-    # amount at one of the payment's frozen rates is the payment; any other is
-    # Widowed Parent's Allowance, the predecessor still in payment, which
-    # policyengine-uk 2.149.0 gives its own input (pe-uk#2572; #1222, María's
-    # ruling of 2026-10-22).
+    # amount at one of the payment's frozen rates is the payment; one at Widowed
+    # Parent's Allowance's 2024-25 rate, or below it as a reduced award, is the
+    # allowance, the predecessor still in payment, which policyengine-uk 2.149.0
+    # gives its own input (pe-uk#2572; #1222, María's ruling of 2026-10-22).
+    # Any other amount, above the allowance's rate and at no rate (a lump sum,
+    # a part month or a misreport), stays the payment, which is neither taxed
+    # nor means-tested (Vahid's review of #1383, item 12); an allowance with an
+    # inherited additional pension above its rate reads as the payment too.
     code_6 = benefit == 6
-    bsp = code_6 & bsp_rate_match(amount)
+    wpa = code_6 & ~bsp_rate_match(amount) & wpa_rate_match(amount)
+    bsp = code_6 & ~wpa
     pe_person["bsp_reported"] = (
         _sum_to_entity(amount * bsp, person_id, person["person_id"]) * WEEKS_IN_YEAR
     )
     pe_person["widowed_parents_allowance_reported"] = (
-        _sum_to_entity(amount * (code_6 & ~bsp), person_id, person["person_id"])
-        * WEEKS_IN_YEAR
+        _sum_to_entity(amount * wpa, person_id, person["person_id"]) * WEEKS_IN_YEAR
     )
     # FRS code 9 is War Widow's or Widower's Pension, which rises with CPI while
     # Bereavement Support Payment's rates are frozen. policyengine-uk 2.135.7

@@ -49,6 +49,7 @@ from microcosm.build.uk_runtime.frs_spine import (
     SCOTTISH_WATER_CHARGES_REDUCTION_RECIPIENT_SHARE,
     UC_CAPITAL_UNAVAILABLE,
     WEEKS_IN_YEAR,
+    WPA_WEEKLY_RATE,
     UKFRSSpineStageTransform,
     _add_benefits,
     access_fund_annual,
@@ -1942,21 +1943,31 @@ def test_benefit_code_splits_are_ported(tmp_path: Path) -> None:
         (350 * 12 / 52 * 1.0099, "bsp"),
         (100 * 12 / 52 * 0.9901, "bsp"),
         # Off every rate: Widowed Parent's Allowance, at its 2024-25 full
-        # rate, at a reduced rate, and just outside the band.
+        # rate and 1% above it, at a reduced rate, and just outside the band.
         (148.40, "wpa"),
+        (148.40 * 1.0099, "wpa"),
         (65.0, "wpa"),
         (350 * 12 / 52 * 1.011, "wpa"),
         (100 / 4 * 0.989, "wpa"),
+        # Above the allowance's rate and at no rate (a lump sum, a part month
+        # or a misreport): the payment (Vahid's review of #1383, item 12).
+        (148.40 * 1.011, "bsp"),
+        (3_500 / 4, "bsp"),
+        # A lump sum spread over the year reads as a reduced allowance: the
+        # rule cannot tell the two apart below the allowance's rate.
+        (2_500 / 52, "wpa"),
     ],
 )
 def test_code_6_splits_at_the_bereavement_support_payment_rates(
     tmp_path: Path, weekly: float, payment: str
 ) -> None:
     """A code-6 amount at a Bereavement Support Payment rate stays
-    bsp_reported; any other is Widowed Parent's Allowance, which
-    policyengine-uk 2.149.0 gives its own input (#1222, pe-uk#2572)."""
+    bsp_reported; one at Widowed Parent's Allowance's rate or below it is the
+    allowance, which policyengine-uk 2.149.0 gives its own input (#1222,
+    pe-uk#2572); any other stays bsp_reported."""
 
     assert BSP_MONTHLY_RATES == (350.0, 100.0)
+    assert WPA_WEEKLY_RATE == 148.40
     tables = _fixture_tables()
     (row,) = [entry for entry in tables["benefits"] if entry["BENEFIT"] == 6]
     row["BENAMT"] = weekly
