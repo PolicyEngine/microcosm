@@ -113,12 +113,6 @@ def _save(path: Path, source: str, *, check: bool) -> None:
     print(f"updated {relative}")
 
 
-def _add_count_replacement(replacements: dict, old: int, new: int) -> None:
-    if old in replacements and replacements[old] != new:
-        raise ValueError(f"ambiguous count replacement for {old}")
-    replacements[old] = new
-
-
 def _replace_length_assertions(source: str, expected: dict[str, int]) -> str:
     matches = {}
     for assertion in ast.walk(ast.parse(source)):
@@ -258,6 +252,29 @@ def _replace_asserted_counts(source: str, target: str, observed: dict) -> str:
     ):
         source = _replace_node(source, value, new)
     return source
+
+
+def _replace_asserted_scalar(source: str, target: str, value: int) -> str:
+    """Refresh the integer that ``assert <target> == ... == <int>`` pins.
+
+    Matching the asserted expression, not the old number, refreshes a stale
+    literal even when the module pin it was copied from has already moved.
+    """
+
+    matching = [
+        node.test
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Assert)
+        and isinstance(node.test, ast.Compare)
+        and all(isinstance(op, ast.Eq) for op in node.test.ops)
+        and ast.unparse(node.test.left) == target
+    ]
+    if len(matching) != 1:
+        raise ValueError(f"expected one scalar assertion: {target}")
+    pin = matching[0].comparators[-1]
+    if not (isinstance(pin, ast.Constant) and type(pin.value) is int):
+        raise ValueError(f"{target}: the asserted pin is not an integer literal")
+    return source if pin.value == value else _replace_node(source, pin, value)
 
 
 def fixture_calibration_contract() -> dict:
@@ -434,7 +451,6 @@ def _compiler_pins(*, check: bool) -> None:
         ),
         "EXPECTED_CONFIGURATION_FIELD_COUNT": len(pointers),
     }
-    old_counts = {name: getattr(field_usage, name) for name in counts}
     source = FIELD_USAGE.read_text()
     source = _replace_dictionary(source, "_PINS", expansions)
     for name, value in counts.items():
@@ -499,14 +515,42 @@ def _compiler_pins(*, check: bool) -> None:
 
     # Tests deliberately pin literal counts, so derive their corresponding
     # expectations from the same validated ledger rather than weakening them.
-    # Totals move by value transition from the module's own pins; the asserted
-    # breakdowns are rewritten by key from the ledger.
-    replacements = {}
-    for name, value in counts.items():
-        _add_count_replacement(replacements, old_counts[name], value)
-    _add_count_replacement(replacements, old_tail, new_tail)
-    for path in (FIELD_TEST, COVERAGE_TEST):
-        rendered[path] = _replace_literals(path.read_text(), replacements)
+    # Every pin is found by its asserted expression, never by its old value,
+    # so a merge that moved one copy of a count cannot hide a stale other.
+    total = counts["EXPECTED_CONFIGURATION_FIELD_COUNT"]
+    scalars = {
+        FIELD_TEST: {
+            "len(field_ledger.fields)": total,
+            "len({field.pointer for field in field_ledger.fields})": total,
+        },
+        COVERAGE_TEST: {
+            "fields['configuration_field_count']": total,
+            "fields['authored_normative_field_count']": counts[
+                "EXPECTED_AUTHORED_FIELD_COUNT"
+            ],
+            "fields['resolved_binding_field_count']": counts[
+                "EXPECTED_RESOLVED_BINDING_FIELD_COUNT"
+            ],
+            "fields['consumed_field_count']": total,
+            "fields['claim_count']": len(ledger.claims),
+            "inventory['required_item_count']": report["required_item_count"],
+            "inventory['covered_item_count']": report["covered_item_count"],
+            **{
+                f"inventory['counts'][{key!r}]": report["counts"][key]
+                for key in (
+                    "producer_inputs",
+                    "ownership_rows",
+                    "tail_control_fields",
+                    "seed_owner_bindings",
+                )
+            },
+        },
+    }
+    for path, expected in scalars.items():
+        source = path.read_text()
+        for target, value in expected.items():
+            source = _replace_asserted_scalar(source, target, value)
+        rendered[path] = source
     source_counts = {
         "authored": counts["EXPECTED_AUTHORED_FIELD_COUNT"],
         "resolved_bindings": counts["EXPECTED_RESOLVED_BINDING_FIELD_COUNT"],

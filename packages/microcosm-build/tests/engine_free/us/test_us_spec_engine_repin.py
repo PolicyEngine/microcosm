@@ -5,9 +5,9 @@ import ast
 import pytest
 
 from tools.repin_us_spec_engine_contracts import (
-    _add_count_replacement,
     _replace_asserted_counts,
     _replace_asserted_dictionary_value,
+    _replace_asserted_scalar,
     _replace_assignment,
     _replace_dictionary,
     _replace_length_assertions,
@@ -36,14 +36,6 @@ def test_repin_refuses_unknown_assignments_and_dictionary_entries() -> None:
         _replace_assignment("KNOWN = 1\n", "UNKNOWN", 2)
     with pytest.raises(ValueError, match="expected one key"):
         _replace_dictionary('PINS = {"known": 1}\n', "PINS", {"unknown": 2})
-
-
-def test_repin_refuses_colliding_count_transitions() -> None:
-    replacements = {}
-    _add_count_replacement(replacements, 176, 179)
-    _add_count_replacement(replacements, 176, 179)
-    with pytest.raises(ValueError, match="ambiguous count replacement"):
-        _add_count_replacement(replacements, 176, 180)
 
 
 def test_inventory_count_updates_only_the_reviewed_length_target() -> None:
@@ -155,6 +147,30 @@ def test_count_breakdowns_refuse_missing_extra_or_duplicate_keys() -> None:
         )
     with pytest.raises(ValueError, match="expected one asserted count dictionary"):
         _replace_asserted_counts(source + source, "ledger.counts", {"a": 1, "b": 2})
+
+
+def test_scalar_pins_are_found_by_asserted_expression_not_old_value() -> None:
+    # The module pin may already read 42_229 after a merge while the test
+    # still asserts 42_228; matching the expression refreshes it anyway.
+    source = (
+        "assert len(ledger.fields) == EXPECTED == 42_228\n"
+        'assert fields["claim_count"] == 49\n'
+        "assert other == 42_228\n"
+    )
+    refreshed = _replace_asserted_scalar(source, "len(ledger.fields)", 42_229)
+    assert refreshed == source.replace("EXPECTED == 42_228", "EXPECTED == 42229")
+    assert _replace_asserted_scalar(source, "fields['claim_count']", 49) == source
+
+
+def test_scalar_pins_refuse_missing_duplicate_or_nonliteral_assertions() -> None:
+    with pytest.raises(ValueError, match="expected one scalar assertion"):
+        _replace_asserted_scalar("assert x == 1\n", "y", 2)
+    with pytest.raises(ValueError, match="expected one scalar assertion"):
+        _replace_asserted_scalar("assert x == 1\nassert x == 1\n", "x", 2)
+    with pytest.raises(ValueError, match="not an integer literal"):
+        _replace_asserted_scalar("assert x == EXPECTED\n", "x", 2)
+    with pytest.raises(ValueError, match="not an integer literal"):
+        _replace_asserted_scalar("assert x == True\n", "x", 2)
 
 
 def test_calibration_pin_hashes_the_fixture_contract_not_the_loaded_bundle() -> None:
