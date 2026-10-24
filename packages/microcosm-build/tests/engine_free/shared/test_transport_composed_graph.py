@@ -2783,16 +2783,26 @@ def test_cli_main_refuses_unavailable_rules_engine(
     assert not (out / EXPORT_FILENAME).exists()
 
 
+_PRECALIBRATION_PROPERTY_DOMAINS = {
+    "mixed": {
+        "kinds": ("encode", "unit", "person", "selector", "holdout"),
+        "holdout_sources": True,
+    },
+    # Without hold-out data most graphs pass the other checks, so the
+    # producer attribution of rule 3 is exercised in every run.
+    "rules_only": {"kinds": ("person", "selector"), "holdout_sources": False},
+}
+
+
 @st.composite
-def _precalibration_ancestry_dags(draw):
-    """Small DAGs with independent binding declarations and column edges."""
-    kinds = draw(
-        st.lists(
-            st.sampled_from(("encode", "unit", "person", "selector", "holdout")),
-            min_size=1,
-            max_size=7,
-        )
-    )
+def _precalibration_ancestry_dags(draw, kinds, holdout_sources):
+    """Small DAGs with independent binding declarations and column edges.
+
+    A new binding may also declare another binding's variable name, which only
+    that other binding's node produces; selector nodes add a derived column
+    that is not a binding variable; any binding node may carry hold-out data.
+    """
+    kinds = draw(st.lists(st.sampled_from(kinds), min_size=1, max_size=7))
     nodes = []
     bindings = {}
     for index, kind in enumerate(kinds):
@@ -2808,11 +2818,22 @@ def _precalibration_ancestry_dags(draw):
                 binding = draw(st.sampled_from(available))
             else:
                 binding = f"binding_{index}"
-                bindings[binding] = {"entity": entity, "variables": []}
+                shared = [
+                    variable
+                    for row in bindings.values()
+                    if row["entity"] == entity
+                    for variable in row["variables"]
+                ]
+                bindings[binding] = {"entity": entity, "variables": [], "derived": []}
+                if shared and draw(st.booleans()):
+                    bindings[binding]["variables"].append(draw(st.sampled_from(shared)))
         outputs = [f"value_{index}"]
         if binding is not None:
             outputs.append(f"private_{index}")
             bindings[binding]["variables"].extend(outputs)
+        if kind == "selector":
+            outputs.append(f"derived_{index}")
+            bindings[binding]["derived"].append(f"derived_{index}")
         reads = []
         dependencies = []
         for predecessor, earlier in enumerate(nodes):
@@ -2831,6 +2852,9 @@ def _precalibration_ancestry_dags(draw):
                 "reads": reads,
                 "dependencies": dependencies,
                 "holdout_selection": kind == "holdout" and draw(st.booleans()),
+                "holdout_source": holdout_sources
+                and binding is not None
+                and draw(st.sampled_from((False, False, False, True))),
             }
         )
     declared = {}
@@ -2838,6 +2862,10 @@ def _precalibration_ancestry_dags(draw):
         if draw(st.booleans()):
             declared[binding] = draw(
                 st.sets(st.sampled_from(row["variables"]), min_size=1)
+            ) | (
+                draw(st.sets(st.sampled_from(row["derived"])))
+                if row["derived"]
+                else set()
             )
     dependencies = []
     reads = []
@@ -2857,22 +2885,44 @@ def _precalibration_ancestry_dags(draw):
             "reads": reads,
             "dependencies": dependencies,
             "holdout_selection": False,
+            "holdout_source": False,
         }
     )
     return nodes, bindings, declared
 
 
-def _precalibration_reference_accepts(model):
-    """The stage rules on generated kinds and column-use edges, upstream of calibration."""
-    nodes, _, declared = model
+def _precalibration_reference_relevant(nodes):
+    """Calibration and its ancestors: the nodes the stage rules govern."""
     relevant = {len(nodes) - 1}
     for index in range(len(nodes) - 1, -1, -1):
         if index in relevant:
             relevant.update(nodes[index]["dependencies"])
+    return relevant
+
+
+def _precalibration_reference_missing_derived(model, binding):
+    """Declared derived columns that no node of the stage upstream produces."""
+    nodes, bindings, declared = model
+    relevant = _precalibration_reference_relevant(nodes)
+    produced = {
+        column
+        for index in relevant
+        if nodes[index]["binding"] == binding
+        for column in nodes[index]["outputs"]
+    }
+    return declared[binding] & set(bindings[binding]["derived"]) - produced
+
+
+def _precalibration_reference_accepts(model):
+    """The stage rules on generated kinds and column-use edges, upstream of calibration."""
+    nodes, _, declared = model
+    relevant = _precalibration_reference_relevant(nodes)
+    if any(_precalibration_reference_missing_derived(model, name) for name in declared):
+        return False
     for index in relevant:
         node = nodes[index]
         binding = node["binding"]
-        if node["kind"] == "holdout":
+        if node["kind"] == "holdout" or node["holdout_source"]:
             return False
         if (
             binding is not None
@@ -2944,7 +2994,7 @@ def _precalibration_synthetic_graph(model):
             prepared_params["engine_ref"] = references[binding]
             if item["kind"] == "selector":
                 params["engine_ref"] = {"binding": binding, "field": "engine_ref"}
-        sources = ()
+        sources = ("synthetic_holdout_facts",) if item["holdout_source"] else ()
         if item["kind"] == "holdout":
             if item["holdout_selection"]:
                 params["selection"] = {"resource": "holdout_references"}
@@ -3001,7 +3051,12 @@ def _precalibration_synthetic_graph(model):
             "benefit_unit_rule": {"entity": "family"},
             "axiom_rules_bindings": {
                 "bindings": [
-                    {"id": name, "rulespec_path": f"synthetic/{name}.yaml", **row}
+                    {
+                        "id": name,
+                        "rulespec_path": f"synthetic/{name}.yaml",
+                        "entity": row["entity"],
+                        "variables": row["variables"],
+                    }
                     for name, row in bindings.items()
                 ]
             },
@@ -3023,6 +3078,21 @@ def _precalibration_synthetic_graph(model):
                             if column in columns
                         ],
                         "citation": "Synthetic stage contract.",
+                        **(
+                            {
+                                "derived_outputs": [
+                                    {
+                                        "entity": bindings[name]["entity"],
+                                        "column": column,
+                                        "purpose": "calibration_measure",
+                                    }
+                                    for column in bindings[name]["derived"]
+                                    if column in columns
+                                ]
+                            }
+                            if columns & set(bindings[name]["derived"])
+                            else {}
+                        ),
                     }
                     for name, columns in declared.items()
                 ],
@@ -3089,9 +3159,13 @@ def _precalibration_property_outcomes(model):
     return outcomes
 
 
+@pytest.mark.parametrize("domain", sorted(_PRECALIBRATION_PROPERTY_DOMAINS))
 @settings(max_examples=2000, deadline=None, database=None)
-@given(model=_precalibration_ancestry_dags(), data=st.data())
-def test_precalibration_stages_calibration_ancestry_property(model, data):
+@given(data=st.data())
+def test_precalibration_stages_calibration_ancestry_property(domain, data):
+    model = data.draw(
+        _precalibration_ancestry_dags(**_PRECALIBRATION_PROPERTY_DOMAINS[domain])
+    )
     nodes, bindings, declared = model
     expected = _precalibration_reference_accepts(model)
     outcomes = _precalibration_property_outcomes(model)
@@ -3126,8 +3200,9 @@ def test_precalibration_stages_calibration_ancestry_property(model, data):
                 model,
                 dropped,
             )
-        else:
-            # I2: dropping a unit stage never admits what listing it refused.
+        elif not _precalibration_reference_missing_derived(model, dropped):
+            # I2: dropping a unit stage never admits what listing it refused,
+            # unless the refusal is that stage's own declaration error.
             assert outcomes[label, "guard"] or not reduced[label, "guard"], (
                 label,
                 model,
@@ -3313,19 +3388,37 @@ def test_precalibration_ancestry_stage_binding_after_calibration_is_not_checked(
         )
 
 
+def _precalibration_inventory(engine_refs, encoding):
+    """The prepared engine_refs map, spelled the ways a parameter can carry it."""
+    inventory = {"engine_refs": dict(sorted(engine_refs.items()))}
+    canonical = canonical_json(inventory).decode()
+    return {
+        "string": canonical,
+        "tuple": (canonical,),
+        "spaced": json.dumps(inventory, indent=2),
+        "nested": json.dumps({"receipt": json.dumps(inventory)}),
+        "embedded": f"inventory={json.dumps(inventory)};",
+    }[encoding]
+
+
+_PRECALIBRATION_INVENTORY_ENCODINGS = [
+    "string",
+    "tuple",
+    "spaced",
+    "nested",
+    "embedded",
+]
+
+
 @pytest.mark.parametrize("name", ["nz.targets.problem", "nz.precal.family"])
-@pytest.mark.parametrize("encoding", ["string", "tuple"])
+@pytest.mark.parametrize("encoding", _PRECALIBRATION_INVENTORY_ENCODINGS)
 def test_precalibration_ancestry_compiled_prepared_map_still_refuses(
     calibration_ancestry_composed, name, encoding
 ):
     composed = calibration_ancestry_composed
     spec = _precalibration_spec(composed)
     graph = compose_transport_graph(spec, composed.config)
-    prepared = canonical_json(
-        {"engine_refs": dict(sorted(composed.config.engine_refs.items()))}
-    ).decode()
-    if encoding == "tuple":
-        prepared = (prepared,)
+    prepared = _precalibration_inventory(composed.config.engine_refs, encoding)
     graph = replace(
         graph,
         nodes=tuple(
@@ -3335,12 +3428,379 @@ def test_precalibration_ancestry_compiled_prepared_map_still_refuses(
             for node in graph.nodes
         ),
     )
-    reason = (
-        "prepared engine_refs map"
-        if name == "nz.precal.family"
-        else "not a declared pre-calibration stage"
-    )
-    with pytest.raises(ValueError, match=f"node '{name}' carries {reason}"):
+    with pytest.raises(
+        ValueError, match=f"node '{name}' carries prepared engine_refs map"
+    ):
         compose_module.validate_transport_calibration_ancestry(
             spec, graph=graph, config=composed.config
         )
+
+
+@pytest.mark.parametrize("encoding", ["string", "spaced", "nested", "embedded"])
+def test_precalibration_ancestry_declared_prepared_map_refuses(
+    calibration_ancestry_composed, encoding
+):
+    """A listed stage node may not carry every engine in its declaration either."""
+    composed = calibration_ancestry_composed
+    spec = _precalibration_spec(composed)
+    row = next(
+        item
+        for item in spec["resources"]["transport_graph"]["nodes"]
+        if item["id"] == "nz.precal.family"
+    )
+    row["params"] = {
+        "inventory": _precalibration_inventory(composed.config.engine_refs, encoding)
+    }
+    with pytest.raises(
+        ValueError, match="node 'nz.precal.family' carries prepared engine_refs map"
+    ):
+        compose_module.validate_transport_calibration_ancestry(
+            spec, config=composed.config
+        )
+
+
+_SYNTHETIC_SEED = Owned("person", "seed", "float64")
+
+
+def _synthetic_stage_spec(bindings, stages, rows, *, holdout=()):
+    return {
+        "country": "synthetic",
+        "resources": {
+            "benefit_unit_rule": {"entity": "family"},
+            "axiom_rules_bindings": {"bindings": bindings},
+            "holdout_references": {"target_references": list(holdout)},
+            "precalibration_stages": {"schema_version": 1, "stages": stages},
+            "transport_graph": {
+                "schema_version": 1,
+                "country": "synthetic",
+                "nodes": [{"id": "create", "kernel": "synthetic.create@1"}, *rows],
+                "endpoints": {"calibration": "cal"},
+            },
+        },
+    }
+
+
+def _synthetic_binding(name, entity, variables):
+    return {
+        "id": name,
+        "entity": entity,
+        "rulespec_path": f"synthetic/{name}.yaml",
+        "variables": list(variables),
+    }
+
+
+def _synthetic_stage(binding, outputs, derived=None):
+    stage = {
+        "id": f"stage.{binding['id']}",
+        "rules_binding": binding["id"],
+        "rulespec_path": binding["rulespec_path"],
+        "outputs": [
+            {
+                "entity": binding["entity"],
+                "column": column,
+                "purpose": "calibration_measure",
+            }
+            for column in outputs
+        ],
+        "citation": "Synthetic stage contract.",
+    }
+    if derived is not None:
+        stage["derived_outputs"] = [
+            {"entity": entity, "column": column, "purpose": "calibration_measure"}
+            for entity, column in derived
+        ]
+    return stage
+
+
+def _synthetic_outcomes(spec, nodes, engine_refs):
+    """The guard's outcome in the declaration pass and the composed pass."""
+    graph = Graph(
+        "synthetic",
+        (
+            SourceRef("donor", "synthetic@1"),
+            SourceRef("synthetic_holdout_facts", "synthetic@1"),
+        ),
+        (
+            Node(
+                "create",
+                "synthetic.create@1",
+                structural=StructuralDelta.CREATE,
+                sources=("donor",),
+                outputs=(_SYNTHETIC_SEED,),
+            ),
+            *nodes,
+        ),
+    )
+    config = TransportGraphConfig(
+        engine_refs=engine_refs, create_outputs=(_SYNTHETIC_SEED,)
+    )
+    return {
+        label: _precalibration_outcome(
+            compose_module.validate_transport_calibration_ancestry,
+            spec,
+            graph=graph if label == "composed" else None,
+            config=config,
+        )
+        for label in ("declaration", "composed")
+    }
+
+
+def _overlap_case(a_produces_shared):
+    """Bindings A and B both declare family.shared; each stage exposes only its public column."""
+    bindings = [
+        _synthetic_binding(name, "family", ["shared", f"{name}_public"])
+        for name in ("A", "B")
+    ]
+    stages = [_synthetic_stage(row, [f"{row['id']}_public"]) for row in bindings]
+    rows = [
+        {
+            "id": "b_source",
+            "kernel": RULES,
+            "population": "create",
+            "rules_binding": "B",
+            "outputs": [{"entity": "family", "column": "shared"}],
+        },
+        {
+            "id": "b",
+            "kernel": "simulate.solve_zero@1",
+            "population": "create",
+            "params": {"ref": {"binding": "B", "field": "engine_ref"}},
+            "inputs": [{"entity": "family", "columns": ["shared"]}],
+            "outputs": [{"entity": "family", "column": "B_public"}],
+        },
+        {
+            "id": "cal",
+            "kernel": "calibrate.synthetic@1",
+            "population": "create",
+            "inputs": [{"entity": "family", "columns": ["B_public"]}],
+        },
+    ]
+    nodes = [
+        Node(
+            "b_source",
+            RULES,
+            population="create",
+            params={"engine_ref": "B-ref"},
+            outputs=(Owned("family", "shared", "float64"),),
+        ),
+        Node(
+            "b",
+            "simulate.solve_zero@1",
+            population="create",
+            params={"engine_ref": "B-ref"},
+            inputs=(Slice("family", ("shared",)),),
+            outputs=(Owned("family", "B_public", "float64"),),
+        ),
+        Node(
+            "cal",
+            "calibrate.synthetic@1",
+            population="create",
+            inputs=(Slice("family", ("B_public",)),),
+        ),
+    ]
+    if a_produces_shared:
+        # A also runs upstream and owns a column of the same name, read by B.
+        rows[0] = {**rows[0], "rules_binding": "A"}
+        nodes[0] = replace(nodes[0], params={"engine_ref": "A-ref"})
+    return _synthetic_stage_spec(bindings, stages, rows), nodes
+
+
+@pytest.mark.parametrize("drop_unused", [False, True])
+def test_precalibration_ancestry_unused_stage_does_not_restrict_by_name(drop_unused):
+    """Rule 3 restricts what a stage's own nodes produce, not every matching name."""
+    spec, nodes = _overlap_case(a_produces_shared=False)
+    if drop_unused:
+        spec["resources"]["precalibration_stages"]["stages"].pop(0)
+    outcomes = _synthetic_outcomes(spec, nodes, {"A": "A-ref", "B": "B-ref"})
+    assert outcomes == {"declaration": None, "composed": None}
+
+
+def test_precalibration_ancestry_stage_output_read_by_another_stage_refuses():
+    spec, nodes = _overlap_case(a_produces_shared=True)
+    outcomes = _synthetic_outcomes(spec, nodes, {"A": "A-ref", "B": "B-ref"})
+    message = (
+        "Transport calibration ancestry: node 'b' carries undeclared "
+        "pre-calibration stage output."
+    )
+    assert outcomes == {
+        "declaration": (ValueError, message),
+        "composed": (ValueError, message),
+    }
+
+
+def _derived_case(*, derived, producer_upstream=True):
+    """A person-binding gross-up solve whose output is not a binding variable."""
+    binding = _synthetic_binding("tax", "person", ["tax_before_credits"])
+    stage = _synthetic_stage(binding, ["tax_before_credits"], derived)
+    population = "create" if producer_upstream else "after"
+    rows = [
+        {
+            "id": "gross",
+            "kernel": "simulate.solve_zero@1",
+            "population": population,
+            "params": {"engine_ref": {"binding": "tax", "field": "engine_ref"}},
+            "outputs": [{"entity": "person", "column": "benefit_gross"}],
+        },
+        {
+            "id": "cal",
+            "kernel": "calibrate.synthetic@1",
+            "population": "create",
+            "inputs": [
+                {
+                    "entity": "person",
+                    "columns": ["benefit_gross" if producer_upstream else "seed"],
+                }
+            ],
+        },
+    ]
+    nodes = [
+        Node(
+            "gross",
+            "simulate.solve_zero@1",
+            population="create",
+            params={"engine_ref": "tax-ref"},
+            outputs=(Owned("person", "benefit_gross", "float64"),),
+        ),
+        Node(
+            "cal",
+            "calibrate.synthetic@1",
+            population="create",
+            inputs=(Slice("person", (rows[1]["inputs"][0]["columns"][0],)),),
+        ),
+    ]
+    if not producer_upstream:
+        rows.insert(
+            1,
+            {
+                "id": "after",
+                "kernel": "transport.boundary@1",
+                "structural": "filter",
+                "base": "cal",
+            },
+        )
+        nodes = [nodes[1]]
+    return _synthetic_stage_spec([binding], [stage], rows), nodes
+
+
+def test_precalibration_ancestry_derived_output_flows_to_calibration():
+    """NZ's w2b gross-up: a selector stage node's own column is a declared output."""
+    spec, nodes = _derived_case(derived=[("person", "benefit_gross")])
+    assert _synthetic_outcomes(spec, nodes, {"tax": "tax-ref"}) == {
+        "declaration": None,
+        "composed": None,
+    }
+
+
+def test_precalibration_ancestry_undeclared_derived_column_refuses():
+    spec, nodes = _derived_case(derived=None)
+    message = (
+        "Transport calibration ancestry: node 'cal' carries undeclared "
+        "pre-calibration stage output."
+    )
+    assert _synthetic_outcomes(spec, nodes, {"tax": "tax-ref"}) == {
+        "declaration": (ValueError, message),
+        "composed": (ValueError, message),
+    }
+
+
+@pytest.mark.parametrize("producer_upstream", [False, True])
+def test_precalibration_ancestry_derived_output_needs_an_upstream_producer(
+    producer_upstream,
+):
+    """A derived row naming a column no upstream stage node produces refuses."""
+    # Upstream, the real column is declared too, so only the phantom row fails.
+    column = "never_produced" if producer_upstream else "benefit_gross"
+    derived = [("person", "benefit_gross")] if producer_upstream else []
+    spec, nodes = _derived_case(
+        derived=[*derived, ("person", column)], producer_upstream=producer_upstream
+    )
+    message = (
+        f"precalibration_stages derived output person.{column} of 'stage.tax' is "
+        "not produced by a stage node upstream of calibration."
+    )
+    assert _synthetic_outcomes(spec, nodes, {"tax": "tax-ref"}) == {
+        "declaration": (ValueError, message),
+        "composed": (ValueError, message),
+    }
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["key", "binding_variable", "purpose", "duplicate", "holdout", "empty_column"],
+)
+def test_precalibration_ancestry_derived_output_schema_refuses(mutation):
+    spec, _ = _derived_case(derived=[("person", "benefit_gross")])
+    stage = spec["resources"]["precalibration_stages"]["stages"][0]
+    row = stage["derived_outputs"][0]
+    if mutation == "key":
+        row["unknown"] = True
+    elif mutation == "binding_variable":
+        row["column"] = "tax_before_credits"
+    elif mutation == "purpose":
+        row["purpose"] = "evaluation"
+    elif mutation == "duplicate":
+        stage["derived_outputs"].append(dict(row))
+    elif mutation == "holdout":
+        spec["resources"]["holdout_references"]["target_references"].append(
+            {"entity": "person", "measure": "benefit_gross"}
+        )
+    else:
+        row["column"] = ""
+    with pytest.raises(ValueError, match="precalibration_stages"):
+        compose_module.validate_transport_calibration_ancestry(spec)
+
+
+@pytest.mark.parametrize("compiled", [False, True])
+def test_precalibration_ancestry_stage_node_holdout_source_refuses(compiled):
+    """The hold-out check covers a stage's own nodes, not only their ancestors."""
+    spec, nodes = _derived_case(derived=[("person", "benefit_gross")])
+    rows = spec["resources"]["transport_graph"]["nodes"]
+    if compiled:
+        nodes = [
+            replace(node, sources=("synthetic_holdout_facts",))
+            if node.id == "gross"
+            else node
+            for node in nodes
+        ]
+    else:
+        next(row for row in rows if row["id"] == "gross")["sources"] = [
+            "synthetic_holdout_facts"
+        ]
+    outcomes = _synthetic_outcomes(spec, nodes, {"tax": "tax-ref"})
+    label = "composed" if compiled else "declaration"
+    assert outcomes[label] == (
+        ValueError,
+        "Transport calibration ancestry: node 'gross' carries hold-out source.",
+    )
+
+
+@pytest.mark.parametrize("guard", ["absent", "empty"])
+@pytest.mark.parametrize("malformed", ["unit_entity", "binding_entity", "missing"])
+def test_precalibration_ancestry_malformed_entities_match_today(
+    monkeypatch, guard, malformed
+):
+    """Without stages, even a malformed entity gets today's exact outcome."""
+    spec = _synthetic_stage_spec(
+        [], [], [{"id": "cal", "kernel": "calibrate.synthetic@1"}]
+    )
+    resources = spec["resources"]
+    if malformed == "unit_entity":
+        resources["benefit_unit_rule"]["entity"] = []
+    elif malformed == "binding_entity":
+        resources["axiom_rules_bindings"]["bindings"] = [
+            {"id": "odd", "entity": ["family"], "variables": ["x"]}
+        ]
+    else:
+        del resources["benefit_unit_rule"]["entity"]
+        resources["axiom_rules_bindings"]["bindings"] = [
+            {"id": "odd", "variables": ["x"], "rulespec_path": "odd.yaml"}
+        ]
+    if guard == "absent":
+        del resources["precalibration_stages"]
+    expected = _precalibration_outcome(_precalibration_reference_guard, spec)
+    assert (
+        _precalibration_outcome(
+            compose_module.validate_transport_calibration_ancestry, spec
+        )
+        == expected
+    )
