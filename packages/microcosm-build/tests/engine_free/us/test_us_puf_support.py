@@ -1297,6 +1297,12 @@ def test_puf_tax_unit_donor_derives_partnership_and_s_corp_split_from_raw_fields
             "E25960": [5.0, 10.0],
             "E26190": [80.0, 110.0],
             "E26180": [20.0, 30.0],
+            "E25940": [0.0, 0.0],
+            "E25920": [0.0, 0.0],
+            "E30400": [923.5, 0.0],
+            "E30500": [0.0, 1_847.0],
+            "E00900": [300.0, 500.0],
+            "E02100": [100.0, -200.0],
             "E17500": [1_000.0, 2_000.0],
         },
         person_outputs=(
@@ -1312,7 +1318,14 @@ def test_puf_tax_unit_donor_derives_partnership_and_s_corp_split_from_raw_fields
 
     assert donor["partnership_income"].tolist() == [45.0, 60.0]
     assert donor["s_corp_income"].tolist() == [60.0, 80.0]
-    assert donor["partnership_self_employment_net_earnings"].tolist() == [25.0, 40.0]
+    # (E30400 + E30500) / 0.9235 - (E00900 + E02100): 1,000 - 400 and
+    # 2,000 - 300. The S corporation columns do not enter.
+    np.testing.assert_allclose(
+        donor["partnership_self_employment_net_earnings"].to_numpy(),
+        [600.0, 1_700.0],
+        rtol=0.0,
+        atol=1e-9,
+    )
     assert donor["health_insurance_premiums_without_medicare_part_b"].tolist() == [
         453.0,
         906.0,

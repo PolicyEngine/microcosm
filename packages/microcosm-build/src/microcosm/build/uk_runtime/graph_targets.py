@@ -10,12 +10,12 @@ from dataclasses import asdict, dataclass, replace
 from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import numpy as np
 import pandas as pd
 
 from microcosm.build import cross_grain
-from microcosm.build.country_spec import load_country_spec
 from microcosm.calibrate import CalibrationHierarchy, TargetRegistry, TargetSpec
 from microcosm.calibrate.artifacts import (
     PROBLEM_TYPE,
@@ -44,7 +44,17 @@ from microcosm.graph import (
 from microcosm.graph.canonical import canonical_json
 from microcosm.graph.codecs import SOURCE_CODECS
 
-from . import full_measure, full_problem, ladder_targets, ledger_targets, local_doctrine
+from . import (
+    full_measure,
+    full_problem,
+    ladder_targets,
+    ledger_targets,
+    local_doctrine,
+    local_rowwise,
+    national_doctrine,
+    support_floor,
+    target_weights,
+)
 from .full_measure import resolve_uk_full_national_problem
 from .full_problem import build_uk_full_local_problem
 from .full_targets import CHRONICLE_SOURCE_CODEC, load_chronicle_source_bytes
@@ -59,8 +69,15 @@ from .ladder_targets import (
     ladder_target_provenance,
     ladder_vs_chronicle_household_dispersion,
 )
-from .ledger_targets import uk_census_household_uprating, uk_ledger_households_total
+from .ledger_targets import (
+    load_uk_local_target_reference_membership,
+    uk_census_household_uprating,
+    uk_nation_households_reference,
+    uk_off_surface_cells,
+    uk_small_cell_deferred_cells,
+)
 from .local_rowwise import UKRowwiseNationalRows, prepare_uk_full_solve
+from .solve_scope import uk_solve_fingerprint
 
 TARGET_SURFACE_TYPE = ArtifactType("microcosm.uk.full-target-surface", 1)
 TARGET_SELECTION_TYPE = ArtifactType("microcosm.uk.full-target-selection", 1)
@@ -104,7 +121,7 @@ def target_geography(spec: TargetSpec) -> str:
     if local and ledger and local != ledger:
         raise ValueError(f"Target {spec.name!r} has contradictory geography levels.")
     level = local or ledger
-    if level not in {"country", "region", "constituency", "la"}:
+    if level not in {"country", "region", "constituency", "la", "brma"}:
         raise ValueError(
             f"Target {spec.name!r} has unsupported geography level {level!r}."
         )
@@ -200,7 +217,8 @@ class _TargetKernel(KernelBase):
     )
 
     def implementation_hash(self) -> str:
-        from . import full_targets
+        from . import full_targets, high_value_homes, measure_simulation
+        from .target_compile_modules import uk_target_compile_modules
 
         implementation = source_hash(
             type(self),
@@ -208,15 +226,25 @@ class _TargetKernel(KernelBase):
             full_problem,
             full_targets,
             cross_grain,
+            high_value_homes,
             ladder_targets,
             ledger_targets,
             local_doctrine,
+            # The measures full_measure and full_targets resolve, the high-value
+            # homes region rows among them (microcosm#1301): an edit there
+            # alone must re-key the measures and everything they feed.
+            measure_simulation,
+            support_floor,
+            *uk_target_compile_modules(),
         )
+        # The solve fingerprint: every packaged resource but the gate-only
+        # registers, which no compile module reads (microcosm#1301), so a
+        # sign-off between two release builds leaves the surface a cache hit.
         return hashlib.sha256(
             canonical_json(
                 {
                     "implementation": implementation,
-                    "country_spec": load_country_spec("uk").fingerprint,
+                    "country_spec": uk_solve_fingerprint(),
                 }
             )
         ).hexdigest()
@@ -227,7 +255,6 @@ class UKFullTargetCompilationKernel(_TargetKernel):
 
     def run(self, context: KernelContext) -> KernelResult:
         from .full_targets import load_uk_full_target_inputs
-        from .ledger_targets import uk_local_target_surface
 
         inputs = load_uk_full_target_inputs(
             context.sources["uk_ledger_facts"],
@@ -238,84 +265,129 @@ class UKFullTargetCompilationKernel(_TargetKernel):
                 str(context.params["review_date"])
             ),
         )
-        ladder = load_uk_oa_ladder(context.sources["uk_ladder"])
-        period = int(inputs["calibration_year"])
-        national = inputs["national_registry"]
-        local = inputs["local_registry"]
-        uprating = uk_census_household_uprating(
-            local,
-            uk_ledger_households_total(inputs["artifact"].facts, period=period),
-            period=period,
-        )
-        dispersion = ladder_vs_chronicle_household_dispersion(ladder, local.specs)
-        ladder_provenance = ladder_target_provenance(ladder)
-        surface, reconciliation = uk_local_target_surface(
-            full_problem._joint_surface_registry(local, national),
-            bound_national_target_ids=full_problem._national_contract_target_ids(
-                national
-            ),
-            period=period,
-            reviewed_unbound_higher_targets=inputs["reviewed_unbound_higher_targets"],
-            census_household_uprating=uprating,
-            area_region_codes=uk_area_region_codes(ladder),
-        )
-        full = TargetRegistry(
-            [
-                *_local_specs(surface),
-                *[
-                    replace(
-                        spec,
-                        metadata={
-                            **spec.metadata,
-                            "materialization": "uk_national_measure",
-                            "geography_level": target_geography(spec),
-                        },
-                    )
-                    for spec in national.specs
-                ],
-            ],
-            country="uk",
-        )
-        with Path(context.sources["uk_ladder"]).open("rb") as stream:
-            ladder_sha256 = hashlib.file_digest(stream, "sha256").hexdigest()
-        payload = {
-            "registry": registry_payload(full),
-            "local_registry": registry_payload(local),
-            "national_registry": registry_payload(national),
-            "band_edge_registry": registry_payload(inputs["band_edge_registry"]),
-            "surface": _surface_records(surface),
-            "surface_columns": surface.columns.tolist(),
-            "cross_geography": reconciliation,
-            "census_household_uprating": reconciliation["census_household_uprating"],
-            "household_dispersion": dispersion,
-            "ladder_provenance": ladder_provenance,
-            "measure_exclusions": inputs["measure_exclusions"],
-            "reviewed_unbound_higher_targets": inputs[
-                "reviewed_unbound_higher_targets"
-            ],
-            "source_validation": {
-                "national_source_pin": inputs["national_source_pin"],
-                "local_source_pin": inputs["local_source_pin"],
-                "register_completeness": inputs["register_completeness"],
-                "ledger_provenance": inputs["ledger_provenance"],
-                "targets": {
-                    "chronicle": inputs["ledger_provenance"],
-                    "paired_ladder_sha256": ladder_sha256,
-                },
-            },
-            "uk_ledger_compiled_registries": {
-                str(period): registry_payload(registry)
-                for period, registry in inputs["uk_ledger_compiled_registries"].items()
-            },
-            "uk_ledger_compiled_local_registries": {
-                str(period): registry_payload(registry)
-                for period, registry in inputs[
-                    "uk_ledger_compiled_local_registries"
-                ].items()
-            },
-            "calibration_year": period,
-        }
+        payload = compile_uk_full_target_surface(inputs, context.sources["uk_ladder"])
         return KernelResult(artifacts={"surface": canonical_json(payload)})
+
+
+def compile_uk_full_target_surface(
+    inputs: Mapping[str, Any], ladder_path: str | Path
+) -> dict[str, Any]:
+    """The target-compilation node's payload from loaded inputs and a ladder.
+
+    Shared with ``tools/uk_target_surface_receipt.py`` so a receipt reads the
+    surface the graph would compile, uprating and reconciliation included.
+    """
+
+    from .ledger_targets import uk_local_target_surface
+    from .national_reconciliation import (
+        assert_uk_national_rows_unmoved,
+        assert_uk_subset_relations,
+    )
+
+    ladder = load_uk_oa_ladder(ladder_path)
+    period = int(inputs["calibration_year"])
+    with Path(ladder_path).open("rb") as stream:
+        ladder_sha256 = hashlib.file_digest(stream, "sha256").hexdigest()
+    national = inputs["national_registry"]
+    local = inputs["local_registry"]
+    # microcosm#1123: the census household cells are uprated to the nations'
+    # official estimates summed (the nation and region bridge then places the
+    # level per leg); the LFS UK total stays a diagnostic with its gap.
+    uprating = uk_census_household_uprating(
+        local,
+        uk_nation_households_reference(
+            national, inputs["artifact"].facts, period=period
+        ),
+        period=period,
+    )
+    dispersion = ladder_vs_chronicle_household_dispersion(ladder, local.specs)
+    ladder_provenance = ladder_target_provenance(ladder)
+    surface, reconciliation = uk_local_target_surface(
+        full_problem._joint_surface_registry(local, national),
+        bound_national_target_ids=full_problem._national_contract_target_ids(national),
+        period=period,
+        reviewed_unbound_higher_targets=inputs["reviewed_unbound_higher_targets"],
+        census_household_uprating=uprating,
+        area_region_codes=uk_area_region_codes(ladder),
+        fanout_sum_controls=(inputs.get("national_reconciliation") or {}).get(
+            "fanout_sum_controls"
+        ),
+        deferred_cells=uk_small_cell_deferred_cells(
+            load_uk_local_target_reference_membership()
+        ),
+        off_surface_cells=uk_off_surface_cells(
+            load_uk_local_target_reference_membership()
+        ),
+    )
+    assert_uk_national_rows_unmoved(reconciliation)
+    # Parts <= whole on the values the solve binds: the full national register
+    # (measure-excluded bands included) against the reconciled local surface.
+    reconciliation["subset_relations"] = assert_uk_subset_relations(
+        inputs["band_edge_registry"], local_surface=surface
+    )
+    full = TargetRegistry(
+        [
+            *_local_specs(surface),
+            *[
+                replace(
+                    spec,
+                    metadata={
+                        **spec.metadata,
+                        "materialization": "uk_national_measure",
+                        "geography_level": target_geography(spec),
+                    },
+                )
+                for spec in national.specs
+            ],
+        ],
+        country="uk",
+    )
+    payload = {
+        "registry": registry_payload(full),
+        "local_registry": registry_payload(local),
+        "national_registry": registry_payload(national),
+        "band_edge_registry": registry_payload(inputs["band_edge_registry"]),
+        "surface": _surface_records(surface),
+        "surface_columns": surface.columns.tolist(),
+        "cross_geography": reconciliation,
+        "census_household_uprating": reconciliation["census_household_uprating"],
+        "household_dispersion": dispersion,
+        "ladder_provenance": ladder_provenance,
+        "measure_exclusions": inputs["measure_exclusions"],
+        "support_floor": inputs.get("support_floor"),
+        "reviewed_unbound_higher_targets": inputs["reviewed_unbound_higher_targets"],
+        "source_validation": {
+            "national_source_pin": inputs["national_source_pin"],
+            "local_source_pin": inputs["local_source_pin"],
+            "register_completeness": inputs["register_completeness"],
+            "ledger_provenance": inputs["ledger_provenance"],
+            "derived_fact_provenance": inputs.get("derived_fact_provenance"),
+            "targets": {
+                "chronicle": inputs["ledger_provenance"],
+                "paired_ladder_sha256": ladder_sha256,
+            },
+        },
+        "uk_ledger_compiled_registries": {
+            str(period): registry_payload(registry)
+            for period, registry in inputs["uk_ledger_compiled_registries"].items()
+        },
+        "uk_ledger_compiled_local_registries": {
+            str(period): registry_payload(registry)
+            for period, registry in inputs[
+                "uk_ledger_compiled_local_registries"
+            ].items()
+        },
+        "uk_ledger_compile_unsupported": {
+            str(period): [dict(row) for row in rows]
+            for period, rows in inputs["uk_ledger_compile_unsupported"].items()
+        },
+        "uk_ledger_compile_local_unsupported": {
+            str(period): [dict(row) for row in rows]
+            for period, rows in inputs["uk_ledger_compile_local_unsupported"].items()
+        },
+        "calibration_year": period,
+    }
+    return payload
 
 
 class UKFullTargetSelectionKernel(_TargetKernel):
@@ -337,6 +409,16 @@ class UKFullTargetSelectionKernel(_TargetKernel):
                     or f"{spec.family}/{target_geography(spec)}" in families
                 )
             )
+        brma_left_out = 0
+        if context.params.get("brma_rows", True) is False:
+            # Without area BRMAs the BRMA rows would bind on the spine's
+            # regional draw, unrelated to placement (microcosm#1305 review).
+            brma_left_out = sum(
+                target_geography(spec) == "brma" for spec in registry.specs
+            )
+            registry = registry.select(
+                predicate=lambda spec: target_geography(spec) != "brma"
+            )
         selected = select_targets(
             registry, geography_levels=levels, geography_resolver=target_geography
         )
@@ -346,6 +428,19 @@ class UKFullTargetSelectionKernel(_TargetKernel):
             "registry": registry_payload(selected.registry),
             "receipt": selected.receipt,
             "target_families": None if families is None else list(families),
+            **(
+                {}
+                if context.params.get("brma_rows", True)
+                else {
+                    "brma_rows_left_out": {
+                        "rows": brma_left_out,
+                        "reason": (
+                            "no area BRMAs (--brma-localisation none): the rows "
+                            "would bind on the spine's regional BRMA draw"
+                        ),
+                    }
+                }
+            ),
         }
         return KernelResult(artifacts={"selection": canonical_json(payload)})
 
@@ -397,6 +492,25 @@ class UKFullMeasureKernel(_TargetKernel):
                     local_grains=grains,
                 )
             )
+        floor_document = full.get("support_floor")
+        floor_evidence = None
+        if national_problem is not None and floor_document is not None:
+            # microcosm#1095 U3: the pool's clones share their spine
+            # household's source id, so support counts spine households.
+            applied = support_floor.apply_uk_support_floor(
+                national,
+                national_problem,
+                source_ids=lambda: support_floor.uk_household_source_ids(frame),
+                floor=support_floor.uk_support_floor_from_payload(
+                    floor_document["declaration"]
+                ),
+                evaluated_on=date.fromisoformat(str(floor_document["evaluated_on"])),
+            )
+            national_problem = applied.problem
+            floor_evidence = {
+                "exclusions": applied.exclusions,
+                "receipt": applied.receipt,
+            }
         arrays = {
             f"metrics_{grain}": metrics[grain].to_numpy(dtype=np.float64)
             for grain in grains
@@ -415,6 +529,7 @@ class UKFullMeasureKernel(_TargetKernel):
             "grains": {grain: metrics[grain].columns.tolist() for grain in grains},
             "has_national": national_problem is not None,
             "evidence": evidence,
+            "support_floor": floor_evidence,
         }
         return KernelResult(artifacts={"measures": _pack(metadata, arrays)})
 
@@ -473,6 +588,14 @@ def reconstruct_uk_full_problem_inputs(context: KernelContext) -> UKFullProblemI
     metadata, arrays = decode_measures(
         context.artifacts["measures"].payload, selected=selected
     )
+    floor_document = full.get("support_floor")
+    national = support_floor.narrow_uk_registry_by_support_floor(
+        national,
+        (metadata.get("support_floor") or {}).get("exclusions", {}),
+        None
+        if floor_document is None
+        else support_floor.uk_support_floor_from_payload(floor_document["declaration"]),
+    )
     ids = frame.table("household")["household_id"].tolist()
     if ids != metadata["household_ids"]:
         raise ValueError("Measured contributions belong to a different household axis.")
@@ -521,6 +644,22 @@ def reconstruct_uk_full_problem_inputs(context: KernelContext) -> UKFullProblemI
 class UKFullProblemKernel(_TargetKernel):
     ref = "uk.full.problem@1"
 
+    def implementation_hash(self) -> str:
+        # The loss weights the problem binds are built by
+        # ``local_rowwise.prepare_uk_full_solve`` from the rules in
+        # ``target_weights`` and ``national_doctrine`` (microcosm#1124), so an
+        # edit there re-keys the problem instead of replaying a stale vector.
+        return hashlib.sha256(
+            canonical_json(
+                {
+                    "targets": super().implementation_hash(),
+                    "weights": source_hash(
+                        local_rowwise, national_doctrine, target_weights
+                    ),
+                }
+            )
+        ).hexdigest()
+
     def run(self, context: KernelContext) -> KernelResult:
         inputs = reconstruct_uk_full_problem_inputs(context)
         frame, local_problem = inputs.frame, inputs.local_problem
@@ -536,6 +675,9 @@ class UKFullProblemKernel(_TargetKernel):
             national_rows=national_rows,
             target_weight_rule=str(context.params["target_weight_rule"]),
             allow_empty_local_binding=inputs.country_only,
+            # The local binding adjudications are reviewed on the build's
+            # review date, not the wall clock (microcosm#1278).
+            now=date.fromisoformat(str(context.params["review_date"])),
         )
         problem = build_constraint_matrix(frame, prepared.target_set, "household")
         if problem.skipped:
@@ -553,6 +695,19 @@ class UKFullProblemKernel(_TargetKernel):
                 }
             )
         doctrine = local_doctrine.UK_LOCAL_SOLVE_DOCTRINE
+        weight_receipt = (
+            {}
+            if prepared.target_rows is None
+            else {
+                "target_loss_weight_receipt": target_weights.uk_target_loss_weight_receipt(
+                    prepared.target_rows,
+                    prepared.target_loss_weights,
+                    rule=str(context.params["target_weight_rule"]),
+                ),
+                # microcosm#1207: the family loss-share floors' check.
+                "family_loss_share_floors": prepared.family_loss_share_floor_receipt,
+            }
+        )
         payload = encode_problem(
             problem,
             entity_ids=ids,
@@ -571,13 +726,30 @@ class UKFullProblemKernel(_TargetKernel):
                 "mass_reason": prepared.mass_reason,
                 "target_loss_cap": doctrine.target_loss_cap,
                 "max_weight_ratio": doctrine.max_weight_ratio,
+                # microcosm#1240: the doctrine's scale rule and the row scales
+                # it yields (the default with the family floors), so the dense
+                # node solves under the rule the problem binds.
+                "scale_rule": doctrine.scale_rule,
+                "target_loss_scales": (
+                    None
+                    if prepared.target_loss_scales is None
+                    else np.asarray(
+                        prepared.target_loss_scales, dtype=np.float64
+                    ).tolist()
+                ),
+                "target_loss_scale_receipt": prepared.target_loss_scale_receipt,
                 "binding_adjudications": prepared.binding_adjudications,
                 "rung_surface": rung,
                 "bound_families": list(bound_families),
                 "measure_resolution": metadata["evidence"],
                 "cross_geography": cross,
-                "measure_exclusions": full["measure_exclusions"],
+                "measure_exclusions": {
+                    **full["measure_exclusions"],
+                    **(metadata.get("support_floor") or {}).get("exclusions", {}),
+                },
+                "support_floor": (metadata.get("support_floor") or {}).get("receipt"),
                 "calibration_year": full["calibration_year"],
+                **weight_receipt,
             },
         )
         return KernelResult(artifacts={"problem": payload})
@@ -596,8 +768,14 @@ def append_uk_target_nodes(
     target_weight_rule: str = "uniform",
     optional_sources: tuple[str, ...] = (),
     review_date: str | None = None,
+    brma_rows: bool = True,
 ) -> Graph:
-    """Default all geographies. Scope is independent of K, k and solver outcomes."""
+    """Default all geographies. Scope is independent of K, k and solver outcomes.
+
+    ``brma_rows=False`` (no area BRMAs) leaves the BRMA-grain rows out of the
+    selection: they bind on each placed household's own BRMA, and the spine's
+    regional draw is unrelated to placement (microcosm#1305 review).
+    """
 
     if geography_levels is not None and not geography_levels:
         raise ValueError("An explicit geography selector must contain levels.")
@@ -609,7 +787,8 @@ def append_uk_target_nodes(
     common = {"time_period": time_period}
     review_date = date.today().isoformat() if review_date is None else review_date
     date.fromisoformat(review_date)
-    contract_identity = load_country_spec("uk").fingerprint
+    # The solve fingerprint, as the target kernels hash it (microcosm#1301).
+    contract_identity = uk_solve_fingerprint()
     surface = ArtifactInput(
         "surface", "uk.full.target_compilation", "surface", TARGET_SURFACE_TYPE
     )
@@ -637,6 +816,7 @@ def append_uk_target_nodes(
             params={
                 "geography_levels": geography_levels,
                 "target_families": target_families,
+                **({} if brma_rows else {"brma_rows": False}),
             },
             artifact_inputs=(surface,),
             artifact_outputs=(ArtifactOutput("selection", TARGET_SELECTION_TYPE),),
@@ -670,6 +850,9 @@ def append_uk_target_nodes(
                 **common,
                 "sample_fraction": float(sample_fraction),
                 "target_weight_rule": target_weight_rule,
+                # The binding adjudications' review date; the rotated holdout
+                # inherits it with these parameters (microcosm#1278).
+                "review_date": review_date,
             },
             sources=("uk_ladder",),
             artifact_inputs=(

@@ -43,8 +43,12 @@ def uk_stage_health_gate(
         return _spi_support_channel_gate(stage, evidence, parameters)
     if check == "spi_income_spine":
         return _spi_income_spine_gate(stage, evidence, parameters)
+    if check == "frs_annual_income_spells":
+        return _frs_annual_income_spells_gate(stage, evidence, parameters)
     if check == "pension_credit_take_up":
         return _pension_credit_take_up_gate(stage, evidence, parameters)
+    if check == "uc_take_up":
+        return _uc_take_up_gate(stage, evidence, parameters)
     if check == "child_benefit_take_up":
         return _child_benefit_take_up_gate(stage, evidence, parameters)
     if check == "spi_benefit_coherence":
@@ -57,6 +61,8 @@ def uk_stage_health_gate(
         return _cgt_residential_split_gate(stage, evidence, parameters)
     if check == "cgt_support_split":
         return _cgt_support_split_gate(stage, evidence, parameters)
+    if check == "high_value_home_support":
+        return _high_value_home_support_gate(stage, evidence, parameters)
     if check == "spi_income_band_donor_support":
         return _spi_income_band_donor_support_gate(stage, evidence, parameters)
     if check == "cgt_imputation_summary":
@@ -87,6 +93,14 @@ def uk_stage_health_gate(
         return _road_fuel_level_gate(stage, evidence, parameters)
     if check == "bus_support_pricing":
         return _bus_support_pricing_gate(stage, evidence, parameters)
+    if check == "property_components":
+        return _property_components_gate(stage, evidence, parameters)
+    if check == "property_purchases":
+        return _property_purchases_gate(stage, evidence, parameters)
+    if check == "regional_home_values":
+        return _regional_home_values_gate(stage, evidence, parameters)
+    if check == "legacy_closure_take_up":
+        return _legacy_closure_take_up_gate(stage, evidence, parameters)
     return GateResult(
         name="stage_health",
         passed=False,
@@ -234,7 +248,8 @@ def _support_clip_gate(
                         f"{stage}: {column!r} clip range starts at {lower}, below "
                         f"the donor floor {level}."
                     )
-        details["donor_floor_rows_raised"] = int(floor.get("rows_raised", 0))
+        # Banded in the receipt (receipt_counts.extreme_count): passed through.
+        details["donor_floor_rows_raised"] = floor.get("rows_raised", 0)
     return (
         _fail(stage, check, failures, details)
         if failures
@@ -253,13 +268,17 @@ def _energy_rake_gate(
     recomputed here from the vendored rows the stage declares (never taken
     from the receipt): each cell's ``shape_target`` must be the vendored NEED
     mean of the declared consumption year; each fuel's level block must be
-    the vendored DESNZ Energy Trends fiscal-year total, its ``factor`` that
+    the vendored DESNZ Energy Trends total over the stage's declared level
+    year (calendar 2024; microcosm#1113), its ``factor`` that
     total over the frame's pre-level total, and the levelled frame total the
     published one; each cell's ``target`` must be shape times factor; and,
     where the stage declares the published gas-connected share, every region
     with a published share must sit within ``maximum_connected_share_deviation``
     of it after the imposition (a region the draw could not fill records a
-    shortfall instead). The residual check then holds the maximum absolute
+    shortfall instead; with a declared ``connect_rule`` the walk connects
+    households there, the receipt must name the declared rule and salt, and a
+    shortfall stands only where the region ran out of households to connect).
+    The residual check then holds the maximum absolute
     relative deviation of any cell mean from its levelled target, per margin
     and fuel, to ``maximum_relative_deviation``, one fixed tolerance on the
     IPF's cross-margin residual. That residual must be converged, not
@@ -271,7 +290,9 @@ def _energy_rake_gate(
     presupposes the rake runs more sweeps than the window is long; a shorter
     series fails closed. The rake must have run in kWh with gas over gas-connected rows
     and no zero-current cell; a missing margin, block, tolerance or sweep
-    series fails closed.
+    series fails closed. A cell the rake started at its NEED mean because
+    every household in it drew no kWh must be one the stage declares in
+    ``zero_kwh_cells_at_need_mean`` (microcosm#1240).
 
     This is where NEED, DESNZ and the connection share are checked; the
     calibrated frame is held to the bound ONS 04.5.1 and 04.5.2 spend rows
@@ -285,6 +306,8 @@ def _energy_rake_gate(
         GAS_CONNECTED_PUBLISHED_METER_SHARE,
         GAS_KWH,
         PRICE_DOMESTIC_ENERGY_KIND,
+        declared_household_kwh_ceilings,
+        declared_zero_kwh_cells_at_need_mean,
         need_margins_from_facts,
         pricing_operation,
         published_energy_level,
@@ -405,6 +428,50 @@ def _energy_rake_gate(
             )
         factors[fuel] = float(factor)
         details["level_factor"][fuel] = float(factor)
+    ceilings = declared_household_kwh_ceilings(declared)
+    if ceilings is not None:
+        # No household above its fuel's domestic ceiling, and the cap kept the
+        # levelled total (microcosm#1164).
+        ceiling_block = receipt.get("ceiling")
+        if not isinstance(ceiling_block, Mapping):
+            failures.append(
+                f"{stage}: the stage declares household kWh ceilings but the "
+                "energy_rake receipt carries no ceiling block."
+            )
+            ceiling_block = {}
+        details["ceiling"] = {}
+        for fuel, ceiling in ceilings.items():
+            entry = ceiling_block.get(fuel)
+            if not isinstance(entry, Mapping):
+                if ceiling_block:
+                    failures.append(f"{stage}: ceiling block lacks {fuel}.")
+                continue
+            if not _close(entry.get("ceiling_kwh"), ceiling, 1e-12):
+                failures.append(
+                    f"{stage}: {fuel} was capped at {entry.get('ceiling_kwh')!r}, "
+                    f"not the declared {ceiling}."
+                )
+            if entry.get("feasible") is False:
+                failures.append(
+                    f"{stage}: no household was left below the {fuel} ceiling to "
+                    "take what the capped households gave up."
+                )
+            if entry.get("households_above_after") != 0:
+                failures.append(
+                    f"{stage}: {fuel} leaves households above the declared "
+                    f"ceiling of {ceiling} kWh."
+                )
+            if not _close(entry.get("frame_kwh_after"), float(level[fuel]), 1e-6):
+                failures.append(
+                    f"{stage}: {fuel} total after the cap is "
+                    f"{entry.get('frame_kwh_after')!r}, not the published "
+                    f"{float(level[fuel])}."
+                )
+            details["ceiling"][fuel] = {
+                "ceiling_kwh": ceiling,
+                "households_capped": entry.get("households_capped"),
+                "capped_share_of_total": entry.get("capped_share_of_total"),
+            }
     for margin in expected_margins:
         if margin not in declared_margins:
             failures.append(f"{stage}: margin {margin!r} was not raked.")
@@ -490,6 +557,28 @@ def _energy_rake_gate(
             f"{stage}: {len(zero_cells)} NEED cell(s) had a zero current mean and "
             "could not be raked."
         )
+    # A cell started at its NEED mean because every household in it drew no
+    # kWh stands only where the stage declares it (microcosm#1240).
+    held_rule = declared_zero_kwh_cells_at_need_mean(declared)
+    held = receipt.get("cells_held_at_need_mean")
+    if held is None and held_rule is not None:
+        failures.append(
+            f"{stage}: the stage declares zero_kwh_cells_at_need_mean but the "
+            "energy_rake receipt carries no cells_held_at_need_mean."
+        )
+    held_entries = list(held or ())
+    for entry in held_entries:
+        entry = _mapping(entry, label=f"{stage}.cells_held_at_need_mean")
+        margin = str(entry.get("margin"))
+        cell = str(entry.get("cell"))
+        if cell.partition(":")[2] not in (held_rule or {}).get(margin, ()):
+            failures.append(
+                f"{stage}: {margin} cell {cell!r} was started at its NEED mean, "
+                "which the stage does not declare."
+            )
+    # The count only: a held cell can be a small one, so the details (which
+    # receipts may quote) never say which cell drew no kWh.
+    details["cells_held_at_need_mean"] = len(held_entries)
     if declared.get("gas_connected") == GAS_CONNECTED_PUBLISHED_METER_SHARE:
         connection = receipt.get("gas_connection")
         if (
@@ -535,6 +624,29 @@ def _energy_rake_gate(
                         f"{stage}: {region} gas-connected share {float(after):.4f} is "
                         f"not the published {target:.4f} (tolerance {share_tolerance})."
                     )
+                # With a declared connect_rule the walk fills a region below
+                # its share (microcosm#1164); a shortfall is waived only where
+                # the region ran out of households to connect.
+                if (
+                    declared.get("connect_rule") is not None
+                    and float(shortfall) > 0
+                    and entry.get("candidates_exhausted") is not True
+                ):
+                    failures.append(
+                        f"{stage}: {region} keeps a gas-connection shortfall of "
+                        f"{float(shortfall):.4f} with households left to connect."
+                    )
+            if declared.get("connect_rule") is not None and (
+                connection.get("connect_rule") != declared.get("connect_rule")
+                or connection.get("connect_salt") != declared.get("connect_salt")
+            ):
+                failures.append(
+                    f"{stage}: gas connection ran connect rule "
+                    f"{connection.get('connect_rule')!r} with salt "
+                    f"{connection.get('connect_salt')!r}, not the declared "
+                    f"{declared.get('connect_rule')!r} and "
+                    f"{declared.get('connect_salt')!r}."
+                )
     return (
         _fail(stage, check, failures, details)
         if failures
@@ -968,6 +1080,78 @@ def _child_benefit_take_up_gate(
     )
 
 
+#: The structural counts the annual income receipt records, banded by
+#: ``receipt_counts.extreme_count`` with zero exact; each must be zero.
+_ANNUAL_INCOME_STRUCTURAL_ZEROS = (
+    "full_year_rows_not_whole",
+    "rows_outside_share_bounds",
+    "rows_negative_other_spells",
+)
+
+
+def _frs_annual_income_spells_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """The annual income descriptors keep their invariants and plausible sizes.
+
+    Every share lies in [0, 1], no other-spell amount is negative and every
+    full-year earner keeps the whole year, exactly. The usual-to-DV pay ratio
+    the stage measures lies in its bounds, and so does the ratio of annual to
+    current employee earners: the survey's spells can add part-year earners
+    but cannot remove a current one. Where the receipt measures it, at least
+    the declared share of the pay outside the current job is observed rather
+    than drawn from a donor; a share carried by fewer than ten households is
+    reported unmeasured.
+    """
+
+    check = "frs_annual_income_spells"
+    failures: list[str] = []
+    for key in _ANNUAL_INCOME_STRUCTURAL_ZEROS:
+        value = evidence.get(key)
+        if value != 0:
+            failures.append(f"{stage}: {key} is {value!r}, not 0.")
+    details: dict[str, object] = {}
+    for key, bounds_key in (
+        ("pay_concept_ratio", "pay_concept_ratio_bounds"),
+        ("annual_over_current_earners", "annual_over_current_earners_bounds"),
+    ):
+        bounds = parameters[bounds_key]
+        if not isinstance(bounds, list | tuple) or len(bounds) != 2:
+            raise ValueError(f"{stage}.{bounds_key} must be a [lower, upper] pair.")
+        lower = _finite_number(bounds[0], label=f"{stage}.{bounds_key}[0]")
+        upper = _finite_number(bounds[1], label=f"{stage}.{bounds_key}[1]")
+        value = evidence.get(key)
+        details[key] = value
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            failures.append(f"{stage}: {key} is {value!r}, not a measured ratio.")
+        elif not lower <= float(value) <= upper:
+            failures.append(
+                f"{stage}: {key} {float(value):.4f} lies outside [{lower}, {upper}]."
+            )
+    minimum = _finite_number(
+        parameters["minimum_observed_pay_share"],
+        label=f"{stage}.minimum_observed_pay_share",
+    )
+    observed = evidence.get("other_spells_pay_observed_share")
+    details["other_spells_pay_observed_share"] = observed
+    if observed == "<10":
+        details["observed_pay_share_measured"] = False
+    elif isinstance(observed, bool) or not isinstance(observed, int | float):
+        failures.append(f"{stage}: other_spells_pay_observed_share is {observed!r}.")
+    elif float(observed) < minimum:
+        failures.append(
+            f"{stage}: only {float(observed):.4f} of the pay outside the current "
+            f"job is observed, below {minimum}."
+        )
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
+
+
 def _pension_credit_take_up_gate(
     stage: str,
     evidence: Mapping[str, object],
@@ -977,7 +1161,9 @@ def _pension_credit_take_up_gate(
 
     A band whose reporters alone exceed the rate realizes their share instead;
     the receipt flags it and the gate requires the realized share to be at
-    least the rate there.
+    least the rate there. DWP's rates cover Great Britain, so each band is
+    measured there, and a receipt measured over any other scope fails
+    (uk-data#510).
     """
 
     check = "pension_credit_take_up"
@@ -998,7 +1184,18 @@ def _pension_credit_take_up_gate(
         rate = _finite_number(band.get("rate"), label=f"{stage}.{name}.rate")
         units = int(band.get("entitled_units", 0))
         realized = band.get("realized_take_up")
-        details[name] = {"rate": rate, "realized_take_up": realized, "units": units}
+        scope = band.get("scope")
+        details[name] = {
+            "rate": rate,
+            "realized_take_up": realized,
+            "units": units,
+            "scope": scope,
+        }
+        if scope != "great_britain":
+            failures.append(
+                f"{stage}: band {name} is measured over {scope!r}, not Great Britain."
+            )
+            continue
         if units < minimum_units or realized is None:
             failures.append(f"{stage}: band {name} has {units} entitled units.")
             continue
@@ -1084,6 +1281,82 @@ def _spi_benefit_coherence_gate(
         "spi_claiming_after": take_up.get("spi_claiming_after"),
         "own_right_changed": own_right.get("spi_rows_changed"),
     }
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
+
+
+def _uc_take_up_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """Each family type's reachable pools realize DWP's caseload (microcosm#1334).
+
+    Every reporter claims and no unit outside the draw changes. Over a family
+    type's pools whose target the draw can reach, the realized Great Britain
+    caseload is within ``maximum_caseload_deviation`` of DWP's count, and the
+    family type's whole caseload is no further from DWP's than before the
+    redraw, give or take that share of DWP's count.
+    """
+
+    check = "uc_take_up"
+    tolerance = _finite_number(
+        parameters["maximum_caseload_deviation"],
+        label=f"{stage}.maximum_caseload_deviation",
+    )
+    failures: list[str] = []
+    details: dict[str, object] = {}
+    for key in ("reporters_not_claiming", "changed_outside_draw"):
+        value = evidence.get(key)
+        details[key] = value
+        if value != 0:
+            failures.append(f"{stage}: {key} is {value!r}, not 0.")
+    families = evidence.get("families")
+    if not isinstance(families, Mapping) or not families:
+        failures.append(f"{stage}: the receipt carries no family types.")
+        families = {}
+    for name, family in families.items():
+        family = _mapping(family, label=f"{stage}.families.{name}")
+        values = {
+            key: family.get(key)
+            for key in (
+                "dwp_caseload",
+                "caseload_before",
+                "caseload_after",
+                "reachable_pools_dwp_caseload",
+                "reachable_pools_caseload_after",
+            )
+        }
+        details[str(name)] = values
+        if any(not isinstance(value, int | float) for value in values.values()):
+            failures.append(
+                f"{stage}: family type {name} carries a caseload resting on fewer "
+                "than ten sources, or none."
+            )
+            continue
+        dwp = _finite_number(values["dwp_caseload"], label=f"{stage}.{name}.dwp")
+        before = _finite_number(values["caseload_before"], label=f"{stage}.{name}")
+        after = _finite_number(values["caseload_after"], label=f"{stage}.{name}")
+        target = _finite_number(
+            values["reachable_pools_dwp_caseload"], label=f"{stage}.{name}"
+        )
+        realized = _finite_number(
+            values["reachable_pools_caseload_after"], label=f"{stage}.{name}"
+        )
+        if target > 0.0 and abs(realized - target) > tolerance * target:
+            failures.append(
+                f"{stage}: family type {name} realizes {realized:,.0f} against "
+                f"DWP's {target:,.0f} over its reachable pools (tolerance "
+                f"{tolerance})."
+            )
+        if abs(after - dwp) > abs(before - dwp) + tolerance * dwp:
+            failures.append(
+                f"{stage}: family type {name} moves from {before:,.0f} to "
+                f"{after:,.0f}, further from DWP's {dwp:,.0f}."
+            )
     return (
         _fail(stage, check, failures, details)
         if failures
@@ -2228,6 +2501,9 @@ _WEALTH_IDENTITY_ZERO_KEYS = (
     "gross_financial_wealth_violation_rows",
     "net_financial_wealth_violation_rows",
     "mortgage_debt_violation_rows",
+    # The share split and the secured debts (microcosm#1095).
+    "share_split_violation_rows",
+    "secured_debt_violation_rows",
 )
 
 
@@ -2245,8 +2521,10 @@ def _wealth_coherence_gate(
     re-reads the receipt so the battery, not only the transform, holds that
     no household off a mortgaged tenure carries a main-residence mortgage,
     none off an owner tenure carries a main-residence value, every total
-    equals its components, and owners without a main-residence value are no
-    more common than on the donor beyond the reviewed excess.
+    equals its components, the share split and the ISA sum to corporate
+    wealth, every secured debt sits on a held asset within the mortgages on
+    other property, and owners without a main-residence value are no more
+    common than on the donor beyond the reviewed excess.
     """
 
     check = "wealth_coherence"
@@ -2710,6 +2988,33 @@ def _consumption_basis_gate(
             "calendar_year" if bridged else "fiscal_year",
             uprating.get("to_period"),
         )
+        # The recorded factor must be the bridge's: after / base, where base is
+        # the declared mix of the starting and following years (the #1167
+        # re-review's nit).
+        off_bridge = []
+        for column in UK_LCFS_DIARY_PRICE_COLUMNS:
+            entry = columns.get(column)
+            if not isinstance(entry, Mapping):
+                continue
+            after, base, factor = (
+                entry.get("after"),
+                entry.get("base"),
+                entry.get("factor"),
+            )
+            if not all(
+                isinstance(v, (int, float)) and not isinstance(v, bool)
+                for v in (after, base, factor)
+            ):
+                continue
+            if base <= 0 or abs(
+                float(factor) - float(after) / float(base)
+            ) > 1e-9 * max(1.0, abs(float(factor))):
+                off_bridge.append(column)
+        if off_bridge:
+            failures.append(
+                f"{stage}: the donor uprating's recorded factor is not after / base "
+                f"for {off_bridge}."
+            )
         if full_step:
             failures.append(
                 f"{stage}: the donor uprating does not carry {full_step} from "
@@ -2759,6 +3064,82 @@ def _consumption_basis_gate(
     )
 
 
+def _division_levelling_factors(
+    stage: str,
+    levelling: object,
+    declared: Mapping[str, object],
+    failures: list[str],
+) -> dict[str, float]:
+    """Check the receipt's division levelling against the declaration.
+
+    Returns each division's factor (none where the stage declares no
+    levelling), appending a failure for a missing or undeclared levelling, a
+    rule or division list other than the declared one, a factor outside
+    [0, 1], or a division that moves though it is not above the shared ratio.
+    """
+
+    expected = declared.get("level_division_excess")
+    if expected is None:
+        if levelling is not None:
+            failures.append(
+                f"{stage}: records a division levelling the stage does not declare."
+            )
+        return {}
+    if not isinstance(levelling, Mapping):
+        failures.append(
+            f"{stage}: records no division levelling; the stage declares "
+            f"{expected['rule']!r}."
+        )
+        return {}
+    if (levelling.get("rule"), levelling.get("basis")) != (
+        expected["rule"],
+        expected["basis"],
+    ):
+        failures.append(
+            f"{stage}: levels the divisions by {levelling.get('rule')!r} on "
+            f"{levelling.get('basis')!r}, not the declared levelling."
+        )
+    shared = _finite_number(
+        levelling.get("shared_ratio"), label=f"{stage}.division_levelling.shared_ratio"
+    )
+    if not shared > 0:
+        failures.append(
+            f"{stage}: the divisions' shared ratio {shared} is not positive."
+        )
+    divisions = _mapping(
+        levelling.get("divisions"), label=f"{stage}.division_levelling.divisions"
+    )
+    if sorted(divisions) != sorted(expected["divisions"]):
+        failures.append(
+            f"{stage}: levels {sorted(divisions)}, not the declared "
+            f"{sorted(expected['divisions'])}."
+        )
+    factors: dict[str, float] = {}
+    for division, entry in divisions.items():
+        entry = _mapping(entry, label=f"{stage}.division_levelling.{division}")
+        factor = _finite_number(
+            entry.get("factor"), label=f"{stage}.division_levelling.{division}.factor"
+        )
+        ratio = entry.get("ratio")
+        if not 0.0 <= factor <= 1.0:
+            failures.append(
+                f"{stage}: {division} levelling factor {factor} is not in [0, 1]."
+            )
+        if factor != 1.0 and (
+            ratio is None
+            or _finite_number(
+                ratio, label=f"{stage}.division_levelling.{division}.ratio"
+            )
+            <= shared
+        ):
+            failures.append(
+                f"{stage}: {division} moves by {factor} though its ratio {ratio!r} "
+                f"is not above the shared {shared}."
+            )
+        factors[str(division)] = factor
+    return factors
+
+
 def _recomposed_totals_gate(
     stage: str,
     evidence: Mapping[str, object],
@@ -2768,18 +3149,24 @@ def _recomposed_totals_gate(
 
     Checks on the ``recomposed_totals`` receipt (microcosm#1113): each total
     the stage declares keeps its own draw less the declared drawn parts and
-    adds the declared levelled parts back; no remainder is negative and no
+    adds the declared levelled parts back, held to the declared
+    ``maximum_total`` (microcosm#1164); no remainder is negative and no
     household's total is below its components; to
     ``maximum_relative_deviation``, the weighted remainder equals the drawn
     total less the drawn parts plus the floored mass, and the weighted total
-    the remainder plus the components; and the uncarried ONS spend is
-    recomputed from the vendored rows through the stage's own declaration.
+    the remainder plus the components less the mass held at the maximum; and
+    the published ONS heating-fuel spend is recomputed from the vendored rows
+    through the stage's own declaration. Where the stage declares
+    ``level_division_excess`` (microcosm#1278), the receipt carries the
+    declared rule over the declared divisions, every factor is in [0, 1], no
+    division at or below the shared ratio moves, and each recomposed total's
+    remainder moves by its division's factor.
     """
 
     from microcosm.build.country_spec import load_country_spec
     from microcosm.build.uk_runtime.lcfs_consumption import (
+        published_fuel_spend,
         recompose_from_remainder_operation,
-        uncarried_spend,
     )
 
     check = "recomposed_totals"
@@ -2800,6 +3187,9 @@ def _recomposed_totals_gate(
     )
     declared_parents = declared["parents"]
     failures: list[str] = []
+    division_factors = _division_levelling_factors(
+        stage, receipt.get("division_levelling"), declared, failures
+    )
     if set(parents) != set(declared_parents):
         failures.append(
             f"{stage}: recomposed {sorted(parents)}, not the declared "
@@ -2828,12 +3218,36 @@ def _recomposed_totals_gate(
             failures.append(
                 f"{stage}: {below!r} households have {parent} below its components."
             )
+        if entry.get("maximum_total") != declared.get("maximum_total"):
+            failures.append(
+                f"{stage}: {parent} is held to {entry.get('maximum_total')!r}, not "
+                f"the declared maximum_total {declared.get('maximum_total')!r}."
+            )
+        held = entry.get("rows_held_at_maximum")
+        if isinstance(held, bool) or not isinstance(held, int) or held < 0:
+            failures.append(
+                f"{stage}: {parent} records {held!r} rows held at the maximum."
+            )
 
         def number(key: str, parent: str = parent, entry=entry) -> float:
             return _finite_number(entry.get(key), label=f"{stage}.{parent}.{key}")
 
+        # The declared levelling of the divisions' excess (microcosm#1278)
+        # scales a recomposed total's remainder by a factor in [0, 1].
+        factor = (
+            1.0 if entry.get("levelling_factor") is None else number("levelling_factor")
+        )
+        if not 0.0 <= factor <= 1.0:
+            failures.append(
+                f"{stage}: {parent} levelling factor {factor} is not in [0, 1]."
+            )
+        if factor != division_factors.get(parent, 1.0):
+            failures.append(
+                f"{stage}: {parent} levelling factor {factor} is not its "
+                f"division's {division_factors.get(parent, 1.0)}."
+            )
         remainder = number("weighted_remainder")
-        split = (
+        split = factor * (
             number("weighted_drawn_total")
             - number("weighted_drawn_subtracts")
             + number("weighted_floored_mass")
@@ -2841,29 +3255,44 @@ def _recomposed_totals_gate(
         if abs(remainder - split) > tolerance * max(1.0, abs(remainder)):
             failures.append(
                 f"{stage}: {parent} remainder {remainder} is not its draw less the "
-                f"drawn parts plus the floored mass ({split})."
+                f"drawn parts plus the floored mass, at its levelling factor ({split})."
             )
         total = number("weighted_total")
-        parts = remainder + number("weighted_components")
+        held_mass = number("weighted_held_mass")
+        if held_mass < 0:
+            failures.append(
+                f"{stage}: {parent} records a negative held mass ({held_mass})."
+            )
+        parts = remainder + number("weighted_components") - held_mass
         if abs(total - parts) > tolerance * max(1.0, abs(total)):
             failures.append(
                 f"{stage}: {parent} weighted total {total} is not its remainder plus "
-                f"components {parts}."
+                f"components less the mass held at the maximum ({parts})."
             )
-    uncarried = uncarried_spend(declared)
-    observed = _mapping(receipt.get("uncarried"), label=f"{stage}.uncarried")
+    published = published_fuel_spend(declared)
+    observed = _mapping(
+        receipt.get("published_fuels"), label=f"{stage}.published_fuels"
+    )
+    observed_classes = observed.get("classes")
+    published_keys = ("coicop", "concept", "column", "source_record_id", "value")
     if (
-        observed.get("classes") != uncarried["classes"]
-        or observed.get("total") != uncarried["total"]
+        not isinstance(observed_classes, list)
+        or [
+            {key: entry.get(key) for key in published_keys}
+            for entry in observed_classes
+            if isinstance(entry, Mapping)
+        ]
+        != published["classes"]
+        or observed.get("total") != published["total"]
     ):
         failures.append(
-            f"{stage}: the uncarried spend {observed.get('total')!r} is not the vendored "
-            f"{uncarried['total']}."
+            f"{stage}: the published fuel spend {observed.get('total')!r} is not the "
+            f"vendored {published['total']}."
         )
     details = {
         "maximum_relative_deviation": tolerance,
         "parents": sorted(parents),
-        "uncarried_total": uncarried["total"],
+        "published_fuels_total": published["total"],
     }
     return (
         _fail(stage, check, failures, details)
@@ -3161,3 +3590,413 @@ def _bus_support_pricing_gate(
         if failures
         else _pass(stage, check, details)
     )
+
+
+def _property_components_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """Landlords' receipts keep their invariants (microcosm#1106).
+
+    No receipts below profit (the engine would read them as unknown), and no
+    landlord placed in a band below their own profit. The walk fills every
+    Table 13 band above the lowest to its share of the spine's landlords up to
+    whole-person rounding: a band's mass sits within the declared multiple of
+    its recorded rounding allowance, the weight of the person straddling each
+    of its two boundaries (one straddler for an empty band), capped at twice
+    the largest landlord weight. The open top band's profit multiplier stays below
+    its declared cap; a multiplier at its floor of 1 is reported, not failed.
+    """
+
+    check = "property_components"
+    receipts = _mapping(evidence.get("receipts"), label=f"{stage}.receipts")
+    failures: list[str] = []
+    maximum_below = int(parameters["maximum_rows_receipts_below_profit"])
+    below = int(
+        _finite_number(
+            receipts.get("rows_receipts_below_profit"),
+            label=f"{stage}.receipts.rows_receipts_below_profit",
+        )
+    )
+    if below > maximum_below:
+        failures.append(
+            f"{stage}: {below} rows carry receipts below profit "
+            f"(allowed {maximum_below})."
+        )
+    maximum_above = int(parameters["maximum_rows_with_profit_above_band"])
+    above = int(
+        _finite_number(
+            receipts.get("rows_with_profit_above_their_band"),
+            label=f"{stage}.receipts.rows_with_profit_above_their_band",
+        )
+    )
+    if above > maximum_above:
+        failures.append(
+            f"{stage}: {above} landlords sit in a receipts band below their "
+            f"profit (allowed {maximum_above})."
+        )
+    factor = _finite_number(
+        parameters["maximum_band_error_in_boundary_weights"],
+        label=f"{stage}.maximum_band_error_in_boundary_weights",
+    )
+    largest = _finite_number(
+        receipts.get("largest_landlord_weight"),
+        label=f"{stage}.receipts.largest_landlord_weight",
+    )
+    bands = receipts.get("bands_top_down")
+    if not isinstance(bands, list) or not bands:
+        raise ValueError(f"{stage}.receipts.bands_top_down must be a non-empty list.")
+    errors = []
+    for band in bands[:-1]:
+        band = _mapping(band, label=f"{stage}.receipts.bands_top_down[]")
+        target = _finite_number(
+            band.get("target_landlords"), label=f"{stage} band target"
+        )
+        walked = _finite_number(
+            band.get("walk_landlords_weight"), label=f"{stage} band mass"
+        )
+        # The stage's allowance is two straddlers' weights at most; a larger
+        # reported allowance is capped rather than trusted.
+        allowance = min(
+            _finite_number(
+                band.get("boundary_allowance_weight"),
+                label=f"{stage} band rounding allowance",
+            ),
+            2.0 * largest,
+        )
+        error = abs(walked - target)
+        errors.append(
+            {
+                "lower_bound": band.get("lower_bound"),
+                "error_weight": error,
+                "allowance_weight": allowance,
+            }
+        )
+        if error > factor * allowance:
+            failures.append(
+                f"{stage}: the band from {band.get('lower_bound')} holds "
+                f"{walked:.1f} landlords against {target:.1f}, beyond "
+                f"{factor} x its rounding allowance {allowance:.1f}."
+            )
+    top = _mapping(bands[0], label=f"{stage}.receipts.bands_top_down[0]")
+    multiplier = _finite_number(
+        top.get("profit_multiplier"), label=f"{stage} top-band multiplier"
+    )
+    bounds = receipts.get("top_band_multiplier_bounds")
+    if not isinstance(bounds, list) or len(bounds) != 2:
+        raise ValueError(f"{stage}.receipts.top_band_multiplier_bounds must be a pair.")
+    cap = _finite_number(bounds[1], label=f"{stage} top-band multiplier cap")
+    if multiplier >= cap:
+        failures.append(
+            f"{stage}: the top band's profit multiplier {multiplier} reached its "
+            f"cap {cap}; the receipts total is out of reach."
+        )
+    details = {
+        "rows_receipts_below_profit": below,
+        "rows_with_profit_above_their_band": above,
+        "largest_landlord_weight": largest,
+        "band_errors": errors,
+        "top_band_multiplier": multiplier,
+        "top_band_multiplier_cap": cap,
+        "top_band_multiplier_at_floor": bool(top.get("multiplier_at_floor", False)),
+    }
+    if failures:
+        return _fail(stage, check, failures, details)
+    return _pass(stage, check, details)
+
+
+def _high_value_home_support_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """The high-value home support split conserved mass and met its rule.
+
+    microcosm#1240 fix 1: every region's owner households at or above the
+    declared rank are copied the declared number of times at equal weight;
+    the total household mass is conserved to the declared deviation and no
+    value moves, so nothing distributional is held.
+    """
+
+    check = "high_value_home_support"
+    stratum_lower = _finite_number(
+        parameters["stratum_lower"], label=f"{stage}.stratum_lower"
+    )
+    copies = _finite_number(parameters["copies"], label=f"{stage}.copies")
+    tolerance = _finite_number(
+        parameters["maximum_relative_mass_deviation"],
+        label=f"{stage}.maximum_relative_mass_deviation",
+    )
+    effective_tolerance = max(tolerance, _FLOAT_RELATIVE_TOLERANCE)
+    failures: list[str] = []
+    declared = _mapping(evidence.get("parameters"), label=f"{stage}.parameters")
+    for key, expected in (("stratum_lower", stratum_lower), ("copies", copies)):
+        value = _finite_number(declared.get(key), label=f"{stage}.parameters.{key}")
+        if value != expected:
+            failures.append(
+                f"{stage}: receipt {key} {value} differs from the gate's {expected}."
+            )
+    mass = _mapping(evidence.get("mass"), label=f"{stage}.mass")
+    old_total = _finite_number(mass.get("old_total"), label=f"{stage}.mass.old_total")
+    new_total = _finite_number(mass.get("new_total"), label=f"{stage}.mass.new_total")
+    if old_total <= 0.0 or new_total <= 0.0:
+        failures.append(f"{stage}: household mass must be positive before and after.")
+    deviation = abs(new_total - old_total) / max(abs(old_total), 1.0)
+    if deviation > effective_tolerance:
+        failures.append(
+            f"{stage}: household mass deviation {deviation} exceeds the effective "
+            f"tolerance {effective_tolerance}."
+        )
+    totals = _mapping(evidence.get("totals"), label=f"{stage}.totals")
+    selected = totals.get("households_selected")
+    created = totals.get("copies_created")
+    for key, value in (("households_selected", selected), ("copies_created", created)):
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise ValueError(f"{stage}.totals.{key} must be a non-negative integer.")
+    if created != selected * (int(copies) - 1):
+        failures.append(
+            f"{stage}: {created} copies created for {selected} selected households "
+            f"at {int(copies)} copies each."
+        )
+    rows = evidence.get("regions")
+    if not isinstance(rows, list | tuple):
+        raise ValueError(f"{stage}.regions must be a list.")
+    regions_with_owners = 0
+    for row in rows:
+        if not isinstance(row, Mapping):
+            failures.append(f"{stage}: region row is not an object.")
+            continue
+        owners = row.get("owner_households")
+        chosen = row.get("households_selected")
+        if not isinstance(owners, int) or not isinstance(chosen, int):
+            raise ValueError(f"{stage}: region counts must be integers.")
+        if owners > 0:
+            regions_with_owners += 1
+            if chosen < 1:
+                failures.append(
+                    f"{stage}: region {row.get('region')!r} has owner households but "
+                    "selected none into the stratum."
+                )
+    if regions_with_owners == 0:
+        failures.append(f"{stage}: no region carries owner households.")
+    # The shipped details round the survey counts to the nearest ten (the
+    # receipts rule of microcosm#1095); the exact counts stay in the stage
+    # receipt the checkpoint holds.
+    details = {
+        "households_selected_nearest_10": int(round(selected / 10.0)) * 10,
+        "copies_created_nearest_10": int(round(created / 10.0)) * 10,
+        "mass_deviation": deviation,
+        "regions_with_owners": regions_with_owners,
+    }
+    if failures:
+        return _fail(stage, check, failures, details)
+    return _pass(stage, check, details)
+
+
+def _property_purchases_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """Each purchase kind meets HMRC's Stamp Tax totals as the stage contracts (#1308).
+
+    Every declared kind is drawn once. Its transactions meet HMRC's count
+    within the declared deviation (the events are drawn, so the count is near,
+    not exact); its value is HMRC's less the recorded shortfall, which the
+    stage refuses past one fifth, so the gate refuses past the declared share;
+    and the individuals' shares that carry the all-buyers totals onto
+    households are proper shares.
+    """
+
+    check = "property_purchases"
+    expected = sorted(str(kind) for kind in parameters["kinds"])
+    deviation = _finite_number(
+        parameters["maximum_transactions_relative_deviation"],
+        label=f"{stage}.maximum_transactions_relative_deviation",
+    )
+    maximum_shortfall = _finite_number(
+        parameters["maximum_value_shortfall_share"],
+        label=f"{stage}.maximum_value_shortfall_share",
+    )
+    failures: list[str] = []
+    details: dict[str, object] = {}
+    kinds = evidence.get("kinds")
+    if not isinstance(kinds, list):
+        kinds = []
+    drawn = sorted(
+        str(_mapping(kind, label=f"{stage}.kinds[]").get("property_type"))
+        for kind in kinds
+    )
+    if drawn != expected:
+        failures.append(f"{stage}: the receipt draws kinds {drawn}, not {expected}.")
+    for kind in kinds:
+        name = str(kind.get("property_type"))
+        target = _finite_number(
+            kind.get("target_transactions"), label=f"{stage}.{name}.target_transactions"
+        )
+        fitted = _finite_number(
+            kind.get("fitted_transactions"), label=f"{stage}.{name}.fitted_transactions"
+        )
+        shortfall = _finite_number(
+            kind.get("value_shortfall_share"),
+            label=f"{stage}.{name}.value_shortfall_share",
+        )
+        target_value = _finite_number(
+            kind.get("target_value"), label=f"{stage}.{name}.target_value"
+        )
+        fitted_value = _finite_number(
+            kind.get("fitted_value"), label=f"{stage}.{name}.fitted_value"
+        )
+        relative = fitted / target - 1.0 if target > 0 else math.inf
+        details[name] = {
+            "transactions_relative_deviation": relative,
+            "value_shortfall_share": shortfall,
+        }
+        if abs(relative) > deviation:
+            failures.append(
+                f"{stage}: {name} draws {relative:+.4f} of HMRC's transactions "
+                f"(limit {deviation})."
+            )
+        if not 0.0 <= shortfall <= maximum_shortfall:
+            failures.append(
+                f"{stage}: {name} falls {shortfall:.4f} short of HMRC's value "
+                f"(limit {maximum_shortfall})."
+            )
+        expected_value = target_value * (1.0 - shortfall)
+        if not math.isclose(fitted_value, expected_value, rel_tol=1e-9, abs_tol=1e-6):
+            failures.append(
+                f"{stage}: {name} fits value {fitted_value:.6g}, not HMRC's less "
+                f"the recorded shortfall ({expected_value:.6g})."
+            )
+    derivation = evidence.get("derivation")
+    shares = {}
+    if isinstance(derivation, Mapping):
+        shares = {
+            key: value for key, value in derivation.items() if key.endswith("_share")
+        }
+    if not shares:
+        failures.append(f"{stage}: the receipt carries no individuals' shares.")
+    for key, value in shares.items():
+        share = _finite_number(value, label=f"{stage}.derivation.{key}")
+        if not 0.0 < share <= 1.0:
+            failures.append(f"{stage}: derivation {key} is {share}, not a share.")
+    if failures:
+        return _fail(stage, check, failures, details)
+    return _pass(stage, check, details)
+
+
+def _regional_home_values_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """Home values are re-ranked in every region on the declared knots (#1308).
+
+    Every declared region has rewritten rows and no more than the stage's
+    rows; no source sits at the value cap beyond the declared count; the knots
+    are the declared basis year and the ranking the declared basis; and the
+    weighted value stays positive on both sides of the stage.
+    """
+
+    check = "regional_home_values"
+    regions = sorted(str(region) for region in parameters["regions"])
+    failures: list[str] = []
+    rewritten = evidence.get("rows_rewritten_by_region")
+    if not isinstance(rewritten, Mapping):
+        rewritten = {}
+    if sorted(rewritten) != regions:
+        failures.append(
+            f"{stage}: the receipt rewrites regions {sorted(rewritten)}, not {regions}."
+        )
+    counts = {str(region): int(count) for region, count in rewritten.items()}
+    empty = sorted(region for region, count in counts.items() if count <= 0)
+    if empty:
+        failures.append(f"{stage}: no row is rewritten in {empty}.")
+    rows = int(evidence.get("rows", 0))
+    if sum(counts.values()) > rows:
+        failures.append(f"{stage}: more rows are rewritten than the stage carries.")
+    at_cap = int(evidence.get("sources_at_cap", -1))
+    maximum_at_cap = int(parameters["maximum_sources_at_cap"])
+    if not 0 <= at_cap <= maximum_at_cap:
+        failures.append(
+            f"{stage}: {at_cap} sources sit at the value cap (limit {maximum_at_cap})."
+        )
+    if evidence.get("knots_basis_year") != parameters["knots_basis_year"]:
+        failures.append(
+            f"{stage}: the knots' basis year is {evidence.get('knots_basis_year')!r}, "
+            f"not {parameters['knots_basis_year']!r}."
+        )
+    ranking = evidence.get("ranking")
+    basis = ranking.get("rank_basis") if isinstance(ranking, Mapping) else None
+    if basis != parameters["rank_basis"]:
+        failures.append(
+            f"{stage}: the ranking basis is {basis!r}, not {parameters['rank_basis']!r}."
+        )
+    for side in ("weighted_value_before", "weighted_value_after"):
+        value = _finite_number(evidence.get(side), label=f"{stage}.{side}")
+        if value <= 0.0:
+            failures.append(f"{stage}: {side} is not positive.")
+    details = {"regions": regions, "sources_at_cap": at_cap}
+    if failures:
+        return _fail(stage, check, failures, details)
+    return _pass(stage, check, details)
+
+
+#: The support bands the take-up receipts print (receipt_counts).
+_SUPPORT_BANDS = frozenset({"<10", "10-29", "30+"})
+
+
+def _legacy_closure_take_up_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """The Move to UC draw records a rate and its basis for every combination (#1308).
+
+    The receipt withholds what a thin combination realizes, so the gate holds
+    the contract it can read: the share is measured on the declared basis,
+    every combination's rate is a probability from a declared source, its
+    support is a printed band, and its unreachable flag is a boolean, a
+    withheld "<10" or absent; the share claiming at closure is a share.
+    """
+
+    check = "legacy_closure_take_up"
+    sources = {str(source) for source in parameters["rate_sources"]}
+    failures: list[str] = []
+    if evidence.get("p_basis") != parameters["p_basis"]:
+        failures.append(
+            f"{stage}: the share is measured on {evidence.get('p_basis')!r}, not "
+            f"{parameters['p_basis']!r}."
+        )
+    combinations = evidence.get("combinations")
+    if not isinstance(combinations, Mapping) or not combinations:
+        failures.append(f"{stage}: the receipt carries no combinations.")
+        combinations = {}
+    for name, combination in combinations.items():
+        combination = _mapping(combination, label=f"{stage}.combinations.{name}")
+        rate = _finite_number(combination.get("rate"), label=f"{stage}.{name}.rate")
+        if not 0.0 <= rate <= 1.0:
+            failures.append(f"{stage}: {name} draws at rate {rate}.")
+        if combination.get("rate_source") not in sources:
+            failures.append(
+                f"{stage}: {name} takes its rate from "
+                f"{combination.get('rate_source')!r}."
+            )
+        if combination.get("support") not in _SUPPORT_BANDS:
+            failures.append(f"{stage}: {name} prints no support band.")
+        flag = combination.get("rate_unreachable")
+        if not (flag is None or isinstance(flag, bool) or flag == "<10"):
+            failures.append(f"{stage}: {name} flags {flag!r} as unreachable.")
+    # A drawn cohort on fewer than ten sources prints the share withheld.
+    printed = evidence.get("great_britain_weighted_share_claiming_at_closure")
+    if printed != "<10":
+        share = _finite_number(
+            printed, label=f"{stage}.great_britain_weighted_share_claiming_at_closure"
+        )
+        if not 0.0 <= share <= 1.0:
+            failures.append(f"{stage}: the share claiming at closure is {share}.")
+    details = {"combinations": len(combinations)}
+    if failures:
+        return _fail(stage, check, failures, details)
+    return _pass(stage, check, details)

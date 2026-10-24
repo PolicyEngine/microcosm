@@ -8,13 +8,14 @@ national H5s, and the LCFS 2023-24 household file. No solve, no engine.
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-PE = Path("/Users/mariajuaristi/Desktop/PolicyEngine")
+PE = Path(os.environ.get("PE", Path.home() / "Desktop" / "PolicyEngine"))
 OUT = Path(__file__).resolve().parent
 FEED = (
     PE

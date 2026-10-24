@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from dataclasses import replace
 from datetime import date
 from types import SimpleNamespace
 
@@ -77,6 +78,23 @@ def prepared(monkeypatch):
     monkeypatch.setattr(
         runtime, "load_uk_calibration_measure_exclusions", lambda path: ()
     )
+    # Nor a support floor (#1095 U3, tested in test_uk_support_floor): the
+    # packaged one is signed after these tests' evaluation date.
+    monkeypatch.setattr(runtime, "load_uk_support_floor_declaration", lambda path: None)
+    # The national reconciliation (#1123) has its own tests; these registers
+    # carry no geography, so it passes them through here.
+    monkeypatch.setattr(
+        runtime,
+        "reconcile_uk_national_registry",
+        lambda registry: (registry, {"rows_moved_by_exact_signature": 0}),
+    )
+    # Nor do they carry fact periods: the hold declarations (#1123) are
+    # checked against the real compile in test_uk_uprating_holds.
+    monkeypatch.setattr(
+        runtime,
+        "assert_uk_uprating_holds_declared",
+        lambda registry, **kwargs: {"scope": kwargs["scope"]},
+    )
     monkeypatch.setattr(
         runtime,
         "apply_uk_calibration_measure_exclusions",
@@ -104,8 +122,9 @@ def test_full_inputs_preserve_band_edges_and_validation_periods(prepared):
     assert result["band_edge_registry"] is national
     assert result["national_registry"] is approved
     assert result["local_registry"] is local
+    # The calibration year (2024 here) and the one validation period, 2025.
+    # The 2023 production surface left the set with its gate.
     assert calls == [
-        ("national", 2023),
         ("national", 2024),
         ("national", 2025),
         ("local", 2024),
@@ -114,7 +133,7 @@ def test_full_inputs_preserve_band_edges_and_validation_periods(prepared):
     assert result["register_completeness"]["compiled_reference_count"] == 2
     assert result["register_completeness"]["approved_reference_count"] == 1
     assert result["register_completeness"]["validation_periods"] == {
-        "national": [2023, 2025],
+        "national": [2025],
         "local": [2025],
     }
     assert result["register_completeness"]["validation_periods_unsupported"] == {
@@ -187,27 +206,29 @@ def test_wrong_fact_count_refuses_before_either_compiler(prepared):
 def test_current_national_and_local_pins_share_one_reviewed_identity():
     # main (#904) reads one committed pin, ``uk/chronicle_feed.json``, for the
     # national feed and the local census; the full build checks they agree.
-    # The identity is the 1ee7dfe feed re-pinned by microcosm#1113
-    # (PolicyEngine/chronicle#322 via #323, Consumer Trends by COICOP division
-    # and DESNZ road fuel by vehicle type and fuel).
+    # The identity is the abf0921 feed re-pinned by microcosm#1300
+    # (PolicyEngine/chronicle#359: UC by payment indicator, OBR table 4.9
+    # geography, DESNZ gas years and Northern Ireland energy, UV404 by output
+    # area). It holds the 735820c HVCTS inputs microcosm#1240 pinned, every
+    # 942a1fa row of microcosm#1123 and the 1ee7dfe rows of microcosm#1113.
     national = runtime.load_uk_chronicle_feed()
     local = runtime.load_uk_local_chronicle_pin()
     assert (
         national.facts_sha256
         == local["facts_sha256"]
-        == ("3515800a522f6aa6d076c0ba95a37b924e8505dd8e13d33a55413afd84172f2d")
+        == ("2b64fecfe746164203dac1726aae6ffdb3e5d8e478bd3d64d118ac76cb00780b")
     )
     assert (
         national.manifest_sha256
         == local["manifest_sha256"]
-        == ("0ee42919d02c0dced9048033c43ef057e14b2af05166d96c0bd00cd1128cd4e0")
+        == ("b90fb1b8f1a910458fac41425360209d101796e6de0b134f952ad93323ca6e21")
     )
     assert (
         national.source_commit
         == local["source_commit"]
-        == "1ee7dfe257415ec0066fcf511e01fbaaec23cacd"
+        == "abf0921b896d29ee0745ed2aefde8d6337ed7164"
     )
-    assert national.fact_row_count == local["fact_row_count"] == 352549
+    assert national.fact_row_count == local["fact_row_count"] == 1499301
 
 
 def test_chronicle_source_codec_validates_directory_manifest(tmp_path):
@@ -248,6 +269,72 @@ def test_frozen_register_compares_complete_not_measure_pruned_surface(
         _load(register_json=path)
 
 
+def test_the_bound_and_frozen_registers_are_the_reconciled_ones(
+    prepared, monkeypatch, tmp_path
+):
+    national = prepared[0]
+    reconciled = TargetRegistry(
+        [replace(spec, value=2.0) for spec in national.specs], country="uk"
+    )
+    seen = []
+    monkeypatch.setattr(
+        runtime,
+        "reconcile_uk_national_registry",
+        lambda registry: (
+            seen.append(registry) or reconciled,
+            {"rows_moved_by_exact_signature": 2},
+        ),
+    )
+    excluded_from = []
+    monkeypatch.setattr(
+        runtime,
+        "apply_uk_calibration_measure_exclusions",
+        lambda registry, exclusions, now: (
+            excluded_from.append(registry) or prepared[1],
+            {"excluded": {"reason": "reviewed"}},
+        ),
+    )
+    result = _load()
+    # Only the calibration year is reconciled; validation periods stay as
+    # compiled, since compile parity measures the facts themselves.
+    assert seen == [national]
+    assert excluded_from == [reconciled]
+    assert result["band_edge_registry"] is reconciled
+    assert result["national_reconciliation"] == {"rows_moved_by_exact_signature": 2}
+    completeness = result["register_completeness"]
+    assert completeness["compiled_registry_version"] == national.version
+    assert completeness["reconciled_registry_version"] == reconciled.version
+    path = tmp_path / "register.json"
+    reconciled.to_json(path)
+    _load(register_json=path)
+    national.to_json(path)
+    with pytest.raises(ValueError, match="full national register differs"):
+        _load(register_json=path)
+
+
+def test_holds_are_checked_on_the_full_compiled_and_local_registers(
+    prepared, monkeypatch
+):
+    national, approved, local, artifact, calls = prepared
+    seen = []
+    monkeypatch.setattr(
+        runtime,
+        "assert_uk_uprating_holds_declared",
+        lambda registry, **kwargs: (
+            seen.append((kwargs["scope"], registry, kwargs["calibration_period"]))
+            or {"scope": kwargs["scope"]}
+        ),
+    )
+    result = _load()
+    # The full compiled register, not the approved one: a measure exclusion
+    # expires, and its target must re-enter already declared.
+    assert seen == [("national", national, 2024), ("local", local, 2024)]
+    assert result["uprating_holds"] == {
+        "national": {"scope": "national"},
+        "local": {"scope": "local"},
+    }
+
+
 def test_validation_reference_compilation_is_fail_closed(prepared, monkeypatch):
     monkeypatch.setattr(
         runtime,
@@ -256,7 +343,7 @@ def test_validation_reference_compilation_is_fail_closed(prepared, monkeypatch):
             registry=prepared[0], unsupported=({"target": "missing"},)
         ),
     )
-    # 2023 is a validation period and is skipped; the calibration year is not.
+    # 2025 is a validation period and is skipped; the calibration year is not.
     with pytest.raises(ValueError, match="failed to compile for 2024"):
         _load()
 
@@ -269,27 +356,158 @@ def test_historical_validation_period_without_facts_is_recorded_not_fatal(
 
     def compile_national(facts, *, target_period):
         calls.append(("national", target_period))
-        if target_period == 2023:
+        if target_period == 2025:
             return SimpleNamespace(
                 registry=partial,
                 unsupported=(
-                    {"name": "obr.income_tax", "period": 2023, "reason": "no fact"},
+                    {"name": "obr.income_tax", "period": 2025, "reason": "no fact"},
                 ),
             )
         return SimpleNamespace(registry=national, unsupported=())
 
     monkeypatch.setattr(runtime, "compile_uk_target_registry", compile_national)
     result = _load()
-    # The partial 2023 registry stays available to the parity gates, as the
+    # The partial 2025 registry stays available to the parity gates, as the
     # release-cut producer keeps it; the missing references are recorded.
-    assert set(result["uk_ledger_compiled_registries"]) == {2023, 2024, 2025}
-    assert result["uk_ledger_compiled_registries"][2023] is partial
+    assert set(result["uk_ledger_compiled_registries"]) == {2024, 2025}
+    assert result["uk_ledger_compiled_registries"][2025] is partial
+    # The compile's report travels beside each registry, one entry for every
+    # compiled period, so the parity gates can classify the missing row.
+    assert result["uk_ledger_compile_unsupported"] == {
+        2024: (),
+        2025: ({"name": "obr.income_tax", "period": 2025, "reason": "no fact"},),
+    }
+    assert set(result["uk_ledger_compile_local_unsupported"]) == set(
+        result["uk_ledger_compiled_local_registries"]
+    )
     completeness = result["register_completeness"]
     assert completeness["validation_periods"] == {
-        "national": [2023, 2025],
+        "national": [2025],
         "local": [2025],
     }
     assert completeness["validation_periods_unsupported"] == {
-        "national": {"2023": ["obr.income_tax"]},
+        "national": {"2025": ["obr.income_tax"]},
         "local": {},
     }
+
+
+_REGION_ROW = "microcosm.high_value_homes.over_2m_by_region"
+
+
+def _with_region_rows(*names):
+    """A compiled register carrying local-line-only region rows (#1301)."""
+
+    region = _registry(f"{_REGION_ROW}@E12000007", f"{_REGION_ROW}@W92000004")
+    region = TargetRegistry(
+        [
+            replace(spec, metadata={"contract_target_id": _REGION_ROW})
+            for spec in region.specs
+        ],
+        country="uk",
+    )
+    plain = _registry(*names)
+    return TargetRegistry([*plain.specs, *region.specs], country="uk"), plain
+
+
+def test_the_national_line_drops_local_only_rows_before_reconciliation(monkeypatch):
+    compiled, plain = _with_region_rows("retained", "excluded")
+    artifact = SimpleNamespace(
+        facts=({"feed": True},),
+        facts_sha256="a" * 64,
+        manifest_sha256="b" * 64,
+        provenance=lambda: {"artifact_id": "synthetic"},
+    )
+    monkeypatch.setattr(
+        runtime, "load_ledger_consumer_artifact", lambda *a, **kw: artifact
+    )
+    monkeypatch.setattr(
+        runtime,
+        "require_committed_uk_chronicle_feed_pin",
+        lambda facts_sha256, **kwargs: SimpleNamespace(to_dict=lambda: {}),
+    )
+    compiled_facts = []
+
+    def compile_national(facts, *, target_period):
+        compiled_facts.append(tuple(facts))
+        return SimpleNamespace(registry=compiled, unsupported=())
+
+    monkeypatch.setattr(runtime, "compile_uk_target_registry", compile_national)
+    reconciled_from = []
+    monkeypatch.setattr(
+        runtime,
+        "reconcile_uk_national_registry",
+        lambda registry: (reconciled_from.append(registry) or registry, {}),
+    )
+    monkeypatch.setattr(runtime, "uk_cross_grain_coverage_receipt", lambda: {})
+    monkeypatch.setattr(runtime, "assert_uk_subset_relations", lambda registry: [])
+    monkeypatch.setattr(
+        runtime, "load_uk_calibration_measure_exclusions", lambda path: ()
+    )
+    monkeypatch.setattr(runtime, "load_uk_support_floor_declaration", lambda path: None)
+    monkeypatch.setattr(
+        runtime,
+        "assert_uk_uprating_holds_declared",
+        lambda registry, **kwargs: {"scope": kwargs["scope"]},
+    )
+    monkeypatch.setattr(runtime, "_ledger_provenance", lambda artifact: {})
+
+    result = runtime.load_uk_national_target_inputs(
+        "facts.jsonl",
+        calibration_year=2025,
+        exclusions_evaluated_on=date(2026, 10, 16),
+    )
+
+    # Every reference compiles, on the feed and the derived facts together.
+    derived = runtime.load_uk_high_value_home_stock_facts()
+    assert compiled_facts == [({"feed": True}, *derived.rows)]
+    # The region rows leave before reconciliation: the national surface and
+    # its version are the ones it had without them.
+    (reconciled,) = reconciled_from
+    assert [spec.name for spec in reconciled.specs] == ["retained", "excluded"]
+    assert result["national_registry"].version == plain.version
+    completeness = result["register_completeness"]
+    assert completeness["compiled_registry_version"] == plain.version
+    assert completeness["compiled_reference_count"] == 2
+    assert completeness["calibration_line"] == {
+        "line": "national",
+        "all_lines_registry_version": compiled.version,
+        "all_lines_reference_count": 4,
+        "dropped_reference_count": 2,
+        "dropped_target_ids": [_REGION_ROW],
+    }
+    assert result["derived_fact_provenance"]["high_value_home_stock_facts"][
+        "rows_sha256"
+    ] == (derived.rows_sha256)
+
+
+def test_the_full_line_binds_the_region_rows(prepared, monkeypatch):
+    national, approved, local, artifact, calls = prepared
+    compiled, _plain = _with_region_rows("retained", "excluded")
+    seen_facts = []
+
+    def compile_national(facts, *, target_period):
+        seen_facts.append(tuple(facts))
+        return SimpleNamespace(registry=compiled, unsupported=())
+
+    monkeypatch.setattr(runtime, "compile_uk_target_registry", compile_national)
+    reconciled_from = []
+    monkeypatch.setattr(
+        runtime,
+        "reconcile_uk_national_registry",
+        lambda registry: (reconciled_from.append(registry) or registry, {}),
+    )
+    monkeypatch.setattr(
+        runtime,
+        "apply_uk_calibration_measure_exclusions",
+        lambda registry, exclusions, now: (registry, {}),
+    )
+    result = _load()
+    derived = runtime.load_uk_high_value_home_stock_facts()
+    assert all(facts == (*artifact.facts, *derived.rows) for facts in seen_facts)
+    # The local line binds every row: nothing leaves, the registry is the
+    # compiled object itself.
+    assert reconciled_from == [compiled]
+    assert result["national_registry"] is compiled
+    line = result["register_completeness"]["calibration_line"]
+    assert line["line"] == "local"
+    assert line["dropped_reference_count"] == 0

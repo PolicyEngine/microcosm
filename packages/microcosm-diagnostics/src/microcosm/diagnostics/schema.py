@@ -230,12 +230,16 @@ class TargetLossBasis(DiagnosticsModel):
     sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
+#: ``brma`` is Scotland's 18 Broad Rental Market Areas, where ONS publishes
+#: its Scottish private rents (microcosm#1262); its rows have no area
+#: rollups, so it is not a local rollup level.
 UKGeographyLevel = Literal[
     "national",
     "region",
     "country",
     "local_authority",
     "constituency",
+    "brma",
 ]
 UKLocalGeographyLevel = Literal["local_authority", "constituency"]
 UKCountry = Literal["England", "Northern Ireland", "Scotland", "Wales"]
@@ -245,6 +249,12 @@ UK_TARGET_GEOGRAPHY_LEVELS: Final[tuple[UKGeographyLevel, ...]] = (
     "country",
     "local_authority",
     "constituency",
+    "brma",
+)
+#: Levels a report may leave out: reports written before the level existed
+#: carry no row for it. Current builds always write every level.
+UK_OPTIONAL_TARGET_GEOGRAPHY_LEVELS: Final[frozenset[UKGeographyLevel]] = frozenset(
+    {"brma"}
 )
 
 
@@ -390,9 +400,13 @@ class UKAreaFit(DiagnosticsModel):
     worst_target: NonBlankText
     worst_abs_relative_error: NonNegativeFiniteFloat
     loss_contribution: NonNegativeFiniteFloat
-    nonzero_households: NonNegativeInt
-    nonzero_source_households: NonNegativeInt
-    effective_sample_size: NonNegativeFiniteFloat
+    # Per-area support figures are withheld from released diagnostics
+    # (microcosm#1301); a row carries the floor flag instead. The figure
+    # fields stay optional so earlier payloads still parse.
+    support_below_floor: bool | None = None
+    nonzero_households: NonNegativeInt | None = None
+    nonzero_source_households: NonNegativeInt | None = None
+    effective_sample_size: NonNegativeFiniteFloat | None = None
 
     @model_validator(mode="after")
     def reconcile_pass_rate(self) -> UKAreaFit:
@@ -472,7 +486,16 @@ class UKMeasuredRotatedHoldout(DiagnosticsModel):
     method: Literal["rotated_folds"]
     target_loss_cap: PositiveFiniteFloat
     loss_weight_scale: Literal["held_local_grains_only"]
-    target_weight_rule: Literal["uniform", "grain_equal"]
+    # The UK local target-weight vocabulary (microcosm#1124); a microcosm-build
+    # test pins it to ``UK_LOCAL_TARGET_WEIGHT_RULES``.
+    target_weight_rule: Literal[
+        "uniform",
+        "grain_equal",
+        "grain_family_equal",
+        "grain_family_equal_sqrt_count",
+        "nation_grain_family_equal",
+        "nation_grain_family_equal_sqrt_count",
+    ]
     population: Literal["held_out_local_targets"]
     grains: list[Literal["constituency", "local_authority", "la"]] = Field(min_length=1)
     n_folds: Annotated[int, Field(ge=2)]
@@ -557,6 +580,72 @@ class UKConsumptionDrift(DiagnosticsModel):
     shares: dict[NonBlankText, UKDriftValue] = Field(min_length=1)
 
 
+#: The fields of a target row that the model's weights produce. A row whose
+#: model figures a UK build withholds carries none of them (microcosm#1262).
+UK_MODEL_FIGURE_FIELDS: Final[tuple[str, ...]] = (
+    "initial_estimate",
+    "final_estimate",
+    "relative_error",
+    "within_tolerance",
+    "final_capped_scaled_error",
+    "final_loss_contribution",
+)
+#: The solve options a UK payload keeps while any row is withheld: settings,
+#: not outcomes. Every other option reads null, since an outcome recorded
+#: there may cover every row, as the iterate-selection receipt's losses do
+#: (microcosm#1262).
+UK_WITHHELD_PUBLISHED_OPTIONS: Final[frozenset[str]] = frozenset(
+    {
+        "budget_basis",
+        "epochs",
+        "feasible_draw_pi_hi",
+        "gate_initialization_supplied",
+        "iterate_selection",
+        "l1_lambda",
+        "l1_penalty",
+        "l2_anchor",
+        "l2_anchor_weights_supplied",
+        "l2_basis",
+        "l2_lambda",
+        "l2_penalty",
+        "learning_rate",
+        "mass",
+        "mass_parametrization",
+        "mass_reason",
+        "matrix_format",
+        "max_weight_ratio",
+        "method",
+        "seed",
+        "target_loss_cap",
+        "target_loss_scales",
+        "target_loss_weights",
+        "target_records",
+        "warm_start_weights",
+    }
+)
+#: The iterate-selection receipt's fields kept while any row is withheld; its
+#: selected and closing iterates' losses cover every row and read null.
+UK_WITHHELD_PUBLISHED_ITERATE_FIELDS: Final[frozenset[str]] = frozenset(
+    {"rule", "selected_epoch", "epochs_executed", "epoch_convention"}
+)
+
+
+class UKWithheldModelFigures(DiagnosticsModel):
+    """Target rows whose model figures stay in the build (microcosm#1262).
+
+    A row resting on fewer than ``min_source_households`` distinct source
+    households keeps its place without its model figures. While any does, the
+    payload's totals are restated over the published rows (``totals_basis``)
+    so that none can be differenced against them, and its loss trajectory is
+    empty.
+    """
+
+    targets: int = Field(gt=0)
+    min_source_households: int = Field(gt=0)
+    totals_basis: Literal["published_rows"]
+    note: NonBlankText
+
+
 class UKDiagnosticsV1(DiagnosticsModel):
     schema_version: Literal[UK_DIAGNOSTICS_SCHEMA_VERSION]
     weights: UKWeightSummary
@@ -567,6 +656,7 @@ class UKDiagnosticsV1(DiagnosticsModel):
     weakest_areas_by_fit: UKWeakestAreasByFit | None = None
     rotated_holdout: UKRotatedHoldout | None = None
     consumption_drift: UKConsumptionDrift | None = None
+    model_figures_withheld: UKWithheldModelFigures | None = None
 
     @model_validator(mode="after")
     def reconcile_uk_diagnostics(self) -> UKDiagnosticsV1:
@@ -595,7 +685,9 @@ class UKDiagnosticsV1(DiagnosticsModel):
         if len(levels) != len(set(levels)):
             raise ValueError("UK geography pass-rate levels must be unique")
         expected_levels = set(UK_TARGET_GEOGRAPHY_LEVELS)
-        missing = sorted(expected_levels - set(levels))
+        missing = sorted(
+            expected_levels - set(levels) - UK_OPTIONAL_TARGET_GEOGRAPHY_LEVELS
+        )
         unexpected = sorted(set(levels) - expected_levels)
         if missing or unexpected:
             raise ValueError(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from importlib.resources import files
 from pathlib import Path
@@ -12,6 +13,10 @@ import pandas as pd
 
 from microcosm.build.gates import FitWeightRecord
 from microcosm.build.source_manifest import SourceStageSpec
+from microcosm.build.stochastic_assignment import (
+    integer_record_keys,
+    stable_identity_uniforms,
+)
 from microcosm.build.uk_runtime.bus_support_pricing import (
     PRICE_BUS_SUPPORT_KIND,
     bus_support_pricing_operation,
@@ -24,6 +29,10 @@ from microcosm.build.uk_runtime.donor_uprating import (
 )
 from microcosm.build.uk_runtime.etb_vat import UK_ETB_FAMILY_ROLE_COUNTS
 from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
+from microcosm.build.uk_runtime.household_income import (
+    UK_HBAI_NET_INCOME_PREDICTOR,
+    UK_HBAI_NET_INCOME_VARIABLE,
+)
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_mass_conservation_receipt,
     uk_household_weight_kind,
@@ -60,9 +69,15 @@ UK_ETB_SERVICES_ENGINE_VARIABLES = (
     "is_SP_age",
     "dla",
     "pip",
-    "hbai_household_net_income",
+    UK_HBAI_NET_INCOME_VARIABLE,
     "current_education",
 )
+#: Predictors read from an engine variable of another name: the HBAI net income
+#: is read before the reset to zero (policyengine-uk 2.132.4), since the
+#: donor's ``disinc`` is not reset.
+_ETB_SERVICES_PREDICTOR_VARIABLES = {
+    UK_HBAI_NET_INCOME_PREDICTOR: UK_HBAI_NET_INCOME_VARIABLE,
+}
 UK_ETB_SERVICES_EDUCATION_COUNTS = {
     "count_primary_education": ("PRIMARY",),
     "count_secondary_education": ("LOWER_SECONDARY",),
@@ -176,7 +191,10 @@ class UKETBServicesStageTransform:
         )
         predictors = recipient_predictors(frame, self.engine)
         draws, records = impute_etb_services(
-            donor, predictors, seed=_qrf_seed(self.stage)
+            donor,
+            predictors,
+            seed=_qrf_seed(self.stage),
+            record_ids=frame.table("household")["household_id"].to_numpy(),
         )
         clip_result = support_clip_to_donor(
             draws, donor, exempt=support_clip_exempt(self.stage)
@@ -413,8 +431,9 @@ def recipient_predictors(frame: Frame, engine: object) -> pd.DataFrame:
             labels = UK_ETB_SERVICES_EDUCATION_COUNTS[predictor]
             result[predictor] = person_sum(np.isin(education, labels))
             continue
-        values = np.asarray(materialized[predictor])
-        entity = str(engine.variable_metadata(predictor).entity)
+        variable = _ETB_SERVICES_PREDICTOR_VARIABLES.get(predictor, predictor)
+        values = np.asarray(materialized[variable])
+        entity = str(engine.variable_metadata(variable).entity)
         if entity == "household":
             result[predictor] = values
         elif entity == "person":
@@ -425,11 +444,28 @@ def recipient_predictors(frame: Frame, engine: object) -> pd.DataFrame:
 
 
 def impute_etb_services(
-    donor: pd.DataFrame, recipient: pd.DataFrame, *, seed: int, n_estimators: int = 100
+    donor: pd.DataFrame,
+    recipient: pd.DataFrame,
+    *,
+    seed: int,
+    record_ids: Sequence[object] | np.ndarray,
+    n_estimators: int = 100,
 ) -> tuple[pd.DataFrame, tuple[FitWeightRecord, ...]]:
+    """Chain-draw the ETB services targets from household-keyed uniforms.
+
+    Each draw reads uniforms keyed on the household's own id (``record_ids``,
+    in recipient row order) and the target, so a household's draws move only
+    when its own predictors do, whatever happens to the other recipients.
+    """
+
     from microcosm.fit import RegimeGatedQRF
 
     targets = UK_ETB_SERVICES_HOUSEHOLD_OUTPUT_COLUMNS[:3]
+    ids = integer_record_keys(record_ids, label="ETB record_ids")
+    if ids.shape != (len(recipient),) or pd.Series(ids).duplicated().any():
+        raise ValueError(
+            "ETB record_ids must name every recipient once, in recipient row order."
+        )
     model = RegimeGatedQRF(n_estimators=n_estimators, seed=seed)
     state = model.start_chain(
         donor,
@@ -440,12 +476,15 @@ def impute_etb_services(
     raw = pd.DataFrame(index=recipient.index)
     records: list[FitWeightRecord] = []
     for target in targets:
+        salt = f"{UK_ETB_SERVICES_FIT_NAME}:{target}"
         result = model.fit_draw_next(
             donor,
             recipient.loc[:, list(UK_ETB_SERVICES_PREDICTORS)],
             raw,
             state=state,
             weights="weight",
+            quantiles=stable_identity_uniforms(ids, seed=seed, salt=salt),
+            sign_uniforms=stable_identity_uniforms(ids, seed=seed, salt=f"{salt}:sign"),
         )
         raw[target] = result.raw_draw
         records.append(

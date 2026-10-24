@@ -13,13 +13,15 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from microcosm.build.uk_runtime.frs_spine import WEEKS_IN_YEAR
 from microcosm.build.uk_runtime.spi_support import (
     SPI_HMRC_INCAPACITY_BENEFIT_INCOME_COLUMN,
     SPI_HMRC_PAY_COLUMN,
     SPI_HMRC_UNEMPLOYMENT_BENEFIT_INCOME_COLUMN,
 )
 
-FRS_WEEKS_IN_YEAR = 365.25 / 7
+#: The spine's annualisation of weekly amounts, which the replay leaves mirror.
+FRS_WEEKS_IN_YEAR = WEEKS_IN_YEAR
 
 
 FRS_HMRC_PAY_COLUMN = SPI_HMRC_PAY_COLUMN
@@ -51,7 +53,7 @@ FRS_HMRC_RETAINED_LEAF_SOURCE_EVIDENCE: dict[str, dict[str, object]] = {
         "spi_concept": "PAY",
         "scope": "full",
         "raw_sources": ["ADULT.INEARNS"],
-        "formula": "max(0, ADULT.INEARNS) * (365.25 / 7)",
+        "formula": "max(0, ADULT.INEARNS) * 52",
     },
     FRS_HMRC_UBISJA_COLUMN: {
         "spi_concept": "UBISJA",
@@ -60,13 +62,13 @@ FRS_HMRC_RETAINED_LEAF_SOURCE_EVIDENCE: dict[str, dict[str, object]] = {
             "BENEFITS.BENEFIT=14:BENAMT",
             "BENEFITS.BENEFIT=19:BENAMT",
         ],
-        "formula": "sum(BENAMT where BENEFIT in {14, 19}) * (365.25 / 7)",
+        "formula": "sum(BENAMT where BENEFIT in {14, 19}) * 52",
     },
     FRS_HMRC_INCPBEN_COLUMN: {
         "spi_concept": "INCPBEN",
         "scope": "full",
         "raw_sources": ["BENEFITS.BENEFIT=17:BENAMT"],
-        "formula": "sum(BENAMT where BENEFIT == 17) * (365.25 / 7)",
+        "formula": "sum(BENAMT where BENEFIT == 17) * 52",
     },
     FRS_HMRC_OSSBEN_IDENTIFIABLE_SUBSET_COLUMN: {
         "spi_concept": "OSSBEN",
@@ -76,15 +78,14 @@ FRS_HMRC_RETAINED_LEAF_SOURCE_EVIDENCE: dict[str, dict[str, object]] = {
             "BENEFITS.BENEFIT=16,VAR2 in {1,3}:BENAMT",
         ],
         "formula": (
-            "sum(BENAMT where BENEFIT == 13 or "
-            "(BENEFIT == 16 and VAR2 in {1, 3})) * (365.25 / 7)"
+            "sum(BENAMT where BENEFIT == 13 or (BENEFIT == 16 and VAR2 in {1, 3})) * 52"
         ),
     },
     FRS_HMRC_SRP_REGULAR_CODE5_COLUMN: {
         "spi_concept": "SRP",
         "scope": "regular_code5_subset",
         "raw_sources": ["BENEFITS.BENEFIT=5:BENAMT"],
-        "formula": "sum(BENAMT where BENEFIT == 5) * (365.25 / 7)",
+        "formula": "sum(BENAMT where BENEFIT == 5) * 52",
     },
 }
 

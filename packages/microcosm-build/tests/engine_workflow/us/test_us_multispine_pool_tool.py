@@ -338,7 +338,16 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             "country": "us",
             "schema_id": "country_spec",
             "schema_version": 1,
-            "spec_sha256": "62ea14bbf81c5fd238e62cee860df67ec031724b3b25ce474696504b93217a6c",
+            # The US bundle's semantic hash covers microcosm.calibrate.solve's
+            # bytes (its seed protocol); microcosm#1124's opt-in
+            # retain_best_objective and microcosm#1301's budget_search_bracket
+            # move it. It covers microcosm.fit.qrf's attested bytes too, so
+            # fit_draw_next's caller-owned uniforms (microcosm#1332) move it,
+            # and so do microcosm#454's meps_esi_premiums stage and
+            # microcosm#1376's puma_county_vintage draw module, and
+            # microcosm#1380's self-employment post-transfer contract, and the
+            # pool's ESI premium operator and anchor (microcosm#1199).
+            "spec_sha256": "24ca0447f1c31c7fd64143c4dbd4728e01e5fbd7e72fc776f8185f6e9fbc3bbb",
         },
     }
 

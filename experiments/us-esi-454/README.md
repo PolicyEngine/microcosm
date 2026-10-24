@@ -27,7 +27,7 @@ Each receipt records the input digests, the columns the restoration added per
 vintage with their observed code counts, the stage summary (scale factor, raw
 and scaled totals for both universes, totals by tier and employer sector,
 weighted policyholder counts), totals by vintage, both gate verdicts before
-and after the clone with the BEA and MEPS-IC cross-checks, and
+and after the clone with the NHE Table 24 and MEPS-IC cross-checks, and
 `other_policyholder_sensitivity`: the employed column under each reading of
 the anchor and of how policyholders outside the column are priced.
 
@@ -49,7 +49,10 @@ Chronicle feed to `cf9ece2`, which banks BEA B4923C, the stage's anchor
   feeds, once the way the target-parity generator does (targets aged) and
   once with aging off, and compares each as an ordered list;
   `registry_diff.json` records 33,250 targets with distinct names on each
-  feed and identical lists under both settings.
+  feed and identical lists under both settings. Its registry digests move
+  whenever main changes the compiler, so the report also records the commit
+  it ran at (`compiler.commit`) and that `packages/` and `tools/` were clean
+  there. The committed report was rerun after the 2026-10-23 merge of main.
 
 ## The stacked pool's fill
 

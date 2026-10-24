@@ -58,6 +58,16 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "calibration_bindings.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "chronicle_feed.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "currency_bridge.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
@@ -88,7 +98,17 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "reference_inventory.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "release_contract.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "reporting_classifiers.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },

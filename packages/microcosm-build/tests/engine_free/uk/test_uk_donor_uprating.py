@@ -6,10 +6,13 @@ from test_support.microcosm_build.uk_donor_uprating import *
 
 def test_both_donor_stages_declare_uprating_to_the_base_year() -> None:
     stages = _stages()
+    # The LCFS 2024-25 diary starts in the base year (microcosm#1164); the ETB
+    # FYE-2024 donor is a year behind.
+    periods = {"lcfs_consumption": (2024, 2024), "etb_services": (2023, 2024)}
     for name in ("lcfs_consumption", "etb_services"):
         operation = uprating_operation(stages[name])
         assert operation is not None, name
-        assert (operation["from_period"], operation["to_period"]) == (2023, 2024)
+        assert (operation["from_period"], operation["to_period"]) == periods[name]
         assert [op.kind for op in stages[name].operations][:2] == [
             "derive",
             "uprate_donor_columns",
@@ -23,7 +26,8 @@ def test_both_donor_stages_declare_uprating_to_the_base_year() -> None:
     assert lcfs["columns"]["petrol_spending"]["basis"] == "vendored_litre_proxy"
     assert lcfs["columns"]["diesel_spending"]["basis"] == "vendored_litre_proxy"
     # Every diary spend column starts from the April-to-March diary year and
-    # ends at calendar 2024 (microcosm#1113); income predictors move a full year.
+    # ends at calendar 2024 (microcosm#1113); income predictors take the plain
+    # ratio, one for the 2024-25 diary.
     assert lcfs["fiscal_year_bridge"] == {
         "start_year_weight": 0.75,
         "next_year_weight": 0.25,
@@ -62,6 +66,40 @@ def test_committed_json_mirror_matches_the_yaml_declaration() -> None:
         assert {k: v for k, v in mirrored.items() if k != "kind"} == uprating_operation(
             stages[name]
         )
+
+
+def test_a_diary_year_starting_in_the_target_year_steps_a_quarter_back() -> None:
+    # microcosm#1164: the April 2024 to March 2025 diary sits a quarter past
+    # calendar 2024, so its window factor is below one; a column without the
+    # window, an income predictor, takes 1.
+    factors, receipt = donor_uprating_factors(
+        {
+            "from_period": 2024,
+            "to_period": 2024,
+            "fiscal_year_bridge": {"start_year_weight": 0.75, "next_year_weight": 0.25},
+            "columns": {
+                "food": {
+                    "basis": "engine_parameter",
+                    "parameter_path": CPI,
+                    "from_window": "fiscal_year",
+                },
+                "pay": {"basis": "engine_parameter", "parameter_path": CPI},
+            },
+        },
+        parameter_reader=_fake_reader,
+    )
+    base = 0.75 * 1.55763 + 0.25 * 1.60100
+    assert factors["food"] == pytest.approx(1.55763 / base)
+    assert factors["food"] < 1.0
+    assert factors["pay"] == 1.0
+    food = receipt["columns"]["food"]
+    assert food["base"] == pytest.approx(base)
+    # The following year's index is recorded: base is not 0.75 before + 0.25
+    # after when the diary starts in the target year.
+    assert food["following"] == 1.60100
+    assert food["base"] == pytest.approx(
+        0.75 * food["before"] + 0.25 * food["following"]
+    )
 
 
 def test_engine_parameter_basis_is_the_ratio_of_the_two_instants() -> None:

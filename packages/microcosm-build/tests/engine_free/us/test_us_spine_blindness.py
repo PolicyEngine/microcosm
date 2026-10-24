@@ -266,6 +266,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "congressional_district_geography.py",
         "congressional_district_vintage.py",
         "congressional_district_vintage_crosswalk.py",
+        # 2020 tract/county -> 2023 county-equivalent metadata and its gate;
+        # writes calibration geography only, no population treatment.
+        "county_vintage.py",
         "cps_carried.py",
         "demographics.py",
         "education_assistance_source.py",
@@ -300,6 +303,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "puf_qrf_worker.py",
         "puf_source_agi.py",
         "puf_support.py",
+        # 2023 county for the PUMA ladder's rows, drawn after its original
+        # draws (CT only, without a tract); no population treatment.
+        "puma_county_vintage.py",
         "puma_ladder.py",
         "puma_ladder_sources.py",
         "reform_coverage_smoke.py",
@@ -333,6 +339,11 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # Measured SPM independence role restored by exact pinned Census identity
         # through spm_role_source; a manifest stage shaped like relationship_inputs.
         "spm_independence_role.py",
+        # Release gate over a final frame: the composition check above, graded
+        # on the units the certified engine measures, with the universe read
+        # through spm_universe_source. Reads no provenance tag itself and
+        # treats no population.
+        "spm_measurement_gate.py",
         "spm_resources.py",
         # Pinned ASEC role reconstruction and exact parent join; no population
         # treatment. Remains subject to the all-runtime source-identity scan.
@@ -342,6 +353,10 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "spm_universe_source.py",
         # Reviewed held-out SSI/Social Security diagnostic; no population treatment.
         "ssi_social_security_holdout.py",
+        # Consumer-artifact remedy for two retired stored inputs (microcosm#1263):
+        # renames the WIC draw and drops a dead column. It reads no provenance
+        # column; the release tool passes the people who may lack a decision.
+        "retired_stored_inputs.py",
         "stacked_spine.py",  # Provenance owner (#578 revision); see owners list.
         "support_provenance.py",
         "take_up.py",
@@ -3491,17 +3506,21 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
 
     for tool in _SPINE_BLIND_BUILD_TOOLS:
         runtime_graph, missing_modules = _us_runtime_import_graph(tool)
-        # 75 = main's 70 plus spm_independence_role.py, spm_role_source.py and
+        # 80 = main's 70 plus spm_independence_role.py, spm_role_source.py and
         # spm_composition.py, reached because the pool's engine-input
         # projection names the SPM role as a required source input (#893),
         # plus asec_sources.py, whose default ASEC pool the education sidecar
         # loader now defaults to, plus esi_premiums.py, whose output family
         # operator_boundary registers and which the pool runs as an operator
-        # (#454). The first four are classified in _OTHER_US_RUNTIME_MODULES
-        # and esi_premiums.py as a spine-blind operator; all are scanned
-        # below like every other reached module.
-        assert len(runtime_graph) == 75, (
-            f"{tool.name} must reach the pinned 75-module runtime graph; "
+        # (#454), plus acs_release_predictors.py and
+        # asec_census_person_columns.py, reached through the shared native ACS
+        # occupation/work-experience crosswalk (#719), and county_vintage.py and
+        # puma_county_vintage.py, which write county_fips_2023, with
+        # block_ladder_sources.py, whose CT_STATE_FIPS they import (#1376). All
+        # are classified by the runtime registries (esi_premiums.py as a
+        # spine-blind operator) and scanned below like every reached module.
+        assert len(runtime_graph) == 80, (
+            f"{tool.name} must reach the pinned 80-module runtime graph; "
             f"reached {len(runtime_graph)}"
         )
         assert not missing_modules, (

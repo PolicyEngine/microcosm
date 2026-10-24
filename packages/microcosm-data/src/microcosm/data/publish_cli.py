@@ -325,7 +325,10 @@ def main(argv: list[str] | None = None) -> int:
         evidence=args.evidence,
         line=args.promote_line,
     )
-    from microcosm.data.source_enrichment import recorded_narrowed_claims
+    from microcosm.data.source_enrichment import (
+        recorded_claim_measurement,
+        recorded_narrowed_claims,
+    )
 
     # A re-certification that reverted a declared compatibility range to the
     # exact pin warned in the terminal that ran it, days and an operator ago.
@@ -340,11 +343,37 @@ def main(argv: list[str] | None = None) -> int:
             f"earlier certification: {json.dumps(narrowed)}",
             file=sys.stderr,
         )
+    # A declared compatibility range admits model versions no check measured.
+    # The bundle records which one was; say it on the same two paths. A
+    # recertification records the measured version, its baseline and the
+    # drift summary the declarer read.
+    from microcosm.data import compatibility_recertification
+
+    measurement = recorded_claim_measurement(
+        Path(args.release_dir)
+    ) or compatibility_recertification.recorded_claim_measurement(
+        Path(args.release_dir)
+    )
+    if measurement:
+        print(
+            "note: this release declares a publisher compatibility range that "
+            "certification measured against only the versions recorded here: "
+            f"{json.dumps(measurement)}",
+            file=sys.stderr,
+        )
     if args.preflight_only:
-        prepare_release(Path(args.release_dir), **preparation_options)
+        prepared = prepare_release(Path(args.release_dir), **preparation_options)
         preflight = {"valid": True, "published": False}
         if narrowed:
             preflight["narrowed_claims"] = narrowed
+        if measurement:
+            preflight["claim_measurement"] = measurement
+        # The contract's warnings (the dense line's disclosure walk,
+        # microcosm#1301) never refuse, so the verdict carries them for
+        # whatever parses stdout; each names a file and paths in it, never a
+        # value. Publication's printed pointer carries them the same way.
+        if prepared.contract_warnings:
+            preflight["contract_warnings"] = list(prepared.contract_warnings)
         print(json.dumps(preflight))
         return 0
 

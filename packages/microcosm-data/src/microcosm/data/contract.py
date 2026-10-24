@@ -49,6 +49,7 @@ from packaging.version import InvalidVersion, Version
 from pydantic import ValidationError
 
 from microcosm.data.denied_pools import denied_pool_publication_for
+from microcosm.data.stored_inputs import is_model_named
 from microcosm.data.us_critical_targets import (
     US_CRITICAL_TARGET_FIT_REQUIREMENTS as _US_CRITICAL_TARGET_FIT_REQUIREMENTS,
 )
@@ -62,7 +63,11 @@ from microcosm.diagnostics import (
     CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
     SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS,
     UK_DIAGNOSTICS_SCHEMA_VERSION,
+    UK_MODEL_FIGURE_FIELDS,
+    UK_OPTIONAL_TARGET_GEOGRAPHY_LEVELS,
     UK_TARGET_GEOGRAPHY_LEVELS,
+    UK_WITHHELD_PUBLISHED_ITERATE_FIELDS,
+    UK_WITHHELD_PUBLISHED_OPTIONS,
     parse_calibration_diagnostics,
 )
 
@@ -76,12 +81,22 @@ __all__ = [
     "PUBLISHER_CLAIM_BASIS",
     "RELEASE_MANIFEST_SCHEMA_VERSION",
     "REQUIRED_RELEASE_FILES",
+    "US_FISCAL_STORED_INPUTS_STAGE",
+    "US_LOCAL_AREA_SPM_MEASUREMENT_STAGE",
+    "US_LOCAL_AREA_STORED_INPUTS_STAGE",
     "US_SOURCE_COVERAGE_DIAGNOSTICS_FILE",
+    "US_SPM_MEASUREMENT_EVIDENCE_KEY",
+    "US_SPM_UNIVERSE_SCOPING_MODEL_VERSIONS",
+    "US_STORED_INPUTS_EVIDENCE_FILE",
+    "US_STORED_INPUTS_EVIDENCE_KEY",
+    "US_STORED_INPUTS_EVIDENCE_SCHEMA_VERSION",
     "ReleaseContractError",
     "compatibility_claim_declarer_error",
     "line_for_release_id",
     "release_dataset_role",
     "required_release_files",
+    "stored_input_evidence_manifest_block",
+    "us_engine_scopes_spm_universe",
     "validate_evidence_release_dir",
     "validate_release_dir",
 ]
@@ -166,6 +181,48 @@ LOCAL_AREA_SOURCE_COVERAGE_KEYS = (
     "donor_release",
 )
 
+#: The stored-input verdict (microcosm#1026) as release evidence
+#: (microcosm#1034). Each US seam that checks a release's stored columns against
+#: the policyengine-us it records as built-with binds the verdict under this
+#: key: the ACS local-area package stage as a ``gate_summary.json`` gate, the
+#: fiscal-refresh tool as a gate-evidence file plus a manifest block. The
+#: publisher requires it of every US calibration release, so a release packaged
+#: by a tool without the check, or with its record deleted, cannot validate.
+US_STORED_INPUTS_EVIDENCE_KEY = "stored_inputs"
+#: The fiscal-refresh gate-evidence file: a ``release_manifest.json`` artifact
+#: under :data:`US_STORED_INPUTS_EVIDENCE_KEY`, whose status the manifests'
+#: ``gate_evidence`` block records as ``bound``.
+US_STORED_INPUTS_EVIDENCE_FILE = "stored_inputs.json"
+US_STORED_INPUTS_EVIDENCE_SCHEMA_VERSION = 1
+#: Where each seam checks: the fiscal-refresh tool grades the export frame
+#: before the H5 is written (and the written H5 after), the ACS local-area tool
+#: grades the calibrated H5 when it packages the release.
+US_FISCAL_STORED_INPUTS_STAGE = "export frame"
+US_LOCAL_AREA_STORED_INPUTS_STAGE = "package"
+
+#: The SPM measurement composition verdict (microcosm#1263) as release
+#: evidence. The ACS local-area package stage grades the calibrated H5 it ships
+#: against the policyengine-us it records as built-with
+#: (``microcosm.build.us_runtime.spm_measurement_gate``, whose gate name a
+#: test pins equal to this key) and records the verdict as a
+#: ``gate_summary.json`` gate. The publisher requires it of every US
+#: local-area release: one SPM unit the engine measures with no classified
+#: adult makes every SPM measurement on the release raise
+#: ``SPM_COMPOSITION_REQUIRED``.
+US_SPM_MEASUREMENT_EVIDENCE_KEY = "spm_measurement_composition"
+US_LOCAL_AREA_SPM_MEASUREMENT_STAGE = "package"
+#: The policyengine-us versions reviewed as scoping SPM measurement by
+#: ``spm_unit_spm_universe_status``: only the units a dataset declares
+#: ``INCLUDED`` reach the calculator (policyengine-us#9462, unreleased). It is
+#: empty because no released policyengine-us does. The publisher reads JSON
+#: only, so this register is how it knows which built-with engines may record
+#: an SPM measurement gate graded on ``INCLUDED`` units alone; under any other
+#: engine such a record would excuse units the engine measures. Add a version
+#: only after reading that release's scoped threshold formulas. The package
+#: stage refuses an engine whose variables disagree with this register, and an
+#: engine-scenario test holds the register to the locked engine.
+US_SPM_UNIVERSE_SCOPING_MODEL_VERSIONS: frozenset[str] = frozenset()
+
 _SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS = (
     SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS
 )
@@ -220,7 +277,6 @@ _UK_TERMINAL_EVIDENCE_GATE_NAMES = {
     "hmrc_spi_income": ("weights_audit",),
     "release_parity": ("export_surface", "target_surface", "target_fit"),
     "input_mass_parity": ("input_mass_parity",),
-    "qrf_tail_concentration": ("qrf_tail_concentration",),
 }
 _UK_TERMINAL_EVIDENCE_STAGES = frozenset(
     {"release_dataset", *_UK_TERMINAL_EVIDENCE_GATE_NAMES}
@@ -240,17 +296,14 @@ _UK_WEIGHT_SUMMARY_FIELDS = (
 _UK_MIN_ESS_FRACTION = 0.01
 _UK_MAX_TO_MEDIAN_WEIGHT_RATIO = 1_151.2542195939373
 _UK_MAX_TARGET_ABS_RELATIVE_ERROR = 0.25
-# Spec-armed weighted-integrity thresholds (uk/gates.json parameters;
-# input-mass pair from microcosm#630, QRF tail pair re-armed from the #686
-# L3 baselines by microcosm#757 B4): passing reports must carry exactly the
-# committed values,
-# so a re-signed report cannot loosen a fence the spec armed. Held in
-# lockstep with the committed spec by the build-shard sync tests.
+# Spec-armed weighted-integrity thresholds (uk/gates.json parameters; the
+# input-mass pair from microcosm#630): passing reports must carry exactly the
+# committed values, so a re-signed report cannot loosen a fence the spec
+# armed. Held in lockstep with the committed spec by the build-shard sync
+# tests. The QRF tail-concentration gate and its pins were removed in
+# microcosm#1276.
 _UK_INPUT_MASS_RELATIVE_TOLERANCE = 4.521811483823806
 _UK_INPUT_MASS_MINIMUM_REFERENCE_TOTAL = 0.0
-_UK_QRF_TAIL_TOP_K = 100
-_UK_QRF_TAIL_MAX_TOP_SHARE = 0.9994670564654868
-_UK_QRF_TAIL_MIN_NONZERO_RECORDS = 104
 # Independent publication pin for the active reviewed reference source. The data
 # shard cannot import the build shard, so keep this in lockstep with
 # uk/gates.json reference_registry["efrs-post-calibration"].identity.
@@ -373,24 +426,6 @@ _UK_TERMINAL_GATE_DETAIL_FIELDS = {
             "reference_identity",
         }
     ),
-    "qrf_tail_concentration": frozenset(
-        {
-            "columns_checked",
-            "top_k",
-            "max_top_share",
-            "min_nonzero_records",
-            "top_share",
-            "carrier_counts",
-            "thin_columns",
-            "reviewed_exclusions",
-            "stale_exclusions",
-            "dormant_exclusions",
-            "expired_exclusions",
-            "premature_exclusions",
-            "exclusions_evaluated_on",
-            "surface",
-        }
-    ),
     "support": frozenset({"columns_checked"}),
 }
 
@@ -416,13 +451,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "9c08a68f9d63fff9f54dd21abb0a212723ff2074f0381cd7b69165e97c4c5ef6"
+    "ebf48e9a2b64a1518923e7795f771da069ec2c0cc1608c764013e1ff9c83dec0"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "942bc58008b07fd3477e9dd7a407a780a5c0ff37fc1c6790cf1beb858c604f1d"
+    "2437ef6c1e3ee2cd6a844c7d8dbca72c8ec7163199e03979295fc6ce0f486623"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "f8d079d8ce18afe076d99ddb237bc2fb45bc9f413c6fb771e3fe7348b2e27598"
+    "9b478f778c03838adc2aa2b769d8a3fbf21e6f8d776d318ff37d8db10c759e24"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -441,14 +476,16 @@ _UK_GATE_BATTERY_ENTRY_LEGACY_NAMES = {
     "uk_export_surface": "export_surface",
     "uk_take_up_signal": "take_up_signal",
     "uk_brma_enum_domain": "enum_domain",
+    "uk_local_brma_enum_domain": "enum_domain",
     "uk_ons_household_type_enum_domain": "enum_domain",
     "uk_capital_gains_asset_type_enum_domain": "enum_domain",
+    "uk_council_tax_band_domain": "enum_domain",
     "uk_uc_deduction_combination_enum_domain": "enum_domain",
     "uk_student_loan_plan_enum_domain": "enum_domain",
+    "uk_council_tax_band_domain_terminal": "enum_domain",
     "uk_target_surface": "target_surface",
     "uk_target_fit": "target_fit",
     "uk_input_mass_parity": "input_mass_parity",
-    "uk_qrf_tail_concentration": "qrf_tail_concentration",
 }
 #: Spec entry id -> (gate, phase), mirrored per entry so a report cannot
 #: relabel an entry's identity.
@@ -458,16 +495,13 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
         "preflight",
     ),
     "uk_release_family_build_stages": ("source_coverage", "preflight"),
-    "uk_ledger_compile_parity_production_2023": (
-        "ledger_compile_parity",
-        "preflight",
-    ),
     "uk_ledger_compile_parity_incumbent_2025": (
         "ledger_compile_parity",
         "preflight",
     ),
     "uk_stage_was_wealth_support": ("stage_health", "transferred"),
     "uk_stage_was_lisa_support": ("stage_health", "transferred"),
+    "uk_stage_property_components": ("stage_health", "transferred"),
     "uk_stage_was_wealth_coherence": ("stage_health", "transferred"),
     "uk_stage_nts_bus_travel_support": ("stage_health", "transferred"),
     "uk_stage_nts_bus_travel_facts": ("stage_health", "transferred"),
@@ -486,15 +520,18 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
         "stage_health",
         "transferred",
     ),
+    "uk_stage_frs_annual_income_spells": ("stage_health", "transferred"),
     "uk_stage_spi_support_channel_mass": ("stage_health", "transferred"),
     "uk_stage_hmrc_spi_income_spine_identity": (
         "stage_health",
         "transferred",
     ),
     "uk_stage_spi_benefit_coherence": ("stage_health", "transferred"),
+    "uk_stage_uc_take_up": ("stage_health", "transferred"),
     "uk_stage_pension_credit_take_up": ("stage_health", "transferred"),
     "uk_stage_child_benefit_take_up": ("stage_health", "transferred"),
     "uk_stage_cgt_incidence_clone_mass": ("stage_health", "transferred"),
+    "uk_stage_high_value_home_support_mass": ("stage_health", "transferred"),
     "uk_stage_cgt_support_split_mass": ("stage_health", "transferred"),
     "uk_stage_cgt_residential_split_mass": ("stage_health", "transferred"),
     "uk_stage_spi_income_band_donors_support": ("stage_health", "transferred"),
@@ -515,6 +552,9 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
         "transferred",
     ),
     "uk_stage_student_loans_realization": ("stage_health", "transferred"),
+    "uk_stage_regional_home_values_ranking": ("stage_health", "transferred"),
+    "uk_stage_property_purchases_fit": ("stage_health", "transferred"),
+    "uk_stage_uc_legacy_closure_take_up_contract": ("stage_health", "transferred"),
     "uk_stage_age_tail_targets": ("stage_health", "assembled"),
     "uk_stage_frs_relationships_composition": ("stage_health", "assembled"),
     "uk_ledger_compile_parity_local_incumbent_2025": (
@@ -537,8 +577,10 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_brma_enum_domain": ("enum_domain", "assembled"),
     "uk_ons_household_type_enum_domain": ("enum_domain", "assembled"),
     "uk_capital_gains_asset_type_enum_domain": ("enum_domain", "transferred"),
+    "uk_council_tax_band_domain": ("enum_domain", "transferred"),
     "uk_uc_deduction_combination_enum_domain": ("enum_domain", "terminal"),
     "uk_student_loan_plan_enum_domain": ("enum_domain", "terminal"),
+    "uk_council_tax_band_domain_terminal": ("enum_domain", "terminal"),
     "uk_calibration_reference_coverage": (
         "calibration_reference_coverage",
         "terminal",
@@ -550,26 +592,29 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
         "terminal",
     ),
     "uk_input_mass_parity": ("input_mass_parity", "terminal"),
-    "uk_qrf_tail_concentration": ("tail_concentration", "terminal"),
     "uk_local_geography_ladder_post_calibration": (
         "spine_agreement",
         "terminal",
     ),
+    "uk_local_brma_enum_domain": ("enum_domain", "terminal"),
     "uk_local_area_support": ("area_support", "terminal"),
     "uk_local_target_fit": ("target_fit", "terminal"),
     "uk_local_per_family_fit": ("per_family_fit", "terminal"),
     "uk_local_weight_ratio": ("weight_ratio", "terminal"),
     "uk_local_weight_ess": ("weight_ess", "terminal"),
+    "uk_high_value_homes_benchmarks": ("high_value_home_benchmarks", "terminal"),
+    "uk_high_value_homes_support": ("high_value_home_support", "terminal"),
 }
 _UK_GATE_BATTERY_ENTRY_IDS = frozenset(_UK_GATE_BATTERY_ENTRY_GATES)
-_UK_GATE_BATTERY_DIAGNOSTIC_IDS = frozenset()
+_UK_GATE_BATTERY_DIAGNOSTIC_IDS = frozenset(
+    {"uk_high_value_homes_benchmarks", "uk_high_value_homes_support"}
+)
 #: The entries whose bindings contribute an evidence digest; their keys are
 #: the only ones a schema-4 ``evidence_sha256`` may carry, and each appears
 #: exactly when its entry evaluated.
 _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
     {
         "uk_release_family_build_stages",
-        "uk_ledger_compile_parity_production_2023",
         "uk_ledger_compile_parity_incumbent_2025",
         "uk_ledger_compile_parity_local_incumbent_2025",
         "uk_target_surface_local_default_2025",
@@ -577,6 +622,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_input_mass_parity",
         "uk_stage_was_wealth_support",
         "uk_stage_was_lisa_support",
+        "uk_stage_property_components",
         "uk_stage_was_wealth_coherence",
         "uk_stage_nts_bus_travel_support",
         "uk_stage_nts_bus_travel_facts",
@@ -592,12 +638,15 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_stage_etb_services_support",
         "uk_stage_etb_services_support_pricing",
         "uk_stage_frs_hmrc_spine_leaves_signal",
+        "uk_stage_frs_annual_income_spells",
         "uk_stage_spi_support_channel_mass",
         "uk_stage_hmrc_spi_income_spine_identity",
         "uk_stage_spi_benefit_coherence",
+        "uk_stage_uc_take_up",
         "uk_stage_pension_credit_take_up",
         "uk_stage_child_benefit_take_up",
         "uk_stage_cgt_incidence_clone_mass",
+        "uk_stage_high_value_home_support_mass",
         "uk_stage_cgt_support_split_mass",
         "uk_stage_cgt_residential_split_mass",
         "uk_stage_spi_income_band_donors_support",
@@ -606,6 +655,9 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_stage_cgt_incidence_anchor_composition",
         "uk_stage_salary_sacrifice_realization",
         "uk_stage_student_loans_realization",
+        "uk_stage_regional_home_values_ranking",
+        "uk_stage_property_purchases_fit",
+        "uk_stage_uc_legacy_closure_take_up_contract",
         "uk_stage_age_tail_targets",
         "uk_stage_frs_relationships_composition",
         "uk_cgt_projection_entrants",
@@ -616,14 +668,14 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
 # canonical hash; this pins the wrapped digest so the entry's evidence line
 # still binds the enhanced-FRS incumbent totals.
 _UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "d28a1fd613d61a21b06c6fccc3e3c95c0dd0173b0957c85bc4618170cac0907f"
+    "82a5fa0c7dec5ac5c169f0b8b2f4acc6b302e80637dc698d3247e75a6d133933"
 )
 # The degenerate binding's evidence payload digests the resolved exclusion
 # records; for a release that must be the committed register, so its digest
 # is a vintage pin that moves with every reviewed register edit (the same
 # tripwire as the policy digest).
 _UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
-    "6f0243bcda09dad26945376230c44ec3cf55d4e417c3a25e29bae8c59bc1a69d"
+    "6a179222c6b6058ad9caacfd347f7bdb8cb98a62237b50d1fc1136df09337251"
 )
 
 
@@ -701,12 +753,19 @@ _UK_DENSE_REQUIRED_RELEASE_FILES = (
     "gate_summary.json",
     _UK_DENSE_SOURCE_COVERAGE_FILE,
     _UK_DENSE_GATE_REPORT_FILE,
-    _UK_DENSE_SCORE_RECEIPT_FILE,
-    "incumbent_surface_evaluation.json",
     "rowwise_candidate_manifest.json",
-    "incumbent_manifest.json",
     "source_calibration_diagnostics.json",
     "sha256sums.txt",
+)
+# The incumbent comparison is an opt-in diagnostic (microcosm#1301): a dense
+# release ships these three files all together or not at all, and its
+# manifest says which (the ``no_incumbent_comparison`` or
+# ``incumbent_surface_diagnostic`` limitation). Literals, because the surface
+# file's own constant is defined with its assessment further down.
+_UK_DENSE_INCUMBENT_FILES = (
+    _UK_DENSE_SCORE_RECEIPT_FILE,
+    "incumbent_surface_evaluation.json",
+    "incumbent_manifest.json",
 )
 # The local battery scope (microcosm.build.uk_runtime.calibration_run
 # .UK_LOCAL_GATE_SCOPE) and its scoped spec digests, mirrored and
@@ -714,6 +773,7 @@ _UK_DENSE_REQUIRED_RELEASE_FILES = (
 _UK_DENSE_GATE_ENTRY_IDS = frozenset(
     {
         "uk_local_area_support",
+        "uk_local_brma_enum_domain",
         "uk_local_geography_ladder_post_calibration",
         "uk_local_per_family_fit",
         "uk_local_target_fit",
@@ -724,9 +784,9 @@ _UK_DENSE_GATE_ENTRY_IDS = frozenset(
 _UK_DENSE_RELEASE_BLOCKING_IDS = _UK_DENSE_GATE_ENTRY_IDS
 _UK_DENSE_GATE_PHASES = ("terminal",)
 _UK_DENSE_GATE_DIGESTS = {
-    "gates_manifest_sha256": "3f0d6cf8ad29f960d3bb1006528a288a360747d203e7ca090a36dbabd781d301",
-    "policy_sha256": "ad63a0aa05ac127d45a42d82c5a0e376f23cf0f708c7b6d25958479b3483bbeb",
-    "spec_fingerprint": "c722d3741e806269d70003fb536947950dabf44bf5b5b1c27e835bdc6d8cdb00",
+    "gates_manifest_sha256": "c15b8de06a90598732c03091ee942dfa8a4eb9e41dc1e9ea3f2bd7986e3e7e99",
+    "policy_sha256": "7b97d72a15756b983ecf32a7b4155e0558533044408eb02e6a2d8be52ebe55d4",
+    "spec_fingerprint": "cc56158ad88d9c92d4b98392a9e6eb7199b69458fbf0abbe7c9e5648c4bb6ed5",
 }
 _UK_DENSE_SOURCE_COVERAGE_KEYS = (
     "spine",
@@ -738,6 +798,19 @@ _UK_DENSE_SOURCE_COVERAGE_KEYS = (
     "signed_deferrals",
     "holdout",
     "uprating",
+    "size",
+)
+# The gates whose reviewed exclusions a dense release names, one
+# ``reviewed_exclusion:<gate>:<name>`` limitation each, with the names recorded
+# in the coverage's ``signed_deferrals.reviewed_exclusions`` (microcosm#1301).
+# The assembler (tools/assemble_uk_dense_release_dir.py) imports this tuple,
+# and so does the build's candidate manifest projection
+# (uk_runtime/graph_terminal.py), which records the names each gate stood on
+# under ``reviewed_exclusions_stood_on`` for the contract to hold them to.
+_UK_DENSE_SIGNED_EXCLUSION_GATES = (
+    "uk_target_fit",
+    "uk_local_target_fit",
+    "uk_input_mass_parity",
 )
 # The per-cut tag grammar the assembler mints from the calibration attempt id
 # (tools/assemble_uk_release_dir.py). The contract validates the same shape so
@@ -771,11 +844,14 @@ _UK_CERTIFICATION_SHARED_GATE_IDS = frozenset({"uk_aggregate_admin"})
 _UK_CERTIFICATION_EXCLUDED_GATE_IDS = frozenset(
     {
         "uk_local_geography_ladder_post_calibration",
+        "uk_local_brma_enum_domain",
         "uk_local_area_support",
         "uk_local_target_fit",
         "uk_local_per_family_fit",
         "uk_local_weight_ratio",
         "uk_local_weight_ess",
+        "uk_high_value_homes_benchmarks",
+        "uk_high_value_homes_support",
     }
 )
 _UK_CERTIFICATION_PART_PHASES: Mapping[str, tuple[str, ...]] = {
@@ -788,6 +864,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
         {
             "uk_brma_enum_domain",
             "uk_capital_gains_asset_type_enum_domain",
+            "uk_council_tax_band_domain",
             "uk_ons_household_type_enum_domain",
             "uk_stage_age_tail_targets",
             "uk_stage_cgt_support_split_mass",
@@ -800,7 +877,9 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_etb_services_support_pricing",
             "uk_stage_etb_vat_support",
             "uk_stage_frs_hmrc_spine_leaves_signal",
+            "uk_stage_frs_annual_income_spells",
             "uk_stage_frs_relationships_composition",
+            "uk_stage_high_value_home_support_mass",
             "uk_stage_hmrc_cgt_asset_type_spine_summary",
             "uk_stage_hmrc_cgt_gains_spine_summary",
             "uk_stage_hmrc_spi_income_spine_identity",
@@ -814,11 +893,16 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_nts_bus_travel_facts",
             "uk_stage_nts_bus_travel_support",
             "uk_stage_pension_credit_take_up",
+            "uk_stage_property_components",
+            "uk_stage_property_purchases_fit",
+            "uk_stage_regional_home_values_ranking",
             "uk_stage_salary_sacrifice_realization",
             "uk_stage_spi_benefit_coherence",
             "uk_stage_spi_support_channel_mass",
             "uk_stage_student_loans_realization",
             "uk_stage_uc_deduction_attributes",
+            "uk_stage_uc_legacy_closure_take_up_contract",
+            "uk_stage_uc_take_up",
             "uk_stage_was_lisa_support",
             "uk_stage_was_wealth_coherence",
             "uk_stage_was_wealth_support",
@@ -844,15 +928,14 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_ledger_compile_parity_incumbent_2025",
             "uk_ledger_compile_parity_local_incumbent_2025",
             "uk_target_surface_local_default_2025",
-            "uk_ledger_compile_parity_production_2023",
             "uk_nonnegative_columns",
             "uk_uc_capital_coherence",
             "uk_uc_deduction_combination_enum_domain",
-            "uk_qrf_tail_concentration",
             "uk_release_family_build_stages",
             "uk_release_input_coverage",
             "uk_release_input_coverage_manifest_current",
             "uk_student_loan_plan_enum_domain",
+            "uk_council_tax_band_domain_terminal",
             "uk_support",
             "uk_take_up_signal",
             "uk_target_surface",
@@ -863,10 +946,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "f84884d2213c26b7fe70fe51a5137ac929e2114ad40bd6d2e652a27a259b0339"
+            "a5ecd8de5f98a40fb8ad7b00cca2236f22c82ea24653da2f3270b3de67f24fd6"
         ),
         "policy_sha256": (
-            "984cc9abf94cc119fca8b3c5ca1a36633cdfdf17caf060e4d17a493151e50e18"
+            "00d01f3534e1c9c3effb1316f6b70c102854bcf0f991ebb5667bb0f1647c3485"
         ),
     },
     "calibration_seam": {
@@ -879,10 +962,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "bf62006c78b4f2d4b903c3b869a464de532158326acbf59684681de1e03beb9e"
+            "c3faf15d083ab7e0bae430280e7b14619b3465c56c0b147e9da2932e04f409fa"
         ),
         "policy_sha256": (
-            "5711e4f07003aa548de9a1c9b67e3949bc99294a4a7302f956735983f8b67d4c"
+            "57bebe91df53951c0b4e8403cab0b4e07aaea40e7eb828a121354b2812bd7a6c"
         ),
     },
 }
@@ -2060,7 +2143,6 @@ def _check_uk_terminal_gate_observables(
         for name in (
             "degenerate_release_surface",
             "input_mass_parity",
-            "qrf_tail_concentration",
         )
         if (details := _uk_terminal_gate_details(gates, name)) is not None
         and "exclusions_evaluated_on" in details
@@ -2225,229 +2307,6 @@ def _check_uk_terminal_gate_observables(
             failures.append(
                 f"{_UK_TERMINAL_GATE_REPORT_FILE} passing input-mass parity "
                 "requires details.premature_exclusions to be an empty list."
-            )
-
-    qrf_tail = _uk_terminal_gate_details(gates, "qrf_tail_concentration")
-    if qrf_tail is not None:
-        columns_checked = qrf_tail.get("columns_checked")
-        if (
-            isinstance(columns_checked, bool)
-            or not isinstance(columns_checked, int)
-            or columns_checked <= 0
-        ):
-            failures.append(
-                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
-                "requires details.columns_checked to be positive."
-            )
-        top_k = qrf_tail.get("top_k")
-        valid_top_k = (
-            not isinstance(top_k, bool) and isinstance(top_k, int) and top_k >= 1
-        )
-        if not valid_top_k:
-            failures.append(
-                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
-                "requires details.top_k to be a positive non-boolean integer."
-            )
-        elif top_k != _UK_QRF_TAIL_TOP_K:
-            failures.append(
-                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
-                f"requires details.top_k to equal the committed spec value "
-                f"{_UK_QRF_TAIL_TOP_K}."
-            )
-        max_top_share = qrf_tail.get("max_top_share")
-        valid_max_top_share = (
-            not isinstance(max_top_share, bool)
-            and isinstance(max_top_share, int | float)
-            and 0.0 < max_top_share < 1.0
-            and math.isfinite(max_top_share)
-        )
-        if not valid_max_top_share:
-            failures.append(
-                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
-                "requires details.max_top_share to be a finite non-boolean "
-                "number in (0, 1)."
-            )
-        elif not _uk_terminal_observable_matches(
-            max_top_share, _UK_QRF_TAIL_MAX_TOP_SHARE
-        ):
-            failures.append(
-                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
-                f"requires details.max_top_share to equal the committed spec "
-                f"value {_UK_QRF_TAIL_MAX_TOP_SHARE}."
-            )
-        min_nonzero_records = qrf_tail.get("min_nonzero_records")
-        valid_min_nonzero_records_type = not isinstance(
-            min_nonzero_records, bool
-        ) and isinstance(min_nonzero_records, int)
-        valid_min_nonzero_records = (
-            valid_min_nonzero_records_type
-            and valid_top_k
-            and min_nonzero_records > top_k
-        )
-        if not valid_min_nonzero_records:
-            failures.append(
-                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
-                "requires details.min_nonzero_records to be a non-boolean integer "
-                "greater than details.top_k."
-            )
-        elif min_nonzero_records != _UK_QRF_TAIL_MIN_NONZERO_RECORDS:
-            failures.append(
-                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
-                f"requires details.min_nonzero_records to equal the committed "
-                f"spec value {_UK_QRF_TAIL_MIN_NONZERO_RECORDS}."
-            )
-        top_share = qrf_tail.get("top_share")
-        carrier_counts = qrf_tail.get("carrier_counts")
-        thin_columns = qrf_tail.get("thin_columns")
-        if (
-            not isinstance(top_share, Mapping)
-            or not isinstance(carrier_counts, Mapping)
-            or set(top_share) != set(carrier_counts)
-            or len(top_share) != columns_checked
-        ):
-            failures.append(
-                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
-                "must reconcile details.columns_checked, top_share, and "
-                "carrier_counts."
-            )
-        valid_top_shares = isinstance(top_share, Mapping) and all(
-            not isinstance(share, bool)
-            and isinstance(share, int | float)
-            and 0.0 <= share <= 1.0
-            and math.isfinite(share)
-            for share in top_share.values()
-        )
-        if not valid_top_shares:
-            failures.append(
-                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
-                "requires details.top_share values to be finite non-boolean "
-                "numbers in [0, 1]."
-            )
-        valid_carrier_counts = isinstance(carrier_counts, Mapping) and all(
-            not isinstance(count, bool)
-            and isinstance(count, int)
-            and (not valid_min_nonzero_records_type or count >= min_nonzero_records)
-            for count in carrier_counts.values()
-        )
-        if not valid_carrier_counts:
-            failures.append(
-                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
-                "requires details.carrier_counts values to be non-boolean integers "
-                "at least details.min_nonzero_records."
-            )
-        valid_thin_counts = isinstance(thin_columns, Mapping) and all(
-            not isinstance(count, bool)
-            and isinstance(count, int)
-            and count >= 0
-            and (not valid_min_nonzero_records_type or count < min_nonzero_records)
-            for count in thin_columns.values()
-        )
-        if not valid_thin_counts:
-            failures.append(
-                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
-                "requires details.thin_columns values to be non-boolean integers "
-                "in [0, details.min_nonzero_records)."
-            )
-        reviewed_exclusions = qrf_tail.get("reviewed_exclusions")
-        valid_reviewed_exclusions = isinstance(reviewed_exclusions, Mapping) and all(
-            isinstance(name, str)
-            and bool(name.strip())
-            and isinstance(reason, str)
-            and bool(reason.strip())
-            for name, reason in reviewed_exclusions.items()
-        )
-        if not valid_reviewed_exclusions:
-            failures.append(
-                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
-                "requires details.reviewed_exclusions to map non-empty column "
-                "names to non-empty string reasons."
-            )
-        elif valid_top_shares and valid_max_top_share:
-            high_share_columns = {
-                name for name, share in top_share.items() if share > max_top_share
-            }
-            if high_share_columns != set(reviewed_exclusions):
-                failures.append(
-                    f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
-                    "requires columns above details.max_top_share to match "
-                    "details.reviewed_exclusions exactly."
-                )
-        if qrf_tail.get("expired_exclusions") != []:
-            failures.append(
-                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
-                "requires details.expired_exclusions to be an empty list."
-            )
-        if qrf_tail.get("premature_exclusions") != []:
-            failures.append(
-                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
-                "requires details.premature_exclusions to be an empty list."
-            )
-        surface = qrf_tail.get("surface")
-        if not isinstance(surface, Mapping):
-            failures.append(
-                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
-                "requires details.surface to be an object."
-            )
-        else:
-            for field in ("absent_columns", "non_numeric_columns"):
-                if surface.get(field) != []:
-                    failures.append(
-                        f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail "
-                        f"concentration requires details.surface.{field} to "
-                        "be empty."
-                    )
-            declared_count = surface.get("declared_qrf_outputs")
-            classified = {
-                field: surface.get(field)
-                for field in (
-                    "checked_columns",
-                    "absent_columns",
-                    "non_numeric_columns",
-                )
-            }
-            if (
-                isinstance(declared_count, bool)
-                or not isinstance(declared_count, int)
-                or declared_count <= 0
-                or not isinstance(thin_columns, Mapping)
-                or any(
-                    not isinstance(names, list)
-                    or any(not isinstance(name, str) or not name for name in names)
-                    for names in classified.values()
-                )
-            ):
-                failures.append(
-                    f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail "
-                    "concentration must carry a positive declared output "
-                    "count, thin-columns object, and three column-name lists."
-                )
-            elif isinstance(top_share, Mapping):
-                checked = set(classified["checked_columns"])
-                absent = set(classified["absent_columns"])
-                non_numeric = set(classified["non_numeric_columns"])
-                all_lists = [
-                    *classified["checked_columns"],
-                    *classified["absent_columns"],
-                    *classified["non_numeric_columns"],
-                ]
-                accounted = checked | absent | non_numeric
-                gate_accounted = set(top_share) | set(thin_columns)
-                if (
-                    len(all_lists) != len(accounted)
-                    or declared_count != len(accounted)
-                    or set(top_share) & set(thin_columns)
-                    or accounted != gate_accounted
-                    or checked != gate_accounted - absent - non_numeric
-                ):
-                    failures.append(
-                        f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail "
-                        "concentration must reconcile declared, checked, "
-                        "absent, nonnumeric, checked-tail, and thin outputs."
-                    )
-        if qrf_tail.get("stale_exclusions") != []:
-            failures.append(
-                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
-                "requires details.stale_exclusions to be an empty list."
             )
 
     export = _uk_terminal_gate_details(gates, "export_surface")
@@ -4181,7 +4040,11 @@ def _check_legacy_uk_calibration_diagnostics(
         total_targets += n_targets
         total_scored += n_scored
         total_skipped += n_skipped
-    missing_levels = sorted(set(UK_TARGET_GEOGRAPHY_LEVELS) - seen_levels)
+    missing_levels = sorted(
+        set(UK_TARGET_GEOGRAPHY_LEVELS)
+        - seen_levels
+        - UK_OPTIONAL_TARGET_GEOGRAPHY_LEVELS
+    )
     if missing_levels:
         failures.append(
             "calibration_diagnostics.json UK geography pass rates are missing "
@@ -4545,7 +4408,9 @@ def _validate_local_area_release_dir(release_dir: Path, release_id: str) -> None
     passed, the per-target diagnostics are complete and consistent, the
     source coverage carries the local provenance chain, a
     reviewed-limitations register exists, the manifest claims no default
-    slot, and every artifact is pinned to the immutable release id.
+    slot, and every artifact is pinned to the immutable release id. A US
+    release must also declare the stored-input gate, bound to its built-with
+    engine and its microdata bytes (microcosm#1034).
     """
 
     failures: list[str] = []
@@ -4565,6 +4430,7 @@ def _validate_local_area_release_dir(release_dir: Path, release_id: str) -> None
         if not (release_dir / filename).is_file():
             failures.append(f"required file {filename!r} is missing.")
 
+    build_manifest: Mapping | None = None
     build_manifest_path = release_dir / "build_manifest.json"
     if build_manifest_path.is_file():
         build_manifest = _load_json(build_manifest_path, failures)
@@ -4581,6 +4447,22 @@ def _validate_local_area_release_dir(release_dir: Path, release_id: str) -> None
         gate_summary = _load_json(gate_path, failures)
         if gate_summary is not None:
             _check_local_area_gates(gate_summary, failures)
+            # The shared gate check above reads only the gates a summary
+            # lists; the US lane must list these two (microcosm#1034, #1263).
+            # UK local-k and dense releases have neither seam.
+            if release_id.startswith("populace-us-"):
+                _check_us_local_area_stored_inputs_gate(
+                    gate_summary,
+                    release_manifest=release_manifest,
+                    build_manifest=build_manifest,
+                    failures=failures,
+                )
+                _check_us_local_area_spm_measurement_gate(
+                    gate_summary,
+                    release_manifest=release_manifest,
+                    build_manifest=build_manifest,
+                    failures=failures,
+                )
 
     diagnostics_path = release_dir / "calibration_diagnostics.json"
     if diagnostics_path.is_file():
@@ -4646,18 +4528,25 @@ def _validate_local_area_release_dir(release_dir: Path, release_id: str) -> None
         raise ReleaseContractError(release_dir, failures)
 
 
-def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> None:
+def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> list[str]:
     """The dense joint UK line's contract (microcosm#762 A18).
 
     The non-default local-area role with UK evidence in place of the US
     coverage file: the signed local gate-battery report verified with the
     executor's key (release posture attested, every release-blocking entry
-    passed, the scoped spec digests pinned), the head-to-head score against
-    the incumbent, and a source-coverage receipt naming the spine, the Ledger
-    artifact, the geography ladder, the incumbent extraction, the doctrine,
-    the reviewed exclusions and signed deferrals, the holdout and the vintage
-    uprating. Artifacts pin to the release id or to one of its immutable
-    per-cut tags.
+    passed, the scoped spec digests pinned), and a source-coverage receipt
+    naming the spine, the Ledger artifact, the geography ladder, the doctrine,
+    the reviewed exclusions and signed deferrals, the holdout, the incumbent
+    comparison, the size record and the vintage uprating. The candidate's
+    own evidence (its manifest and original diagnostics) always joins the
+    released bytes, and the coverage's holdout and size records restate it.
+    The rotated holdout and the incumbent comparison are
+    opt-in diagnostics (microcosm#1301): the coverage says whether each ran,
+    the incumbent files ship all together or not at all, and the manifest's
+    reviewed limitations must say what the release does not claim.
+    Artifacts pin to the release id or to one of its immutable per-cut tags.
+    A shipped JSON document carrying a per-area support figure is a warning,
+    returned rather than refused (microcosm#1301).
     """
 
     failures: list[str] = []
@@ -4668,6 +4557,9 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> None:
     manifest_path = release_dir / "release_manifest.json"
     if manifest_path.is_file():
         release_manifest = _load_json(manifest_path, failures)
+    incumbent_attached = _uk_dense_incumbent_attached(
+        release_dir, release_manifest or {}, failures
+    )
     if release_manifest is not None:
         _check_local_area_release_manifest(
             release_manifest,
@@ -4714,6 +4606,7 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> None:
         if gate_summary is not None:
             _check_local_area_gates(gate_summary, failures)
     diagnostics_path = release_dir / "calibration_diagnostics.json"
+    floor_warnings: list[str] = []
     if diagnostics_path.is_file():
         diagnostics = _load_json(diagnostics_path, failures)
         if diagnostics is not None:
@@ -4722,6 +4615,8 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> None:
             ):
                 _check_calibration_diagnostics(diagnostics, failures)
             _check_local_area_calibration_diagnostics(diagnostics, failures)
+            floor_warnings = _uk_brma_floor_verdict_warnings(diagnostics)
+    report: Mapping | None = None
     report_path = release_dir / _UK_DENSE_GATE_REPORT_FILE
     if report_path.is_file():
         report = _load_json(report_path, failures)
@@ -4737,22 +4632,51 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> None:
                     "release_manifest.json must declare the signed gate report "
                     f"{_UK_DENSE_GATE_REPORT_FILE!r} as an artifact."
                 )
+    coverage: Mapping | None = None
     coverage_path = release_dir / _UK_DENSE_SOURCE_COVERAGE_FILE
     if coverage_path.is_file():
         coverage = _load_json(coverage_path, failures)
         if coverage is not None:
-            _check_uk_dense_source_coverage(coverage, failures)
+            _check_uk_dense_source_coverage(
+                coverage, failures, incumbent_attached=incumbent_attached
+            )
             _check_uk_measure_exclusions(coverage.get("measure_exclusions"), failures)
-    _check_uk_dense_surface_files(release_dir, release_manifest or {}, failures)
+    # Warned, not refused: the walk runs only after both builds, so a finding
+    # is weighed rather than paid for with a rebuild (microcosm#1301).
+    disclosure_warnings = _uk_dense_disclosure_warnings(release_dir) + floor_warnings
+    # The core joins run whether or not the incumbent comparison is attached.
+    candidate_identity = _check_uk_dense_surface_files(
+        release_dir, release_manifest or {}, failures
+    )
+    incumbent: dict | None = None
+    if incumbent_attached:
+        incumbent = _check_uk_dense_incumbent_files(
+            release_dir,
+            release_manifest or {},
+            failures,
+            candidate_identity=candidate_identity,
+            coverage=coverage,
+        )
+    if release_manifest is not None:
+        _check_uk_dense_reviewed_limitations(
+            release_manifest,
+            coverage,
+            failures,
+            incumbent_attached=incumbent_attached,
+            incumbent=incumbent,
+            report=report,
+        )
     _check_local_area_checksum_ledger(
         release_dir,
         release_manifest,
         failures,
-        required_files=_UK_DENSE_REQUIRED_RELEASE_FILES,
+        required_files=_UK_DENSE_REQUIRED_RELEASE_FILES
+        + (_UK_DENSE_INCUMBENT_FILES if incumbent_attached else ()),
     )
     _check_local_artifact_hashes(release_dir, release_manifest, failures)
     if failures:
         raise ReleaseContractError(release_dir, failures)
+    return disclosure_warnings
 
 
 def _check_uk_dense_gate_report(
@@ -4761,7 +4685,7 @@ def _check_uk_dense_gate_report(
     """Verify the signed local gate-battery report the dense line ships.
 
     Same producer and signing dance as the exact-k terminal report, scoped to
-    the local battery: the six local entries, one terminal phase, the local
+    the local battery: the seven local entries, one terminal phase, the local
     scoped digests, release posture attested, every release-blocking entry
     passed, ``gate_outcomes_sha256`` recomputed, and the HMAC over the
     canonical report re-nulled at the signature slot.
@@ -4917,7 +4841,44 @@ def _check_uk_dense_gate_report(
         )
 
 
-def _check_uk_dense_source_coverage(coverage: Mapping, failures: list[str]) -> None:
+def _uk_dense_incumbent_attached(
+    release_dir: Path, release_manifest: Mapping, failures: list[str]
+) -> bool:
+    """Whether the opt-in incumbent comparison ships, all files or none.
+
+    Any incumbent file present in the directory or declared by the manifest
+    attaches the comparison; an attached comparison then requires all three
+    files, so a partial set or a declared-but-removed file refuses.
+    """
+    present = [
+        name for name in _UK_DENSE_INCUMBENT_FILES if (release_dir / name).is_file()
+    ]
+    declared = [
+        name
+        for name in _UK_DENSE_INCUMBENT_FILES
+        if _artifact_by_path(release_manifest, name) is not None
+    ]
+    attached = bool(present or declared)
+    if attached and len(present) != len(_UK_DENSE_INCUMBENT_FILES):
+        missing = [name for name in _UK_DENSE_INCUMBENT_FILES if name not in present]
+        failures.append(
+            "the incumbent comparison files ship all together or not at all; "
+            f"missing {missing}."
+        )
+    return attached
+
+
+def _finite_number(value: object) -> bool:
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+    )
+
+
+def _check_uk_dense_source_coverage(
+    coverage: Mapping, failures: list[str], *, incumbent_attached: bool
+) -> None:
     file = _UK_DENSE_SOURCE_COVERAGE_FILE
     for key in _UK_DENSE_SOURCE_COVERAGE_KEYS:
         value = coverage.get(key)
@@ -4934,16 +4895,75 @@ def _check_uk_dense_source_coverage(coverage: Mapping, failures: list[str]) -> N
             digest = block.get(sha_field)
             if not isinstance(digest, str) or not _SHA256_RE.fullmatch(digest):
                 failures.append(f"{file} {key}.{sha_field} must be a sha256 digest.")
+    # The names of the reviewed exclusions each fit gate stood on
+    # (microcosm#1301), which the manifest's limitations must restate.
+    deferrals = coverage.get("signed_deferrals")
+    if isinstance(deferrals, Mapping):
+        named = deferrals.get("reviewed_exclusions")
+        if not (
+            isinstance(named, Mapping)
+            and set(map(str, named)) == set(_UK_DENSE_SIGNED_EXCLUSION_GATES)
+            and all(
+                isinstance(names, list)
+                and all(isinstance(name, str) and name for name in names)
+                and len(set(names)) == len(names)
+                for names in named.values()
+            )
+        ):
+            failures.append(
+                f"{file} signed_deferrals.reviewed_exclusions must map each of "
+                f"{list(_UK_DENSE_SIGNED_EXCLUSION_GATES)} to the distinct names "
+                "of the reviewed exclusions its gate stood on."
+            )
+    # The opt-in diagnostics (microcosm#1301) carry a discriminator each, so
+    # the coverage says what ran rather than leaving it to absence.
     incumbent = coverage.get("incumbent")
-    if isinstance(incumbent, Mapping) and not incumbent.get("snapshot"):
-        failures.append(f"{file} incumbent must name the private-repo snapshot.")
+    if isinstance(incumbent, Mapping):
+        compared = incumbent.get("compared")
+        if compared not in (True, False):
+            failures.append(f"{file} incumbent.compared must be true or false.")
+        elif compared is not incumbent_attached:
+            failures.append(
+                f"{file} incumbent.compared is {compared} but the incumbent "
+                f"comparison files are {'' if incumbent_attached else 'not '}"
+                "attached."
+            )
+        elif compared and not incumbent.get("snapshot"):
+            failures.append(f"{file} incumbent must name the private-repo snapshot.")
     holdout = coverage.get("holdout")
     if isinstance(holdout, Mapping):
-        value = holdout.get("mean_holdout_loss")
-        if not isinstance(value, (int, float)) or not math.isfinite(value):
+        claim = holdout.get("claim")
+        if claim == "none":
+            if holdout.get("run") is not False:
+                failures.append(
+                    f"{file} holdout claims nothing, so holdout.run must be false."
+                )
+        elif claim == "report_only":
+            if holdout.get("run") is not True:
+                failures.append(
+                    f"{file} holdout is reported, so holdout.run must be true."
+                )
+            if not _finite_number(holdout.get("mean_holdout_loss")):
+                failures.append(
+                    f"{file} holdout.mean_holdout_loss must be a finite number."
+                )
+        else:
             failures.append(
-                f"{file} holdout.mean_holdout_loss must be a finite number."
+                f"{file} holdout.claim must be 'none' or 'report_only', got {claim!r}."
             )
+    size = coverage.get("size")
+    if isinstance(size, Mapping):
+        sized = size.get("sized")
+        if sized not in (True, False):
+            failures.append(f"{file} size.sized must be true or false.")
+        elif sized:
+            for key in ("dataset_households", "clone_count"):
+                value = size.get(key)
+                if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+                    failures.append(
+                        f"{file} size.{key} must be a positive integer for a "
+                        "sized release."
+                    )
 
 
 def _check_local_area_checksum_ledger(
@@ -5020,6 +5040,362 @@ def _check_local_area_checksum_ledger(
             )
 
 
+_AREA_SUPPORT_BLOCK_KEYS = frozenset({"gate", "floors", "below_floor"})
+
+
+def _check_area_support_block(
+    block: object, limitations: object, failures: list[str]
+) -> None:
+    """The areas below a local release's support floor: codes only (microcosm#1278).
+
+    Each listed area must carry its reviewed ``area_support_exclusion``
+    limitation, because the support gate blocks release otherwise.
+    """
+    if not isinstance(block, Mapping):
+        failures.append("release_manifest.json 'area_support' must be an object.")
+        return
+    extra = sorted(set(block) - _AREA_SUPPORT_BLOCK_KEYS)
+    if extra:
+        failures.append(
+            "release_manifest.json 'area_support' holds area codes and the floors "
+            f"only; it carries {extra}."
+        )
+    below = block.get("below_floor")
+    if not isinstance(below, Mapping) or not all(
+        isinstance(level, str)
+        and isinstance(codes, list)
+        and all(isinstance(code, str) and code for code in codes)
+        for level, codes in below.items()
+    ):
+        failures.append(
+            "release_manifest.json 'area_support.below_floor' must map each "
+            "geography level to a list of area codes."
+        )
+        return
+    excused = {
+        str(item.get("id"))
+        for item in (limitations if isinstance(limitations, list) else [])
+        if isinstance(item, Mapping)
+    }
+    unexcused = sorted(
+        f"{level}/{code}"
+        for level, codes in below.items()
+        for code in codes
+        if f"area_support_exclusion:{level}/{code}" not in excused
+    )
+    if unexcused:
+        failures.append(
+            "release_manifest.json lists areas below the support floor without "
+            f"a reviewed area_support_exclusion limitation: {unexcused}."
+        )
+
+
+# Per-area support figures a dense release withholds (microcosm#1301): an
+# area's rows, Kish ESS and distinct source households, under each name the
+# support table, the support gate, the diagnostics and the size evaluation
+# have used for them, and the plain synonyms a converted table would carry.
+# Weights and per-cell estimates are not support figures and ship as they are.
+# Names match whatever their case.
+_UK_AREA_SUPPORT_FIGURE_KEYS = frozenset(
+    {
+        "rows",
+        "n_rows",
+        "num_rows",
+        "row_count",
+        "ess",
+        "kish_ess",
+        "effective_sample_size",
+        "sample_size",
+        "sources",
+        "distinct_sources",
+        "source_households",
+        "distinct_source_households",
+        "assigned_households",
+        "nonzero_households",
+        "nonzero_source_households",
+    }
+)
+_UK_SUPPORT_FIGURE_STEMS = "(?:" + "|".join(sorted(_UK_AREA_SUPPORT_FIGURE_KEYS)) + ")"
+# A map of a figure by area or level is the figure too ("rows_by_area",
+# "ess_by_local_authority").
+_UK_SUPPORT_BY_SUFFIX = r"(?:_(?:by|per)_[a-z0-9_]+)?"
+_UK_SUPPORT_FIGURE_NAME_RE = re.compile(
+    rf"^{_UK_SUPPORT_FIGURE_STEMS}{_UK_SUPPORT_BY_SUFFIX}$"
+)
+# An area key: a GSS code below the region, bare or under its level
+# ("local_authority/E06000053"). Region, nation and UK codes (E12, E92, N92,
+# S92, W92, K0x) name no area: a region's support is a GOR-level aggregate.
+_UK_AREA_KEY_RE = re.compile(r"^(?:[a-z_]+/)?(?!E12|[ENSW]92|K0\d)[EKLMNSW]\d{8}$")
+_UK_REGION_KEY_RE = re.compile(r"^(?:[a-z_]+/)?(?:E12|[ENSW]92|K0\d)\d{6}$")
+# The fields that make a mapping one area's record, or, holding a list or a
+# pandas {row: value} column, a table's area column, whatever their case,
+# unless they hold only region, nation or UK codes. Any other field makes it
+# one when it holds an area code ("lad_code", "geography", "code"): build
+# manifests and warnings use those names for other things too.
+_UK_AREA_ID_KEYS = ("area_code", "geography_id")
+# A minimum, maximum, median or other order statistic of a support figure
+# over areas ("min_nonzero_households", "rows_min", "smallest_ess",
+# "median_effective_sample_size") is one area's figure. The names are whole
+# support-figure stems, so a parameter merely ending in "ess" ("max_excess")
+# is not one. Only the declared floors, under a "floors" key, may use them.
+_UK_SUPPORT_EXTREME_KEY_RE = re.compile(
+    r"^(?:(?:min|minimum|max|maximum|median|smallest|lowest|largest|highest)_"
+    rf"{_UK_SUPPORT_FIGURE_STEMS}"
+    rf"|{_UK_SUPPORT_FIGURE_STEMS}_(?:min|minimum|max|maximum|median))"
+    rf"{_UK_SUPPORT_BY_SUFFIX}$"
+)
+# The same statistic keyed above or below a figure's name ({"ess": {"min":
+# ..., "p10": ...}}, {"min": {"rows": ...}}).
+_UK_SUPPORT_STATISTIC_KEY_RE = re.compile(
+    r"^(?:min|minimum|max|maximum|median|smallest|lowest|largest|highest"
+    r"|p\d{1,2}|q\d)$"
+)
+# A pandas row index: DataFrame.to_dict() writes a column as {"0": value, ...}.
+_UK_ROW_INDEX_RE = re.compile(r"^\d+$")
+# A number written as text, as a document converted from a CSV carries it,
+# thousands separators included ("1,234").
+_UK_NUMERIC_TEXT_RE = re.compile(
+    r"^\s*[+-]?(?:\d{1,3}(?:,\d{3})+(?:\.\d*)?|\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?\s*$",
+    re.IGNORECASE,
+)
+# A shortfall worded with the area's measured value ("rows 7 < 50"); the gate
+# names only the floor it misses ("rows < 50").
+_UK_SUPPORT_FIGURE_TEXT_RE = re.compile(
+    r"\b(?:rows|ESS|distinct sources)\s+\d[\d,.]*(?:e[+-]?\d+)?\s*<", re.IGNORECASE
+)
+_UK_DISCLOSURE_PATHS_SHOWN = 5
+
+
+def _uk_names_an_area(value: object) -> bool:
+    """Whether ``value`` is an area code, or a column holding one: a list, or
+    a pandas ``{row: value}`` column."""
+
+    if isinstance(value, str):
+        return _UK_AREA_KEY_RE.fullmatch(value) is not None
+    if isinstance(value, Mapping):
+        if not value or not all(_UK_ROW_INDEX_RE.fullmatch(str(k)) for k in value):
+            return False
+        value = list(value.values())
+    return isinstance(value, list) and any(
+        isinstance(item, str) and _UK_AREA_KEY_RE.fullmatch(item) is not None
+        for item in value
+    )
+
+
+def _uk_split_table_records(value: Mapping) -> list[dict] | None:
+    """The rows of a pandas ``orient="split"`` table as records, else None.
+
+    ``DataFrame.to_dict(orient="split")`` writes ``{"index": [...], "columns":
+    [...], "data": [[...], ...]}``; each row becomes ``{column: cell}``, with
+    its index label under ``index``, so it reads as any other record.
+    """
+
+    columns, data = value.get("columns"), value.get("data")
+    if not (
+        isinstance(columns, list)
+        and all(isinstance(column, str) for column in columns)
+        and isinstance(data, list)
+        and all(isinstance(row, list) and len(row) == len(columns) for row in data)
+    ):
+        return None
+    index = value.get("index")
+    labels = index if isinstance(index, list) and len(index) == len(data) else []
+    return [
+        {
+            **({"index": labels[position]} if labels else {}),
+            **dict(zip(columns, row, strict=True)),
+        }
+        for position, row in enumerate(data)
+    ]
+
+
+def _uk_names_only_regions(value: object) -> bool:
+    """Whether ``value`` is a region, nation or UK code, or a column of only those."""
+
+    if isinstance(value, str):
+        return _UK_REGION_KEY_RE.fullmatch(value) is not None
+    if isinstance(value, Mapping):
+        value = list(value.values())
+    return (
+        isinstance(value, list)
+        and bool(value)
+        and all(
+            isinstance(item, str) and _UK_REGION_KEY_RE.fullmatch(item) is not None
+            for item in value
+        )
+    )
+
+
+def _uk_dense_disclosure_findings(name: str, payload: object) -> list[str]:
+    """Per-area support figures in one shipped JSON document (microcosm#1301).
+
+    An area's rows, Kish ESS or distinct sources (a number, or a number
+    written as text with or without thousands separators, under its name in
+    any case) is found wherever it sits:
+
+    - under its name in an area's record (a mapping with an ``area_code`` or
+      a ``geography_id``, or any other field holding an area code, such as
+      ``lad_code``, ``geography`` or ``code``), or under its name anywhere
+      beneath an area key;
+    - under its name in a table with an area column, as parallel lists, as
+      pandas ``{row: value}`` columns or as a pandas ``split`` table;
+    - under an area key beneath its name or a map of it (``{"ess":
+      {"E06999999": 41.2}}``, ``{"rows_by_area": ...}``), through any level
+      keys and lists between them;
+    - as a minimum, maximum, median or other order statistic of a figure
+      (``min_rows``, ``rows_min``, ``{"ess": {"p10": ...}}``, ``{"min":
+      {"rows": ...}}``), however nested, outside the declared floors;
+    - in a string that states an area's measured support ("rows 7 < 50").
+
+    Region, nation and UK codes name no area. The walk reads key names and
+    the shortfall wording only: a figure under another name, in other prose,
+    or in a file that is not JSON is not found.
+
+    The findings name where the figures are, never their values.
+    """
+
+    found: dict[str, list[str]] = {"figure": [], "extreme": [], "text": []}
+
+    def number(value: object) -> bool:
+        if isinstance(value, str):
+            return _UK_NUMERIC_TEXT_RE.fullmatch(value) is not None
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+    def walk(
+        value: object,
+        path: str,
+        label: str,
+        *,
+        area: bool,
+        figure: bool,
+        extreme: bool,
+        statistic: bool,
+        floors: bool,
+    ) -> None:
+        # ``label`` is the key the value sits under, or its column's name for
+        # a list item or a pandas row. ``area`` holds inside an area's record
+        # or table and beneath an area key; ``figure``, ``extreme``,
+        # ``statistic`` and ``floors`` hold beneath a key naming a support
+        # figure, an extreme of one, an order statistic, or the declared
+        # floors.
+        flags = {
+            "figure": figure,
+            "extreme": extreme,
+            "statistic": statistic,
+            "floors": floors,
+        }
+        if isinstance(value, Mapping):
+            area = area or any(
+                _uk_names_an_area(child)
+                or (
+                    str(key).lower() in _UK_AREA_ID_KEYS
+                    and not _uk_names_only_regions(child)
+                )
+                for key, child in value.items()
+            )
+            records = _uk_split_table_records(value)
+            if records is not None:
+                # A split table's cells are walked as its rows' records, so
+                # each cell sits under its column's name.
+                prefix = f"{path}.data" if path else "data"
+                for position, record in enumerate(records):
+                    walk(record, f"{prefix}[{position}]", label, area=area, **flags)
+                value = {key: child for key, child in value.items() if key != "data"}
+            for raw_key, child in value.items():
+                key = str(raw_key)
+                name = key.lower()
+                walk(
+                    child,
+                    f"{path}.{key}" if path else key,
+                    label if _UK_ROW_INDEX_RE.fullmatch(key) else key,
+                    area=area or _UK_AREA_KEY_RE.fullmatch(key) is not None,
+                    figure=figure
+                    or _UK_SUPPORT_FIGURE_NAME_RE.fullmatch(name) is not None,
+                    extreme=extreme
+                    or _UK_SUPPORT_EXTREME_KEY_RE.fullmatch(name) is not None,
+                    statistic=statistic
+                    or _UK_SUPPORT_STATISTIC_KEY_RE.fullmatch(name) is not None,
+                    floors=floors or name == "floors",
+                )
+            return
+        if isinstance(value, list):
+            for index, child in enumerate(value):
+                walk(child, f"{path}[{index}]", label, area=area, **flags)
+            return
+        kind = None
+        if number(value):
+            if (area and _UK_SUPPORT_FIGURE_NAME_RE.fullmatch(label.lower())) or (
+                figure and _UK_AREA_KEY_RE.fullmatch(label)
+            ):
+                kind = "figure"
+            elif not floors and (extreme or (figure and statistic)):
+                kind = "extreme"
+        elif isinstance(value, str) and _UK_SUPPORT_FIGURE_TEXT_RE.search(value):
+            kind = "text"
+        if kind is not None:
+            found[kind].append(path or "<document>")
+
+    walk(
+        payload,
+        "",
+        "",
+        area=False,
+        figure=False,
+        extreme=False,
+        statistic=False,
+        floors=False,
+    )
+    wording = {
+        "figure": "per-area support figure(s) (rows, ESS or distinct sources)",
+        "extreme": (
+            "minimum(s), maximum(s) or median(s) of an area support figure "
+            "outside the floors"
+        ),
+        "text": "string(s) stating an area's measured support",
+    }
+    return [
+        f"{name} carries {len(paths)} {wording[kind]}, which a dense release "
+        "should withhold (microcosm#1301); first at "
+        f"{paths[:_UK_DISCLOSURE_PATHS_SHOWN]}."
+        for kind, paths in found.items()
+        if paths
+    ]
+
+
+def _uk_dense_disclosure_file_warnings(path: Path) -> list[str]:
+    """The disclosure walk's warnings for one JSON file (microcosm#1301).
+
+    The file is read as the contract reads JSON, refusing NaN and the
+    infinities. A file the walk cannot read, parse or walk to the bottom of
+    (a nesting too deep to recurse) is reported, since a figure in it could
+    not be ruled out. The release pre-flight walks a run's files with it too.
+    """
+
+    try:
+        payload = json.loads(path.read_bytes(), parse_constant=_reject_json_constant)
+        return _uk_dense_disclosure_findings(path.name, payload)
+    except (OSError, ValueError, RecursionError):
+        return [
+            f"{path.name} cannot be read and walked as JSON, so the disclosure "
+            "walk cannot rule out a per-area support figure in it "
+            "(microcosm#1301)."
+        ]
+
+
+def _uk_dense_disclosure_warnings(release_dir: Path) -> list[str]:
+    """Shipped JSON documents carrying a per-area support figure (microcosm#1301).
+
+    Every ``*.json`` in the release directory is walked, the signed gate
+    report and the release manifest's strings included. A document the walk
+    cannot read is reported too, since a figure in it could not be ruled out.
+    """
+
+    warnings: list[str] = []
+    for path in sorted(release_dir.glob("*.json")):
+        warnings.extend(_uk_dense_disclosure_file_warnings(path))
+    return warnings
+
+
 def _check_local_area_release_manifest(
     manifest: Mapping,
     release_id: str,
@@ -5074,6 +5450,8 @@ def _check_local_area_release_manifest(
             "release_manifest.json must carry a 'reviewed_limitations' list "
             "(explicitly empty if none) for a non-default local-area release."
         )
+    if manifest.get("area_support") is not None:
+        _check_area_support_block(manifest["area_support"], limitations, failures)
     artifacts = manifest.get("artifacts")
     if not isinstance(artifacts, Mapping) or not artifacts:
         failures.append(
@@ -5144,6 +5522,1018 @@ def _check_local_area_gates(gate_summary: Mapping, failures: list[str]) -> None:
             )
 
 
+def _built_with_us_engine_label(
+    release_manifest: Mapping | None, failures: list[str]
+) -> str | None:
+    """``"policyengine-us <version>"`` for the manifest's built-with model.
+
+    That is the label :func:`microcosm.data.stored_inputs.installed_us_engine`
+    gives the engine a seam graded against, and every seam records its
+    built-with model from the same installed distribution. ``None``, with a
+    failure line, when the manifest does not record a policyengine-us version.
+    """
+
+    build = (
+        release_manifest.get("build") if isinstance(release_manifest, Mapping) else None
+    )
+    model = (
+        build.get("built_with_model_package") if isinstance(build, Mapping) else None
+    )
+    version = model.get("version") if isinstance(model, Mapping) else None
+    if (
+        not isinstance(model, Mapping)
+        or model.get("name") != "policyengine-us"
+        or not isinstance(version, str)
+        or not version
+        or version in {"unknown", "not-installed"}
+    ):
+        failures.append(
+            "release_manifest.json must record build.built_with_model_package "
+            "as policyengine-us with a resolved version: the stored-input "
+            "verdict is certified against that engine (microcosm#1026)."
+        )
+        return None
+    return f"policyengine-us {version}"
+
+
+def _is_sorted_model_named_list(value: object) -> bool:
+    """A list of distinct model-named column names in sorted order."""
+
+    return (
+        isinstance(value, list)
+        and all(isinstance(column, str) and is_model_named(column) for column in value)
+        and value == sorted(set(value))
+    )
+
+
+def _check_stored_input_verdict(
+    verdict: Mapping,
+    *,
+    owner: str,
+    engine_label: str | None,
+    failures: list[str],
+) -> None:
+    """The fields every seam's stored-input verdict records, checked engine-free.
+
+    The engine a verdict names must be the built-with engine (``engine_label``;
+    ``None`` when the manifest does not record one, already a failure). The
+    register digest must be a sha256, and the registered non-variable columns
+    the release stores must be a sorted list of distinct model-named names,
+    the form :func:`microcosm.data.stored_inputs.require_h5_stored_inputs`
+    writes. Nothing here imports an engine or reads the H5.
+    """
+
+    engine = verdict.get("engine")
+    if engine_label is not None and engine != engine_label:
+        failures.append(
+            f"{owner} graded the release against {engine!r}, not its built-with "
+            f"engine {engine_label!r}: the verdict certifies nothing about the "
+            "engine the release records (microcosm#1026)."
+        )
+    register = verdict.get("register_sha256")
+    if not isinstance(register, str) or not _SHA256_RE.fullmatch(register):
+        failures.append(
+            f"{owner} 'register_sha256' must be a 64-character lowercase sha256."
+        )
+    if not _is_sorted_model_named_list(verdict.get("registered_non_variables")):
+        failures.append(
+            f"{owner} 'registered_non_variables' must be a sorted list of "
+            "distinct model-named column names."
+        )
+
+
+def _check_us_local_area_stored_inputs_gate(
+    gate_summary: Mapping,
+    *,
+    release_manifest: Mapping | None,
+    build_manifest: Mapping | None,
+    failures: list[str],
+) -> None:
+    """Require the ACS package stage's stored-input gate, bound to the release.
+
+    microcosm#1034: :func:`_check_local_area_gates` reads only the gates a
+    summary lists, so a US local-area release packaged by a tool without the
+    stored-input check (microcosm#1026), or with the gate deleted, validated
+    anyway. The gate must be present and green (``passed`` is checked there),
+    record no failures, say it was checked when the release was packaged, name
+    the built-with engine, and certify the bytes the manifest pins as its one
+    microdata artifact; ``build_manifest.json`` must carry the same entry.
+    Engine-free: the check reads JSON only.
+
+    No published release is exempt. The four US local-area releases on the Hub
+    predate the gate. Nothing re-validates a published release automatically,
+    and a local-area release cannot be an annual-projection base, so only a
+    fresh publish of a local directory runs this; re-publishing one of them
+    means re-packaging it, which runs the check. One of them
+    (``populace-us-2024-buildo-acs-local-767312d60-20260923T074941Z``) stores
+    two columns the check refuses.
+    """
+
+    key = US_STORED_INPUTS_EVIDENCE_KEY
+    gates = gate_summary.get("gates")
+    gate = gates.get(key) if isinstance(gates, Mapping) else None
+    if not isinstance(gate, Mapping):
+        failures.append(
+            f"gate_summary.json must carry the {key!r} gate for a US "
+            "non-default local-area release (microcosm#1026, #1034): package "
+            "it with tools/build_us_acs_local_release.py --stage package, which "
+            "checks the calibrated H5's stored columns against the "
+            "policyengine-us the release records as built-with."
+        )
+        return
+    owner = f"gate_summary.json gate {key!r}"
+    if gate.get("failures") != []:
+        failures.append(f"{owner} must record an empty 'failures' list.")
+    stage = gate.get("checked_at_stage")
+    if stage != US_LOCAL_AREA_STORED_INPUTS_STAGE:
+        failures.append(
+            f"{owner} must be checked_at_stage "
+            f"{US_LOCAL_AREA_STORED_INPUTS_STAGE!r} (the bytes the release "
+            f"ships), got {stage!r}."
+        )
+    _check_stored_input_verdict(
+        gate,
+        owner=owner,
+        engine_label=_built_with_us_engine_label(release_manifest, failures),
+        failures=failures,
+    )
+    artifacts = (
+        release_manifest.get("artifacts")
+        if isinstance(release_manifest, Mapping)
+        else None
+    )
+    microdata = [
+        entry
+        for entry in (artifacts.values() if isinstance(artifacts, Mapping) else ())
+        if isinstance(entry, Mapping) and entry.get("kind") == "microdata"
+    ]
+    # More or fewer than one microdata artifact is already a manifest failure.
+    if len(microdata) == 1 and gate.get("artifact_sha256") != microdata[0].get(
+        "sha256"
+    ):
+        failures.append(
+            f"{owner} certifies artifact_sha256 {gate.get('artifact_sha256')!r}, "
+            "not the release's microdata artifact "
+            f"({microdata[0].get('sha256')!r})."
+        )
+    if isinstance(build_manifest, Mapping):
+        build_gates = build_manifest.get("gates")
+        recorded = build_gates.get(key) if isinstance(build_gates, Mapping) else None
+        if recorded != gate:
+            failures.append(
+                f"build_manifest.json gates.{key} must equal the "
+                f"gate_summary.json {key!r} gate; the package stage writes "
+                "both from one entry."
+            )
+
+
+def us_engine_scopes_spm_universe(engine_label: object) -> bool:
+    """Is ``"policyengine-us <version>"`` a reviewed universe-scoping engine?
+
+    True only for a label naming a version in
+    :data:`US_SPM_UNIVERSE_SCOPING_MODEL_VERSIONS`. Anything else, including a
+    label this function cannot read, is an engine that measures every unit.
+    """
+
+    prefix = "policyengine-us "
+    return (
+        isinstance(engine_label, str)
+        and engine_label.startswith(prefix)
+        and engine_label[len(prefix) :] in US_SPM_UNIVERSE_SCOPING_MODEL_VERSIONS
+    )
+
+
+def _check_us_local_area_spm_measurement_gate(
+    gate_summary: Mapping,
+    *,
+    release_manifest: Mapping | None,
+    build_manifest: Mapping | None,
+    failures: list[str],
+) -> None:
+    """Require the ACS package stage's SPM measurement gate, bound to the release.
+
+    microcosm#1263: the ACS local-area release of 2026-09-23 had 5,274 SPM
+    units with no classified adult, so every US state and district simulation
+    on it raised ``SPM_COMPOSITION_REQUIRED``. Nothing in the contract counted
+    them. The package stage now grades the calibrated H5 against its
+    built-with engine; this requires that verdict. The gate must be present
+    and green, record no failures, have been checked when the release was
+    packaged, name the built-with engine and certify the release's one
+    microdata artifact. Its details must show a complete stored SPM
+    independence role, counts that agree with one another, the measured scope
+    the reviewed register assigns the built-with engine
+    (:data:`US_SPM_UNIVERSE_SCOPING_MODEL_VERSIONS`), and no measured unit and
+    no unit inside the source SPM universe without a classified adult.
+    ``build_manifest.json`` must carry the same entry. Engine-free: the check
+    reads JSON only.
+
+    No published US local-area release carries this gate; re-publishing one
+    means re-packaging it, which runs the check.
+    """
+
+    key = US_SPM_MEASUREMENT_EVIDENCE_KEY
+    gates = gate_summary.get("gates")
+    gate = gates.get(key) if isinstance(gates, Mapping) else None
+    if not isinstance(gate, Mapping):
+        failures.append(
+            f"gate_summary.json must carry the {key!r} gate for a US "
+            "non-default local-area release (microcosm#1263): package it with "
+            "tools/build_us_acs_local_release.py --stage package, which grades "
+            "the calibrated H5's SPM measurement composition against the "
+            "policyengine-us the release records as built-with."
+        )
+        return
+    owner = f"gate_summary.json gate {key!r}"
+    if gate.get("failures") != []:
+        failures.append(f"{owner} must record an empty 'failures' list.")
+    stage = gate.get("checked_at_stage")
+    if stage != US_LOCAL_AREA_SPM_MEASUREMENT_STAGE:
+        failures.append(
+            f"{owner} must be checked_at_stage "
+            f"{US_LOCAL_AREA_SPM_MEASUREMENT_STAGE!r} (the bytes the release "
+            f"ships), got {stage!r}."
+        )
+    # The stored-input check already reports a manifest without a built-with
+    # engine; repeating that line here would only duplicate it.
+    engine_label = _built_with_us_engine_label(release_manifest, [])
+    if engine_label is not None and gate.get("engine") != engine_label:
+        failures.append(
+            f"{owner} graded against {gate.get('engine')!r}, not the "
+            f"built-with engine {engine_label!r}."
+        )
+    details = gate.get("details")
+    if not isinstance(details, Mapping):
+        failures.append(f"{owner} must carry a 'details' object.")
+    else:
+        _check_spm_measurement_details(
+            details, owner=owner, engine=gate.get("engine"), failures=failures
+        )
+    artifacts = (
+        release_manifest.get("artifacts")
+        if isinstance(release_manifest, Mapping)
+        else None
+    )
+    microdata = [
+        entry
+        for entry in (artifacts.values() if isinstance(artifacts, Mapping) else ())
+        if isinstance(entry, Mapping) and entry.get("kind") == "microdata"
+    ]
+    # More or fewer than one microdata artifact is already a manifest failure.
+    if len(microdata) == 1 and gate.get("artifact_sha256") != microdata[0].get(
+        "sha256"
+    ):
+        failures.append(
+            f"{owner} certifies artifact_sha256 {gate.get('artifact_sha256')!r}, "
+            "not the release's microdata artifact "
+            f"({microdata[0].get('sha256')!r})."
+        )
+    if isinstance(build_manifest, Mapping):
+        build_gates = build_manifest.get("gates")
+        recorded = build_gates.get(key) if isinstance(build_gates, Mapping) else None
+        if recorded != gate:
+            failures.append(
+                f"build_manifest.json gates.{key} must equal the "
+                f"gate_summary.json {key!r} gate; the package stage writes "
+                "both from one entry."
+            )
+
+
+def _check_spm_measurement_details(
+    details: Mapping, *, owner: str, engine: object, failures: list[str]
+) -> None:
+    """The SPM measurement gate's details describe a measurable release.
+
+    The record is self-reported, so every count is held to the others and the
+    measured scope is held to the reviewed register of scoping engines
+    (:data:`US_SPM_UNIVERSE_SCOPING_MODEL_VERSIONS`), not to the record's own
+    say-so: an ``included_units`` record under an engine that measures every
+    unit would excuse the units outside the universe.
+    """
+
+    owner = f"{owner} details"
+    if details.get("role_column_present") is not True:
+        failures.append(
+            f"{owner} must record a stored is_spm_independent_minor_role column."
+        )
+    for name in ("role_null_values", "role_non_boolean_values"):
+        if details.get(name) != 0 or type(details.get(name)) is not int:
+            failures.append(f"{owner} {name!r} must be 0, got {details.get(name)!r}.")
+
+    def split(name: str) -> tuple[int, int] | None:
+        value = details.get(name)
+        if not isinstance(value, Mapping) or set(value) != {"INCLUDED", "OUTSIDE"}:
+            return None
+        pair = (value["INCLUDED"], value["OUTSIDE"])
+        return pair if all(type(v) is int and v >= 0 for v in pair) else None
+
+    counts = {
+        name: details.get(name)
+        for name in (
+            "n_units",
+            "n_measured_units",
+            "n_measured_units_without_classified_adult",
+            "n_units_without_classified_adult",
+        )
+    }
+    units = split("n_units_by_universe")
+    unclassified = split("n_units_without_classified_adult_by_universe")
+    if (
+        not all(type(value) is int and value >= 0 for value in counts.values())
+        or units is None
+        or unclassified is None
+    ):
+        failures.append(
+            f"{owner} must record non-negative integer counts {sorted(counts)} "
+            "and INCLUDED/OUTSIDE splits n_units_by_universe and "
+            "n_units_without_classified_adult_by_universe."
+        )
+        return
+    if counts["n_units"] < 1 or sum(units) != counts["n_units"]:
+        failures.append(
+            f"{owner} n_units_by_universe {units} must sum to its "
+            f"{counts['n_units']} units, and there must be at least one."
+        )
+    if sum(unclassified) != counts["n_units_without_classified_adult"] or any(
+        part > whole for part, whole in zip(unclassified, units, strict=True)
+    ):
+        failures.append(
+            f"{owner} n_units_without_classified_adult_by_universe {unclassified} "
+            "must sum to n_units_without_classified_adult "
+            f"({counts['n_units_without_classified_adult']}) and fit inside "
+            f"n_units_by_universe {units}."
+        )
+
+    scopes = details.get("engine_scopes_spm_universe")
+    reviewed = us_engine_scopes_spm_universe(engine)
+    if type(scopes) is not bool or scopes != reviewed:
+        failures.append(
+            f"{owner} engine_scopes_spm_universe is {scopes!r}, but {engine!r} "
+            f"{'is' if reviewed else 'is not'} a reviewed universe-scoping engine "
+            "(US_SPM_UNIVERSE_SCOPING_MODEL_VERSIONS); the measured scope "
+            "follows the engine, not the record."
+        )
+        return
+    expected_scope = "included_units" if reviewed else "all_units"
+    expected_measured = units[0] if reviewed else counts["n_units"]
+    expected_unclassified = (
+        unclassified[0] if reviewed else counts["n_units_without_classified_adult"]
+    )
+    if details.get("measured_scope") != expected_scope:
+        failures.append(
+            f"{owner} measured_scope must be {expected_scope!r} under {engine!r}, "
+            f"got {details.get('measured_scope')!r}."
+        )
+    if counts["n_measured_units"] != expected_measured:
+        failures.append(
+            f"{owner} must measure {expected_measured} units ({expected_scope}), "
+            f"got {counts['n_measured_units']}."
+        )
+    if counts["n_measured_units_without_classified_adult"] != expected_unclassified:
+        failures.append(
+            f"{owner} n_measured_units_without_classified_adult "
+            f"({counts['n_measured_units_without_classified_adult']}) must equal "
+            f"the unclassified units in its measured scope ({expected_unclassified})."
+        )
+    if reviewed and details.get("universe_declared_in_release") is not True:
+        failures.append(
+            f"{owner} must record universe_declared_in_release: true; a scoping "
+            "engine cannot measure a release that declares no universe."
+        )
+    if expected_unclassified != 0:
+        failures.append(
+            f"{owner} records {expected_unclassified} measured SPM unit(s) with "
+            "no classified adult; every SPM measurement on the release would "
+            "raise SPM_COMPOSITION_REQUIRED."
+        )
+    if unclassified[0] != 0:
+        failures.append(
+            f"{owner} records {unclassified[0]} unit(s) inside the source SPM "
+            "universe without a classified adult; that is a housing-unit data "
+            "defect under any engine."
+        )
+
+
+def stored_input_evidence_manifest_block(
+    payload: Mapping, *, dataset_sha256: str
+) -> dict[str, object]:
+    """The manifests' ``stored_inputs`` block for a fiscal-refresh release.
+
+    ``payload`` is the gate-evidence file
+    (:data:`US_STORED_INPUTS_EVIDENCE_FILE`) the fiscal-refresh tool writes
+    when its stored-input gate has run. The block names the file, the stage,
+    the verdict and the details the gate recorded, and binds them to
+    ``dataset_sha256``, the H5 the manifests pin. The tool writes the
+    manifests only after the post-write check found that the written H5 earns
+    the verdict the gate reached, so the block is the verdict on those bytes.
+    The tool builds both manifests' blocks with this function and the
+    publisher recomputes it from the shipped file, so the three agree or the
+    release is refused.
+
+    Raises:
+        KeyError, TypeError, ValueError: ``payload`` is not a stored-input
+            evidence payload; the publisher reports the file's shape first.
+    """
+
+    gate = payload[US_STORED_INPUTS_EVIDENCE_KEY]
+    # The details first, so none of them can stand in for the four fields the
+    # block itself asserts.
+    return {
+        **dict(gate["details"]),
+        "evidence": US_STORED_INPUTS_EVIDENCE_FILE,
+        "checked_at_stage": payload["checked_at_stage"],
+        "passed": gate["passed"],
+        "dataset_sha256": dataset_sha256,
+    }
+
+
+def _stored_input_evidence_payload_failures(
+    payload: Mapping,
+    *,
+    engine_label: str | None,
+    evidence_tier: bool,
+) -> list[str]:
+    """Why a fiscal-refresh stored-input evidence file is not a valid verdict.
+
+    Read by the certified and evidence contracts alike. The file must be the
+    schema the tool writes, enforced, from the export-frame stage, and its
+    verdict must be internally consistent: ``passed`` exactly when it records
+    no failure line; when the gate evaluated, one line per refused column in
+    column order, each quoting its column, the refused and registered columns
+    sorted, distinct, model-named and disjoint, and the stored-column count at
+    least their total; when it could not evaluate, one line and the reason.
+    The verdict names the built-with engine (:func:`_check_stored_input_verdict`).
+    A certified release must have evaluated and refused nothing; an evidence
+    release may carry refusals, which :func:`_check_us_stored_input_evidence`
+    binds to ``known_failures``.
+    """
+
+    owner = f"{US_STORED_INPUTS_EVIDENCE_FILE} stored_inputs"
+    failures: list[str] = []
+    schema_version = payload.get("schema_version")
+    if (
+        type(schema_version) is not int
+        or schema_version != US_STORED_INPUTS_EVIDENCE_SCHEMA_VERSION
+    ):
+        failures.append(
+            f"{US_STORED_INPUTS_EVIDENCE_FILE} schema_version must be "
+            f"{US_STORED_INPUTS_EVIDENCE_SCHEMA_VERSION}, got {schema_version!r}."
+        )
+    if payload.get("enforced") is not True:
+        failures.append(
+            f"{US_STORED_INPUTS_EVIDENCE_FILE} must record enforced: true; the "
+            "stored-input gate has no waiver."
+        )
+    stage = payload.get("checked_at_stage")
+    if stage != US_FISCAL_STORED_INPUTS_STAGE:
+        failures.append(
+            f"{US_STORED_INPUTS_EVIDENCE_FILE} must be checked_at_stage "
+            f"{US_FISCAL_STORED_INPUTS_STAGE!r}, got {stage!r}."
+        )
+    gate = payload.get(US_STORED_INPUTS_EVIDENCE_KEY)
+    details = gate.get("details") if isinstance(gate, Mapping) else None
+    lines = gate.get("failures") if isinstance(gate, Mapping) else None
+    if (
+        not isinstance(gate, Mapping)
+        or not isinstance(details, Mapping)
+        or not isinstance(lines, list)
+        or not all(isinstance(line, str) and line for line in lines)
+        or not isinstance(gate.get("passed"), bool)
+    ):
+        failures.append(
+            f"{owner} must be an object with a boolean 'passed', a 'failures' "
+            "list of non-empty strings and a 'details' object."
+        )
+        return failures
+    if gate["passed"] != (lines == []):
+        failures.append(
+            f"{owner} 'passed' must be true exactly when it records no failure line."
+        )
+    evaluated = details.get("evaluated")
+    if evaluated is True:
+        _check_stored_input_verdict(
+            details,
+            owner=f"{owner}.details",
+            engine_label=engine_label,
+            failures=failures,
+        )
+        refused = details.get("refused")
+        registered = details.get("registered_non_variables")
+        if not _is_sorted_model_named_list(refused):
+            failures.append(
+                f"{owner}.details 'refused' must be a sorted list of distinct "
+                "model-named column names."
+            )
+        elif _is_sorted_model_named_list(registered):
+            if set(refused) & set(registered):
+                failures.append(
+                    f"{owner}.details lists "
+                    f"{sorted(set(refused) & set(registered))} as both refused "
+                    "and registered; a registered column is never refused."
+                )
+            stored = details.get("stored_columns")
+            if type(stored) is not int or stored < len(refused) + len(registered):
+                failures.append(
+                    f"{owner}.details 'stored_columns' must be an integer at "
+                    "least the number of refused and registered columns, got "
+                    f"{stored!r}."
+                )
+            if len(lines) != len(refused) or any(
+                f"stored column '{column}'" not in line
+                for column, line in zip(refused, lines, strict=True)
+            ):
+                failures.append(
+                    f"{owner} must record one failure line per refused column, "
+                    "in column order, each quoting its column."
+                )
+        if not evidence_tier and (refused != [] or lines != []):
+            failures.append(
+                f"{owner} refused {refused!r}: a certified release stores no "
+                "model-named column its built-with engine lacks "
+                "(microcosm#1026). Rename each to the live input, stop storing "
+                "it, or add a reviewed register entry, and rebuild."
+            )
+    elif evaluated is False:
+        error = details.get("error")
+        if len(lines) != 1 or not isinstance(error, str) or not error:
+            failures.append(
+                f"{owner} could not evaluate, so it must record exactly one "
+                "failure line and a non-empty 'error'."
+            )
+        if not evidence_tier:
+            failures.append(
+                f"{owner} never evaluated ({error!r}); a certified release's "
+                "stored columns must have been checked against its built-with "
+                "engine."
+            )
+    else:
+        failures.append(f"{owner}.details 'evaluated' must be a boolean.")
+    return failures
+
+
+def _check_us_stored_input_evidence(
+    release_dir: Path,
+    *,
+    build_manifest: Mapping | None,
+    release_manifest: Mapping | None,
+    failures: list[str],
+    evidence_tier: bool,
+) -> None:
+    """Require a US national release to bind its stored-input verdict.
+
+    microcosm#1034: the fiscal-refresh tool's stored-input gate
+    (microcosm#1026) once recorded its verdict only in run telemetry, so a
+    release built by a tool without the gate, or on a branch without it,
+    validated the same as one built with it. Every US national calibration
+    release (both tiers) must now carry:
+
+    - the gate-evidence file :data:`US_STORED_INPUTS_EVIDENCE_FILE`, bound as
+      the ``release_manifest.json`` artifact :data:`US_STORED_INPUTS_EVIDENCE_KEY`
+      (kind ``diagnostics``) and present in the release directory with those
+      bytes, its status ``bound`` in both manifests' ``gate_evidence`` block
+      (which must agree);
+    - a valid verdict in it (:func:`_stored_input_evidence_payload_failures`)
+      against the built-with engine, which must also be the policyengine-us
+      ``build_manifest.json`` records as its runtime;
+    - the same ``stored_inputs`` block in ``build_manifest.json`` and
+      ``release_manifest.json``'s ``build`` section, equal to
+      :func:`stored_input_evidence_manifest_block` of the file for the H5
+      ``build_manifest.json`` pins;
+    - at the evidence tier, every failure line the file records carried
+      verbatim in ``known_failures``.
+
+    Engine-free: JSON and one file hash. No published release is exempt: none
+    of the US national calibration releases on the Hub carries gate evidence
+    (it was first bound on 2026-09-24). Nothing re-validates a published
+    release automatically. The paths that run the contract on one again, a
+    publish retry of its directory or an annual-projection cut on it as a
+    base, are re-certifications, and every published US national base already
+    fails the unchanged calibration-diagnostics schema rule (Build P records
+    schema 5), so re-certifying one means rebuilding it with a tool that runs
+    the gate.
+    """
+
+    key = US_STORED_INPUTS_EVIDENCE_KEY
+    filename = US_STORED_INPUTS_EVIDENCE_FILE
+    missing_hint = (
+        "rebuild with tools/build_us_fiscal_refresh_release.py, whose "
+        "stored-input gate writes and binds it (microcosm#1026, #1034)."
+    )
+    build = (
+        release_manifest.get("build") if isinstance(release_manifest, Mapping) else None
+    )
+    statuses: list[object] = []
+    for source, holder in (
+        ("build_manifest.json", build_manifest),
+        ("release_manifest.json build", build),
+    ):
+        if not isinstance(holder, Mapping):
+            continue  # the manifest's own shape failure is already recorded
+        gate_evidence = holder.get("gate_evidence")
+        statuses.append(gate_evidence)
+        status = gate_evidence.get(key) if isinstance(gate_evidence, Mapping) else None
+        if status != "bound":
+            failures.append(
+                f"{source} gate_evidence must record {key!r} as 'bound', got "
+                f"{status!r}; {missing_hint}"
+            )
+    if len(statuses) == 2 and statuses[0] != statuses[1]:
+        failures.append(
+            "build_manifest.json and release_manifest.json build record "
+            "different gate_evidence blocks; the tool writes both from one."
+        )
+
+    artifacts = (
+        release_manifest.get("artifacts")
+        if isinstance(release_manifest, Mapping)
+        else None
+    )
+    artifact = artifacts.get(key) if isinstance(artifacts, Mapping) else None
+    if (
+        not isinstance(artifact, Mapping)
+        or artifact.get("path") != filename
+        or artifact.get("kind") != "diagnostics"
+    ):
+        failures.append(
+            f"release_manifest.json must declare the {key!r} artifact as the "
+            f"diagnostics file {filename!r}; {missing_hint}"
+        )
+        return
+    path = release_dir / filename
+    if not path.is_file():
+        failures.append(
+            f"{filename} is missing from the release directory; the manifest "
+            "binds it as the stored-input verdict."
+        )
+        return
+    if _sha256(path) != artifact.get("sha256"):
+        return  # _check_local_artifact_hashes names the mismatch
+    payload_failures: list[str] = []
+    payload = _load_json(path, payload_failures)
+    failures.extend(payload_failures)
+    if payload is None:
+        return
+    engine_label = _built_with_us_engine_label(release_manifest, failures)
+    runtime = (
+        build_manifest.get("runtime") if isinstance(build_manifest, Mapping) else None
+    )
+    runtime_version = (
+        runtime.get("policyengine-us") if isinstance(runtime, Mapping) else None
+    )
+    if engine_label is not None and engine_label != (
+        f"policyengine-us {runtime_version}"
+    ):
+        failures.append(
+            "build_manifest.json runtime policyengine-us "
+            f"{runtime_version!r} is not the built-with engine "
+            f"{engine_label!r} the stored-input verdict is certified against."
+        )
+    shape_failures = _stored_input_evidence_payload_failures(
+        payload, engine_label=engine_label, evidence_tier=evidence_tier
+    )
+    failures.extend(shape_failures)
+    if shape_failures:
+        return
+    dataset = (
+        build_manifest.get("dataset") if isinstance(build_manifest, Mapping) else None
+    )
+    dataset_sha256 = dataset.get("sha256") if isinstance(dataset, Mapping) else None
+    if isinstance(dataset_sha256, str):
+        expected = stored_input_evidence_manifest_block(
+            payload, dataset_sha256=dataset_sha256
+        )
+        for source, holder in (
+            ("build_manifest.json", build_manifest),
+            ("release_manifest.json build", build),
+        ):
+            if isinstance(holder, Mapping) and holder.get(key) != expected:
+                failures.append(
+                    f"{source} {key!r} block must equal the verdict in {filename} "
+                    "bound to the H5 build_manifest.json pins "
+                    f"(dataset_sha256 {dataset_sha256})."
+                )
+    if evidence_tier and isinstance(release_manifest, Mapping):
+        known_failures = release_manifest.get("known_failures")
+        if isinstance(known_failures, list):
+            _recorded_failure_subset_binding(
+                payload[key]["failures"],
+                recorded_texts=[
+                    entry.get("failure")
+                    for entry in known_failures
+                    if isinstance(entry, Mapping)
+                    and isinstance(entry.get("failure"), str)
+                ],
+                source=f"{filename} stored_inputs.failures",
+                failures=failures,
+                verbatim=True,
+            )
+
+
+def _check_uk_withheld_totals(
+    diagnostics: Mapping, withheld: set[str], failures: list[str]
+) -> None:
+    """While a row is withheld, no total over every row and no rollup names it.
+
+    microcosm#1262 (the third review of #1305): the loss trajectory is empty,
+    the options keep their published settings only, with the iterate
+    receipt's losses null, and neither the past-cap census nor the weakest
+    families or areas name a withheld row. The fourth review: the restated
+    totals are recomputed from the published rows
+    (:func:`_check_uk_restated_totals`).
+    """
+
+    file = "calibration_diagnostics.json"
+    if diagnostics.get("loss_trajectory"):
+        failures.append(f"{file} withholds rows but keeps a loss trajectory.")
+    options = diagnostics.get("options")
+    for key, value in options.items() if isinstance(options, Mapping) else ():
+        if key == "iterate_selection_receipt" and isinstance(value, Mapping):
+            kept = sorted(
+                field
+                for field, item in value.items()
+                if field not in UK_WITHHELD_PUBLISHED_ITERATE_FIELDS
+                and item is not None
+            )
+            if kept:
+                failures.append(
+                    f"{file} withholds rows but options.iterate_selection_receipt "
+                    f"keeps {kept}."
+                )
+        elif key not in UK_WITHHELD_PUBLISHED_OPTIONS and value is not None:
+            failures.append(f"{file} withholds rows but options.{key} is not null.")
+    named: set[str] = set()
+    census = diagnostics.get("past_cap_census")
+    if isinstance(census, Mapping):
+        named |= {
+            str(row.get("name"))
+            for row in census.get("pushed_out_rows") or ()
+            if isinstance(row, Mapping)
+        }
+    uk = diagnostics.get("uk_diagnostics")
+    if isinstance(uk, Mapping):
+        named |= {
+            str(row.get("worst_target"))
+            for row in uk.get("weakest_families") or ()
+            if isinstance(row, Mapping)
+        }
+        areas = uk.get("weakest_areas_by_fit")
+        if isinstance(areas, Mapping):
+            for block in ("bottom_by_fit", "countries"):
+                named |= {
+                    str(row.get("worst_target"))
+                    for row in areas.get(block) or ()
+                    if isinstance(row, Mapping)
+                }
+    if named & withheld:
+        failures.append(
+            f"{file} names {len(named & withheld)} withheld row(s) in its past-cap "
+            "census or its rollups."
+        )
+    _check_uk_restated_totals(diagnostics, withheld, failures)
+
+
+#: A row inside 10% of its target, as the UK pass rates count it.
+_UK_WITHIN_RELATIVE_ERROR = 0.10
+_UK_RESTATED_REL_TOLERANCE = 1e-9
+_UK_RESTATED_ABS_TOLERANCE = 1e-12
+
+
+def _check_uk_restated_totals(
+    diagnostics: Mapping, withheld: set[str], failures: list[str]
+) -> None:
+    """Recompute a withholding payload's totals from its published rows.
+
+    microcosm#1262, the fourth review of #1305: a total over every row put
+    back passes every shape check, and less the published rows' share gives
+    a withheld row back. The final loss is the published rows' summed
+    contributions; the initial loss is their loss-weight shares times their
+    capped scaled errors at the input estimates, on the basis's cap; the
+    fraction within 10%, the past-cap census and the pass counts by
+    geography level count the published rows only. A published row without
+    the fields to recompute them is refused, since the totals could not be
+    checked. The family and area rollups are held to naming no withheld row
+    only.
+    """
+
+    file = "calibration_diagnostics.json"
+    rows = [row for row in diagnostics.get("targets") or () if isinstance(row, Mapping)]
+    published = [row for row in rows if str(row.get("name")) not in withheld]
+    if not published:
+        failures.append(f"{file} withholds every row, so no total can be restated.")
+        return
+    basis = diagnostics.get("target_loss_basis")
+    cap = basis.get("cap") if isinstance(basis, Mapping) else None
+    fields = (
+        "final_loss_contribution",
+        "target_loss_weight_share",
+        "target_loss_scale",
+        "target",
+        "initial_estimate",
+        "relative_error",
+    )
+    if not _finite_number(cap) or any(
+        not _finite_number(row.get(field)) for row in published for field in fields
+    ):
+        failures.append(
+            f"{file} withholds rows, but its loss basis or a published row lacks "
+            "the fields its restated totals are recomputed from."
+        )
+        return
+    if any(float(row["target_loss_scale"]) <= 0 for row in published):
+        failures.append(
+            f"{file} withholds rows, but a published loss scale is not positive."
+        )
+        return
+    within = sum(
+        abs(float(row["relative_error"])) <= _UK_WITHIN_RELATIVE_ERROR
+        for row in published
+    )
+    restated = {
+        "final_loss": math.fsum(
+            float(row["final_loss_contribution"]) for row in published
+        ),
+        "initial_loss": math.fsum(
+            float(row["target_loss_weight_share"])
+            * min(
+                abs(float(row["initial_estimate"]) - float(row["target"]))
+                / float(row["target_loss_scale"]),
+                float(cap),
+            )
+            for row in published
+        ),
+        "fraction_within_10pct": within / len(published),
+    }
+    for field, expected in restated.items():
+        value = diagnostics.get(field)
+        if not _finite_number(value) or not math.isclose(
+            float(value),
+            expected,
+            rel_tol=_UK_RESTATED_REL_TOLERANCE,
+            abs_tol=_UK_RESTATED_ABS_TOLERANCE,
+        ):
+            failures.append(
+                f"{file} withholds rows, but its {field} is not restated over the "
+                "published rows."
+            )
+    census = diagnostics.get("past_cap_census")
+    if census is not None and _uk_census_over(published, census) != {
+        key: census.get(key) if isinstance(census, Mapping) else None
+        for key in _UK_CENSUS_COUNTS
+    }:
+        failures.append(
+            f"{file} withholds rows, but its past_cap_census does not count the "
+            "published rows only."
+        )
+    uk = diagnostics.get("uk_diagnostics")
+    levels = (
+        uk.get("target_pass_rates_by_geography_level")
+        if isinstance(uk, Mapping)
+        else None
+    )
+    if isinstance(levels, list):
+        counted = [level for level in levels if isinstance(level, Mapping)]
+        if sum(
+            int(level.get("n_within_10pct") or 0) for level in counted
+        ) != within or sum(int(level.get("n_scored") or 0) for level in counted) != len(
+            rows
+        ):
+            failures.append(
+                f"{file} withholds rows, but its pass rates by geography level do "
+                "not count the published rows' passes over every scored row."
+            )
+
+
+_UK_CENSUS_COUNTS = (
+    "n_targets",
+    "initial_past_cap",
+    "final_past_cap",
+    "escaped",
+    "frozen",
+    "pushed_out",
+)
+
+
+def _uk_census_over(rows: list[Mapping], census: object) -> dict[str, object] | None:
+    """The past-cap census's counts over ``rows``, on the census's own cap."""
+
+    cap = census.get("cap") if isinstance(census, Mapping) else None
+    if not _finite_number(cap):
+        return None
+    counts = dict.fromkeys(_UK_CENSUS_COUNTS, 0)
+    counts["n_targets"] = len(rows)
+    for row in rows:
+        values = [
+            row.get(field) for field in ("target", "initial_estimate", "final_estimate")
+        ]
+        if not all(_finite_number(value) for value in values):
+            continue
+        target, initial, final = (float(value) for value in values)
+        scale = max(abs(target), 1.0)
+        initial_past = abs(initial - target) / scale > float(cap)
+        final_past = abs(final - target) / scale > float(cap)
+        counts["initial_past_cap"] += initial_past
+        counts["final_past_cap"] += final_past
+        counts["escaped"] += initial_past and not final_past
+        counts["frozen"] += initial_past and final_past
+        counts["pushed_out"] += final_past and not initial_past
+    return counts
+
+
+def _uk_brma_floor_verdict_warnings(diagnostics: Mapping) -> list[str]:
+    """BRMA rows whose ten-household verdict is missing or disagrees.
+
+    microcosm#1262: every BRMA row carries ``metadata.carrier_floor_met``, and
+    a row withholds its model figures exactly when the verdict is false or the
+    row is withheld beside a thin one (``metadata.complementary_withholding``,
+    Vahid's second review of #1333), so the contract can see a thin row the
+    build never flagged. María's ruling of 2026-10-19 on the fourth review of
+    #1305: this is warned, not refused. The warnings give counts only, never a
+    row.
+    """
+
+    missing = disagreeing = 0
+    for row in diagnostics.get("targets") or ():
+        metadata = row.get("metadata") if isinstance(row, Mapping) else None
+        if not isinstance(metadata, Mapping) or not _uk_brma_row(metadata):
+            continue
+        verdict = metadata.get("carrier_floor_met")
+        withheld = bool(metadata.get("model_figures_withheld"))
+        complementary = metadata.get("complementary_withholding") is True
+        if not isinstance(verdict, bool):
+            missing += 1
+        elif (not verdict and (complementary or not withheld)) or (
+            verdict and withheld != complementary
+        ):
+            disagreeing += 1
+    warnings = []
+    if missing:
+        warnings.append(
+            f"calibration_diagnostics.json has {missing} BRMA row(s) without a "
+            "ten-household carrier verdict (metadata.carrier_floor_met), so the "
+            "contract cannot see whether their model figures may be published "
+            "(microcosm#1262)."
+        )
+    if disagreeing:
+        warnings.append(
+            f"calibration_diagnostics.json has {disagreeing} BRMA row(s) whose "
+            "carrier verdict disagrees with their withheld flag (microcosm#1262)."
+        )
+    return warnings
+
+
+def _uk_brma_row(metadata: Mapping) -> bool:
+    level = str(metadata.get("geography_level") or "").strip().lower()
+    area_type = str(metadata.get("area_type") or "").strip().lower()
+    return area_type == "brma" or level in {"brma", "statistical_scope"}
+
+
+def _check_uk_candidate_restated_losses(
+    candidate: Mapping, diagnostics: Mapping, failures: list[str]
+) -> None:
+    """The candidate manifest restates the diagnostics' totals (microcosm#1262).
+
+    While the diagnostics withhold rows, the manifest's solve block counts them
+    and copies the published rows' losses and past-cap counts, so it cannot
+    carry a total over every row beside them (the fourth review of #1305).
+    """
+
+    uk = diagnostics.get("uk_diagnostics")
+    block = uk.get("model_figures_withheld") if isinstance(uk, Mapping) else None
+    if not isinstance(block, Mapping):
+        return
+    file = "rowwise_candidate_manifest.json"
+    solve = candidate.get("solve")
+    if not isinstance(solve, Mapping):
+        failures.append(f"{file} has no solve block beside withheld diagnostics.")
+        return
+    counted = solve.get("model_figures_withheld")
+    if not isinstance(counted, Mapping) or counted.get("targets") != block.get(
+        "targets"
+    ):
+        failures.append(
+            f"{file} solve does not count the rows its diagnostics withhold."
+        )
+    for field in ("initial_loss", "final_loss"):
+        if solve.get(field) != diagnostics.get(field):
+            failures.append(
+                f"{file} solve.{field} is not the diagnostics' restated {field}."
+            )
+    census = diagnostics.get("past_cap_census")
+    past_cap = solve.get("past_cap")
+    if isinstance(census, Mapping) and isinstance(past_cap, Mapping):
+        pairs = {
+            "n_targets": "n_targets",
+            "past_at_init": "initial_past_cap",
+            "past_at_final": "final_past_cap",
+            "escaped": "escaped",
+            "frozen": "frozen",
+            "pushed_out": "pushed_out",
+        }
+        if any(past_cap.get(own) != census.get(key) for own, key in pairs.items()):
+            failures.append(
+                f"{file} solve.past_cap is not the diagnostics' restated census."
+            )
+
+
 def _check_local_area_calibration_diagnostics(
     diagnostics: Mapping, failures: list[str]
 ) -> None:
@@ -5185,6 +6575,8 @@ def _check_local_area_calibration_diagnostics(
         "final_estimate",
     )
     seen_names: set[str] = set()
+    withheld_rows = 0
+    withheld_names: set[str] = set()
     for index, row in enumerate(targets):
         if not isinstance(row, Mapping):
             failures.append(
@@ -5204,6 +6596,27 @@ def _check_local_area_calibration_diagnostics(
             )
         else:
             seen_names.add(name)
+        # A UK row resting on fewer than ten source households keeps its place
+        # without its model figures (microcosm#1262): its estimates are null,
+        # and the payload's withheld block counts it.
+        metadata = row.get("metadata")
+        withheld = isinstance(metadata, Mapping) and bool(
+            metadata.get("model_figures_withheld")
+        )
+        if withheld:
+            withheld_rows += 1
+            withheld_names.add(str(name))
+            figures = {field: row.get(field) for field in UK_MODEL_FIGURE_FIELDS}
+            if any(value is not None for value in figures.values()):
+                failures.append(
+                    f"calibration_diagnostics.json target row {index} withholds "
+                    "its model figures but carries one."
+                )
+            if set(metadata) & {*UK_MODEL_FIGURE_FIELDS, "estimate"}:
+                failures.append(
+                    f"calibration_diagnostics.json target row {index} withholds "
+                    "its model figures but its metadata carries one."
+                )
         for field in required_fields:
             value = row.get(field)
             if field not in row:
@@ -5211,11 +6624,24 @@ def _check_local_area_calibration_diagnostics(
                     f"calibration_diagnostics.json target row {index} is "
                     f"missing {field!r}."
                 )
+            elif withheld and field in ("initial_estimate", "final_estimate"):
+                continue
             elif not isinstance(value, (int, float)) or not math.isfinite(value):
                 failures.append(
                     f"calibration_diagnostics.json target row {index} field "
                     f"{field!r} must be a finite number."
                 )
+    uk = diagnostics.get("uk_diagnostics")
+    block = uk.get("model_figures_withheld") if isinstance(uk, Mapping) else None
+    declared = block.get("targets") if isinstance(block, Mapping) else 0
+    if declared != withheld_rows:
+        failures.append(
+            "calibration_diagnostics.json uk_diagnostics.model_figures_withheld "
+            f"counts {declared!r} withheld rows, but {withheld_rows} rows withhold "
+            "their model figures."
+        )
+    if withheld_rows:
+        _check_uk_withheld_totals(diagnostics, withheld_names, failures)
     if not isinstance(households, int) or households <= 0:
         failures.append(
             "calibration_diagnostics.json must carry a positive integer "
@@ -5259,7 +6685,7 @@ def validate_release_dir(
     parent_h5: Path | str | None = None,
     artifact_root: Path | str | None = None,
     compatibility_wheels: tuple[Path | str, ...] = (),
-) -> None:
+) -> list[str]:
     """Check a local release directory against its dataset-role contract.
 
     The directory name is the build id (``populace-us-2024-<sha>-<date>``)
@@ -5269,11 +6695,16 @@ def validate_release_dir(
 
     - ``national_default`` (or absent — every pre-role release): the full
       national contract, unchanged — :data:`REQUIRED_RELEASE_FILES`, the
-      US critical-target set, national source-coverage enumeration.
+      US critical-target set, national source-coverage enumeration — and,
+      for a US release, the bound stored-input verdict
+      (:func:`_check_us_stored_input_evidence`, microcosm#1034).
     - ``non_default_local_area``: the local-area contract — gates object
       with every gate passed, per-target diagnostics shape, provenance-chain
       source coverage, a reviewed-limitations register, an empty
-      ``default_datasets`` map, and artifacts pinned to the release id. The
+      ``default_datasets`` map, and artifacts pinned to the release id; a US
+      release must also carry the package stage's stored-input gate
+      (:func:`_check_us_local_area_stored_inputs_gate`) and its SPM
+      measurement gate (:func:`_check_us_local_area_spm_measurement_gate`). The
       national critical-target set deliberately does not apply: the artifact
       is calibrated to a local surface by design.
 
@@ -5292,6 +6723,13 @@ def validate_release_dir(
     Args:
         release_dir: The local ``releases/<build_id>`` directory about to be
             published.
+
+    Returns:
+        The contract's warnings, each a sentence naming the file, for the
+        caller to print. Only the dense UK line has any: its disclosure walk
+        reports per-area support figures (microcosm#1301), and a BRMA row
+        without its ten-household carrier verdict, or with one its withheld
+        flag contradicts, is reported (microcosm#1262), without refusing.
 
     Raises:
         ReleaseContractError: Naming every violation found — missing files,
@@ -5332,7 +6770,32 @@ def validate_release_dir(
                     require_compatibility=True,
                     compatibility_wheels=compatibility_wheels,
                 )
-                return
+                return []
+            from microcosm.data.compatibility_recertification import (
+                RECERTIFICATION_RELEASE_TYPE,
+                validate_recertification_candidate,
+            )
+
+            if manifest_probe["release_type"] == RECERTIFICATION_RELEASE_TYPE:
+                # A published parent's bytes, re-measured under a newer
+                # engine: its own contract replays the parent's on the
+                # carried files. The child's H5 is the parent's, so it takes
+                # no parent_h5.
+                if parent_h5 is not None:
+                    raise ReleaseContractError(
+                        release_dir,
+                        [
+                            "a compatibility recertification republishes its "
+                            "parent's H5 unchanged and takes no parent_h5"
+                        ],
+                    )
+                validate_recertification_candidate(
+                    release_dir,
+                    artifact_root=artifact_root,
+                    require_compatibility=True,
+                    compatibility_wheels=compatibility_wheels,
+                )
+                return []
             if manifest_probe["release_type"] != "calibration":
                 raise ReleaseContractError(
                     release_dir,
@@ -5372,10 +6835,9 @@ def validate_release_dir(
             role = declared_role
     if role == NON_DEFAULT_LOCAL_AREA_DATASET_ROLE:
         if release_id == _UK_DENSE_RELEASE_ID:
-            _validate_uk_dense_release_dir(release_dir, release_id)
-            return
+            return _validate_uk_dense_release_dir(release_dir, release_id)
         _validate_local_area_release_dir(release_dir, release_id)
-        return
+        return []
 
     build_manifest: Mapping | None = None
     release_manifest: Mapping | None = None
@@ -5535,6 +6997,14 @@ def validate_release_dir(
         failures,
     )
     _check_local_artifact_hashes(release_dir, release_manifest, failures)
+    if release_id.startswith("populace-us-"):
+        _check_us_stored_input_evidence(
+            release_dir,
+            build_manifest=build_manifest,
+            release_manifest=release_manifest,
+            failures=failures,
+            evidence_tier=False,
+        )
 
     source_coverage_path = release_dir / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE
     if release_id.startswith("populace-us-") and source_coverage_path.is_file():
@@ -5549,6 +7019,7 @@ def validate_release_dir(
 
     if failures:
         raise ReleaseContractError(release_dir, failures)
+    return []
 
 
 #: Owner refs in ``known_failures`` must point at a tracked issue — a
@@ -5929,6 +7400,14 @@ def validate_evidence_release_dir(release_dir: Path | str) -> None:
         failures,
     )
     _check_local_artifact_hashes(release_dir, release_manifest, failures)
+    if release_id.startswith("populace-us-"):
+        _check_us_stored_input_evidence(
+            release_dir,
+            build_manifest=build_manifest,
+            release_manifest=release_manifest,
+            failures=failures,
+            evidence_tier=True,
+        )
 
     source_coverage_path = release_dir / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE
     if release_id.startswith("populace-us-") and source_coverage_path.is_file():
@@ -6203,7 +7682,7 @@ _UK_DENSE_SURFACE_INVENTORIES = {
     },
     "local": {
         "rows": 23545,
-        "sha256": "1d783e5933ca632250a9e38f8ddd00223f8be93e4878973b148fb72620cf1e23",
+        "sha256": "0663375b80dbed14d1a6d2d6015bcdd5cc45c5e8af4dbe62dd2f393b2811578a",
     },
 }
 _UK_DENSE_SURFACE_FILE = "incumbent_surface_evaluation.json"
@@ -6224,16 +7703,15 @@ def _uk_incumbent_row_identity(row: Mapping, grain: str) -> dict:
     return {field: row.get(field) for field in fields}
 
 
-def uk_incumbent_surface_assessment(payload: Mapping) -> dict:
-    """Recompute unchanged absolute quality limits over the full incumbent surface.
+def _uk_incumbent_surface_inventory_failures(payload: Mapping) -> list[str]:
+    """The structural checks on an incumbent-surface evaluation's rows.
 
-    National comparisons use incumbent target values, not invented realized
-    incumbent estimates. Local comparisons additionally require the incumbent's
-    measured estimates. Deferred and unmeasurable rows never disappear.
+    Each grain must be a complete nonempty row list matching the pinned
+    incumbent target inventory, with nonempty unique row names. These are the
+    evaluation's identity, so they refuse whether or not the measured limits
+    are enforced (microcosm#1301).
     """
     failures = []
-    grains = {}
-    limits = _UK_DENSE_SURFACE_LIMITS
     for grain in ("national", "local"):
         rows = payload.get(f"{grain}_rows")
         if (
@@ -6257,6 +7735,30 @@ def uk_incumbent_surface_assessment(payload: Mapping) -> dict:
             set(names)
         ) != len(names):
             failures.append(f"{grain} row names must be nonempty and unique.")
+    return failures
+
+
+def uk_incumbent_surface_assessment(payload: Mapping) -> dict:
+    """Recompute unchanged absolute quality limits over the full incumbent surface.
+
+    National comparisons use incumbent target values, not invented realized
+    incumbent estimates. Local comparisons additionally require the incumbent's
+    measured estimates. Deferred and unmeasurable rows never disappear. The
+    row inventory is checked separately
+    (:func:`_uk_incumbent_surface_inventory_failures`); a grain that is not a
+    row list is left out here.
+    """
+    failures = []
+    grains = {}
+    limits = _UK_DENSE_SURFACE_LIMITS
+    for grain in ("national", "local"):
+        rows = payload.get(f"{grain}_rows")
+        if (
+            not isinstance(rows, list)
+            or not rows
+            or any(not isinstance(r, Mapping) for r in rows)
+        ):
+            continue
         measured = 0
         errors = []
         families = {}
@@ -6335,8 +7837,21 @@ def uk_incumbent_surface_assessment(payload: Mapping) -> dict:
 
 
 def _check_uk_incumbent_surface_evaluation(
-    payload: Mapping, failures: list[str], *, expected_identity: Mapping
-) -> None:
+    payload: Mapping,
+    failures: list[str],
+    *,
+    expected_identity: Mapping,
+    enforce_limits: bool,
+) -> dict:
+    """Check one incumbent-surface evaluation; return its limit record.
+
+    The schema, the input identities, the pinned row inventory and the
+    recomputed summary always refuse. The measured quality limits and the
+    single-block measurement are the comparison's verdict: they refuse only
+    when ``enforce_limits``; otherwise they are recorded in the returned
+    ``{"passed", "limit_failures"}`` (microcosm#1301: the comparison is an
+    opt-in diagnostic).
+    """
     label = _UK_DENSE_SURFACE_FILE
     if (
         payload.get("schema_version") != 2
@@ -6360,28 +7875,34 @@ def _check_uk_incumbent_surface_evaluation(
                 failures.append(
                     f"{label} identity.{key} does not match its source artifact."
                 )
+    failures.extend(
+        f"{label}: {failure}"
+        for failure in _uk_incumbent_surface_inventory_failures(payload)
+    )
+    limit_failures = []
     resolution = payload.get("measure_resolution")
     if (
         not isinstance(resolution, Mapping)
         or type(resolution.get("blocks")) is not int
         or resolution.get("blocks") != 1
     ):
-        failures.append(f"{label} requires single-block engine measurement.")
+        limit_failures.append(f"{label} requires single-block engine measurement.")
     assessment = uk_incumbent_surface_assessment(payload)
     if payload.get("summary") != assessment:
         failures.append(f"{label} summary does not match its measured rows.")
-    failures.extend(f"{label}: {failure}" for failure in assessment["failures"])
+    limit_failures.extend(f"{label}: {failure}" for failure in assessment["failures"])
+    if enforce_limits:
+        failures.extend(limit_failures)
+    return {"passed": not limit_failures, "limit_failures": limit_failures}
 
 
-def _check_uk_dense_surface_files(
-    release_dir: Path, release_manifest: Mapping, failures: list[str]
-) -> None:
-    names = (
-        _UK_DENSE_SURFACE_FILE,
-        "rowwise_candidate_manifest.json",
-        "incumbent_manifest.json",
-        "source_calibration_diagnostics.json",
-    )
+def _load_dense_evidence(
+    release_dir: Path,
+    release_manifest: Mapping,
+    names: tuple[str, ...],
+    failures: list[str],
+) -> tuple[dict, dict] | None:
+    """Load declared evidence files and their byte hashes, or None if any fails."""
     loaded = {}
     hashes = {}
     for name in names:
@@ -6395,19 +7916,40 @@ def _check_uk_dense_surface_files(
                 f"release_manifest.json must declare {name!r} as an artifact."
             )
     if len(loaded) != len(names) or any(v is None for v in loaded.values()):
-        return
+        return None
+    return loaded, hashes
+
+
+def _check_uk_dense_surface_files(
+    release_dir: Path, release_manifest: Mapping, failures: list[str]
+) -> dict | None:
+    """Join the candidate's own evidence to the released bytes.
+
+    These joins hold for every dense release, with or without the incumbent
+    comparison (microcosm#1301). Returns the candidate identity an attached
+    comparison must be bound to, or None when the evidence is incomplete
+    (the failure is recorded).
+    """
+    evidence = _load_dense_evidence(
+        release_dir,
+        release_manifest,
+        ("rowwise_candidate_manifest.json", "source_calibration_diagnostics.json"),
+        failures,
+    )
+    if evidence is None:
+        return None
+    loaded, hashes = evidence
     candidate = loaded["rowwise_candidate_manifest.json"]
-    incumbent = loaded["incumbent_manifest.json"]
     try:
         chronicle = candidate["identity"]["targets"]["chronicle"]
     except (KeyError, TypeError):
         failures.append(
             "rowwise_candidate_manifest.json is missing identity.targets.chronicle."
         )
-        return
+        return None
     try:
         dataset = _artifact_by_path(release_manifest, _UK_DENSE_DATASET_FILENAME)
-        expected = {
+        identity = {
             "candidate_dataset_sha256": dataset["sha256"],
             "candidate_manifest_sha256": hashes["rowwise_candidate_manifest.json"],
             "candidate_diagnostics_sha256": hashes[
@@ -6415,15 +7957,12 @@ def _check_uk_dense_surface_files(
             ],
             "ledger_facts_sha256": chronicle["facts_sha256"],
             "ledger_manifest_sha256": chronicle["manifest_sha256"],
-            "incumbent_manifest_sha256": hashes["incumbent_manifest.json"],
-            "incumbent_metrics_sha256": incumbent["outputs"]["metrics"]["sha256"],
-            "incumbent_weights_sha256": incumbent["outputs"]["weights"]["sha256"],
         }
         for key, identity_key in (
             ("dataset", "candidate_dataset_sha256"),
             ("calibration_diagnostics", "candidate_diagnostics_sha256"),
         ):
-            if candidate["outputs"][key]["sha256"] != expected[identity_key]:
+            if candidate["outputs"][key]["sha256"] != identity[identity_key]:
                 failures.append(
                     f"rowwise_candidate_manifest.json {key} hash does not match released evidence."
                 )
@@ -6449,6 +7988,9 @@ def _check_uk_dense_surface_files(
                 "build_manifest.json code does not match the evaluated candidate manifest."
             )
         _check_uk_measure_exclusions(candidate.get("measure_exclusions"), failures)
+        _check_uk_candidate_restated_losses(
+            candidate, loaded["source_calibration_diagnostics.json"], failures
+        )
         coverage = _load_json(release_dir / _UK_DENSE_SOURCE_COVERAGE_FILE, failures)
         if coverage:
             if coverage.get("measure_exclusions") != candidate.get(
@@ -6462,10 +8004,10 @@ def _check_uk_dense_surface_files(
                     failures.append(
                         f"uk_source_coverage.json Ledger {key} does not match the evaluated source."
                     )
-            if coverage.get("incumbent", {}).get("snapshot") != incumbent.get("inputs"):
-                failures.append(
-                    "uk_source_coverage.json incumbent snapshot does not match the evaluated source."
-                )
+            _check_uk_dense_claims_against_candidate(
+                candidate, coverage, release_manifest, failures
+            )
+            _check_uk_dense_exclusions_against_candidate(candidate, coverage, failures)
         shipped_diagnostics = _load_json(
             release_dir / "calibration_diagnostics.json", failures
         )
@@ -6475,7 +8017,7 @@ def _check_uk_dense_surface_files(
                 CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
             ):
                 shipped_sha256 = _sha256(release_dir / "calibration_diagnostics.json")
-                if shipped_sha256 != expected["candidate_diagnostics_sha256"]:
+                if shipped_sha256 != identity["candidate_diagnostics_sha256"]:
                     failures.append(
                         "calibration_diagnostics.json bytes do not match the "
                         "evaluated canonical diagnostics."
@@ -6488,7 +8030,7 @@ def _check_uk_dense_surface_files(
             else:
                 if (
                     shipped_diagnostics.get("source_diagnostics_sha256")
-                    != expected["candidate_diagnostics_sha256"]
+                    != identity["candidate_diagnostics_sha256"]
                 ):
                     failures.append(
                         "calibration_diagnostics.json source hash does not match "
@@ -6502,27 +8044,426 @@ def _check_uk_dense_surface_files(
                         "calibration_diagnostics.json changed original evaluated "
                         "diagnostic values."
                     )
-        score = _load_json(release_dir / _UK_DENSE_SCORE_RECEIPT_FILE, failures)
+        if build and report and report.get("release_id") != build.get("attempt_id"):
+            failures.append(
+                "the signed gate report is not bound to the released attempt."
+            )
+    except (KeyError, TypeError) as error:
+        failures.append(f"candidate source identities are incomplete: {error}.")
+        return None
+    return identity
+
+
+def _as_mapping(value: object) -> Mapping:
+    return value if isinstance(value, Mapping) else {}
+
+
+def _check_uk_dense_claims_against_candidate(
+    candidate: Mapping,
+    coverage: Mapping,
+    release_manifest: Mapping,
+    failures: list[str],
+) -> None:
+    """The holdout and size claims restate the evaluated candidate (microcosm#1301).
+
+    The coverage and the manifest are unsigned packaging, so they are joined
+    to the candidate as its measure exclusions and Ledger pins are: an edit
+    cannot switch the release between ``no_out_of_sample_claim`` and
+    ``rotated_holdout``, report a holdout loss the candidate did not measure,
+    or change the size record, and the ``engine_measurement`` and
+    ``size_doctrine`` limitations restate the candidate's own record.
+    """
+
+    file = _UK_DENSE_SOURCE_COVERAGE_FILE
+    parameters = _as_mapping(candidate.get("parameters"))
+    measured = _as_mapping(_as_mapping(candidate.get("fit")).get("rotated_holdout"))
+    solve = _as_mapping(candidate.get("solve"))
+    holdout = coverage.get("holdout")
+    if isinstance(holdout, Mapping):
+        skipped = (
+            parameters.get("skip_holdout") is True and measured.get("skipped") is True
+        )
+        claim = holdout.get("claim")
+        if claim == "none" and not skipped:
+            failures.append(
+                f"{file} holdout claims nothing, but the evaluated candidate did "
+                "not skip the rotated holdout."
+            )
+        elif claim == "report_only" and skipped:
+            failures.append(
+                f"{file} holdout is reported, but the evaluated candidate skipped "
+                "the rotated holdout."
+            )
+        elif claim == "report_only":
+            for key in ("mean_holdout_loss", "n_folds"):
+                if holdout.get(key) != measured.get(key):
+                    failures.append(
+                        f"{file} holdout.{key} does not match the evaluated "
+                        "candidate's rotated holdout."
+                    )
+    requested = parameters.get("dataset_households")
+    dataset_size = _as_mapping(solve.get("dataset_size"))
+    # The size record as the assembler restates it from the candidate.
+    expected_size = {
+        "clone_count": parameters.get("n_clones"),
+        "dataset_households": requested,
+        "realized_households": dataset_size.get("realized_households"),
+        "selection_initial_lambda": parameters.get("selection_initial_lambda"),
+        "selection_l0_lambda": dataset_size.get("selection_l0_lambda"),
+        "search_bracket": dataset_size.get("selection_search_bracket"),
+    }
+    if requested is not None and expected_size["realized_households"] != requested:
+        failures.append(
+            "rowwise_candidate_manifest.json solve.dataset_size did not realize "
+            "the dataset size the candidate requested."
+        )
+    size = coverage.get("size")
+    if isinstance(size, Mapping):
+        sized = size.get("sized")
+        if sized in (True, False) and sized is not (requested is not None):
+            failures.append(
+                f"{file} size.sized is {sized}, but the evaluated candidate "
+                f"requested {'a' if requested is not None else 'no'} dataset size."
+            )
+        mismatched = sorted(
+            key for key, value in expected_size.items() if size.get(key) != value
+        )
+        if mismatched:
+            failures.append(
+                f"{file} size {mismatched} do not match the evaluated candidate."
+            )
+    limitations = release_manifest.get("reviewed_limitations")
+    by_id = {
+        str(item.get("id")): item
+        for item in (limitations if isinstance(limitations, list) else [])
+        if isinstance(item, Mapping)
+    }
+    engine = by_id.get("engine_measurement")
+    if engine is not None:
+        resolution = _as_mapping(solve.get("measure_resolution"))
+        representation = _as_mapping(resolution.get("engine_population_representation"))
+        expected_engine = {
+            "blocks": resolution.get("blocks"),
+            "representation_mode": representation.get("mode"),
+            "representation_exact": representation.get("exact"),
+            "representation_exact_scope": representation.get("exact_scope"),
+        }
+        mismatched = sorted(
+            key for key, value in expected_engine.items() if engine.get(key) != value
+        )
+        if mismatched:
+            failures.append(
+                f"release_manifest.json limitation 'engine_measurement' "
+                f"{mismatched} do not match the evaluated candidate's measure "
+                "resolution."
+            )
+    doctrine = by_id.get("size_doctrine")
+    if doctrine is not None:
+        mismatched = sorted(
+            key for key, value in expected_size.items() if doctrine.get(key) != value
+        )
+        if mismatched:
+            failures.append(
+                f"release_manifest.json limitation 'size_doctrine' {mismatched} "
+                "do not match the evaluated candidate."
+            )
+
+
+def _check_uk_dense_exclusions_against_candidate(
+    candidate: Mapping, coverage: Mapping, failures: list[str]
+) -> None:
+    """The coverage's exclusion names restate the evaluated candidate (microcosm#1301).
+
+    The full gate report the reviewed-exclusion names come from does not
+    ship, so the build records the names each gate stood on in the candidate
+    manifest (``reviewed_exclusions_stood_on``), which the release
+    hash-joins. The coverage's names are held to that record gate by gate,
+    and the manifest's limitations to the coverage's names
+    (:func:`_check_uk_dense_signed_exclusions`), so a hand edit cannot drop
+    or add a national ``uk_target_fit`` or ``uk_input_mass_parity`` name.
+    """
+
+    recorded = candidate.get("reviewed_exclusions_stood_on")
+    if not (
+        isinstance(recorded, Mapping)
+        and set(map(str, recorded)) == set(_UK_DENSE_SIGNED_EXCLUSION_GATES)
+        and all(
+            isinstance(names, list) and all(isinstance(name, str) for name in names)
+            for names in recorded.values()
+        )
+    ):
+        failures.append(
+            "rowwise_candidate_manifest.json must record, under "
+            "'reviewed_exclusions_stood_on', the names of the reviewed "
+            f"exclusions each of {list(_UK_DENSE_SIGNED_EXCLUSION_GATES)} stood "
+            "on; a candidate built without the record is rebuilt."
+        )
+        return
+    named = _as_mapping(
+        _as_mapping(coverage.get("signed_deferrals")).get("reviewed_exclusions")
+    )
+    for gate_id in _UK_DENSE_SIGNED_EXCLUSION_GATES:
+        names = named.get(gate_id)
+        if not isinstance(names, list):
+            continue  # _check_uk_dense_source_coverage records the malformed block
+        listed = set(map(str, names))
+        stood_on = set(recorded[gate_id])
+        if listed != stood_on:
+            failures.append(
+                f"{_UK_DENSE_SOURCE_COVERAGE_FILE} signed_deferrals."
+                f"reviewed_exclusions.{gate_id} does not match the reviewed "
+                "exclusions the evaluated candidate recorded its gates stood "
+                f"on; missing {sorted(stood_on - listed)[:5]}, unexpected "
+                f"{sorted(listed - stood_on)[:5]}."
+            )
+
+
+def _check_uk_dense_incumbent_files(
+    release_dir: Path,
+    release_manifest: Mapping,
+    failures: list[str],
+    *,
+    candidate_identity: Mapping[str, str] | None,
+    coverage: Mapping | None,
+) -> dict | None:
+    """Join an attached incumbent comparison to the candidate and its sources.
+
+    Its identities refuse; its measured limits are recorded, not enforced
+    (microcosm#1301). Returns the evaluation's limit record, or None when the
+    comparison is incomplete (the failure is recorded).
+    """
+    evidence = _load_dense_evidence(
+        release_dir, release_manifest, _UK_DENSE_INCUMBENT_FILES, failures
+    )
+    if evidence is None or candidate_identity is None:
+        return None
+    loaded, hashes = evidence
+    incumbent = loaded["incumbent_manifest.json"]
+    try:
+        expected = {
+            **candidate_identity,
+            "incumbent_manifest_sha256": hashes["incumbent_manifest.json"],
+            "incumbent_metrics_sha256": incumbent["outputs"]["metrics"]["sha256"],
+            "incumbent_weights_sha256": incumbent["outputs"]["weights"]["sha256"],
+        }
+        covered = coverage.get("incumbent") if isinstance(coverage, Mapping) else None
+        if isinstance(covered, Mapping) and covered.get("snapshot") != incumbent.get(
+            "inputs"
+        ):
+            failures.append(
+                "uk_source_coverage.json incumbent snapshot does not match the evaluated source."
+            )
+        score = loaded[_UK_DENSE_SCORE_RECEIPT_FILE]
         for key, identity_key in (
             ("candidate_diagnostics", "candidate_diagnostics_sha256"),
             ("incumbent_household_metrics", "incumbent_metrics_sha256"),
             ("incumbent_wide_weights", "incumbent_weights_sha256"),
         ):
+            artifacts = score.get("artifacts")
+            entry = artifacts.get(key) if isinstance(artifacts, Mapping) else None
             if (
-                not score
-                or score.get("artifacts", {}).get(key, {}).get("sha256")
-                != expected[identity_key]
+                not isinstance(entry, Mapping)
+                or entry.get("sha256") != expected[identity_key]
             ):
                 failures.append(
                     f"score_vs_incumbent.json {key} does not match the evaluated source."
                 )
-        if build and report and report.get("release_id") != build.get("attempt_id"):
-            failures.append(
-                "incumbent evaluation source manifest is not bound to released attempt."
-            )
     except (KeyError, TypeError) as error:
-        failures.append(f"incumbent surface source identities are incomplete: {error}.")
-        return
-    _check_uk_incumbent_surface_evaluation(
-        loaded[_UK_DENSE_SURFACE_FILE], failures, expected_identity=expected
+        failures.append(
+            f"incumbent comparison source identities are incomplete: {error}."
+        )
+        return None
+    return _check_uk_incumbent_surface_evaluation(
+        loaded[_UK_DENSE_SURFACE_FILE],
+        failures,
+        expected_identity=expected,
+        enforce_limits=False,
     )
+
+
+def _check_uk_dense_reviewed_limitations(
+    release_manifest: Mapping,
+    coverage: Mapping | None,
+    failures: list[str],
+    *,
+    incumbent_attached: bool,
+    incumbent: Mapping | None,
+    report: Mapping | None = None,
+) -> None:
+    """The manifest says what a dense release does not claim (microcosm#1301).
+
+    Every release records how the engine measured it; the holdout, the
+    incumbent comparison and the size record each name the limitation that
+    matches what the coverage says ran. A comparison that was attached carries
+    its recomputed verdict, so a failed assessment cannot ship as a pass.
+    Every reviewed exclusion the fit gates and the area-support gate stood on
+    is named (see :func:`_check_uk_dense_signed_exclusions`).
+    """
+    limitations = release_manifest.get("reviewed_limitations")
+    if not isinstance(limitations, list):
+        return
+    by_id = {
+        str(item.get("id")): item for item in limitations if isinstance(item, Mapping)
+    }
+    file = "release_manifest.json"
+
+    def expect(present: str, absent: str | None) -> Mapping | None:
+        if present not in by_id:
+            failures.append(f"{file} reviewed_limitations must carry {present!r}.")
+        if absent is not None and absent in by_id:
+            failures.append(
+                f"{file} reviewed_limitations carries {absent!r}, which "
+                "contradicts the release's source coverage."
+            )
+        return by_id.get(present)
+
+    expect("engine_measurement", None)
+    holdout = coverage.get("holdout") if isinstance(coverage, Mapping) else None
+    if isinstance(holdout, Mapping):
+        claim = holdout.get("claim")
+        if claim == "none":
+            expect("no_out_of_sample_claim", "rotated_holdout")
+        elif claim == "report_only":
+            entry = expect("rotated_holdout", "no_out_of_sample_claim")
+            if entry is not None and entry.get("claim") != "report_only":
+                failures.append(
+                    f"{file} limitation 'rotated_holdout' must say claim 'report_only'."
+                )
+    if not incumbent_attached:
+        expect("no_incumbent_comparison", "incumbent_surface_diagnostic")
+    else:
+        entry = expect("incumbent_surface_diagnostic", "no_incumbent_comparison")
+        if entry is not None and incumbent is not None:
+            recorded = (entry.get("passed"), entry.get("failure_count"))
+            measured = (incumbent["passed"], len(incumbent["limit_failures"]))
+            if recorded != measured:
+                failures.append(
+                    f"{file} limitation 'incumbent_surface_diagnostic' records "
+                    f"passed/failure_count {recorded}, but the shipped evaluation "
+                    f"recomputes {measured}."
+                )
+    size = coverage.get("size") if isinstance(coverage, Mapping) else None
+    if isinstance(size, Mapping) and size.get("sized") in (True, False):
+        if size["sized"]:
+            expect("size_doctrine", None)
+        elif "size_doctrine" in by_id:
+            failures.append(
+                f"{file} reviewed_limitations carries 'size_doctrine' for an "
+                "unsized release."
+            )
+    _check_uk_dense_signed_exclusions(
+        release_manifest, coverage, report, set(by_id), failures
+    )
+
+
+def _uk_dense_signed_gate_exclusions(
+    report: Mapping | None, gate_id: str
+) -> set[str] | None:
+    """The reviewed exclusions a gate of the signed local report stood on.
+
+    ``None`` when the report does not carry the gate; the report's own check
+    records that failure.
+    """
+
+    gates = report.get("gates") if isinstance(report, Mapping) else None
+    entry = gates.get(gate_id) if isinstance(gates, Mapping) else None
+    if not isinstance(entry, Mapping):
+        return None
+    details = _as_mapping(entry.get("details"))
+    excluded = details.get("reviewed_exclusions")
+    dormant = details.get("dormant_exclusions")
+    names = set(map(str, excluded)) if isinstance(excluded, Mapping) else set()
+    return names - set(map(str, dormant if isinstance(dormant, list) else ()))
+
+
+def _check_uk_dense_signed_exclusions(
+    release_manifest: Mapping,
+    coverage: Mapping | None,
+    report: Mapping | None,
+    limitation_ids: set[str],
+    failures: list[str],
+) -> None:
+    """The manifest names every reviewed exclusion the gates stood on (microcosm#1301).
+
+    Local cells and areas are signed at the gate only, so the manifest's
+    limitations are where a consumer learns of them. The limitations are held
+    to the names the coverage records, and those to the candidate manifest's
+    record of what each gate stood on, since the full gate report the names
+    come from does not ship (:func:`_check_uk_dense_exclusions_against_candidate`).
+    The local target-fit names and the areas below the support floor are also
+    checked against the signed local report the release ships.
+    """
+
+    file = "release_manifest.json"
+    deferrals = _as_mapping(_as_mapping(coverage).get("signed_deferrals"))
+    named = deferrals.get("reviewed_exclusions")
+    if isinstance(named, Mapping):
+        recorded = named.get("uk_local_target_fit")
+        signed = _uk_dense_signed_gate_exclusions(report, "uk_local_target_fit")
+        if (
+            signed is not None
+            and isinstance(recorded, list)
+            and set(map(str, recorded)) != signed
+        ):
+            failures.append(
+                f"{_UK_DENSE_SOURCE_COVERAGE_FILE} signed_deferrals."
+                "reviewed_exclusions.uk_local_target_fit does not match the "
+                f"reviewed exclusions the signed {_UK_DENSE_GATE_REPORT_FILE} "
+                "stood on."
+            )
+        expected = {
+            f"reviewed_exclusion:{gate_id}:{name}"
+            for gate_id in _UK_DENSE_SIGNED_EXCLUSION_GATES
+            for name in (
+                named.get(gate_id) if isinstance(named.get(gate_id), list) else ()
+            )
+        }
+        present = {
+            key for key in limitation_ids if key.startswith("reviewed_exclusion:")
+        }
+        missing = sorted(expected - present)
+        if missing:
+            failures.append(
+                f"{file} reviewed_limitations must name each reviewed exclusion "
+                f"the gates stood on; {len(missing)} missing, first "
+                f"{missing[:5]}."
+            )
+        unexpected = sorted(present - expected)
+        if unexpected:
+            failures.append(
+                f"{file} reviewed_limitations names {len(unexpected)} reviewed "
+                "exclusion(s) the gates did not stand on, first "
+                f"{unexpected[:5]}."
+            )
+    block = release_manifest.get("area_support")
+    if block is None:
+        failures.append(
+            f"{file} must carry the 'area_support' block for a dense release: "
+            "the areas below the support floor that the signed gate excused."
+        )
+        return
+    below = _as_mapping(block).get("below_floor")
+    if not isinstance(below, Mapping) or not all(
+        isinstance(codes, list) for codes in below.values()
+    ):
+        return  # _check_area_support_block records the malformed block
+    listed = {f"{level}/{code}" for level, codes in below.items() for code in codes}
+    stood_on = _uk_dense_signed_gate_exclusions(report, "uk_local_area_support")
+    if stood_on is not None and listed != stood_on:
+        failures.append(
+            f"{file} 'area_support.below_floor' must list exactly the areas "
+            f"whose reviewed exclusions the signed {_UK_DENSE_GATE_REPORT_FILE} "
+            f"stood on; missing {sorted(stood_on - listed)[:5]}, unexpected "
+            f"{sorted(listed - stood_on)[:5]}."
+        )
+    prefix = "area_support_exclusion:"
+    stray = sorted(
+        key.removeprefix(prefix)
+        for key in limitation_ids
+        if key.startswith(prefix) and key.removeprefix(prefix) not in listed
+    )
+    if stray:
+        failures.append(
+            f"{file} reviewed_limitations names area_support_exclusion(s) for "
+            f"areas not listed below the floor: {stray[:5]}."
+        )
