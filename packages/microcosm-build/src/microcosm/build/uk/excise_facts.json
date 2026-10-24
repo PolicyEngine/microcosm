@@ -1,0 +1,4812 @@
+{
+  "schema_version": 1,
+  "country": "uk",
+  "kind": "uk_vendored_ledger_facts",
+  "resource": "excise_facts.json",
+  "purpose": "HMRC FY2024-25 alcohol clearances by product, ABV band, duty point and relief (Alcohol Bulletin) and tobacco clearances by product (Tobacco Bulletin), HMRC betting and gaming duty cash receipts by duty and Machine Games Duty liabilities by rate band (Betting and Gaming statistics), and the Gambling Commission's FY2024-25 gross gambling yield for Great Britain by sector, activity and betting event: the national quantities and bases the LCFS level_excise_quantities step shares out to households (microcosm#1359, PolicyEngine/chronicle#381).",
+  "consumers": [
+    "uk_runtime.lcfs_consumption"
+  ],
+  "planned_consumers": [],
+  "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",
+  "generator": {
+    "tool": "tools/vendor_uk_ledger_facts.py",
+    "version": 1
+  },
+  "source_fact_feed": {
+    "source_repo": "PolicyEngine/chronicle",
+    "source_commit": "200bf6d559cf85bc9c2c5ee4df8c50ba0f5d09d1",
+    "build": "build-bundle --suite uk -> build-consumer-artifact",
+    "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+    "fact_row_count": 1502291,
+    "facts_sha256": "b6e69c90ef0d65674d8c9ce6285113aa5ce36e6d25f6f662d106bdd5c2c27dbc",
+    "manifest_sha256": "7d9c75fdcf9b638848979fa51eff5e51d4caabbef263ed6c2a8a0b9a3305b460"
+  },
+  "selections": [
+    {
+      "label": "hmrc_alcohol_clearances_fy2024",
+      "selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.alcohol_clearances",
+        "geography_id": "K02000001",
+        "period_type": "fiscal_year",
+        "period_value": [
+          2024
+        ]
+      },
+      "row_count": 40
+    },
+    {
+      "label": "hmrc_tobacco_clearances_fy2024",
+      "selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.tobacco_clearances",
+        "geography_id": "K02000001",
+        "period_type": "fiscal_year",
+        "period_value": [
+          2024
+        ]
+      },
+      "row_count": 5
+    },
+    {
+      "label": "hmrc_betting_and_gaming_duty_receipts_fy2024",
+      "selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.betting_and_gaming_duty_receipts",
+        "geography_id": "K02000001",
+        "period_type": "fiscal_year",
+        "period_value": [
+          2024
+        ]
+      },
+      "row_count": 9
+    },
+    {
+      "label": "hmrc_machine_games_duty_liabilities_fy2024",
+      "selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.machine_games_duty_liabilities",
+        "geography_id": "K02000001",
+        "period_type": "fiscal_year",
+        "period_value": [
+          2024
+        ]
+      },
+      "row_count": 4
+    },
+    {
+      "label": "gambling_commission_gross_gambling_yield_fy2024",
+      "selector": {
+        "source_name": "gambling_commission",
+        "source_concept": "gambling_commission.gross_gambling_yield",
+        "geography_id": "K03000001",
+        "period_type": "fiscal_year",
+        "period_value": [
+          2024
+        ]
+      },
+      "row_count": 40
+    }
+  ],
+  "row_count": 98,
+  "rows": [
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_abd296c0ca997d6be961641a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c21bcce6fbc4f0820c82b2fc",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_1.fy2024.great_britain.ggy_all",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_all",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_1.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "all",
+        "gambling_activity": "all",
+        "gambling_sector": "all",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 16727655237.425915
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3fc6fc26f196f92a20441bca",
+      "semantic_fact_key": "ledger_semantic_fact_v2_48efe357969575fac538d8f6",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_1.fy2024.great_britain.ggy_all_excluding_lotteries",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_all_excluding_lotteries",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_1.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "all",
+        "gambling_activity": "all",
+        "gambling_sector": "all_excluding_lotteries",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 12565077307.365917
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_19876f1d1f062bd8e91a76a0",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8ae35affa0282d04b5c7cc0a",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10.fy2024.great_britain.ggy_all_remote",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_all_remote",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_10.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "all",
+        "gambling_activity": "all",
+        "gambling_sector": "all_remote",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 7755915228.680349
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2912f36d3d5094f4dcfe321c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a86d731a61e8bbeb0e0eca58",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_1.fy2024.great_britain.ggy_arcades_non_remote",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_arcades_non_remote",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_1.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "all",
+        "gambling_activity": "all",
+        "gambling_sector": "arcades_non_remote",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 722829269.7436398
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_36535e1c8c7c5d6ca216942d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_724d9180c7d1434cc7f7c333",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_1.fy2024.great_britain.ggy_betting_non_remote",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_betting_non_remote",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_1.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "all",
+        "gambling_activity": "all",
+        "gambling_sector": "betting_non_remote",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 2505753290.27197
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3333cc9a2ba6d8d2c46ab493",
+      "semantic_fact_key": "ledger_semantic_fact_v2_09ed919f201b638ce7a3cef2",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_1.fy2024.great_britain.ggy_betting_remote",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_betting_remote",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_1.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "all",
+        "gambling_activity": "all",
+        "gambling_sector": "betting_remote",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 2620948697.1002502
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d4e1b388c95a1e4711cf2f36",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c6a5e65e96fed15dcfd88785",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_1.fy2024.great_britain.ggy_bingo_non_remote",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_bingo_non_remote",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_1.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "all",
+        "gambling_activity": "all",
+        "gambling_sector": "bingo_non_remote",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 650187642.13044
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c28aa760a498eba828088633",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e2c55fef3533f00fad3c9c47",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_1.fy2024.great_britain.ggy_bingo_remote",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_bingo_remote",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_1.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "all",
+        "gambling_activity": "all",
+        "gambling_sector": "bingo_remote",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 171354430.56746998
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0e021da3aa3ba46779af2fbb",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8006de845632ea793bbe62b4",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_1.fy2024.great_britain.ggy_casino_non_remote",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_casino_non_remote",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_1.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "all",
+        "gambling_activity": "all",
+        "gambling_sector": "casino_non_remote",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 930391876.5395198
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_27744f87188553d9bfbcc427",
+      "semantic_fact_key": "ledger_semantic_fact_v2_503ac373265d56aad127fead",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_1.fy2024.great_britain.ggy_casino_remote",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_casino_remote",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_1.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "all",
+        "gambling_activity": "all",
+        "gambling_sector": "casino_remote",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 4963612101.012628
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_621958763359ff2da8c7391b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_76160f58cee7351028554eec",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_1.fy2024.great_britain.ggy_lotteries",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_lotteries",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_1.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "all",
+        "gambling_activity": "all",
+        "gambling_sector": "lotteries",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 792167240.3899996
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d5ea3c4f668dd8314cdcc34d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_73f3c712b0cb344cdb075231",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_1_national_lottery.fy2024.great_britain.ggy_national_lottery",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_national_lottery",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_1_national_lottery.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "all",
+        "gambling_activity": "all",
+        "gambling_sector": "national_lottery",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 3370410689.6699996
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_48efb9511f09a5fba6a73ddc",
+      "semantic_fact_key": "ledger_semantic_fact_v2_bba795a43113310fe2baa3cc",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_type.fy2024.great_britain.ggy_betting_remote_betting",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_betting_remote_betting",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_type.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "all",
+        "gambling_activity": "betting",
+        "gambling_sector": "betting_remote",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 2495675525.5166
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_41d1e5ae450c6a208acd3218",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a8069fef9ce43bf97d63b0ef",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_type.fy2024.great_britain.ggy_betting_remote_betting_exchange",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_betting_remote_betting_exchange",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_type.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "all",
+        "gambling_activity": "betting_exchange",
+        "gambling_sector": "betting_remote",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 101354147.86830999
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a25746b57a9c1111c6e732f8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4edbd766a99195902dd4f7cd",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_7.fy2024.great_britain.ggy_bingo_non_remote_bingo_games",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_bingo_non_remote_bingo_games",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_7.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "all",
+        "gambling_activity": "bingo_games",
+        "gambling_sector": "bingo_non_remote",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 226250544.64849004
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c280b466f7417dae03b51ce6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8bb4a02c657cb43d92beb04d",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10a.fy2024.great_britain.ggy_casino_remote_blackjack",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_casino_remote_blackjack",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_10a.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "all",
+        "gambling_activity": "blackjack",
+        "gambling_sector": "casino_remote",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 187729116.59390998
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a4a33d53ebc0f2d08a1b6e87",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f51155331d3f8ddb3b24e437",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10a.fy2024.great_britain.ggy_casino_remote_card_game",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_casino_remote_card_game",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_10a.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "all",
+        "gambling_activity": "card_game",
+        "gambling_sector": "casino_remote",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 0
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0c82c28018745f0792c0cb9d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a592a526474e6e258e7ae9dd",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_8.fy2024.great_britain.ggy_casino_non_remote_casino_games",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_casino_non_remote_casino_games",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_8.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "all",
+        "gambling_activity": "casino_games",
+        "gambling_sector": "casino_non_remote",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 698918414.8386999
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_58dfbd94707a994f56dde606",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d1b8d217c30490d66881867c",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_7.fy2024.great_britain.ggy_bingo_non_remote_gaming_machines",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_bingo_non_remote_gaming_machines",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_7.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "all",
+        "gambling_activity": "gaming_machines",
+        "gambling_sector": "bingo_non_remote",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 423937097.47524995
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_17e83dda624f5bdff3fa8591",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6061f140113b9f4c827af764",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_8.fy2024.great_britain.ggy_casino_non_remote_gaming_machines",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_casino_non_remote_gaming_machines",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_8.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "all",
+        "gambling_activity": "gaming_machines",
+        "gambling_sector": "casino_non_remote",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 231473461.70081997
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9e76fa384e8155a59e091709",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9320c4fa302c7237db4a7685",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_6.fy2024.great_britain.ggy_betting_non_remote_off_course_gaming_machines",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_betting_non_remote_off_course_gaming_machines",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_6.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "all",
+        "gambling_activity": "off_course_gaming_machines",
+        "gambling_sector": "betting_non_remote",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 1207436991.42725
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a960e966a483aa0a729f2b6e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_195cd6843d93641c17079efe",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_6.fy2024.great_britain.ggy_betting_non_remote_off_course_over_the_counter",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_betting_non_remote_off_course_over_the_counter",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_6.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "all",
+        "gambling_activity": "off_course_over_the_counter",
+        "gambling_sector": "betting_non_remote",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 1249307207.97355
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_35cf94566453569ec6c30a96",
+      "semantic_fact_key": "ledger_semantic_fact_v2_217c1b97578759ff767a8d5f",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_6.fy2024.great_britain.ggy_betting_non_remote_on_course",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_betting_non_remote_on_course",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_6.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "all",
+        "gambling_activity": "on_course",
+        "gambling_sector": "betting_non_remote",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 27784638.927430008
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_86b27162f954f3024831fb48",
+      "semantic_fact_key": "ledger_semantic_fact_v2_608620d4356d2351e28287bc",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10a.fy2024.great_britain.ggy_casino_remote_other_casino_games",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_casino_remote_other_casino_games",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_10a.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "all",
+        "gambling_activity": "other_casino_games",
+        "gambling_sector": "casino_remote",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 220729834.43699002
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1dec05141f583f08f4961ba7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_400c1f9d91cffd173198412b",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10a.fy2024.great_britain.ggy_casino_remote_poker_peer_to_peer",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_casino_remote_poker_peer_to_peer",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_10a.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "all",
+        "gambling_activity": "poker_peer_to_peer",
+        "gambling_sector": "casino_remote",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 35507105.665690005
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f4506a8efe55ac842bacfb82",
+      "semantic_fact_key": "ledger_semantic_fact_v2_93260e8cdf523567f19a5678",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_6.fy2024.great_britain.ggy_betting_non_remote_pool_betting",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_betting_non_remote_pool_betting",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_6.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "all",
+        "gambling_activity": "pool_betting",
+        "gambling_sector": "betting_non_remote",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 21233797.52638
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_358890ee4bd5dfb88542101b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_cb208c9623c82e8eabd5e7bf",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_type.fy2024.great_britain.ggy_betting_remote_pool_betting",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_betting_remote_pool_betting",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_type.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "all",
+        "gambling_activity": "pool_betting",
+        "gambling_sector": "betting_remote",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 23919023.715339996
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_048a9ca1c3525a2353989eaf",
+      "semantic_fact_key": "ledger_semantic_fact_v2_879025f4c9ad1e56d0a70db8",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10a.fy2024.great_britain.ggy_casino_remote_roulette",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_casino_remote_roulette",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_10a.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "all",
+        "gambling_activity": "roulette",
+        "gambling_sector": "casino_remote",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 371620314.16479
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_90e671240dd74c6a18e3bd32",
+      "semantic_fact_key": "ledger_semantic_fact_v2_cad148d4fd9432307122bbce",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10a.fy2024.great_britain.ggy_casino_remote_slots",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_casino_remote_slots",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_10a.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "all",
+        "gambling_activity": "slots",
+        "gambling_sector": "casino_remote",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 4148025730.1512485
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d2fbf85f8511bc31630fc4c4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b01233a286170699e4e1b30f",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10a.fy2024.great_britain.ggy_casino_remote_table_game",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_casino_remote_table_game",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_10a.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "all",
+        "gambling_activity": "table_game",
+        "gambling_sector": "casino_remote",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 0
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7c438fe3ccb847b63504cf56",
+      "semantic_fact_key": "ledger_semantic_fact_v2_41f63cf905143e03dff3ca7b",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_event.fy2024.great_britain.ggy_betting_remote_cricket",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_betting_remote_cricket",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_event.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "cricket",
+        "gambling_activity": "all",
+        "gambling_sector": "betting_remote",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 61118228.15077
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_96d8271b0bf0f4ce5460ebdd",
+      "semantic_fact_key": "ledger_semantic_fact_v2_85f95f0f7a16d996c9ea3d73",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_event.fy2024.great_britain.ggy_betting_remote_dogs",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_betting_remote_dogs",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_event.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "dogs",
+        "gambling_activity": "all",
+        "gambling_sector": "betting_remote",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 74079707.63013001
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_003fe01246a06d22ce8e97cb",
+      "semantic_fact_key": "ledger_semantic_fact_v2_60f78fbe1e8c2cc1ac4c9dec",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_event.fy2024.great_britain.ggy_betting_remote_financials",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_betting_remote_financials",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_event.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "financials",
+        "gambling_activity": "all",
+        "gambling_sector": "betting_remote",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 0
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_fb7194a85ef06dd3095544f2",
+      "semantic_fact_key": "ledger_semantic_fact_v2_cbb9e2f791234fc8be6646ac",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_event.fy2024.great_britain.ggy_betting_remote_football",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_betting_remote_football",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_event.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "football",
+        "gambling_activity": "all",
+        "gambling_sector": "betting_remote",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 1329648829.74057
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d5212cffedfd89a41cef4a1f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_db6eb92325ecbea459cabbbe",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_event.fy2024.great_britain.ggy_betting_remote_golf",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_betting_remote_golf",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_event.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "golf",
+        "gambling_activity": "all",
+        "gambling_sector": "betting_remote",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 12678173.806009999
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3e56c9fcc662045d7ee83a90",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f1bf8ba921e5f7449e09f0c1",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_event.fy2024.great_britain.ggy_betting_remote_horses",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_betting_remote_horses",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_event.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "horses",
+        "gambling_activity": "all",
+        "gambling_sector": "betting_remote",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 762636459.2584901
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2ef8c62c9ad5abb95d3f3211",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0af03d37b1a4c6bf737db3e3",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_event.fy2024.great_britain.ggy_betting_remote_other",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_betting_remote_other",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_event.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "other",
+        "gambling_activity": "all",
+        "gambling_sector": "betting_remote",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 255178517.16403002
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_5d2385ee5fe07a0d2d22667a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c02982790ead17969276ee8c",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_event.fy2024.great_britain.ggy_betting_remote_tennis",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_betting_remote_tennis",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_event.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "tennis",
+        "gambling_activity": "all",
+        "gambling_sector": "betting_remote",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 82622938.62931
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_75cf39d5b5d0182c704ca4b0",
+      "semantic_fact_key": "ledger_semantic_fact_v2_83729113b667849fc74a8226",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_event.fy2024.great_britain.ggy_betting_remote_unallocated_revenue_share",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_betting_remote_unallocated_revenue_share",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_event.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "unallocated_revenue_share",
+        "gambling_activity": "all",
+        "gambling_sector": "betting_remote",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 0
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9fd9e4e80caed519296af043",
+      "semantic_fact_key": "ledger_semantic_fact_v2_de837748863f0bd6bf520ac7",
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_event.fy2024.great_britain.ggy_betting_remote_virtual",
+      "concept": "gambling_commission.gross_gambling_yield",
+      "measure_id": "ggy_betting_remote_virtual",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_gambling_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_event.fy2024",
+        "groupby_dimension": "gambling_commission.statistics_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "betting_event": "virtual",
+        "gambling_activity": "all",
+        "gambling_sector": "betting_remote",
+        "published_unit": "gbp_million"
+      },
+      "source": {
+        "source_name": "gambling_commission",
+        "source_table": "Industry Statistics - Annual report - Financial year April 2025 to March 2026 - Official statistics",
+        "source_file": "Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx",
+        "source_sha256": "a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58",
+        "vintage": "2026_09_17_release",
+        "raw_r2_key": "raw/uk/gambling_commission/gambling-commission-industry-statistics-fy2025-26/2026/a6ea23b5ddff2f3839ebec2a8cc0d9a0817e218f5bf10921e0172ecae768da58/Industry_Statistics_-_Annual_report_-_Financial_year_April_2025_to_March_2026_-_Official_Statistics.xlsx"
+      },
+      "value": 42985842.720939994
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_bbb77534d8614a24a2455197",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a1d9cd23a35d1863b16cd2c3",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.beer.clearances.fy2024.beer.total_clearances",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "total_clearances",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.beer.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "beer",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "all",
+        "alcohol_product": "beer",
+        "duty_point": "all",
+        "duty_relief": "all",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 185277635.28381
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_77de58f54fcc8fc98870192e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7f4ae3d1dec26bb839cb2753",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.beer.clearances.fy2024.beer.clearances_draught_and_small_producer_relief",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "clearances_draught_and_small_producer_relief",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.beer.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "beer",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "all",
+        "alcohol_product": "beer",
+        "duty_point": "all",
+        "duty_relief": "draught_and_small_producer_relief",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 9234320.30598535
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ac36d662f0ad1c3fc719b305",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c9eb8907c9512b77e1c5c3df",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.beer.clearances.fy2024.beer.clearances_draught_relief_only",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "clearances_draught_relief_only",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.beer.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "beer",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "all",
+        "alcohol_product": "beer",
+        "duty_point": "all",
+        "duty_relief": "draught_relief_only",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 64367298.8324578
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_12b8833ecdd09eded0b1c626",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b1ab117693c2eda7d69fca16",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.beer.clearances.fy2024.beer.clearances_no_relief",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "clearances_no_relief",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.beer.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "beer",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "all",
+        "alcohol_product": "beer",
+        "duty_point": "all",
+        "duty_relief": "no_relief",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 108157743.823733
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3f7bcb7ba73af94e40fcbe8b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8aa7822dea0c51a097825801",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.beer.clearances.fy2024.beer.clearances_small_producer_relief_only",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "clearances_small_producer_relief_only",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.beer.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "beer",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "all",
+        "alcohol_product": "beer",
+        "duty_point": "all",
+        "duty_relief": "small_producer_relief_only",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 3518272.32163325
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_318d703b2ec0d8e2da40134e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_492558311ed35de92d8ab14f",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.beer.clearances.fy2024.beer.clearances_ex_ship",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "clearances_ex_ship",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.beer.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "beer",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "all",
+        "alcohol_product": "beer",
+        "duty_point": "ex_ship",
+        "duty_relief": "all",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 6311996.08838668
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a560b176187f4846200d89cc",
+      "semantic_fact_key": "ledger_semantic_fact_v2_de91554f04ac9ef72c19e848",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.beer.clearances.fy2024.beer.clearances_ex_warehouse",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "clearances_ex_warehouse",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.beer.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "beer",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "all",
+        "alcohol_product": "beer",
+        "duty_point": "ex_warehouse",
+        "duty_relief": "all",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 57478033.9157708
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c5fb6e3fd0427efca59d0ecb",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7e9c1d0a4075db069783562f",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.beer.clearances.fy2024.beer.clearances_uk_registered",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "clearances_uk_registered",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.beer.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "beer",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "all",
+        "alcohol_product": "beer",
+        "duty_point": "uk_registered",
+        "duty_relief": "all",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 121487605.279652
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f234983fae5fb8b314426076",
+      "semantic_fact_key": "ledger_semantic_fact_v2_146a2a2d7476432835b2a62d",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.beer.clearances.fy2024.beer.clearances_below_3_5_abv",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "clearances_below_3_5_abv",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.beer.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "beer",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "below_3_5",
+        "alcohol_product": "beer",
+        "duty_point": "all",
+        "duty_relief": "all",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 13294837.6479363
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_16947f1d5f40c2847b928148",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4ad7f91e6dace66e1d40c1ef",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.beer.clearances.fy2024.beer.clearances_3_5_to_8_5_abv",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "clearances_3_5_to_8_5_abv",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.beer.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "beer",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "from_3_5_below_8_5",
+        "alcohol_product": "beer",
+        "duty_point": "all",
+        "duty_relief": "all",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 171798982.219733
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7b903b88f5ba457a5b4872e3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_346e6018ab1998a2e79161aa",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.beer.clearances.fy2024.beer.clearances_from_8_5_abv",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "clearances_from_8_5_abv",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.beer.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "beer",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "from_8_5",
+        "alcohol_product": "beer",
+        "duty_point": "all",
+        "duty_relief": "all",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 183815.416140202
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_940365fde77c4d3b8ded3288",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b84f3f0499354411aecdcc91",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.cider.clearances.fy2024.cider.total_clearances",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "total_clearances",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.cider.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "cider",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "all",
+        "alcohol_product": "cider",
+        "duty_point": "all",
+        "duty_relief": "all",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 30347471.2870859
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_096a4bdb5a0b2206b439a7f4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_447b4b84e984fa1e6460ed35",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.cider.clearances.fy2024.cider.clearances_draught_and_small_producer_relief",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "clearances_draught_and_small_producer_relief",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.cider.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "cider",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "all",
+        "alcohol_product": "cider",
+        "duty_point": "all",
+        "duty_relief": "draught_and_small_producer_relief",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 351226.826478132
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3178546bd95a18a7ea8483e2",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d739cb4a1a16e25f4aa17c52",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.cider.clearances.fy2024.cider.clearances_draught_relief_only",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "clearances_draught_relief_only",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.cider.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "cider",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "all",
+        "alcohol_product": "cider",
+        "duty_point": "all",
+        "duty_relief": "draught_relief_only",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 6706864.9848297
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9d652461669908bb77adb643",
+      "semantic_fact_key": "ledger_semantic_fact_v2_42cc863986d39bca51ae6ca6",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.cider.clearances.fy2024.cider.clearances_no_relief",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "clearances_no_relief",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.cider.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "cider",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "all",
+        "alcohol_product": "cider",
+        "duty_point": "all",
+        "duty_relief": "no_relief",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 22899369.8441633
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4b1ac653690e4f2a71a5095f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_94cb1cd7145ead2b5ed875ee",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.cider.clearances.fy2024.cider.clearances_small_producer_relief_only",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "clearances_small_producer_relief_only",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.cider.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "cider",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "all",
+        "alcohol_product": "cider",
+        "duty_point": "all",
+        "duty_relief": "small_producer_relief_only",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 390009.631614714
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d1fd3c849d76ccfa775a96dd",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ca7cd9ee2315465e88697746",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.cider.clearances.fy2024.cider.clearances_ex_ship",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "clearances_ex_ship",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.cider.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "cider",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "all",
+        "alcohol_product": "cider",
+        "duty_point": "ex_ship",
+        "duty_relief": "all",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 2044694.15691132
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f2d17e1dcc46e1c398bf1a1e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4116d9e644a04e5694320dc1",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.cider.clearances.fy2024.cider.clearances_ex_warehouse",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "clearances_ex_warehouse",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.cider.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "cider",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "all",
+        "alcohol_product": "cider",
+        "duty_point": "ex_warehouse",
+        "duty_relief": "all",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 14190279.367336
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b2a795545543131a178cc025",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1c048c694178af0c1ccca3e0",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.cider.clearances.fy2024.cider.clearances_uk_registered",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "clearances_uk_registered",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.cider.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "cider",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "all",
+        "alcohol_product": "cider",
+        "duty_point": "uk_registered",
+        "duty_relief": "all",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 14112497.7628385
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4f9f0abdbd76aa06180441a9",
+      "semantic_fact_key": "ledger_semantic_fact_v2_bd6ec5e787b0c7d20840b1a1",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.other_fermented_products.clearances.fy2024.other_fermented_products.total_clearances",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "total_clearances",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.other_fermented_products.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "other_fermented_products",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "all",
+        "alcohol_product": "other_fermented_products",
+        "duty_point": "all",
+        "duty_relief": "all",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 11971792.324352
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e56c5d1254eee5e111caa6e7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2f4842bbf39742c589fd6559",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.other_fermented_products.clearances.fy2024.other_fermented_products.clearances_draught_and_or_small_producer_relief",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "clearances_draught_and_or_small_producer_relief",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.other_fermented_products.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "other_fermented_products",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "all",
+        "alcohol_product": "other_fermented_products",
+        "duty_point": "all",
+        "duty_relief": "draught_and_or_small_producer_relief",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 1704043.72763335
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9b4203bda0c93fe7134b4c7a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_42a3376c8efe882e4fdbc531",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.other_fermented_products.clearances.fy2024.other_fermented_products.clearances_no_relief",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "clearances_no_relief",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.other_fermented_products.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "other_fermented_products",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "all",
+        "alcohol_product": "other_fermented_products",
+        "duty_point": "all",
+        "duty_relief": "no_relief",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 10267748.5967187
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9343c93a3f60a66763bc2e39",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8c1f58017c145d20a5d2baf1",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.other_fermented_products.clearances.fy2024.other_fermented_products.clearances_ex_ship",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "clearances_ex_ship",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.other_fermented_products.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "other_fermented_products",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "all",
+        "alcohol_product": "other_fermented_products",
+        "duty_point": "ex_ship",
+        "duty_relief": "all",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 2183757.98849039
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d52c9aa83e995c966718aa87",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f0366c821c37e16a39827477",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.other_fermented_products.clearances.fy2024.other_fermented_products.clearances_ex_warehouse",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "clearances_ex_warehouse",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.other_fermented_products.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "other_fermented_products",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "all",
+        "alcohol_product": "other_fermented_products",
+        "duty_point": "ex_warehouse",
+        "duty_relief": "all",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 7641018.96883086
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e210cfac74daa838286d496c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9db6ed0a9c63f79cde069ef4",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.other_fermented_products.clearances.fy2024.other_fermented_products.clearances_uk_registered",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "clearances_uk_registered",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.other_fermented_products.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "other_fermented_products",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "all",
+        "alcohol_product": "other_fermented_products",
+        "duty_point": "uk_registered",
+        "duty_relief": "all",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 2147015.36703077
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1a9d50b4c6d3146f8d5289fa",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a2405b1fd38276575891d03f",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.other_fermented_products.clearances.fy2024.other_fermented_products.clearances_below_8_5_abv",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "clearances_below_8_5_abv",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.other_fermented_products.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "other_fermented_products",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "below_8_5",
+        "alcohol_product": "other_fermented_products",
+        "duty_point": "all",
+        "duty_relief": "all",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 8686482.74400836
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4d58fce569c3e2cb91d95021",
+      "semantic_fact_key": "ledger_semantic_fact_v2_330a6cdd6e01d0144ccd278f",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.other_fermented_products.clearances.fy2024.other_fermented_products.clearances_from_8_5_abv",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "clearances_from_8_5_abv",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.other_fermented_products.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "other_fermented_products",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "from_8_5",
+        "alcohol_product": "other_fermented_products",
+        "duty_point": "all",
+        "duty_relief": "all",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 3285309.58034366
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_46b90dbd5186655fdcec6f0c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_dd67698cb3690b87d24c8eeb",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.spirits.clearances.fy2024.spirits.total_clearances",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "total_clearances",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.spirits.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "spirits",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "all",
+        "alcohol_product": "spirits",
+        "duty_point": "all",
+        "duty_relief": "all",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 132049510.767922
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ed46ec790249558a5e45f2b9",
+      "semantic_fact_key": "ledger_semantic_fact_v2_909576bab4c898f272ffda33",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.spirits.clearances.fy2024.spirits.clearances_ex_ship",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "clearances_ex_ship",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.spirits.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "spirits",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "all",
+        "alcohol_product": "spirits",
+        "duty_point": "ex_ship",
+        "duty_relief": "all",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 9763541.32513466
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_5cdb6c990d971abea097b38f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8459116b1761a40aed261f5b",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.spirits.clearances.fy2024.spirits.clearances_ex_warehouse_and_uk_registered",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "clearances_ex_warehouse_and_uk_registered",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.spirits.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "spirits",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "all",
+        "alcohol_product": "spirits",
+        "duty_point": "ex_warehouse_and_uk_registered",
+        "duty_relief": "all",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 122285969.442788
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d6e3920282d7e6faec1f3fef",
+      "semantic_fact_key": "ledger_semantic_fact_v2_57a1e7c99fd1e6575f509fbd",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.spirits.clearances.fy2024.spirits.clearances_below_3_5_abv",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "clearances_below_3_5_abv",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.spirits.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "spirits",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "below_3_5",
+        "alcohol_product": "spirits",
+        "duty_point": "all",
+        "duty_relief": "all",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 862543.290545981
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6a35cb73c5a2a6abe09cd476",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b7e09f252d430e8e3cfce87f",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.spirits.clearances.fy2024.spirits.clearances_from_22_abv",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "clearances_from_22_abv",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.spirits.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "spirits",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "from_22",
+        "alcohol_product": "spirits",
+        "duty_point": "all",
+        "duty_relief": "all",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 116330938.956889
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_029024cd841ab17dd133d8ff",
+      "semantic_fact_key": "ledger_semantic_fact_v2_81a0d2f3624841b1a5f7fab8",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.spirits.clearances.fy2024.spirits.clearances_3_5_to_8_5_abv",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "clearances_3_5_to_8_5_abv",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.spirits.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "spirits",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "from_3_5_below_8_5",
+        "alcohol_product": "spirits",
+        "duty_point": "all",
+        "duty_relief": "all",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 5267602.30640004
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_83b6ca08c26647a1533f15d3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ee46d6acfe0a0c4208df9bc4",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.spirits.clearances.fy2024.spirits.clearances_8_5_to_22_abv",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "clearances_8_5_to_22_abv",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.spirits.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "spirits",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "from_8_5_below_22",
+        "alcohol_product": "spirits",
+        "duty_point": "all",
+        "duty_relief": "all",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 9588426.21408682
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6340e4855201ff216a3f072e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0ac883340317819b63f863f8",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.wine.clearances.fy2024.wine.total_clearances",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "total_clearances",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.wine.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "wine",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "all",
+        "alcohol_product": "wine",
+        "duty_point": "all",
+        "duty_relief": "all",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 152027012.448098
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_cc3262dd05a032cd5ff8ffb4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c1a9d689d2b09a458cbbcdee",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.wine.clearances.fy2024.wine.clearances_ex_ship",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "clearances_ex_ship",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.wine.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "wine",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "all",
+        "alcohol_product": "wine",
+        "duty_point": "ex_ship",
+        "duty_relief": "all",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 41563701.4801002
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ebe7a9c25def7757c73abc41",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b149bcd6907495ba98482a01",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.wine.clearances.fy2024.wine.clearances_ex_warehouse",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "clearances_ex_warehouse",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.wine.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "wine",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "all",
+        "alcohol_product": "wine",
+        "duty_point": "ex_warehouse",
+        "duty_relief": "all",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 109770092.525674
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_05b201d43042145ea9ea1826",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e8560bfc2dccfce2c525432d",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.wine.clearances.fy2024.wine.clearances_uk_registered",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "clearances_uk_registered",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.wine.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "wine",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "all",
+        "alcohol_product": "wine",
+        "duty_point": "uk_registered",
+        "duty_relief": "all",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 693218.442324271
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_74d37b782dcc0916a661067b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_57f37946c6fc17186bcfa415",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.wine.clearances.fy2024.wine.clearances_below_8_5_abv",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "clearances_below_8_5_abv",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.wine.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "wine",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "below_8_5",
+        "alcohol_product": "wine",
+        "duty_point": "all",
+        "duty_relief": "all",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 1993772.32743718
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6ffe3f33227130bf00d62fd4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d370dcb79a6ec6c4c090ac58",
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.wine.clearances.fy2024.wine.clearances_from_8_5_abv",
+      "concept": "hmrc.alcohol_clearances",
+      "measure_id": "clearances_from_8_5_abv",
+      "unit": "litre_of_pure_alcohol",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "alcohol_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.alcohol_bulletin_2026_08.wine.clearances.fy2024",
+        "groupby_dimension": "hmrc.alcohol_product",
+        "groupby_value_id": "wine",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "abv_band": "from_8_5",
+        "alcohol_product": "wine",
+        "duty_point": "all",
+        "duty_relief": "all",
+        "published_unit": "litres_of_alcohol"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Alcohol Bulletin tables (May 2026 to July 2026)",
+        "source_file": "Alcohol_Tables_Jul26.ods",
+        "source_sha256": "e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-alcohol-bulletin-july-2026/2026/e01eba25c179422c694611db71782647bf91c30d05798e7218fa368d0610f8b3/Alcohol_Tables_Jul26.ods"
+      },
+      "value": 150033240.120661
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_41f1e111c98586b80253c367",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ce38362e8184e6b55f72e19b",
+      "source_record_id": "hmrc.betting_gaming_2026_09.receipts.fy2024.united_kingdom.all_receipts",
+      "concept": "hmrc.betting_and_gaming_duty_receipts",
+      "measure_id": "all_receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.betting_gaming_2026_09.receipts.fy2024",
+        "groupby_dimension": "hmrc.betting_gaming_scope",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "accounting_basis": "cash",
+        "gambling_duty": "all",
+        "published_unit": "gbp_thousand"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "UK Betting and Gaming Statistics tables (August 2025 to July 2026)",
+        "source_file": "2026_Jul_Bet_and_Gam_Tab.ods",
+        "source_sha256": "3979df37c0611cce371f80950bacac6bc5e9dad499c726f6138f838c882914e8",
+        "vintage": "2026_09_30_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-betting-gaming-statistics-july-2026/2026/3979df37c0611cce371f80950bacac6bc5e9dad499c726f6138f838c882914e8/2026_Jul_Bet_and_Gam_Tab.ods"
+      },
+      "value": 3616284000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0b1ba2092298b014bfbf19ac",
+      "semantic_fact_key": "ledger_semantic_fact_v2_68d205bb964f8d6df1b27615",
+      "source_record_id": "hmrc.betting_gaming_2026_09.receipts.fy2024.united_kingdom.betting_total_receipts",
+      "concept": "hmrc.betting_and_gaming_duty_receipts",
+      "measure_id": "betting_total_receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.betting_gaming_2026_09.receipts.fy2024",
+        "groupby_dimension": "hmrc.betting_gaming_scope",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "accounting_basis": "cash",
+        "gambling_duty": "betting_total",
+        "published_unit": "gbp_thousand"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "UK Betting and Gaming Statistics tables (August 2025 to July 2026)",
+        "source_file": "2026_Jul_Bet_and_Gam_Tab.ods",
+        "source_sha256": "3979df37c0611cce371f80950bacac6bc5e9dad499c726f6138f838c882914e8",
+        "vintage": "2026_09_30_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-betting-gaming-statistics-july-2026/2026/3979df37c0611cce371f80950bacac6bc5e9dad499c726f6138f838c882914e8/2026_Jul_Bet_and_Gam_Tab.ods"
+      },
+      "value": 721983000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9ce83438c818805f4c999fc7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_dfe1f1c814e6693ae38ef5e6",
+      "source_record_id": "hmrc.betting_gaming_2026_09.receipts.fy2024.united_kingdom.bingo_duty_receipts",
+      "concept": "hmrc.betting_and_gaming_duty_receipts",
+      "measure_id": "bingo_duty_receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.betting_gaming_2026_09.receipts.fy2024",
+        "groupby_dimension": "hmrc.betting_gaming_scope",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "accounting_basis": "cash",
+        "gambling_duty": "bingo_duty",
+        "published_unit": "gbp_thousand"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "UK Betting and Gaming Statistics tables (August 2025 to July 2026)",
+        "source_file": "2026_Jul_Bet_and_Gam_Tab.ods",
+        "source_sha256": "3979df37c0611cce371f80950bacac6bc5e9dad499c726f6138f838c882914e8",
+        "vintage": "2026_09_30_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-betting-gaming-statistics-july-2026/2026/3979df37c0611cce371f80950bacac6bc5e9dad499c726f6138f838c882914e8/2026_Jul_Bet_and_Gam_Tab.ods"
+      },
+      "value": 25233000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_902030056152e318f4dc51b8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_64a4119be75dff2f908dbb8c",
+      "source_record_id": "hmrc.betting_gaming_2026_09.receipts.fy2024.united_kingdom.gaming_duty_receipts",
+      "concept": "hmrc.betting_and_gaming_duty_receipts",
+      "measure_id": "gaming_duty_receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.betting_gaming_2026_09.receipts.fy2024",
+        "groupby_dimension": "hmrc.betting_gaming_scope",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "accounting_basis": "cash",
+        "gambling_duty": "gaming_duty",
+        "published_unit": "gbp_thousand"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "UK Betting and Gaming Statistics tables (August 2025 to July 2026)",
+        "source_file": "2026_Jul_Bet_and_Gam_Tab.ods",
+        "source_sha256": "3979df37c0611cce371f80950bacac6bc5e9dad499c726f6138f838c882914e8",
+        "vintage": "2026_09_30_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-betting-gaming-statistics-july-2026/2026/3979df37c0611cce371f80950bacac6bc5e9dad499c726f6138f838c882914e8/2026_Jul_Bet_and_Gam_Tab.ods"
+      },
+      "value": 165397000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2c52e0b4ccc6021e9b8f07ec",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a67ffb6f97a4ca5487666470",
+      "source_record_id": "hmrc.betting_gaming_2026_09.receipts.fy2024.united_kingdom.general_betting_duty_receipts",
+      "concept": "hmrc.betting_and_gaming_duty_receipts",
+      "measure_id": "general_betting_duty_receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.betting_gaming_2026_09.receipts.fy2024",
+        "groupby_dimension": "hmrc.betting_gaming_scope",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "accounting_basis": "cash",
+        "gambling_duty": "general_betting_duty",
+        "published_unit": "gbp_thousand"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "UK Betting and Gaming Statistics tables (August 2025 to July 2026)",
+        "source_file": "2026_Jul_Bet_and_Gam_Tab.ods",
+        "source_sha256": "3979df37c0611cce371f80950bacac6bc5e9dad499c726f6138f838c882914e8",
+        "vintage": "2026_09_30_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-betting-gaming-statistics-july-2026/2026/3979df37c0611cce371f80950bacac6bc5e9dad499c726f6138f838c882914e8/2026_Jul_Bet_and_Gam_Tab.ods"
+      },
+      "value": 713858000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_287c9ae4a2cb7b8b00c4623a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_69bbec5eeb4b0a82df2bc6c8",
+      "source_record_id": "hmrc.betting_gaming_2026_09.receipts.fy2024.united_kingdom.lottery_duty_receipts",
+      "concept": "hmrc.betting_and_gaming_duty_receipts",
+      "measure_id": "lottery_duty_receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.betting_gaming_2026_09.receipts.fy2024",
+        "groupby_dimension": "hmrc.betting_gaming_scope",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "accounting_basis": "cash",
+        "gambling_duty": "lottery_duty",
+        "published_unit": "gbp_thousand"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "UK Betting and Gaming Statistics tables (August 2025 to July 2026)",
+        "source_file": "2026_Jul_Bet_and_Gam_Tab.ods",
+        "source_sha256": "3979df37c0611cce371f80950bacac6bc5e9dad499c726f6138f838c882914e8",
+        "vintage": "2026_09_30_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-betting-gaming-statistics-july-2026/2026/3979df37c0611cce371f80950bacac6bc5e9dad499c726f6138f838c882914e8/2026_Jul_Bet_and_Gam_Tab.ods"
+      },
+      "value": 931887000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f3a62af67314f71468b00d17",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c80d3990da00985a288f394c",
+      "source_record_id": "hmrc.betting_gaming_2026_09.receipts.fy2024.united_kingdom.machine_games_duty_receipts",
+      "concept": "hmrc.betting_and_gaming_duty_receipts",
+      "measure_id": "machine_games_duty_receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.betting_gaming_2026_09.receipts.fy2024",
+        "groupby_dimension": "hmrc.betting_gaming_scope",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "accounting_basis": "cash",
+        "gambling_duty": "machine_games_duty",
+        "published_unit": "gbp_thousand"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "UK Betting and Gaming Statistics tables (August 2025 to July 2026)",
+        "source_file": "2026_Jul_Bet_and_Gam_Tab.ods",
+        "source_sha256": "3979df37c0611cce371f80950bacac6bc5e9dad499c726f6138f838c882914e8",
+        "vintage": "2026_09_30_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-betting-gaming-statistics-july-2026/2026/3979df37c0611cce371f80950bacac6bc5e9dad499c726f6138f838c882914e8/2026_Jul_Bet_and_Gam_Tab.ods"
+      },
+      "value": 609245000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d36e0d5705364ba8c837f2e2",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4475f3a32a0472ba4d129b4e",
+      "source_record_id": "hmrc.betting_gaming_2026_09.receipts.fy2024.united_kingdom.pool_betting_duty_receipts",
+      "concept": "hmrc.betting_and_gaming_duty_receipts",
+      "measure_id": "pool_betting_duty_receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.betting_gaming_2026_09.receipts.fy2024",
+        "groupby_dimension": "hmrc.betting_gaming_scope",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "accounting_basis": "cash",
+        "gambling_duty": "pool_betting_duty",
+        "published_unit": "gbp_thousand"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "UK Betting and Gaming Statistics tables (August 2025 to July 2026)",
+        "source_file": "2026_Jul_Bet_and_Gam_Tab.ods",
+        "source_sha256": "3979df37c0611cce371f80950bacac6bc5e9dad499c726f6138f838c882914e8",
+        "vintage": "2026_09_30_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-betting-gaming-statistics-july-2026/2026/3979df37c0611cce371f80950bacac6bc5e9dad499c726f6138f838c882914e8/2026_Jul_Bet_and_Gam_Tab.ods"
+      },
+      "value": 8125000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1078dcbe39ced755f0f5791d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f46e3e248919002515dc11af",
+      "source_record_id": "hmrc.betting_gaming_2026_09.receipts.fy2024.united_kingdom.remote_gaming_duty_receipts",
+      "concept": "hmrc.betting_and_gaming_duty_receipts",
+      "measure_id": "remote_gaming_duty_receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.betting_gaming_2026_09.receipts.fy2024",
+        "groupby_dimension": "hmrc.betting_gaming_scope",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "accounting_basis": "cash",
+        "gambling_duty": "remote_gaming_duty",
+        "published_unit": "gbp_thousand"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "UK Betting and Gaming Statistics tables (August 2025 to July 2026)",
+        "source_file": "2026_Jul_Bet_and_Gam_Tab.ods",
+        "source_sha256": "3979df37c0611cce371f80950bacac6bc5e9dad499c726f6138f838c882914e8",
+        "vintage": "2026_09_30_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-betting-gaming-statistics-july-2026/2026/3979df37c0611cce371f80950bacac6bc5e9dad499c726f6138f838c882914e8/2026_Jul_Bet_and_Gam_Tab.ods"
+      },
+      "value": 1162539000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_45dc67cafcb84efbbe06033b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f9788efbe1ca14544276e2ee",
+      "source_record_id": "hmrc.betting_gaming_2026_09.mgd_liabilities.fy2024.united_kingdom.all_liabilities",
+      "concept": "hmrc.machine_games_duty_liabilities",
+      "measure_id": "all_liabilities",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.betting_gaming_2026_09.mgd_liabilities.fy2024",
+        "groupby_dimension": "hmrc.betting_gaming_scope",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "mgd_rate": "all",
+        "published_unit": "gbp_thousand"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "UK Betting and Gaming Statistics tables (August 2025 to July 2026)",
+        "source_file": "2026_Jul_Bet_and_Gam_Tab.ods",
+        "source_sha256": "3979df37c0611cce371f80950bacac6bc5e9dad499c726f6138f838c882914e8",
+        "vintage": "2026_09_30_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-betting-gaming-statistics-july-2026/2026/3979df37c0611cce371f80950bacac6bc5e9dad499c726f6138f838c882914e8/2026_Jul_Bet_and_Gam_Tab.ods"
+      },
+      "value": 612266000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_03372fb31d30dc218dada23a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8149727c048f3eaa3e74dcc5",
+      "source_record_id": "hmrc.betting_gaming_2026_09.mgd_liabilities.fy2024.united_kingdom.higher_rate_liabilities",
+      "concept": "hmrc.machine_games_duty_liabilities",
+      "measure_id": "higher_rate_liabilities",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.betting_gaming_2026_09.mgd_liabilities.fy2024",
+        "groupby_dimension": "hmrc.betting_gaming_scope",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "mgd_rate": "higher_rate",
+        "published_unit": "gbp_thousand"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "UK Betting and Gaming Statistics tables (August 2025 to July 2026)",
+        "source_file": "2026_Jul_Bet_and_Gam_Tab.ods",
+        "source_sha256": "3979df37c0611cce371f80950bacac6bc5e9dad499c726f6138f838c882914e8",
+        "vintage": "2026_09_30_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-betting-gaming-statistics-july-2026/2026/3979df37c0611cce371f80950bacac6bc5e9dad499c726f6138f838c882914e8/2026_Jul_Bet_and_Gam_Tab.ods"
+      },
+      "value": 596000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_161b064b00d3ea14a2e67ea3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f4f5f5025aca80c5e9aadd6d",
+      "source_record_id": "hmrc.betting_gaming_2026_09.mgd_liabilities.fy2024.united_kingdom.lower_rate_liabilities",
+      "concept": "hmrc.machine_games_duty_liabilities",
+      "measure_id": "lower_rate_liabilities",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.betting_gaming_2026_09.mgd_liabilities.fy2024",
+        "groupby_dimension": "hmrc.betting_gaming_scope",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "mgd_rate": "lower_rate",
+        "published_unit": "gbp_thousand"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "UK Betting and Gaming Statistics tables (August 2025 to July 2026)",
+        "source_file": "2026_Jul_Bet_and_Gam_Tab.ods",
+        "source_sha256": "3979df37c0611cce371f80950bacac6bc5e9dad499c726f6138f838c882914e8",
+        "vintage": "2026_09_30_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-betting-gaming-statistics-july-2026/2026/3979df37c0611cce371f80950bacac6bc5e9dad499c726f6138f838c882914e8/2026_Jul_Bet_and_Gam_Tab.ods"
+      },
+      "value": 6921000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f6c2062676b945d729a81d73",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7cdaead28fa99481bde556ed",
+      "source_record_id": "hmrc.betting_gaming_2026_09.mgd_liabilities.fy2024.united_kingdom.standard_rate_liabilities",
+      "concept": "hmrc.machine_games_duty_liabilities",
+      "measure_id": "standard_rate_liabilities",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.betting_gaming_2026_09.mgd_liabilities.fy2024",
+        "groupby_dimension": "hmrc.betting_gaming_scope",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "mgd_rate": "standard_rate",
+        "published_unit": "gbp_thousand"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "UK Betting and Gaming Statistics tables (August 2025 to July 2026)",
+        "source_file": "2026_Jul_Bet_and_Gam_Tab.ods",
+        "source_sha256": "3979df37c0611cce371f80950bacac6bc5e9dad499c726f6138f838c882914e8",
+        "vintage": "2026_09_30_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-betting-gaming-statistics-july-2026/2026/3979df37c0611cce371f80950bacac6bc5e9dad499c726f6138f838c882914e8/2026_Jul_Bet_and_Gam_Tab.ods"
+      },
+      "value": 604748000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c545202fc107811dbcdf4408",
+      "semantic_fact_key": "ledger_semantic_fact_v2_749e7d5a85bf2cb7e14fbbeb",
+      "source_record_id": "hmrc.tobacco_bulletin_2026_08.clearances.fy2024.united_kingdom.cigarettes",
+      "concept": "hmrc.tobacco_clearances",
+      "measure_id": "cigarettes",
+      "unit": "stick",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "tobacco_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.tobacco_bulletin_2026_08.clearances.fy2024",
+        "groupby_dimension": "hmrc.tobacco_scope",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "published_unit": "million_sticks",
+        "tobacco_product": "cigarettes"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Tobacco Bulletin tables July 2026",
+        "source_file": "Tobacco_Tab_Jul_26.ods",
+        "source_sha256": "41154c1d1e01c0269a8e0f99dccda780172d150bd2769e6515ca679bfe04a4a4",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-tobacco-bulletin-july-2026/2026/41154c1d1e01c0269a8e0f99dccda780172d150bd2769e6515ca679bfe04a4a4/Tobacco_Tab_Jul_26.ods"
+      },
+      "value": 13577910633.711401
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_61e4707d3e6325c10c34b94b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f12d2bf1e04a4583b2b8557d",
+      "source_record_id": "hmrc.tobacco_bulletin_2026_08.clearances.fy2024.united_kingdom.cigars",
+      "concept": "hmrc.tobacco_clearances",
+      "measure_id": "cigars",
+      "unit": "kilogram",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "tobacco_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.tobacco_bulletin_2026_08.clearances.fy2024",
+        "groupby_dimension": "hmrc.tobacco_scope",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "published_unit": "thousand_kilograms",
+        "tobacco_product": "cigars"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Tobacco Bulletin tables July 2026",
+        "source_file": "Tobacco_Tab_Jul_26.ods",
+        "source_sha256": "41154c1d1e01c0269a8e0f99dccda780172d150bd2769e6515ca679bfe04a4a4",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-tobacco-bulletin-july-2026/2026/41154c1d1e01c0269a8e0f99dccda780172d150bd2769e6515ca679bfe04a4a4/Tobacco_Tab_Jul_26.ods"
+      },
+      "value": 395122.98372549296
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ac02b8d2cb27793da45b443f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c03e926643eaa1ce0006e624",
+      "source_record_id": "hmrc.tobacco_bulletin_2026_08.clearances.fy2024.united_kingdom.hand_rolling_tobacco",
+      "concept": "hmrc.tobacco_clearances",
+      "measure_id": "hand_rolling_tobacco",
+      "unit": "kilogram",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "tobacco_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.tobacco_bulletin_2026_08.clearances.fy2024",
+        "groupby_dimension": "hmrc.tobacco_scope",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "published_unit": "thousand_kilograms",
+        "tobacco_product": "hand_rolling_tobacco"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Tobacco Bulletin tables July 2026",
+        "source_file": "Tobacco_Tab_Jul_26.ods",
+        "source_sha256": "41154c1d1e01c0269a8e0f99dccda780172d150bd2769e6515ca679bfe04a4a4",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-tobacco-bulletin-july-2026/2026/41154c1d1e01c0269a8e0f99dccda780172d150bd2769e6515ca679bfe04a4a4/Tobacco_Tab_Jul_26.ods"
+      },
+      "value": 4028478.68691037
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2623f1ae78390ca8f0373c8e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_05e4d4f05b5c41336e1b51c3",
+      "source_record_id": "hmrc.tobacco_bulletin_2026_08.clearances.fy2024.united_kingdom.non_cigarette_tobacco_total",
+      "concept": "hmrc.tobacco_clearances",
+      "measure_id": "non_cigarette_tobacco_total",
+      "unit": "kilogram",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "tobacco_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.tobacco_bulletin_2026_08.clearances.fy2024",
+        "groupby_dimension": "hmrc.tobacco_scope",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "published_unit": "thousand_kilograms",
+        "tobacco_product": "non_cigarette_tobacco"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Tobacco Bulletin tables July 2026",
+        "source_file": "Tobacco_Tab_Jul_26.ods",
+        "source_sha256": "41154c1d1e01c0269a8e0f99dccda780172d150bd2769e6515ca679bfe04a4a4",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-tobacco-bulletin-july-2026/2026/41154c1d1e01c0269a8e0f99dccda780172d150bd2769e6515ca679bfe04a4a4/Tobacco_Tab_Jul_26.ods"
+      },
+      "value": 4725066.829958471
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7fb2bfb2e2b4cecb39f2dec5",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9975167217b64934fbe2d225",
+      "source_record_id": "hmrc.tobacco_bulletin_2026_08.clearances.fy2024.united_kingdom.other",
+      "concept": "hmrc.tobacco_clearances",
+      "measure_id": "other",
+      "unit": "kilogram",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "tobacco_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.tobacco_bulletin_2026_08.clearances.fy2024",
+        "groupby_dimension": "hmrc.tobacco_scope",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "published_unit": "thousand_kilograms",
+        "tobacco_product": "other"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Tobacco Bulletin tables July 2026",
+        "source_file": "Tobacco_Tab_Jul_26.ods",
+        "source_sha256": "41154c1d1e01c0269a8e0f99dccda780172d150bd2769e6515ca679bfe04a4a4",
+        "vintage": "2026_08_28_release",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-tobacco-bulletin-july-2026/2026/41154c1d1e01c0269a8e0f99dccda780172d150bd2769e6515ca679bfe04a4a4/Tobacco_Tab_Jul_26.ods"
+      },
+      "value": 301465.159322606
+    }
+  ]
+}

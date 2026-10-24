@@ -206,8 +206,12 @@ def test_wrong_fact_count_refuses_before_either_compiler(prepared):
 def test_current_national_and_local_pins_share_one_reviewed_identity():
     # main (#904) reads one committed pin, ``uk/chronicle_feed.json``, for the
     # national feed and the local census; the full build checks they agree.
-    # The identity is the abf0921 feed re-pinned by microcosm#1300
-    # (PolicyEngine/chronicle#359: UC by payment indicator, OBR table 4.9
+    # The identity is the 200bf6d feed re-pinned by microcosm#1359
+    # (PolicyEngine/chronicle#384: HMRC alcohol and tobacco clearances,
+    # betting and gaming receipts and Machine Games Duty liabilities, the
+    # Gambling Commission's industry statistics and OBR's excise lines, with
+    # the September Consumer Trends edition in place of June's), on top of the
+    # abf0921 feed of microcosm#1300 (UC by payment indicator, OBR table 4.9
     # geography, DESNZ gas years and Northern Ireland energy, UV404 by output
     # area). It holds the 735820c HVCTS inputs microcosm#1240 pinned, every
     # 942a1fa row of microcosm#1123 and the 1ee7dfe rows of microcosm#1113.
@@ -216,19 +220,19 @@ def test_current_national_and_local_pins_share_one_reviewed_identity():
     assert (
         national.facts_sha256
         == local["facts_sha256"]
-        == ("2b64fecfe746164203dac1726aae6ffdb3e5d8e478bd3d64d118ac76cb00780b")
+        == ("b6e69c90ef0d65674d8c9ce6285113aa5ce36e6d25f6f662d106bdd5c2c27dbc")
     )
     assert (
         national.manifest_sha256
         == local["manifest_sha256"]
-        == ("b90fb1b8f1a910458fac41425360209d101796e6de0b134f952ad93323ca6e21")
+        == ("7d9c75fdcf9b638848979fa51eff5e51d4caabbef263ed6c2a8a0b9a3305b460")
     )
     assert (
         national.source_commit
         == local["source_commit"]
-        == "abf0921b896d29ee0745ed2aefde8d6337ed7164"
+        == "200bf6d559cf85bc9c2c5ee4df8c50ba0f5d09d1"
     )
-    assert national.fact_row_count == local["fact_row_count"] == 1499301
+    assert national.fact_row_count == local["fact_row_count"] == 1502291
 
 
 def test_chronicle_source_codec_validates_directory_manifest(tmp_path):
