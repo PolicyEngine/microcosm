@@ -261,6 +261,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "congressional_district_geography.py",
         "congressional_district_vintage.py",
         "congressional_district_vintage_crosswalk.py",
+        # 2020 tract/county -> 2023 county-equivalent metadata and its gate;
+        # writes calibration geography only, no population treatment.
+        "county_vintage.py",
         "cps_carried.py",
         "demographics.py",
         "education_assistance_source.py",
@@ -300,6 +303,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "puf_qrf_worker.py",
         "puf_source_agi.py",
         "puf_support.py",
+        # 2023 county for the PUMA ladder's rows, drawn after its original
+        # draws (CT only, without a tract); no population treatment.
+        "puma_county_vintage.py",
         "puma_ladder.py",
         "puma_ladder_sources.py",
         "reform_coverage_smoke.py",
@@ -3506,11 +3512,13 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
         # plus asec_sources.py, whose default ASEC pool the education sidecar
         # loader now defaults to, plus esi_premiums.py, whose output family
         # operator_boundary registers so a raw source frame that already
-        # carries it is refused (#454). All five are classified in
-        # _OTHER_US_RUNTIME_MODULES and scanned below like every other
-        # reached module.
-        assert len(runtime_graph) == 75, (
-            f"{tool.name} must reach the pinned 75-module runtime graph; "
+        # carries it is refused (#454). 78 adds county_vintage.py and
+        # puma_county_vintage.py, which write county_fips_2023, and
+        # block_ladder_sources.py, whose CT_STATE_FIPS they import (#1376).
+        # All are classified in _OTHER_US_RUNTIME_MODULES and scanned below
+        # like every other reached module.
+        assert len(runtime_graph) == 78, (
+            f"{tool.name} must reach the pinned 78-module runtime graph; "
             f"reached {len(runtime_graph)}"
         )
         assert not missing_modules, (

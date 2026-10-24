@@ -343,8 +343,9 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # retain_best_objective and microcosm#1301's budget_search_bracket
             # move it. It covers microcosm.fit.qrf's attested bytes too, so
             # fit_draw_next's caller-owned uniforms (microcosm#1332) move it,
-            # and so does microcosm#454's meps_esi_premiums stage.
-            "spec_sha256": "97f41a9fedba0ed1f26dd5f457997c10ffefe852c75f8fc18c793acdf21ebfd3",
+            # and so do microcosm#454's meps_esi_premiums stage and
+            # microcosm#1376's puma_county_vintage draw module.
+            "spec_sha256": "77df608c9b343219cd2717aa08af5198c0ba69b70c61691fb2459f7a886528ba",
         },
     }
 
