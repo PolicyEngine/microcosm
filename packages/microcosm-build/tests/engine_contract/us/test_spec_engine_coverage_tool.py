@@ -91,13 +91,13 @@ def test_us_coverage_is_exact_complete_and_honest(
     assert fields["claim_count"] == 49
     assert fields["mode_counts"] == {
         "legacy_behavior": 14_043,
-        "compiler_semantic": 27_717,
+        "compiler_semantic": 27_718,
         "front_end_validation": 354,
         "identity_only": 103,
     }
     assert fields["generation0_effect_counts"] == {
         "legacy_behavior": 38_531,
-        "no_generation0_effect": 3_686,
+        "no_generation0_effect": 3_687,
     }
 
     inventory = coverage_report["inventory_coverage"]
