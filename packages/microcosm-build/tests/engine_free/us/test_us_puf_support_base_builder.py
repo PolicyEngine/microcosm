@@ -1000,6 +1000,7 @@ def test_pooled_source_stage_dual_exports_without_changing_legacy_checkpoints(
         "with_us_energy_subsidy_input",
         "with_us_retirement_contribution_inputs",
         "with_us_retirement_distribution_inputs",
+        "with_us_esi_premium_inputs",
         "with_us_immigration_inputs",
     )
     for name in identity_transforms:
@@ -1013,6 +1014,7 @@ def test_pooled_source_stage_dual_exports_without_changing_legacy_checkpoints(
         "us_eligibility_inputs_signal_gate",
         "us_pregnancy_signal_gate",
         "us_wic_claim_signal_gate",
+        "us_esi_premiums_signal_gate",
     ):
         monkeypatch.setattr(builder, name, lambda _frame: passing_gate)
 
@@ -1180,6 +1182,7 @@ def test_source_and_preclone_stages_round_trip_design_weight_kind(
         "with_us_energy_subsidy_input",
         "with_us_retirement_contribution_inputs",
         "with_us_retirement_distribution_inputs",
+        "with_us_esi_premium_inputs",
         "with_us_immigration_inputs",
     )
     for name in identity_transforms:
@@ -1193,6 +1196,7 @@ def test_source_and_preclone_stages_round_trip_design_weight_kind(
         "us_eligibility_inputs_signal_gate",
         "us_pregnancy_signal_gate",
         "us_wic_claim_signal_gate",
+        "us_esi_premiums_signal_gate",
     ):
         monkeypatch.setattr(builder, name, lambda _frame: passing_gate)
     monkeypatch.setattr(builder, "_sha256", lambda _path: "fixture-sha256")
@@ -2322,6 +2326,7 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
     for gate_name in (
         "us_eligibility_inputs_signal_gate",
         "us_pregnancy_signal_gate",
+        "us_esi_premiums_signal_gate",
     ):
         monkeypatch.setattr(
             builder,
@@ -2330,6 +2335,13 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
                 "Gate", (), {"passed": True, "failures": (), "details": {}}
             )(),
         )
+    esi_premium_calls: list[object] = []
+
+    def fake_esi_premium_inputs(frame, *, seed, time_period):
+        esi_premium_calls.append((frame, seed, time_period))
+        return frame
+
+    monkeypatch.setattr(builder, "with_us_esi_premium_inputs", fake_esi_premium_inputs)
     monkeypatch.setattr(
         builder,
         "us_wic_claim_signal_gate",
@@ -2862,6 +2874,10 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
         if failing_gate == "retirement_distributions"
         else []
     )
+    # microcosm#454: the ESI premium stage runs once, on the ASEC frame right
+    # after the direct retirement-distribution pass and before the clone; the
+    # clone carries its columns unchanged, so it never re-runs on the PUF half.
+    assert esi_premium_calls == [("retirement-distributions-direct", 7, 2024)]
 
 
 def test_resume_retirement_stage_forces_puf_imputation() -> None:
@@ -2888,6 +2904,29 @@ def test_main_summary_records_retirement_distribution_gate() -> None:
     assert '"passed": retirement_distributions_gate.passed' in source
     assert '"failures": list(retirement_distributions_gate.failures)' in source
     assert '"details": dict(retirement_distributions_gate.details)' in source
+
+
+def test_main_summary_records_esi_premium_gates() -> None:
+    """microcosm#454: the base summary carries the stage lineage twice, on the
+    ASEC frame and again on the support-cloned frame, in both build paths."""
+    builder = _load_support_builder_module()
+    source = Path(builder.__file__).read_text(encoding="utf-8")
+
+    assert '"esi_premiums_signal": {' in source
+    assert '"passed": esi_premiums_gate.passed' in source
+    assert '"details": dict(esi_premiums_gate.details)' in source
+    assert '"esi_premiums_post_clone_signal": {' in source
+    assert '"details": dict(esi_premiums_post_clone_gate.details)' in source
+    assert 'signals["esi_premiums_signal"] = _checked_gate_payload(' in source
+    assert (
+        'signals["esi_premiums_post_clone_signal"] = _checked_gate_payload(' in source
+    )
+    for name in ("esi_premiums_signal", "esi_premiums_post_clone_signal"):
+        assert f'        "{name}",' in source  # the staged summary requires it
+    boundaries = dict(builder.STAGE_BOUNDARIES)["pre_clone_enrichment"]
+    assert boundaries.index("with_us_esi_premium_inputs") == (
+        boundaries.index("with_us_retirement_distribution_inputs") + 1
+    )
 
 
 def test_main_summary_records_weeks_unemployed_gate() -> None:
