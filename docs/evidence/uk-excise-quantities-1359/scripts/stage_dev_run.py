@@ -93,6 +93,16 @@ def main() -> None:
             )
             for column in columns
         },
+        # The prior-weighted share of households with each column positive.
+        "positive_shares": {
+            column: float(
+                result.weights_for("household").values[
+                    household[column].to_numpy(dtype=float) > 0
+                ].sum()
+                / result.weights_for("household").values.sum()
+            )
+            for column in columns
+        },
     }
     out.write_text(json.dumps(report, indent=1, default=str) + "\n")
     print(f"wrote {out} in {report['seconds']} s")

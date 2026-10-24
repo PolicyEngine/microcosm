@@ -22,6 +22,7 @@ from pathlib import Path
 AGGREGATE_OUTPUTS = (
     "stage_dev_run.base-74a2a378e.json",
     "stage_dev_run.head-restack.json",
+    "stage_dev_run.head-split.json",
     "alcohol_channel_weights.json",
 )
 DROPPED = ("donor_floor", "donor_min", "donor_max", "output_sha256")

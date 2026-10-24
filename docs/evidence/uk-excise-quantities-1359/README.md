@@ -13,6 +13,14 @@ Evidence for microcosm#1359, behind `experiments/1359-excise-quantities-receipts
   - the seven divisions #1383 holds at the shared frame-to-donor ratio, which the lower road fuel lowers (−0.149% each).
 
   The head adds the 24 excise inputs.
+
+  A third run, `outputs/stage_dev_run.head-split.json`, is the head once the gambling stakes are split (Vahid's review): Lottery Duty's base follows the National Lottery stakes and every other gambling base the betting and gaming stakes. `outputs/stage_dev_run.split-comparison.json` sets it against the restacked head: 33 of the 46 columns are byte-identical, and only the 13 gambling inputs move. The run also records the share of households with each written column positive, at prior weights.
+- **The national reconciliation** (`scripts/national_reconciliation.py`, `outputs/national_reconciliation.json`). One household holds every national level the committed declaration resolves to, run through policyengine-uk 2.151.0. Every duty is linear in its inputs, so this is the frame's duty at prior weights. Each OBR row is read through its own binding's variables against the value the national compile-parity receipt records from the pinned feed. Public figures only.
+- **Who carries the duty** (`scripts/excise_incidence.py`, `outputs/excise_incidence.json`). From the split run, the reconciliation and the LCFS 2024-25 donor:
+  - each duty over the spending that shares it out, and the share of households that carry it;
+  - the share of donors and of frame households with each parent total and each part positive, and each part's rate within its parent, which shows where the frame loses incidence.
+
+  Every donor share rests on 30 or more donors, which the script checks.
 - **The pub lean of the spending rule** (`scripts/alcohol_channel_weights.py`, `outputs/alcohol_channel_weights.json`). Measured on the LCFS 2024-25 donor at survey weights: how far allocating alcohol volume by spending moves it, against channel weights for published on-trade volume shares of 20 to 35 percent, overall and by equivalised income decile.
 - **The re-pin** (`scripts/repin_200bf6d.sh`). The commands that regenerated the vendored resources, the national and local references and membership, the local census, both compile-parity receipts and the coverage manifest. They ran on the national and local cuts of the pinned artifact that the runbook entry describes.
 
@@ -28,4 +36,14 @@ The stage runs need the licensed LCFS 2024-25 tabs and the spine:
 
 ```bash
 BASE_LABEL=base-74a2a378e HEAD_LABEL=head-restack scripts/run_stage_dev.sh
+```
+
+The reconciliation needs only the tree and its locked engine. The incidence script reads the split run, the reconciliation and the LCFS household tab:
+
+```bash
+python scripts/national_reconciliation.py outputs/national_reconciliation.json
+```
+
+```bash
+python scripts/excise_incidence.py outputs/stage_dev_run.head-split.json outputs/national_reconciliation.json <lcfs dvhh tab> outputs/excise_incidence.json
 ```
