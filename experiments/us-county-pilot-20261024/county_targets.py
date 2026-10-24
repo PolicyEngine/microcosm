@@ -98,20 +98,28 @@ HOLDOUT_BASELINE_DRIVER = {
 ACS_SPINE = "acs_2024_1yr"
 DONOR_SPINE = "asec_puf"
 #: Person-level stored inputs summed to the household. Earnings is wages plus
-#: all self-employment, ACS B19061's concept. The US build's QBI reconciliation
-#: (us_runtime/qbi_inputs.py) routes a person's whole Schedule C amount to the
-#: SSTB leaf when the business is an SSTB, so both leaves are needed on every
-#: record.
+#: all self-employment, ACS B19061's concept. On ACS records the base
+#: self-employment leaf is SEMP * ADJINC / 1e6 (the release audit matches it
+#: on every ACS person), which already includes farm and partnership
+#: self-employment.
 EARNINGS_COLUMNS = (
     "employment_income_before_lsr",
     "self_employment_income_before_lsr",
-    "sstb_self_employment_income_before_lsr",
 )
-#: Farm self-employment measured on donor records (ASEC FRSE_VAL or PUF
-#: E02100; us_runtime/farm_business_income.py). ACS SEMP, mapped to the base
-#: self-employment leaf, already includes farm self-employment, so the
-#: transferred farm leaf is not added to ACS records.
-DONOR_ONLY_EARNINGS_COLUMNS = ("farm_operations_income",)
+#: Self-employment leaves measured on donor records only. On the PUF tax-detail
+#: channel the QBI reconciliation (us_runtime/qbi_inputs.py) routes a person's
+#: whole Schedule C amount to the SSTB leaf when the business is an SSTB; farm
+#: self-employment is ASEC FRSE_VAL or PUF E02100
+#: (us_runtime/farm_business_income.py). On ACS records both leaves are donor
+#: draws stacked on top of SEMP, so adding them would count self-employment
+#: twice.
+DONOR_ONLY_EARNINGS_COLUMNS = (
+    "sstb_self_employment_income_before_lsr",
+    "farm_operations_income",
+)
+#: ACS group-quarters types (TYPEHUGQ 2 institutional, 3 noninstitutional).
+#: ACS household tables exclude group quarters; PEP population includes them.
+GROUP_QUARTERS_TYPES = (2, 3)
 #: Other person-level income inputs, carried when the release stores them, so
 #: the household-income concept of ACS B19001/B19025 can be approximated.
 #: Farm income is excluded: it is covered by the earnings concept above.
@@ -141,7 +149,8 @@ OTHER_INCOME_COLUMNS = (
 )
 #: Partnership and S-corporation income from donor tax detail. ACS counts
 #: partnership income inside SEMP, so these transferred leaves are not added to
-#: ACS records.
+#: ACS records. The release stores S-corporation income as zero on every
+#: record (combined income lives in partnership_income).
 DONOR_ONLY_OTHER_INCOME_COLUMNS = ("partnership_income", "s_corp_income")
 
 
@@ -158,7 +167,9 @@ def household_measures(
     ``earnings`` sums :data:`EARNINGS_COLUMNS` for every record and
     :data:`DONOR_ONLY_EARNINGS_COLUMNS` for donor-spine records;
     ``household_income_approx`` adds the carried other-income columns, again
-    with the donor-only ones zeroed on ACS records.
+    with the donor-only ones zeroed on ACS records. ``in_household_universe``
+    is 0 for ACS group-quarters records (:data:`GROUP_QUARTERS_TYPES`) and 1
+    otherwise.
     """
 
     index = pd.Index(household["household_id"].to_numpy())
@@ -177,6 +188,7 @@ def household_measures(
     if missing:
         raise ValueError(f"release lacks earnings inputs {missing}")
     carried = [c for c in income_columns if c in person.columns]
+    semp_report = _check_acs_semp(person, ~donor_person)
     measures = pd.DataFrame({"household_id": household["household_id"].to_numpy()})
     measures["n_persons"] = np.bincount(position, minlength=n).astype(np.float64)
     components: dict[str, dict[str, float]] = {}
@@ -192,6 +204,21 @@ def household_measures(
         }
     measures["earnings"] = measures[list(earning_columns)].sum(axis=1)
     measures["household_income_approx"] = measures[["earnings", *carried]].sum(axis=1)
+    group_quarters = np.zeros(n, dtype=bool)
+    gq_report: dict = {"column": "TYPEHUGQ" in household.columns}
+    if "TYPEHUGQ" in household.columns:
+        kind = pd.to_numeric(household["TYPEHUGQ"], errors="coerce").to_numpy()
+        group_quarters = (spine == ACS_SPINE) & np.isin(kind, GROUP_QUARTERS_TYPES)
+        for code in GROUP_QUARTERS_TYPES:
+            rows = (spine == ACS_SPINE) & (kind == code)
+            gq_report[f"typehugq_{code}"] = {
+                "records": int(rows.sum()),
+                "weighted_records": float(weights[rows].sum()),
+                "weighted_persons": float(
+                    (weights * measures["n_persons"].to_numpy())[rows].sum()
+                ),
+            }
+    measures["in_household_universe"] = (~group_quarters).astype(np.float64)
     report = {
         "earnings_columns": list(earning_columns),
         "donor_only_columns": sorted(donor_only),
@@ -200,8 +227,62 @@ def household_measures(
             c for c in income_columns if c not in person.columns
         ],
         "weighted_component_totals_by_spine": components,
+        "group_quarters": gq_report,
+        "acs_semp_check": semp_report,
     }
+    if "person_support_channel" in person.columns:
+        report["weighted_donor_totals_by_channel"] = _donor_channel_totals(
+            person, position, weights, donor_person
+        )
     return measures, report
+
+
+def _check_acs_semp(person: pd.DataFrame, acs_person: np.ndarray) -> dict:
+    """Refuse ACS records whose base self-employment leaf is not SEMP.
+
+    The ACS earnings concept counts only the base leaf, which is right only
+    while it equals ``SEMP * ADJINC / 1e6`` (to the dollar) on every ACS
+    person. Without the raw columns the check is reported as not run.
+    """
+
+    if not {"SEMP", "ADJINC"} <= set(person.columns):
+        return {"checked": False}
+    rows = acs_person
+    semp = person["SEMP"].fillna(0.0).to_numpy(np.float64)[rows]
+    adjinc = person["ADJINC"].fillna(0.0).to_numpy(np.float64)[rows]
+    base = (
+        person["self_employment_income_before_lsr"]
+        .fillna(0.0)
+        .to_numpy(np.float64)[rows]
+    )
+    mismatched = int((np.abs(base - semp * adjinc / 1e6) > 1.0).sum())
+    if mismatched:
+        raise ValueError(
+            f"{mismatched} ACS persons' base self-employment is not SEMP * ADJINC"
+        )
+    return {"checked": True, "acs_persons": int(rows.sum())}
+
+
+def _donor_channel_totals(person, position, weights, donor_person) -> dict:
+    """Unzeroed weighted totals of the business leaves on donor records."""
+
+    channel = person["person_support_channel"].astype(str).to_numpy()
+    w = weights[position]
+    out: dict = {}
+    for column in (
+        *EARNINGS_COLUMNS,
+        *DONOR_ONLY_EARNINGS_COLUMNS,
+        *DONOR_ONLY_OTHER_INCOME_COLUMNS,
+        "partnership_self_employment_net_earnings",
+    ):
+        if column not in person.columns:
+            continue
+        values = person[column].fillna(0.0).to_numpy(np.float64)
+        out[column] = {
+            part: float((w * values)[donor_person & (channel == part)].sum())
+            for part in sorted(set(channel[donor_person]))
+        }
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -396,6 +477,14 @@ def _indicator_matrix(codes: np.ndarray, values: np.ndarray, order: list[str]):
     )
 
 
+def household_universe(households: pd.DataFrame) -> np.ndarray:
+    """1.0 for records in ACS's household universe, 0.0 for group quarters."""
+
+    if "in_household_universe" not in households.columns:
+        return np.ones(len(households))
+    return households["in_household_universe"].to_numpy(np.float64)
+
+
 def build_design(households: pd.DataFrame, sources: Mapping[str, bytes]) -> dict:
     """Every pilot row: its family, geography, role, value and matrix row."""
 
@@ -408,10 +497,12 @@ def build_design(households: pd.DataFrame, sources: Mapping[str, bytes]) -> dict
         .astype(str)
         .str.zfill(4)
     ).to_numpy()
-    earnings = households["earnings"].to_numpy(np.float64)
+    # ACS household tables exclude group quarters, so the household-universe
+    # measures do too; PEP population and SOI wages count everyone.
+    in_universe = household_universe(households)
+    earnings = households["earnings"].to_numpy(np.float64) * in_universe
     persons = households["n_persons"].to_numpy(np.float64)
-    ones = np.ones(len(households))
-    income = households["household_income_approx"].to_numpy(np.float64)
+    income = households["household_income_approx"].to_numpy(np.float64) * in_universe
 
     acs = {
         key: read_acs_county(sources[f"acs5_2024_{table}_county"], variable)
@@ -438,7 +529,7 @@ def build_design(households: pd.DataFrame, sources: Mapping[str, bytes]) -> dict
         return pd.Series((w0 * values)[inside]).groupby(state[inside]).sum().to_dict()
 
     measure_of = {
-        "households": ones,
+        "households": in_universe,
         "persons": persons,
         "earnings": earnings,
         "earning_households": (earnings != 0).astype(np.float64),
@@ -629,16 +720,25 @@ def _error_stats(error: pd.Series) -> dict:
 
 
 def holdout_baselines(table: pd.DataFrame) -> dict:
-    """Held-out fit of the rescaling baseline next to the calibrated fit."""
+    """Held-out fit of the rescaling baseline next to the calibrated fit.
+
+    All three columns are scored on one county set: the counties whose driver
+    has a nonzero release value, where the rescaling is defined.
+    """
 
     out: dict = {}
     for family, driver in HOLDOUT_BASELINE_DRIVER.items():
         rows = table[table["family"] == family].set_index("geography")
         drive = table[table["family"] == driver].set_index("geography")
-        ratio = (drive["value"] / drive["before"]).reindex(rows.index)
-        baseline = rows["before"] * ratio
+        before = drive["before"].reindex(rows.index)
+        scored = before.notna() & (before != 0) & (rows["value"] != 0)
+        rows = rows[scored]
+        baseline = rows["before"] * (
+            drive["value"].reindex(rows.index) / before[scored]
+        )
         out[family] = {
             "driver": driver,
+            "counties": int(len(rows)),
             "baseline": _error_stats(baseline / rows["value"] - 1.0),
             "calibrated": _error_stats(rows["after"] / rows["value"] - 1.0),
             "release": _error_stats(rows["before"] / rows["value"] - 1.0),
@@ -828,7 +928,9 @@ def run_pilot(
     ess_rows_after = kish_ess(weights, county)[["ess"]].rename(
         columns={"ess": "ess_rows_after"}
     )
-    income = households["household_income_approx"].to_numpy(np.float64)
+    in_universe = household_universe(households) > 0
+    income = households["household_income_approx"].to_numpy(np.float64)[in_universe]
+    universe_county = county[in_universe]
     median_acs = read_acs_county(
         sources["acs5_2024_B19013_county"], ACS_CELLS["median_income"][1]
     )
@@ -840,8 +942,12 @@ def run_pilot(
             pep_population=pep.reindex(design["counties"]),
             grade_after=lambda d: d["ess_after"].fillna(0.0).map(grade),
             median_income_acs=median_acs.reindex(design["counties"]),
-            median_income_before=weighted_median_by(income, w0, county),
-            median_income_after=weighted_median_by(income, weights, county),
+            median_income_before=weighted_median_by(
+                income, w0[in_universe], universe_county
+            ),
+            median_income_after=weighted_median_by(
+                income, weights[in_universe], universe_county
+            ),
         )
     )
     per_county.index.name = "county_fips"
@@ -872,9 +978,12 @@ def run_pilot(
                 "release_id",
                 "revision",
                 "sha256",
+                "ct_sha256",
+                "outputs_sha256",
                 "earnings_columns",
                 "donor_only_columns",
                 "other_income_columns_carried",
+                "group_quarters",
             )
         },
         "households": int(len(households)),

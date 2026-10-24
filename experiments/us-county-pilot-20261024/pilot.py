@@ -249,6 +249,9 @@ def extract(ct_texts: dict[str, str]) -> dict:
     )
     geo["county_fips_2023"] = county_2023.astype(str)
     report["ct"] = ct_report
+    # The local entrypoint verified each Connecticut file against its pin
+    # before sending it.
+    report["ct_sha256"] = {name: INPUT_SHA256[name] for name in sorted(ct_texts)}
     report["counties_2020"] = int(county.nunique())
     report["counties_2023"] = int(geo["county_fips_2023"].nunique())
     measures["weight"] = weights
@@ -262,6 +265,9 @@ def extract(ct_texts: dict[str, str]) -> dict:
         store.put("person", person[list(PERSON_STRUCT)], format="fixed")
         for name, table in groups.items():
             store.put(name, table, format="fixed")
+    report["outputs_sha256"] = {
+        name: _sha256(out / name) for name in ("households.parquet", "lean.h5")
+    }
     report["weighted_households"] = float(weights.sum())
     report["weighted_persons"] = float((weights * measures["n_persons"]).sum())
     report["weighted_earnings"] = float((weights * measures["earnings"]).sum())
@@ -334,7 +340,71 @@ def audit_income() -> dict:
         report["business_is_sstb_by_spine"] = {
             name: int(flag[spine == name].sum()) for name in sorted(set(spine))
         }
+    report["semp_reconciliation"] = _semp_reconciliation(person, values, weight, spine)
     return report
+
+
+def _semp_reconciliation(person, values, weight, spine) -> dict:
+    """Tie each record's two self-employment leaves to its raw survey amount.
+
+    ACS rows map ``SEMP * ADJINC / 1e6`` onto the base leaf; donor rows carry
+    the CPS ``SEMP_VAL``. Records are classed by whether the base leaf, the
+    SSTB leaf, or their sum reproduces the raw amount (to the dollar).
+    """
+    import numpy as np
+
+    base = values["self_employment_income_before_lsr"]
+    sstb = values["sstb_self_employment_income_before_lsr"]
+    raw: dict[str, np.ndarray] = {}
+    if {"SEMP", "ADJINC"} <= set(person.columns):
+        raw["acs_2024_1yr"] = (
+            person["SEMP"].fillna(0.0).to_numpy(np.float64)
+            * person["ADJINC"].fillna(0.0).to_numpy(np.float64)
+            / 1e6
+        )
+    if "SEMP_VAL" in person.columns:
+        raw["asec_puf"] = person["SEMP_VAL"].fillna(0.0).to_numpy(np.float64)
+    report: dict = {"raw_columns": sorted(raw)}
+    channel = (
+        person["person_support_channel"].astype(str).to_numpy()
+        if "person_support_channel" in person.columns
+        else np.full(len(person), "all")
+    )
+    for name, amount in raw.items():
+        rows = spine == name
+        for part in sorted(set(channel[rows])):
+            sel = rows & (channel == part)
+            w, b, s, r = weight[sel], base[sel], sstb[sel], amount[sel]
+            classes = {
+                "base_matches_raw_sstb_zero": (np.abs(b - r) <= 1) & (s == 0),
+                "base_matches_raw_sstb_nonzero": (np.abs(b - r) <= 1) & (s != 0),
+                "sstb_matches_raw_base_zero": (b == 0)
+                & (np.abs(s - r) <= 1)
+                & (s != 0),
+                "sum_matches_raw_both_nonzero": (np.abs(b + s - r) <= 1)
+                & (b != 0)
+                & (s != 0),
+                "raw_zero_sstb_nonzero": (r == 0) & (s != 0),
+            }
+            matched = np.zeros(len(r), dtype=bool)
+            entry: dict = {"records": int(sel.sum())}
+            for label, mask in classes.items():
+                mask = mask & ~matched
+                matched |= mask
+                entry[label] = _semp_cell(mask, w, b, s, r)
+            entry["other"] = _semp_cell(~matched, w, b, s, r)
+            entry["all"] = _semp_cell(np.ones(len(r), dtype=bool), w, b, s, r)
+            report[f"{name}:{part}"] = entry
+    return report
+
+
+def _semp_cell(mask, w, base, sstb, raw) -> dict:
+    return {
+        "records": int(mask.sum()),
+        "weighted_raw": float((w[mask] * raw[mask]).sum()),
+        "weighted_base": float((w[mask] * base[mask]).sum()),
+        "weighted_sstb": float((w[mask] * sstb[mask]).sum()),
+    }
 
 
 @app.function(

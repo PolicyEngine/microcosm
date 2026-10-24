@@ -190,16 +190,21 @@ def test_household_measures_add_donor_only_income_to_donor_records_only() -> Non
     )
     measures, report = ct.household_measures(household, person, np.array([2.0, 3.0]))
     acs, donor = measures.iloc[0], measures.iloc[1]
-    assert acs["earnings"] == 1_230.0
+    # ACS: wages + base (SEMP); the SSTB and farm leaves there are donor draws.
+    assert acs["earnings"] == 1_200.0
     assert donor["earnings"] == 1_243.0
-    assert acs["household_income_approx"] == 1_230.5
+    assert acs["household_income_approx"] == 1_200.5
     assert donor["household_income_approx"] == 1_243.0 + 110.0 + 0.5
     assert acs["n_persons"] == 1 and donor["n_persons"] == 2
     assert "farm_income" not in report["earnings_columns"]
     assert "farm_income" not in report["other_income_columns_carried"]
     totals = report["weighted_component_totals_by_spine"]
     assert totals["farm_operations_income"] == {ct.ACS_SPINE: 0.0, ct.DONOR_SPINE: 12.0}
-    assert totals["sstb_self_employment_income_before_lsr"][ct.ACS_SPINE] == 60.0
+    assert totals["sstb_self_employment_income_before_lsr"] == {
+        ct.ACS_SPINE: 0.0,
+        ct.DONOR_SPINE: 90.0,
+    }
+    assert report["acs_semp_check"] == {"checked": False}
 
 
 @settings(max_examples=100, deadline=None)
@@ -209,12 +214,13 @@ def test_household_measures_add_donor_only_income_to_donor_records_only() -> Non
             st.integers(0, 5),
             st.floats(-1e5, 1e6, allow_nan=False, allow_subnormal=False),
             st.floats(-1e5, 1e6, allow_nan=False, allow_subnormal=False),
+            st.floats(-1e5, 1e6, allow_nan=False, allow_subnormal=False),
         ),
         min_size=1,
         max_size=30,
     )
 )
-def test_acs_earnings_ignore_donor_only_leaves(people) -> None:
+def test_acs_earnings_are_wages_plus_base_self_employment(people) -> None:
     household = pd.DataFrame(
         {
             "household_id": np.arange(6),
@@ -225,16 +231,27 @@ def test_acs_earnings_ignore_donor_only_leaves(people) -> None:
         {
             "person_household_id": owner,
             "employment_income_before_lsr": wage,
-            "farm_operations_income": farm,
-            "partnership_income": farm,
+            "self_employment_income_before_lsr": base,
+            "sstb_self_employment_income_before_lsr": draw,
+            "farm_operations_income": draw,
+            "partnership_income": draw,
         }
-        for owner, wage, farm in people
+        for owner, wage, base, draw in people
     ]
     measures, _ = ct.household_measures(household, _people(rows), np.ones(6))
-    zeroed = [{**row, "farm_operations_income": 0.0} for row in rows]
-    zeroed = [{**row, "partnership_income": 0.0} for row in zeroed]
-    without, _ = ct.household_measures(household, _people(zeroed), np.ones(6))
     acs = slice(0, 3)
+    # ACS earnings are exactly wages + the base leaf, whatever the donor draws.
+    expected = np.zeros(6)
+    for owner, wage, base, _draw in people:
+        expected[owner] += wage + base
+    assert np.allclose(measures["earnings"].to_numpy()[acs], expected[acs], atol=1e-6)
+    leaves = (
+        "sstb_self_employment_income_before_lsr",
+        "farm_operations_income",
+        "partnership_income",
+    )
+    zeroed = [{**row, **dict.fromkeys(leaves, 0.0)} for row in rows]
+    without, _ = ct.household_measures(household, _people(zeroed), np.ones(6))
     assert np.array_equal(
         measures["earnings"].to_numpy()[acs], without["earnings"].to_numpy()[acs]
     )
@@ -242,6 +259,58 @@ def test_acs_earnings_ignore_donor_only_leaves(people) -> None:
         measures["household_income_approx"].to_numpy()[acs],
         without["household_income_approx"].to_numpy()[acs],
     )
+
+
+def test_household_measures_refuse_acs_base_that_is_not_semp() -> None:
+    household = pd.DataFrame(
+        {"household_id": [1, 2], "household_spine": [ct.ACS_SPINE, ct.DONOR_SPINE]}
+    )
+    rows = [
+        # 1,000 * 1.019518 = 1,019.518: the base leaf matches SEMP * ADJINC.
+        {
+            "person_household_id": 1,
+            "self_employment_income_before_lsr": 1_019.518,
+            "SEMP": 1_000.0,
+            "ADJINC": 1_019_518.0,
+        },
+        # Donor rows carry no ACS SEMP and are not checked.
+        {
+            "person_household_id": 2,
+            "self_employment_income_before_lsr": 5_000.0,
+            "SEMP": np.nan,
+            "ADJINC": np.nan,
+        },
+    ]
+    _, report = ct.household_measures(household, _people(rows), np.ones(2))
+    assert report["acs_semp_check"] == {"checked": True, "acs_persons": 1}
+    rows[0]["sstb_self_employment_income_before_lsr"] = 400.0
+    _, report = ct.household_measures(household, _people(rows), np.ones(2))
+    assert report["acs_semp_check"]["checked"]
+    rows[0]["self_employment_income_before_lsr"] = 1_419.518
+    with pytest.raises(ValueError, match="not SEMP"):
+        ct.household_measures(household, _people(rows), np.ones(2))
+
+
+def test_group_quarters_leave_the_household_universe_only_on_acs() -> None:
+    household = pd.DataFrame(
+        {
+            "household_id": [1, 2, 3, 4],
+            "household_spine": [ct.ACS_SPINE] * 3 + [ct.DONOR_SPINE],
+            "TYPEHUGQ": [1.0, 2.0, 3.0, 2.0],
+        }
+    )
+    rows = [{"person_household_id": i} for i in (1, 2, 3, 4)]
+    measures, report = ct.household_measures(
+        household, _people(rows), np.array([1.0, 2.0, 3.0, 4.0])
+    )
+    assert measures["in_household_universe"].tolist() == [1.0, 0.0, 0.0, 1.0]
+    gq = report["group_quarters"]
+    assert gq["typehugq_2"] == {
+        "records": 1,
+        "weighted_records": 2.0,
+        "weighted_persons": 2.0,
+    }
+    assert gq["typehugq_3"]["weighted_records"] == 3.0
 
 
 def test_household_measures_refuse_unknown_spines_and_orphans() -> None:
@@ -280,6 +349,9 @@ def test_design_rows_share_out_state_totals(sources) -> None:
         ct.read_acs_county(sources["acs5_2024_B11001_county"], "B11001_001E").index
     )
     households = _synthetic_households(counties)
+    # Group quarters count toward population and wages but no household family.
+    universe = (np.arange(len(households)) % 17 != 0).astype(float)
+    households["in_household_universe"] = universe
     w0 = households["weight"].to_numpy()
     design = ct.build_design(households, sources)
     table = ct.fit_table(design["records"], design["matrix"], w0, w0)
@@ -288,9 +360,14 @@ def test_design_rows_share_out_state_totals(sources) -> None:
     # SOI publishes no Kalawao row, so its rows share out Hawaii without it.
     soi_covered = county != "15005"
     for family, measure, inside in (
-        ("county_households", np.ones(len(households)), everywhere),
+        ("county_households", universe, everywhere),
         ("county_population", households["n_persons"].to_numpy(), everywhere),
-        ("county_earnings", households["earnings"].to_numpy(), everywhere),
+        ("county_earnings", households["earnings"].to_numpy() * universe, everywhere),
+        (
+            "county_income",
+            households["household_income_approx"].to_numpy() * universe,
+            everywhere,
+        ),
         (
             "county_soi_wages",
             households["employment_income_before_lsr"].to_numpy(),
@@ -434,9 +511,19 @@ def test_holdout_baseline_rescales_release_by_driver_ratio() -> None:
     assert earning["baseline"]["median_abs_rel_error"] == pytest.approx(0.0)
     assert earning["calibrated"]["median_abs_rel_error"] == pytest.approx(0.04)
     assert earning["release"]["median_abs_rel_error"] == pytest.approx(0.2)
-    # no county_earnings rows: the wages baseline has no driver to rescale by
+    assert earning["counties"] == 6
+    # A county whose driver has no release value leaves every column.
+    table.loc[
+        (table["family"] == "county_households") & (table["geography"] == "01001"),
+        "before",
+    ] = 0.0
+    assert ct.holdout_baselines(table)["county_earning_households"]["counties"] == 5
+    # no county_earnings rows: the wages baseline has no driver to rescale by,
+    # so no county is scored in any column
     wages = out["county_soi_wages"]
-    assert np.isnan(wages["baseline"]["median_abs_rel_error"])
+    assert wages["counties"] == 0
+    for column in ("baseline", "calibrated", "release"):
+        assert np.isnan(wages[column]["median_abs_rel_error"])
 
 
 def test_fit_vs_published_scales_soi_thousands() -> None:

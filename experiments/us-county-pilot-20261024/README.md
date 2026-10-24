@@ -16,8 +16,9 @@ Chronicle source packages) is separate work.
 
 `pilot.py` pins every input below by sha256 (`HF_SHA256`, `INPUT_SHA256`), reads
 the Chronicle files at revision `200bf6d5` and refuses any other bytes. Each
-run's `summary.json` records the sha256 of every input it used and the release
-identity.
+run's `summary.json` records the sha256 of its calibration inputs, and under
+`extract` the release identity, the pinned sha256 of the four Connecticut files
+and the sha256 of the extract's `households.parquet` and `lean.h5`.
 
 | Input | Identity |
 | --- | --- |
@@ -63,33 +64,57 @@ share and the state total over the counties it publishes.
 
 | Family | Role | Measure (household weight) | Public source |
 | --- | --- | --- | --- |
-| `county_households` | train | 1 | ACS B11001_001E |
-| `county_population` | train | persons in household | PEP V2024, July 2024 |
-| `county_earnings` | train | earnings (below) | ACS B19061_001E |
-| `cd_households`, `cd_population` | train (hold) | 1, persons | the district's own total under `w0` |
-| `county_earning_households` | holdout | earnings ≠ 0 | ACS B19051_002E |
-| `county_soi_wages` | holdout | wages (stored input) | SOI A00200 (no Kalawao row) |
-| `county_income` | holdout | earnings + other stored income (approximate) | ACS B19025_001E |
+| `county_households` | train | 1 per household (not group quarters) | ACS B11001_001E |
+| `county_population` | train | persons, group quarters included | PEP V2024, July 2024 |
+| `county_earnings` | train | earnings (below), households only | ACS B19061_001E |
+| `cd_households`, `cd_population` | train (hold) | households, persons | the district's own total under `w0` |
+| `county_earning_households` | holdout | households with earnings ≠ 0 | ACS B19051_002E |
+| `county_soi_wages` | holdout | wages (stored input), everyone | SOI A00200 (no Kalawao row) |
+| `county_income` | holdout | earnings + other stored income (approximate), households only | ACS B19025_001E |
+
+ACS household tables exclude group quarters and PEP counts everyone, so the
+release's ACS group-quarters records (`TYPEHUGQ` 2 and 3: 183,206 records,
+1.03 million weighted, 0.8% of the release's 122.5 million weighted records)
+count toward population and SOI wages only. The median-income comparison also
+uses households only.
 
 **Earnings** is ACS B19061's concept, wages plus all self-employment, summed
 over a household's people from stored inputs (`county_targets.household_measures`):
 
-- `employment_income_before_lsr`, `self_employment_income_before_lsr` and
-  `sstb_self_employment_income_before_lsr` on every record. The US build's QBI
-  reconciliation (`us_runtime/qbi_inputs.py`) moves a person's whole Schedule
-  C amount to the SSTB leaf when the business is an SSTB, so both leaves are
-  needed.
-- `farm_operations_income` on donor (`asec_puf`) records only. It comes from
-  ASEC FRSE_VAL or PUF E02100 (`us_runtime/farm_business_income.py`). On ACS
-  records the base self-employment leaf holds SEMP, which already includes
-  farm self-employment.
+- On ACS records: `employment_income_before_lsr` and
+  `self_employment_income_before_lsr`. The base leaf is `SEMP * ADJINC / 1e6`
+  (`operator_boundary.py`), which already includes farm and partnership
+  self-employment. The extract refuses to run unless that identity holds to
+  the dollar on every ACS person, and it does on all 3,422,888.
+- On donor (`asec_puf`) records, also `sstb_self_employment_income_before_lsr`
+  and `farm_operations_income`. On the PUF tax-detail channel the QBI
+  reconciliation (`us_runtime/qbi_inputs.py`) moves a person's whole Schedule C
+  amount to the SSTB leaf when the business is an SSTB, so both leaves are
+  needed; farm self-employment is ASEC FRSE_VAL or PUF E02100
+  (`us_runtime/farm_business_income.py`). On ASEC-channel donors the base leaf
+  equals `SEMP_VAL` on every record and the SSTB leaf is zero.
+
+The ACS records' SSTB and farm leaves are not added: they are donor draws
+stacked on top of SEMP. The income audit (`pilot.py --step audit`,
+`out/audit_semp_report.json`) shows the base leaf equal to SEMP on every ACS
+person while 123,226 of them also carry an SSTB value, $202.6B under the
+release weights. An earlier version of this pilot added that leaf and so
+counted those dollars twice; the release itself carries the same stacking into
+PolicyEngine-US, whose `total_self_employment_income` adds both leaves
+(microcosm#1380).
 
 Weighted national totals under the release weights (`out/extract_run1_report.json`):
-wages $10,654B, base self-employment $468B, SSTB self-employment $456B, donor
-farm $15B; earnings $11,593B. The household income approximation adds the 20
-other income inputs the release stores, plus donor-only `partnership_income`
-and `s_corp_income` (ACS SEMP already counts partnership income). TANF and
-public assistance income are absent from the release.
+wages $10,654B, ACS base self-employment $158B, donor base and SSTB
+self-employment $563B, donor farm $15B; earnings $11,391B. Two gaps remain.
+Donor earnings omit `partnership_self_employment_net_earnings` ($53.0B, all on
+the PUF channel, 0.7% of donor earnings), which ACS SEMP counts; adding it
+would count it twice in the income approximation, where donor
+`partnership_income` already holds most of it. And `s_corp_income` is zero on
+every record (the release keeps combined income in `partnership_income`). The
+household income approximation adds the 20 other income inputs the release
+stores, plus donor-only `partnership_income` (ACS SEMP already counts
+partnership income). TANF and public assistance income are absent from the
+release.
 
 Solver settings match the ACS-local release: Adam, learning rate 0.02,
 conserved mass, `max_weight_ratio` 5 relative to the release weights,
@@ -123,51 +148,63 @@ Tests run in CI with the engine-free job:
 `packages/microcosm-build/tests/engine_free/us/test_us_county_pilot.py`, on
 small cuts of the pinned sources in
 `packages/microcosm-build/tests/fixtures/us_county_pilot/`. They cover the
-source readers, the CT mapping, share-target invariants, the donor-only
-earnings concept, the design's state totals, clone invariance of ESS, and the
-drift, baseline and published-level metrics.
+source readers, the CT mapping, share-target invariants, the earnings concept
+(ACS base self-employment must equal SEMP; donor-only leaves never reach ACS
+records), group quarters leaving the household universe, the design's state
+totals, clone invariance of ESS, and the drift, baseline and published-level
+metrics.
 
 ## Results (2026-10-24)
 
 Every run starts from the release weights and trains 10,290 rows for 800 epochs,
-taking 14 to 18 minutes on Modal with the four runs in parallel. "Before" is
+taking 17 to 24 minutes on Modal with the four runs in parallel. "Before" is
 the release itself. Errors are absolute relative errors across counties (3,144
 rows per county family, 436 per district family), measured against each row's
 target: the county's published share of its state, scaled to the release's
 state total (see "Target design"). `out/<run>/report.md` holds each run's full
-tables (`report.py`). These runs supersede an earlier set that left SSTB
-self-employment and donor farm income out of earnings.
+tables (`report.py`).
+
+These runs supersede two earlier sets, kept in `out/v1/` and `out/v2/`. The
+first left SSTB self-employment and donor farm income out of earnings. The
+second added the ACS records' SSTB leaf, counting about $203B twice (see
+"Target design"), and counted group-quarters records as households. The second
+set showed the looser loss cap moving weight from donor to ACS records (donor
+weight share 47%, source-household ESS 2.1 times the release's). With the
+corrected measures that shift mostly disappears (finding 5). This pilot doesn't
+separate which of the two corrections removed it.
 
 | | Release | Run 1 | Run 2 | Run 3 | Run 4 |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Per-record weight cap (× release weight) | | 5 | 20 | 5 | 20 |
 | Target loss cap | | 1 | 1 | 10 | 10 |
 | **Trained, share of counties within 10%** | | | | | |
-| Households (B11001) | 13.7% | 92.8% | 97.9% | 94.2% | 99.1% |
-| Population (PEP V2024) | 13.5% | 90.4% | 97.4% | 91.2% | 98.4% |
-| Aggregate earnings (B19061) | 9.5% | 89.7% | 95.4% | 93.0% | 98.9% |
-| District households, held | 100% | 96.6% | 97.7% | 95.9% | 96.8% |
+| Households (B11001) | 13.6% | 92.3% | 97.9% | 93.7% | 99.1% |
+| Population (PEP V2024) | 13.5% | 91.0% | 97.6% | 92.0% | 98.6% |
+| Aggregate earnings (B19061) | 9.2% | 88.4% | 95.1% | 91.7% | 98.6% |
+| District households, held | 100% | 96.1% | 97.7% | 95.6% | 96.6% |
 | **Achieved state totals vs release, median (max) drift** | | | | | |
-| Households | | 0.2% (2.5%) | 0.2% (2.4%) | 0.2% (2.1%) | 0.1% (2.3%) |
-| Population | | 0.1% (1.5%) | 0.1% (1.7%) | 0.2% (1.9%) | 0.1% (0.6%) |
-| Earnings | | 1.2% (7.9%) | 1.3% (8.0%) | 0.1% (1.3%) | 0.0% (0.3%) |
+| Households | | 0.2% (3.0%) | 0.1% (2.5%) | 0.3% (2.6%) | 0.1% (2.4%) |
+| Population | | 0.1% (1.7%) | 0.1% (1.7%) | 0.1% (1.8%) | 0.1% (0.5%) |
+| Earnings | | 1.3% (7.8%) | 1.4% (8.3%) | 0.1% (1.5%) | <0.1% (0.3%) |
 | **Weights** | | | | | |
-| Total Kish ESS, by source household | 10,995 | 11,472 | 10,826 | 23,038 | 19,617 |
-| Total Kish ESS, by row | 13,631 | 13,753 | 12,944 | 27,570 | 23,568 |
-| Donor (asec_puf) weight share | 68.0% | 63.6% | 65.2% | 47.2% | 50.7% |
-| Median county ESS, among the 3,140 counties with records | 8.0 | 11.6 | 11.1 | 13.1 | 12.5 |
-| Counties graded A / B / C / D | 2 / 41 / 456 / 2,645 | 0 / 22 / 460 / 2,662 | 0 / 15 / 429 / 2,700 | 3 / 72 / 590 / 2,479 | 2 / 51 / 560 / 2,531 |
-| Population share in A–C counties | 48.3% | 39.1% | 35.5% | 61.6% | 57.9% |
-| Counties of 250,000+ graded D (of 292) | 169 | 209 | 221 | 98 | 121 |
+| Total Kish ESS, by source household | 10,995 | 13,253 | 12,582 | 14,558 | 13,289 |
+| Total Kish ESS, by row | 13,631 | 15,937 | 15,083 | 17,480 | 15,941 |
+| Donor (asec_puf) weight share | 68.0% | 59.8% | 61.1% | 57.3% | 59.7% |
+| Median county ESS, among the 3,140 counties with records | 8.0 | 11.8 | 11.6 | 12.5 | 12.0 |
+| Median ESS of the 292 counties of 250,000+ | 25.1 | 25.4 | 24.1 | 27.0 | 25.3 |
+| Counties graded A / B / C / D | 2 / 41 / 456 / 2,645 | 1 / 28 / 495 / 2,620 | 0 / 24 / 472 / 2,648 | 1 / 31 / 530 / 2,582 | 0 / 27 / 496 / 2,621 |
+| Population share in A–C counties | 48.3% | 46.3% | 43.2% | 50.2% | 46.2% |
+| Counties of 250,000+ graded D (of 292) | 169 | 180 | 192 | 163 | 180 |
 
-The largest state drift in runs 1 and 2 is Wyoming's earnings (+7.9% and
-+8.0%). The looser loss cap all but removes earnings drift.
+The largest state drift in runs 1 and 2 is Wyoming's earnings (+7.8% and
++8.3%). The looser loss cap all but removes earnings drift.
 
-The median record's weight ratio (calibrated over release weight) is 0.41 in
-run 1, 0.27 in run 2, 2.3 in run 3 and 1.9 in run 4. Under conserved mass, a
-median above 1 means weight moved from the few donor records to the many ACS
-records. Run 4 lets a few records rise further: its 99.9th percentile ratio is
-19.7, against run 3's cap of 5.
+The median record's weight ratio (calibrated over release weight) is 0.74 in
+run 1, 0.59 in run 2, 0.94 in run 3 and 0.67 in run 4. Weight moves from
+donor to ACS records in total, but onto a minority of them: in run 1 the ACS
+records' share of weight rises from 32.0% to 40.2% while 69% of them lose
+weight. Runs 2 and 4 let a few records rise further: their 99.9th percentile
+ratios are 18.3 and 19.3, against the cap of 5 in runs 1 and 3.
 
 ### Held-out families against a rescaling baseline
 
@@ -176,44 +213,50 @@ counties as the trained families and are closely related measures. To show
 what reweighting adds, each is compared with a baseline that changes no
 weights. The baseline multiplies each county's release value by its trained
 driver's target-to-release ratio: households for households with earnings,
-earnings for SOI wages and household income.
+earnings for SOI wages and household income. Every column is scored on the
+counties where the baseline is defined: 3,140 for households with earnings
+and 3,138 for the other two (no records, or no earnings, leaves the ratio
+undefined; SOI has no Kalawao row).
 
 | Median county error | Release | Baseline | Run 1 | Run 2 | Run 3 | Run 4 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Households with earnings (B19051) | 58.0% | 12.6% | 10.4% | 10.1% | 10.1% | 9.9% |
-| Wages (SOI A00200) | 58.0% | 8.4% | 8.3% | 8.1% | 8.0% | 8.1% |
-| Household income (B19025, approximate concept) | 56.9% | 17.6% | 13.8% | 13.5% | 12.4% | 12.0% |
+| Households with earnings (B19051) | 58.9% | 12.8% | 10.5% | 10.2% | 10.3% | 10.0% |
+| Wages (SOI A00200) | 57.9% | 8.1% | 8.2% | 8.1% | 8.0% | 7.8% |
+| Household income (B19025, approximate concept) | 58.0% | 17.5% | 13.9% | 13.1% | 13.0% | 12.6% |
 | **Share of counties within 10%** | | | | | | |
-| Households with earnings | 12.2% | 42.1% | 48.0% | 49.6% | 49.6% | 50.3% |
-| Wages | 9.0% | 57.6% | 56.6% | 58.2% | 58.2% | 59.7% |
-| Household income | 9.3% | 28.6% | 36.0% | 36.7% | 40.9% | 41.4% |
+| Households with earnings | 12.2% | 41.4% | 48.0% | 49.4% | 49.1% | 50.0% |
+| Wages | 9.1% | 58.1% | 57.2% | 57.8% | 58.6% | 59.2% |
+| Household income | 9.4% | 29.3% | 36.5% | 38.4% | 39.5% | 40.5% |
 
-Most of the fall from about 57% comes from getting each county's size right,
-which the baseline does too. Reweighting adds a little on households with
+Most of the fall from about 58% comes from getting each county's size right,
+which the baseline does too. Reweighting adds 2–3 points on households with
 earnings, nothing beyond the baseline on SOI wages, and the most on household
-income, where it narrows the median error by 4–6 points.
+income, where it narrows the median error by 4–5 points.
 
 ### Against published levels
 
 Because the targets are shares of the release's own state totals, the tables
 above measure distribution within states, not agreement with published county
 levels. The release's state totals differ from the published state sums by a
-median of 6.5% for households, 1.9% for population and 3.9% for earnings.
-Nationally the release has 5.2% fewer households, 2.6% less population and
-0.1% less earnings. Measured against the raw published county levels instead:
+median of 7.2% for households, 1.9% for population and 5.5% for earnings.
+Nationally the release has 6.0% fewer households than ACS B11001 (121.5
+million against 129.2 million), 2.6% less population than PEP and 1.9% less
+earnings than B19061. The household gap is not a vintage effect: the release
+is a 2024 file and B11001 averages 2020–2024, over which households grew.
+Measured against the raw published county levels instead:
 
 | Share of counties within 10% of the published level | Release | Run 1 | Run 2 | Run 3 | Run 4 |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Households (B11001) | 12.9% | 81.8% | 87.3% | 84.0% | 89.4% |
-| Population (PEP V2024) | 13.4% | 89.1% | 97.1% | 89.9% | 98.2% |
-| Aggregate earnings (B19061) | 9.0% | 88.9% | 95.2% | 92.3% | 98.8% |
-| Households with earnings (B19051), held out | 12.1% | 43.2% | 43.1% | 47.9% | 47.8% |
-| Household income (B19025), held out | 10.4% | 45.5% | 47.0% | 46.6% | 48.0% |
+| Households (B11001) | 12.6% | 70.5% | 76.5% | 70.5% | 76.6% |
+| Population (PEP V2024) | 13.4% | 89.9% | 97.4% | 90.8% | 98.5% |
+| Aggregate earnings (B19061) | 8.5% | 85.5% | 93.0% | 88.8% | 96.4% |
+| Households with earnings (B19051), held out | 12.2% | 45.5% | 46.5% | 46.9% | 47.8% |
+| Household income (B19025), held out | 10.2% | 44.7% | 46.9% | 46.8% | 48.3% |
 
 SOI wages are TY2022 dollars against 2024 weights, so their level error mixes
 in two years of wage growth: the release's national total is 10.6% above
-SOI's. Median county error falls from 56% to 13.1–13.8%. The approximate
-income concept runs 12.7% above ACS B19025 nationally; the median county's
+SOI's. Median county error falls from 56% to 14.3–14.7%. The approximate
+income concept runs 11.2% above ACS B19025 nationally; the median county's
 approximate weighted median household income is 32% from ACS B19013 before
 calibration and 22–23% after.
 
@@ -221,15 +264,16 @@ calibration and 22–23% after.
 
 1. **The release's counties are placeholders, not estimates.** Each household's
    county is a population-weighted draw inside its PUMA, and the weights were
-   never calibrated below the district. The median county is 54–57% off on
-   households, population and earnings. Calibration brings 89.7–99.1% of
+   never calibrated below the district. The median county is 54–59% off on
+   households, population and earnings. Calibration brings 88.4–99.1% of
    counties within 10% of their within-state share targets on every trained
-   family (81.8–98.8% against published levels). District holds stay within
-   about 0.2% at the median, and achieved state totals within 0.0–1.3% at the
-   median.
+   family. Against published levels it's 70.5–98.5%, lowest for households,
+   where the release itself is 6.0% short nationally. District holds stay
+   within about 0.2% at the median, and achieved state totals within 0.1–1.4%
+   at the median.
 2. **Held-out families improve, mostly through county size.** Median county
    error on households with earnings, SOI wages and household income falls
-   from 57–58% to 8–14%. A rescaling baseline that changes no weights gets to
+   from 58–59% to 8–14%. A rescaling baseline that changes no weights gets to
    8–18%, so this is evidence that the trained county totals are right, and
    only partly evidence of better within-county composition: reweighting
    beats the baseline on household income and households with earnings, and
@@ -242,21 +286,40 @@ calibration and 22–23% after.
    hold 31%. Most counties' precision is set by a handful of heavy donor
    records, and that reaches large counties too: 169 of the 292 counties with
    250,000 or more people have an ESS below 30 under the release weights.
-4. **The release's loss cap hides the hardest counties.** Capped MAPE gives a
-   row no gradient once its error passes the cap. 297 counties (9.4%) start
-   more than 100% off on households and 393 on earnings. Under the release's
-   cap of 1 (run 1), 49 counties are still more than 100% off on households
-   after 800 epochs (0.15% of the population) and 117 on earnings (1.8%). A
-   cap of 10 (run 3) leaves one county, Culberson TX (10 records), in each
-   family. It also shifts weight from donor to ACS records: the donor weight
-   share falls from 68.0% to 47.2%, source-household ESS rises 2.1 times, and
-   the population share in counties with ESS of 30 or more rises from 48% to
-   62%.
-5. **The 5× per-record cap binds.** Raising it to 20× (run 2) lifts the
-   trained families to 95–98% within 10%, but ESS falls slightly. With the
-   looser loss cap as well (run 4), 98–99% are within 10% and source-household
-   ESS is 1.8 times the release's, short of run 3's 2.1.
-6. **Four counties have no records:** Arthur NE (31009), Kenedy TX (48261),
+4. **Calibrating to county totals doesn't make large counties more
+   reliable.** Total source-household ESS rises 14–32% and the median county's
+   ESS from 8.0 to 11.6–12.5, but the gain is in small and mid-sized counties.
+   The median ESS of the 292 counties of 250,000+ stays at 24–27. Under the
+   release's settings (run 1), 180 of them are graded D, against 169 before,
+   and the population share in A–C counties falls from 48.3% to 46.3%. Only
+   run 3 improves both, and only slightly: 163 graded D, 50.2% in A–C counties.
+5. **Rows past the loss cap get no gradient, and the release's cap leaves
+   many there.** Under capped MAPE a row whose error passes the cap adds a
+   constant to the loss (`microcosm.calibrate.diagnostics.past_cap_census`).
+   At the start, 988 trained county rows are more than 100% off, past the
+   release's cap of 1: 296 households, 299 population and 393 earnings rows,
+   in 534 counties (17.0%). In run 1, 770 of them come back inside the cap
+   through records they share with live rows. The other 218, in 149 counties,
+   stay past it and 72 end worse than they started. Those counties hold 0.15%
+   of the population on households and 1.8% on earnings. Under a cap of 10,
+   31 rows in 24 counties start past it and 28 recover. The other three are
+   Culberson TX's. One donor record holds 19,038 of the county's 19,117
+   weighted households, against a target of 810. With no gradient from its
+   county rows it ends at 43,223 in run 3, 52 times the target. No run pushes
+   a row from inside the cap to past it. Unlike in the superseded runs, the
+   looser cap barely changes weight concentration: donor weight share 57.3%
+   against run 1's 59.8%, source-household ESS 14,558 against 13,253.
+6. **The 5× per-record cap binds on fit, not on reliability.** Raising it to
+   20× (run 2) lifts the trained families to 95–98% within 10%, but ESS
+   falls (12,582 against run 1's 13,253) and 192 large counties are graded D.
+   With the looser loss cap as well (run 4), 98.6–99.1% are within 10% at
+   run 1's ESS.
+7. **The release counts ACS self-employment twice.** ACS records carry a
+   donor SSTB self-employment draw on top of their SEMP: 123,226 ACS persons,
+   $202.6B under the release weights, more than the $158.5B ACS base leaf.
+   PolicyEngine-US 2.2.1 adds both in `total_self_employment_income` and in
+   gross income (microcosm#1380). This pilot counts SEMP only.
+8. **Four counties have no records:** Arthur NE (31009), Kenedy TX (48261),
    King TX (48269) and Loving TX (48301), about 1,050 people. Two more have
    records but none with earnings: Kalawao HI (15005) and Borden TX (48033).
    SOI publishes no Kalawao row.
@@ -265,7 +328,7 @@ calibration and 22–23% after.
 
 - The solve holds only district households and population. It omits the
   release's national, state and district SOI and administrative families, so
-  the donor-to-ACS shift in runs 3 and 4 may cost fit on tax targets (top
+  the donor-to-ACS shift in these runs may cost fit on tax targets (top
   incomes, capital gains) that donor records carry. Only a solve that trains
   county rows with every release family can measure that, and training them
   together doesn't by itself guarantee either fit: it needs measured
@@ -276,6 +339,8 @@ calibration and 22–23% after.
   totals. The deliverable's 2026 and 2027 files need aged state totals.
 - The income concept for B19025 and the median comparison is approximate. It
   lacks TANF and public assistance income, and donor records carry no SSI.
+  Donor earnings omit partnership self-employment ($53.0B), which ACS SEMP
+  counts.
 - The reliability grades are provisional ESS bands.
 - County rows rescale published shares to the release's state totals. The fit
   tables measure within-state distribution; the "Against published levels"
@@ -283,13 +348,23 @@ calibration and 22–23% after.
 
 ### For the production rung
 
+- Fix microcosm#1380 first, and gate it: on ACS persons, base plus SSTB
+  self-employment equals `SEMP * ADJINC / 1e6`. County earnings rows need
+  that.
+- Keep ACS group quarters out of household-universe rows (households,
+  earnings, income) and in population rows, as this pilot does.
 - Train county rows with every release family. Report the donor weight share,
   the tax-target fit and achieved state totals beside county fit and county
   ESS, and set acceptance thresholds for each.
 - Use a loss cap well above 1 for county rows, or warm-start them in stages.
-  The release's cap leaves about 9% of counties without gradient at the start.
+  The release's cap leaves 988 trained county rows in 534 counties (17%)
+  without gradient at the start. Report the past-cap census, and treat rows
+  that end worse than they started, like Culberson's, as failures to fix
+  rather than accept.
 - Guarantee support for every county. The four empty counties need records,
-  for example donor households cloned from their PUMA at split weight.
-- Treat donor concentration as a design choice. Run 3 cuts the donor weight
-  share from 68% to 47% and doubles source-household ESS, but the tax-target
-  cost must be measured first.
+  and a county whose weight sits on one donor record, like Culberson, needs
+  more.
+- Treat county reliability as a property of the release's weights, not of the
+  county solve. Reweighting to county totals leaves most large counties below
+  an ESS of 30, so the County Files' grades will mostly reflect how
+  concentrated the release's own weights are.
