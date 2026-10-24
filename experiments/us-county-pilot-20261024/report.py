@@ -5,6 +5,11 @@ Fetch a run's outputs from the volume, then render::
     modal volume get lwi-county-pilot run1 experiments/us-county-pilot-20261024/out/
     python experiments/us-county-pilot-20261024/report.py \
         experiments/us-county-pilot-20261024/out/run1
+
+When the run folder also holds ``weights.npy`` and the extract's
+``households.parquet`` is given as a second argument, the report adds the
+weight share and Kish ESS of each household spine, nationally and in the
+largest counties.
 """
 
 from __future__ import annotations
@@ -13,6 +18,7 @@ import json
 import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 FAMILY_LABELS = {
@@ -31,7 +37,46 @@ def pct(value: float) -> str:
     return f"{100 * value:.1f}%"
 
 
-def render(run: Path) -> str:
+def kish(weights: np.ndarray) -> float:
+    return float(weights.sum() ** 2 / (weights**2).sum())
+
+
+def spine_section(run: Path, households_path: Path, largest: int = 5) -> list[str]:
+    households = pd.read_parquet(households_path)
+    before = households["weight"].to_numpy(np.float64)
+    after = np.load(run / "weights.npy")
+    spine = households["household_spine"].astype(str).to_numpy()
+    county = households["county_fips_2023"].astype(str).str.zfill(5).to_numpy()
+    lines = [
+        "",
+        "| Spine | Records | Weight share before | after | Kish ESS before | after |",
+        "| --- | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for name in sorted(set(spine)):
+        mask = spine == name
+        lines.append(
+            f"| {name} | {int(mask.sum()):,} | {pct(before[mask].sum() / before.sum())} | "
+            f"{pct(after[mask].sum() / after.sum())} | {kish(before[mask]):,.0f} | "
+            f"{kish(after[mask]):,.0f} |"
+        )
+    totals = pd.Series(before).groupby(county).sum().nlargest(largest).index
+    lines += [
+        "",
+        "| County | Spine | Records | Weight share after | Kish ESS after |",
+        "| --- | --- | ---: | ---: | ---: |",
+    ]
+    for code in totals:
+        in_county = county == code
+        for name in sorted(set(spine[in_county])):
+            mask = in_county & (spine == name)
+            lines.append(
+                f"| {code} | {name} | {int(mask.sum()):,} | "
+                f"{pct(after[mask].sum() / after[in_county].sum())} | {kish(after[mask]):,.0f} |"
+            )
+    return lines
+
+
+def render(run: Path, households_path: Path | None = None) -> str:
     summary = json.loads((run / "summary.json").read_text())
     per_county = pd.read_csv(run / "per_county.csv", dtype={"county_fips": str})
     lines = [
@@ -106,8 +151,15 @@ def render(run: Path) -> str:
             f"{int(row['records']) if pd.notna(row['records']) else 0} records, "
             f"ESS {row['ess_after']:.0f}"
         )
+    if households_path is not None and (run / "weights.npy").exists():
+        lines += spine_section(run, households_path)
     return "\n".join(lines)
 
 
 if __name__ == "__main__":
-    print(render(Path(sys.argv[1])))
+    print(
+        render(
+            Path(sys.argv[1]),
+            Path(sys.argv[2]) if len(sys.argv) > 2 else None,
+        )
+    )
