@@ -240,13 +240,23 @@ UK_LCFS_OTHER_FUELS_COLUMN = "lcfs_other_fuels"
 #: housing_water_and_electricity_consumption that add nothing to consumption:
 #: liquid fuels (COICOP 04.5.3), central-heating oil and paraffin with bottled
 #: gas, LPG with liquid (María's ruling of 2026-10-22); and solid fuels
-#: (COICOP 04.5.4), coal, coke, wood and peat.
+#: (COICOP 04.5.4), coal, coke, wood and peat. COICOP puts liquefied
+#: hydrocarbons under 04.5.2 (gas), and c45222 is a 04.5.2 code, so ONS's 04.5.3
+#: leaves out the bottled gas the liquid column holds; the receipt reports it
+#: apart (Vahid's review of #1383, item 8). Both columns stay at the diary's
+#: level, about twice ONS's, unlevelled, where electricity and gas are
+#: levelled: no engine formula reads them yet, but a costing on them would come
+#: out near twice ONS's spend.
 UK_LCFS_FUEL_PARTS: Mapping[str, tuple[str, ...]] = MappingProxyType(
     {
         "liquid_fuel_consumption": ("b017", "c45312", "b018", "c45222"),
         "solid_fuel_consumption": ("c45411", "c45412"),
     }
 )
+#: The bottled gas inside the liquid fuels (b018 and its diary line c45222), and
+#: the donor scratch column the split receipt reads it from.
+UK_LCFS_BOTTLED_GAS_PARTS = ("b018", "c45222")
+UK_LCFS_BOTTLED_GAS_COLUMN = "lcfs_bottled_gas"
 UK_LCFS_FUEL_COLUMNS = tuple(UK_LCFS_FUEL_PARTS)
 #: ``donor.attrs`` key of the donor energy-split receipt.
 UK_LCFS_ENERGY_SPLIT_RECEIPT = "donor_energy_split"
@@ -1942,7 +1952,9 @@ def published_fuels_beside_draws(
     Report-only: the donor's figure is its weighted annual diary total at
     diary prices, before the donor is carried to the base year, so it reads
     how much of ONS 04.5.3 and 04.5.4 the survey captures; the frame's is the
-    stage's draws at the stage's weights, at calendar-2024 prices.
+    stage's draws at the stage's weights, at calendar-2024 prices. ONS's
+    04.5.3 leaves out the bottled gas the liquid column holds, so the liquid
+    fuels' donor figure is also given without it (``UK_LCFS_FUEL_PARTS``).
     """
 
     classes = []
@@ -1950,15 +1962,27 @@ def published_fuels_beside_draws(
         value = float(entry["value"])
         donor = float(energy_split[entry["column"]])
         frame = float(frame_totals[entry["column"]])
-        classes.append(
-            {
-                **entry,
-                "donor_at_diary_prices": donor,
-                "donor_over_published": donor / value if value > 0 else None,
-                "frame": frame,
-                "frame_over_published": frame / value if value > 0 else None,
-            }
-        )
+        row = {
+            **entry,
+            "donor_at_diary_prices": donor,
+            "donor_over_published": donor / value if value > 0 else None,
+            "frame": frame,
+            "frame_over_published": frame / value if value > 0 else None,
+        }
+        if entry["column"] == "liquid_fuel_consumption" and "bottled_gas" in (
+            energy_split
+        ):
+            bottled = float(energy_split["bottled_gas"])
+            row["donor_bottled_gas_at_diary_prices"] = bottled
+            row["donor_without_bottled_gas_over_published"] = (
+                (donor - bottled) / value if value > 0 else None
+            )
+            row["concept_note"] = (
+                "COICOP puts liquefied hydrocarbons under 04.5.2 (gas), so ONS's "
+                "04.5.3 leaves out the bottled gas this column holds (María's "
+                "ruling of 2026-10-22)."
+            )
+        classes.append(row)
     return {**published, "classes": classes}
 
 
@@ -3019,6 +3043,11 @@ def donor_energy_split_receipt(household: pd.DataFrame) -> dict[str, Any]:
             column: total(_numeric(household[column]))
             for column in UK_LCFS_FUEL_COLUMNS
         },
+        **(
+            {"bottled_gas": total(_numeric(household[UK_LCFS_BOTTLED_GAS_COLUMN]))}
+            if UK_LCFS_BOTTLED_GAS_COLUMN in household
+            else {}
+        ),
         "fuel_light_and_power": fuel_light_power,
         "parts_over_fuel_light_and_power": over(electricity + gas + other),
         "clipping_over_fuel_light_and_power": over(total(parts - unclipped)),
@@ -3232,6 +3261,9 @@ def derive_energy_from_lcfs(household: pd.DataFrame) -> pd.DataFrame:
     )
     for column, codes in UK_LCFS_FUEL_PARTS.items():
         result[column] = sum(part(code) for code in codes)
+    result[UK_LCFS_BOTTLED_GAS_COLUMN] = sum(
+        part(code) for code in UK_LCFS_BOTTLED_GAS_PARTS
+    )
     result.attrs[UK_LCFS_ACCOUNT_IDENTITY_RECEIPT] = {
         fuel_name: None if share_holding is None else floored_share(share_holding)
         for fuel_name, share_holding in shares.items()

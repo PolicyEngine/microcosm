@@ -1888,6 +1888,49 @@ def test_published_fuels_sit_beside_the_donors_and_the_frames_draws() -> None:
     assert solid["donor_over_published"] is None
     assert solid["frame_over_published"] is None
     assert beside["total"] == published["total"]
+    # ONS's 04.5.3 leaves out the bottled gas the liquid column holds, so the
+    # donor's figure is also given without it (Vahid's review of #1383, 8).
+    assert "donor_bottled_gas_at_diary_prices" not in liquid
+    with_gas = published_fuels_beside_draws(
+        published,
+        {
+            "liquid_fuel_consumption": 1.5e9,
+            "solid_fuel_consumption": 1.0e8,
+            "bottled_gas": 5.0e8,
+        },
+        {"liquid_fuel_consumption": 1.8e9, "solid_fuel_consumption": 2.0e8},
+    )
+    liquid, solid = with_gas["classes"]
+    assert liquid["donor_bottled_gas_at_diary_prices"] == 5.0e8
+    assert liquid["donor_without_bottled_gas_over_published"] == pytest.approx(0.5)
+    assert "04.5.2" in liquid["concept_note"]
+    assert "donor_bottled_gas_at_diary_prices" not in solid
+
+
+def test_the_heating_fuels_are_the_declared_diary_parts() -> None:
+    """Each fuel column's parts, pinned (Vahid's review of #1383, nit 20).
+
+    Liquid holds oil and paraffin with bottled gas (María's ruling of
+    2026-10-22); solid holds coal, coke, wood and peat; hot water, steam and
+    ice (c45511) stays in the housing remainder.
+    """
+
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_BOTTLED_GAS_PARTS,
+        UK_LCFS_FUEL_PARTS,
+        UK_LCFS_OTHER_FUEL_PARTS,
+    )
+
+    assert dict(UK_LCFS_FUEL_PARTS) == {
+        "liquid_fuel_consumption": ("b017", "c45312", "b018", "c45222"),
+        "solid_fuel_consumption": ("c45411", "c45412"),
+    }
+    assert UK_LCFS_BOTTLED_GAS_PARTS == ("b018", "c45222")
+    assert set(UK_LCFS_BOTTLED_GAS_PARTS) <= set(
+        UK_LCFS_FUEL_PARTS["liquid_fuel_consumption"]
+    )
+    drawn = {code for codes in UK_LCFS_FUEL_PARTS.values() for code in codes}
+    assert set(UK_LCFS_OTHER_FUEL_PARTS) - drawn == {"c45511"}
 
 
 def test_report_only_diagnostics_fail_closed_on_ambiguous_rows(monkeypatch) -> None:
