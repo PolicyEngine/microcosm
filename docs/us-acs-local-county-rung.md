@@ -96,23 +96,21 @@ development samples cannot be packaged as releases.
 
 Calibration writes schema-2 `county_reliability.json` next to its calibration
 outputs and includes it in the packaged evidence. Each county reports its
-supporting household rows, distinct `(household_spine, household_source_id)` pairs when
-available, and training/holdout target counts and mean/maximum absolute relative
-errors. `kish_ess` aggregates final weights by those source pairs within each
+supporting household rows, distinct `(household_spine, household_source_id)`
+pairs when available, and training/holdout target counts and mean/maximum
+absolute relative errors. `kish_ess` aggregates final weights by those source pairs within each
 county before calculating ESS; grades use this source ESS. `kish_ess_rows`
 separately labels physical-row ESS, including clones. For example, 200 equal
 donors each split into two clones have source ESS 200 (grade B at adequate fit)
 and row ESS 400; cloning cannot earn grade A. Missing or null source provenance
 makes source ESS unavailable and the grade U. The report binds the run identity,
-calibrated weights,
-and configured county column. Unsupported smoke counties remain explicit with
-zero support and grade `U`.
+calibrated weights, and configured county column. Unsupported smoke counties
+remain explicit with zero support and grade `U`.
 
 For each target, relative error is
 `abs(estimate - target) / max(abs(target), 1)`. The grade uses the maximum error
-across all of the county's training and holdout targets:
-
-The A/B/C/D thresholds are **provisional** and recorded as such in the report.
+across all of the county's training and holdout targets. The A/B/C/D thresholds
+are **provisional** and recorded as such in the report.
 
 | Grade | Minimum source Kish ESS | Maximum error |
 |---|---:|---:|
@@ -124,9 +122,9 @@ The A/B/C/D thresholds are **provisional** and recorded as such in the report.
 
 Rules are evaluated from A through C, then D; a county without holdout evidence
 receives U even if its training fit is good, as does a county without source
-identity. Thus a 10% block holdout can leave
-many counties ungraded when only two concepts are available. At fixed error,
-raising ESS cannot worsen a grade. These are report-only evidence grades;
+identity. Thus a 10% block holdout can leave many counties ungraded when only
+two concepts are available. At fixed error, raising ESS cannot worsen a grade.
+These are report-only evidence grades;
 Kish ESS is not a county standard error or a guarantee of unbiased estimates.
 
 ## Audited feed and remaining input work
@@ -320,3 +318,34 @@ holdout without training leakage, monotone grades, custom county-column
 persistence, state/concept loss budgets, and current-versus-stale report
 packaging. No production materialization, release build, annual projection,
 feed rebuild, or publication was run.
+
+### Review remediation validation (2026-10-23)
+
+Validation used an engine-free environment outside the checkout:
+`UV_PROJECT_ENVIRONMENT=/private/tmp/lwi-county-rung-fixes-engine-free`, with
+`TMPDIR=/private/tmp/claude-501/pytest-tmp`. Two-worker attempts stalled before
+collection and were interrupted; completed runs used `pytest -n 0`, with at
+most two serial test processes active together.
+
+- County solver-profile, fixture and Hypothesis suites: **69 passed**. The
+  first combined run then stopped on **one new regression-fixture failure**
+  (unsorted household IDs). After correcting the fixture, the separate
+  no-county regression recheck passed **all 16 configurations**. The county
+  checks include real autograd and a conserved-mass solve of a 200% initial
+  miss, source-ESS clone invariance, both missing SOI concepts and parents,
+  and the existing Kalawao refusal.
+- Existing release-tool, sparse-district, district-property, target-loss-weight
+  and geography-label suites: **125 passed, 2 skipped**. The optional skips
+  require an explicitly configured pinned Chronicle feed. This includes the
+  legacy resume caller that omits geography arguments; its settings stay
+  historical. Across the completed runs, **210 distinct tests passed** and
+  **2 skipped**.
+- `ruff check .`: passed. `ruff format --check` passed for all **6 changed
+  Python files**. The repository-wide `ruff format --check .` reported **46
+  pre-existing unformatted files**, none overlapping these changes; they
+  were left untouched.
+- `python tools/ci_test_plan.py verify`: passed, **774 test files** in
+  registered directories. `git diff --check`: passed.
+
+No production joint solve or release build was run. The effect on tax targets
+remains unmeasured. No push or publication was performed.

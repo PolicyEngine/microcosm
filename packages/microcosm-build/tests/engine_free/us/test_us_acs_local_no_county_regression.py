@@ -146,7 +146,7 @@ def _input_specs():
 
 
 def _frame():
-    ids = np.asarray([30, 10, 20, 40])
+    ids = np.asarray([10, 20, 30, 40])
     person_households = np.repeat(ids, [2, 1, 3, 1])
     person_ids = np.arange(1, 8)
     tables = {

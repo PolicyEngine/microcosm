@@ -372,6 +372,11 @@ Its optional [county calibration rung](us-acs-local-county-rung.md) uses
 `--geographies state,cd,county --soi-mode state_county`, a county-inclusive
 Ledger feed, and matching county boundaries. Full runs require all 3,144
 county-equivalents and write `county_reliability.json`; the base year is 2024.
+County solves use a run-level loss cap of 10 and a per-record weight cap of 5,
+configurable with `--county-target-loss-cap` and `--county-max-weight-ratio`
+(the pilot also tested 20). Later calibration stages resolve this profile from
+the checkpoint's recorded county surface. Ordinary runs retain their historical
+solver settings. County grades use source-household ESS; row ESS is diagnostic.
 
 The independent US annual static-aging candidate builder lives in
 `microcosm.build.us_annual_static_aging`; it consumes a pinned published parent

@@ -1683,9 +1683,12 @@ def _apply_county_solver_profile(args, *, identity=None) -> None:
             setattr(args, requested, getattr(args, key))
         setattr(args, key, getattr(args, requested))
     recorded = identity or {}
-    geographies = recorded.get("geographies", args.geographies)
+    geographies = recorded.get("geographies", getattr(args, "geographies", ""))
     county_requested = "county" in {item.strip() for item in geographies.split(",")}
-    county_requested |= recorded.get("soi_mode", args.soi_mode) == SOI_MODE_STATE_COUNTY
+    county_requested |= (
+        recorded.get("soi_mode", getattr(args, "soi_mode", DEFAULT_SOI_MODE))
+        == SOI_MODE_STATE_COUNTY
+    )
     args.county_solver_profile = None
     if county_requested:
         args.target_loss_cap = getattr(
