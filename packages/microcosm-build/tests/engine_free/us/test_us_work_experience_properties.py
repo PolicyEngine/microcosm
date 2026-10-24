@@ -76,6 +76,21 @@ def _arbitrary_rows(draw) -> tuple[list[int], list[int], list[int]]:
     )
 
 
+@st.composite
+def _nested_rows(draw) -> tuple[list[int], list[int], list[int]]:
+    """Nested industry pairs with any weeks, so the worker identities decide.
+
+    Independent codes almost always fail the nesting first, which would leave
+    the forward and converse checks unexercised.
+    """
+
+    rows = draw(st.integers(1, 40))
+    weind = draw(st.lists(st.integers(0, 23), min_size=rows, max_size=rows))
+    weeks = st.one_of(st.just(0), st.integers(1, 52))
+    wkswork = draw(st.lists(weeks, min_size=rows, max_size=rows))
+    return weind, [WEIND_TO_WEMIND[code] for code in weind], wkswork
+
+
 def _nested(weind, wemind) -> bool:
     return all(WEIND_TO_WEMIND[d] == m for d, m in zip(weind, wemind, strict=True))
 
@@ -119,7 +134,7 @@ def test_release_carry_round_trips_coherent_rows(rows) -> None:
 
 
 @_SETTINGS
-@given(_arbitrary_rows())
+@given(st.one_of(_arbitrary_rows(), _nested_rows()))
 def test_restore_and_carry_accept_exactly_their_stated_identities(rows) -> None:
     """Differential: each site accepts iff its stated identities hold."""
 

@@ -1,5 +1,7 @@
 """The F0 pin writer preserves surrounding source and refuses unknown pins."""
 
+import ast
+
 import pytest
 
 from tools.repin_us_spec_engine_contracts import (
@@ -114,3 +116,24 @@ def test_nested_receipt_pin_refuses_duplicate_assertions_or_dictionary_keys() ->
             ("sha256",),
             "new",
         )
+
+
+def test_calibration_pin_hashes_the_fixture_contract_not_the_loaded_bundle() -> None:
+    # The loader writes integral floats as integers (5.0 -> 5), so a digest of
+    # the compiled bundle's calibration never matches the golden test's pin.
+    from microcosm.build.spec_engine import project_legacy_calibration_contract
+    from microcosm.build.spec_engine.canonical import sha256_json
+    from tools.repin_us_spec_engine_contracts import (
+        PACKAGE,
+        _assignment,
+        fixture_calibration_contract,
+    )
+
+    path = (
+        PACKAGE / "tests/engine_free/shared/test_spec_engine_calibration_semantics.py"
+    )
+    pinned = ast.literal_eval(
+        _assignment(path.read_text(), "CANONICAL_LEGACY_PROJECTION_SHA256")
+    )
+    projected = project_legacy_calibration_contract(fixture_calibration_contract())
+    assert sha256_json(projected) == pinned

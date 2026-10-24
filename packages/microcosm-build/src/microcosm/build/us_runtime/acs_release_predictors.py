@@ -700,7 +700,7 @@ ACS_OCCP_TO_POCCU2: Mapping[int, int] = {
 # 2022 Census industry codes (ACS 2024 INDP; CPS ASEC from survey year 2025)
 # mapped to the 23 CPS longest-job detailed industry groups (WEIND). Every
 # civilian code's group is read from the pinned 2025 ASEC person member
-# (pppub25.csv), where INDUSTRY determines WEIND exactly; codes shared with
+# (pppub25.csv), where nonzero INDUSTRY determines WEIND exactly; codes shared with
 # the 2017-list 2023/2024 members keep the same group there. The ACS-only
 # codes are reviewed: 9670-9870 are the Armed Forces branches (Army, Air
 # Force, Navy, Marines, Coast Guard, branch not specified, Reserves or National

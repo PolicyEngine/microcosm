@@ -217,12 +217,33 @@ def _replace_asserted_dictionary_value(
     return source if old == value else _replace_node(source, node, value)
 
 
+def fixture_calibration_contract() -> dict:
+    """Build the calibration contract exactly as its semantics test fixture does.
+
+    The golden projection hashes the constants builder's raw contract. The
+    compiled bundle's ``to_wire()`` has been through the loader, which writes
+    integral floats as integers (``5.0`` becomes ``5``), so its canonical bytes
+    and digest differ even where every value agrees.
+    """
+
+    from microcosm.build.spec_engine import scoped_take_up_manifest_program_bindings
+
+    frozen = json.loads((BUILD / "us/take_up_contract.json").read_text())
+    bindings = tuple(
+        (row["variable"], row["entity"], row["populace_treatment"])
+        for row in frozen["programs"]
+    )
+    with scoped_take_up_manifest_program_bindings(bindings):
+        from tools.us_bundle_generation.contracts import build_calibration_contract
+
+        return build_calibration_contract()
+
+
 def _semantic_test_pins(spec, observed_hashes: dict, rendered: dict) -> None:
     """Derive the existing test vectors through their production projections."""
 
     from microcosm.build.spec_engine import (
         KernelRegistry,
-        ResourceKind,
         project_legacy_calibration_contract,
     )
     from microcosm.build.spec_engine.canonical import sha256_json
@@ -258,7 +279,7 @@ def _semantic_test_pins(spec, observed_hashes: dict, rendered: dict) -> None:
         path.read_text(), {"first.spec_sha256": minimal.spec_sha256}
     )
 
-    calibration = spec.domain(ResourceKind.CALIBRATION).to_wire()
+    calibration = fixture_calibration_contract()
     path = (
         PACKAGE / "tests/engine_free/shared/test_spec_engine_calibration_semantics.py"
     )

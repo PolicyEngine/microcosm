@@ -49,8 +49,8 @@ year that have weeks worked and an industry.
 ## The ACS crosswalk
 
 ACS 2024 `INDP` uses the 2022 Census industry code list, as does the 2025 ASEC
-member (`pppub25.csv`), where `INDUSTRY` determines `WEIND` exactly (259
-codes). The 2023/2024 members use the 2017 list; the 225 codes the lists share
+member (`pppub25.csv`), where nonzero `INDUSTRY` determines `WEIND` exactly
+(259 codes). The 2023/2024 members use the 2017 list; the 225 codes the lists share
 map to the same group in both. `ACS_INDP_TO_WEIND` takes every civilian code's
 group from `pppub25.csv` and reviews the eight ACS-only codes:
 
@@ -83,8 +83,9 @@ year. So on ACS rows an industry can sit on a person with
 
 ASEC members `pppub23/24/25.csv` (pins in `spm_role_source.ASEC_SPM_ROLE_SOURCES`):
 
-- `INDUSTRY` → `WEIND` and → `WEMIND` are functions in every vintage (263 /
-  263 / 259 codes); `WEIND` → `WEMIND` is the same function in all three.
+- Nonzero `INDUSTRY` → `WEIND` and → `WEMIND` are functions in every vintage
+  (263 / 263 / 259 codes); `INDUSTRY = 0` covers both `WEIND = 0` and the
+  did-not-work group 23; `WEIND` → `WEMIND` is the same function in all three.
 - `WEIND` in 1–22 iff `INDUSTRY > 0` iff `WKSWORK > 0`: zero violations in
   each vintage. `WEIND = 0` exactly for ages 0–14; `WEIND = 23` only from 15.
 - Weighted (`A_FNLWGT`) shares: nonzero `WEIND` 0.8217 / 0.8220 / 0.8244;
