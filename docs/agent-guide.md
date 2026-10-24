@@ -335,6 +335,12 @@ and the ACS local-area `stored_inputs` gate, each naming the built-with engine
 on which an SPM unit the built-with engine measures has no classified adult,
 and binds the `spm_measurement_composition` gate the publisher requires
 (microcosm#1263; `microcosm.build.us_runtime.spm_measurement_gate`).
+US household ladders carry both `county_fips` (2020 counties for the locked
+policyengine-us rules) and `county_fips_2023` (3,144 county-equivalents for
+calibration, including Connecticut's nine planning regions). The latter is
+registered non-engine metadata. Geography gates require both columns; older
+artifacts need the new mapping before they pass. County target joins must
+choose the 2023 column explicitly. See [the vintage investigation](us-county-2023-geography.md).
 A source-enrichment publisher claim widens the range
 consumers accept, not what was checked: the bundle's
 `compatibility.claim_measurement` names the one version the probe measured.

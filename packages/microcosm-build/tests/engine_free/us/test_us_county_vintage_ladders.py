@@ -133,3 +133,52 @@ def test_new_county_column_is_registered_stored_geography() -> None:
         )
         == ()
     )
+
+
+@pytest.mark.parametrize("assign_tract", [False, True])
+def test_existing_seeded_puma_columns_match_the_pre_change_assignment(assign_tract):
+    # Captured from the unchanged assign_us_puma_ladder at base dec45a439,
+    # using this exact ladder/household fixture and seed. The added conditional
+    # draws must leave all previously assigned geography byte-for-byte stable.
+    household = pd.DataFrame(
+        {
+            "household_id": np.arange(12),
+            "state_fips": [6] * 2 + [9] * 10,
+            "puma": [600100] * 2 + [900100] * 10,
+        }
+    )
+    assigned = assign_us_puma_ladder(
+        household, _puma_ladder(), seed=7, assign_tract=assign_tract
+    )
+
+    assert assigned["puma"].tolist() == ["0600100"] * 2 + ["0900100"] * 10
+    assert assigned["congressional_district_geoid"].tolist() == [601] * 2 + [901] * 10
+    assert assigned["county_fips"].tolist() == [
+        "06037",
+        "06037",
+        "09001",
+        "09001",
+        "09003",
+        "09003",
+        "09001",
+        "09003",
+        "09001",
+        "09001",
+        "09001",
+        "09001",
+    ]
+    if assign_tract:
+        assert assigned["tract_geoid"].tolist() == [
+            "06037000100",
+            "06037000100",
+            "09001110100",
+            "09001110100",
+            "09003330100",
+            "09003330100",
+            "09001110100",
+            "09003330100",
+            "09001110100",
+            "09001070100",
+            "09001110100",
+            "09001070100",
+        ]
