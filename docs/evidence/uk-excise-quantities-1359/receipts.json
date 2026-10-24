@@ -1,0 +1,34 @@
+{
+ "issue": "PolicyEngine/microcosm#1359",
+ "measured": {
+  "stage_runs_spine": {
+   "name": "spine-b145-treat.h5 (microcosm#1333, arm b145-treat)",
+   "sha256": "6b882b459566ce103d166e94c7f58201fe0ca848241c7e4a34baaf52364d07d6",
+   "households": 78440
+  },
+  "engine": "policyengine-uk 2.151.0 on policyengine-core 3.33.3",
+  "donor": "LCFS 2024-25 (UKDS SN 9603, 2nd edition)"
+ },
+ "stage_run_trees": {
+  "stage_dev_run.base-74a2a378e.json": "microcosm#1383's head 74a2a378e, the branch base, on the abf0921 feed",
+  "stage_dev_run.head-restack.json": "the branch head on the 200bf6d feed"
+ },
+ "not_committed": [
+  "the spine and the LCFS tabs: licensed microdata",
+  "per-column sha256 digests of the written columns (compare_runs.py reduces them to verdicts)",
+  "donor minima and maxima"
+ ],
+ "files_sha256": {
+  "README.md": "499e86162d6846a56c029afe1f818df1e73c5d0313f1643034ce142bf9cbd7d7",
+  "outputs/alcohol_channel_weights.json": "a954d7f712a17bc665cf2e4f6540fb26a8f7f34be61e4997f471e28395164dcd",
+  "outputs/stage_dev_run.base-74a2a378e.json": "c91a0bb815d867637acf6a0e8b130cb904faee878ab1043a2546ff0212ca570b",
+  "outputs/stage_dev_run.comparison.json": "e43fc4dac314c1d5d9adef399a696d3b9f290e97a0702341187e53e0f295a4ba",
+  "outputs/stage_dev_run.head-restack.json": "88f5c2507da769c738c167b2a51b5f59f40d23c501d2eaee89ff94daf3bc9980",
+  "scripts/alcohol_channel_weights.py": "61ce5ede7faa5c92ff62aa9fb27b0c89eb2c4cf7ee76ccddcd26a786405f6af6",
+  "scripts/compare_runs.py": "b6eb778ebe250f084534fb6f986de285d4a1ccda1dd89d6a96ba0da17e9c5341",
+  "scripts/repin_200bf6d.sh": "bce41a86e44531e98cb9ab939c3cfa374c810937fbbaa8695088cfadc3dbec25",
+  "scripts/run_stage_dev.sh": "44c211d1f8b38b24ffddab058a0912c651de44ac5f4e1a3f0330613d0a9ad7c3",
+  "scripts/sanitize_outputs.py": "8923d37a4006377b39928d25aa91fb9fa41fc1c75c71a5499cdf881aa2882ffa",
+  "scripts/stage_dev_run.py": "34bae995dea701c63ddf8f5d2175923733faf22ff47e9319047e7a5e9a3e3515"
+ }
+}
