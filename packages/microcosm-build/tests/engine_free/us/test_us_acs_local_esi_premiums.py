@@ -512,7 +512,10 @@ def test_a_transferred_support_clone_is_refused() -> None:
         with_acs_local_esi_premium_anchor(_replace_person(frame, person))
 
 
-@pytest.mark.parametrize("column", [EMPLOYER, "NOW_HIPAID", "PERIDNUM", WAGES])
+@pytest.mark.parametrize(
+    "column",
+    [EMPLOYER, "NOW_HIPAID", "PERIDNUM", WAGES, "WAGP", "person_support_clone_index"],
+)
 def test_a_lane_frame_missing_an_anchor_input_is_refused(column: str) -> None:
     frame = pooled(
         _small_donor(),
@@ -589,10 +592,16 @@ def test_a_blank_acs_wage_below_fifteen_is_a_zero_wage_in_the_anchor_only() -> N
         "rule_id": "acs_2024_pums_wagp_age_15_plus",
         "minimum_age": 15,
         "raw_source_column": "WAGP",
+        "eligible_transferred_rows": 2,
+        "transferred_rows_below_minimum_age": 1,
         "transferred_rows_with_blank_wage": 1,
         "transferred_rows_outside_universe_read_as_zero": 1,
         "frame_cells_written": 0,
     }
+    # The kernel's own earnings universe scopes on the stacked pool's ACS
+    # channel, which this lane's rows do not carry; the lane applied the rule.
+    assert receipt["transferred_wage_evidence"]["eligible_acs_person_rows"] == 0
+    assert receipt["transferred_wage_evidence"]["structurally_absent_person_rows"] == 0
     # The staging frame keeps the source's blank: no zero is written to it.
     np.testing.assert_array_equal(
         _column(anchored, WAGES)[acs], [40_000.0, np.nan, 30_000.0]
@@ -618,8 +627,47 @@ def test_a_child_whose_raw_wage_is_not_blank_is_not_read_as_zero() -> None:
     person = frame.table("person").copy()
     acs = ~donor_rows(frame)
     person["WAGP"] = np.where(acs, 1_200.0, np.nan)
+    with pytest.raises(SourceRuntimeError, match="mapping fault"):
+        with_acs_local_esi_premium_anchor(_replace_person(frame, person))
+
+
+@pytest.mark.parametrize("mapped", [0.0, 25_000.0])
+def test_an_adult_whose_blank_raw_wage_was_filled_is_refused(mapped: float) -> None:
+    # PUMS asks WAGP of everyone 15 or older, so a blank there is missing
+    # evidence: a producer that filled the mapped wage, with zero or anything
+    # else, does not make it a measurement.
+    frame = _lane_with_a_child()
+    person = frame.table("person").copy()
+    adult = np.flatnonzero(~donor_rows(frame))[0]
+    person.loc[person.index[adult], ["WAGP", WAGES]] = [np.nan, mapped]
     with pytest.raises(SourceRuntimeError, match="missing wage is not a zero wage"):
         with_acs_local_esi_premium_anchor(_replace_person(frame, person))
+
+
+def test_a_child_with_a_nonzero_mapped_wage_is_refused() -> None:
+    frame = _lane_with_a_child()
+    person = frame.table("person").copy()
+    child = np.flatnonzero(~donor_rows(frame))[1]
+    person.loc[person.index[child], WAGES] = 500.0
+    with pytest.raises(SourceRuntimeError, match="mapping fault"):
+        with_acs_local_esi_premium_anchor(_replace_person(frame, person))
+
+
+def test_a_child_with_the_named_zero_already_mapped_passes() -> None:
+    # A producer that wrote the universe zero itself leaves nothing to read.
+    frame = _lane_with_a_child()
+    person = frame.table("person").copy()
+    child = np.flatnonzero(~donor_rows(frame))[1]
+    person.loc[person.index[child], WAGES] = 0.0
+
+    anchored, receipt = with_acs_local_esi_premium_anchor(
+        _replace_person(frame, person)
+    )
+
+    assert (
+        receipt["wage_universe"]["transferred_rows_outside_universe_read_as_zero"] == 0
+    )
+    assert _column(anchored, EMPLOYER)[~donor_rows(frame)][1] == 0.0
 
 
 def test_a_blank_raw_wage_below_fifteen_corroborates_the_universe_rule() -> None:

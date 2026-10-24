@@ -30,8 +30,13 @@ rows do not. It refuses a transferred row whose wage is missing. ACS PUMS
 leaves ``WAGP`` blank below age 15, outside its earnings universe, and the
 lane keeps that blank in the staging frame. The anchor therefore reads those
 people's wages as zero under the named universe rule of
-:mod:`.acs_income_universe`, in its view of the frame only. A blank wage at
-age 15 or older stays missing and is refused.
+:mod:`.acs_income_universe`, in its view of the frame only. A blank raw
+``WAGP`` at age 15 or older is refused, however the mapped wage was filled.
+
+The kernel also resolves that rule itself, but only on rows tagged with the
+stacked pool's ACS support channel. This lane's ACS rows carry the late
+spine's channel, so the kernel's check sees none of them, and the lane
+applies the rule before calling it (:func:`_wages_under_the_acs_universe`).
 
 Invariant: the lane-wide weighted column equals the donor rows' weighted
 column divided by their share of household mass. Pooling multiplies every
@@ -117,19 +122,20 @@ _ACS_WAGE_UNIVERSE_RULE = (
     f"acs_2024_pums_{_ACS_WAGE_SOURCE_COLUMN.lower()}"
     f"_age_{ACS_PUMS_EARNINGS_MINIMUM_AGE}_plus"
 )
-#: Person columns the pool anchor kernel reads, without the two support
-#: provenance columns. The kernel looks a clone's wages up by
-#: ``person_source_id`` across the whole frame. A stacked pool makes that id
-#: unique at assembly; this lane does not: ACS rows keep their pre-remap ids
-#: as source ids, which can repeat a donor's. Every ACS row here is its own
-#: source record, so the view omits the lookup's columns and the kernel reads
-#: each row's own wages.
+#: Person columns the pool anchor kernel reads, without the support source
+#: id. Given both the source id and the clone index, the kernel looks a
+#: clone's wages up by ``person_source_id`` across the whole frame. A stacked
+#: pool makes that id unique at assembly; this lane does not: ACS rows keep
+#: their pre-remap ids as source ids, which can repeat a donor's. Every ACS
+#: row here is its own source record, so the view omits the source id and the
+#: kernel reads each row's own wages. The clone index stays: the kernel's
+#: ACS earnings universe requires it.
 _ANCHOR_PERSON_COLUMNS: tuple[str, ...] = (
     *US_ESI_PREMIUMS_OUTPUT_COLUMNS,
     *(
         column
         for column in US_ESI_PREMIUMS_POOL_ANCHOR_PERSON_INPUTS
-        if column not in (_CLONE_INDEX_COLUMN, _SOURCE_ID_COLUMN)
+        if column != _SOURCE_ID_COLUMN
     ),
 )
 #: Person columns the two ESI gates read: the output, the raw fields and
@@ -307,33 +313,63 @@ def prepare_acs_local_esi_premium_donor(
 def _wages_under_the_acs_universe(
     person: pd.DataFrame,
 ) -> tuple[np.ndarray, dict[str, object]]:
-    """Wages for the anchor's view, with ACS universe blanks read as zero.
+    """Wages for the anchor's view, under the ACS PUMS earnings universe.
 
-    ACS PUMS leaves ``WAGP`` blank for people below age 15: the field does
-    not apply to them. The lane keeps that blank in the staging frame, and the
-    anchor refuses a missing wage. Only a transferred row below the age floor
-    whose mapped wage is null, and whose raw field is blank where the frame
-    carries it, takes a zero here. Any other missing wage stays missing.
+    PUMS asks ``WAGP`` of people aged 15 and older and leaves it blank below.
+    The lane keeps that blank in the staging frame, and the anchor refuses a
+    missing wage, so a transferred row below the age floor whose raw field is
+    blank and whose mapped wage is null reads as a zero wage here, in the view
+    only. The rest of the rule is refused as
+    :func:`~.acs_income_universe.resolve_acs_pums_earnings_universe` refuses
+    it on a stacked pool:
+
+    - a blank raw field at 15 or older, or at an unknown age, is missing
+      evidence however a producer filled the mapped wage;
+    - below 15, a raw field that is not blank or a mapped wage that is
+      neither null nor zero is a mapping fault.
+
+    Any other missing wage stays missing, and the kernel refuses it.
     """
 
     wages = pd.to_numeric(
         person[US_ESI_PREMIUMS_WAGE_COLUMN], errors="coerce"
     ).to_numpy(dtype=np.float64, na_value=np.nan)
     transferred = person[list(_RAW_EVIDENCE_COLUMNS)].isna().all(axis=1).to_numpy()
-    blank = transferred & np.isnan(wages)
-    outside = np.zeros(len(person), dtype=bool)
-    if blank.any() and _AGE_COLUMN in person:
-        age = pd.to_numeric(person[_AGE_COLUMN], errors="coerce").to_numpy(
-            dtype=np.float64, na_value=np.nan
+    age = pd.to_numeric(person[_AGE_COLUMN], errors="coerce").to_numpy(
+        dtype=np.float64, na_value=np.nan
+    )
+    raw_blank = person[_ACS_WAGE_SOURCE_COLUMN].isna().to_numpy()
+    below = transferred & (age < ACS_PUMS_EARNINGS_MINIMUM_AGE)
+    # An unknown age is not evidence of being outside the universe.
+    eligible = transferred & ~below
+    unasked = eligible & raw_blank
+    if unasked.any():
+        raise SourceRuntimeError(
+            f"Local ESI premium anchor: {int(unasked.sum())} transferred row(s) "
+            f"aged {ACS_PUMS_EARNINGS_MINIMUM_AGE} or older, or of unknown age, "
+            f"have a blank raw {_ACS_WAGE_SOURCE_COLUMN!r}, which PUMS asks of "
+            "them. A missing wage is not a zero wage, even after a producer "
+            "filled the mapped column."
         )
-        outside = blank & (age < ACS_PUMS_EARNINGS_MINIMUM_AGE)
-        if _ACS_WAGE_SOURCE_COLUMN in person:
-            outside &= person[_ACS_WAGE_SOURCE_COLUMN].isna().to_numpy()
+    mapped_nonzero = np.isfinite(wages) & (wages != 0.0)
+    off_universe = below & (~raw_blank | mapped_nonzero)
+    if off_universe.any():
+        raise SourceRuntimeError(
+            f"Local ESI premium anchor: {int(off_universe.sum())} transferred "
+            f"row(s) below age {ACS_PUMS_EARNINGS_MINIMUM_AGE} carry a raw "
+            f"{_ACS_WAGE_SOURCE_COLUMN!r} or a nonzero mapped wage. PUMS leaves "
+            "the field blank there, so this is a mapping fault, not the "
+            "universe rule."
+        )
+    blank = transferred & np.isnan(wages)
+    outside = below & np.isnan(wages)
     wages = np.where(outside, 0.0, wages)
     return wages, {
         "rule_id": _ACS_WAGE_UNIVERSE_RULE,
         "minimum_age": ACS_PUMS_EARNINGS_MINIMUM_AGE,
         "raw_source_column": _ACS_WAGE_SOURCE_COLUMN,
+        "eligible_transferred_rows": int(eligible.sum()),
+        "transferred_rows_below_minimum_age": int(below.sum()),
         "transferred_rows_with_blank_wage": int(blank.sum()),
         "transferred_rows_outside_universe_read_as_zero": int(outside.sum()),
         # The staging frame keeps the source's blanks; the zeros exist in the
@@ -389,6 +425,12 @@ def with_acs_local_esi_premium_anchor(frame: Frame) -> tuple[Frame, dict[str, ob
         "kernel": "with_us_esi_premium_pool_anchor",
         "transferred_source_record": "each transferred row is its own source record",
         "wage_universe": wage_universe,
+        # Why the kernel's own ACS earnings-universe receipt counts no rows.
+        "kernel_wage_evidence_scope": (
+            "the kernel resolves the ACS earnings universe on the stacked "
+            "pool's ACS support channel; this lane's ACS rows carry the late "
+            "spine's, so wage_universe applies the rule"
+        ),
     }
     if anchored is view:
         return frame, receipt

@@ -542,8 +542,18 @@ earnings universe, and the lane keeps that blank in the staging frame, where
 the reviewed-null register fills it for the engine pass. The anchor reads
 those people's wages as zero under the universe rule `acs_income_universe`
 names (`acs_2024_pums_wagp_age_15_plus`), in its own view of the frame, and
-writes no zero into the frame. A blank wage at age 15 or older, or one whose
-raw `WAGP` is not blank, stays missing and stops the build.
+writes no zero into the frame. The rest of the rule stops the build:
+
+- a blank raw `WAGP` at age 15 or older, or at an unknown age, however the
+  mapped wage was filled;
+- below 15, a raw `WAGP` that is not blank, or a mapped wage that is neither
+  null nor zero.
+
+The kernel resolves the same rule itself, on the rows tagged with the stacked
+pool's ACS support channel (`acs`). This lane's ACS rows carry the late
+spine's channel (`acs_2024_1yr`), so the kernel's check sees none of them and
+its receipt counts no rows; the lane applies the rule before calling the
+kernel, and its receipt (`wage_universe`) counts what it checked.
 
 It never rewrites a donor row. These hold for every lane frame
 (`tests/engine_free/us/test_us_acs_local_esi_premiums.py`, property-tested
@@ -566,9 +576,10 @@ reasons:
   `person_source_id` across the whole frame. The stacked pool makes that id
   unique at assembly. This lane does not: ACS rows keep their ids from before
   the pooling remap as source ids, and those can repeat a donor's. Every ACS
-  row here is its own source record, so the view leaves the lookup's columns
-  out and the kernel reads each row's own wages. A transferred row that is not
-  clone 0 is refused.
+  row here is its own source record, so the view leaves the source id out and
+  the kernel reads each row's own wages. It keeps the clone index, which the
+  kernel's earnings universe requires. A transferred row that is not clone 0
+  is refused.
 - **Memory.** The kernel copies every table it is given and each gate copies
   the person table. The staging frame holds two full spines, and the view
   carries only the columns they read.

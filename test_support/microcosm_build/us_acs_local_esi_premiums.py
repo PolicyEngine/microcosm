@@ -208,7 +208,8 @@ def transferred_acs(
     range over every draw without fitting a forest. ``households`` gives each
     person's household position (nondecreasing, starting at 0; one person per
     household by default) and ``weights`` one weight per household. ``ages``
-    defaults to adults; a NaN wage is a blank the source left.
+    defaults to adults; a NaN wage is a blank the source left, in the raw
+    ``WAGP`` and the mapped wage alike.
     """
 
     index = np.arange(len(premiums))
@@ -223,6 +224,9 @@ def transferred_acs(
             ),
             "is_female": index % 2 == 0,
             WAGES: np.asarray(wages, dtype=np.float64),
+            # The raw PUMS field the wage is mapped from: blank where the
+            # mapped wage is.
+            "WAGP": np.asarray(wages, dtype=np.float64),
             EMPLOYER: np.asarray(premiums, dtype=np.float64),
         }
     )
