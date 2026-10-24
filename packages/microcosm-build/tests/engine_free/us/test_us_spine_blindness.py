@@ -358,6 +358,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # column; the release tool passes the people who may lack a decision.
         "retired_stored_inputs.py",
         "stacked_spine.py",  # Provenance owner (#578 revision); see owners list.
+        # Bake-off arm accounting, split mirror and ESS; evaluates support mixes,
+        # never transforms a population.
+        "support_mix.py",
         "support_provenance.py",
         "take_up.py",
         "take_up_contract.py",
