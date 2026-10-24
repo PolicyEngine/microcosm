@@ -83,6 +83,7 @@ import pandas as pd
 
 from microcosm.build.us_runtime import target_loss_weights as loss_weighting
 from microcosm.build.us_runtime.acs_local_hours import acs_local_hours_signal_gate
+from microcosm.build.us_runtime.esi_premiums import refuse_unassigned_us_esi_premiums
 from microcosm.data.contract import (
     US_LOCAL_AREA_SPM_MEASUREMENT_STAGE,
     US_LOCAL_AREA_STORED_INPUTS_STAGE,
@@ -537,9 +538,17 @@ def fill_reviewed_nulls(
     register is a hard error with a per-spine diagnostic — an artifact
     defect, surfaced not filled. A declared dataset source input is never
     filled: a register that names one, or a null one, raises
-    :class:`DeclaredSourceInputNullError`. ``engine`` and ``system`` default
-    to the PolicyEngine-US adapter and tax-benefit system.
+    :class:`DeclaredSourceInputNullError`. Nor is the ESI employer premium
+    input, registered or not: a null there refuses the build. ``engine`` and
+    ``system`` default to the PolicyEngine-US adapter and tax-benefit system.
     """
+
+    # microcosm#454: the ESI employer premium exists only where the
+    # meps_esi_premiums stage ran (the ASEC donor rows). Refuse before any
+    # fill: a registered null here would become a silent zero on the ACS spine.
+    refuse_unassigned_us_esi_premiums(
+        frame, consumer="ACS local release (fill_reviewed_nulls)"
+    )
 
     from microcosm.build.us_runtime.base_pool import spine_column
     from microcosm.build.us_runtime.spm_independence_role import (
