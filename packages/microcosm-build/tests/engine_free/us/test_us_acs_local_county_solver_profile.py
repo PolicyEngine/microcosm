@@ -155,6 +155,33 @@ def test_a_noncounty_checkpoint_restores_the_requested_generic_caps() -> None:
 
 
 @pytest.mark.parametrize(
+    "identity",
+    [
+        {"staging_sha256": "legacy"},
+        {"staging_sha256": "legacy", "soi_mode": "state"},
+    ],
+)
+def test_a_legacy_checkpoint_without_geographies_is_not_a_county_run(
+    identity,
+) -> None:
+    # Identities from before the county rung record no geographies and hold
+    # no county rows; the CLI's --geographies must not select the profile.
+    module = _release()
+    args = _args(
+        "--geographies",
+        "state,county",
+        "--target-loss-cap",
+        "2",
+        "--max-weight-ratio",
+        "7",
+    )
+    assert args.target_loss_cap == 10.0
+    module._apply_county_solver_profile(args, identity=identity)
+    assert (args.target_loss_cap, args.max_weight_ratio) == (2.0, 7.0)
+    assert "county_solver_profile" not in module._solver_settings(args, {})
+
+
+@pytest.mark.parametrize(
     "option", ["--county-target-loss-cap", "--county-max-weight-ratio"]
 )
 @pytest.mark.parametrize("value", ["0", "-1", "nan", "inf"])
