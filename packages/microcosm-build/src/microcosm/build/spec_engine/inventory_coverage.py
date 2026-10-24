@@ -350,12 +350,12 @@ EXPECTED_HASHES = {
     "acs_person_predictors": "878c788a6f037d7aca12b3586ea034eff04f3034ffa11935a736493042551f25",
     "authority": "9d4a9672a0f03039b1fe874b9fe21ed575be0d29f14afc396d03cdf5c809bdd2",
     "early_families": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd",
-    "full_checkpoint": "9fb7350a66a0ec9f7a4dbc879ccafaf1e6cb51486722938b3a8e6f5c57ae9e06",
+    "full_checkpoint": "fd5bff043bab4c6cd817cc4d0fa897e46515da6cd4422d22d00e6c5aff17be25",
     "gap_fill_schedule": "1c31f9868f7884347cc19cf1ff65da43f950b9114941a715bab168246db414a7",
     "graph_nodes": "40cd51ffdfe2e9d9d08d48c08e8ded9de1e4b134783bab05c4abc6ad5c72ca1e",
     "geography_assignment": "44e7f5f6cd7ceeef85d532c3d46306d03de4f4ee811376e6d29920742746b65c",
     "late_families": "d91f9ff0eb52f43e7b6eed3d5c58c37abe1620c3a11021da15dae9c10e16d382",
-    "late_resource_semantics": "b555f811aaf1b65f588a3aa0a6cee2d311b1bc40b1735749c527749b5b3d0da1",
+    "late_resource_semantics": "94a7ad433bcd4eec7e02480f2d2c75cf9e1317ff1bbbb70f6776023c25ebd6bd",
     "late_schedule": "e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f",
     "ownership": "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356",
     "primary_tuples": "fdf23da429f8c501e198a2f5b719763d523a41565c2153fdf17b0344f21bcd7c",
@@ -369,9 +369,10 @@ EXPECTED_HASHES = {
     # not run, changes its probes, so again no US solve changes. #454: the
     # meps_esi_premiums stage joins the attested sources and the source
     # manifest. #1376: the puma_county_vintage draw module joins the seed
-    # protocol's attested kernel modules.
-    "seed_map": "58741b7c6c8ca8f0ead476ec9893355419c9550d9bdb9287bec57928ce345afb",
-    "seed_protocol": "b4c450a618c5ca3116f806d1ae270ae6fb410517404c204e505d10418bc1181f",
+    # protocol's attested kernel modules. #1380: the ACS transfer's
+    # self-employment component step changes acs_transfer's attested bytes.
+    "seed_map": "e3d7f37ba28210c8083422aa9b2d003cdb2de1429cd11062819998b3e9eb739f",
+    "seed_protocol": "97d2b1008c163b902dfb8807196633eee4741a3a6eb57d16cc465728004ffcc9",
     "source_manifest": "87b1e124969ec11b836740c027d28dc2a9d319d279ed55be1d9fc1523390f634",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "256947cd7c1bbd85f5d1fa3911a07a170ae87830f098110a40ed25d93f78347c",

@@ -508,6 +508,62 @@ def test_local_hours_gate_refuses_missing_source_audit() -> None:
         module._require_local_hours(None, {})
 
 
+class _SelfEmploymentFrame:
+    """A staging stand-in: one ACS row per case plus an ignored ASEC row."""
+
+    def __init__(self, person: pd.DataFrame) -> None:
+        self._person = person
+
+    def table(self, entity: str) -> pd.DataFrame:
+        assert entity == "person"
+        return self._person
+
+
+def _self_employment_person(sstb_on_acs: float) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "person_spine": ["acs_2024_1yr", "acs_2024_1yr", "asec_puf"],
+            "SEMP": [0.0, 1_000.0, np.nan],
+            "ADJINC": [1_000_000.0, 1_000_000.0, np.nan],
+            "self_employment_income_before_lsr": [0.0, 1_000.0, 50_000.0],
+            "sstb_self_employment_income_before_lsr": [sstb_on_acs, 0.0, 9_000.0],
+            "farm_operations_income": [0.0, 0.0, 700.0],
+            "partnership_self_employment_net_earnings": [0.0, 0.0, 300.0],
+        }
+    )
+
+
+def test_release_refuses_staging_that_stacks_self_employment_on_semp() -> None:
+    module = _load_tool_module()
+
+    module._require_acs_self_employment_identity(
+        _SelfEmploymentFrame(_self_employment_person(0.0))
+    )
+    with pytest.raises(SystemExit, match="counts that income twice"):
+        module._require_acs_self_employment_identity(
+            _SelfEmploymentFrame(_self_employment_person(2_500.0))
+        )
+    with pytest.raises(SystemExit, match="no person_spine"):
+        module._require_acs_self_employment_identity(
+            _SelfEmploymentFrame(
+                _self_employment_person(0.0).drop(columns=["person_spine"])
+            )
+        )
+
+
+def test_release_checks_self_employment_wherever_it_loads_staging() -> None:
+    module = _load_tool_module()
+
+    for stage in (module.do_materialize, module._write_calibrated_artifact):
+        lines = [line.strip() for line in inspect.getsource(stage).splitlines()]
+        hours = next(
+            index
+            for index, line in enumerate(lines)
+            if line.startswith("_require_local_hours(frame")
+        )
+        assert lines[hours + 1] == "_require_acs_self_employment_identity(frame)"
+
+
 def test_local_hours_failure_propagates_to_release_boundary(monkeypatch) -> None:
     from microcosm.build.gates import GateResult
 

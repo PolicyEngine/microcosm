@@ -14,9 +14,11 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # protocol inside it attests microcosm.calibrate.solve's bytes, so
     # microcosm#1124's opt-in retain_best_objective and microcosm#1301's
     # budget_search_bracket move it, and the fit kernels' bytes, so the QRF
-    # chain step's caller-owned uniforms move it too.
+    # chain step's caller-owned uniforms move it too. microcosm#1380's
+    # self-employment feature in the imputation schema moves the schema-set
+    # receipt.
     assert first.spec_sha256 == (
-        "bc30e1571ee5c191ca70f9bdfa4d9dcd371b5a5f551518d8945f49f3eea0bcd7"
+        "bdfe8346e30a898e80e736b9250760c5abc77fe1b5a3b2e2a31fe99fa1996bf4"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")

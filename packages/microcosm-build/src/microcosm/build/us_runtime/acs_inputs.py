@@ -18,8 +18,12 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from microcosm.build.gates import GateResult
 from microcosm.build.us_runtime.acs_release_predictors import (
     crosswalk_acs_occupation_and_work_experience,
+)
+from microcosm.build.us_runtime.acs_transfer import (
+    ACS_SELF_EMPLOYMENT_COMPONENT_INPUTS,
 )
 from microcosm.build.us_runtime.spm_role_source import (
     NATIVE_SPM_ROLE,
@@ -36,7 +40,9 @@ __all__ = [
     "ACS_GROUP_QUARTERS_CHILD_RULE",
     "AcsGroupQuartersChildrenResult",
     "AcsNativeInputResult",
+    "ACS_SELF_EMPLOYMENT_IDENTITY_TOLERANCE",
     "AcsSpmRoleResult",
+    "acs_self_employment_identity_gate",
     "map_acs_native_inputs",
     "with_acs_spm_independence_role",
     "without_acs_group_quarters_children",
@@ -630,6 +636,128 @@ def without_acs_group_quarters_children(
     if not child.any():
         return AcsGroupQuartersChildrenResult(frame, provenance)
     return AcsGroupQuartersChildrenResult(frame.select(~child), provenance)
+
+
+#: Dollar tolerance for :func:`acs_self_employment_identity_gate`. The native
+#: mapping derives the base leaf from the same two columns, so a passing row
+#: agrees to floating-point rounding; $1 absorbs storage round trips without
+#: hiding a donor draw.
+ACS_SELF_EMPLOYMENT_IDENTITY_TOLERANCE = 1.0
+
+_SELF_EMPLOYMENT_LEAVES = (
+    "self_employment_income_before_lsr",
+    *ACS_SELF_EMPLOYMENT_COMPONENT_INPUTS,
+)
+
+
+def acs_self_employment_identity_gate(
+    person: pd.DataFrame,
+    *,
+    rows: np.ndarray | pd.Series,
+    tolerance: float = ACS_SELF_EMPLOYMENT_IDENTITY_TOLERANCE,
+) -> GateResult:
+    """Require each ACS person's self-employment leaves to sum to their SEMP.
+
+    ``rows`` selects the ACS person rows; the caller owns that provenance, so
+    this check reads no origin tags. On a row that reports SEMP, the base
+    self-employment leaf plus every self-employment component must equal
+    ``SEMP * ADJINC / 1_000_000`` within ``tolerance`` dollars. Splitting SEMP
+    across the leaves passes; a donor draw added on top of it fails
+    (microcosm#1380). A row with blank SEMP is outside the ACS
+    self-employment universe and must carry no self-employment; its blank
+    leaves are reviewed structural nulls. A blank leaf or ``ADJINC`` on a row
+    that reports SEMP fails, because the identity cannot be checked there.
+    """
+
+    name = "acs_self_employment_identity"
+    selected = np.asarray(rows, dtype=bool)
+    if selected.shape != (len(person),):
+        raise ValueError("rows must be a one-dimensional mask aligned to person.")
+    missing = [
+        column
+        for column in ("SEMP", "ADJINC", *_SELF_EMPLOYMENT_LEAVES)
+        if column not in person.columns
+    ]
+    if missing:
+        return GateResult(
+            name=name,
+            passed=False,
+            failures=(
+                "ACS self-employment identity needs person column(s) "
+                f"{missing}; refusing to treat them as zero.",
+            ),
+            details={"missing_columns": missing},
+        )
+
+    subset = person.loc[selected]
+
+    def numeric(column: str) -> np.ndarray:
+        return pd.to_numeric(subset[column], errors="coerce").to_numpy(
+            dtype=np.float64, na_value=np.nan
+        )
+
+    semp = numeric("SEMP")
+    adjinc = numeric("ADJINC")
+    leaves = np.column_stack([numeric(column) for column in _SELF_EMPLOYMENT_LEAVES])
+    reported = np.isfinite(semp)
+    blank_leaf = reported & np.isnan(leaves).any(axis=1)
+    blank_adjinc = reported & ~np.isfinite(adjinc)
+    checkable = reported & ~blank_leaf & ~blank_adjinc
+    filled = np.where(np.isnan(leaves), 0.0, leaves)
+    gap = np.zeros(len(subset), dtype=np.float64)
+    gap[checkable] = filled[checkable].sum(axis=1) - (
+        semp[checkable] * adjinc[checkable] / _INFLATION_FACTOR_DENOMINATOR
+    )
+    mismatched = checkable & (np.abs(gap) > tolerance)
+    outside_nonzero = ~reported & (filled != 0.0).any(axis=1)
+
+    failures: list[str] = []
+    if not selected.any():
+        failures.append("No ACS person rows were selected for the check.")
+    if mismatched.any():
+        failures.append(
+            f"{int(mismatched.sum())} ACS person row(s) reporting SEMP carry "
+            "self-employment leaves that differ from SEMP * ADJINC / 1e6 by "
+            f"more than ${tolerance:g} (largest gap "
+            f"${float(np.abs(gap).max()):,.2f}); a donor component drawn on "
+            "top of SEMP counts that income twice."
+        )
+    if outside_nonzero.any():
+        failures.append(
+            f"{int(outside_nonzero.sum())} ACS person row(s) with blank SEMP "
+            "carry nonzero self-employment."
+        )
+    if blank_leaf.any():
+        failures.append(
+            f"{int(blank_leaf.sum())} ACS person row(s) reporting SEMP have a "
+            "blank self-employment leaf."
+        )
+    if blank_adjinc.any():
+        failures.append(
+            f"{int(blank_adjinc.sum())} ACS person row(s) reporting SEMP have "
+            "a blank ADJINC."
+        )
+    return GateResult(
+        name=name,
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "tolerance": float(tolerance),
+            "acs_person_rows": int(selected.sum()),
+            "semp_reported_rows": int(reported.sum()),
+            "mismatched_rows": int(mismatched.sum()),
+            "max_abs_gap": float(np.abs(gap).max()) if len(gap) else 0.0,
+            "excess_over_semp": float(gap[mismatched].clip(min=0.0).sum()),
+            "blank_semp_rows": int((~reported).sum()),
+            "blank_semp_nonzero_rows": int(outside_nonzero.sum()),
+            "blank_leaf_rows": int(blank_leaf.sum()),
+            "blank_adjinc_rows": int(blank_adjinc.sum()),
+            "nonzero_rows_by_leaf": {
+                column: int((filled[:, index] != 0.0).sum())
+                for index, column in enumerate(_SELF_EMPLOYMENT_LEAVES)
+            },
+        },
+    )
 
 
 def _refuse_units(offending: pd.Index, problem: str) -> None:

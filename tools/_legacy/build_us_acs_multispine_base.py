@@ -27,7 +27,9 @@ from microcosm.build import (
     default_valued_columns_gate,
     weights_audit_gate,
 )
+from microcosm.build.gates import GateResult
 from microcosm.build.us_runtime import acs_sources
+from microcosm.build.us_runtime.acs_inputs import acs_self_employment_identity_gate
 from microcosm.build.us_runtime.acs_local_hours import (
     ACS_UNDER15_ZERO_POLICY,
     acs_local_hours_signal_gate,
@@ -289,6 +291,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     _require_puma_ladder_assignment(result)
     _require_benefit_participation_transfer(result)
+    self_employment_gate = _require_acs_self_employment_identity(result.frame)
     _require_pooled_spm_independence_role(result)
     transfer_coverage = _require_default_transfer_coverage(
         result,
@@ -335,6 +338,12 @@ def main(argv: list[str] | None = None) -> int:
         puma_ladder_sha256=puma_ladder_sha256,
     )
     summary["local_hours_source"] = result.provenance.get("local_hours_source")
+    summary["acs_self_employment_identity_gate"] = {
+        "name": self_employment_gate.name,
+        "passed": self_employment_gate.passed,
+        "failures": list(self_employment_gate.failures),
+        "details": dict(self_employment_gate.details),
+    }
     summary["local_hours_gate"] = {
         "name": hours_gate.name,
         "passed": hours_gate.passed,
@@ -612,6 +621,33 @@ def _require_benefit_participation_transfer(result: AcsMultispineResult) -> None
             "ACS default transfer produced no takes_up_* benefit-participation "
             "input. Refusing to report a complete multispine base."
         )
+
+
+def _require_acs_self_employment_identity(frame: Frame) -> GateResult:
+    """Refuse staging whose ACS self-employment leaves add to SEMP (#1380)."""
+
+    person = frame.table("person")
+    tag = spine_column("person")
+    if tag not in person.columns:
+        raise SystemExit(
+            f"Combined multispine frame has no {tag}; cannot select the ACS "
+            "rows the self-employment identity covers."
+        )
+    gate = acs_self_employment_identity_gate(
+        person,
+        rows=(
+            person[tag]
+            .astype("string")
+            .eq(ACS_2024_1YR_SPINE)
+            .fillna(False)
+            .to_numpy(dtype=bool)
+        ),
+    )
+    if not gate.passed:
+        raise SystemExit(
+            "ACS self-employment identity failed: " + "; ".join(gate.failures)
+        )
+    return gate
 
 
 def _require_puma_ladder_assignment(result: AcsMultispineResult) -> None:
