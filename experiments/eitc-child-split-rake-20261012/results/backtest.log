@@ -1,0 +1,293 @@
+parser check: 498 feed facts reproduced exactly
+
+Filing-season mid-November / complete-year Table 2.5 (same tax year)
+  TY2017 amount  total 0.9695  by group {'-inf-1': np.float64(0.768), '1-5000': np.float64(0.951), '5000-10000': np.float64(0.935), '10000-15000': np.float64(0.953), '15000-20000': np.float64(0.975), '20000-25000': np.float64(0.951), '25000-30000': np.float64(1.017), '30000-40000': np.float64(0.995), '40000-50000': np.float64(1.011), '50000-inf': np.float64(1.458)}
+  TY2017 returns total 0.9676  by group {'-inf-1': np.float64(0.843), '1-5000': np.float64(0.936), '5000-10000': np.float64(0.938), '10000-15000': np.float64(0.954), '15000-20000': np.float64(0.987), '20000-25000': np.float64(0.958), '25000-30000': np.float64(1.011), '30000-40000': np.float64(0.993), '40000-50000': np.float64(0.999), '50000-inf': np.float64(1.031)}
+  TY2018 amount  total 1.0120  by group {'-inf-1': np.float64(0.997), '1-5000': np.float64(0.886), '5000-10000': np.float64(0.967), '10000-15000': np.float64(0.958), '15000-20000': np.float64(0.967), '20000-25000': np.float64(0.975), '25000-30000': np.float64(0.96), '30000-40000': np.float64(1.077), '40000-50000': np.float64(1.864), '50000-inf': np.float64(8.276)}
+  TY2018 returns total 0.9484  by group {'-inf-1': np.float64(0.898), '1-5000': np.float64(0.866), '5000-10000': np.float64(0.944), '10000-15000': np.float64(0.92), '15000-20000': np.float64(0.972), '20000-25000': np.float64(0.981), '25000-30000': np.float64(0.95), '30000-40000': np.float64(0.969), '40000-50000': np.float64(1.007), '50000-inf': np.float64(1.034)}
+  TY2019 amount  total 0.9681  by group {'-inf-1': np.float64(0.862), '1-5000': np.float64(0.875), '5000-10000': np.float64(0.978), '10000-15000': np.float64(0.971), '15000-20000': np.float64(0.972), '20000-25000': np.float64(0.972), '25000-30000': np.float64(0.964), '30000-40000': np.float64(0.961), '40000-50000': np.float64(0.988), '50000-inf': np.float64(0.991)}
+  TY2019 returns total 0.9486  by group {'-inf-1': np.float64(0.855), '1-5000': np.float64(0.853), '5000-10000': np.float64(0.951), '10000-15000': np.float64(0.933), '15000-20000': np.float64(0.972), '20000-25000': np.float64(0.977), '25000-30000': np.float64(0.957), '30000-40000': np.float64(0.965), '40000-50000': np.float64(0.997), '50000-inf': np.float64(0.973)}
+  TY2021 amount  total 0.9733  by group {'-inf-1': np.float64(0.873), '1-5000': np.float64(0.971), '5000-10000': np.float64(0.968), '10000-15000': np.float64(0.955), '15000-20000': np.float64(1.001), '20000-25000': np.float64(1.0), '25000-30000': np.float64(0.964), '30000-40000': np.float64(0.954), '40000-50000': np.float64(0.982), '50000-inf': np.float64(1.122)}
+  TY2021 returns total 0.9705  by group {'-inf-1': np.float64(0.871), '1-5000': np.float64(0.949), '5000-10000': np.float64(0.965), '10000-15000': np.float64(0.95), '15000-20000': np.float64(0.994), '20000-25000': np.float64(1.01), '25000-30000': np.float64(0.934), '30000-40000': np.float64(0.95), '40000-50000': np.float64(1.041), '50000-inf': np.float64(1.036)}
+  TY2022 amount  total 0.9565  by group {'-inf-1': np.float64(0.682), '1-5000': np.float64(0.837), '5000-10000': np.float64(0.894), '10000-15000': np.float64(0.959), '15000-20000': np.float64(0.942), '20000-25000': np.float64(1.008), '25000-30000': np.float64(0.99), '30000-40000': np.float64(0.937), '40000-50000': np.float64(0.981), '50000-inf': np.float64(0.965)}
+  TY2022 returns total 0.9386  by group {'-inf-1': np.float64(0.775), '1-5000': np.float64(0.863), '5000-10000': np.float64(0.897), '10000-15000': np.float64(0.957), '15000-20000': np.float64(0.914), '20000-25000': np.float64(0.99), '25000-30000': np.float64(0.984), '30000-40000': np.float64(0.945), '40000-50000': np.float64(0.971), '50000-inf': np.float64(0.987)}
+  TY2023 amount  total 0.9573  by group {'-inf-1': np.float64(0.947), '1-5000': np.float64(0.945), '5000-10000': np.float64(0.912), '10000-15000': np.float64(0.947), '15000-20000': np.float64(0.946), '20000-25000': np.float64(0.96), '25000-30000': np.float64(0.81), '30000-40000': np.float64(1.142), '40000-50000': np.float64(0.963), '50000-inf': np.float64(0.961)}
+  TY2023 returns total 0.9457  by group {'-inf-1': np.float64(0.834), '1-5000': np.float64(0.957), '5000-10000': np.float64(0.898), '10000-15000': np.float64(0.929), '15000-20000': np.float64(0.931), '20000-25000': np.float64(0.953), '25000-30000': np.float64(0.84), '30000-40000': np.float64(1.056), '40000-50000': np.float64(0.97), '50000-inf': np.float64(0.967)}
+
+=== 2013->2014|oracle  (clean)
+  amount: group factors [1.069, 0.915, 0.948, 1.011, 0.983, 1.041, 0.969, 1.076, 1.157, 2.411]  all-AGI 1.0037
+    source share {'childless': 0.0299, 'one': 0.3641, 'two': 0.3966, 'three_plus': 0.2095}
+    truth  share {'childless': 0.031, 'one': 0.3655, 'two': 0.3962, 'three_plus': 0.2073}
+    (a) bins split err  -8.15%  -1.24%  +0.62%  +2.22%  | total-row err  -3.79%  -0.37%  +0.09%  +1.04%  | cells TVD 0.0151  bin capped |rel| 0.1284
+    (b) bins split err  -8.15%  -1.24%  +0.62%  +2.22%  | total-row err  -8.15%  -1.24%  +0.62%  +2.22%  | cells TVD 0.0151  bin capped |rel| 0.1284
+    (c) bins split err  -3.79%  -0.37%  +0.09%  +1.04%  | total-row err  -3.79%  -0.37%  +0.09%  +1.04%  | cells TVD 0.0128  bin capped |rel| 0.1224
+    (d) bins split err  -8.15%  -1.24%  +0.62%  +2.22%  | cells TVD 0.0151  bin capped |rel| 0.1284
+  returns: group factors [0.919, 0.946, 0.971, 1.022, 0.966, 1.004, 0.933, 1.021, 1.072, 1.405]  all-AGI 0.9902
+    source share {'childless': 0.2517, 'one': 0.3698, 'two': 0.2554, 'three_plus': 0.123}
+    truth  share {'childless': 0.2588, 'one': 0.3676, 'two': 0.2528, 'three_plus': 0.1209}
+    (a) bins split err  -3.78%  +0.31%  +1.78%  +3.42%  | total-row err  -2.71%  +0.60%  +1.05%  +1.77%  | cells TVD 0.0171  bin capped |rel| 0.1178
+    (b) bins split err  -3.78%  +0.31%  +1.78%  +3.42%  | total-row err  -3.78%  +0.31%  +1.78%  +3.42%  | cells TVD 0.0171  bin capped |rel| 0.1178
+    (c) bins split err  -2.71%  +0.60%  +1.05%  +1.77%  | total-row err  -2.71%  +0.60%  +1.05%  +1.77%  | cells TVD 0.0149  bin capped |rel| 0.1131
+    (d) bins split err  -3.78%  +0.31%  +1.78%  +3.42%  | cells TVD 0.0171  bin capped |rel| 0.1178
+
+=== 2014->2015|oracle  (clean)
+  amount: group factors [0.956, 0.965, 0.922, 0.991, 1.013, 0.983, 1.04, 1.076, 1.107, 2.056]  all-AGI 1.0027
+    source share {'childless': 0.031, 'one': 0.3655, 'two': 0.3962, 'three_plus': 0.2073}
+    truth  share {'childless': 0.0312, 'one': 0.3611, 'two': 0.3976, 'three_plus': 0.2101}
+    (a) bins split err  -5.87%  +0.17%  +0.26%  +0.09%  | total-row err  -0.54%  +1.21%  -0.35%  -1.34%  | cells TVD 0.0155  bin capped |rel| 0.1373
+    (b) bins split err  -5.87%  +0.17%  +0.26%  +0.09%  | total-row err  -5.87%  +0.17%  +0.26%  +0.09%  | cells TVD 0.0155  bin capped |rel| 0.1373
+    (c) bins split err  -0.54%  +1.21%  -0.35%  -1.34%  | total-row err  -0.54%  +1.21%  -0.35%  -1.34%  | cells TVD 0.0151  bin capped |rel| 0.1351
+    (d) bins split err  -5.87%  +0.17%  +0.26%  +0.09%  | cells TVD 0.0155  bin capped |rel| 0.1373
+  returns: group factors [0.933, 0.975, 0.935, 0.993, 0.982, 0.954, 1.008, 1.037, 0.996, 1.529]  all-AGI 0.9840
+    source share {'childless': 0.2588, 'one': 0.3676, 'two': 0.2528, 'three_plus': 0.1209}
+    truth  share {'childless': 0.2588, 'one': 0.3654, 'two': 0.2533, 'three_plus': 0.1225}
+    (a) bins split err  -1.86%  +0.71%  +0.54%  +0.70%  | total-row err  -0.00%  +0.60%  -0.22%  -1.33%  | cells TVD 0.0132  bin capped |rel| 0.1195
+    (b) bins split err  -1.86%  +0.71%  +0.54%  +0.70%  | total-row err  -1.86%  +0.71%  +0.54%  +0.70%  | cells TVD 0.0132  bin capped |rel| 0.1195
+    (c) bins split err  -0.00%  +0.60%  -0.22%  -1.33%  | total-row err  -0.00%  +0.60%  -0.22%  -1.33%  | cells TVD 0.0118  bin capped |rel| 0.1194
+    (d) bins split err  -1.86%  +0.71%  +0.54%  +0.70%  | cells TVD 0.0132  bin capped |rel| 0.1195
+
+=== 2015->2016|oracle  (clean)
+  amount: group factors [0.87, 1.015, 0.935, 0.933, 0.98, 0.976, 1.035, 0.999, 1.087, 0.932]  all-AGI 0.9737
+    source share {'childless': 0.0312, 'one': 0.3611, 'two': 0.3976, 'three_plus': 0.2101}
+    truth  share {'childless': 0.0308, 'one': 0.3579, 'two': 0.3987, 'three_plus': 0.2126}
+    (a) bins split err  -1.23%  +0.25%  -0.07%  -0.12%  | total-row err  +1.35%  +0.89%  -0.29%  -1.15%  | cells TVD 0.0145  bin capped |rel| 0.1346
+    (b) bins split err  -1.23%  +0.25%  -0.07%  -0.12%  | total-row err  -1.23%  +0.25%  -0.07%  -0.12%  | cells TVD 0.0145  bin capped |rel| 0.1346
+    (c) bins split err  +1.35%  +0.89%  -0.29%  -1.15%  | total-row err  +1.35%  +0.89%  -0.29%  -1.15%  | cells TVD 0.0143  bin capped |rel| 0.1345
+    (d) bins split err  -1.23%  +0.25%  -0.07%  -0.12%  | cells TVD 0.0145  bin capped |rel| 0.1346
+  returns: group factors [1.014, 1.006, 0.927, 0.957, 0.962, 0.983, 1.015, 0.982, 1.086, 1.035]  all-AGI 0.9751
+    source share {'childless': 0.2588, 'one': 0.3654, 'two': 0.2533, 'three_plus': 0.1225}
+    truth  share {'childless': 0.2575, 'one': 0.3633, 'two': 0.2544, 'three_plus': 0.1247}
+    (a) bins split err  -1.13%  +0.43%  +0.51%  +0.06%  | total-row err  +0.49%  +0.57%  -0.43%  -1.79%  | cells TVD 0.0149  bin capped |rel| 0.1133
+    (b) bins split err  -1.13%  +0.43%  +0.51%  +0.06%  | total-row err  -1.13%  +0.43%  +0.51%  +0.06%  | cells TVD 0.0149  bin capped |rel| 0.1133
+    (c) bins split err  +0.49%  +0.57%  -0.43%  -1.79%  | total-row err  +0.49%  +0.57%  -0.43%  -1.79%  | cells TVD 0.0141  bin capped |rel| 0.1142
+    (d) bins split err  -1.13%  +0.43%  +0.51%  +0.06%  | cells TVD 0.0149  bin capped |rel| 0.1133
+
+=== 2016->2017|fs  (clean)
+  amount: group factors [1.03, 0.919, 0.874, 0.927, 0.941, 1.007, 1.019, 1.048, 1.041, 1.994]  all-AGI 0.9654
+    source share {'childless': 0.0308, 'one': 0.3579, 'two': 0.3987, 'three_plus': 0.2126}
+    truth  share {'childless': 0.0315, 'one': 0.3491, 'two': 0.3969, 'three_plus': 0.2225}
+    (a) bins split err  -8.90%  +1.44%  +0.99%  -2.75%  | total-row err  -2.28%  +2.52%  +0.47%  -4.46%  | cells TVD 0.0191  bin capped |rel| 0.1464
+    (b) bins split err  -8.90%  +1.44%  +0.99%  -2.75%  | total-row err  -8.90%  +1.44%  +0.99%  -2.75%  | cells TVD 0.0191  bin capped |rel| 0.1464
+    (c) bins split err  -2.28%  +2.52%  +0.47%  -4.46%  | total-row err  -2.28%  +2.52%  +0.47%  -4.46%  | cells TVD 0.0214  bin capped |rel| 0.1416
+    (d) bins split err  -8.90%  +1.44%  +0.99%  -2.75%  | cells TVD 0.0191  bin capped |rel| 0.1464
+  returns: group factors [0.822, 0.866, 0.912, 0.934, 0.939, 0.986, 1.007, 1.033, 0.986, 1.347]  all-AGI 0.9552
+    source share {'childless': 0.2575, 'one': 0.3633, 'two': 0.2544, 'three_plus': 0.1247}
+    truth  share {'childless': 0.2593, 'one': 0.3592, 'two': 0.2529, 'three_plus': 0.1286}
+    (a) bins split err  -5.57%  +2.26%  +2.35%  +0.31%  | total-row err  -0.70%  +1.16%  +0.61%  -3.03%  | cells TVD 0.0220  bin capped |rel| 0.1360
+    (b) bins split err  -5.57%  +2.26%  +2.35%  +0.31%  | total-row err  -5.57%  +2.26%  +2.35%  +0.31%  | cells TVD 0.0220  bin capped |rel| 0.1360
+    (c) bins split err  -0.70%  +1.16%  +0.61%  -3.03%  | total-row err  -0.70%  +1.16%  +0.61%  -3.03%  | cells TVD 0.0189  bin capped |rel| 0.1292
+    (d) bins split err  -5.57%  +2.26%  +2.35%  +0.31%  | cells TVD 0.0220  bin capped |rel| 0.1360
+
+=== 2016->2017|oracle  (clean)
+  amount: group factors [1.34, 0.966, 0.935, 0.973, 0.965, 1.059, 1.002, 1.053, 1.029, 1.368]  all-AGI 0.9958
+    source share {'childless': 0.0308, 'one': 0.3579, 'two': 0.3987, 'three_plus': 0.2126}
+    truth  share {'childless': 0.0315, 'one': 0.3491, 'two': 0.3969, 'three_plus': 0.2225}
+    (a) bins split err  -6.04%  +1.96%  +0.73%  -3.53%  | total-row err  -2.28%  +2.52%  +0.47%  -4.46%  | cells TVD 0.0177  bin capped |rel| 0.1431
+    (b) bins split err  -6.04%  +1.96%  +0.73%  -3.53%  | total-row err  -6.04%  +1.96%  +0.73%  -3.53%  | cells TVD 0.0177  bin capped |rel| 0.1431
+    (c) bins split err  -2.28%  +2.52%  +0.47%  -4.46%  | total-row err  -2.28%  +2.52%  +0.47%  -4.46%  | cells TVD 0.0179  bin capped |rel| 0.1396
+    (d) bins split err  -6.04%  +1.96%  +0.73%  -3.53%  | cells TVD 0.0177  bin capped |rel| 0.1431
+  returns: group factors [0.976, 0.926, 0.973, 0.98, 0.952, 1.029, 0.996, 1.04, 0.987, 1.306]  all-AGI 0.9871
+    source share {'childless': 0.2575, 'one': 0.3633, 'two': 0.2544, 'three_plus': 0.1247}
+    truth  share {'childless': 0.2593, 'one': 0.3592, 'two': 0.2529, 'three_plus': 0.1286}
+    (a) bins split err  -3.11%  +1.78%  +1.28%  -1.23%  | total-row err  -0.70%  +1.16%  +0.61%  -3.03%  | cells TVD 0.0180  bin capped |rel| 0.1333
+    (b) bins split err  -3.11%  +1.78%  +1.28%  -1.23%  | total-row err  -3.11%  +1.78%  +1.28%  -1.23%  | cells TVD 0.0180  bin capped |rel| 0.1333
+    (c) bins split err  -0.70%  +1.16%  +0.61%  -3.03%  | total-row err  -0.70%  +1.16%  +0.61%  -3.03%  | cells TVD 0.0137  bin capped |rel| 0.1272
+    (d) bins split err  -3.11%  +1.78%  +1.28%  -1.23%  | cells TVD 0.0180  bin capped |rel| 0.1333
+
+=== 2017->2018|fs  (clean)
+  amount: group factors [0.675, 0.791, 0.761, 0.924, 0.94, 0.936, 1.033, 1.161, 2.101, 13.993]  all-AGI 0.9889
+    source share {'childless': 0.0315, 'one': 0.3491, 'two': 0.3969, 'three_plus': 0.2225}
+    truth  share {'childless': 0.0323, 'one': 0.3546, 'two': 0.3927, 'three_plus': 0.2204}
+    (a) bins split err -19.72%  -6.39%  +1.93%  +9.72%  | total-row err  -2.37%  -1.55%  +1.06%  +0.94%  | cells TVD 0.0509  bin capped |rel| 0.2483
+    (b) bins split err -19.72%  -6.39%  +1.93%  +9.72%  | total-row err -19.72%  -6.39%  +1.93%  +9.72%  | cells TVD 0.0509  bin capped |rel| 0.2483
+    (c) bins split err  -2.37%  -1.55%  +1.06%  +0.94%  | total-row err  -2.37%  -1.55%  +1.06%  +0.94%  | cells TVD 0.0482  bin capped |rel| 0.2296
+    (d) bins split err -19.72%  -6.39%  +1.93%  +9.72%  | cells TVD 0.0509  bin capped |rel| 0.2483
+  returns: group factors [0.677, 0.852, 0.823, 0.909, 0.953, 0.92, 0.987, 1.007, 1.066, 1.495]  all-AGI 0.9295
+    source share {'childless': 0.2593, 'one': 0.3592, 'two': 0.2529, 'three_plus': 0.1286}
+    truth  share {'childless': 0.2618, 'one': 0.3627, 'two': 0.2502, 'three_plus': 0.1253}
+    (a) bins split err  -8.02%  -0.14%  +4.41%  +8.35%  | total-row err  -0.95%  -0.97%  +1.08%  +2.64%  | cells TVD 0.0366  bin capped |rel| 0.1720
+    (b) bins split err  -8.02%  -0.14%  +4.41%  +8.35%  | total-row err  -8.02%  -0.14%  +4.41%  +8.35%  | cells TVD 0.0366  bin capped |rel| 0.1720
+    (c) bins split err  -0.95%  -0.97%  +1.08%  +2.64%  | total-row err  -0.95%  -0.97%  +1.08%  +2.64%  | cells TVD 0.0294  bin capped |rel| 0.1681
+    (d) bins split err  -8.02%  -0.14%  +4.41%  +8.35%  | cells TVD 0.0366  bin capped |rel| 0.1720
+
+=== 2017->2018|oracle  (clean)
+  amount: group factors [0.677, 0.892, 0.787, 0.964, 0.972, 0.961, 1.075, 1.078, 1.127, 1.691]  all-AGI 0.9771
+    source share {'childless': 0.0315, 'one': 0.3491, 'two': 0.3969, 'three_plus': 0.2225}
+    truth  share {'childless': 0.0323, 'one': 0.3546, 'two': 0.3927, 'three_plus': 0.2204}
+    (a) bins split err -14.51%  -3.21%  +2.32%  +3.16%  | total-row err  -2.37%  -1.55%  +1.06%  +0.94%  | cells TVD 0.0318  bin capped |rel| 0.1929
+    (b) bins split err -14.51%  -3.21%  +2.32%  +3.16%  | total-row err -14.51%  -3.21%  +2.32%  +3.16%  | cells TVD 0.0318  bin capped |rel| 0.1929
+    (c) bins split err  -2.37%  -1.55%  +1.06%  +0.94%  | total-row err  -2.37%  -1.55%  +1.06%  +0.94%  | cells TVD 0.0280  bin capped |rel| 0.1808
+    (d) bins split err -14.51%  -3.21%  +2.32%  +3.16%  | cells TVD 0.0318  bin capped |rel| 0.1929
+  returns: group factors [0.754, 0.984, 0.871, 0.988, 0.98, 0.938, 1.039, 1.039, 1.059, 1.447]  all-AGI 0.9801
+    source share {'childless': 0.2593, 'one': 0.3592, 'two': 0.2529, 'three_plus': 0.1286}
+    truth  share {'childless': 0.2618, 'one': 0.3627, 'two': 0.2502, 'three_plus': 0.1253}
+    (a) bins split err  -4.83%  -0.69%  +2.95%  +6.21%  | total-row err  -0.95%  -0.97%  +1.08%  +2.64%  | cells TVD 0.0284  bin capped |rel| 0.1702
+    (b) bins split err  -4.83%  -0.69%  +2.95%  +6.21%  | total-row err  -4.83%  -0.69%  +2.95%  +6.21%  | cells TVD 0.0284  bin capped |rel| 0.1702
+    (c) bins split err  -0.95%  -0.97%  +1.08%  +2.64%  | total-row err  -0.95%  -0.97%  +1.08%  +2.64%  | cells TVD 0.0259  bin capped |rel| 0.1614
+    (d) bins split err  -4.83%  -0.69%  +2.95%  +6.21%  | cells TVD 0.0284  bin capped |rel| 0.1702
+
+=== 2018->2019|fs  (clean)
+  amount: group factors [0.959, 0.915, 0.913, 0.869, 0.963, 0.969, 0.994, 1.057, 1.176, 1.657]  all-AGI 0.9614
+    source share {'childless': 0.0323, 'one': 0.3546, 'two': 0.3927, 'three_plus': 0.2204}
+    truth  share {'childless': 0.0351, 'one': 0.3524, 'two': 0.3899, 'three_plus': 0.2225}
+    (a) bins split err -13.70%  -0.93%  +1.38%  +1.21%  | total-row err  -8.14%  +0.62%  +0.71%  -0.95%  | cells TVD 0.0243  bin capped |rel| 0.1518
+    (b) bins split err -13.70%  -0.93%  +1.38%  +1.21%  | total-row err -13.70%  -0.93%  +1.38%  +1.21%  | cells TVD 0.0243  bin capped |rel| 0.1518
+    (c) bins split err  -8.14%  +0.62%  +0.71%  -0.95%  | total-row err  -8.14%  +0.62%  +0.71%  -0.95%  | cells TVD 0.0220  bin capped |rel| 0.1454
+    (d) bins split err -13.70%  -0.93%  +1.38%  +1.21%  | cells TVD 0.0243  bin capped |rel| 0.1518
+  returns: group factors [0.981, 0.984, 0.929, 0.886, 0.975, 0.951, 0.943, 0.989, 1.118, 1.32]  all-AGI 0.9574
+    source share {'childless': 0.2618, 'one': 0.3627, 'two': 0.2502, 'three_plus': 0.1253}
+    truth  share {'childless': 0.283, 'one': 0.3517, 'two': 0.2405, 'three_plus': 0.1248}
+    (a) bins split err -10.22%  +2.66%  +5.95%  +4.21%  | total-row err  -7.50%  +3.13%  +4.05%  +0.38%  | cells TVD 0.0346  bin capped |rel| 0.1423
+    (b) bins split err -10.22%  +2.66%  +5.95%  +4.21%  | total-row err -10.22%  +2.66%  +5.95%  +4.21%  | cells TVD 0.0346  bin capped |rel| 0.1423
+    (c) bins split err  -7.50%  +3.13%  +4.05%  +0.38%  | total-row err  -7.50%  +3.13%  +4.05%  +0.38%  | cells TVD 0.0296  bin capped |rel| 0.1331
+    (d) bins split err -10.22%  +2.66%  +5.95%  +4.21%  | cells TVD 0.0346  bin capped |rel| 0.1423
+
+=== 2018->2019|oracle  (clean)
+  amount: group factors [1.112, 1.046, 0.933, 0.895, 0.991, 0.998, 1.031, 1.1, 1.191, 1.673]  all-AGI 0.9931
+    source share {'childless': 0.0323, 'one': 0.3546, 'two': 0.3927, 'three_plus': 0.2204}
+    truth  share {'childless': 0.0351, 'one': 0.3524, 'two': 0.3899, 'three_plus': 0.2225}
+    (a) bins split err -12.56%  -0.90%  +1.32%  +1.10%  | total-row err  -8.14%  +0.62%  +0.71%  -0.95%  | cells TVD 0.0238  bin capped |rel| 0.1474
+    (b) bins split err -12.56%  -0.90%  +1.32%  +1.10%  | total-row err -12.56%  -0.90%  +1.32%  +1.10%  | cells TVD 0.0238  bin capped |rel| 0.1474
+    (c) bins split err  -8.14%  +0.62%  +0.71%  -0.95%  | total-row err  -8.14%  +0.62%  +0.71%  -0.95%  | cells TVD 0.0217  bin capped |rel| 0.1423
+    (d) bins split err -12.56%  -0.90%  +1.32%  +1.10%  | cells TVD 0.0238  bin capped |rel| 0.1474
+  returns: group factors [1.146, 1.154, 0.977, 0.95, 1.003, 0.973, 0.985, 1.025, 1.121, 1.357]  all-AGI 1.0093
+    source share {'childless': 0.2618, 'one': 0.3627, 'two': 0.2502, 'three_plus': 0.1253}
+    truth  share {'childless': 0.283, 'one': 0.3517, 'two': 0.2405, 'three_plus': 0.1248}
+    (a) bins split err  -7.24%  +1.99%  +4.40%  +2.34%  | total-row err  -7.50%  +3.13%  +4.05%  +0.38%  | cells TVD 0.0295  bin capped |rel| 0.1496
+    (b) bins split err  -7.24%  +1.99%  +4.40%  +2.34%  | total-row err  -7.24%  +1.99%  +4.40%  +2.34%  | cells TVD 0.0295  bin capped |rel| 0.1496
+    (c) bins split err  -7.50%  +3.13%  +4.05%  +0.38%  | total-row err  -7.50%  +3.13%  +4.05%  +0.38%  | cells TVD 0.0300  bin capped |rel| 0.1484
+    (d) bins split err  -7.24%  +1.99%  +4.40%  +2.34%  | cells TVD 0.0295  bin capped |rel| 0.1496
+
+=== 2019->2020|oracle  (POLICY BREAK)
+  amount: group factors [2.611, 1.923, 1.037, 0.71, 0.763, 0.922, 1.028, 1.076, 1.164, 1.355]  all-AGI 0.9188
+    source share {'childless': 0.0351, 'one': 0.3524, 'two': 0.3899, 'three_plus': 0.2225}
+    truth  share {'childless': 0.0381, 'one': 0.3619, 'two': 0.3767, 'three_plus': 0.2233}
+    (a) bins split err +11.40%  -4.62%  +2.35%  +1.58%  | total-row err  -7.71%  -2.64%  +3.53%  -0.36%  | cells TVD 0.0399  bin capped |rel| 0.2280
+    (b) bins split err +11.40%  -4.62%  +2.35%  +1.58%  | total-row err +11.40%  -4.62%  +2.35%  +1.58%  | cells TVD 0.0399  bin capped |rel| 0.2280
+    (c) bins split err  -7.71%  -2.64%  +3.53%  -0.36%  | total-row err  -7.71%  -2.64%  +3.53%  -0.36%  | cells TVD 0.0392  bin capped |rel| 0.2306
+    (d) bins split err +11.40%  -4.62%  +2.35%  +1.58%  | cells TVD 0.0399  bin capped |rel| 0.2280
+  returns: group factors [1.947, 1.048, 0.977, 0.838, 0.868, 0.97, 1.01, 1.041, 1.14, 1.231]  all-AGI 0.9733
+    source share {'childless': 0.283, 'one': 0.3517, 'two': 0.2405, 'three_plus': 0.1248}
+    truth  share {'childless': 0.2934, 'one': 0.3534, 'two': 0.2303, 'three_plus': 0.1228}
+    (a) bins split err  -5.21%  -1.16%  +5.68%  +5.12%  | total-row err  -3.55%  -0.49%  +4.39%  +1.65%  | cells TVD 0.0451  bin capped |rel| 0.1679
+    (b) bins split err  -5.21%  -1.16%  +5.68%  +5.12%  | total-row err  -5.21%  -1.16%  +5.68%  +5.12%  | cells TVD 0.0451  bin capped |rel| 0.1679
+    (c) bins split err  -3.55%  -0.49%  +4.39%  +1.65%  | total-row err  -3.55%  -0.49%  +4.39%  +1.65%  | cells TVD 0.0406  bin capped |rel| 0.1630
+    (d) bins split err  -5.21%  -1.16%  +5.68%  +5.12%  | cells TVD 0.0451  bin capped |rel| 0.1679
+
+=== 2020->2021|fs  (POLICY BREAK)
+  amount: group factors [1.471, 1.292, 1.456, 1.375, 1.117, 0.912, 0.865, 0.905, 0.972, 1.192]  all-AGI 1.0792
+    source share {'childless': 0.0381, 'one': 0.3619, 'two': 0.3767, 'three_plus': 0.2233}
+    truth  share {'childless': 0.1892, 'one': 0.3026, 'two': 0.3117, 'three_plus': 0.1965}
+    (a) bins split err -74.11% +22.03% +17.72%  +9.33%  | total-row err -79.88% +19.59% +20.85% +13.68%  | cells TVD 0.1480  bin capped |rel| 0.3955
+    (b) bins split err -74.11% +22.03% +17.72%  +9.33%  | total-row err -74.11% +22.03% +17.72%  +9.33%  | cells TVD 0.1480  bin capped |rel| 0.3955
+    (c) bins split err -79.88% +19.59% +20.85% +13.68%  | total-row err -79.88% +19.59% +20.85% +13.68%  | cells TVD 0.1599  bin capped |rel| 0.4358
+    (d) bins split err -74.11% +22.03% +17.72%  +9.33%  | cells TVD 0.1480  bin capped |rel| 0.3955
+  returns: group factors [1.074, 1.059, 1.192, 1.241, 2.058, 1.352, 0.916, 0.888, 0.965, 1.053]  all-AGI 1.2014
+    source share {'childless': 0.2934, 'one': 0.3534, 'two': 0.2303, 'three_plus': 0.1228}
+    truth  share {'childless': 0.469, 'one': 0.2639, 'two': 0.1721, 'three_plus': 0.0951}
+    (a) bins split err -35.53% +33.61% +31.73% +24.57%  | total-row err -37.43% +33.94% +33.88% +29.12%  | cells TVD 0.1725  bin capped |rel| 0.3515
+    (b) bins split err -35.53% +33.61% +31.73% +24.57%  | total-row err -35.53% +33.61% +31.73% +24.57%  | cells TVD 0.1725  bin capped |rel| 0.3515
+    (c) bins split err -37.43% +33.94% +33.88% +29.12%  | total-row err -37.43% +33.94% +33.88% +29.12%  | cells TVD 0.1818  bin capped |rel| 0.3730
+    (d) bins split err -35.53% +33.61% +31.73% +24.57%  | cells TVD 0.1725  bin capped |rel| 0.3515
+
+=== 2020->2021|oracle  (POLICY BREAK)
+  amount: group factors [1.685, 1.331, 1.505, 1.44, 1.116, 0.912, 0.898, 0.949, 0.989, 1.063]  all-AGI 1.1088
+    source share {'childless': 0.0381, 'one': 0.3619, 'two': 0.3767, 'three_plus': 0.2233}
+    truth  share {'childless': 0.1892, 'one': 0.3026, 'two': 0.3117, 'three_plus': 0.1965}
+    (a) bins split err -73.83% +22.13% +17.59%  +9.12%  | total-row err -79.88% +19.59% +20.85% +13.68%  | cells TVD 0.1453  bin capped |rel| 0.3942
+    (b) bins split err -73.83% +22.13% +17.59%  +9.12%  | total-row err -73.83% +22.13% +17.59%  +9.12%  | cells TVD 0.1453  bin capped |rel| 0.3942
+    (c) bins split err -79.88% +19.59% +20.85% +13.68%  | total-row err -79.88% +19.59% +20.85% +13.68%  | cells TVD 0.1593  bin capped |rel| 0.4371
+    (d) bins split err -73.83% +22.13% +17.59%  +9.12%  | cells TVD 0.1453  bin capped |rel| 0.3942
+  returns: group factors [1.233, 1.116, 1.234, 1.307, 2.071, 1.338, 0.981, 0.935, 0.927, 1.016]  all-AGI 1.2379
+    source share {'childless': 0.2934, 'one': 0.3534, 'two': 0.2303, 'three_plus': 0.1228}
+    truth  share {'childless': 0.469, 'one': 0.2639, 'two': 0.1721, 'three_plus': 0.0951}
+    (a) bins split err -34.71% +33.43% +30.57% +23.08%  | total-row err -37.43% +33.94% +33.88% +29.12%  | cells TVD 0.1672  bin capped |rel| 0.3512
+    (b) bins split err -34.71% +33.43% +30.57% +23.08%  | total-row err -34.71% +33.43% +30.57% +23.08%  | cells TVD 0.1672  bin capped |rel| 0.3512
+    (c) bins split err -37.43% +33.94% +33.88% +29.12%  | total-row err -37.43% +33.94% +33.88% +29.12%  | cells TVD 0.1804  bin capped |rel| 0.3855
+    (d) bins split err -34.71% +33.43% +30.57% +23.08%  | cells TVD 0.1672  bin capped |rel| 0.3512
+
+=== 2021->2022|fs  (POLICY BREAK)
+  amount: group factors [0.19, 0.296, 0.523, 0.734, 1.072, 1.031, 0.935, 1.007, 1.191, 1.731]  all-AGI 0.8747
+    source share {'childless': 0.1892, 'one': 0.3026, 'two': 0.3117, 'three_plus': 0.1965}
+    truth  share {'childless': 0.0438, 'one': 0.3526, 'two': 0.3705, 'three_plus': 0.2331}
+    (a) bins split err +249.83% -13.92% -10.37%  -9.40%  | total-row err +331.95% -14.18% -15.87% -15.71%  | cells TVD 0.1308  bin capped |rel| 0.3566
+    (b) bins split err +249.83% -13.92% -10.37%  -9.40%  | total-row err +249.83% -13.92% -10.37%  -9.40%  | cells TVD 0.1308  bin capped |rel| 0.3566
+    (c) bins split err +331.95% -14.18% -15.87% -15.71%  | total-row err +331.95% -14.18% -15.87% -15.71%  | cells TVD 0.1664  bin capped |rel| 0.3951
+    (d) bins split err +249.83% -13.92% -10.37%  -9.40%  | cells TVD 0.1308  bin capped |rel| 0.3566
+  returns: group factors [0.283, 0.59, 0.669, 0.697, 0.517, 0.616, 0.764, 0.906, 1.185, 1.294]  all-AGI 0.7018
+    source share {'childless': 0.469, 'one': 0.2639, 'two': 0.1721, 'three_plus': 0.0951}
+    truth  share {'childless': 0.2856, 'one': 0.3525, 'two': 0.2337, 'three_plus': 0.1283}
+    (a) bins split err +43.93% -20.96% -15.44% -12.10%  | total-row err +64.22% -25.15% -26.37% -25.85%  | cells TVD 0.1512  bin capped |rel| 0.3310
+    (b) bins split err +43.93% -20.96% -15.44% -12.10%  | total-row err +43.93% -20.96% -15.44% -12.10%  | cells TVD 0.1512  bin capped |rel| 0.3310
+    (c) bins split err +64.22% -25.15% -26.37% -25.85%  | total-row err +64.22% -25.15% -26.37% -25.85%  | cells TVD 0.2052  bin capped |rel| 0.4089
+    (d) bins split err +43.93% -20.96% -15.44% -12.10%  | cells TVD 0.1512  bin capped |rel| 0.3310
+
+=== 2021->2022|oracle  (POLICY BREAK)
+  amount: group factors [0.279, 0.354, 0.585, 0.765, 1.138, 1.023, 0.944, 1.075, 1.215, 1.793]  all-AGI 0.9145
+    source share {'childless': 0.1892, 'one': 0.3026, 'two': 0.3117, 'three_plus': 0.1965}
+    truth  share {'childless': 0.0438, 'one': 0.3526, 'two': 0.3705, 'three_plus': 0.2331}
+    (a) bins split err +257.55% -14.18% -10.82%  -9.75%  | total-row err +331.95% -14.18% -15.87% -15.71%  | cells TVD 0.1289  bin capped |rel| 0.3630
+    (b) bins split err +257.55% -14.18% -10.82%  -9.75%  | total-row err +257.55% -14.18% -10.82%  -9.75%  | cells TVD 0.1289  bin capped |rel| 0.3630
+    (c) bins split err +331.95% -14.18% -15.87% -15.71%  | total-row err +331.95% -14.18% -15.87% -15.71%  | cells TVD 0.1621  bin capped |rel| 0.3991
+    (d) bins split err +257.55% -14.18% -10.82%  -9.75%  | cells TVD 0.1289  bin capped |rel| 0.3630
+  returns: group factors [0.366, 0.683, 0.747, 0.728, 0.565, 0.623, 0.776, 0.959, 1.221, 1.312]  all-AGI 0.7476
+    source share {'childless': 0.469, 'one': 0.2639, 'two': 0.1721, 'three_plus': 0.0951}
+    truth  share {'childless': 0.2856, 'one': 0.3525, 'two': 0.2337, 'three_plus': 0.1283}
+    (a) bins split err +46.71% -21.74% -16.79% -13.65%  | total-row err +64.22% -25.15% -26.37% -25.85%  | cells TVD 0.1500  bin capped |rel| 0.3337
+    (b) bins split err +46.71% -21.74% -16.79% -13.65%  | total-row err +46.71% -21.74% -16.79% -13.65%  | cells TVD 0.1500  bin capped |rel| 0.3337
+    (c) bins split err +64.22% -25.15% -26.37% -25.85%  | total-row err +64.22% -25.15% -26.37% -25.85%  | cells TVD 0.1990  bin capped |rel| 0.3943
+    (d) bins split err +46.71% -21.74% -16.79% -13.65%  | cells TVD 0.1500  bin capped |rel| 0.3337
+
+=== 2022->2023|fs  (clean)
+  amount: group factors [0.738, 0.735, 0.787, 0.905, 0.95, 1.176, 1.115, 1.157, 1.548, 2.502]  all-AGI 1.0561
+    source share {'childless': 0.0438, 'one': 0.3526, 'two': 0.3705, 'three_plus': 0.2331}
+    truth  share {'childless': 0.0371, 'one': 0.3535, 'two': 0.3758, 'three_plus': 0.2336}
+    (a) bins split err  -7.01%  -3.80%  +0.80%  +5.57%  | total-row err +18.03%  -0.24%  -1.41%  -0.23%  | cells TVD 0.0527  bin capped |rel| 0.2079
+    (b) bins split err  -7.01%  -3.80%  +0.80%  +5.57%  | total-row err  -7.01%  -3.80%  +0.80%  +5.57%  | cells TVD 0.0527  bin capped |rel| 0.2079
+    (c) bins split err +18.03%  -0.24%  -1.41%  -0.23%  | total-row err +18.03%  -0.24%  -1.41%  -0.23%  | cells TVD 0.0548  bin capped |rel| 0.2445
+    (d) bins split err  -7.01%  -3.80%  +0.80%  +5.57%  | cells TVD 0.0527  bin capped |rel| 0.2079
+  returns: group factors [0.755, 0.79, 0.813, 0.889, 0.976, 1.047, 0.955, 0.938, 1.188, 2.041]  all-AGI 0.9596
+    source share {'childless': 0.2856, 'one': 0.3525, 'two': 0.2337, 'three_plus': 0.1283}
+    truth  share {'childless': 0.2773, 'one': 0.3553, 'two': 0.2367, 'three_plus': 0.1306}
+    (a) bins split err  -8.17%  -1.25%  +5.47% +10.82%  | total-row err  +2.98%  -0.79%  -1.29%  -1.82%  | cells TVD 0.0510  bin capped |rel| 0.2019
+    (b) bins split err  -8.17%  -1.25%  +5.47% +10.82%  | total-row err  -8.17%  -1.25%  +5.47% +10.82%  | cells TVD 0.0510  bin capped |rel| 0.2019
+    (c) bins split err  +2.98%  -0.79%  -1.29%  -1.82%  | total-row err  +2.98%  -0.79%  -1.29%  -1.82%  | cells TVD 0.0505  bin capped |rel| 0.2007
+    (d) bins split err  -8.17%  -1.25%  +5.47% +10.82%  | cells TVD 0.0510  bin capped |rel| 0.2019
+
+=== 2022->2023|oracle  (clean)
+  amount: group factors [0.779, 0.777, 0.863, 0.955, 1.005, 1.226, 1.377, 1.012, 1.606, 2.602]  all-AGI 1.1032
+    source share {'childless': 0.0438, 'one': 0.3526, 'two': 0.3705, 'three_plus': 0.2331}
+    truth  share {'childless': 0.0371, 'one': 0.3535, 'two': 0.3758, 'three_plus': 0.2336}
+    (a) bins split err  -4.45%  -3.26%  +0.46%  +4.91%  | total-row err +18.03%  -0.24%  -1.41%  -0.23%  | cells TVD 0.0616  bin capped |rel| 0.2124
+    (b) bins split err  -4.45%  -3.26%  +0.46%  +4.91%  | total-row err  -4.45%  -3.26%  +0.46%  +4.91%  | cells TVD 0.0616  bin capped |rel| 0.2124
+    (c) bins split err +18.03%  -0.24%  -1.41%  -0.23%  | total-row err +18.03%  -0.24%  -1.41%  -0.23%  | cells TVD 0.0612  bin capped |rel| 0.2453
+    (d) bins split err  -4.45%  -3.26%  +0.46%  +4.91%  | cells TVD 0.0616  bin capped |rel| 0.2124
+  returns: group factors [0.905, 0.825, 0.905, 0.958, 1.049, 1.099, 1.137, 0.888, 1.224, 2.11]  all-AGI 1.0147
+    source share {'childless': 0.2856, 'one': 0.3525, 'two': 0.2337, 'three_plus': 0.1283}
+    truth  share {'childless': 0.2773, 'one': 0.3553, 'two': 0.2367, 'three_plus': 0.1306}
+    (a) bins split err  -6.05%  -1.75%  +4.44%  +9.56%  | total-row err  +2.98%  -0.79%  -1.29%  -1.82%  | cells TVD 0.0537  bin capped |rel| 0.2031
+    (b) bins split err  -6.05%  -1.75%  +4.44%  +9.56%  | total-row err  -6.05%  -1.75%  +4.44%  +9.56%  | cells TVD 0.0537  bin capped |rel| 0.2031
+    (c) bins split err  +2.98%  -0.79%  -1.29%  -1.82%  | total-row err  +2.98%  -0.79%  -1.29%  -1.82%  | cells TVD 0.0492  bin capped |rel| 0.1934
+    (d) bins split err  -6.05%  -1.75%  +4.44%  +9.56%  | cells TVD 0.0537  bin capped |rel| 0.2031
+
+=== Summary over clean pairs (mean)
+  fs|amount: 4 pairs
+    (a) bins-split |err| 5.39% (worst 19.7%)  total-row |err| 2.87% (worst 18.0%)  cells TVD 0.0368  bins capped 0.1886  sqrt-w 0.1291
+    (b) bins-split |err| 5.39% (worst 19.7%)  total-row |err| 5.39% (worst 19.7%)  cells TVD 0.0368  bins capped 0.1886  sqrt-w 0.1291
+    (c) bins-split |err| 2.87% (worst 18.0%)  total-row |err| 2.87% (worst 18.0%)  cells TVD 0.0366  bins capped 0.1903  sqrt-w 0.1299
+    (d) bins-split |err| 5.39% (worst 19.7%)  cells TVD 0.0368  bins capped 0.1886  sqrt-w 0.1291
+  fs|returns: 4 pairs
+    (a) bins-split |err| 5.01% (worst 10.8%)  total-row |err| 2.07% (worst 7.5%)  cells TVD 0.0361  bins capped 0.1631  sqrt-w 0.1226
+    (b) bins-split |err| 5.01% (worst 10.8%)  total-row |err| 5.01% (worst 10.8%)  cells TVD 0.0361  bins capped 0.1631  sqrt-w 0.1226
+    (c) bins-split |err| 2.07% (worst 7.5%)  total-row |err| 2.07% (worst 7.5%)  cells TVD 0.0321  bins capped 0.1578  sqrt-w 0.1204
+    (d) bins-split |err| 5.01% (worst 10.8%)  cells TVD 0.0361  bins capped 0.1631  sqrt-w 0.1226
+  oracle|amount: 7 pairs
+    (a) bins-split |err| 3.03% (worst 14.5%)  total-row |err| 2.09% (worst 18.0%)  cells TVD 0.0257  bins capped 0.1566  sqrt-w 0.1024
+    (b) bins-split |err| 3.03% (worst 14.5%)  total-row |err| 3.03% (worst 14.5%)  cells TVD 0.0257  bins capped 0.1566  sqrt-w 0.1024
+    (c) bins-split |err| 2.09% (worst 18.0%)  total-row |err| 2.09% (worst 18.0%)  cells TVD 0.0244  bins capped 0.1571  sqrt-w 0.1025
+    (d) bins-split |err| 3.03% (worst 14.5%)  cells TVD 0.0257  bins capped 0.1566  sqrt-w 0.1024
+  oracle|returns: 7 pairs
+    (a) bins-split |err| 2.68% (worst 9.6%)  total-row |err| 1.60% (worst 7.5%)  cells TVD 0.0250  bins capped 0.1438  sqrt-w 0.1026
+    (b) bins-split |err| 2.68% (worst 9.6%)  total-row |err| 2.68% (worst 9.6%)  cells TVD 0.0250  bins capped 0.1438  sqrt-w 0.1026
+    (c) bins-split |err| 1.60% (worst 7.5%)  total-row |err| 1.60% (worst 7.5%)  cells TVD 0.0228  bins capped 0.1396  sqrt-w 0.1017
+    (d) bins-split |err| 2.68% (worst 9.6%)  cells TVD 0.0250  bins capped 0.1438  sqrt-w 0.1026
