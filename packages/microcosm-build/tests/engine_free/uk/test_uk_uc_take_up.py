@@ -671,3 +671,38 @@ def test_a_unit_keeping_a_legacy_benefit_is_not_drawn_onto_uc() -> None:
     )
     # Counted at its stored flag: the pool then needs only two more claims.
     assert kept_previous.tolist() == [True, True, True, False]
+
+
+@pytest.mark.parametrize(
+    ("claimant_or_partner", "claims"),
+    [(True, False), (False, True)],
+)
+def test_a_unit_keeping_income_related_esa_claims_no_universal_credit(
+    claimant_or_partner: bool, claims: bool
+) -> None:
+    """policyengine-uk ends a claimant's or partner's income-related ESA once
+    the family claims Universal Credit (pe-uk#2563, from 2.149.0): a unit on
+    the award at the interview, neither a UC reporter nor moved off its
+    legacy benefits, claims none. A report by anyone else does not count, as
+    the engine leaves that person's award alone (microcosm#1095)."""
+
+    engine = _StubEngine({1: 900.0, 2: 900.0, 3: 0.0, 4: 900.0})
+    frame = _frame()
+    person = frame.table("person")
+    unit_three = person["person_benunit_id"] == 3
+    # Unit 3 has no award, so the solve leaves it at its stored claim.
+    person.loc[unit_three, "esa_income_reported"] = 4_000.0
+    person.loc[unit_three, "is_claimant_or_partner"] = claimant_or_partner
+
+    result = _redraw(frame, engine)
+
+    after = result.frame.table("benunit").set_index("benunit_id")
+    assert bool(after.loc[3, "would_claim_uc"]) is claims
+    kept = result.evidence()["income_related_esa_kept"]
+    assert kept["scope"] == "great_britain"
+    assert kept["column"] == "esa_income_reported"
+    # One source household carries it: a band, never a count or a weight.
+    assert kept["kept_off_support"] == ("<10" if claimant_or_partner else 0)
+    assert kept["units_kept_off_universal_credit"] == (
+        "<10" if claimant_or_partner else 0.0
+    )

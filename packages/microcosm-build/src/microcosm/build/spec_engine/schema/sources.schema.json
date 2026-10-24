@@ -6592,6 +6592,7 @@
       "minimum_pool_sources",
       "drawn_units",
       "undrawn_claims",
+      "kept_legacy_award",
       "weight_mapping",
       "residual_rate",
       "solve_scope",
@@ -6639,6 +6640,9 @@
        "type": "string"
       },
       "undrawn_claims": {
+       "type": "string"
+      },
+      "kept_legacy_award": {
        "type": "string"
       },
       "weight_mapping": {
