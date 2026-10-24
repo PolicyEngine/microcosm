@@ -15,8 +15,10 @@ Evidence for microcosm#1359, behind `experiments/1359-excise-quantities-receipts
   The head adds the 24 excise inputs.
 
   A third run, `outputs/stage_dev_run.head-split.json`, is the head once the gambling stakes are split (Vahid's review): Lottery Duty's base follows the National Lottery stakes and every other gambling base the betting and gaming stakes. `outputs/stage_dev_run.split-comparison.json` sets it against the restacked head: 33 of the 46 columns are byte-identical, and only the 13 gambling inputs move. The run also records the share of households with each written column positive, at prior weights.
+
+  A fourth run, `outputs/stage_dev_run.head-main-rebase.json`, is the head rebased onto main after microcosm#1383 merged. `outputs/stage_dev_run.rebase-comparison.json` sets it against the split head: 26 of the 46 columns are byte-identical. #1383's last levelling rule moves the seven levelled divisions, recreation among them, and the 13 gambling inputs follow recreation; the alcohol and tobacco inputs do not move.
 - **The national reconciliation** (`scripts/national_reconciliation.py`, `outputs/national_reconciliation.json`). One household holds every national level the committed declaration resolves to, run through policyengine-uk 2.151.0. Every duty is linear in its inputs, so this is the frame's duty at prior weights. Each OBR row is read through its own binding's variables against the value the national compile-parity receipt records from the pinned feed. Public figures only.
-- **Who carries the duty** (`scripts/excise_incidence.py`, `outputs/excise_incidence.json`). From the split run, the reconciliation and the LCFS 2024-25 donor:
+- **Who carries the duty** (`scripts/excise_incidence.py`, `outputs/excise_incidence.json`). From the rebased run, the reconciliation and the LCFS 2024-25 donor:
   - each duty over the spending that shares it out, and the share of households that carry it;
   - the share of donors and of frame households with each parent total and each part positive, and each part's rate within its parent, which shows where the frame loses incidence.
 
@@ -45,5 +47,5 @@ python scripts/national_reconciliation.py outputs/national_reconciliation.json
 ```
 
 ```bash
-python scripts/excise_incidence.py outputs/stage_dev_run.head-split.json outputs/national_reconciliation.json <lcfs dvhh tab> outputs/excise_incidence.json
+python scripts/excise_incidence.py outputs/stage_dev_run.head-main-rebase.json outputs/national_reconciliation.json <lcfs dvhh tab> outputs/excise_incidence.json
 ```

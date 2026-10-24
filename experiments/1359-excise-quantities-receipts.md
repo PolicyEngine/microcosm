@@ -30,6 +30,8 @@ Vahid's review at `e07424ddf`, addressed on the restacked branch:
 - `9e143959b`: Lottery Duty and the other gambling bases keyed to their own stakes, and the known biases stated in the stage notes.
 - `303d1abf0`: the engine's duty on the national levels pinned against OBR, and the exclusion reasons restated with it.
 
+On 2026-10-24 the branch was rebased onto main after microcosm#1383 merged, so the hashes above are the pre-rebase ones.
+
 ## What the stage does
 
 **Five scratch shares.** The `lcfs_consumption` chain draws them on the donor's diary lines, after its twenty targets: the eighteen spend targets and the two heating fuels microcosm#1383 draws.
@@ -102,6 +104,7 @@ Stage-only runs on microcosm#1333's spine (78,440 households), all on policyengi
   - every other existing column moves through the re-pin, not the excise step. Petrol and diesel move by −4.227 percent, exactly the September Consumer Trends revision of 07.2.2. The seven divisions #1383's levelling holds at the shared frame-to-donor ratio move by −0.149 percent each, because the lower road fuel lowers that ratio. The seven are furnishings, health, transport, communication, recreation, education and miscellaneous;
   - the head adds the 24 excise inputs, and fit records go from 25 to 28.
 - **The gambling split against the restacked head:** 33 of the 46 columns are byte-identical; only the 13 gambling inputs move. Fit records go from 28 to 30.
+- **The rebase onto main** (after microcosm#1383 merged), against the split head: 26 of the 46 columns are byte-identical. #1383's last commits level each division on the spend the chain drew against the donor's same spend, so the seven levelled divisions move, recreation from £148.7bn to £151.0bn. The 13 gambling inputs follow recreation, since the stakes are a share of it. The alcohol and tobacco inputs, the spending they follow and every share's incidence are unchanged.
 - **Gates.** All eight LCFS stage-health gates pass on every head run, including `uk_stage_lcfs_consumption_excise_quantities`.
 - **The spending that shares out the quantities** (prior weights, frame):
 
@@ -110,9 +113,9 @@ Stage-only runs on microcosm#1333's spine (78,440 households), all on policyengi
   | Tobacco | £3.68bn | 8.2% |
   | Off-trade alcohol | £16.28bn | 46.4% |
   | On-trade alcohol | £15.69bn | 30.4% |
-  | Gambling stakes | £2.27bn | 14.6% |
-  | of which the National Lottery | £1.67bn | 10.7% |
-  | of which betting and gaming | £0.42bn | 2.0% |
+  | Gambling stakes | £2.31bn | 14.6% |
+  | of which the National Lottery | £1.69bn | 10.7% |
+  | of which betting and gaming | £0.43bn | 2.0% |
 - **The shares on the frame against the donor:**
 
   | Share | Frame | Donor | Frame positive | Donor positive |
@@ -135,10 +138,10 @@ Stage-only runs on microcosm#1333's spine (78,440 households), all on policyengi
 |---|---|---|---|---|
 | Alcohol | £13.06bn | £31.97bn | 0.41 | 57.6% |
 | Tobacco | £8.17bn | £3.68bn | 2.22 | 8.2% |
-| Lottery | £0.93bn | £1.67bn | 0.56 | 10.7% |
-| Other gambling | £2.69bn | £0.42bn | 6.35 | 2.0% |
+| Lottery | £0.93bn | £1.69bn | 0.55 | 10.7% |
+| Other gambling | £2.69bn | £0.43bn | 6.25 | 2.0% |
 
-The diary records a fraction of what is bought. The National Lottery's base, ticket sales, is 4.7 times the National Lottery stakes it follows, and the other gambling bases are 34 times the betting and gaming stakes. So a tobacco or betting household pays more duty than the diary says it spent. VAT on the same goods stays on the survey base.
+The diary records a fraction of what is bought. The National Lottery's base, ticket sales, is 4.6 times the National Lottery stakes it follows, and the other gambling bases are 34 times the betting and gaming stakes. So a tobacco or betting household pays more duty than the diary says it spent. VAT on the same goods stays on the survey base.
 
 **The duty sits on fewer households than buy.** 8.2 percent of households carry tobacco, against 11.9 percent of UK adults who smoked cigarettes in 2023 (ONS, *Adult smoking habits in the UK: 2023*). 10.7 percent carry the National Lottery and 2.0 percent betting and gaming, against 47 percent of adults in Great Britain who gambled in the past four weeks of 2025, or 27 percent once lottery-draw-only players are left out (Gambling Commission, *GSGB annual report 2025*). The share of households with a smoker or a gambler is above the adult rate, so these comparisons understate the gap. With the levels fixed, the duty per carrying household is higher by the same factor.
 
@@ -201,6 +204,14 @@ For the review's changes:
 - **The surfaces the split moves:** the stage-health gate, the spec and its re-emission, diagnostics, the coverage manifest, battery bindings, the contract mirrors and engine-free H2 parity. 732 of 732.
 - **Engine:** the excise inputs with the new reconciliation, 10 of 10. H2 parity and the coverage manifest on the engine, 54 of 54.
 - `tools/ci_test_plan.py verify`: ok. The battery digests do not move, since no gate changes.
+
+After the rebase onto main, with the follow-ups to Vahid's third review of microcosm#1383:
+
+- **The stage, the spec and the declaration**, with contract mirrors and both H2 parity files: 931 of 931.
+- **The re-pin and the targets**: 353, of which 7 feed-gated checks skip.
+- **The withholding, the gates, Orrery and the build CLI**: 631 of 631.
+- **Engine**: the excise inputs, H2 parity and the coverage manifest, 64 of 64.
+- `tools/ci_test_plan.py verify`: ok. The battery digests do not move.
 
 Before the restack, the full engine-free UK and shared suites ran once on the earlier head (14,175 tests); their only failures were environmental. The vendoring and national-reference regeneration checks against the full feed were not run: each holds the feed twice, about 50 GB. Instead, the tools ran on the pin, and their outputs were checked by diff against the base.
 

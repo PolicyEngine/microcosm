@@ -44,18 +44,18 @@
    "spending": 31966865801.58295
   },
   "betting_and_gaming": {
-   "bases_over_spending": 34.197707062499674,
+   "bases_over_spending": 33.66988925943396,
    "carrying_share": 0.019563867703070097,
    "duty": 2687416960.0,
-   "duty_over_spending": 6.352034826741068,
-   "spending": 423079695.45229775
+   "duty_over_spending": 6.25399559091979,
+   "spending": 429712001.0608698
   },
   "national_lottery": {
-   "bases_over_spending": 4.664037411892696,
+   "bases_over_spending": 4.592051241133866,
    "carrying_share": 0.10681009830639804,
    "duty": 931886976.0,
-   "duty_over_spending": 0.5596844750128998,
-   "spending": 1665022021.5211823
+   "duty_over_spending": 0.5510461347443137,
+   "spending": 1691123332.9535956
   },
   "tobacco": {
    "carrying_share": 0.08163306670501938,
