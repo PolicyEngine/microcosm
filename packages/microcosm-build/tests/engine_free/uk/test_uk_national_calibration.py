@@ -59,8 +59,11 @@ from microcosm.frame import EntitySchema, Frame, MassChange, WeightKind, Weights
 # the ONS single years 0, 1 and 2 for all persons, and the childcare costing
 # fixes (item 6) the UK's single years 3 to 6 and England's 0 to 6, and the
 # DfE single-age rows five funded-childcare counts (working parent 9 to 11
-# months and ages 1-3, universal nursery 3; the age-4 cells are signed out).
-ACTIVE_REFERENCE_COUNT = 1338
+# months and ages 1-3, universal nursery 3; the age-4 cells are signed out);
+# the next policyengine-uk bump retires the OBR welfare-cap split and the
+# England postgraduate repayments (microcosm#1095), and England's single adult
+# council tax discount binds (microcosm#953).
+ACTIVE_REFERENCE_COUNT = 1336
 
 
 def _uc_reference(**overrides) -> LedgerTargetReference:
@@ -594,7 +597,7 @@ def test_chronicle_184_uc_and_obr_references_compile_fail_closed() -> None:
     spec = load_country_spec("uk")
     assert len(spec.target_references) == ACTIVE_REFERENCE_COUNT
     reference_names = {reference.name for reference in spec.target_references}
-    assert "obr.universal_credit_in_cap" in reference_names
+    assert "obr.universal_credit" in reference_names
     assert "dwp.uc.households" in reference_names
 
     membership = json.loads(
@@ -635,19 +638,18 @@ def test_chronicle_184_uc_and_obr_references_compile_fail_closed() -> None:
     references = tuple(
         reference
         for reference in spec.target_references
-        if reference.name == "obr.universal_credit_in_cap"
+        if reference.name == "obr.universal_credit"
     )
     registry = compile_ledger_target_references(
         [
-            # The OBR row binds at the calendar-2025 window, so the series
-            # needs the fiscal years opening in 2024 and 2025.
+            # The OBR total binds the two welfare-cap cells at the calendar-2025
+            # window, so each cell's series needs the fiscal years opening in
+            # 2024 and 2025.
             {
-                **_fact(
-                    concept="obr.universal_credit_in_cap",
-                    source_name="obr",
-                    value=40_000_000_000,
+                **_fact(concept=concept, source_name="obr", value=value),
+                "aggregate_fact_key": (
+                    f"ledger.aggregate_fact.v2:obr-fixture-{concept}-fy{year}"
                 ),
-                "aggregate_fact_key": f"ledger.aggregate_fact.v2:obr-fixture-fy{year}",
                 "period": {"type": "fiscal_year", "value": year},
                 # Chronicle stamps OBR table 4.9's DWP lines with the
                 # geography DWP counts them over (microcosm#1300).
@@ -657,13 +659,17 @@ def test_chronicle_184_uc_and_obr_references_compile_fail_closed() -> None:
                     "name": "Great Britain",
                 },
             }
+            for concept, value in (
+                ("obr.universal_credit_in_cap", 40_000_000_000),
+                ("obr.universal_credit_outside_cap", 10_000_000_000),
+            )
             for year in (2024, 2025)
         ],
         references,
         country="uk",
     )
 
-    assert {spec.name for spec in registry.specs} == {"obr.universal_credit_in_cap"}
+    assert {spec.name for spec in registry.specs} == {"obr.universal_credit"}
 
 
 def test_packaged_binding_classes_materialize_through_the_national_route() -> None:

@@ -25,14 +25,18 @@ from microcosm.frame.concept_mapping import (
 )
 from microcosm.frame.concepts import AlignmentRelation
 
-__all__ = ["POLICYENGINE_UK_CONCEPT_MAPPING", "UK_ENGINE_DEFAULT_TAKE_UP_INPUTS"]
+__all__ = [
+    "POLICYENGINE_UK_CONCEPT_MAPPING",
+    "UK_ENGINE_DEFAULT_INPUTS",
+    "UK_ENGINE_DEFAULT_TAKE_UP_INPUTS",
+]
 
 # ---------------------------------------------------------------------------
 # Concept mapping
 # ---------------------------------------------------------------------------
 #
 # Which PolicyEngine-UK inputs each engine-neutral concept feeds
-# (microcosm.frame.concepts), reviewed against policyengine-uk 2.147.2. Every
+# (microcosm.frame.concepts), reviewed against policyengine-uk 2.151.0. Every
 # target is a pure input (in ``PolicyEngineUKEngine.variables``). The UK
 # loader also accepts some formula-owned variables as overrides
 # (``employment_income``, ``state_pension_reported``, ``is_household_head``);
@@ -185,6 +189,36 @@ _UK_TAKE_UP_EVIDENCE: dict[str, tuple[str, str]] = {
 UK_ENGINE_DEFAULT_TAKE_UP_INPUTS: dict[str, str] = {}
 
 
+#: Other engine inputs the build leaves at the engine's default, each signed as
+#: an approximation with the error it can make (microcosm#1095).
+UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
+    "self_employment_gross_receipts": (
+        "No source of the self-employed's turnover is read yet (the FRS job "
+        "record and the SPI tape are the candidates, as #1145 found landlords' "
+        "receipts). Since policyengine-uk 2.108.0 the trading allowance replaces "
+        "expenses and does not stack on them, so without receipts "
+        "trading_allowance_deduction relieves a profit of GBP 1,000 or less in "
+        "full and gives a larger profit no allowance. Taxable profit is off by at "
+        "most GBP 1,000 a person: too low where receipts above GBP 1,000 leave a "
+        "small profit, too high just above GBP 1,000 where the allowance would "
+        "beat the expenses. Signed as an approximation with the plan for the "
+        "next policyengine-uk bump, approved on 2026-10-23."
+    ),
+    "housing_benefit_residential_capital_exception": (
+        "The working-age residential capital tariff exception (Housing Benefit "
+        "Regulations 2006 reg. 52(4)-(5), (8)-(9); NI reg. 49) covers residents "
+        "of the residential accommodation and saved circumstances it lists, and "
+        "policyengine-uk 2.148.4 asks for it pre-assessed. The FRS samples "
+        "private households, so it holds almost no such resident, and it records "
+        "no assessment of the circumstances, so the input stays False. A "
+        "qualifying working-age resident takes tariff income on capital above "
+        "GBP 6,000 instead of GBP 10,000, so Housing Benefit is understated for "
+        "such residents alone; eligibility, capital and the upper limit do not "
+        "move (Vahid's review of #1383, item 4)."
+    ),
+}
+
+
 def _uk_take_up(program: str, entity: str) -> InputBinding:
     person = entity == "person"
     documentation, build = _UK_TAKE_UP_EVIDENCE[program]
@@ -206,7 +240,7 @@ def _uk_take_up(program: str, entity: str) -> InputBinding:
 
 POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
     engine="policyengine-uk",
-    engine_version="2.147.2",
+    engine_version="2.151.0",
     entity_correspondence={"person": "person", "household": "household"},
     input_declaration=InputDeclaration.ENGINE_TYPED,
     bindings=(
@@ -580,8 +614,10 @@ POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
             "(gov.dwp.universal_credit.means_test.capital.sources); since "
             "policyengine-uk 2.147.0 share_like_capital is corporate_wealth unless "
             "its components, the household inputs directly_held_shares and "
-            "unit_and_investment_trusts, add up to more, and the build sets "
-            "neither. Universal Credit's one person-level source is "
+            "unit_and_investment_trusts, add up to more; the WAS stage writes "
+            "both on its corporate_wealth less the stocks-and-shares ISA, so "
+            "they and the ISA sum to it (microcosm#1095). Universal Credit's "
+            "one person-level source is "
             "lifetime_isa_countable_capital, the Lifetime ISA at its surrender "
             "value (capital.person_sources). "
             "uc_reported_capital (benefit unit, default -1) is Universal "

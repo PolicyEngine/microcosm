@@ -76,6 +76,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "clone_records",
         "clean_nts_travel_tables",
         "clean_was_lisa_donor",
+        "convert_bonuses_to_bonus_sacrifice",
         "convert_donors_to_target_stock",
         "convert_interest_to_structural_mortgage_inputs",
         "compute_ratio",

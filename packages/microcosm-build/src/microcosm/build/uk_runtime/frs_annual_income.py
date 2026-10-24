@@ -6,10 +6,10 @@ year, banded by what they received. They cover individuals liable to UK
 income tax, so a person who left a job counts only where the year's income
 makes them liable. The spine's income columns are current, annualised
 incomes, the concept HBAI and policyengine-uk use: the usual weekly pay of
-the job held at interview times 365.25 / 7. A person who started a job during
-the year, left one, changed jobs or had a gap sits in another HMRC band than
-their current pay puts them in, or in none, and a recent leaver who paid tax
-in the year is no taxpayer at all.
+the job held at interview times 52 (``frs_spine.WEEKS_IN_YEAR``, uk-data#531).
+A person who started a job during the year, left one, changed jobs or had a
+gap sits in another HMRC band than their current pay puts them in, or in
+none, and a recent leaver who paid tax in the year is no taxpayer at all.
 
 This stage writes what the FRS records about the 12 months before the
 interview, for every adult, as descriptors beside the current columns, which

@@ -506,6 +506,11 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
             "CHAMTTST": 10.0,
             "APAMT": 11.0,
             "APDAMT": 12.0,
+            # Alimony for the adult's own keep, the usual amount differing
+            # from the last (#1320).
+            "ALIUS": 2,
+            "ALUAMT": 3.0,
+            "ALIAMT": 4.0,
             "PAREAMT": 13.0,
             "REDAMT": 20.0,
             "SLREPAMT": 2.0,
@@ -660,6 +665,34 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "NATURE": 4,
                 "DIRPERC": 2 if household_id % 10 == 0 else -1,
                 "DIVIDEND": 1000.0 if household_id % 10 == 0 else 0.0,
+                # Every fifth job pays one bonus, given before or after tax by
+                # turn (#1340).
+                **{
+                    f"BONAMT{index}": (
+                        float(500 + 100 * (household_id % 7))
+                        if index == 1 and household_id % 5 == 0
+                        else ""
+                    )
+                    for index in range(1, 7)
+                },
+                **{
+                    f"BONTAX{index}": (
+                        1 + (household_id // 5) % 2
+                        if index == 1 and household_id % 5 == 0
+                        else ""
+                    )
+                    for index in range(1, 7)
+                },
+                **{
+                    f"BONTXAM{index}": (
+                        3.0
+                        if index == 1
+                        and household_id % 5 == 0
+                        and (household_id // 5) % 2 == 1
+                        else ""
+                    )
+                    for index in range(1, 7)
+                },
                 # The annual income stage's job columns: a job under a year old
                 # follows paid employment (WRKPREV 1) on two households in
                 # four; every employee job carries its DV pay (UGRSPAY) and
@@ -904,6 +937,12 @@ def _was_donor() -> pd.DataFrame:
     other_mortgage = np.where(
         ~mortgaged & (other_houses > 0.0) & (position % 2 == 0), 2_000.0 + rows, 0.0
     )
+    # The debt secured on each class of other property, parts of the
+    # mortgages on it and zero where its asset is zero, as on the real tab
+    # (microcosm#1095).
+    other_houses_debt = np.where(other_houses > 0.0, 0.6 * other_mortgage, 0.0)
+    buy_to_let_debt = np.where(buy_to_let > 0.0, 0.1 * other_mortgage, 0.0)
+    buildings_debt = np.where(buildings > 0.0, 0.3 * other_mortgage, 0.0)
     return pd.DataFrame(
         {
             "CASER8": rows + 1.0,
@@ -952,6 +991,9 @@ def _was_donor() -> pd.DataFrame:
             "DVHseValR8_sum": other_houses,
             "DVBltValR8_sum": buy_to_let,
             "DVBlDValR8_sum": buildings,
+            "DVHseDebtR8_sum": other_houses_debt,
+            "DVBLtDebtR8_sum": buy_to_let_debt,
+            "DVBldDebtR8_sum": buildings_debt,
             "DVTotinc_bhcR8": 20_000.0 + rows * 1_000.0,
             "DVSaValR8_aggr": savings,
             "vcarnr8": position % 4,

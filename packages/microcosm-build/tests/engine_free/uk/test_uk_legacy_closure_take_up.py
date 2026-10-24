@@ -171,6 +171,8 @@ def _frame(
             "person_household_id": ids,
             "person_benunit_id": ids,
             "age": np.full(n, 40, dtype="int64"),
+            # One person per unit, so each is its claimant.
+            "is_claimant_or_partner": np.ones(n, dtype=bool),
             **{
                 column: reported.get(column, np.zeros(n)).astype(float)
                 for column in _REPORTED
@@ -234,6 +236,64 @@ def test_units_outside_the_draw_keep_the_engine_default() -> None:
             "support": "<10",
         }
     }
+
+
+def test_only_the_claimant_and_partner_place_a_unit_in_the_draw() -> None:
+    """The engine closes an award through its owners (pe-uk#2549), so a
+    dependant's own award neither puts the family in the draw nor keeps it
+    out as a Universal Credit unit."""
+
+    person = pd.DataFrame(
+        {
+            "person_id": np.arange(1, 5, dtype="int64"),
+            "person_household_id": np.asarray([1, 1, 2, 2], dtype="int64"),
+            "person_benunit_id": np.asarray([1, 1, 2, 2], dtype="int64"),
+            "age": np.asarray([45, 17, 40, 18], dtype="int64"),
+            "is_claimant_or_partner": [True, False, True, False],
+            **{column: np.zeros(4) for column in _REPORTED},
+        }
+    )
+    # Unit 1: only its dependant reports income-related ESA, in their own
+    # right. Unit 2: its claimant reports Child Tax Credit, and a member who
+    # is neither claimant nor partner reports Universal Credit.
+    person["esa_income_reported"] = [0.0, 300.0, 0.0, 0.0]
+    person["child_tax_credit_reported"] = [0.0, 0.0, 500.0, 0.0]
+    person["universal_credit_reported"] = [0.0, 0.0, 0.0, 800.0]
+    benunit = pd.DataFrame(
+        {
+            "benunit_id": np.asarray([1, 2], dtype="int64"),
+            "would_claim_uc": [False, False],
+            "frs_benunit_capital": np.zeros(2),
+        }
+    )
+    frame = uk_national_frame(
+        person=person,
+        benunit=benunit,
+        household=pd.DataFrame(
+            {
+                "household_id": np.asarray([1, 2], dtype="int64"),
+                "region": pd.array(["NORTH_WEST", "NORTH_WEST"], dtype="string"),
+                "household_source_id": np.asarray([1, 2], dtype="int64"),
+            }
+        ),
+        time_period="2024",
+        weight_kind=WeightKind.DESIGN,
+        household_weights=np.ones(2),
+    )
+
+    assert list(lc.legacy_benefit_combinations(person, benunit)) == [
+        "",
+        "child_tax_credit",
+    ]
+    result = lc.assign_uc_claim_at_legacy_closure(frame, rates=_RATES)
+    # Unit 1 is outside the draw and keeps the engine's default; unit 2 is
+    # drawn on its claimant's Child Tax Credit alone.
+    assert result.frame.table("benunit")[lc.LEGACY_CLOSURE_OUTPUT].to_numpy()[0]
+    assert set(result.evidence()["combinations"]) == {"child_tax_credit"}
+
+    without = person.drop(columns="is_claimant_or_partner")
+    with pytest.raises(ValueError, match="is_claimant_or_partner"):
+        lc.legacy_benefit_combinations(without, benunit)
 
 
 def test_the_weighted_share_claiming_matches_dwps_rate() -> None:

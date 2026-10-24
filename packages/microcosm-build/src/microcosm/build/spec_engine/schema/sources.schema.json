@@ -6701,6 +6701,7 @@
       "minimum_pool_sources",
       "drawn_units",
       "undrawn_claims",
+      "kept_legacy_award",
       "weight_mapping",
       "residual_rate",
       "solve_scope",
@@ -6748,6 +6749,9 @@
        "type": "string"
       },
       "undrawn_claims": {
+       "type": "string"
+      },
+      "kept_legacy_award": {
        "type": "string"
       },
       "weight_mapping": {
@@ -8680,6 +8684,43 @@
         "type": "string"
        }
       },
+      "holder_strata": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "string"
+       }
+      },
+      "share_split": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "fraction",
+        "outputs",
+        "undrawn_fraction"
+       ],
+       "properties": {
+        "fraction": {
+         "type": "string"
+        },
+        "outputs": {
+         "type": "array",
+         "minItems": 2,
+         "maxItems": 2,
+         "items": {
+          "type": "string"
+         }
+        },
+        "undrawn_fraction": {
+         "type": "number",
+         "minimum": 0,
+         "maximum": 1
+        }
+       }
+      },
+      "secured_debt_within": {
+       "type": "string"
+      },
       "derived_totals": {
        "type": "object",
        "minProperties": 1,
@@ -9763,6 +9804,87 @@
      "additionalProperties": false,
      "required": [
       "kind",
+      "resource",
+      "facts",
+      "source",
+      "output",
+      "candidates",
+      "move",
+      "move_pay_share_cap",
+      "spi_bonus_draw",
+      "spi_cell_quantiles",
+      "spi_min_donor_sources",
+      "spi_salt",
+      "threshold",
+      "solve",
+      "seed",
+      "salt",
+      "receipt"
+     ],
+     "properties": {
+      "kind": {
+       "const": "convert_bonuses_to_bonus_sacrifice"
+      },
+      "resource": {
+       "type": "string"
+      },
+      "facts": {
+       "type": "string"
+      },
+      "source": {
+       "type": "string"
+      },
+      "output": {
+       "type": "string"
+      },
+      "candidates": {
+       "type": "string"
+      },
+      "move": {
+       "type": "string"
+      },
+      "move_pay_share_cap": {
+       "type": "number"
+      },
+      "spi_bonus_draw": {
+       "type": "string"
+      },
+      "spi_cell_quantiles": {
+       "type": "array",
+       "items": {
+        "type": "number"
+       },
+       "minItems": 1
+      },
+      "spi_min_donor_sources": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "spi_salt": {
+       "type": "string"
+      },
+      "threshold": {
+       "type": "number"
+      },
+      "solve": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "salt": {
+       "type": "string"
+      },
+      "receipt": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
       "year_rule",
       "start_year_formula",
       "reported_repayment_test",
@@ -10113,6 +10235,7 @@
       "output",
       "port_of",
       "legacy_benefits",
+      "reporters",
       "true_without_draw",
       "rate",
       "probability",
@@ -10134,6 +10257,9 @@
        "items": {
         "type": "string"
        }
+      },
+      "reporters": {
+       "type": "string"
       },
       "true_without_draw": {
        "type": "string"
@@ -12448,7 +12574,7 @@
       "kind",
       "parents",
       "maximum_total",
-      "uncarried"
+      "published_fuels"
      ],
      "properties": {
       "kind": {
@@ -12458,6 +12584,34 @@
        "enum": [
         "donor_support"
        ]
+      },
+      "level_division_excess": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "rule",
+        "basis",
+        "divisions"
+       ],
+       "properties": {
+        "rule": {
+         "enum": [
+          "excess_over_shared_ratio"
+         ]
+        },
+        "basis": {
+         "enum": [
+          "drawn_spend_over_donor_spend_per_household"
+         ]
+        },
+        "divisions": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "string"
+         }
+        }
+       }
       },
       "parents": {
        "type": "object",
@@ -12487,7 +12641,7 @@
         }
        }
       },
-      "uncarried": {
+      "published_fuels": {
        "type": "object",
        "additionalProperties": false,
        "required": [
@@ -12510,13 +12664,17 @@
           "additionalProperties": false,
           "required": [
            "coicop",
-           "concept"
+           "concept",
+           "column"
           ],
           "properties": {
            "coicop": {
             "type": "string"
            },
            "concept": {
+            "type": "string"
+           },
+           "column": {
             "type": "string"
            }
           }
