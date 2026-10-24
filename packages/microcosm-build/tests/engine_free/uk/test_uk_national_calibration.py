@@ -61,8 +61,9 @@ from microcosm.frame import EntitySchema, Frame, MassChange, WeightKind, Weights
 # DfE single-age rows five funded-childcare counts (working parent 9 to 11
 # months and ages 1-3, universal nursery 3; the age-4 cells are signed out);
 # the next policyengine-uk bump retires the OBR welfare-cap split and the
-# England postgraduate repayments (microcosm#1095).
-ACTIVE_REFERENCE_COUNT = 1335
+# England postgraduate repayments (microcosm#1095), and England's single adult
+# council tax discount binds (microcosm#953).
+ACTIVE_REFERENCE_COUNT = 1336
 
 
 def _uc_reference(**overrides) -> LedgerTargetReference:

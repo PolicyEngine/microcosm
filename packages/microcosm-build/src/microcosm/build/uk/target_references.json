@@ -464,6 +464,7 @@
       "mhclg.council_tax_stock.band_f": "mhclg.council_tax_stock",
       "mhclg.council_tax_stock.band_g": "mhclg.council_tax_stock",
       "mhclg.council_tax_stock.band_h": "mhclg.council_tax_stock",
+      "mhclg.council_tax_stock.single_adult_discount": "mhclg.council_tax_stock",
       "mhclg.council_tax_stock.total": "mhclg.council_tax_stock",
       "microcosm.high_value_homes.over_1_5m_by_region": "microcosm.high_value_homes",
       "microcosm.high_value_homes.over_1m_by_region": "microcosm.high_value_homes",
@@ -829,6 +830,7 @@
       "mhclg.council_tax_stock.band_f": "Band f",
       "mhclg.council_tax_stock.band_g": "Band g",
       "mhclg.council_tax_stock.band_h": "Band h",
+      "mhclg.council_tax_stock.single_adult_discount": "Single adult discount",
       "mhclg.council_tax_stock.total": "Total",
       "microcosm.high_value_homes.over_1_5m_by_region": "Owner-occupied homes valued over \u00a31.5 million by region",
       "microcosm.high_value_homes.over_1m_by_region": "Owner-occupied homes valued over \u00a31 million by region",
@@ -47533,6 +47535,27 @@
         "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_WEST\",\"variable\":\"region\"}",
         "cross_grain_grain": "region"
       }
+    },
+    {
+      "name": "mhclg.council_tax_stock.single_adult_discount",
+      "ledger_selector": {
+        "source_name": "mhclg",
+        "source_concept": "mhclg.council_taxbase.single_adult_discount_dwellings",
+        "source_measure_id": "total",
+        "layout_groupby_value_id": "e92000001",
+        "geography_level": "country",
+        "geography_id": "E92000001"
+      },
+      "entity": "household",
+      "measure": "mhclg/council_tax/single_adult_discount",
+      "family": "council_tax_stock",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "mhclg.council_tax_stock.single_adult_discount",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2025-10",
+      "uprating_to_period": 2025
     }
   ]
 }

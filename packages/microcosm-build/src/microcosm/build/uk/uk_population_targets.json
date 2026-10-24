@@ -876,7 +876,8 @@
       "dfe.funded_childcare.working_parent_children_age_1": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): bind every DfE funded-childcare count the model can carry, even on few records, and sign out only those with a real reason. The working parent registrations at 9 to 11 months and by single year of age (1, 2 and 3) and the universal registrations in nursery at age 3, from the DfE January census, England, measured at the spring term (María's ruling of 2026-10-22); the age-4 cells are signed out, as the bound rows fix them (accounting note dfe_funded_childcare_single_ages). No incumbent row has this row's definition.",
       "dfe.funded_childcare.working_parent_children_age_2": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): bind every DfE funded-childcare count the model can carry, even on few records, and sign out only those with a real reason. The working parent registrations at 9 to 11 months and by single year of age (1, 2 and 3) and the universal registrations in nursery at age 3, from the DfE January census, England, measured at the spring term (María's ruling of 2026-10-22); the age-4 cells are signed out, as the bound rows fix them (accounting note dfe_funded_childcare_single_ages). No incumbent row has this row's definition.",
       "dfe.funded_childcare.working_parent_children_age_3": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): bind every DfE funded-childcare count the model can carry, even on few records, and sign out only those with a real reason. The working parent registrations at 9 to 11 months and by single year of age (1, 2 and 3) and the universal registrations in nursery at age 3, from the DfE January census, England, measured at the spring term (María's ruling of 2026-10-22); the age-4 cells are signed out, as the bound rows fix them (accounting note dfe_funded_childcare_single_ages). No incumbent row has this row's definition.",
-      "dfe.funded_childcare.universal_nursery_children_age_3": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): bind every DfE funded-childcare count the model can carry, even on few records, and sign out only those with a real reason. The working parent registrations at 9 to 11 months and by single year of age (1, 2 and 3) and the universal registrations in nursery at age 3, from the DfE January census, England, measured at the spring term (María's ruling of 2026-10-22); the age-4 cells are signed out, as the bound rows fix them (accounting note dfe_funded_childcare_single_ages). No incumbent row has this row's definition."
+      "dfe.funded_childcare.universal_nursery_children_age_3": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): bind every DfE funded-childcare count the model can carry, even on few records, and sign out only those with a real reason. The working parent registrations at 9 to 11 months and by single year of age (1, 2 and 3) and the universal registrations in nursery at age 3, from the DfE January census, England, measured at the spring term (María's ruling of 2026-10-22); the age-4 cells are signed out, as the bound rows fix them (accounting note dfe_funded_childcare_single_ages). No incumbent row has this row's definition.",
+      "mhclg.council_tax_stock.single_adult_discount": "No incumbent target: uk-data binds no council-tax discount; microcosm#953 binds MHCLG Council Taxbase line 8 now that policyengine-uk applies the single adult discount (pe-uk#1864)."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -1288,7 +1289,8 @@
       "dwp.hb.amount_pension_age",
       "microcosm.high_value_homes.over_1m_by_region",
       "microcosm.high_value_homes.over_1_5m_by_region",
-      "microcosm.high_value_homes.over_2m_by_region"
+      "microcosm.high_value_homes.over_2m_by_region",
+      "mhclg.council_tax_stock.single_adult_discount"
     ]
   },
   "profile_parity": {
@@ -29706,6 +29708,61 @@
       "category_id": "microcosm.high_value_homes",
       "label": "Owner-occupied homes valued over £2 million by region",
       "selector_note": "The English region and Wales rows of the Microcosm-derived stock the constituency and local-authority cells bind (microcosm#1240, fix 2; uk/high_value_home_stock_facts.json), selected by the same record set and measured identically, so each row is the cross-grain control for its area cells and carries the stock of any cell a signed small-cell rule defers. Local line only (microcosm#1301): the national line and the release-cut certifier drop these rows right after the compile, before reconciliation and the measure exclusions, so the national registry is unchanged. Scotland and Northern Ireland have no Price Paid coverage."
+    },
+    {
+      "target_id": "mhclg.council_tax_stock.single_adult_discount",
+      "family": "council_tax_stock",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.geography.country",
+            "equals": "ENGLAND"
+          },
+          {
+            "concept": "uk.housing.council_tax_discount_rate",
+            "equals": 0.25
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "mhclg/council_tax/single_adult_discount",
+          "reduce": "any",
+          "household_conditions": [
+            {
+              "variable": "country",
+              "operator": "==",
+              "value": "ENGLAND"
+            },
+            {
+              "variable": "council_tax_discount_rate",
+              "operator": "==",
+              "value": 0.25
+            }
+          ],
+          "value_variable": "household_count",
+          "notes": "England dwellings entitled to the single adult household 25% discount from the MHCLG Council Taxbase return, line 8 all bands (microcosm#953): the dwellings in line 7 with one resident adult who is not disregarded, which a household file carries as occupied households. policyengine-uk applies the discount from 2.148.0 (pe-uk#1864, council_tax_discount_rate, 0.25 for one adult not disregarded; the no-resident branch is unreachable on survey data), so the row counts England households at that rate. It binds at the national grain; the billing-authority cells of line 8 bind in the next dense build."
+        },
+        "axiom": {
+          "metric_name": "mhclg/council_tax/single_adult_discount",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "mhclg",
+        "source_concept": "mhclg.council_taxbase.single_adult_discount_dwellings",
+        "source_measure_id": "total",
+        "layout_groupby_value_id": "e92000001"
+      },
+      "selector_note": "MHCLG Council Taxbase line 8, all bands, England row (the October count of the latest return not after the build base period, as the band rows take line 7); the household proxy is the band rows' (voa_dwellings_vs_household_frame).",
+      "category_id": "mhclg.council_tax_stock",
+      "label": "Single adult discount"
     },
     {
       "target_id": "hmrc.self_employment_income.amount",

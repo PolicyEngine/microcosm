@@ -1,11 +1,11 @@
 {
- "compiled_count": 1335,
+ "compiled_count": 1336,
  "counts_by_kind": {
   "calibration_drift": 558,
   "fixture_only": 49,
-  "ledger_only": 747
+  "ledger_only": 748
  },
- "difference_count": 1354,
+ "difference_count": 1355,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -5067,6 +5067,13 @@
    "name": "hmrc/cgt_taxpayers_band_6000",
    "period": 2025,
    "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a), the Business Asset Disposal Relief and Investors' Relief claimants and qualifying gains by band of qualifying gain (Table 4.1), and the all-gains taxpayers and gains by band of the engine's CGT taxable income (Table 3). The frozen incumbent fixture has no equivalent row (microcosm#725, #467, #1014)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 8496178.0,
+   "name": "mhclg.council_tax_stock.single_adult_discount",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
   {
    "kind": "ledger_only",
