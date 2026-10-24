@@ -66,6 +66,24 @@ No shared row leaves the 10 percent band, and one, a UC household count, enters 
 
 **Arm 2c, the ORR row on table 7271.** Bound on table 7271, the row reaches its target, but the weights concentrate past the release bound: `uk_weight_ratio` fails, so the run stops at the terminal gates. The effective sample size falls by about a tenth against arm 2b, and the UC household count that arm 2b brought inside 10 percent leaves it again. That is a measured distortion, so the row stays held out on table 7270's basis, its entry's reason records the measurement, and the basis ruling stays open.
 
+## Arm 3: the review's changes
+
+**Arm 3** is one spine at `b1b315ae0`, the head of the review's stage changes: bonus sacrifice beside pay with the SPI channel's drawn bonuses, the levelling on remainders, WPA's positive rate rule, and bottled gas reported apart. A calibrate-only run on it (arm 3c) has review date 2026-10-24. The later commits change no stage.
+
+All seven terminal gates pass, and the run binds 1,268 rows, which is arm 2b's rows less `obr.vat`, held again. Against arm 2b:
+
+- the share of rows within 10 percent of the target is 99.3 percent in arm 2b and 99.2 percent in arm 3;
+- the effective sample size is about the same;
+- no shared row moves by more than 5 points;
+- one UC household count leaves the 10 percent band.
+
+The engine checks below ran on arm 3's calibrated file at 2025. Their figures rest in part on the SPI channel's households, so they are given as classes.
+
+- **The bonus anchor (item 7).** At the final weights, the bonus sacrifice base above £2,000 at 2027-28 falls short of OBR's line by more than a quarter, while the stage meets it at its own weights. The salary line comes out within 25 percent of OBR's. Calibration to the HMRC income-band rows lowers the weights of the highest earners, where the bonus sacrificers sit, and no row binds the base. By María's ruling of 2026-10-24, this PR records it, and #1390 re-picks the sacrificers at the final weights.
+- **Consumption and VAT (item 9).** Against arm 2b, total consumption rises by under 3 percent and VAT by under 5 percent. Both changes mix the levelling on remainders, the bonus no longer taken out of pay, and `obr.vat` leaving the objective.
+- **The secured debt (item 14).** Netting the debt secured on other property raises Universal Credit spend by under 0.1 percent and Pension Credit spend by under 1 percent. It takes many benefit units' assessed capital below £6,000 or £16,000, but few of those units are entitled either way.
+- **The benefit cap (item 17).** The thin bands are withheld, and the band that no household carries leaves the solve under the zero-support floor. The complementary check finds no published combination that gives a thin band back, so it withholds no further row.
+
 ## By item
 
 **The ESA rule.** DWP's income-related ESA claimant row fits within half a percent in both runs; no household of the SPI channel carries it. With the rule, the units that report income-related ESA keep it at the calibration year, so the engine's new closure on a UC claim (pe-uk#2563) does not take the award off them. Housing Benefit keeps the stored flag, pending the HB and JSA PR (#867, #869).
