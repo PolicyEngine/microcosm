@@ -343,6 +343,7 @@ def main(
     label: str = "run1",
     epochs: int = 800,
     max_weight_ratio: float = 5.0,
+    target_loss_cap: float = 1.0,
 ) -> None:
     if step == "extract":
         ct = ARTIFACTS / "ct_sources"
@@ -369,7 +370,7 @@ def main(
                 "epoch_batch": 200,
                 "learning_rate": 0.02,
                 "max_weight_ratio": max_weight_ratio,
-                "target_loss_cap": 1.0,
+                "target_loss_cap": target_loss_cap,
                 "seed": 0,
             },
         )
