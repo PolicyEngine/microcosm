@@ -501,6 +501,81 @@
       ]
     },
     {
+      "resource": "excise_facts.json",
+      "purpose": "HMRC FY2024-25 alcohol clearances by product, ABV band, duty point and relief (Alcohol Bulletin) and tobacco clearances by product (Tobacco Bulletin), HMRC betting and gaming duty cash receipts by duty and Machine Games Duty liabilities by rate band (Betting and Gaming statistics), and the Gambling Commission's FY2024-25 gross gambling yield for Great Britain by sector, activity and betting event: the national quantities and bases the LCFS level_excise_quantities step shares out to households (microcosm#1359, PolicyEngine/chronicle#381).",
+      "consumers": [
+        "uk_runtime.lcfs_consumption"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "hmrc_alcohol_clearances_fy2024",
+          "selector": {
+            "source_name": "hmrc",
+            "source_concept": "hmrc.alcohol_clearances",
+            "geography_id": "K02000001",
+            "period_type": "fiscal_year",
+            "period_value": [
+              2024
+            ]
+          },
+          "expected_row_count": 40
+        },
+        {
+          "label": "hmrc_tobacco_clearances_fy2024",
+          "selector": {
+            "source_name": "hmrc",
+            "source_concept": "hmrc.tobacco_clearances",
+            "geography_id": "K02000001",
+            "period_type": "fiscal_year",
+            "period_value": [
+              2024
+            ]
+          },
+          "expected_row_count": 5
+        },
+        {
+          "label": "hmrc_betting_and_gaming_duty_receipts_fy2024",
+          "selector": {
+            "source_name": "hmrc",
+            "source_concept": "hmrc.betting_and_gaming_duty_receipts",
+            "geography_id": "K02000001",
+            "period_type": "fiscal_year",
+            "period_value": [
+              2024
+            ]
+          },
+          "expected_row_count": 9
+        },
+        {
+          "label": "hmrc_machine_games_duty_liabilities_fy2024",
+          "selector": {
+            "source_name": "hmrc",
+            "source_concept": "hmrc.machine_games_duty_liabilities",
+            "geography_id": "K02000001",
+            "period_type": "fiscal_year",
+            "period_value": [
+              2024
+            ]
+          },
+          "expected_row_count": 4
+        },
+        {
+          "label": "gambling_commission_gross_gambling_yield_fy2024",
+          "selector": {
+            "source_name": "gambling_commission",
+            "source_concept": "gambling_commission.gross_gambling_yield",
+            "geography_id": "K03000001",
+            "period_type": "fiscal_year",
+            "period_value": [
+              2024
+            ]
+          },
+          "expected_row_count": 40
+        }
+      ]
+    },
+    {
       "resource": "desnz_domestic_energy_facts.json",
       "purpose": "DESNZ domestic energy volumes: Energy Trends domestic electricity (table 5.5) and gas (table 4.1) consumption at actual temperature, annual and quarterly, United Kingdom, 2022 to the latest quarter (the published level the LCFS kWh rake scales to, summed over the four quarters of calendar 2024; microcosm#1113), and the subnational electricity and gas statistics' domestic consumption and meter counts for Great Britain, England and Wales, the countries and the English regions, 2023 and 2024 (the published gas-connected share by region: gas meters over electricity meters; and the Great Britain totals that level the local-authority energy rows, microcosm#1207).",
       "consumers": [

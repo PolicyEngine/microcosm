@@ -1,0 +1,44 @@
+{
+ "issue": "PolicyEngine/microcosm#1359",
+ "measured": {
+  "stage_runs_spine": {
+   "name": "spine-b145-treat.h5 (microcosm#1333, arm b145-treat)",
+   "sha256": "6b882b459566ce103d166e94c7f58201fe0ca848241c7e4a34baaf52364d07d6",
+   "households": 78440
+  },
+  "engine": "policyengine-uk 2.151.0 on policyengine-core 3.33.3",
+  "donor": "LCFS 2024-25 (UKDS SN 9603, 2nd edition)"
+ },
+ "stage_run_trees": {
+  "stage_dev_run.base-74a2a378e.json": "microcosm#1383's head 74a2a378e, the branch base, on the abf0921 feed",
+  "stage_dev_run.head-restack.json": "the branch head on the 200bf6d feed",
+  "stage_dev_run.head-split.json": "the branch head once the gambling stakes are split (Vahid's review), on the 200bf6d feed",
+  "stage_dev_run.head-main-rebase.json": "the branch head rebased onto main after microcosm#1383 merged, on the 200bf6d feed"
+ },
+ "not_committed": [
+  "the spine and the LCFS tabs: licensed microdata",
+  "per-column sha256 digests of the written columns (compare_runs.py reduces them to verdicts)",
+  "donor minima and maxima"
+ ],
+ "files_sha256": {
+  "README.md": "7f394995432d14c1aa956e473b4e52aa689f5c1ef40a4b703bd1574f429422dc",
+  "outputs/alcohol_channel_weights.json": "a954d7f712a17bc665cf2e4f6540fb26a8f7f34be61e4997f471e28395164dcd",
+  "outputs/excise_incidence.json": "3c8421da17f3380f0874a3a797a1d0188c7700ce03a260134701c97d11dd54b3",
+  "outputs/national_reconciliation.json": "8f6b38ced9dc39c3ad23f1bd0936dea1ff24a900a51cb7f18d244651e7536cbe",
+  "outputs/stage_dev_run.base-74a2a378e.json": "c91a0bb815d867637acf6a0e8b130cb904faee878ab1043a2546ff0212ca570b",
+  "outputs/stage_dev_run.comparison.json": "e43fc4dac314c1d5d9adef399a696d3b9f290e97a0702341187e53e0f295a4ba",
+  "outputs/stage_dev_run.head-main-rebase.json": "a7a7283de8178f860a53caaf8eebce48d803c29dd24957ffcac01836a30a51ec",
+  "outputs/stage_dev_run.head-restack.json": "88f5c2507da769c738c167b2a51b5f59f40d23c501d2eaee89ff94daf3bc9980",
+  "outputs/stage_dev_run.head-split.json": "737e6bf88f1572e9162285b74da83b681dbf00fdb115c6cd299ad124d826752a",
+  "outputs/stage_dev_run.rebase-comparison.json": "a0029dbf44e6c3814f593d9067a7a26a004d933cfc493bde9093910e9ebf2e36",
+  "outputs/stage_dev_run.split-comparison.json": "357b620571609a735024e4cc329cdda07713d7bfa5da8d91e89431e62d997323",
+  "scripts/alcohol_channel_weights.py": "61ce5ede7faa5c92ff62aa9fb27b0c89eb2c4cf7ee76ccddcd26a786405f6af6",
+  "scripts/compare_runs.py": "b6eb778ebe250f084534fb6f986de285d4a1ccda1dd89d6a96ba0da17e9c5341",
+  "scripts/excise_incidence.py": "3f50eea6b5f1a288cda6524589b04e8121db48bca7618fd26cdb8116e18d9f7f",
+  "scripts/national_reconciliation.py": "d2d92bac43929c6b9ab11d659d0068ad526d8dc0d5197ba99f7c5d8860c0e186",
+  "scripts/repin_200bf6d.sh": "bce41a86e44531e98cb9ab939c3cfa374c810937fbbaa8695088cfadc3dbec25",
+  "scripts/run_stage_dev.sh": "44c211d1f8b38b24ffddab058a0912c651de44ac5f4e1a3f0330613d0a9ad7c3",
+  "scripts/sanitize_outputs.py": "47330fdd8dd1865a1823d161267480e7528dad694e1ba79ab0fd0599f74d1e66",
+  "scripts/stage_dev_run.py": "5a06e200e93698ccfc48a48cee293ecfe9aee213ad9e5f49735b44ad26813ef8"
+ }
+}

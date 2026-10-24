@@ -1,11 +1,11 @@
 {
- "compiled_count": 1336,
+ "compiled_count": 1341,
  "counts_by_kind": {
   "calibration_drift": 558,
   "fixture_only": 49,
-  "ledger_only": 748
+  "ledger_only": 753
  },
- "difference_count": 1355,
+ "difference_count": 1360,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -5294,8 +5294,36 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 3746000000.0,
+   "name": "obr.beer_and_cider_duties",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3616000000.0,
+   "name": "obr.betting_and_gaming_duties",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 14400000000.0,
    "name": "obr.fuel_duties_cars",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 4113000000.0,
+   "name": "obr.spirits_duties",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 7927000000.0,
+   "name": "obr.tobacco_duties",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
@@ -5308,21 +5336,28 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 26522000000.0,
+   "ledger_value": 4686000000.0,
+   "name": "obr.wine_duties",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 28840000000.0,
    "name": "ons.household_electricity_expenditure",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 15339000000.0,
+   "ledger_value": 18958000000.0,
    "name": "ons.household_gas_expenditure",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 37025000000.0,
+   "ledger_value": 35460000000.0,
    "name": "ons.household_road_fuel_expenditure",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
