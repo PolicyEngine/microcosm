@@ -123,6 +123,10 @@ cannot bypass this requirement. The assembly-first nullable pool remains
 an intermediate input; its fiscal release applies that carry to every row.
 
 The 2026-10-23 branch refresh preserves main's current stage and graph
-structure. The real-data measurements above are historical evidence; the
+structure, including its six ESI source fields alongside the industry
+restoration. Main's independent refusal of mixed ACS inputs with null ESI
+premiums remains in place; this refresh adds no ESI producer.
+
+The real-data measurements above are historical evidence; the
 refresh validates synthetic contracts without rebuilding ASEC, ACS or a
 release, so it does not certify any existing or newly built data artifact.

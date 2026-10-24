@@ -4,9 +4,11 @@ import pytest
 
 from tools.repin_us_spec_engine_contracts import (
     _add_count_replacement,
+    _replace_asserted_dictionary_value,
     _replace_assignment,
     _replace_dictionary,
     _replace_length_assertions,
+    _replace_literal_assertions,
     _replace_literals,
 )
 
@@ -42,9 +44,13 @@ def test_repin_refuses_colliding_count_transitions() -> None:
 
 
 def test_inventory_count_updates_only_the_reviewed_length_target() -> None:
-    source = "assert len(columns) == 176\nassert len(unrelated) == 176\n"
+    source = (
+        "assert len(columns) == 176\nassert len(unrelated) == 176\n"
+        "if len(columns) > 176:\n    pass\n"
+    )
     assert _replace_length_assertions(source, {"columns": 179}) == (
         "assert len(columns) == 179\nassert len(unrelated) == 176\n"
+        "if len(columns) > 176:\n    pass\n"
     )
     with pytest.raises(ValueError, match="targets changed"):
         _replace_length_assertions(source, {"missing": 179})
@@ -54,3 +60,57 @@ def test_inventory_count_update_refuses_duplicate_targets() -> None:
     source = "assert len(columns) == 176\nassert len(columns) == 176\n"
     with pytest.raises(ValueError, match="duplicate inventory assertion"):
         _replace_length_assertions(source, {"columns": 179})
+
+
+def test_receipt_pin_updates_only_one_exact_literal_assertion() -> None:
+    source = (
+        'assert first.spec_sha256 == ("old")\n'
+        'assert other.spec_sha256 == "old"\n'
+        "# old is historical\n"
+    )
+    assert _replace_literal_assertions(source, {"first.spec_sha256": "new"}) == (
+        "assert first.spec_sha256 == ('new')\n"
+        'assert other.spec_sha256 == "old"\n'
+        "# old is historical\n"
+    )
+    with pytest.raises(ValueError, match="targets changed"):
+        _replace_literal_assertions(source, {"missing": "new"})
+
+
+def test_receipt_pin_refuses_duplicates_and_nonliteral_expectations() -> None:
+    source = 'assert receipt == "old"\nassert receipt == "old"\n'
+    with pytest.raises(ValueError, match="duplicate receipt assertion"):
+        _replace_literal_assertions(source, {"receipt": "new"})
+    with pytest.raises(ValueError):
+        _replace_literal_assertions("assert receipt == expected\n", {"receipt": "new"})
+    with pytest.raises(ValueError, match="not a literal string"):
+        _replace_literal_assertions("assert receipt == 123\n", {"receipt": "new"})
+
+
+def test_nested_receipt_pin_preserves_the_complete_dictionary_assertion() -> None:
+    source = (
+        'assert run_config == {"spec_binding": {"sha256": "old", "keep": "old"}}\n'
+        "# old is historical\n"
+    )
+    assert _replace_asserted_dictionary_value(
+        source, "run_config", ("spec_binding", "sha256"), "new"
+    ) == source.replace('"sha256": "old"', "\"sha256\": 'new'")
+    with pytest.raises(ValueError, match="expected one receipt dictionary key"):
+        _replace_asserted_dictionary_value(
+            source, "run_config", ("spec_binding", "missing"), "new"
+        )
+
+
+def test_nested_receipt_pin_refuses_duplicate_assertions_or_dictionary_keys() -> None:
+    source = 'assert run_config == {"sha256": "old"}\n'
+    with pytest.raises(ValueError, match="expected one asserted dictionary"):
+        _replace_asserted_dictionary_value(
+            source + source, "run_config", ("sha256",), "new"
+        )
+    with pytest.raises(ValueError, match="expected one receipt dictionary key"):
+        _replace_asserted_dictionary_value(
+            'assert run_config == {"sha256": "old", "sha256": "other"}\n',
+            "run_config",
+            ("sha256",),
+            "new",
+        )

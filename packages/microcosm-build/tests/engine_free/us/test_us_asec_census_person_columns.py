@@ -70,6 +70,12 @@ _RECEIPT_720_ADDED = frozenset(
     }
 )
 
+#: The six columns microcosm #454 restores for the ``meps_esi_premiums`` stage.
+#: No pinned H5 carries them, and they were never part of the #720 offline fix.
+_ISSUE_454_ADDED = frozenset(
+    {"NOW_OWNGRP", "NOW_HIPAID", "NOW_GRPFTYP", "NOW_GRPFTYP2", "PEMLR", "NOEMP"}
+)
+
 #: H5 row order differs from the member's, so a positional copy would fail.
 _H5_ORDER = [3, 0, 7, 5, 1, 6, 2, 4]
 
@@ -382,7 +388,9 @@ def test_the_review_places_every_offline_fix_column_exactly_once():
     assert beyond == {"WEIND", "WEMIND"}
     assert beyond <= restored
     assert beyond.isdisjoint(_RECEIPT_720_ADDED)
-    assert (restored - beyond) | not_restored == _RECEIPT_720_ADDED
+    assert (restored - beyond) | not_restored == _RECEIPT_720_ADDED | _ISSUE_454_ADDED
+    assert _ISSUE_454_ADDED <= restored
+    assert _ISSUE_454_ADDED.isdisjoint(_RECEIPT_720_ADDED)
     assert not restored & set(ASEC_CENSUS_PERSON_IDENTITY_COLUMNS)
 
 

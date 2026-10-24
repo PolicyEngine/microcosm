@@ -59,6 +59,7 @@ def _us_frame(**person_extra: object) -> Frame:
             "takes_up_wic_if_eligible": [True, False, True],
             "educator_expense": [0.0, 300.0, 150.0],
             "other_health_insurance_premiums": [1_200.0, 0.0, 600.0],
+            "employer_sponsored_insurance_premiums": [9_400.0, 0.0, 6_100.0],
             "health_insurance_premiums": [1_200.0, 0.0, 800.0],
             "is_self_employed": [True, False, True],
             "is_incapable_of_self_care": [False, True, False],
@@ -129,6 +130,9 @@ def _us_frame(**person_extra: object) -> Frame:
             "cps_race": [1, 2, 4],
             "is_hispanic": [False, True, False],
             "detailed_occupation_recode": [1, 20, 53],
+            "detailed_industry_recode": [13, 7, 23],
+            "major_industry_recode": [9, 5, 15],
+            "worked_last_year": [True, True, False],
             "has_never_worked": [False, False, True],
             "is_military": [False, True, False],
             "is_computer_scientist": [False, True, False],
@@ -906,6 +910,37 @@ def test_required_us_release_source_columns_enforces_educator_expense_signal() -
         match="person.educator_expense: not nonconstant",
     ):
         assert_required_us_release_source_columns(raw_frame)
+
+
+def test_required_us_release_source_columns_enforces_esi_premium_signal() -> None:
+    """microcosm#454: an L0/refit export refuses an absent or flat ESI column."""
+
+    frame = _us_frame()
+    for mutate, message in (
+        (
+            lambda people: people.drop(
+                columns=["employer_sponsored_insurance_premiums"]
+            ),
+            "person.employer_sponsored_insurance_premiums: missing",
+        ),
+        (
+            lambda people: people.assign(employer_sponsored_insurance_premiums=0.0),
+            "person.employer_sponsored_insurance_premiums: not nonconstant",
+        ),
+    ):
+        raw_frame = Frame(
+            {
+                **{
+                    entity: frame.table(entity).copy()
+                    for entity in frame.schema.entities
+                },
+                "person": mutate(frame.table("person").copy()),
+            },
+            frame.schema,
+            {"household": frame.weights_for("household")},
+        )
+        with pytest.raises(ValueError, match=message):
+            assert_required_us_release_source_columns(raw_frame)
 
 
 def test_required_us_release_source_columns_enforces_other_premium_signal() -> None:

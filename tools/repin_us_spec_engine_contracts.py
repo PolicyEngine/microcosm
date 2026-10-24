@@ -3,7 +3,7 @@
 
 Run ``--legacy-only`` before regenerating the US bundle, then run without it
 before regenerating ``tools/spec_engine_coverage.py``. Only observed hashes,
-field counts, and their duplicated test expectations are rewritten. Compiler
+field counts, and their exact receipt and semantic test vectors are rewritten. Compiler
 routes and inventory clauses remain authoritative: the final coverage command
 validates the full inventory after pins are written. No microdata, build,
 publication, or remote access is involved.
@@ -26,6 +26,7 @@ import sys
 import tokenize
 from io import StringIO
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "packages/microcosm-build"
@@ -120,9 +121,14 @@ def _add_count_replacement(replacements: dict, old: int, new: int) -> None:
 
 def _replace_length_assertions(source: str, expected: dict[str, int]) -> str:
     matches = {}
-    for node in ast.walk(ast.parse(source)):
+    for assertion in ast.walk(ast.parse(source)):
+        if not isinstance(assertion, ast.Assert):
+            continue
+        node = assertion.test
         if not (
             isinstance(node, ast.Compare)
+            and len(node.ops) == 1
+            and isinstance(node.ops[0], ast.Eq)
             and isinstance(node.left, ast.Call)
             and isinstance(node.left.func, ast.Name)
             and node.left.func.id == "len"
@@ -143,6 +149,167 @@ def _replace_length_assertions(source: str, expected: dict[str, int]) -> str:
         if ast.literal_eval(node) != expected[target]:
             source = _replace_node(source, node, expected[target])
     return source
+
+
+def _replace_literal_assertions(source: str, expected: dict[str, str]) -> str:
+    """Refresh each exact receipt expression once, retaining literal assertions."""
+
+    matches = {}
+    for node in ast.walk(ast.parse(source)):
+        if not (
+            isinstance(node, ast.Assert)
+            and isinstance(node.test, ast.Compare)
+            and len(node.test.ops) == 1
+            and isinstance(node.test.ops[0], ast.Eq)
+            and len(node.test.comparators) == 1
+        ):
+            continue
+        target = ast.unparse(node.test.left)
+        if target in expected:
+            if target in matches:
+                raise ValueError(f"duplicate receipt assertion: {target}")
+            matches[target] = node.test.comparators[0]
+    if set(matches) != set(expected):
+        raise ValueError("receipt assertion targets changed")
+    for target, node in sorted(
+        matches.items(), key=lambda row: row[1].lineno, reverse=True
+    ):
+        old = ast.literal_eval(node)
+        if not isinstance(old, str):
+            raise ValueError(f"receipt assertion is not a literal string: {target}")
+        if old != expected[target]:
+            source = _replace_node(source, node, expected[target])
+    return source
+
+
+def _replace_asserted_dictionary_value(
+    source: str, target: str, keys: tuple[str, ...], value: str
+) -> str:
+    """Refresh a nested literal pin inside one complete dictionary assertion."""
+
+    matching = [
+        node.test.comparators[0]
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Assert)
+        and isinstance(node.test, ast.Compare)
+        and len(node.test.ops) == 1
+        and isinstance(node.test.ops[0], ast.Eq)
+        and len(node.test.comparators) == 1
+        and ast.unparse(node.test.left) == target
+    ]
+    if len(matching) != 1:
+        raise ValueError(f"expected one asserted dictionary: {target}")
+    node = matching[0]
+    for key in keys:
+        if not isinstance(node, ast.Dict):
+            raise ValueError(f"receipt key is not in a literal dictionary: {key}")
+        matching = [
+            child
+            for candidate, child in zip(node.keys, node.values, strict=True)
+            if candidate is not None and ast.literal_eval(candidate) == key
+        ]
+        if len(matching) != 1:
+            raise ValueError(f"expected one receipt dictionary key: {key}")
+        node = matching[0]
+    old = ast.literal_eval(node)
+    if not isinstance(old, str):
+        raise ValueError("receipt dictionary pin is not a literal string")
+    return source if old == value else _replace_node(source, node, value)
+
+
+def _semantic_test_pins(spec, observed_hashes: dict, rendered: dict) -> None:
+    """Derive the existing test vectors through their production projections."""
+
+    from microcosm.build.spec_engine import (
+        KernelRegistry,
+        ResourceKind,
+        project_legacy_calibration_contract,
+    )
+    from microcosm.build.spec_engine.canonical import sha256_json
+    from microcosm.build.spec_engine.legacy_adapter import compile_to_legacy_payload
+    from microcosm.build.spec_engine.loader import load_bundle
+    from test_support.microcosm_build.spec_engine_loader import (
+        SELECTION_KERNEL_IDS,
+        _rich_minimal,
+    )
+
+    legacy = compile_to_legacy_payload(spec)
+    imputation = legacy["imputation"]
+    schedule = imputation["late_producer_schedule_receipt"]
+    receipts = {
+        "authority": legacy["stacked_authority_receipt"]["sha256"],
+        "late_schedule": schedule["schedule_sha256"],
+        "ownership": imputation["overlap_ownership"]["sha256"],
+        "take_up": legacy["take_up_contract_identity"]["resource_sha256"],
+    }
+    for key, value in receipts.items():
+        if value != observed_hashes[key]:
+            raise ValueError(f"{key}: compiled and inventory receipt digests differ")
+
+    # Use the identical fixture builder, country, note, store and selected
+    # registry as the golden test; no test assertion or constant is consulted.
+    with TemporaryDirectory(prefix="microcosm-spec-pin-") as directory:
+        root = _rich_minimal(Path(directory) / "xx", note="first", store="local:a")
+        minimal = load_bundle(
+            root, kernel_registry=KernelRegistry.from_ids(SELECTION_KERNEL_IDS)
+        )
+    path = PACKAGE / "tests/engine_free/shared/test_spec_engine_loader.py"
+    rendered[path] = _replace_literal_assertions(
+        path.read_text(), {"first.spec_sha256": minimal.spec_sha256}
+    )
+
+    calibration = spec.domain(ResourceKind.CALIBRATION).to_wire()
+    path = (
+        PACKAGE / "tests/engine_free/shared/test_spec_engine_calibration_semantics.py"
+    )
+    rendered[path] = _replace_assignment(
+        path.read_text(),
+        "CANONICAL_LEGACY_PROJECTION_SHA256",
+        sha256_json(project_legacy_calibration_contract(calibration)),
+    )
+
+    path = PACKAGE / "tests/engine_free/shared/test_spec_engine_compiler_ir.py"
+    rendered[path] = _replace_assignment(
+        rendered.get(path, path.read_text()),
+        "US_SCHEDULE_SHA256",
+        receipts["late_schedule"],
+    )
+    assertion_files = {
+        "engine_free/shared/test_spec_engine_legacy_adapter.py": {
+            "legacy_payload['stacked_authority_receipt']['sha256']": receipts[
+                "authority"
+            ],
+            "imputation['late_producer_schedule_receipt']['schedule_sha256']": receipts[
+                "late_schedule"
+            ],
+            "imputation['overlap_ownership']['sha256']": receipts["ownership"],
+            "legacy_payload['take_up_contract_identity']['resource_sha256']": receipts[
+                "take_up"
+            ],
+        },
+        "engine_free/shared/test_spec_engine_imputation_semantics.py": {
+            "projected['late_producer_schedule_receipt']['schedule_sha256']": receipts[
+                "late_schedule"
+            ],
+            "projected['overlap_ownership']['sha256']": receipts["ownership"],
+        },
+        "engine_free/us/test_us_spec_bundle.py": {
+            "compiled_schedule['schedule_sha256']": receipts["late_schedule"],
+            "compiled_schedule['payload_sha256']": schedule["payload_sha256"],
+        },
+    }
+    for relative, expected in assertion_files.items():
+        path = PACKAGE / "tests" / relative
+        rendered[path] = _replace_literal_assertions(
+            rendered.get(path, path.read_text()), expected
+        )
+    path = PACKAGE / "tests/engine_workflow/us/test_us_multispine_pool_tool.py"
+    rendered[path] = _replace_asserted_dictionary_value(
+        path.read_text(),
+        "run_config",
+        ("spec_binding", "spec_sha256"),
+        spec.spec_sha256,
+    )
 
 
 def _legacy_pins(*, check: bool) -> None:
@@ -320,6 +487,7 @@ def _compiler_pins(*, check: bool) -> None:
     rendered[path] = _replace_dictionary(
         path.read_text(), "EXPECTED_COUNTS", observed_counts
     )
+    _semantic_test_pins(spec, observed_hashes, rendered)
     # Finish all derivations before writing so a failed compiler route or an
     # ambiguous inventory observation cannot leave partially refreshed pins.
     for path, source in rendered.items():

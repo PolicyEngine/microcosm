@@ -350,12 +350,12 @@ EXPECTED_HASHES = {
     "acs_person_predictors": "878c788a6f037d7aca12b3586ea034eff04f3034ffa11935a736493042551f25",
     "authority": "9d4a9672a0f03039b1fe874b9fe21ed575be0d29f14afc396d03cdf5c809bdd2",
     "early_families": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd",
-    "full_checkpoint": 'd775bd3af8dba3e9535c914f44ab30af1a6abdbcc29cd8b66cc1ea64a9c0203b',
+    "full_checkpoint": "e5da85693fab1f1cba9c37beba5cdf91477962d466bc21e9f29125f2f90b7e79",
     "gap_fill_schedule": "1c31f9868f7884347cc19cf1ff65da43f950b9114941a715bab168246db414a7",
     "graph_nodes": "40cd51ffdfe2e9d9d08d48c08e8ded9de1e4b134783bab05c4abc6ad5c72ca1e",
     "geography_assignment": "44e7f5f6cd7ceeef85d532c3d46306d03de4f4ee811376e6d29920742746b65c",
     "late_families": "d91f9ff0eb52f43e7b6eed3d5c58c37abe1620c3a11021da15dae9c10e16d382",
-    "late_resource_semantics": '0684d34c1d3453f61e207db9acca6545f2af8dbb7ea7f09056e3a86f73d8c85c',
+    "late_resource_semantics": "cbac7c8fbdbb82f0f06ab356d0c9f0d3645ca930550b44af2272d93315f2e934",
     "late_schedule": "e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f",
     "ownership": "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356",
     "primary_tuples": "fdf23da429f8c501e198a2f5b719763d523a41565c2153fdf17b0344f21bcd7c",
@@ -366,12 +366,14 @@ EXPECTED_HASHES = {
     # by default, so no US solve, RNG rule or QRF target changes. microcosm#1301
     # moves both again: calibrate gains budget_search_bracket, whose default
     # keeps the US bracket, and the budget search, which the US solve does
-    # not run, changes its probes, so again no US solve changes.
-    "seed_map": "0db599df419dd16779097361dc72afdefb8df2abf8b134078da9c52d31d8e017",
-    "seed_protocol": "2b7bdc1d6b0da1bdaf54b4cac29f10f2d3c8bed2e177729c2c89e6b33a099cc5",
-    "source_manifest": '8f4cae118fa0e22c5606b9977bb2561f4e4014b96401404d077981da65cad669',
+    # not run, changes its probes, so again no US solve changes. #454: the
+    # meps_esi_premiums stage joins the attested sources and the source
+    # manifest.
+    "seed_map": "3cf71bdd3e6df567a4f9eb8d182bea160108cc9941e6ff08b8a0eee4e9fc8ba2",
+    "seed_protocol": "15e9b110999c37a0a78ecd001d6b79bbd860b408cf08a1e0ea435690f0a5f041",
+    "source_manifest": "629a0712659a26b2d6aa6c0e5672421f415d625e0599d6baa0a834d118953c6a",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
-    "tail": '256947cd7c1bbd85f5d1fa3911a07a170ae87830f098110a40ed25d93f78347c',
+    "tail": "ac92829c88a1a4fb6460d61190918d5d99c6c377fc8dd8f62f02b332d09bf59c",
 }
 
 INVENTORY_REPORT_SCHEMA_VERSION = 1
@@ -451,7 +453,7 @@ EXPECTED_INVENTORY_COUNTS: Mapping[str, int] = {
     "stacked_checkpoint_full_components": 13,
     "stacked_checkpoint_pool_code_components": 19,
     "stacked_checkpoint_static_components": 10,
-    "tail_control_fields": 937,
+    "tail_control_fields": 934,
     "take_up_pipeline_steps": 28,
     "take_up_programs": 17,
     "typed_artifacts": 84,
@@ -1207,7 +1209,7 @@ def build_inventory_coverage(
             "stages": len(_array(sources["stages"], "source stages")),
             "sha256": sha256_json(source_manifest),
         },
-        expected={"stages": 37, "sha256": EXPECTED_HASHES["source_manifest"]},
+        expected={"stages": 38, "sha256": EXPECTED_HASHES["source_manifest"]},
     )
     pipeline = _mapping(spine["pipeline_contract"], "spine pipeline contract")
     operator_order = tuple(
@@ -1419,7 +1421,7 @@ def build_inventory_coverage(
     add(
         "capital_gains_tail_contract_exact",
         clauses={
-            "tail terminal field count differs": tail_count == 937,
+            "tail terminal field count differs": tail_count == 934,
             "resolved calibration tails differ": _json_equal(
                 legacy.get("calibration_tail_contracts"),
                 expected_legacy["calibration_tail_contracts"],
@@ -1447,7 +1449,7 @@ def build_inventory_coverage(
             "legacy_adapter.stacked_checkpoint_static_components",
         ),
         observed={"terminal_fields": tail_count, "sha256": sha256_json(tail_bundle)},
-        expected={"terminal_fields": 937, "sha256": EXPECTED_HASHES["tail"]},
+        expected={"terminal_fields": 934, "sha256": EXPECTED_HASHES["tail"]},
     )
 
     add(

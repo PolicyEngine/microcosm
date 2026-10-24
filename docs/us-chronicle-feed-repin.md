@@ -13,6 +13,53 @@ any other feed, and `test_us_chronicle_feed.py` fails if the parity resources,
 the generator and the pin disagree, or if the scope file changes without a
 new pin.
 
+## The 2026-10-11 re-pin: BEA private group health insurance (microcosm#454)
+
+Decision d1317 made BEA NIPA Table 7.8 line 17 (series B4923C) the scale
+anchor of the `meps_esi_premiums` stage (`docs/us-esi-employer-premiums.md`)
+and asked for the feed to carry the banked fact. The pin moved from `51aa40f`
+to `cf9ece2`, a commit that is `51aa40f` plus two commits (Chronicle branch
+`feed/us-51aa40f-esi-b4923c`, tag `microcosm-us-feed-454-v1`), not Chronicle
+main:
+
+- The digit-text guard match from Chronicle main's `aa3e4de3`, and nothing
+  else from that commit. BEA's Section 7 workbook writes its year headers as
+  text (`'2024'`), and at `51aa40f` no guard could match them. Only a guard
+  that used to fail can pass, so every package that built before builds the
+  same cells.
+- The `bea-nipa-private-group-health-insurance` package as
+  PolicyEngine/chronicle#331 merged it to main, with its concept evidence
+  (BEA's estimates cover active and retired employees). The test file drops
+  main's artifact-year restamp test, whose guard (chronicle#292) postdates
+  this base, and the package is not added to the US poverty hard-target
+  coverage contract, as on main.
+
+The scope adds three pairs, `bea_nipa.cy<year>.private_group_health_insurance`
+for 2023, 2024 and 2025, each built at its own year (640 pairs, 66 package
+runs). Built at `cf9ece2`:
+
+- the feed keeps all 40,178 `51aa40f` rows byte for byte (joined on
+  `aggregate_fact_key`) and adds exactly the three B4923C facts: $923,195M,
+  $977,034M and $1,027,929M, each from `Section7All_xls.xlsx` (sha256
+  `de1c34e3…`);
+- compiled at 2024 with the packaged CD crosswalk and the Medicaid
+  substitutions, with target aging on and again with it off, the registry is
+  the same ordered list of targets on both feeds, name, value and metadata
+  (33,250 targets with aging on). B4923C is not compiled into a target: the stage scales to it,
+  and whether to calibrate the column is decision d1264. The target-parity
+  manifest lists it as a `deferred` reviewed exclusion (82 feed families, 32
+  compiled, 53 reviewed exclusions; it was a source-absent family before);
+- two independent rebuilds gave the same `facts_sha256`.
+
+The comparison scripts and their reports are in
+`experiments/us-esi-454/feed-repin/`. The release tool now refuses a feed
+whose B4923C values differ from the stage's pinned anchor
+(`us_esi_premiums_anchor_feed_mismatches`); a diagnostic run under
+`--allow-unpinned-feed` or `--allow-esi-premium-gaps` continues and records
+the difference in `esi_premiums.json` (in the report, for a dry run). A later re-pin that changes other rows
+(microcosm#1192 re-dates the W-2 item facts) must carry the three B4923C
+pairs and redo the row comparison against its own previous feed.
+
 ## The 2026-10-04 re-pin: TY2023 state AGI bands (microcosm#940)
 
 The state x AGI-band targets of #940 need the TY2023 Historic Table 2 state
@@ -54,20 +101,22 @@ the first labelled US export.
 
 | Field | Value |
 |---|---|
-| Chronicle commit | `51aa40fd28e2ca81937752515e773d123fecfb71` (`c5e5bf8` plus the TY2023 state AGI package; tag `microcosm-us-feed-940-v1`) |
-| Feed file | `consumer_facts_us_51aa40f.jsonl`, 40,178 rows, 169,038,757 bytes |
-| `facts_sha256` | `965a29ac9458edb58a05184917ee4a19772fd3dc7b4588db6eb6da5803641aac` |
+| Chronicle commit | `cf9ece2e7be11158c21fdc4dd38b44d92db552f6` (`51aa40f` plus the digit-text guard and the B4923C package; tag `microcosm-us-feed-454-v1`) |
+| Feed file | `consumer_facts_us_cf9ece2.jsonl`, 40,181 rows, 169,055,585 bytes |
+| `facts_sha256` | `054e5684005a7b143dcb84eabac634135ce9b2b33bb57b540602e474a4ba7c57` |
 | Consumer fact schema | `chronicle.consumer_fact.v3`, schema file sha256 `bdb51e2a…` (unchanged from the UK pin) |
-| Scope | 637 (record set, period) pairs; 63 package runs over build years 2020 to 2029 |
+| Scope | 640 (record set, period) pairs; 66 package runs over build years 2020 to 2029 |
 | Consumer artifact | none: refused at this commit, see below |
 
-The previous pin was `c5e5bf8aa84960c1a200ee47303b19c953092d0f`
-(`consumer_facts_us_c5e5bf8.jsonl`, 39,158 rows, `facts_sha256`
-`b8543739…`, 586 pairs, 62 runs); the rest of this document describes its
-2026-09-18 rebuild unless it says otherwise.
+The previous pins were `51aa40fd28e2ca81937752515e773d123fecfb71`
+(`consumer_facts_us_51aa40f.jsonl`, 40,178 rows, `facts_sha256`
+`965a29ac…`, 637 pairs, 63 runs) and, before it,
+`c5e5bf8aa84960c1a200ee47303b19c953092d0f` (`consumer_facts_us_c5e5bf8.jsonl`,
+39,158 rows, `facts_sha256` `b8543739…`, 586 pairs, 62 runs); the rest of this
+document describes the 2026-09-18 rebuild unless it says otherwise.
 
 The feed is too large for the repository. Its home on the build machine is
-`~/PolicyEngine/_buildh-runtime/inputs/consumer_facts_us_51aa40f.jsonl`,
+`~/PolicyEngine/_buildh-runtime/inputs/consumer_facts_us_cf9ece2.jsonl`,
 beside the previous pins; `tools/build_us_target_parity_manifest.py` reads it
 there by default. A holder of the Chronicle commit regenerates it byte for
 byte with the commands below.
