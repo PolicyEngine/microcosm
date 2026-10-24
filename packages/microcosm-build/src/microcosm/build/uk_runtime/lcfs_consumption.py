@@ -447,6 +447,15 @@ UK_LCFS_RECOMPOSED_PARENTS: Mapping[str, tuple[tuple[str, ...], tuple[str, ...]]
 #: range plus levelled parts larger than the drawn ones cannot leave the range
 #: the terminal support gate holds the emitted totals to.
 UK_LCFS_RECOMPOSED_MAXIMUM_TOTAL = "donor_support"
+#: The declared levelling of the divisions' relative over-draw (María's ruling
+#: of 2026-10-23, microcosm#1278): each COICOP division whose frame total per
+#: household stands above its donor's by more than the twelve divisions
+#: together do is brought down to that shared ratio, and no other moves. Only
+#: the chain's own draws move: a division's whole draw, or a recomposed
+#: total's remainder, so the levelled energy, road fuel and priced fares keep
+#: their published levels.
+UK_LCFS_LEVEL_DIVISION_EXCESS = "excess_over_total_ratio"
+UK_LCFS_LEVEL_DIVISION_BASIS = "frame_over_donor_per_household"
 #: The chain draws a recomposition subtracts, kept before any step re-levels them.
 UK_LCFS_RECOMPOSED_DRAWN_COLUMNS = tuple(
     dict.fromkeys(
@@ -670,6 +679,7 @@ class UKLCFSConsumptionStageTransform:
             weights=weights,
             donor_support=donor_realized_ranges(donor),
             uprating_factors=uprating_factors,
+            donor_division_means=lcfs_donor_division_means(donor),
         )
         energy_split = donor.attrs.get(UK_LCFS_ENERGY_SPLIT_RECEIPT)
         if recomposed_totals_receipt is not None and isinstance(energy_split, Mapping):
@@ -1843,6 +1853,16 @@ def check_recomposed_parents(parameters: Mapping[str, Any]) -> None:
             f"{RECOMPOSE_FROM_REMAINDER_KIND} must declare maximum_total: "
             f"{UK_LCFS_RECOMPOSED_MAXIMUM_TOTAL}."
         )
+    levelling = parameters.get("level_division_excess")
+    if levelling is not None and dict(levelling) != {
+        "rule": UK_LCFS_LEVEL_DIVISION_EXCESS,
+        "basis": UK_LCFS_LEVEL_DIVISION_BASIS,
+        "divisions": list(UK_LCFS_COICOP_DIVISION_COLUMNS),
+    }:
+        raise ValueError(
+            f"{RECOMPOSE_FROM_REMAINDER_KIND} declares level_division_excess "
+            f"{levelling!r}, not the rule the stage applies."
+        )
 
 
 def published_fuel_spend(parameters: Mapping[str, Any]) -> dict[str, Any]:
@@ -1945,6 +1965,7 @@ def recompose_parent_totals(
     weights: Sequence[float],
     donor_support: Mapping[str, tuple[float, float]],
     uprating_factors: Mapping[str, float] | None = None,
+    donor_division_means: Mapping[str, float] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Write each recomposed total around the levelled parts the stage set.
 
@@ -1961,6 +1982,11 @@ def recompose_parent_totals(
     (``donor_support``, the declared ``maximum_total``; microcosm#1164), never
     below its parts: what it gives up comes out of the remainder, and the
     receipt counts the rows held and the weighted mass taken.
+
+    Where the declaration levels the divisions' relative over-draw
+    (``level_division_excess``), each division above the shared ratio is
+    brought down to it before the hold (:func:`division_excess_factors`):
+    a recomposed total by its remainder alone, any other division by its draw.
     """
 
     check_recomposed_parents(parameters)
@@ -1968,14 +1994,58 @@ def recompose_parent_totals(
     factors = dict(uprating_factors or {})
     result = household_draws.copy()
     parents: dict[str, Any] = {}
+    split: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = {}
     for parent, (subtracted, components) in UK_LCFS_RECOMPOSED_PARENTS.items():
-        if parent not in donor_support:
-            raise ValueError(f"{parent}: no donor support to hold the total to.")
-        maximum = float(donor_support[parent][1])
         drawn_total = result[parent].to_numpy(dtype=float)
         drawn_parts = sum(drawn[column].to_numpy(dtype=float) for column in subtracted)
         rest = np.maximum(drawn_total - drawn_parts, 0.0)
         parts = sum(result[column].to_numpy(dtype=float) for column in components)
+        split[parent] = (drawn_total, drawn_parts, rest, parts)
+    levelling = None
+    level_factors: dict[str, float] = {}
+    if parameters.get("level_division_excess") is not None:
+        if donor_division_means is None:
+            raise ValueError(
+                "Levelling the divisions' excess needs the donor's division means."
+            )
+        frame_totals = {
+            division: float(
+                np.dot(
+                    weight,
+                    split[division][2] + split[division][3]
+                    if division in split
+                    else result[division].to_numpy(dtype=float),
+                )
+            )
+            for division in UK_LCFS_COICOP_DIVISION_COLUMNS
+        }
+        parts_totals = {
+            parent: float(np.dot(weight, split[parent][3])) for parent in split
+        }
+        rest_totals = {
+            parent: float(np.dot(weight, split[parent][2])) for parent in split
+        }
+        levelling = division_excess_factors(
+            frame_totals,
+            donor_division_means,
+            households=float(weight.sum()),
+            levelled_parts=parts_totals,
+            drawn_rest=rest_totals,
+        )
+        level_factors = {
+            division: entry["factor"]
+            for division, entry in levelling["divisions"].items()
+        }
+        for division, factor in level_factors.items():
+            if division not in split and factor != 1.0:
+                result[division] = result[division].to_numpy(dtype=float) * factor
+    for parent, (subtracted, components) in UK_LCFS_RECOMPOSED_PARENTS.items():
+        if parent not in donor_support:
+            raise ValueError(f"{parent}: no donor support to hold the total to.")
+        maximum = float(donor_support[parent][1])
+        drawn_total, drawn_parts, rest, parts = split[parent]
+        level_factor = float(level_factors.get(parent, 1.0))
+        rest = rest * level_factor
         unheld = rest + parts
         total = np.maximum(np.minimum(unheld, maximum), parts)
         result[parent] = total
@@ -2000,6 +2070,7 @@ def recompose_parent_totals(
             },
             "drawn_subtracts": list(subtracted),
             "components": list(components),
+            "levelling_factor": level_factor,
             "weighted_drawn_total": float(np.dot(weight, drawn_total)),
             "weighted_drawn_subtracts": float(np.dot(weight, drawn_parts)),
             "rows_floored": int((drawn_parts > drawn_total).sum()),
@@ -2019,8 +2090,62 @@ def recompose_parent_totals(
         "operation": RECOMPOSE_FROM_REMAINDER_KIND,
         "parents": parents,
         "published_fuels": published_fuel_spend(parameters),
+        **({} if levelling is None else {"division_levelling": levelling}),
     }
     return result, receipt
+
+
+def division_excess_factors(
+    frame_totals: Mapping[str, float],
+    donor_division_means: Mapping[str, float],
+    *,
+    households: float,
+    levelled_parts: Mapping[str, float],
+    drawn_rest: Mapping[str, float],
+) -> dict[str, Any]:
+    """Each division's factor bringing its relative over-draw to the shared ratio.
+
+    A division's ratio is its frame total per frame household over its
+    donor's mean per donor household; the shared ratio is the twelve
+    divisions' together. A division above it is brought down to it, and no
+    other moves (María's ruling of 2026-10-23). A recomposed total moves by
+    its remainder alone, so its factor is what takes the remainder to the
+    shared ratio less its levelled parts, at least zero: the parts keep their
+    published levels.
+    """
+
+    expected = {
+        division: households * float(donor_division_means[division])
+        for division in UK_LCFS_COICOP_DIVISION_COLUMNS
+    }
+    total_expected = sum(expected.values())
+    if not total_expected > 0:
+        raise ValueError("The donor's divisions hold no spend to level against.")
+    shared = sum(frame_totals.values()) / total_expected
+    divisions: dict[str, dict[str, float | None]] = {}
+    for division in UK_LCFS_COICOP_DIVISION_COLUMNS:
+        frame = float(frame_totals[division])
+        donor = expected[division]
+        ratio = frame / donor if donor > 0 else None
+        factor = 1.0
+        if ratio is not None and ratio > shared:
+            target = shared * donor
+            if division in drawn_rest:
+                rest = float(drawn_rest[division])
+                factor = (
+                    min(1.0, max(0.0, (target - levelled_parts[division]) / rest))
+                    if rest > 0
+                    else 1.0
+                )
+            else:
+                factor = target / frame
+        divisions[division] = {"ratio": ratio, "factor": factor}
+    return {
+        "rule": UK_LCFS_LEVEL_DIVISION_EXCESS,
+        "basis": UK_LCFS_LEVEL_DIVISION_BASIS,
+        "shared_ratio": shared,
+        "divisions": divisions,
+    }
 
 
 def lcfs_recompose_from_remainder(
@@ -2031,6 +2156,7 @@ def lcfs_recompose_from_remainder(
     weights: Sequence[float],
     donor_support: Mapping[str, tuple[float, float]],
     uprating_factors: Mapping[str, float] | None = None,
+    donor_division_means: Mapping[str, float] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any] | None]:
     """Apply the declared ``recompose_from_remainder`` step (none if undeclared)."""
 
@@ -2044,7 +2170,26 @@ def lcfs_recompose_from_remainder(
         weights=weights,
         donor_support=donor_support,
         uprating_factors=uprating_factors,
+        donor_division_means=donor_division_means,
     )
+
+
+def lcfs_donor_division_means(donor: pd.DataFrame) -> dict[str, float]:
+    """Each COICOP division's mean per donor household, at the donor's weights.
+
+    The donor is the annualised one the chain drew from, carried to the base
+    year, as :func:`division_capture` reads it.
+    """
+
+    weight = _numeric(donor["household_weight"]).to_numpy(dtype=float)
+    mass = float(weight.sum())
+    if not mass > 0:
+        raise ValueError("The LCFS donor carries no weight.")
+    return {
+        division: float(np.dot(weight, _numeric(donor[division]).to_numpy(dtype=float)))
+        / mass
+        for division in UK_LCFS_COICOP_DIVISION_COLUMNS
+    }
 
 
 @dataclass(frozen=True)

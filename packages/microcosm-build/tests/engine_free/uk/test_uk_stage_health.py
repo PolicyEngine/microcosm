@@ -1791,6 +1791,7 @@ def test_recomposed_totals_gate_holds_totals_above_their_components() -> None:
     from microcosm.build.country_spec import load_country_spec
     from microcosm.build.uk_runtime.calibration_run import UK_SPINE_GATE_SCOPE
     from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_COICOP_DIVISION_COLUMNS,
         recompose_from_remainder_operation,
         recompose_parent_totals,
     )
@@ -1825,6 +1826,16 @@ def test_recomposed_totals_gate_holds_totals_above_their_components() -> None:
             "bus_fare_spending": [0.0, 250.0],
         }
     )
+    housing = "housing_water_and_electricity_consumption"
+    food = "food_and_non_alcoholic_beverages_consumption"
+    # Every other division at its donor's level; food far above it, so food
+    # alone is levelled (microcosm#1278) and the two totals keep their draws.
+    means = dict.fromkeys(UK_LCFS_COICOP_DIVISION_COLUMNS, 100.0)
+    means.update({housing: 4600.0, "transport_consumption": 2300.0, food: 1.0})
+    for division in UK_LCFS_COICOP_DIVISION_COLUMNS:
+        if division not in draws:
+            draws[division] = [100.0, 100.0]
+    draws[food] = [1000.0, 1000.0]
     _, receipt = recompose_parent_totals(
         draws,
         drawn=drawn,
@@ -1834,7 +1845,10 @@ def test_recomposed_totals_gate_holds_totals_above_their_components() -> None:
             "housing_water_and_electricity_consumption": (0.0, 6000.0),
             "transport_consumption": (0.0, 1e9),
         },
+        donor_division_means=means,
     )
+    assert receipt["division_levelling"]["divisions"][food]["factor"] < 1.0
+    assert receipt["parents"][housing]["levelling_factor"] == 1.0
 
     def run(ev):
         return uk_stage_health_gate(
@@ -1858,7 +1872,6 @@ def test_recomposed_totals_gate_holds_totals_above_their_components() -> None:
     assert (
         passed.details["published_fuels_total"] == receipt["published_fuels"]["total"]
     )
-    housing = "housing_water_and_electricity_consumption"
     # 7000 - 2000 + 1600 is held at 6000 (microcosm#1164).
     assert receipt["parents"][housing]["rows_held_at_maximum"] == 1
     assert receipt["parents"][housing]["weighted_held_mass"] == 2.0 * 600.0
@@ -1902,6 +1915,34 @@ def test_recomposed_totals_gate_holds_totals_above_their_components() -> None:
     )
     failing(lambda r: r["parents"].pop("transport_consumption"), "not the declared")
     failing(lambda r: r["published_fuels"].update(total=0.0), "published fuel spend")
+    # The division levelling (microcosm#1278).
+    failing(lambda r: r.pop("division_levelling"), "records no division levelling")
+    failing(
+        lambda r: r["division_levelling"].update(rule="to_donor_totals"),
+        "not the declared levelling",
+    )
+    failing(
+        lambda r: r["division_levelling"]["divisions"].pop(food),
+        "not the declared",
+    )
+    failing(
+        lambda r: r["division_levelling"]["divisions"][food].update(factor=1.5),
+        "is not in [0, 1]",
+    )
+    failing(
+        lambda r: r["division_levelling"]["divisions"]["transport_consumption"].update(
+            factor=0.5
+        ),
+        "is not above the shared",
+    )
+    failing(
+        lambda r: r["parents"][housing].update(levelling_factor=1.5),
+        "is not in [0, 1]",
+    )
+    failing(
+        lambda r: r["parents"][housing].update(levelling_factor=0.5),
+        "is not its division's",
+    )
     with pytest.raises(ValueError, match="recomposed_totals must be an object"):
         run(None)
 

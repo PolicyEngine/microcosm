@@ -3059,6 +3059,82 @@ def _consumption_basis_gate(
     )
 
 
+def _division_levelling_factors(
+    stage: str,
+    levelling: object,
+    declared: Mapping[str, object],
+    failures: list[str],
+) -> dict[str, float]:
+    """Check the receipt's division levelling against the declaration.
+
+    Returns each division's factor (none where the stage declares no
+    levelling), appending a failure for a missing or undeclared levelling, a
+    rule or division list other than the declared one, a factor outside
+    [0, 1], or a division that moves though it is not above the shared ratio.
+    """
+
+    expected = declared.get("level_division_excess")
+    if expected is None:
+        if levelling is not None:
+            failures.append(
+                f"{stage}: records a division levelling the stage does not declare."
+            )
+        return {}
+    if not isinstance(levelling, Mapping):
+        failures.append(
+            f"{stage}: records no division levelling; the stage declares "
+            f"{expected['rule']!r}."
+        )
+        return {}
+    if (levelling.get("rule"), levelling.get("basis")) != (
+        expected["rule"],
+        expected["basis"],
+    ):
+        failures.append(
+            f"{stage}: levels the divisions by {levelling.get('rule')!r} on "
+            f"{levelling.get('basis')!r}, not the declared levelling."
+        )
+    shared = _finite_number(
+        levelling.get("shared_ratio"), label=f"{stage}.division_levelling.shared_ratio"
+    )
+    if not shared > 0:
+        failures.append(
+            f"{stage}: the divisions' shared ratio {shared} is not positive."
+        )
+    divisions = _mapping(
+        levelling.get("divisions"), label=f"{stage}.division_levelling.divisions"
+    )
+    if sorted(divisions) != sorted(expected["divisions"]):
+        failures.append(
+            f"{stage}: levels {sorted(divisions)}, not the declared "
+            f"{sorted(expected['divisions'])}."
+        )
+    factors: dict[str, float] = {}
+    for division, entry in divisions.items():
+        entry = _mapping(entry, label=f"{stage}.division_levelling.{division}")
+        factor = _finite_number(
+            entry.get("factor"), label=f"{stage}.division_levelling.{division}.factor"
+        )
+        ratio = entry.get("ratio")
+        if not 0.0 <= factor <= 1.0:
+            failures.append(
+                f"{stage}: {division} levelling factor {factor} is not in [0, 1]."
+            )
+        if factor != 1.0 and (
+            ratio is None
+            or _finite_number(
+                ratio, label=f"{stage}.division_levelling.{division}.ratio"
+            )
+            <= shared
+        ):
+            failures.append(
+                f"{stage}: {division} moves by {factor} though its ratio {ratio!r} "
+                f"is not above the shared {shared}."
+            )
+        factors[str(division)] = factor
+    return factors
+
+
 def _recomposed_totals_gate(
     stage: str,
     evidence: Mapping[str, object],
@@ -3075,7 +3151,11 @@ def _recomposed_totals_gate(
     total less the drawn parts plus the floored mass, and the weighted total
     the remainder plus the components less the mass held at the maximum; and
     the published ONS heating-fuel spend is recomputed from the vendored rows
-    through the stage's own declaration.
+    through the stage's own declaration. Where the stage declares
+    ``level_division_excess`` (microcosm#1278), the receipt carries the
+    declared rule over the declared divisions, every factor is in [0, 1], no
+    division at or below the shared ratio moves, and each recomposed total's
+    remainder moves by its division's factor.
     """
 
     from microcosm.build.country_spec import load_country_spec
@@ -3102,6 +3182,9 @@ def _recomposed_totals_gate(
     )
     declared_parents = declared["parents"]
     failures: list[str] = []
+    division_factors = _division_levelling_factors(
+        stage, receipt.get("division_levelling"), declared, failures
+    )
     if set(parents) != set(declared_parents):
         failures.append(
             f"{stage}: recomposed {sorted(parents)}, not the declared "
@@ -3144,8 +3227,22 @@ def _recomposed_totals_gate(
         def number(key: str, parent: str = parent, entry=entry) -> float:
             return _finite_number(entry.get(key), label=f"{stage}.{parent}.{key}")
 
+        # The declared levelling of the divisions' excess (microcosm#1278)
+        # scales a recomposed total's remainder by a factor in [0, 1].
+        factor = (
+            1.0 if entry.get("levelling_factor") is None else number("levelling_factor")
+        )
+        if not 0.0 <= factor <= 1.0:
+            failures.append(
+                f"{stage}: {parent} levelling factor {factor} is not in [0, 1]."
+            )
+        if factor != division_factors.get(parent, 1.0):
+            failures.append(
+                f"{stage}: {parent} levelling factor {factor} is not its "
+                f"division's {division_factors.get(parent, 1.0)}."
+            )
         remainder = number("weighted_remainder")
-        split = (
+        split = factor * (
             number("weighted_drawn_total")
             - number("weighted_drawn_subtracts")
             + number("weighted_floored_mass")
@@ -3153,7 +3250,7 @@ def _recomposed_totals_gate(
         if abs(remainder - split) > tolerance * max(1.0, abs(remainder)):
             failures.append(
                 f"{stage}: {parent} remainder {remainder} is not its draw less the "
-                f"drawn parts plus the floored mass ({split})."
+                f"drawn parts plus the floored mass, at its levelling factor ({split})."
             )
         total = number("weighted_total")
         held_mass = number("weighted_held_mass")

@@ -12418,6 +12418,34 @@
         "donor_support"
        ]
       },
+      "level_division_excess": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "rule",
+        "basis",
+        "divisions"
+       ],
+       "properties": {
+        "rule": {
+         "enum": [
+          "excess_over_total_ratio"
+         ]
+        },
+        "basis": {
+         "enum": [
+          "frame_over_donor_per_household"
+         ]
+        },
+        "divisions": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "string"
+         }
+        }
+       }
+      },
       "parents": {
        "type": "object",
        "minProperties": 1,

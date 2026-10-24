@@ -2351,7 +2351,9 @@ _WIDE_RECOMPOSE_SUPPORT = {
 }
 
 
-def _recompose_declaration() -> dict:
+def _recompose_declaration(*, levelled: bool = False) -> dict:
+    """The packaged declaration; without its division levelling unless asked."""
+
     from microcosm.build.country_spec import load_country_spec
     from microcosm.build.uk_runtime.lcfs_consumption import (
         recompose_from_remainder_operation,
@@ -2361,7 +2363,140 @@ def _recompose_declaration() -> dict:
         load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
     )
     assert declared is not None
+    assert "level_division_excess" in declared
+    if not levelled:
+        declared = {
+            key: value
+            for key, value in declared.items()
+            if key != "level_division_excess"
+        }
     return declared
+
+
+def test_division_excess_factors_bring_only_the_over_drawn_to_the_shared_ratio() -> (
+    None
+):
+    """María's ruling of 2026-10-23 (microcosm#1278): a division above the
+    twelve's shared frame-over-donor ratio comes down to it; none other moves."""
+
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_COICOP_DIVISION_COLUMNS,
+        division_excess_factors,
+    )
+
+    food, *others = UK_LCFS_COICOP_DIVISION_COLUMNS
+    housing = "housing_water_and_electricity_consumption"
+    # Ten households; every donor mean is 10, so each division expects 100.
+    means = dict.fromkeys(UK_LCFS_COICOP_DIVISION_COLUMNS, 10.0)
+    frame = dict.fromkeys(UK_LCFS_COICOP_DIVISION_COLUMNS, 120.0)
+    frame[food] = 240.0
+    frame[housing] = 180.0
+    levelled = {housing: 60.0, "transport_consumption": 0.0}
+    rest = {housing: 120.0, "transport_consumption": 120.0}
+    result = division_excess_factors(
+        frame, means, households=10.0, levelled_parts=levelled, drawn_rest=rest
+    )
+    shared = (240.0 + 180.0 + 120.0 * 10) / 1200.0
+    assert result["shared_ratio"] == pytest.approx(shared)
+    divisions = result["divisions"]
+    # Food: 240 down to the shared ratio's 135 by its draw.
+    assert divisions[food]["ratio"] == pytest.approx(2.4)
+    assert divisions[food]["factor"] == pytest.approx(shared * 100.0 / 240.0)
+    # Housing: its remainder alone takes it to the shared ratio, beside its
+    # levelled 60: (135 - 60) / 120.
+    assert divisions[housing]["factor"] == pytest.approx(
+        (shared * 100.0 - 60.0) / 120.0
+    )
+    # The rest sit below the shared ratio and keep their draws.
+    for division in others:
+        if division != housing:
+            assert divisions[division]["factor"] == 1.0
+    # Levelled parts above the shared level leave the remainder at zero.
+    floored = division_excess_factors(
+        frame,
+        means,
+        households=10.0,
+        levelled_parts={housing: 170.0, "transport_consumption": 0.0},
+        drawn_rest={housing: 10.0, "transport_consumption": 120.0},
+    )
+    assert floored["divisions"][housing]["factor"] == 0.0
+
+
+def test_recompose_levels_the_divisions_excess_before_the_hold() -> None:
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_COICOP_DIVISION_COLUMNS,
+        recompose_parent_totals,
+    )
+
+    housing = "housing_water_and_electricity_consumption"
+    food = "food_and_non_alcoholic_beverages_consumption"
+    draws = pd.DataFrame(
+        {column: [100.0, 100.0] for column in UK_LCFS_COICOP_DIVISION_COLUMNS}
+    )
+    draws[food] = [300.0, 300.0]
+    for column in (
+        "electricity_consumption",
+        "gas_consumption",
+        "liquid_fuel_consumption",
+        "solid_fuel_consumption",
+        "petrol_spending",
+        "diesel_spending",
+        "bus_fare_spending",
+    ):
+        draws[column] = 0.0
+    draws["electricity_consumption"] = [20.0, 20.0]
+    # The chain's draws of the parts: housing nets 20 of drawn energy.
+    drawn = pd.DataFrame(
+        {
+            "domestic_energy_consumption": [20.0, 20.0],
+            "liquid_fuel_consumption": [0.0, 0.0],
+            "solid_fuel_consumption": [0.0, 0.0],
+            "petrol_spending": [0.0, 0.0],
+            "diesel_spending": [0.0, 0.0],
+            "bus_fare_spending": [0.0, 0.0],
+        }
+    )
+    means = dict.fromkeys(UK_LCFS_COICOP_DIVISION_COLUMNS, 100.0)
+    out, receipt = recompose_parent_totals(
+        draws,
+        drawn=drawn,
+        parameters=_recompose_declaration(levelled=True),
+        weights=np.array([1.0, 1.0]),
+        donor_support=_WIDE_RECOMPOSE_SUPPORT,
+        donor_division_means=means,
+    )
+    levelling = receipt["division_levelling"]
+    shared = levelling["shared_ratio"]
+    # Food alone stands above the shared ratio and comes down to it.
+    assert levelling["divisions"][food]["factor"] < 1.0
+    assert out[food].tolist() == pytest.approx([shared * 100.0, shared * 100.0])
+    # Housing (80 remainder + 20 electricity) sits below it and keeps its draw.
+    assert receipt["parents"][housing]["levelling_factor"] == 1.0
+    assert out[housing].tolist() == [100.0, 100.0]
+    with pytest.raises(ValueError, match="division means"):
+        recompose_parent_totals(
+            draws,
+            drawn=drawn,
+            parameters=_recompose_declaration(levelled=True),
+            weights=np.array([1.0, 1.0]),
+            donor_support=_WIDE_RECOMPOSE_SUPPORT,
+        )
+
+
+def test_recompose_refuses_a_drifted_levelling_declaration() -> None:
+    from microcosm.build.uk_runtime.lcfs_consumption import check_recomposed_parents
+
+    declared = _recompose_declaration(levelled=True)
+    check_recomposed_parents(declared)
+    drifted = {
+        **declared,
+        "level_division_excess": {
+            **declared["level_division_excess"],
+            "rule": "to_donor_totals",
+        },
+    }
+    with pytest.raises(ValueError, match="not the rule the stage applies"):
+        check_recomposed_parents(drifted)
 
 
 def test_recompose_writes_each_total_around_its_levelled_parts() -> None:
