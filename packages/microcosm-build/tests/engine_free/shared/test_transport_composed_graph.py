@@ -2860,12 +2860,9 @@ def _precalibration_ancestry_dags(draw, kinds, holdout_sources):
     declared = {}
     for binding, row in bindings.items():
         if draw(st.booleans()):
+            # Derived columns alone are a complete declaration.
             declared[binding] = draw(
-                st.sets(st.sampled_from(row["variables"]), min_size=1)
-            ) | (
-                draw(st.sets(st.sampled_from(row["derived"])))
-                if row["derived"]
-                else set()
+                st.sets(st.sampled_from(row["variables"] + row["derived"]), min_size=1)
             )
     dependencies = []
     reads = []
@@ -3628,10 +3625,14 @@ def test_precalibration_ancestry_stage_output_read_by_another_stage_refuses():
     }
 
 
-def _derived_case(*, derived, producer_upstream=True):
-    """A person-binding gross-up solve whose output is not a binding variable."""
+def _derived_case(*, derived, outputs=(), producer_upstream=True):
+    """A person-binding gross-up solve whose output is not a binding variable.
+
+    By default the stage lists no binding variable, as NZ's Schedule 1 stage
+    does: the tax stays inside the solve and only the gross-up flows on.
+    """
     binding = _synthetic_binding("tax", "person", ["tax_before_credits"])
-    stage = _synthetic_stage(binding, ["tax_before_credits"], derived)
+    stage = _synthetic_stage(binding, outputs, derived)
     population = "create" if producer_upstream else "after"
     rows = [
         {
@@ -3692,7 +3693,7 @@ def test_precalibration_ancestry_derived_output_flows_to_calibration():
 
 
 def test_precalibration_ancestry_undeclared_derived_column_refuses():
-    spec, nodes = _derived_case(derived=None)
+    spec, nodes = _derived_case(derived=None, outputs=["tax_before_credits"])
     message = (
         "Transport calibration ancestry: node 'cal' carries undeclared "
         "pre-calibration stage output."
@@ -3726,7 +3727,15 @@ def test_precalibration_ancestry_derived_output_needs_an_upstream_producer(
 
 @pytest.mark.parametrize(
     "mutation",
-    ["key", "binding_variable", "purpose", "duplicate", "holdout", "empty_column"],
+    [
+        "key",
+        "binding_variable",
+        "purpose",
+        "duplicate",
+        "holdout",
+        "empty_column",
+        "no_outputs",
+    ],
 )
 def test_precalibration_ancestry_derived_output_schema_refuses(mutation):
     spec, _ = _derived_case(derived=[("person", "benefit_gross")])
@@ -3744,6 +3753,8 @@ def test_precalibration_ancestry_derived_output_schema_refuses(mutation):
         spec["resources"]["holdout_references"]["target_references"].append(
             {"entity": "person", "measure": "benefit_gross"}
         )
+    elif mutation == "no_outputs":
+        stage["derived_outputs"] = []
     else:
         row["column"] = ""
     with pytest.raises(ValueError, match="precalibration_stages"):

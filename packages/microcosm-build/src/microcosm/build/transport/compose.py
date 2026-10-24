@@ -776,9 +776,13 @@ def _precalibration_stages(spec: Mapping[str, object]) -> dict[str, Mapping]:
                 "precalibration_stages rulespec_path must match its binding."
             )
         outputs = _sequence(stage["outputs"], "precalibration_stages outputs")
-        if not outputs:
+        derived = _sequence(
+            stage.get("derived_outputs", []), "precalibration_stages derived_outputs"
+        )
+        # A stage whose binding variables stay internal lists only derived ones.
+        if not outputs and not derived:
             raise ValueError(
-                "precalibration_stages outputs must be nonempty and distinct."
+                "precalibration_stages stage declares no outputs or derived outputs."
             )
         columns = set()
         for item in outputs:
@@ -805,9 +809,6 @@ def _precalibration_stages(spec: Mapping[str, object]) -> dict[str, Mapping]:
                     "precalibration_stages outputs must be nonempty and distinct."
                 )
             columns.add(column)
-        derived = _sequence(
-            stage.get("derived_outputs", []), "precalibration_stages derived_outputs"
-        )
         for item in derived:
             output = _mapping(item, "precalibration_stages derived output")
             if set(output) != {"entity", "column", "purpose"}:

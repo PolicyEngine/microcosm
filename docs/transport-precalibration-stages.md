@@ -35,20 +35,23 @@ outputs feed calibration, and exactly which of their outputs flow on:
 Key sets are closed at every level, and `schema_version` is the integer 1.
 Stage ids are distinct, safe node ids. Each stage names an existing binding,
 repeats its `rulespec_path` exactly, and no binding appears in two stages.
-Outputs are nonempty and distinct; each is on the binding's entity, names one
-of its `variables`, and has a `purpose` of `calibration_measure` or
+A stage declares at least one output or derived output, and they are all
+distinct. Each output is on the binding's entity, names one of its
+`variables`, and has a `purpose` of `calibration_measure` or
 `classification` (a judgment another pre-calibration node reads). An output may
 not be a hold-out `(entity, measure)`, and a stage's module may not produce a
 hold-out measure. The resource is checked before either graph pass.
 
 `derived_outputs` is optional. It lists columns that a stage node computes
 from the binding but that are not binding variables, such as a gross-up
-`simulate.solve_zero@1` node's own output. Each row has the same closed shape
-and purposes as an `outputs` row. It names any entity, may not repeat a binding
-variable on the binding's entity (that belongs in `outputs`), and may not
-repeat any other output of the stage or a hold-out measure. Each derived output
-must be produced by one of the stage's nodes upstream of calibration. The
-composed graph is checked when there is one, otherwise the declaration.
+`simulate.solve_zero@1` node's own output. A stage whose binding variables stay
+inside its nodes lists `"outputs": []` and only derived outputs. Each row has
+the same closed shape and purposes as an `outputs` row. It names any entity,
+may not repeat a binding variable on the binding's entity (that belongs in
+`outputs`), and may not repeat any other output of the stage or a hold-out
+measure. Each derived output must be produced by one of the stage's nodes
+upstream of calibration. The composed graph is checked when there is one,
+otherwise the declaration.
 
 ## Which nodes belong to a stage
 
