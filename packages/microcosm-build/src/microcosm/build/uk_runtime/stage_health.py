@@ -43,8 +43,12 @@ def uk_stage_health_gate(
         return _spi_support_channel_gate(stage, evidence, parameters)
     if check == "spi_income_spine":
         return _spi_income_spine_gate(stage, evidence, parameters)
+    if check == "frs_annual_income_spells":
+        return _frs_annual_income_spells_gate(stage, evidence, parameters)
     if check == "pension_credit_take_up":
         return _pension_credit_take_up_gate(stage, evidence, parameters)
+    if check == "uc_take_up":
+        return _uc_take_up_gate(stage, evidence, parameters)
     if check == "child_benefit_take_up":
         return _child_benefit_take_up_gate(stage, evidence, parameters)
     if check == "spi_benefit_coherence":
@@ -1070,6 +1074,78 @@ def _child_benefit_take_up_gate(
     )
 
 
+#: The structural counts the annual income receipt records, banded by
+#: ``receipt_counts.extreme_count`` with zero exact; each must be zero.
+_ANNUAL_INCOME_STRUCTURAL_ZEROS = (
+    "full_year_rows_not_whole",
+    "rows_outside_share_bounds",
+    "rows_negative_other_spells",
+)
+
+
+def _frs_annual_income_spells_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """The annual income descriptors keep their invariants and plausible sizes.
+
+    Every share lies in [0, 1], no other-spell amount is negative and every
+    full-year earner keeps the whole year, exactly. The usual-to-DV pay ratio
+    the stage measures lies in its bounds, and so does the ratio of annual to
+    current employee earners: the survey's spells can add part-year earners
+    but cannot remove a current one. Where the receipt measures it, at least
+    the declared share of the pay outside the current job is observed rather
+    than drawn from a donor; a share carried by fewer than ten households is
+    reported unmeasured.
+    """
+
+    check = "frs_annual_income_spells"
+    failures: list[str] = []
+    for key in _ANNUAL_INCOME_STRUCTURAL_ZEROS:
+        value = evidence.get(key)
+        if value != 0:
+            failures.append(f"{stage}: {key} is {value!r}, not 0.")
+    details: dict[str, object] = {}
+    for key, bounds_key in (
+        ("pay_concept_ratio", "pay_concept_ratio_bounds"),
+        ("annual_over_current_earners", "annual_over_current_earners_bounds"),
+    ):
+        bounds = parameters[bounds_key]
+        if not isinstance(bounds, list | tuple) or len(bounds) != 2:
+            raise ValueError(f"{stage}.{bounds_key} must be a [lower, upper] pair.")
+        lower = _finite_number(bounds[0], label=f"{stage}.{bounds_key}[0]")
+        upper = _finite_number(bounds[1], label=f"{stage}.{bounds_key}[1]")
+        value = evidence.get(key)
+        details[key] = value
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            failures.append(f"{stage}: {key} is {value!r}, not a measured ratio.")
+        elif not lower <= float(value) <= upper:
+            failures.append(
+                f"{stage}: {key} {float(value):.4f} lies outside [{lower}, {upper}]."
+            )
+    minimum = _finite_number(
+        parameters["minimum_observed_pay_share"],
+        label=f"{stage}.minimum_observed_pay_share",
+    )
+    observed = evidence.get("other_spells_pay_observed_share")
+    details["other_spells_pay_observed_share"] = observed
+    if observed == "<10":
+        details["observed_pay_share_measured"] = False
+    elif isinstance(observed, bool) or not isinstance(observed, int | float):
+        failures.append(f"{stage}: other_spells_pay_observed_share is {observed!r}.")
+    elif float(observed) < minimum:
+        failures.append(
+            f"{stage}: only {float(observed):.4f} of the pay outside the current "
+            f"job is observed, below {minimum}."
+        )
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
+
+
 def _pension_credit_take_up_gate(
     stage: str,
     evidence: Mapping[str, object],
@@ -1199,6 +1275,82 @@ def _spi_benefit_coherence_gate(
         "spi_claiming_after": take_up.get("spi_claiming_after"),
         "own_right_changed": own_right.get("spi_rows_changed"),
     }
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
+
+
+def _uc_take_up_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """Each family type's reachable pools realize DWP's caseload (microcosm#1334).
+
+    Every reporter claims and no unit outside the draw changes. Over a family
+    type's pools whose target the draw can reach, the realized Great Britain
+    caseload is within ``maximum_caseload_deviation`` of DWP's count, and the
+    family type's whole caseload is no further from DWP's than before the
+    redraw, give or take that share of DWP's count.
+    """
+
+    check = "uc_take_up"
+    tolerance = _finite_number(
+        parameters["maximum_caseload_deviation"],
+        label=f"{stage}.maximum_caseload_deviation",
+    )
+    failures: list[str] = []
+    details: dict[str, object] = {}
+    for key in ("reporters_not_claiming", "changed_outside_draw"):
+        value = evidence.get(key)
+        details[key] = value
+        if value != 0:
+            failures.append(f"{stage}: {key} is {value!r}, not 0.")
+    families = evidence.get("families")
+    if not isinstance(families, Mapping) or not families:
+        failures.append(f"{stage}: the receipt carries no family types.")
+        families = {}
+    for name, family in families.items():
+        family = _mapping(family, label=f"{stage}.families.{name}")
+        values = {
+            key: family.get(key)
+            for key in (
+                "dwp_caseload",
+                "caseload_before",
+                "caseload_after",
+                "reachable_pools_dwp_caseload",
+                "reachable_pools_caseload_after",
+            )
+        }
+        details[str(name)] = values
+        if any(not isinstance(value, int | float) for value in values.values()):
+            failures.append(
+                f"{stage}: family type {name} carries a caseload resting on fewer "
+                "than ten sources, or none."
+            )
+            continue
+        dwp = _finite_number(values["dwp_caseload"], label=f"{stage}.{name}.dwp")
+        before = _finite_number(values["caseload_before"], label=f"{stage}.{name}")
+        after = _finite_number(values["caseload_after"], label=f"{stage}.{name}")
+        target = _finite_number(
+            values["reachable_pools_dwp_caseload"], label=f"{stage}.{name}"
+        )
+        realized = _finite_number(
+            values["reachable_pools_caseload_after"], label=f"{stage}.{name}"
+        )
+        if target > 0.0 and abs(realized - target) > tolerance * target:
+            failures.append(
+                f"{stage}: family type {name} realizes {realized:,.0f} against "
+                f"DWP's {target:,.0f} over its reachable pools (tolerance "
+                f"{tolerance})."
+            )
+        if abs(after - dwp) > abs(before - dwp) + tolerance * dwp:
+            failures.append(
+                f"{stage}: family type {name} moves from {before:,.0f} to "
+                f"{after:,.0f}, further from DWP's {dwp:,.0f}."
+            )
     return (
         _fail(stage, check, failures, details)
         if failures

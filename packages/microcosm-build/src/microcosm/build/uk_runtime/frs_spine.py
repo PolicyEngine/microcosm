@@ -24,6 +24,10 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_national_frame,
     validate_uk_national_frame,
 )
+from microcosm.build.uk_runtime.pension_coherence import (
+    cap_net_pay_contributions,
+    coherence_receipt,
+)
 from microcosm.build.uk_runtime.uc_relationships import frs_uc_claimant_mask
 from microcosm.frame import Frame, WeightKind
 
@@ -31,6 +35,7 @@ __all__ = [
     "FRS_SPINE_TABLES",
     "OUTPUT_COLUMNS",
     "REGION_MAP",
+    "STATE_PENSION_WEEKS_IN_YEAR",
     "TIME_PERIOD",
     "UC_CAPITAL_UNAVAILABLE",
     "WEEKS_IN_YEAR",
@@ -66,6 +71,13 @@ FRS_SPINE_TABLES = (
 )
 
 WEEKS_IN_YEAR = 365.25 / 7
+#: The State Pension alone annualises at 52 weeks (María's ruling of 2026-10-20,
+#: an exception to microcosm#1095's weekly amounts). It is paid at weekly rates,
+#: and policyengine-uk reads ``state_pension_reported`` back to a weekly amount
+#: at 52 weeks a year before comparing it with the full rate, so at 365.25 / 7 a
+#: full-rate pensioner would read 0.34% above the full rate and the excess
+#: would become a protected payment.
+STATE_PENSION_WEEKS_IN_YEAR = 52
 TIME_PERIOD = "2024"
 
 # Raw TOTCAPB4 blanks, nonnumeric values, and negative codes mean that the
@@ -277,6 +289,7 @@ OUTPUT_COLUMNS = (
     "esa_income_reported",
     "esa_includes_support_component",
     "bsp_reported",
+    "war_widows_pension_reported",
     "benunit_id",
     "frs_benunit_capital",
     "is_married",
@@ -311,6 +324,7 @@ class UKFRSSpineStageTransform:
         self.stage = stage
         self._sentinel_mapped_rows: int | None = None
         self._access_fund: dict[str, object] | None = None
+        self._net_pay: dict[str, object] | None = None
 
     def __call__(self, frame: Frame) -> Frame:
         evidence: dict[str, object] = {}
@@ -320,6 +334,7 @@ class UKFRSSpineStageTransform:
         capital = result.table("benunit")["frs_benunit_capital"]
         self._sentinel_mapped_rows = int((capital == UC_CAPITAL_UNAVAILABLE).sum())
         self._access_fund = dict(evidence["access_fund"])
+        self._net_pay = dict(evidence["net_pay_contributions"])
         return result
 
     @staticmethod
@@ -330,7 +345,11 @@ class UKFRSSpineStageTransform:
         """Report how loudly the capital availability rule and the
         access-fund repair fired."""
 
-        if self._sentinel_mapped_rows is None or self._access_fund is None:
+        if (
+            self._sentinel_mapped_rows is None
+            or self._access_fund is None
+            or self._net_pay is None
+        ):
             raise RuntimeError("checkpoint metadata requires a completed stage run.")
         return {
             "evidence": {
@@ -340,6 +359,7 @@ class UKFRSSpineStageTransform:
                     "mapped_rows": self._sentinel_mapped_rows,
                 },
                 "access_fund": dict(self._access_fund),
+                "net_pay_contributions": dict(self._net_pay),
             }
         }
 
@@ -442,8 +462,16 @@ def _read_pinned_tab(
         raw = pd.read_csv(path, sep="\t")
     else:
         wanted = {str(column).lower() for column in columns}
+        # One pass over the selected columns: pandas' chunked parser
+        # mis-indexes a column whose type changes between chunks under a
+        # callable column filter, and raises IndexError on a long tab (FRS
+        # 2024-25 adult.tab). The values after the numeric conversion below
+        # are the chunked read's wherever that read succeeds.
         raw = pd.read_csv(
-            path, sep="\t", usecols=lambda column: str(column).lower() in wanted
+            path,
+            sep="\t",
+            usecols=lambda column: str(column).lower() in wanted,
+            low_memory=False,
         )
     raw.columns = raw.columns.str.lower()
     if columns is not None:
@@ -577,7 +605,7 @@ def _assemble_frame(
     pe_person["would_claim_carers_allowance"] = (
         pe_person["carers_allowance_reported"] > 0
     )
-    _add_person_expenses(pe_person, person, frs)
+    _add_person_expenses(pe_person, person, frs, evidence=evidence)
 
     pe_benunit["is_married"] = _number(benunit_raw, "famtypb2").isin([5, 7])
     pe_benunit["dependent_children"] = dependent_children
@@ -784,6 +812,9 @@ def _add_person_income(
     pe_person["maintenance_income"] = (
         maintenance_to_self + _positive(person, "mntamt2").to_numpy()
     ) * WEEKS_IN_YEAR
+    # ALLPAY2, "Amount of allowance: organisation", is one amount, so it is
+    # miscellaneous income alone and not also a private transfer
+    # (microcosm#1320, uk-data#627; María's ruling of 2026-10-20).
     pe_person["miscellaneous_income"] = (
         _odd_job_income(person, oddjob)
         + _sum_positive_fields(
@@ -792,7 +823,7 @@ def _add_person_income(
     ) * WEEKS_IN_YEAR
     pe_person["private_transfer_income"] = (
         _sum_positive_fields(
-            person, ("apamt", "apdamt", "pareamt", "allpay2", "allpay3", "allpay4")
+            person, ("apamt", "apdamt", "pareamt", "allpay3", "allpay4")
         )
         * WEEKS_IN_YEAR
     )
@@ -975,16 +1006,36 @@ def _add_benefits(
         benefits, person_id, person["person_id"]
     )
     pe_person["bsp_reported"] = (
-        _sum_to_entity(amount * benefit.isin((6, 9)), person_id, person["person_id"])
+        _sum_to_entity(amount * (benefit == 6), person_id, person["person_id"])
+        * WEEKS_IN_YEAR
+    )
+    # FRS code 9 is War Widow's or Widower's Pension, which rises with CPI while
+    # Bereavement Support Payment's rates are frozen. policyengine-uk 2.135.7
+    # gives it its own input (pe-uk#2382), so it leaves bsp_reported (#1222).
+    pe_person["war_widows_pension_reported"] = (
+        _sum_to_entity(amount * (benefit == 9), person_id, person["person_id"])
         * WEEKS_IN_YEAR
     )
     pe_person["winter_fuel_allowance_reported"] = (
         pe_person["winter_fuel_allowance_reported"] / WEEKS_IN_YEAR
     )
+    # The State Pension's weekly amounts, re-summed at its own 52 weeks.
+    pe_person["state_pension_reported"] = (
+        _sum_to_entity(
+            amount * benefit.isin(BENEFIT_CODES["state_pension"]),
+            person_id,
+            person["person_id"],
+        )
+        * STATE_PENSION_WEEKS_IN_YEAR
+    )
 
 
 def _add_person_expenses(
-    pe_person: pd.DataFrame, person: pd.DataFrame, frs: Mapping[str, pd.DataFrame]
+    pe_person: pd.DataFrame,
+    person: pd.DataFrame,
+    frs: Mapping[str, pd.DataFrame],
+    *,
+    evidence: dict[str, object] | None = None,
 ) -> None:
     household = frs["househol"].set_index("household_id").sort_index()
     ctrebamt = pd.Series(_number(household, "ctrebamt").values, index=household.index)
@@ -1035,7 +1086,7 @@ def _add_person_expenses(
         * WEEKS_IN_YEAR,
     )
     job = frs["job"]
-    pe_person["employee_pension_contributions"] = np.maximum(
+    deducted = np.maximum(
         0,
         _sum_to_entity(
             _number(job, "deduc1").fillna(0),
@@ -1044,6 +1095,36 @@ def _add_person_expenses(
         )
         * WEEKS_IN_YEAR,
     )
+    # A net-pay deduction cannot exceed the pay it comes out of; the FRS
+    # records each job's deduction apart from the adult's usual earnings, so
+    # the deduction is capped at them (uk_runtime.pension_coherence).
+    capped, changed = cap_net_pay_contributions(
+        np.asarray(deducted, dtype=np.float64),
+        pe_person["employment_income"].to_numpy(dtype=np.float64),
+    )
+    pe_person["employee_pension_contributions"] = capped
+    if evidence is not None:
+        # A deduction beside no recorded pay may stand for pay the adult tab
+        # left blank, not for a contribution above pay, so the two cases are
+        # counted apart.
+        recorded_pay = pe_person["employment_income"].to_numpy(dtype=np.float64) > 0.0
+        receipt = {
+            "before": np.asarray(deducted, dtype=np.float64),
+            "after": capped,
+            "weights": person["household_id"]
+            .map(_raw_number(household, "gross4"))
+            .fillna(0.0)
+            .to_numpy(dtype=np.float64),
+            "source_ids": person["household_id"].to_numpy(),
+        }
+        evidence["net_pay_contributions"] = {
+            "above_recorded_pay": coherence_receipt(
+                changed=changed & recorded_pay, **receipt
+            ),
+            "beside_no_recorded_pay": coherence_receipt(
+                changed=changed & ~recorded_pay, **receipt
+            ),
+        }
     pe_person["pension_contributions_via_salary_sacrifice"] = np.maximum(
         0,
         _sum_to_entity(

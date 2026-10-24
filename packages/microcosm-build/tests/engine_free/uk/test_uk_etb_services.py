@@ -103,7 +103,20 @@ def test_etb_services_chain_order_and_records(monkeypatch: pytest.MonkeyPatch) -
             ]
             return {"targets": targets}
 
-        def fit_draw_next(self, donor, recipient_base, raw, *, state, weights):
+        def fit_draw_next(
+            self,
+            donor,
+            recipient_base,
+            raw,
+            *,
+            state,
+            weights,
+            quantiles,
+            sign_uniforms,
+        ):
+            # Each step draws from uniforms keyed on the recipients' own ids.
+            for uniforms in (quantiles, sign_uniforms):
+                assert uniforms.shape == (len(recipient_base),)
             return type(
                 "Result",
                 (),
@@ -130,7 +143,9 @@ def test_etb_services_chain_order_and_records(monkeypatch: pytest.MonkeyPatch) -
         ]
     )
 
-    draws, records = impute_etb_services(donor, recipient, seed=0)
+    draws, records = impute_etb_services(
+        donor, recipient, seed=0, record_ids=np.arange(1, len(recipient) + 1)
+    )
 
     assert draws.columns.tolist() == [
         "dfe_education_spending",
@@ -415,3 +430,35 @@ def test_stage_transform_records_its_mass_conservation_receipt(
     assert receipt.reason == module.UK_ETB_SERVICES_MASS_CONSERVATION_REASON
     assert receipt.old_total == receipt.new_total == 40.0
     assert receipt.declared_factor == 1.0
+
+
+def test_etb_draws_move_only_for_the_households_whose_inputs_move() -> None:
+    """Keyed on household ids: reordering, one changed and one added move no other."""
+
+    from test_support.microcosm_build.uk_keyed_draws import (
+        assert_draws_are_keyed_on_ids,
+    )
+
+    donor = clean_etb_services_table(_raw_etb())
+    recipient = donor.iloc[:8].drop(
+        columns=[
+            "weight",
+            "dfe_education_spending",
+            "rail_subsidy_spending",
+            "bus_subsidy_spending",
+        ]
+    )
+
+    def draw(rows: pd.DataFrame, ids: np.ndarray) -> pd.DataFrame:
+        draws, _ = impute_etb_services(
+            donor, rows, seed=0, record_ids=ids, n_estimators=5
+        )
+        return draws.reset_index(drop=True)
+
+    assert_draws_are_keyed_on_ids(
+        draw,
+        recipient,
+        np.arange(1, len(recipient) + 1),
+        perturbed_column="hbai_household_net_income",
+        perturbed_value=54_321.0,
+    )

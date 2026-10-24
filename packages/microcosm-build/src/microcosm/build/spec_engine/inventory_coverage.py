@@ -369,8 +369,8 @@ EXPECTED_HASHES = {
     # not run, changes its probes, so again no US solve changes. #454: the
     # meps_esi_premiums stage joins the attested sources and the source
     # manifest.
-    "seed_map": "506cfe057f1cf1cb2ad27bfea626e463f0fd455af02ae12b225158973dc0c08a",
-    "seed_protocol": "c12e130572c2b9bbb75958442c586e7368d56add377c4459c99e765d58c17004",
+    "seed_map": "3cf71bdd3e6df567a4f9eb8d182bea160108cc9941e6ff08b8a0eee4e9fc8ba2",
+    "seed_protocol": "15e9b110999c37a0a78ecd001d6b79bbd860b408cf08a1e0ea435690f0a5f041",
     "source_manifest": "629a0712659a26b2d6aa6c0e5672421f415d625e0599d6baa0a834d118953c6a",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "ac92829c88a1a4fb6460d61190918d5d99c6c377fc8dd8f62f02b332d09bf59c",
@@ -1209,7 +1209,7 @@ def build_inventory_coverage(
             "stages": len(_array(sources["stages"], "source stages")),
             "sha256": sha256_json(source_manifest),
         },
-        expected={"stages": 37, "sha256": EXPECTED_HASHES["source_manifest"]},
+        expected={"stages": 38, "sha256": EXPECTED_HASHES["source_manifest"]},
     )
     pipeline = _mapping(spine["pipeline_contract"], "spine pipeline contract")
     operator_order = tuple(

@@ -29,6 +29,7 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
+from microcosm.build.uk_runtime.receipt_counts import rounded_count
 from microcosm.build.uk_runtime.spi_support import (
     BASE_FRS_SUPPORT_CHANNEL,
     SPI_SYNTHETIC_SUPPORT_CHANNEL,
@@ -74,14 +75,25 @@ UC_CAPITAL_COARSENING = (
 _UC_CAPITAL_LEVELS = ("exact_cell", *UC_CAPITAL_COARSENING)
 #: The UC capital limits the receipt measures the redraw against.
 _UC_CAPITAL_RECEIPT_LIMITS = (6_000.0, 16_000.0)
-#: policyengine-uk 2.134.4 counts these household property values as Universal
-#: Credit and Pension Credit capital (the ``sources`` lists under
-#: ``gov.dwp.universal_credit.means_test.capital`` and
-#: ``gov.dwp.pension_credit.income.capital``, beside ``savings`` and
-#: ``corporate_wealth``). A recorded figure of 0 or more replaces every source,
-#: and the engine takes it as already countable, but TOTCAPB4 counts accounts
-#: and assets and no property. So the recorded figures add the household's
-#: property for the unit that holds it (uk-data#495, microcosm#1095).
+#: policyengine-uk 2.147.2 counts these household property values as Universal
+#: Credit capital (``property_sources`` under
+#: ``gov.dwp.universal_credit.means_test.capital``, at 90% of value less any
+#: secured debt since 2.136.1) and as Pension Credit capital (the ``sources``
+#: list under ``gov.dwp.pension_credit.income.capital``, beside ``savings`` and
+#: ``share_like_capital``, which is ``corporate_wealth`` unless the share
+#: components the build leaves unset exceed it). A recorded figure of 0 or more is a unit's complete
+#: capital: it replaces every source, property included, and the engine takes
+#: it as already countable, but TOTCAPB4 counts accounts and assets and no
+#: property. So the recorded figures add the household's property for the unit
+#: that holds it (uk-data#495, microcosm#1095).
+#:
+#: Both recorded figures project to later years as financial capital does, by
+#: GDP per head (the engine's ``data/uprating_indices.yaml``), while from
+#: 2.139.1 the engine projects other residential property by house prices;
+#: non-residential property and owned land stay on GDP per head. So the other
+#: residential property in a recorded figure grows faster than the engine's
+#: own projection of it: by the OBR indices the engine carries, 1.5% faster by
+#: 2025 and 2.0% by 2026 from a 2024 base.
 UC_PROPERTY_CAPITAL_SOURCES = (
     "other_residential_property_value",
     "non_residential_property_value",
@@ -92,14 +104,16 @@ PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES = ("owned_land", *UC_PROPERTY_CAPITAL_SO
 #: 2013 reg 18; SPCA 2002 s.5). The household reference person, in whose name
 #: the home is owned or rented, is the best single reading of the owner, so
 #: that person's benefit unit holds all of it and no other unit records a
-#: share (María's ruling of 2026-10-12, microcosm#1095). policyengine-uk's
-#: proxies share household capital over every claimant or partner instead,
-#: which puts a parent's property on an adult child's claim; they apply only
-#: to a unit on the unavailable sentinel. Such a unit takes the gross value,
-#: with no sale costs. Beside a recording unit, the Universal Credit proxy
-#: shares only what that unit did not record. The Pension Credit proxy
-#: subtracts nothing, so a pension-age unit on the sentinel is assessed a
-#: share of property the reference person's unit also records.
+#: share (María's ruling of 2026-10-12, microcosm#1095). policyengine-uk shares
+#: household property over every claimant or partner instead, which puts a
+#: parent's property on an adult child's claim; a recorded figure consumes its
+#: own unit's share, so the engine's shares reach only a unit on the
+#: unavailable sentinel. Since 2.136.1 such a unit takes its share of the
+#: property at 90%, whatever the other units record, and the Pension Credit
+#: proxy, which subtracts nothing, takes a share of the gross value: beside the
+#: reference person's recording unit, both count property that unit already
+#: records. The receipt counts any unit left there
+#: (``sentinel_units_beside_recorded_property``).
 #:
 #: A consequence of the ruling: where the reference person is of working age,
 #: the property of a pension-age unit in the household is recorded on the
@@ -324,7 +338,7 @@ def cohere_uc_capital(
     # uk-data#513): 0 or more replaces every capital source in the assessable
     # capital, so the household reference person's unit adds the household's
     # property to its financial carrier. The unavailable sentinel -1 is the
-    # engine's own default, so the household proxy applies there and the
+    # engine's own default, so the engine's own shares apply there and the
     # sentinel passes through unchanged. A unit that reports Universal Credit
     # keeps its receipt and records no UC share.
     uc_unreported_share = uc_property_capital_share(person, benunit, household)
@@ -350,6 +364,26 @@ def cohere_uc_capital(
             "pension_credit": (pension_credit_share, pension_credit_capital),
         },
         uc_unreported_share=uc_unreported_share,
+    )
+    # From policyengine-uk 2.136.1 a unit on the sentinel takes its own share
+    # of its household's property, which a recording unit beside it already
+    # holds, so the property counts twice there.
+    benunit_household = (
+        person.drop_duplicates("person_benunit_id")
+        .set_index("person_benunit_id")["person_household_id"]
+        .reindex(benunit["benunit_id"])
+        .to_numpy()
+    )
+    # Either scheme: a unit that reports Universal Credit records no UC share
+    # but may still record the household's Pension Credit property.
+    recording = (np.asarray(capital) >= 0.0) & (
+        (uc_share > 0.0) | (pension_credit_share > 0.0)
+    )
+    sentinel_beside = (np.asarray(capital) == UC_CAPITAL_UNAVAILABLE) & np.isin(
+        benunit_household, benunit_household[recording]
+    )
+    property_receipt["sentinel_units_beside_recorded_property"] = rounded_count(
+        int(sentinel_beside.sum())
     )
 
     result_frame = uk_national_frame(

@@ -105,12 +105,13 @@ def test_spi_rebases_income_before_frs_fill_and_preserves_child_inputs(
 def test_child_exclusion_keeps_the_other_recipients_draws(
     monkeypatch, tmp_path
 ) -> None:
-    """Dropping a recipient leaves every other SPI row's stage-1 draw unchanged.
+    """Dropping a recipient leaves every other SPI row's draws unchanged.
 
-    The forest is queried on the drawn recipients alone and every draw is
-    keyed on the recipient's identity (its twin's id), so the draw a recipient
-    receives does not depend on who else is drawn or in what order
-    (microcosm#840). FRS rows are never redrawn.
+    The stage-1 forest is queried on the drawn recipients alone and keys each
+    draw on the recipient's identity (its twin's id); the stage-2 forest keys
+    each draw on the row's own person_id. So the draws a recipient receives do
+    not depend on who else is drawn or in what order (microcosm#840,
+    microcosm#1095). FRS rows are never redrawn.
     """
 
     support = _dead_support()
@@ -122,9 +123,11 @@ def test_child_exclusion_keeps_the_other_recipients_draws(
         result = original_draw(
             self, predictors, quantiles=quantiles, sign_uniforms=sign_uniforms
         )
-        if "dividend_income" in result:
-            # A draw that reads its uniform: the identity-keyed quantile.
-            result["dividend_income"] = 100.0 * quantiles["dividend_income"]
+        # Draws that read their uniforms: the stage-1 dividend and the
+        # stage-2 UC report take their keyed quantiles.
+        for target in ("dividend_income", "universal_credit_reported"):
+            if target in result:
+                result[target] = 100.0 * quantiles[target]
         return result
 
     monkeypatch.setattr(_FakeFittedQRF, "predict_from_uniforms", predict_from_uniforms)
@@ -147,11 +150,12 @@ def test_child_exclusion_keeps_the_other_recipients_draws(
         replace(support, person=person), donor_path, **options
     )
     others = spi_rows.drop(child)
-    np.testing.assert_array_equal(
-        reference.person.loc[others, "dividend_income"],
-        candidate.person.loc[others, "dividend_income"],
-    )
-    assert reference.person.loc[others, "dividend_income"].nunique() == len(others)
+    for column in ("dividend_income", "universal_credit_reported"):
+        np.testing.assert_array_equal(
+            reference.person.loc[others, column],
+            candidate.person.loc[others, column],
+        )
+        assert reference.person.loc[others, column].nunique() == len(others)
     base = person[channel].eq("frs")
     np.testing.assert_array_equal(
         candidate.person.loc[base, "dividend_income"],
@@ -160,10 +164,11 @@ def test_child_exclusion_keeps_the_other_recipients_draws(
     # Reversing the recipients' order changes no draw either.
     reversed_support = replace(support, person=support.person.iloc[::-1].copy())
     reordered = impute_uk_spi_income_support(reversed_support, donor_path, **options)
-    pd.testing.assert_series_equal(
-        reordered.person.loc[spi_rows, "dividend_income"],
-        reference.person.loc[spi_rows, "dividend_income"],
-    )
+    for column in ("dividend_income", "universal_credit_reported"):
+        pd.testing.assert_series_equal(
+            reordered.person.loc[spi_rows, column],
+            reference.person.loc[spi_rows, column],
+        )
 
 
 def test_dependants_keep_their_twin_values_and_recipients_their_draws(
@@ -892,13 +897,19 @@ def test_stage1_queries_only_drawn_recipients_with_the_bridge(
     support = replace(support, person=person)
     donor_path = tmp_path / SPI_DONOR_FILENAME
     _write_donor(donor_path)
-    captured: dict[str, object] = {}
+    captured: dict[str, dict[str, object]] = {}
     original_draw = _FakeFittedQRF.predict_from_uniforms
 
     def predict_from_uniforms(self, predictors, *, quantiles, sign_uniforms):
-        captured["columns"] = list(predictors.columns)
-        captured["rows"] = len(predictors)
-        captured["sign"] = sign_uniforms["gift_aid"].copy()
+        # Both stages draw from keyed uniforms; stage 1 draws the tape's
+        # targets, gift aid among them.
+        stage = "stage1" if "gift_aid" in sign_uniforms else "stage2"
+        captured[stage] = {
+            "columns": list(predictors.columns),
+            "rows": len(predictors),
+            "quantiles": {k: np.array(v, dtype=float) for k, v in quantiles.items()},
+            "sign": {k: np.array(v, dtype=float) for k, v in sign_uniforms.items()},
+        }
         return original_draw(
             self, predictors, quantiles=quantiles, sign_uniforms=sign_uniforms
         )
@@ -915,24 +926,41 @@ def test_stage1_queries_only_drawn_recipients_with_the_bridge(
         state_pension_age=66,
         allow_in_sample_reference=True,
     )
-    assert captured["rows"] == result.spi_prediction_rows == 3
+    stage1 = captured["stage1"]
+    assert stage1["rows"] == result.spi_prediction_rows == 3
     assert {"has_pay", "has_trade", "at_or_over_spa", "main_source_pay", "age"} <= set(
-        captured["columns"]
+        stage1["columns"]
     )
     # The no-analogue leaf's sign uniform is the identity-keyed one for the
     # drawn recipients, in their order.
+    age_domain = (result.person[channel] == "spi") & result.person["age"].ge(16)
     drawn_ids = result.person.loc[
-        (result.person[channel] == "spi")
-        & result.person["age"].ge(16)
-        & ~result.person.index.isin(copy),
-        "person_source_id",
+        age_domain & ~result.person.index.isin(copy), "person_source_id"
     ].to_numpy()
+    from microcosm.build.stochastic_assignment import stable_identity_uniforms
+    from microcosm.build.uk_runtime.spi_income import FRS_ONLY_FIT_NAME
     from microcosm.build.uk_runtime.spi_rank_transport import identity_uniforms
 
     np.testing.assert_array_equal(
-        captured["sign"],
+        stage1["sign"]["gift_aid"],
         identity_uniforms(drawn_ids, target="gift_aid", part="sign", seed=9),
     )
+    # Stage 2 is queried over the whole age domain, and each row draws from
+    # uniforms keyed on its own person_id under the stage's own seed, never
+    # from a stream its row position decides, and never shared with another
+    # copy of the same FRS person (microcosm#1095).
+    domain_ids = result.person.loc[age_domain, "person_id"].to_numpy()
+    stage2 = captured["stage2"]
+    assert stage2["rows"] == len(domain_ids)
+    for target in stage2["quantiles"]:
+        for part, salt in (
+            ("quantiles", f"{FRS_ONLY_FIT_NAME}:{target}"),
+            ("sign", f"{FRS_ONLY_FIT_NAME}:{target}:sign"),
+        ):
+            np.testing.assert_array_equal(
+                stage2[part][target],
+                stable_identity_uniforms(domain_ids, seed=10, salt=salt),
+            )
     assert result.stage1_transport["identity_key"] == "person_source_id"
     assert result.stage1_transport["recipients"] == 3
     assert result.fit_weight_records[1].fit_name == "uk_frs_reference_conditional"

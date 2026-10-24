@@ -31,7 +31,12 @@ from microcosm.build.uk_runtime.salary_sacrifice import (
 class _Fitted:
     value = 0.0
 
-    def predict(self, predictors: pd.DataFrame) -> pd.DataFrame:
+    def predict_from_uniforms(
+        self, predictors: pd.DataFrame, *, quantiles, sign_uniforms
+    ) -> pd.DataFrame:
+        # The stage keys each person's uniforms on their own id.
+        for uniforms in (quantiles[SALSAC_OUTPUT], sign_uniforms[SALSAC_OUTPUT]):
+            assert uniforms.shape == (len(predictors),)
         return pd.DataFrame({SALSAC_OUTPUT: self.value}, index=predictors.index)
 
 
@@ -322,9 +327,10 @@ def test_conversion_moves_at_most_half_the_pay_and_keeps_the_rest(
     monkeypatch.setattr(salary_sacrifice, "QRF", _FakeQRF)
     n_donors = 100
     pay = np.asarray([30_000.0, *([1_000.0] * n_donors)])
-    # Contributions from 100 to 1,500: above half the pay from 500 up, and
-    # above the whole pay from 1,000 up.
-    contributions = np.asarray([0.0, *np.linspace(100.0, 1_500.0, n_donors)])
+    # Contributions from 100 to 1,000: above half the pay from 500 up, and at
+    # most the whole pay, where the spine caps a net-pay contribution
+    # (uk_runtime.pension_coherence).
+    contributions = np.asarray([0.0, *np.linspace(100.0, 1_000.0, n_donors)])
     frame = _frame(
         asked=[1, *([0] * n_donors)],
         salary_sacrifice_values=[0.0] * (n_donors + 1),
@@ -398,8 +404,10 @@ def test_no_amount_exceeds_pay_and_nothing_is_lost(rows, predicted) -> None:
     rows = [(True, 0.0, 0.0, 30_000.0, "frs"), *rows]
     asked = [1 if row[0] else 0 for row in rows]
     reported = np.asarray([row[1] if row[0] else 0.0 for row in rows])
-    contributions = np.asarray([row[2] for row in rows])
     pay = np.asarray([row[3] for row in rows])
+    # The spine caps net-pay contributions at pay before this stage
+    # (uk_runtime.pension_coherence), so the stage only ever sees them there.
+    contributions = np.minimum(np.asarray([row[2] for row in rows]), pay)
     frame = _frame(
         asked=asked,
         salary_sacrifice_values=reported,
@@ -433,6 +441,95 @@ def test_no_amount_exceeds_pay_and_nothing_is_lost(rows, predicted) -> None:
         kept[converted] + sacrifice[converted], contributions[converted]
     )
     assert (sacrifice[converted] <= SALSAC_MOVE_PAY_SHARE_CAP * pay[converted]).all()
+
+
+def test_a_contribution_above_the_pay_that_remains_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The spine caps net-pay contributions at pay; the stage refuses one above it."""
+
+    monkeypatch.setattr(salary_sacrifice, "QRF", _FakeQRF)
+    frame = _frame(
+        asked=[1, 1],
+        salary_sacrifice_values=[0.0, 0.0],
+        employee_pension=[0.0, 3_000.0],
+        employment_income=[30_000.0, 1_000.0],
+    )
+
+    with pytest.raises(ValueError, match="must not exceed the pay that remains"):
+        impute_salary_sacrifice(frame)
+
+
+def test_draws_move_only_for_the_people_whose_inputs_move(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Each prediction reads uniforms keyed on the person's own id: reversing
+    the people, changing one and adding another moves no other person's draw
+    (Vahid's review of microcosm#1332)."""
+
+    from test_support.microcosm_build.uk_keyed_draws import (
+        assert_draws_are_keyed_on_ids,
+    )
+
+    drawn: dict[str, pd.Series] = {}
+
+    class _Keyed(_Fitted):
+        def predict_from_uniforms(self, predictors, *, quantiles, sign_uniforms):
+            drawn["quantile"] = pd.Series(
+                quantiles[SALSAC_OUTPUT], index=predictors.index
+            )
+            return pd.DataFrame({SALSAC_OUTPUT: 0.0}, index=predictors.index)
+
+    class _KeyedQRF(_FakeQRF):
+        def fit(self, frame, predictors, targets, *, weights):
+            super().fit(frame, predictors, targets, weights=weights)
+            return _Keyed()
+
+    monkeypatch.setattr(salary_sacrifice, "QRF", _KeyedQRF)
+
+    def draw(recipient: pd.DataFrame, ids: np.ndarray) -> pd.DataFrame:
+        # The person rows keep the recipients' order; the group tables are
+        # sorted by id, as a frame requires.
+        groups = np.sort(ids)
+        frame = uk_national_frame(
+            person=recipient.assign(
+                person_id=ids, person_benunit_id=ids, person_household_id=ids
+            ),
+            benunit=pd.DataFrame({"benunit_id": groups}),
+            household=pd.DataFrame(
+                {
+                    "household_id": groups,
+                    "household_support_channel": "frs",
+                    HOUSEHOLD_IS_CGT_CLONE: False,
+                    HOUSEHOLD_IS_CGT_SUPPORT_COPY: False,
+                }
+            ),
+            household_weights=np.ones(len(ids)),
+            time_period="2024",
+        )
+        drawn.clear()
+        impute_salary_sacrifice(frame)
+        quantile = pd.Series(np.nan, index=frame.table("person").index)
+        quantile.loc[drawn["quantile"].index] = drawn["quantile"].to_numpy()
+        return pd.DataFrame({"quantile": quantile.to_numpy()})
+
+    rows = 6
+    recipient = pd.DataFrame(
+        {
+            "age": np.linspace(25, 55, rows),
+            "employment_income": np.full(rows, 30_000.0),
+            "salary_sacrifice_asked": [1, 1, 0, 0, 0, 0],
+            SALSAC_OUTPUT: [10.0, 20.0, 0.0, 0.0, 0.0, 0.0],
+            "employee_pension_contributions": np.zeros(rows),
+        }
+    )
+    assert_draws_are_keyed_on_ids(
+        draw,
+        recipient,
+        np.arange(101, 101 + rows, dtype="int64"),
+        perturbed_column="age",
+        perturbed_value=61.0,
+    )
 
 
 def test_anchor_is_self_consistent() -> None:

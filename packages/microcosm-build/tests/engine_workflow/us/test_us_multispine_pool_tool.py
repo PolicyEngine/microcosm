@@ -341,8 +341,10 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # The US bundle's semantic hash covers microcosm.calibrate.solve's
             # bytes (its seed protocol); microcosm#1124's opt-in
             # retain_best_objective and microcosm#1301's budget_search_bracket
-            # move it, and so does microcosm#454's meps_esi_premiums stage.
-            "spec_sha256": "912095f862c5313e42e69ac6522d906cb9f3561a3c418a943da52e4dc39f7ffa",
+            # move it. It covers microcosm.fit.qrf's attested bytes too, so
+            # fit_draw_next's caller-owned uniforms (microcosm#1332) move it,
+            # and so does microcosm#454's meps_esi_premiums stage.
+            "spec_sha256": "97f41a9fedba0ed1f26dd5f457997c10ffefe852c75f8fc18c793acdf21ebfd3",
         },
     }
 

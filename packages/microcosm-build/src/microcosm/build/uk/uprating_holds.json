@@ -21,6 +21,35 @@
       "scope": "national",
       "kind": "in_year_snapshot",
       "target_ids": [
+        "dfe.funded_childcare.universal_nursery_children_age_3",
+        "dfe.funded_childcare.working_parent_children_age_1",
+        "dfe.funded_childcare.working_parent_children_age_2",
+        "dfe.funded_childcare.working_parent_children_age_3"
+      ],
+      "reason": "DfE funded early-education registrations by single year of age and provision counted in the January 2025 census: a count at a date inside the calibration year, not a lagged period. Requested by María on 2026-10-21 with the single-age rows.",
+      "tracking": "microcosm#1278",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-21",
+      "status": "approved",
+      "expires_on": "2026-12-11"
+    },
+    {
+      "scope": "national",
+      "kind": "in_year_snapshot",
+      "target_ids": [
+        "dfe.funded_childcare.working_parent_children_9_to_11_months"
+      ],
+      "reason": "DfE funded early-education working parent registrations at 9 to 11 months counted in the January 2025 census: a count at a date inside the calibration year, not a lagged period. Requested by María on 2026-10-22 with the row, which the spring-term measures and its own under-2 take-up let the model carry (microcosm#1338).",
+      "tracking": "microcosm#1278",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-22",
+      "status": "approved",
+      "expires_on": "2026-12-11"
+    },
+    {
+      "scope": "national",
+      "kind": "in_year_snapshot",
+      "target_ids": [
         "dwp.benefit_cap.capped_households",
         "dwp.benefit_cap.capped_households_1000_01_to_1100",
         "dwp.benefit_cap.capped_households_100_01_to_200",
@@ -144,6 +173,19 @@
     },
     {
       "scope": "national",
+      "kind": "matched_period",
+      "target_ids": [
+        "ons.household_road_fuel_expenditure"
+      ],
+      "reason": "ONS Consumer Trends road fuel (COICOP 07.2.2) for calendar 2024, measured on the frame's own 2024 petrol and diesel columns (measurement_period 2024, require_matching_fact_period). The fact and the stored columns are the same year, so the row does not depend on the engine's 2024-to-2025 fuel projection; measuring the calendar-2025 figure through the engine would put that projection into the weights (microcosm#1324).",
+      "tracking": "microcosm#1324",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-20",
+      "status": "approved",
+      "expires_on": "2026-12-11"
+    },
+    {
+      "scope": "national",
       "kind": "reviewed_no_index",
       "target_ids": [
         "dft.bus_net_support.england",
@@ -154,7 +196,7 @@
         "scotgov.bus.passenger_revenue",
         "welshgov.bus.public_support"
       ],
-      "reason": "Public transport support and revenue lines for financial year 2024-25, the latest outturn of each publisher (DfT BUS05 and ORR next in November 2026). Spending is set by policy, so no price or volume index carries it forward; held to outturn until the next edition. The England fare-receipts rows are the exception, carried by the BUS0415 fares index.",
+      "reason": "Public transport support and revenue lines for financial year 2024-25, the latest outturn of each publisher (DfT BUS05 and ORR next in November 2026). Spending is set by policy, so no price or volume index carries it forward; held to outturn until the next edition. The England fare-receipts rows are the exception, carried by the BUS0415 fares index. Each binding declares the frame's period (measurement_period 2024), so the outturn is measured on the frame's own columns rather than on the engine's 2025 values (microcosm#1324).",
       "tracking": "microcosm#1278",
       "approved_by": "juaristi22",
       "approved_on": "2026-10-11",
@@ -368,7 +410,7 @@
         "slc.borrowers.plan_5_liable"
       ],
       "reason": "SLC Student loan forecasts for England, Table 6a: borrowers liable to repay and earning above the repayment threshold in academic year 2024/25, the stock whose reference date falls inside the calibration year 2025, which Chronicle stores under the academic year's opening year 2024. A stock at a date inside the calibration year, not a lagged period; the student_loans stage tops up to the same stock.",
-      "tracking": "microcosm#868",
+      "tracking": "microcosm#1278",
       "approved_by": "juaristi22",
       "approved_on": "2026-10-16",
       "status": "approved",

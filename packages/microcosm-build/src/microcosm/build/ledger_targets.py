@@ -298,6 +298,7 @@ class LedgerTargetReference:
             _validate_scaled_by_ratio_operands(self.name, self.value_operands)
         if self.value_operation == ROLLED_FORWARD_BY_RATIO:
             _validate_rolled_forward_operands(self.name, self.value_operands)
+            _rolled_forward_grouped_member_roster(self)
         if self.value_operation == "calendar_year_window":
             _validate_calendar_year_window_reference(self)
         elif self.value_operation == CALENDAR_YEAR_WINDOW_SCALED_BY_RATIO:
@@ -818,7 +819,23 @@ def target_spec_from_ledger_reference(
         else 0
     )
     for index, member in enumerate(facts):
-        if operand_facts and index >= len(facts) - operand_facts:
+        if (
+            reference.value_operation == ROLLED_FORWARD_BY_RATIO
+            and index >= len(facts) - 2
+        ):
+            # Growth operands may measure people while the base measures
+            # households, and each pins its own geography vintage.
+            selector = _rolled_forward_operand_selectors(reference)[
+                index - len(facts) + 2
+            ]
+            if not _fact_matches_selector(member, selector):
+                raise ValueError(
+                    f"Ledger target reference {reference.name!r}: "
+                    f"{ROLLED_FORWARD_BY_RATIO} resolved operand disagrees "
+                    "with its declared selector."
+                )
+            _validate_window_ratio_operand_fact(member, reference)
+        elif operand_facts and index >= len(facts) - operand_facts:
             # A ratio operand pins its own source, period and entity: the
             # reference's consumer pins describe the window, not the operand.
             _validate_window_ratio_operand_fact(member, reference)
@@ -1029,6 +1046,7 @@ def _rolled_forward_by_ratio_value(
 ) -> tuple[float, dict[str, str]]:
     """Carry the base to the target period by the pinned operands' growth."""
 
+    _assert_rolled_forward_base_cells(reference, list(facts[:-2]))
     *base_values, numerator, denominator = numeric_values
     base = math.fsum(base_values)
     if not math.isfinite(denominator) or denominator <= 0:
@@ -1066,6 +1084,10 @@ def _rolled_forward_by_ratio_value(
         **geography,
         "ledger_value_base": repr(float(base)),
         "ledger_value_base_cells": str(len(base_values)),
+        "ledger_value_base_fact_keys": json.dumps(
+            [_fact_key(fact) or _source_record_id(fact) for fact in facts[:-2]],
+            separators=(",", ":"),
+        ),
         "ledger_value_numerator": repr(float(numerator)),
         "ledger_value_denominator": repr(float(denominator)),
         "ledger_value_ratio": repr(float(ratio)),
@@ -2092,7 +2114,16 @@ def _validate_rolled_forward_operands(
             f"{prefix} requires exactly ordered "
             f"{'/'.join(ROLLED_FORWARD_OPERAND_ROLES)} operands, got {roles!r}."
         )
-    base_overlay = {key for key in operands[0] if key != "role"}
+    count = operands[0].get("expected_member_count")
+    if count is not None and (
+        isinstance(count, bool) or not isinstance(count, int) or count <= 0
+    ):
+        raise ValueError(
+            f"{prefix}: base expected_member_count must be a positive integer."
+        )
+    base_overlay = {
+        key for key in operands[0] if key not in {"role", "expected_member_count"}
+    }
     if base_overlay - {"geography_level", "geography_id"}:
         raise ValueError(
             f"{prefix}: the base operand is the reference's own selector; it may "
@@ -2100,6 +2131,10 @@ def _validate_rolled_forward_operands(
             f"(geography_level, geography_id), got {sorted(base_overlay)!r}."
         )
     for operand in operands[1:]:
+        if "expected_member_count" in operand:
+            raise ValueError(
+                f"{prefix}: expected_member_count applies to base facts only."
+            )
         if "period_type" not in operand or "period_value" not in operand:
             raise ValueError(
                 f"{prefix}: operand {operand.get('role')!r} must pin its own "
@@ -2367,7 +2402,7 @@ def _rolled_forward_base_overlay(reference: LedgerTargetReference) -> dict[str, 
     return {
         str(key): value
         for key, value in reference.value_operands[0].items()
-        if key != "role"
+        if key not in {"role", "expected_member_count"}
     }
 
 
@@ -2457,12 +2492,38 @@ def _resolve_rolled_forward_reference_facts(
 def _assert_rolled_forward_base_cells(
     reference: LedgerTargetReference, base: list[object]
 ) -> None:
-    """The base is one cell, or exactly one cell for each geography it names.
+    """Require an exact scalar, geography roster, or typed dimension roster.
 
     Summing whatever matches at the latest period would count a duplicate
     fact twice and pass a missing district silently.
     """
 
+    # An explicit null on the base operand falls back to the reference's own
+    # count, as the roster validator does; it never switches the check off.
+    count = reference.value_operands[0].get("expected_member_count")
+    if count is None:
+        count = reference.expected_member_count
+    if count is not None and len(base) != count:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: "
+            f"{ROLLED_FORWARD_BY_RATIO} expected {count} base facts, got {len(base)}."
+        )
+    roster = _rolled_forward_grouped_member_roster(reference)
+    if roster:
+        selector = _rolled_forward_base_selector(reference)
+        dimension, members = roster
+        found = [_dimensions(fact).get(dimension) for fact in base]
+        if any(not _fact_matches_selector(fact, selector) for fact in base) or any(
+            sum(_strict_scalar_equal(value, member) for value in found) != 1
+            for member in members
+        ):
+            raise ValueError(
+                f"Ledger target reference {reference.name!r}: "
+                f"{ROLLED_FORWARD_BY_RATIO} base must resolve exactly one fact "
+                f"for each declared typed member of {dimension!r}: {members!r}; "
+                f"got {found!r}."
+            )
+        return
     declared = None
     if _rolled_forward_base_overlay(reference):
         declared = _rolled_forward_base_selector(reference).get("geography_id")
@@ -2485,6 +2546,79 @@ def _assert_rolled_forward_base_cells(
             f"{ROLLED_FORWARD_BY_RATIO} base must resolve exactly one cell at "
             f"its latest period, got {len(base)}."
         )
+
+
+def _rolled_forward_grouped_member_roster(
+    reference: LedgerTargetReference,
+) -> tuple[str, list[object]] | None:
+    """Validate the narrow, one-geography dimension-member sum contract."""
+
+    prefix = f"LedgerTargetReference {reference.name!r}: {ROLLED_FORWARD_BY_RATIO}"
+    operand_count = reference.value_operands[0].get("expected_member_count")
+    if operand_count is not None and reference.expected_member_count not in (
+        None,
+        operand_count,
+    ):
+        raise ValueError(f"{prefix}: base expected_member_count declarations disagree.")
+    selector = _rolled_forward_base_selector(reference)
+    pins = selector.get("dimension_values")
+    if not isinstance(pins, Mapping):
+        return None
+    rosters = [
+        (str(key), value) for key, value in pins.items() if isinstance(value, list)
+    ]
+    if not rosters:
+        return None
+    if len(rosters) != 1:
+        raise ValueError(f"{prefix}: grouped base requires one typed member roster.")
+    dimension, members = rosters[0]
+    count = (
+        operand_count if operand_count is not None else reference.expected_member_count
+    )
+    if not members or count != len(members):
+        raise ValueError(
+            f"{prefix}: grouped base expected_member_count must equal its explicit "
+            "typed member roster length (base facts only)."
+        )
+    if any(isinstance(member, (Mapping, list, tuple)) for member in members) or any(
+        _strict_scalar_equal(member, previous)
+        for index, member in enumerate(members)
+        for previous in members[:index]
+    ):
+        raise ValueError(
+            f"{prefix}: grouped base typed member roster must be unique scalars."
+        )
+    fixed = (
+        "source_name",
+        "source_measure_id",
+        "source_concept",
+        "entity_name",
+        "record_set_id",
+        "period_type",
+        "period_value",
+        "geography_level",
+        "geography_id",
+        "geography_vintage",
+    )
+    missing = [
+        key
+        for key in fixed
+        if selector.get(key) in (None, "")
+        or isinstance(selector.get(key), (Mapping, list, tuple))
+    ]
+    dimensions = selector.get("dimensions")
+    if (
+        missing
+        or not isinstance(dimensions, list)
+        or len(dimensions) != len(set(dimensions))
+        or set(dimensions) != set(pins)
+    ):
+        raise ValueError(
+            f"{prefix}: grouped base must fix one source, entity, geography, "
+            "record set and source period, and its complete dimension-name set; "
+            f"missing or non-scalar pins {missing!r}."
+        )
+    return dimension, members
 
 
 def _rolled_forward_series_key(fact: object) -> tuple[str, ...]:

@@ -1,11 +1,11 @@
 {
- "compiled_count": 1319,
+ "compiled_count": 1338,
  "counts_by_kind": {
   "calibration_drift": 561,
   "fixture_only": 46,
-  "ledger_only": 728
+  "ledger_only": 747
  },
- "difference_count": 1335,
+ "difference_count": 1354,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -359,6 +359,13 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 565954.0,
+   "name": "dfe.funded_childcare.universal_nursery_children_age_3",
+   "period": 2025,
+   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): one of the five DfE funded-childcare counts by single age from the January 2025 census, England (working parent registrations at 9 to 11 months and at ages 1, 2 and 3, and universal nursery registrations at age 3), bound beside the working parent 2 to 4, early learning and universal-only rows and, with them, measured at the spring term by the age on 31 December (María's ruling of 2026-10-22). The age-4 cells are signed out, as the bound rows fix them. The incumbent binds no DfE row, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 396965.0,
    "name": "dfe.funded_childcare.universal_only_children",
    "period": 2025,
@@ -373,6 +380,34 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 29155.0,
+   "name": "dfe.funded_childcare.working_parent_children_9_to_11_months",
+   "period": 2025,
+   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): one of the five DfE funded-childcare counts by single age from the January 2025 census, England (working parent registrations at 9 to 11 months and at ages 1, 2 and 3, and universal nursery registrations at age 3), bound beside the working parent 2 to 4, early learning and universal-only rows and, with them, measured at the spring term by the age on 31 December (María's ruling of 2026-10-22). The age-4 cells are signed out, as the bound rows fix them. The incumbent binds no DfE row, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 195104.0,
+   "name": "dfe.funded_childcare.working_parent_children_age_1",
+   "period": 2025,
+   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): one of the five DfE funded-childcare counts by single age from the January 2025 census, England (working parent registrations at 9 to 11 months and at ages 1, 2 and 3, and universal nursery registrations at age 3), bound beside the working parent 2 to 4, early learning and universal-only rows and, with them, measured at the spring term by the age on 31 December (María's ruling of 2026-10-22). The age-4 cells are signed out, as the bound rows fix them. The incumbent binds no DfE row, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 242453.0,
+   "name": "dfe.funded_childcare.working_parent_children_age_2",
+   "period": 2025,
+   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): one of the five DfE funded-childcare counts by single age from the January 2025 census, England (working parent registrations at 9 to 11 months and at ages 1, 2 and 3, and universal nursery registrations at age 3), bound beside the working parent 2 to 4, early learning and universal-only rows and, with them, measured at the spring term by the age on 31 December (María's ruling of 2026-10-22). The age-4 cells are signed out, as the bound rows fix them. The incumbent binds no DfE row, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 278640.0,
+   "name": "dfe.funded_childcare.working_parent_children_age_3",
+   "period": 2025,
+   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): one of the five DfE funded-childcare counts by single age from the January 2025 census, England (working parent registrations at 9 to 11 months and at ages 1, 2 and 3, and universal nursery registrations at age 3), bound beside the working parent 2 to 4, early learning and universal-only rows and, with them, measured at the spring term by the age on 31 December (María's ruling of 2026-10-22). The age-4 cells are signed out, as the bound rows fix them. The incumbent binds no DfE row, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 152500000.0,
    "name": "dfi_ni.bus.passenger_receipts",
    "period": 2025,
@@ -380,14 +415,14 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 3612036036.2194014,
+   "ledger_value": 3678026476.522709,
    "name": "dft.bus_fare_receipts.england",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 1347434943.01459,
+   "ledger_value": 1347446557.7536979,
    "name": "dft.bus_fare_receipts.london",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
@@ -5259,7 +5294,7 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 35099000000.0,
+   "ledger_value": 37025000000.0,
    "name": "ons.household_road_fuel_expenditure",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
@@ -5326,6 +5361,104 @@
    "name": "ons.households.english_regions@E12000009",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 658357.0,
+   "name": "ons.population.age_0",
+   "period": 2025,
+   "reason": "microcosm#1278 (the pre-Budget PR's plan, approved by María on 2026-10-20; microcosm#1095): one of the three all-persons rows for ages 0, 1 and 2, bound so the fit holds the single years inside the 0_4 sex bands, which stay bound beside them. The incumbent binds only the five-year bands, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 679232.0,
+   "name": "ons.population.age_1",
+   "period": 2025,
+   "reason": "microcosm#1278 (the pre-Budget PR's plan, approved by María on 2026-10-20; microcosm#1095): one of the three all-persons rows for ages 0, 1 and 2, bound so the fit holds the single years inside the 0_4 sex bands, which stay bound beside them. The incumbent binds only the five-year bands, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 696010.0,
+   "name": "ons.population.age_2",
+   "period": 2025,
+   "reason": "microcosm#1278 (the pre-Budget PR's plan, approved by María on 2026-10-20; microcosm#1095): one of the three all-persons rows for ages 0, 1 and 2, bound so the fit holds the single years inside the 0_4 sex bands, which stay bound beside them. The incumbent binds only the five-year bands, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 735292.0,
+   "name": "ons.population.age_3",
+   "period": 2025,
+   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095): one of the eleven all-persons rows that extend the single years of age, the UK's ages 3 to 6 and England's ages 0 to 6, bound so the fit holds the single years inside the 0_4 and 5_9 sex bands and the region 0_9 cells, which stay bound beside them. The incumbent binds only the bands, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 723859.0,
+   "name": "ons.population.age_4",
+   "period": 2025,
+   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095): one of the eleven all-persons rows that extend the single years of age, the UK's ages 3 to 6 and England's ages 0 to 6, bound so the fit holds the single years inside the 0_4 and 5_9 sex bands and the region 0_9 cells, which stay bound beside them. The incumbent binds only the bands, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 745129.0,
+   "name": "ons.population.age_5",
+   "period": 2025,
+   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095): one of the eleven all-persons rows that extend the single years of age, the UK's ages 3 to 6 and England's ages 0 to 6, bound so the fit holds the single years inside the 0_4 and 5_9 sex bands and the region 0_9 cells, which stay bound beside them. The incumbent binds only the bands, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 760014.0,
+   "name": "ons.population.age_6",
+   "period": 2025,
+   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095): one of the eleven all-persons rows that extend the single years of age, the UK's ages 3 to 6 and England's ages 0 to 6, bound so the fit holds the single years inside the 0_4 and 5_9 sex bands and the region 0_9 cells, which stay bound beside them. The incumbent binds only the bands, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 566856.0,
+   "name": "ons.population.england_age_0",
+   "period": 2025,
+   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095): one of the eleven all-persons rows that extend the single years of age, the UK's ages 3 to 6 and England's ages 0 to 6, bound so the fit holds the single years inside the 0_4 and 5_9 sex bands and the region 0_9 cells, which stay bound beside them. The incumbent binds only the bands, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 583995.0,
+   "name": "ons.population.england_age_1",
+   "period": 2025,
+   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095): one of the eleven all-persons rows that extend the single years of age, the UK's ages 3 to 6 and England's ages 0 to 6, bound so the fit holds the single years inside the 0_4 and 5_9 sex bands and the region 0_9 cells, which stay bound beside them. The incumbent binds only the bands, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 598812.0,
+   "name": "ons.population.england_age_2",
+   "period": 2025,
+   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095): one of the eleven all-persons rows that extend the single years of age, the UK's ages 3 to 6 and England's ages 0 to 6, bound so the fit holds the single years inside the 0_4 and 5_9 sex bands and the region 0_9 cells, which stay bound beside them. The incumbent binds only the bands, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 632519.0,
+   "name": "ons.population.england_age_3",
+   "period": 2025,
+   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095): one of the eleven all-persons rows that extend the single years of age, the UK's ages 3 to 6 and England's ages 0 to 6, bound so the fit holds the single years inside the 0_4 and 5_9 sex bands and the region 0_9 cells, which stay bound beside them. The incumbent binds only the bands, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 621735.0,
+   "name": "ons.population.england_age_4",
+   "period": 2025,
+   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095): one of the eleven all-persons rows that extend the single years of age, the UK's ages 3 to 6 and England's ages 0 to 6, bound so the fit holds the single years inside the 0_4 and 5_9 sex bands and the region 0_9 cells, which stay bound beside them. The incumbent binds only the bands, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 639573.0,
+   "name": "ons.population.england_age_5",
+   "period": 2025,
+   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095): one of the eleven all-persons rows that extend the single years of age, the UK's ages 3 to 6 and England's ages 0 to 6, bound so the fit holds the single years inside the 0_4 and 5_9 sex bands and the region 0_9 cells, which stay bound beside them. The incumbent binds only the bands, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 649939.0,
+   "name": "ons.population.england_age_6",
+   "period": 2025,
+   "reason": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (item 6; microcosm#1278, #1095): one of the eleven all-persons rows that extend the single years of age, the UK's ages 3 to 6 and England's ages 0 to 6, bound so the fit holds the single years inside the 0_4 and 5_9 sex bands and the region 0_9 cells, which stay bound beside them. The incumbent binds only the bands, so this row has no fixture counterpart."
   },
   {
    "kind": "ledger_only",

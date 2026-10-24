@@ -93,7 +93,9 @@ engine-free runner installs the supported public Orrery range and locked Node
 dependency set under `tools/orrery-contract/`; the pytest test generates a
 document through Microcosm's public Python API and requires Orrery's public
 parser to accept it. The recorded-evidence assertion in `test_graph_evidence.py`
-uses the same pinned parser for groups, statuses, activities and artifacts.
+uses the same pinned parser for groups, statuses, activities and artifacts, and
+the one in `test_graph_reconstruction.py` uses it for the reconstruction marker
+of a declaration-only document.
 These CI tests perform no browser rendering.
 
 Workspace tests use an in-memory telemetry emitter by default. The shared
@@ -303,6 +305,18 @@ against both H5 files. The publisher refuses to point `latest.json` at this
 child, so publish it with `--no-latest --tag-only`. See
 [the reported-receipt runbook](us-reported-receipt-source-enrichment.md).
 
+`compatibility_recertification` is a separate release type
+(`microcosm.data.compatibility_recertification`,
+`tools/build_us_compatibility_recertification.py`): a published US
+calibration release, republished byte for byte with a measured claim for a
+newer policyengine-us. Its parent identity is the parent's own published
+`release_manifest.json`, carried and hashed, never a code constant; the
+publisher checks the parent tag on the Hub before any upload. A change in
+what the tested engine reads or ignores must have an entry in
+`RECERTIFICATION_COLUMN_CHANGES`. It takes `--compatibility-wheel` and no
+`--parent-h5`. National parents only for now. See
+[the recertification runbook](us-compatibility-recertification.md).
+
 Three US release seams refuse a stored column that is lowercase snake_case,
 not a variable of the engine the release is certified against, and not in the
 reviewed register `microcosm.data.stored_inputs.US_STORED_NON_VARIABLE_COLUMNS`
@@ -410,6 +424,17 @@ label, search for an existing definition and follow
 [`docs/shared-constants.md`](shared-constants.md). Human contributors and
 AI assistants must import shared static data from its domain-specific constants
 module instead of copying it or reconstructing alternate views in consumers.
+
+## Calibration diagnostics JSON Schema
+
+`packages/microcosm-diagnostics/src/microcosm/diagnostics/schemas/calibration_diagnostics.v8.schema.json`
+is generated from the schema-8 models in `microcosm.diagnostics.schema`. After
+changing one, regenerate it with
+`uv run --no-sync python tools/generate_calibration_diagnostics_json_schema.py`.
+A new model validator also needs an entry in
+`CALIBRATION_DIAGNOSTICS_V8_JSON_SCHEMA_GAPS` and a document in
+`test_json_schema.py` that the schema accepts and the models refuse; the
+diagnostics tests fail until both exist.
 
 ## Review this guide
 

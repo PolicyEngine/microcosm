@@ -13,11 +13,17 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from microcosm.calibrate.geography_constants import US_STATE_FIPS_TO_POSTAL
+from microcosm.calibrate.geography_constants import (
+    US_STATE_FIPS_TO_NAME,
+    US_STATE_FIPS_TO_POSTAL,
+)
 
 SOURCE_CONGRESSIONAL_DISTRICT_PREFIX = "5001700US"
 CURRENT_CONGRESSIONAL_DISTRICT_PREFIX = "5001900US"
 CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE = "119th_congress"
+#: The Congress whose plan ``CURRENT_CONGRESSIONAL_DISTRICT_PREFIX`` identifies,
+#: as the Census Bureau's district names spell it.
+CURRENT_CONGRESS_NAME = "119th Congress"
 #: The packaged default crosswalk, built from Census sources by
 #: ``tools/build_us_congressional_district_vintage_crosswalk.py`` and shipped
 #: under ``microcosm.build.us_runtime.data``. See the sibling ``.provenance.json``
@@ -617,7 +623,7 @@ def _translated_fact_shell(
     target_geoid = target_geography_id.removeprefix(
         CURRENT_CONGRESSIONAL_DISTRICT_PREFIX
     )
-    target_geography_label = _congressional_district_label(target_geography_id)
+    target_geography_label = congressional_district_label(target_geography_id)
     geography = dict(_mapping_at(translated, "geography"))
     geography["id"] = target_geography_id
     geography["level"] = "congressional_district"
@@ -672,23 +678,45 @@ def _translated_fact_shell(
     return translated
 
 
-def _congressional_district_label(geography_id: str) -> str:
-    """Return a reviewed display label for a Census congressional-district ID."""
+def congressional_district_label(geography_id: str) -> str:
+    """The Census Bureau's name for a current congressional district.
+
+    The Census Bureau names a 119th Congress district "Congressional District
+    1 (119th Congress), Alabama", an at-large seat "Congressional District (at
+    Large) (119th Congress), Alaska", and the District of Columbia's
+    non-voting seat (district ``00`` here, Census's ``98``) "Delegate District
+    (at Large) (119th Congress), District of Columbia". Chronicle's ACS
+    district facts carry these names for the same ids. The IRS SOI district
+    rows translated here and the ACS local release's population targets both
+    take their label from this function, so each district has one label
+    across target sources (microcosm#1335).
+    """
 
     geoid = geography_id.removeprefix(CURRENT_CONGRESSIONAL_DISTRICT_PREFIX)
-    if len(geoid) != 4 or not geoid.isdigit():
+    if (
+        not geography_id.startswith(CURRENT_CONGRESSIONAL_DISTRICT_PREFIX)
+        or len(geoid) != 4
+        or not geoid.isdigit()
+    ):
         raise ValueError(
             f"Invalid current congressional-district geography id {geography_id!r}."
         )
     state_fips, district = geoid[:2], geoid[2:]
-    postal = US_STATE_FIPS_TO_POSTAL.get(state_fips)
-    if postal is None:
+    state_name = US_STATE_FIPS_TO_NAME.get(state_fips)
+    if state_name is None:
         raise ValueError(
             f"Unknown state FIPS code in congressional-district id {geography_id!r}."
         )
     if district == "00":
-        return f"{postal} at-large congressional district"
-    return f"{postal} congressional district {int(district)}"
+        seat = (
+            "Delegate District"
+            if US_STATE_FIPS_TO_POSTAL[state_fips] == "DC"
+            else "Congressional District"
+        )
+        district_name = f"{seat} (at Large)"
+    else:
+        district_name = f"Congressional District {int(district)}"
+    return f"{district_name} ({CURRENT_CONGRESS_NAME}), {state_name}"
 
 
 def _append_lineage_contribution(

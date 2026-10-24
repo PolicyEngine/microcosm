@@ -52,12 +52,16 @@ from . import (
     frs_hmrc_source,
     frs_take_up,
     hmrc_property_rental,
+    household_lineage,
     ledger_fact_vendoring,
+    legacy_closure_take_up,
     property_localisation,
+    receipt_counts,
     rowwise_geography,
     spi_income,
     spi_support,
     uc_capital_coherence,
+    uc_deduction_attributes,
     uc_relationships,
     was_wealth,
 )
@@ -101,6 +105,7 @@ _STAGE_MODULES = {
     "etb_vat": "etb_vat",
     "etb_services": "etb_services",
     "frs_hmrc_spine_leaves": "spi_spine",
+    "frs_annual_income_spells": "frs_annual_income",
     "spi_support_channel": "spi_spine",
     "spi_income_band_donors": "spi_band_donors",
     "hmrc_spi_income_spine": "spi_spine",
@@ -108,9 +113,11 @@ _STAGE_MODULES = {
     "uc_reporter_redraw": "uc_reporter_redraw",
     "spi_benefit_coherence": "spi_benefit_coherence",
     "uc_capital_coherence": "uc_capital_coherence",
+    "uc_take_up": "uc_take_up",
     "uc_legacy_closure_take_up": "legacy_closure_take_up",
     "pension_credit_take_up": "pension_credit_take_up",
     "child_benefit_take_up": "child_benefit_take_up",
+    "carers_allowance_take_up": "carers_allowance_take_up",
     "uc_deduction_attributes": "uc_deduction_attributes",
     "high_value_home_support": "high_value_home_support",
     "regional_home_values": "regional_home_values",
@@ -123,6 +130,7 @@ _STAGE_MODULES = {
     "salary_sacrifice": "salary_sacrifice",
     "student_loans": "student_loans",
     "private_school_attendance": "private_school_attendance",
+    "childcare_copy_take_up": "childcare_copy_take_up",
     "age_tail": "age_tail",
 }
 
@@ -130,6 +138,12 @@ _STAGE_MODULES = {
 # helpers and the adapter's input-retention checks into every consuming stage.
 _STAGE_HELPER_MODULES = {
     "frs_hmrc_spine_leaves": (frs_hmrc_source,),
+    # The annual income descriptors' receipt follows the shared disclosure rules
+    # (microcosm#1164).
+    "frs_annual_income_spells": (receipt_counts,),
+    # The SPI income stage's imputation, band-donor resample and receipt live
+    # in spi_income, so an edit there moves the stage's hash (microcosm#1278).
+    "hmrc_spi_income_spine": (spi_income,),
     "frs_spine": (uc_relationships,),
     "frs_legacy_proxies": (uk_engine_adapter,),
     "frs_education_grant_split": (uk_engine_adapter,),
@@ -165,6 +179,20 @@ _STAGE_HELPER_MODULES = {
         uc_capital_coherence,
     ),
     "uc_capital_coherence": (uc_relationships,),
+    # The Universal Credit redraw reads the award through the adapter, the
+    # vendored DWP counts, the closure stage's rule and rates, the deduction
+    # attributes, the take-up population and the family-type roles, and counts
+    # its pools and receipt on the source lineage (microcosm#1334).
+    "uc_take_up": (
+        uk_engine_adapter,
+        ledger_fact_vendoring,
+        legacy_closure_take_up,
+        uc_deduction_attributes,
+        frs_take_up,
+        uc_relationships,
+        uc_capital_coherence,
+        receipt_counts,
+    ),
     # The Move to UC claim draw reuses the UC stage's household-to-benefit-unit
     # weight mapping and reads the vendored DWP rows (microcosm#1095).
     "uc_legacy_closure_take_up": (uc_capital_coherence, ledger_fact_vendoring),
@@ -173,8 +201,15 @@ _STAGE_HELPER_MODULES = {
     "pension_credit_take_up": (uc_capital_coherence, uk_engine_adapter),
     # The Child Benefit redraw shares the weight mapping and the adapter.
     "child_benefit_take_up": (uc_capital_coherence, uk_engine_adapter),
+    # The Carer's Allowance draw reads the earnings test through the adapter's
+    # engine materialization and counts its receipt's support on the source
+    # lineage (microcosm#1319).
+    "carers_allowance_take_up": (uk_engine_adapter, receipt_counts),
     # The stored attendance is one engine materialization (microcosm#1095).
     "private_school_attendance": (uk_engine_adapter,),
+    # The copies' childcare re-draw draws through frs_take_up's childcare
+    # helper and reads each household's clone path.
+    "childcare_copy_take_up": (frs_take_up, household_lineage),
 }
 
 _COMPUTE = Capabilities(
@@ -474,6 +509,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
 
     from .age_tail import UKAgeTailStageTransform
+    from .carers_allowance_take_up import UKCarersAllowanceTakeUpStageTransform
     from .cgt_asset_type import UKCGTAssetTypeStageTransform, UKCGTBADRParameters
     from .cgt_imputation import UKCGTPolicyParameters, uk_cgt_spine_stage_transform
     from .cgt_residential_split import UKCGTResidentialSplitStageTransform
@@ -483,8 +519,10 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     )
     from .cgt_support import UKCGTSupportSplitStageTransform
     from .child_benefit_take_up import UKChildBenefitTakeUpStageTransform
+    from .childcare_copy_take_up import UKChildcareCopyTakeUpStageTransform
     from .etb_services import UKETBServicesStageTransform
     from .etb_vat import UKETBVATStageTransform
+    from .frs_annual_income import UKFRSAnnualIncomeStageTransform
     from .frs_brma import UKFRSBRMAStageTransform
     from .frs_council_tax import UKFRSCouncilTaxStageTransform
     from .frs_disability import UKFRSDisabilityStageTransform
@@ -523,6 +561,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .uc_capital_coherence import UKUCCapitalCoherenceStageTransform
     from .uc_deduction_attributes import UKUCDeductionAttributesStageTransform
     from .uc_reporter_redraw import UKUCReporterRedrawStageTransform
+    from .uc_take_up import UKUCTakeUpStageTransform
     from .was_lisa import UKWASLISAStageTransform
     from .was_wealth import UKWASWealthStageTransform
 
@@ -683,6 +722,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             "frs_hmrc_spine_leaves": UKFRSHMRCSpineLeavesStageTransform(
                 raw_dir, stage=stages["frs_hmrc_spine_leaves"]
             ),
+            "frs_annual_income_spells": UKFRSAnnualIncomeStageTransform(
+                raw_dir, stage=stages["frs_annual_income_spells"]
+            ),
             "spi_support_channel": UKSPISupportChannelStageTransform(
                 stage=stages["spi_support_channel"],
                 sample_fraction=sample_fraction,
@@ -715,6 +757,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             "uc_capital_coherence": UKUCCapitalCoherenceStageTransform(
                 stage=stages["uc_capital_coherence"]
             ),
+            "uc_take_up": UKUCTakeUpStageTransform(
+                stage=stages["uc_take_up"], engine=engine
+            ),
             "uc_legacy_closure_take_up": UKLegacyClosureTakeUpStageTransform(
                 stage=stages["uc_legacy_closure_take_up"]
             ),
@@ -723,6 +768,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             ),
             "child_benefit_take_up": UKChildBenefitTakeUpStageTransform(
                 stage=stages["child_benefit_take_up"], engine=engine
+            ),
+            "carers_allowance_take_up": UKCarersAllowanceTakeUpStageTransform(
+                stage=stages["carers_allowance_take_up"], engine=engine
             ),
             "uc_deduction_attributes": UKUCDeductionAttributesStageTransform(
                 stage=stages["uc_deduction_attributes"]
@@ -768,6 +816,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
                 stage=stages["private_school_attendance"],
                 engine=engine,
                 calibration_year=calibration_year,
+            ),
+            "childcare_copy_take_up": UKChildcareCopyTakeUpStageTransform(
+                contract=contract, stage=stages["childcare_copy_take_up"]
             ),
             "age_tail": UKAgeTailStageTransform(stage=stages["age_tail"]),
         }

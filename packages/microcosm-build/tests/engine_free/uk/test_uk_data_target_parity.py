@@ -95,6 +95,11 @@ def test_a43e8c5_additions_are_named() -> None:
     assert covers("national_ons_lfs_employment") == ["ons_labour_market"]
     band_d = rows["local_council_tax_band_d_rate"]["fence"]["origin"]
     assert "housing/council_tax_net" in band_d
+    # uk-data#482 adds the eight per-band amounts beside Band D; the reason
+    # names them, so none is ported as a target (microcosm#1278).
+    band_d_reason = rows["local_council_tax_band_d_rate"]["reason"]
+    assert "uk-data#482" in band_d_reason
+    assert "band_A_amount" in band_d_reason and "band_H_amount" in band_d_reason
     outliers = rows["credibility_local_council_tax_outliers"]
     assert (outliers["status"], outliers["classification"]) == (
         "ported_local_declared",

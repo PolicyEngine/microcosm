@@ -451,13 +451,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "a326d26c249b8b359284f739fe4327180a7c86b9c21b8994cf270b9c0e27787f"
+    "cf7df0ce75fcb6b66cdba6f706ed777aca9550a966f364cef6c3c2c5f7780813"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "5bed933d2e261e3c4f0bfaa3ae949e9623a5a70c968eaaf4194e70b72df0b728"
+    "cb12e74aed6397667b17d5cf770161cf01df721f796ddc244ae9b6945dcf3605"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "2009911edabae63ab2b31d9d50588754fc40129aac952d4a2be6f17e1a8a736b"
+    "fcebd763a4e9c427615ca935b019de43bc49e7dffbcece54181c21576bdcc372"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -520,12 +520,14 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
         "stage_health",
         "transferred",
     ),
+    "uk_stage_frs_annual_income_spells": ("stage_health", "transferred"),
     "uk_stage_spi_support_channel_mass": ("stage_health", "transferred"),
     "uk_stage_hmrc_spi_income_spine_identity": (
         "stage_health",
         "transferred",
     ),
     "uk_stage_spi_benefit_coherence": ("stage_health", "transferred"),
+    "uk_stage_uc_take_up": ("stage_health", "transferred"),
     "uk_stage_pension_credit_take_up": ("stage_health", "transferred"),
     "uk_stage_child_benefit_take_up": ("stage_health", "transferred"),
     "uk_stage_cgt_incidence_clone_mass": ("stage_health", "transferred"),
@@ -633,9 +635,11 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_stage_etb_services_support",
         "uk_stage_etb_services_support_pricing",
         "uk_stage_frs_hmrc_spine_leaves_signal",
+        "uk_stage_frs_annual_income_spells",
         "uk_stage_spi_support_channel_mass",
         "uk_stage_hmrc_spi_income_spine_identity",
         "uk_stage_spi_benefit_coherence",
+        "uk_stage_uc_take_up",
         "uk_stage_pension_credit_take_up",
         "uk_stage_child_benefit_take_up",
         "uk_stage_cgt_incidence_clone_mass",
@@ -867,6 +871,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_etb_services_support_pricing",
             "uk_stage_etb_vat_support",
             "uk_stage_frs_hmrc_spine_leaves_signal",
+            "uk_stage_frs_annual_income_spells",
             "uk_stage_frs_relationships_composition",
             "uk_stage_high_value_home_support_mass",
             "uk_stage_hmrc_cgt_asset_type_spine_summary",
@@ -888,6 +893,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_spi_support_channel_mass",
             "uk_stage_student_loans_realization",
             "uk_stage_uc_deduction_attributes",
+            "uk_stage_uc_take_up",
             "uk_stage_was_lisa_support",
             "uk_stage_was_wealth_coherence",
             "uk_stage_was_wealth_support",
@@ -931,10 +937,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "a52d74be5d8a8af05cb37b6d3643038de8d8491761a79d7bdbea1048aaee710d"
+            "985f54966ef25bfd7f778cb33ad501fd2e7d4c036f00245518bd1fd448ef9c7d"
         ),
         "policy_sha256": (
-            "e258e8712b7ada5796f7e7e446698a5ddabc6c793f7633093d07bd5d3197631b"
+            "2b4995c6389870fd54ffd815f40d269facb593f1131c4e3fa3c5fa55e2869d24"
         ),
     },
     "calibration_seam": {
@@ -947,10 +953,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "3c876c1d8927a5b31b1a3373ee6ea09c005322838efff967d7148531caf05594"
+            "85aaa1f2a7a9d295c12db01698c4ba0e2c3724ab6051d68966f49e5d8a3427f5"
         ),
         "policy_sha256": (
-            "939309226c43641ded9402ab47b7b12b0c46fa5165f73da5ced9d97a38985d02"
+            "d7bda5f6771845ffc5bf591ae45f2618885f51ebeb48fcb96538a2a3b0ef6a11"
         ),
     },
 }
@@ -6427,10 +6433,12 @@ def _uk_brma_floor_verdict_warnings(diagnostics: Mapping) -> list[str]:
     """BRMA rows whose ten-household verdict is missing or disagrees.
 
     microcosm#1262: every BRMA row carries ``metadata.carrier_floor_met``, and
-    a row withholds its model figures exactly when the verdict is false, so
-    the contract can see a thin row the build never flagged. María's ruling of
-    2026-10-19 on the fourth review of #1305: this is warned, not refused. The
-    warnings give counts only, never a row.
+    a row withholds its model figures exactly when the verdict is false or the
+    row is withheld beside a thin one (``metadata.complementary_withholding``,
+    Vahid's second review of #1333), so the contract can see a thin row the
+    build never flagged. María's ruling of 2026-10-19 on the fourth review of
+    #1305: this is warned, not refused. The warnings give counts only, never a
+    row.
     """
 
     missing = disagreeing = 0
@@ -6439,9 +6447,13 @@ def _uk_brma_floor_verdict_warnings(diagnostics: Mapping) -> list[str]:
         if not isinstance(metadata, Mapping) or not _uk_brma_row(metadata):
             continue
         verdict = metadata.get("carrier_floor_met")
+        withheld = bool(metadata.get("model_figures_withheld"))
+        complementary = metadata.get("complementary_withholding") is True
         if not isinstance(verdict, bool):
             missing += 1
-        elif verdict == bool(metadata.get("model_figures_withheld")):
+        elif (not verdict and (complementary or not withheld)) or (
+            verdict and withheld != complementary
+        ):
             disagreeing += 1
     warnings = []
     if missing:
@@ -6745,6 +6757,31 @@ def validate_release_dir(
                 validate_source_enrichment_candidate(
                     release_dir,
                     parent_h5=parent_h5,
+                    artifact_root=artifact_root,
+                    require_compatibility=True,
+                    compatibility_wheels=compatibility_wheels,
+                )
+                return []
+            from microcosm.data.compatibility_recertification import (
+                RECERTIFICATION_RELEASE_TYPE,
+                validate_recertification_candidate,
+            )
+
+            if manifest_probe["release_type"] == RECERTIFICATION_RELEASE_TYPE:
+                # A published parent's bytes, re-measured under a newer
+                # engine: its own contract replays the parent's on the
+                # carried files. The child's H5 is the parent's, so it takes
+                # no parent_h5.
+                if parent_h5 is not None:
+                    raise ReleaseContractError(
+                        release_dir,
+                        [
+                            "a compatibility recertification republishes its "
+                            "parent's H5 unchanged and takes no parent_h5"
+                        ],
+                    )
+                validate_recertification_candidate(
+                    release_dir,
                     artifact_root=artifact_root,
                     require_compatibility=True,
                     compatibility_wheels=compatibility_wheels,

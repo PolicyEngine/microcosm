@@ -675,6 +675,9 @@ class UKFullProblemKernel(_TargetKernel):
             national_rows=national_rows,
             target_weight_rule=str(context.params["target_weight_rule"]),
             allow_empty_local_binding=inputs.country_only,
+            # The local binding adjudications are reviewed on the build's
+            # review date, not the wall clock (microcosm#1278).
+            now=date.fromisoformat(str(context.params["review_date"])),
         )
         problem = build_constraint_matrix(frame, prepared.target_set, "household")
         if problem.skipped:
@@ -847,6 +850,9 @@ def append_uk_target_nodes(
                 **common,
                 "sample_fraction": float(sample_fraction),
                 "target_weight_rule": target_weight_rule,
+                # The binding adjudications' review date; the rotated holdout
+                # inherits it with these parameters (microcosm#1278).
+                "review_date": review_date,
             },
             sources=("uk_ladder",),
             artifact_inputs=(

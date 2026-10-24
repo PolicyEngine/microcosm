@@ -934,6 +934,7 @@ class TestUKCountryPackage:
             "hmrc_property_rental_income_facts.json",
             "hmrc_stamp_tax_facts.json",
             "dwp_move_to_uc_facts.json",
+            "dwp_uc_award_band_facts.json",
             "obr_hvcts_costing_facts.json",
             "hmrc_itl_taxpayer_counts.json",
             "hmrc_uprating_engine_pins.json",
@@ -1037,8 +1038,11 @@ class TestUKCountryPackage:
         # microcosm#1240 high_value_home_support between them, microcosm#1112
         # regional_home_values after it, and microcosm#1095 property_purchases
         # after property_components and uc_legacy_closure_take_up after
-        # uc_capital_coherence.
-        assert len(spec.sources.stages) == 45
+        # uc_capital_coherence; microcosm#1319 carers_allowance_take_up after
+        # child_benefit_take_up; childcare_copy_take_up last, after every copy
+        # stage; microcosm#1334 uc_take_up after uc_capital_coherence and
+        # frs_annual_income_spells after frs_hmrc_spine_leaves.
+        assert len(spec.sources.stages) == 49
         assert not {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.intersection(
             stage.stage for stage in spec.sources.stages
         )
@@ -1082,6 +1086,7 @@ class TestExistingPackagesGeneralize:
             "hmrc_property_rental_income_facts.json",
             "hmrc_stamp_tax_facts.json",
             "dwp_move_to_uc_facts.json",
+            "dwp_uc_award_band_facts.json",
             "obr_hvcts_costing_facts.json",
             "hmrc_itl_taxpayer_counts.json",
             "hmrc_uprating_engine_pins.json",
@@ -1173,8 +1178,8 @@ class TestExistingPackagesGeneralize:
 
         references = {reference.name: reference for reference in spec.target_references}
         assert (
-            len(references) == 1319
-        )  # microcosm#1095: + 4, the two national 15_19 sex bands split into ages 15, 16-17 and 18-19; microcosm#1106: + 13 SPI property amounts; microcosm#1113: + 1 ONS 07.2.2 household road fuel; PolicyEngine/chronicle#280 lane: 705 + 33 HMRC liabilities rows (Table 2.5, three
+            len(references) == 1338
+        )  # childcare costing fixes: + 5, DfE funded childcare by single age (working parent 9-11 months and 1-3, universal nursery 3; the age-4 cells are signed out); item 6: + 11, the UK's ONS single years 3 to 6 and England's 0 to 6; microcosm#1278: + 3, the ONS single years 0, 1 and 2 for all persons; microcosm#1095: + 4, the two national 15_19 sex bands split into ages 15, 16-17 and 18-19; microcosm#1106: + 13 SPI property amounts; microcosm#1113: + 1 ONS 07.2.2 household road fuel; PolicyEngine/chronicle#280 lane: 705 + 33 HMRC liabilities rows (Table 2.5, three
         # measures by eleven bands) + 26 SPI savings-interest rows (two measures by
         # thirteen bands) + 360 SPI Table 3.11 region-tier rows (three measures by
         # ten regional bands over twelve areas); microcosm#905: 424 - 18 country
@@ -1456,9 +1461,11 @@ class TestUKGatesManifest:
             "uk_stage_etb_services_support",
             "uk_stage_etb_services_support_pricing",
             "uk_stage_frs_hmrc_spine_leaves_signal",
+            "uk_stage_frs_annual_income_spells",
             "uk_stage_spi_support_channel_mass",
             "uk_stage_hmrc_spi_income_spine_identity",
             "uk_stage_spi_benefit_coherence",
+            "uk_stage_uc_take_up",
             "uk_stage_pension_credit_take_up",
             "uk_stage_child_benefit_take_up",
             "uk_stage_cgt_incidence_clone_mass",
@@ -1579,9 +1586,11 @@ class TestUKGatesManifest:
             "uk_stage_etb_services_support",
             "uk_stage_etb_services_support_pricing",
             "uk_stage_frs_hmrc_spine_leaves_signal",
+            "uk_stage_frs_annual_income_spells",
             "uk_stage_spi_support_channel_mass",
             "uk_stage_hmrc_spi_income_spine_identity",
             "uk_stage_spi_benefit_coherence",
+            "uk_stage_uc_take_up",
             "uk_stage_pension_credit_take_up",
             "uk_stage_child_benefit_take_up",
             "uk_stage_cgt_incidence_clone_mass",

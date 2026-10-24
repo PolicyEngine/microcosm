@@ -22,9 +22,30 @@ def test_every_spine_tenure_type_has_a_category() -> None:
     assert set(UK_OWNER_TENURE_CATEGORIES) < set(UK_TENURE_CATEGORIES)
 
 
+def _tenure_types(binding) -> set[str]:
+    (predicate,) = [
+        predicate
+        for predicate in binding["filters"]
+        if predicate["variable"] == "tenure_type"
+    ]
+    return set(predicate["in"]) if "in" in predicate else {predicate["equals"]}
+
+
 def test_consumers_derive_their_views_from_the_shared_categories() -> None:
-    assert set(local_targets._TENURE_METRIC_CATEGORIES.values()) == set(
-        UK_TENURE_CATEGORIES
+    # The local tenure metrics' declarations partition the engine's tenure
+    # types by the shared grouping: one category per metric, each once.
+    tenure_types = {
+        name: _tenure_types(binding)
+        for name, binding in local_targets.local_metric_bindings("la").items()
+        if name.startswith("tenure/")
+    }
+    assert sorted(
+        category
+        for types in tenure_types.values()
+        for (category,) in [{UK_TENURE_TYPE_TO_CATEGORY[value] for value in types}]
+    ) == sorted(UK_TENURE_CATEGORIES)
+    assert sorted(value for types in tenure_types.values() for value in types) == (
+        sorted(UK_TENURE_TYPE_TO_CATEGORY)
     )
     # One WAS flag per category but the base level, in category order.
     assert UK_WAS_TENURE_PREDICTORS == tuple(

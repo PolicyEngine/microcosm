@@ -16,6 +16,7 @@ from microcosm.build.uk_runtime.lcfs_consumption import (
     assign_recipient_has_fuel,
     clean_lcfs_consumption_table,
     derive_energy_from_lcfs,
+    impute_lcfs_consumption,
     recipient_predictors,
     support_clip_to_donor,
 )
@@ -2923,3 +2924,27 @@ def test_gas_payer_draws_rank_likely_payers_and_draw_positive_gas() -> None:
             household_ids=np.arange(60) + 1,
             energy=energy,
         )
+
+
+def test_lcfs_draws_move_only_for_the_households_whose_inputs_move() -> None:
+    """Keyed on household ids: reordering, one changed and one added move no other."""
+
+    from test_support.microcosm_build.uk_keyed_draws import (
+        assert_draws_are_keyed_on_ids,
+    )
+
+    donor = clean_lcfs_consumption_table(*_synthetic_lcfs_donor())
+    recipient = donor.iloc[:10].loc[:, list(UK_LCFS_CONSUMPTION_PREDICTORS)]
+
+    def draw(rows: pd.DataFrame, ids: np.ndarray) -> pd.DataFrame:
+        return impute_lcfs_consumption(
+            donor, rows, seed=0, n_estimators=5, record_ids=ids
+        ).draws.reset_index(drop=True)
+
+    assert_draws_are_keyed_on_ids(
+        draw,
+        recipient,
+        np.arange(1, len(recipient) + 1),
+        perturbed_column="hbai_household_net_income",
+        perturbed_value=777.0,
+    )

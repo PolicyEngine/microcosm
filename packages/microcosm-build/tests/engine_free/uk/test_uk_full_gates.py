@@ -123,7 +123,9 @@ def evidence(monkeypatch):
             {"person_id": ids, "person_benunit_id": ids, "person_household_id": ids}
         ),
         benunit=pd.DataFrame({"benunit_id": ids}),
-        household=pd.DataFrame({"household_id": ids, "income": [1.0, 1.0]}),
+        household=pd.DataFrame(
+            {"household_id": ids, "source_household_id": ids, "income": [1.0, 1.0]}
+        ),
         time_period="2024",
         weight_kind=weights.kind,
         household_weights=weights.values,

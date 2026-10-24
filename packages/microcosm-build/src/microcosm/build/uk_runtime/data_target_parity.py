@@ -443,7 +443,7 @@ _CONCERN_DECLARATIONS: tuple[dict[str, Any], ...] = (
         "concern_id": "local_council_tax_band_d_rate",
         "status": "reviewed_exclusion",
         "classification": "non_linear",
-        "reason": "Band D currency amounts are per-rate, not additive household controls.",
+        "reason": "Band D currency amounts are per-rate, not additive household controls. So are the eight per-band amounts, band_A_amount to band_H_amount, that uk-data#482 (open, so not in the a43e8c5 inventory) adds to storage/la_council_tax.csv: each English authority's 2026-27 amount for one band (MHCLG Table 9, England only), its Band D amount times the band's statutory ratio. None of the eight is to be ported as a target either.",
         "evidence": "uk-data targets/sources/la_council_tax.py module doctrine; no Microcosm contract row.",
         "fence": _fence(
             "uk-data emitted each authority's Band D amount as a registry target but never as a column of the additive LA loss; Band D entered that loss only as the multiplier in England's housing/council_tax_net proxy (MHCLG taxbase after support times Band D).",

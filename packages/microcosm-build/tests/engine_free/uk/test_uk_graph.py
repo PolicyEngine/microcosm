@@ -56,9 +56,11 @@ def test_uk_spine_graph_contains_every_manifest_stage() -> None:
     # microcosm#1095 the spi_benefit_coherence pass after uc_reporter_redraw,
     # microcosm#1106 property_components after the regional uprating, and
     # microcosm#1240 high_value_home_support between those two; microcosm#1095
-    # adds property_purchases and uc_legacy_closure_take_up, and microcosm#1112
-    # regional_home_values.
-    assert len(expected) == 45
+    # adds property_purchases and uc_legacy_closure_take_up, microcosm#1112
+    # regional_home_values, microcosm#1319 carers_allowance_take_up, the
+    # copies' childcare re-draw childcare_copy_take_up, and microcosm#1334
+    # uc_take_up and frs_annual_income_spells.
+    assert len(expected) == 49
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(expected)
     assert set(expected) <= ids
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(ids)
@@ -187,6 +189,35 @@ def test_uc_relationship_helper_changes_affected_kernel_hashes(monkeypatch) -> N
     for ref in affected_refs:
         assert registry.implementation_hash(ref) != before[ref]
     assert registry.implementation_hash(control_ref) == before[control_ref]
+
+
+def test_spi_income_source_changes_invalidate_the_stages_that_run_it(monkeypatch):
+    # The SPI income stage's module only imports the imputation, the band-donor
+    # resample and its receipt from spi_income, so spi_income is bound as the
+    # stage's helper; the landlords' stage already binds it (microcosm#1278).
+    from microcosm.build.uk_runtime import spi_income
+
+    graph = uk_spine_graph()
+    registry = uk_registry(graph=graph)
+    affected = [
+        graph.node(stage).kernel
+        for stage in ("hmrc_spi_income_spine", "property_components")
+    ]
+    control = graph.node("frs_council_tax").kernel
+    before = {ref: registry.implementation_hash(ref) for ref in (*affected, control)}
+    helper_path = Path(spi_income.__file__).resolve()
+    original = Path.read_bytes
+
+    def changed_helper_bytes(path: Path) -> bytes:
+        content = original(path)
+        if path.resolve() == helper_path:
+            return content + b"\n# A helper-only source change.\n"
+        return content
+
+    monkeypatch.setattr(Path, "read_bytes", changed_helper_bytes)
+    for ref in affected:
+        assert registry.implementation_hash(ref) != before[ref]
+    assert registry.implementation_hash(control) == before[control]
 
 
 def test_uk_adapter_source_changes_invalidate_all_consuming_stages(monkeypatch):

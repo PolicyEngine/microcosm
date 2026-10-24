@@ -269,6 +269,12 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.dla_m_category",
     "person.dla_sc_category",
     "person.employment_sector",
+    "person.contributory_benefits_annual_share",
+    "person.employment_income_annual_share",
+    "person.employment_income_other_spells",
+    "person.private_pension_income_annual_share",
+    "person.self_employment_income_annual_share",
+    "person.self_employment_income_other_spells",
     "person.esa_health_condition_proxy",
     "person.esa_includes_support_component",
     "person.esa_support_group_proxy",
@@ -323,6 +329,7 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.would_claim_carers_allowance",
     "person.would_claim_marriage_allowance",
     "person.would_claim_scp",
+    "person.max_free_entitlement_hours_used",
     "person.person_is_spi_income_band_carrier",
     "person.person_is_spi_income_recipient",
     # microcosm#1063 c9 (ruling 2026-10-02): every declared stage output the
@@ -391,6 +398,10 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "household.itl2_code",
     "household.itl3_code",
     "household.ward_code",
+    # War Widow's or Widower's Pension, split out of bsp_reported (#1222,
+    # pe-uk#2382). The enhanced FRS still adds FRS benefit code 9 into
+    # bsp_reported, so its surface has no such input.
+    "person.war_widows_pension_reported",
 )
 
 UK_KNOWN_MISSING_REFERENCE_EXPORT_COLUMNS: tuple[str, ...] = (

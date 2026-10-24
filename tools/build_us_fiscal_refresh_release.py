@@ -54,6 +54,11 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from microcosm.build.calibration_epoch_telemetry import (
+    CALIBRATION_EPOCH_EVERY,
+    calibration_epoch_stride,
+    forwards_calibration_epoch,
+)
 from microcosm.build.gates import (
     GateResult,
     TargetFitRequirement,
@@ -11558,8 +11563,25 @@ def _assert_exact_k_original_pool_alignment(
 _ACTIVE_EMITTER: LocalTelemetryEmitter | None = None
 
 
+def _calibration_epoch_every(args: argparse.Namespace) -> int:
+    """The shared calibration epoch stride over this build's solves.
+
+    ``--dense-default-dataset`` solves once; the L0 and exact-k paths solve a
+    selection and then its refit, each for ``--epochs`` (an exact-k ladder
+    whose ``k`` is the whole pool solves once, so two is the most it solves).
+    """
+
+    solves = 1 if args.dense_default_dataset else 2
+    return calibration_epoch_stride(int(args.epochs) * solves)
+
+
 class _BuildProgress:
-    """Report progress to an emitter and, independently, a staging bundle."""
+    """Report progress to an emitter and, independently, a staging bundle.
+
+    Both receive the same calibration epochs: each solve's first and last and
+    every ``epoch_every``-th epoch, the rule the UK build follows too
+    (microcosm#1292).
+    """
 
     def __init__(
         self,
@@ -11568,11 +11590,13 @@ class _BuildProgress:
         emitter: LocalTelemetryEmitter,
         staging_bundle: StagingRunBundleWriter | None,
         staging_opt_out_reason: str | None = None,
+        epoch_every: int = CALIBRATION_EPOCH_EVERY,
     ) -> None:
         self.run_id = run_id
         self.emitter = emitter
         self.staging_bundle = staging_bundle
         self.staging_opt_out_reason = staging_opt_out_reason
+        self.epoch_every = epoch_every
 
     @property
     def repo_id(self) -> str | None:
@@ -11611,6 +11635,8 @@ class _BuildProgress:
             )
 
     def calibration_progress(self, event: dict[str, object]) -> None:
+        if not forwards_calibration_epoch(event, every=self.epoch_every):
+            return
         self.emitter.transition_calibration_progress(event)
         if self.staging_bundle is not None:
             self.staging_bundle.calibration_progress(event)
@@ -12313,12 +12339,14 @@ def _build_progress(
     # can never be marked failed in place of this build's.
     _ACTIVE_PROGRESS = None
     run_id = run_id or args.staging_run_id or release_id
+    epoch_every = _calibration_epoch_every(args)
     if args.no_staging:
         _ACTIVE_PROGRESS = _BuildProgress(
             run_id=run_id,
             emitter=emitter,
             staging_bundle=None,
             staging_opt_out_reason="--no-staging",
+            epoch_every=epoch_every,
         )
         return _ACTIVE_PROGRESS
     if not args.staging_dir and not args.staging_repo_id:
@@ -12343,6 +12371,7 @@ def _build_progress(
         run_id=run_id,
         emitter=emitter,
         staging_bundle=staging_bundle,
+        epoch_every=epoch_every,
     )
     return _ACTIVE_PROGRESS
 
@@ -12890,6 +12919,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             emitter=_ACTIVE_EMITTER,
             staging_bundle=None,
             staging_opt_out_reason="dry run",
+            epoch_every=_calibration_epoch_every(args),
         )
         _ACTIVE_PROGRESS = telemetry
     if telemetry is not None:
