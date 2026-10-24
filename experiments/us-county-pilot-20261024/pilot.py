@@ -56,41 +56,29 @@ INPUTS = Path("/root/inputs")
 #: each folder's SHA256SUMS / the README).
 ARTIFACTS = Path("/Users/maxghenis/PolicyEngine/_build_artifacts/lwi-county-20261024")
 CHRONICLE = Path("/Users/maxghenis/PolicyEngine/chronicle")
+#: Immutable Chronicle revision for the PEP and SOI county files.
+CHRONICLE_REVISION = "200bf6d559cf85bc9c2c5ee4df8c50ba0f5d09d1"
+CHRONICLE_MEMBERS = {
+    "pep_county_2024": "db/data/census/pep_county_2024/co-est2024-alldata.csv",
+    "soi_county_2022": "db/data/irs_soi/county_2022/22incyallnoagi.csv",
+}
+#: sha256 of every public input's bytes; a run refuses any other bytes.
+INPUT_SHA256 = {
+    "acs5_2024_B01003_county": "c83ef6e45601455855312f2e26ea755cd43a7c65ee58662e4cb4fad122a70bf2",
+    "acs5_2024_B11001_county": "a0c2f64ad5f7172cded551364fc15d6bc37bbbc75ac135f7be00c8622d31d01a",
+    "acs5_2024_B19001_county": "731d54b9443455987e088c4e65c848034c99ef19fb20aef60b87dc481450b3c2",
+    "acs5_2024_B19013_county": "c574579d1f648472db366ea4726630c15f8d295ff9294e7dc9156b461d7e83a1",
+    "acs5_2024_B19025_county": "8def9b6a5684a4b499d3ed0e23737358882ea4ad5627a06f7db5a63114bf7589",
+    "acs5_2024_B19051_county": "919b6abbf7e46452761a04b1051a3e6bf085808b2d251a554d10f82940c4f5d3",
+    "acs5_2024_B19061_county": "d3948e8118f7a5c5bbd82d2802591bb6edf184e012e227b478d71edd860f59f4",
+    "pep_county_2024": "abcc8720d669e793bbfdcd440eeec37a78db3b452adbe4ccd1eadf7c72b522b9",
+    "soi_county_2022": "2c04ff235bcbacb990b316bf79c7c628089a9a4c1dd9593ac51f74a109b13343",
+    "crosswalk": "13ad002564e30e6dcd1df112fdaa985f2cd0cdb908f7f3017cd2723db294cff8",
+    "block_mcd": "fe56bf38a30921e68360edc4e0ffabd2dae64ade6072761ed887c907bfadb653",
+    "tract_puma": "5262f460b2c8dbe86b00549e916317b1791fdc595c9af72ab18f6f6a67040531",
+    "tract_population": "2b31267f8391665b41d76ba083671efb5223347f70aee71482c0eb4faf946aa2",
+}
 
-#: Person-level stored inputs summed to the household. Earnings (wages plus
-#: self-employment) is LWI's primary measure and ACS B19061's concept.
-EARNINGS_COLUMNS = (
-    "employment_income_before_lsr",
-    "self_employment_income_before_lsr",
-)
-#: Other person-level income inputs, carried when the release stores them, so
-#: the household-income concept of ACS B19001/B19025 can be approximated.
-OTHER_INCOME_COLUMNS = (
-    "taxable_interest_income",
-    "tax_exempt_interest_income",
-    "qualified_dividend_income",
-    "non_qualified_dividend_income",
-    "rental_income",
-    "farm_income",
-    "partnership_s_corp_income",
-    "estate_income",
-    "social_security_retirement",
-    "social_security_disability",
-    "social_security_survivors",
-    "social_security_dependents",
-    "ssi_reported",
-    "tanf_reported",
-    "public_assistance_income",
-    "taxable_private_pension_income",
-    "tax_exempt_private_pension_income",
-    "taxable_ira_distributions",
-    "unemployment_compensation",
-    "veterans_benefits",
-    "workers_compensation",
-    "alimony_income",
-    "child_support_received",
-    "miscellaneous_income",
-)
 PERSON_STRUCT = (
     "person_id",
     "person_household_id",
@@ -136,6 +124,13 @@ def _image() -> modal.Image:
 
 app = modal.App("lwi-county-pilot")
 volume = modal.Volume.from_name(VOLUME_NAME, create_if_missing=True)
+
+
+def _verified(name: str, raw: bytes) -> bytes:
+    digest = hashlib.sha256(raw).hexdigest()
+    if digest != INPUT_SHA256[name]:
+        raise SystemExit(f"{name}: sha256 {digest} != pinned {INPUT_SHA256[name]}")
+    return raw
 
 
 def _sha256(path: Path) -> str:
@@ -201,33 +196,10 @@ def extract(ct_texts: dict[str, str]) -> dict:
         )
     weights = household[weight_column].to_numpy(np.float64)
 
-    index = pd.Index(household["household_id"].to_numpy())
-    position = index.get_indexer(person["person_household_id"].to_numpy())
-    if (position < 0).any():
-        raise SystemExit("persons reference households missing from the table")
-    n = len(household)
-
-    def household_sum(values) -> np.ndarray:
-        return np.bincount(
-            position, weights=np.asarray(values, np.float64), minlength=n
-        )
-
-    measures = pd.DataFrame({"household_id": household["household_id"].to_numpy()})
-    measures["n_persons"] = np.bincount(position, minlength=n).astype(np.float64)
-    missing = [c for c in EARNINGS_COLUMNS if c not in person.columns]
-    if missing:
-        raise SystemExit(f"release lacks earnings inputs {missing}")
-    for column in EARNINGS_COLUMNS:
-        measures[column] = household_sum(person[column].fillna(0.0))
-    measures["earnings"] = measures[list(EARNINGS_COLUMNS)].sum(axis=1)
-    carried = [c for c in OTHER_INCOME_COLUMNS if c in person.columns]
-    report["other_income_columns_carried"] = carried
-    report["other_income_columns_absent"] = [
-        c for c in OTHER_INCOME_COLUMNS if c not in person.columns
-    ]
-    for column in carried:
-        measures[column] = household_sum(person[column].fillna(0.0))
-    measures["household_income_approx"] = measures[["earnings", *carried]].sum(axis=1)
+    measures, measure_report = county_targets.household_measures(
+        household, person, weights
+    )
+    report.update(measure_report)
 
     geo = pd.DataFrame({"household_id": household["household_id"].to_numpy()})
     for column in (
@@ -299,6 +271,72 @@ def extract(ct_texts: dict[str, str]) -> dict:
     return report
 
 
+#: Business-income inputs whose overlap with the earnings concept is audited
+#: by spine before any of them joins a measure.
+AUDIT_INCOME_COLUMNS = (
+    "employment_income_before_lsr",
+    "self_employment_income_before_lsr",
+    "sstb_self_employment_income_before_lsr",
+    "farm_income",
+    "farm_operations_income",
+    "farm_rent_income",
+    "partnership_income",
+    "s_corp_income",
+    "partnership_self_employment_net_earnings",
+)
+
+
+@app.function(
+    image=_image(),
+    volumes={VOLUME_ROOT: volume},
+    cpu=4.0,
+    memory=64 * 1024,
+    timeout=3600,
+)
+def audit_income() -> dict:
+    """Weighted totals, nonzero counts and co-occurrence by household spine."""
+    import numpy as np
+    import pandas as pd
+
+    from microcosm.frame import read_frame_table
+
+    path = VOLUME_ROOT / "release" / HF_FILENAME
+    if _sha256(path) != HF_SHA256:
+        raise SystemExit(f"{HF_FILENAME} does not match the pinned sha256")
+    with pd.HDFStore(path, mode="r") as store:
+        household = read_frame_table(store, "household")
+        person = read_frame_table(store, "person")
+    index = pd.Index(household["household_id"].to_numpy())
+    position = index.get_indexer(person["person_household_id"].to_numpy())
+    weight = household["household_weight"].to_numpy(np.float64)[position]
+    spine = household["household_spine"].astype(str).to_numpy()[position]
+    columns = [c for c in AUDIT_INCOME_COLUMNS if c in person.columns]
+    values = {c: person[c].fillna(0.0).to_numpy(np.float64) for c in columns}
+    report: dict = {"columns": columns, "by_spine": {}}
+    for name in sorted(set(spine)):
+        rows = spine == name
+        w = weight[rows]
+        entry = {"persons": int(rows.sum())}
+        for column in columns:
+            v = values[column][rows]
+            entry[column] = {
+                "nonzero": int((v != 0).sum()),
+                "weighted_sum": float((w * v).sum()),
+            }
+        se = values["self_employment_income_before_lsr"][rows] != 0
+        for column in ("sstb_self_employment_income_before_lsr", "farm_income"):
+            if column in values:
+                other = values[column][rows] != 0
+                entry[f"{column}_with_self_employment"] = int((other & se).sum())
+        report["by_spine"][name] = entry
+    if "business_is_sstb" in person.columns:
+        flag = person["business_is_sstb"].fillna(False).astype(bool).to_numpy()
+        report["business_is_sstb_by_spine"] = {
+            name: int(flag[spine == name].sum()) for name in sorted(set(spine))
+        }
+    return report
+
+
 @app.function(
     image=_image(),
     volumes={VOLUME_ROOT: volume},
@@ -325,16 +363,33 @@ def _source_bytes() -> dict[str, bytes]:
     sources = {
         path.stem: path.read_bytes() for path in sorted(acs.glob("acs5_2024_*.json"))
     }
-    for name, member in (
-        ("pep_county_2024", "db/data/census/pep_county_2024/co-est2024-alldata.csv"),
-        ("soi_county_2022", "db/data/irs_soi/county_2022/22incyallnoagi.csv"),
-    ):
+    for name, member in CHRONICLE_MEMBERS.items():
         sources[name] = subprocess.run(
-            ["git", "-C", str(CHRONICLE), "show", f"origin/main:{member}"],
+            ["git", "-C", str(CHRONICLE), "show", f"{CHRONICLE_REVISION}:{member}"],
             check=True,
             capture_output=True,
         ).stdout
-    return sources
+    if sorted(sources) != sorted(k for k in INPUT_SHA256 if k not in _CT_FILES):
+        raise SystemExit(f"unexpected source set {sorted(sources)}")
+    return {name: _verified(name, raw) for name, raw in sources.items()}
+
+
+#: The Connecticut geography files, relative to ARTIFACTS / "ct_sources", and
+#: the text encoding each is decoded with.
+_CT_FILES = {
+    "crosswalk": ("ct_cou_to_cousub_crosswalk.txt", "utf-8-sig"),
+    "block_mcd": ("BlockAssign_ST09_CT_MCD.txt", "utf-8"),
+    "tract_puma": ("tract_puma/2020_Census_Tract_to_2020_PUMA.txt", "utf-8-sig"),
+    "tract_population": ("tract_pop_2020/dec_pl_2020_P1_001N_tract_ct.json", "utf-8"),
+}
+
+
+def _ct_texts() -> dict[str, str]:
+    base = ARTIFACTS / "ct_sources"
+    return {
+        name: _verified(name, (base / path).read_bytes()).decode(encoding)
+        for name, (path, encoding) in _CT_FILES.items()
+    }
 
 
 @app.local_entrypoint()
@@ -346,21 +401,9 @@ def main(
     target_loss_cap: float = 1.0,
 ) -> None:
     if step == "extract":
-        ct = ARTIFACTS / "ct_sources"
-        report = extract.remote(
-            {
-                "crosswalk": (ct / "ct_cou_to_cousub_crosswalk.txt").read_text(
-                    encoding="utf-8-sig"
-                ),
-                "block_mcd": (ct / "BlockAssign_ST09_CT_MCD.txt").read_text(),
-                "tract_puma": (
-                    ct / "tract_puma" / "2020_Census_Tract_to_2020_PUMA.txt"
-                ).read_text(encoding="utf-8-sig"),
-                "tract_population": (
-                    ct / "tract_pop_2020" / "dec_pl_2020_P1_001N_tract_ct.json"
-                ).read_text(),
-            }
-        )
+        report = extract.remote(_ct_texts())
+    elif step == "audit":
+        report = audit_income.remote()
     elif step == "calibrate":
         report = calibrate.remote(
             _source_bytes(),

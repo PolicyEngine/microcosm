@@ -16,7 +16,9 @@ Trained families:
 
 * ``county_households``: ACS 2020-2024 5-year B11001_001E (households).
 * ``county_population``: Census PEP Vintage 2024 county population, July 2024.
-* ``county_earnings``: ACS B19061_001E (aggregate household earnings).
+* ``county_earnings``: ACS B19061_001E (aggregate household earnings), against
+  wages plus all self-employment: base and SSTB Schedule C income on every
+  record, and farm self-employment on donor records (see ``pilot.py``).
 * ``cd_households`` / ``cd_population``: each congressional district's total
   under ``w0``, held so the county rows cannot undo the district fit.
 
@@ -26,11 +28,22 @@ Held-out families (never trained; scored before and after):
 * ``county_soi_wages``: IRS SOI county TY2022 A00200 (wages and salaries).
 * ``county_income``: ACS B19025_001E (aggregate household income), against an
   approximate household income (earnings plus the stored income inputs).
+
+Held-out fit is compared with a rescaling baseline that fits no weights: each
+county's release value times its trained family's target/release ratio. The
+held-out measures are correlated with the trained ones, so beating the release
+is expected; the baseline shows how much the reweighting adds beyond that.
+
+Effective sample size aggregates weight by source household first. Donor
+support clones share a source household, so counting rows would overstate how
+many independent observations a county rests on. Row-level ESS is kept as a
+labelled diagnostic.
 """
 
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
 import json
 import time
@@ -62,6 +75,133 @@ HOLD_SOURCE = f"release_w0:{'populace-us-2024-buildo-acs-local-767312d60'}"
 #: (Kish, from the calibrated weights). Lower bounds, best first.
 RELIABILITY_GRADES = (("A", 300.0), ("B", 100.0), ("C", 30.0), ("D", 0.0))
 SIZE_BANDS = ((0, 10_000), (10_000, 50_000), (50_000, 250_000), (250_000, np.inf))
+
+#: County families, their public sources' unit scale (SOI publishes $ thousands)
+#: and, for held-out families, the trained family whose target/release ratio
+#: rescales them in the no-reweighting baseline.
+COUNTY_FAMILIES = (
+    "county_households",
+    "county_population",
+    "county_earnings",
+    "county_earning_households",
+    "county_soi_wages",
+    "county_income",
+)
+PUBLIC_SCALE = {"county_soi_wages": 1000.0}
+HOLDOUT_BASELINE_DRIVER = {
+    "county_earning_households": "county_households",
+    "county_soi_wages": "county_earnings",
+    "county_income": "county_earnings",
+}
+
+
+ACS_SPINE = "acs_2024_1yr"
+DONOR_SPINE = "asec_puf"
+#: Person-level stored inputs summed to the household. Earnings is wages plus
+#: all self-employment, ACS B19061's concept. The US build's QBI reconciliation
+#: (us_runtime/qbi_inputs.py) routes a person's whole Schedule C amount to the
+#: SSTB leaf when the business is an SSTB, so both leaves are needed on every
+#: record.
+EARNINGS_COLUMNS = (
+    "employment_income_before_lsr",
+    "self_employment_income_before_lsr",
+    "sstb_self_employment_income_before_lsr",
+)
+#: Farm self-employment measured on donor records (ASEC FRSE_VAL or PUF
+#: E02100; us_runtime/farm_business_income.py). ACS SEMP, mapped to the base
+#: self-employment leaf, already includes farm self-employment, so the
+#: transferred farm leaf is not added to ACS records.
+DONOR_ONLY_EARNINGS_COLUMNS = ("farm_operations_income",)
+#: Other person-level income inputs, carried when the release stores them, so
+#: the household-income concept of ACS B19001/B19025 can be approximated.
+#: Farm income is excluded: it is covered by the earnings concept above.
+OTHER_INCOME_COLUMNS = (
+    "taxable_interest_income",
+    "tax_exempt_interest_income",
+    "qualified_dividend_income",
+    "non_qualified_dividend_income",
+    "rental_income",
+    "estate_income",
+    "social_security_retirement",
+    "social_security_disability",
+    "social_security_survivors",
+    "social_security_dependents",
+    "ssi_reported",
+    "tanf_reported",
+    "public_assistance_income",
+    "taxable_private_pension_income",
+    "tax_exempt_private_pension_income",
+    "taxable_ira_distributions",
+    "unemployment_compensation",
+    "veterans_benefits",
+    "workers_compensation",
+    "alimony_income",
+    "child_support_received",
+    "miscellaneous_income",
+)
+#: Partnership and S-corporation income from donor tax detail. ACS counts
+#: partnership income inside SEMP, so these transferred leaves are not added to
+#: ACS records.
+DONOR_ONLY_OTHER_INCOME_COLUMNS = ("partnership_income", "s_corp_income")
+
+
+# ---------------------------------------------------------------------------
+# Household measures
+# ---------------------------------------------------------------------------
+
+
+def household_measures(
+    household: pd.DataFrame, person: pd.DataFrame, weights: np.ndarray
+) -> tuple[pd.DataFrame, dict]:
+    """One row per household of the stored-input measures the county rows use.
+
+    ``earnings`` sums :data:`EARNINGS_COLUMNS` for every record and
+    :data:`DONOR_ONLY_EARNINGS_COLUMNS` for donor-spine records;
+    ``household_income_approx`` adds the carried other-income columns, again
+    with the donor-only ones zeroed on ACS records.
+    """
+
+    index = pd.Index(household["household_id"].to_numpy())
+    position = index.get_indexer(person["person_household_id"].to_numpy())
+    if (position < 0).any():
+        raise ValueError("persons reference households missing from the table")
+    n = len(household)
+    spine = household["household_spine"].astype(str).to_numpy()
+    if not set(spine) <= {ACS_SPINE, DONOR_SPINE}:
+        raise ValueError(f"unexpected household spines {sorted(set(spine))}")
+    donor_person = spine[position] == DONOR_SPINE
+    earning_columns = (*EARNINGS_COLUMNS, *DONOR_ONLY_EARNINGS_COLUMNS)
+    income_columns = (*OTHER_INCOME_COLUMNS, *DONOR_ONLY_OTHER_INCOME_COLUMNS)
+    donor_only = {*DONOR_ONLY_EARNINGS_COLUMNS, *DONOR_ONLY_OTHER_INCOME_COLUMNS}
+    missing = [c for c in earning_columns if c not in person.columns]
+    if missing:
+        raise ValueError(f"release lacks earnings inputs {missing}")
+    carried = [c for c in income_columns if c in person.columns]
+    measures = pd.DataFrame({"household_id": household["household_id"].to_numpy()})
+    measures["n_persons"] = np.bincount(position, minlength=n).astype(np.float64)
+    components: dict[str, dict[str, float]] = {}
+    for column in (*earning_columns, *carried):
+        values = person[column].fillna(0.0).to_numpy(np.float64)
+        if column in donor_only:
+            values = np.where(donor_person, values, 0.0)
+        measures[column] = np.bincount(position, weights=values, minlength=n)
+        weighted = weights * measures[column].to_numpy()
+        components[column] = {
+            name: float(weighted[spine == name].sum())
+            for name in (ACS_SPINE, DONOR_SPINE)
+        }
+    measures["earnings"] = measures[list(earning_columns)].sum(axis=1)
+    measures["household_income_approx"] = measures[["earnings", *carried]].sum(axis=1)
+    report = {
+        "earnings_columns": list(earning_columns),
+        "donor_only_columns": sorted(donor_only),
+        "other_income_columns_carried": carried,
+        "other_income_columns_absent": [
+            c for c in income_columns if c not in person.columns
+        ],
+        "weighted_component_totals_by_spine": components,
+    }
+    return measures, report
 
 
 # ---------------------------------------------------------------------------
@@ -291,8 +431,11 @@ def build_design(households: pd.DataFrame, sources: Mapping[str, bytes]) -> dict
             f"household counties not in the public county set: {unknown[:5]}"
         )
 
-    def state_totals(values: np.ndarray) -> dict[str, float]:
-        return pd.Series(w0 * values).groupby(state).sum().to_dict()
+    def state_totals(values: np.ndarray, covered: list[str]) -> dict[str, float]:
+        """Release state totals over the households of the ``covered`` counties."""
+
+        inside = np.isin(county, covered)
+        return pd.Series((w0 * values)[inside]).groupby(state[inside]).sum().to_dict()
 
     measure_of = {
         "households": ones,
@@ -325,7 +468,8 @@ def build_design(households: pd.DataFrame, sources: Mapping[str, bytes]) -> dict
         if public.isna().any():
             # A trained family must cover every county; a held-out family is
             # scored on the counties its source publishes (SOI omits Kalawao),
-            # with the state share taken over those counties.
+            # with the state share and the state total both taken over those
+            # counties.
             if role == "train":
                 raise ValueError(
                     f"{family}: {int(public.isna().sum())} counties without a value"
@@ -333,7 +477,9 @@ def build_design(households: pd.DataFrame, sources: Mapping[str, bytes]) -> dict
             dropped[family] = sorted(public.index[public.isna()])
             public = public.dropna()
         covered = list(public.index)
-        values = within_state_share_values(public, state_totals(measure_of[measure]))
+        values = within_state_share_values(
+            public, state_totals(measure_of[measure], covered)
+        )
         blocks.append(_indicator_matrix(county, measure_of[measure], covered))
         for code in covered:
             records.append(
@@ -423,13 +569,95 @@ def target_set(records: list[dict], matrix: sparse.csr_array, n: int):
 # ---------------------------------------------------------------------------
 
 
-def kish_ess(weights: np.ndarray, groups: np.ndarray) -> pd.DataFrame:
-    frame = pd.DataFrame({"g": groups, "w": weights, "w2": weights**2})
-    grouped = frame.groupby("g").agg(
-        records=("w", "size"), w=("w", "sum"), w2=("w2", "sum")
-    )
+def kish_ess(
+    weights: np.ndarray, groups: np.ndarray, sources: np.ndarray | None = None
+) -> pd.DataFrame:
+    """Kish ESS per group; with ``sources``, rows sharing one are merged first.
+
+    Merging a source household's rows within a group makes the ESS invariant to
+    splitting a household into clones whose weights sum to the original.
+    """
+
+    frame = pd.DataFrame({"g": groups, "w": weights})
+    records = frame.groupby("g")["w"].size().rename("records")
+    if sources is not None:
+        frame["s"] = sources
+        frame = frame.groupby(["g", "s"], as_index=False)["w"].sum()
+    frame["w2"] = frame["w"] ** 2
+    grouped = frame.groupby("g").agg(w=("w", "sum"), w2=("w2", "sum"))
     grouped["ess"] = grouped["w"] ** 2 / grouped["w2"]
-    return grouped[["records", "ess"]]
+    return grouped[["ess"]].join(records)[["records", "ess"]]
+
+
+def total_ess(weights: np.ndarray, sources: np.ndarray | None = None) -> float:
+    if sources is not None:
+        weights = pd.Series(weights).groupby(sources).sum().to_numpy()
+    return float(weights.sum() ** 2 / (weights**2).sum())
+
+
+def state_total_drift(table: pd.DataFrame) -> dict:
+    """Achieved vs release state totals per trained family.
+
+    County targets sum to each state's release total, but the constraints are
+    soft and only national mass is conserved, so achieved state totals move.
+    """
+
+    out: dict = {}
+    trained = table[
+        table["family"].isin(COUNTY_FAMILIES) & (table["role"] != "holdout")
+    ]
+    for family, rows in trained.groupby("family"):
+        by_state = rows.groupby("state")[["before", "after"]].sum()
+        drift = (by_state["after"] / by_state["before"] - 1.0).dropna()
+        worst = drift.abs().idxmax()
+        out[family] = {
+            "median_abs": float(drift.abs().median()),
+            "p90_abs": float(drift.abs().quantile(0.9)),
+            "max_abs": float(drift.abs().max()),
+            "max_state": str(worst),
+            "max_signed": float(drift[worst]),
+        }
+    return out
+
+
+def _error_stats(error: pd.Series) -> dict:
+    error = error.abs().replace([np.inf], np.nan).dropna()
+    return {
+        "median_abs_rel_error": float(error.median()),
+        "within_10pct": float((error <= 0.10).mean()),
+    }
+
+
+def holdout_baselines(table: pd.DataFrame) -> dict:
+    """Held-out fit of the rescaling baseline next to the calibrated fit."""
+
+    out: dict = {}
+    for family, driver in HOLDOUT_BASELINE_DRIVER.items():
+        rows = table[table["family"] == family].set_index("geography")
+        drive = table[table["family"] == driver].set_index("geography")
+        ratio = (drive["value"] / drive["before"]).reindex(rows.index)
+        baseline = rows["before"] * ratio
+        out[family] = {
+            "driver": driver,
+            "baseline": _error_stats(baseline / rows["value"] - 1.0),
+            "calibrated": _error_stats(rows["after"] / rows["value"] - 1.0),
+            "release": _error_stats(rows["before"] / rows["value"] - 1.0),
+        }
+    return out
+
+
+def fit_vs_published(table: pd.DataFrame) -> dict:
+    """County fit against the raw published levels instead of share targets."""
+
+    out: dict = {}
+    for family in COUNTY_FAMILIES:
+        rows = table[table["family"] == family]
+        published = rows["public_value"] * PUBLIC_SCALE.get(family, 1.0)
+        out[family] = {
+            stage: _error_stats(rows[stage] / published - 1.0)
+            for stage in ("before", "after")
+        }
+    return out
 
 
 def grade(ess: float) -> str:
@@ -532,6 +760,8 @@ def run_pilot(
     started = time.time()
     out_dir.mkdir(parents=True, exist_ok=True)
     households = pd.read_parquet(extract_dir / "households.parquet")
+    report_path = extract_dir / "extract_report.json"
+    extract_report = json.loads(report_path.read_text()) if report_path.exists() else {}
     frame, w0 = load_lean_frame(extract_dir / "lean.h5")
     if not np.array_equal(
         frame.table("household")["household_id"].to_numpy(),
@@ -585,15 +815,26 @@ def run_pilot(
 
     table = fit_table(records, matrix, w0, weights)
     county = households["county_fips_2023"].astype(str).str.zfill(5).to_numpy()
+    source = (
+        households["household_spine"].astype(str)
+        + ":"
+        + households["household_source_id"].astype(str)
+    ).to_numpy()
     pep = read_pep_county(sources["pep_county_2024"])
-    ess_before = kish_ess(w0, county).rename(columns={"ess": "ess_before"})
-    ess_after = kish_ess(weights, county)[["ess"]].rename(columns={"ess": "ess_after"})
+    ess_before = kish_ess(w0, county, source).rename(columns={"ess": "ess_before"})
+    ess_after = kish_ess(weights, county, source)[["ess"]].rename(
+        columns={"ess": "ess_after"}
+    )
+    ess_rows_after = kish_ess(weights, county)[["ess"]].rename(
+        columns={"ess": "ess_rows_after"}
+    )
     income = households["household_income_approx"].to_numpy(np.float64)
     median_acs = read_acs_county(
         sources["acs5_2024_B19013_county"], ACS_CELLS["median_income"][1]
     )
     per_county = (
         ess_before.join(ess_after, how="outer")
+        .join(ess_rows_after, how="outer")
         .reindex(design["counties"])
         .assign(
             pep_population=pep.reindex(design["counties"]),
@@ -604,14 +845,7 @@ def run_pilot(
         )
     )
     per_county.index.name = "county_fips"
-    for family in (
-        "county_households",
-        "county_population",
-        "county_earnings",
-        "county_earning_households",
-        "county_soi_wages",
-        "county_income",
-    ):
+    for family in COUNTY_FAMILIES:
         rows = table[table["family"] == family].set_index("geography")
         short = family.removeprefix("county_")
         per_county[f"{short}_target"] = rows["value"]
@@ -625,8 +859,24 @@ def run_pilot(
     population_by_grade = (
         per_county.groupby("grade_after")["pep_population"].sum() / pep.sum()
     ).to_dict()
+    supported = per_county["records"].fillna(0) > 0
     summary = {
         "settings": dict(settings),
+        "inputs_sha256": {
+            name: hashlib.sha256(raw).hexdigest()
+            for name, raw in sorted(sources.items())
+        },
+        "extract": {
+            key: extract_report.get(key)
+            for key in (
+                "release_id",
+                "revision",
+                "sha256",
+                "earnings_columns",
+                "donor_only_columns",
+                "other_income_columns_carried",
+            )
+        },
         "households": int(len(households)),
         "rows": int(matrix.shape[0]),
         "trained_rows": int(len(targets)),
@@ -640,15 +890,58 @@ def run_pilot(
             str(q): float(np.quantile(ratio, q))
             for q in (0.001, 0.01, 0.1, 0.5, 0.9, 0.99, 0.999)
         },
-        "ess_total_before": float(w0.sum() ** 2 / (w0**2).sum()),
-        "ess_total_after": float(weights.sum() ** 2 / (weights**2).sum()),
-        "county_ess_after_quantiles": {
-            str(q): float(per_county["ess_after"].fillna(0).quantile(q))
-            for q in (0.01, 0.1, 0.25, 0.5, 0.75, 0.9)
+        "ess_total_before": total_ess(w0, source),
+        "ess_total_after": total_ess(weights, source),
+        "ess_total_rows_before": total_ess(w0),
+        "ess_total_rows_after": total_ess(weights),
+        "county_ess_quantiles_supported": {
+            stage: {
+                str(q): float(per_county.loc[supported, f"ess_{stage}"].quantile(q))
+                for q in (0.01, 0.1, 0.25, 0.5, 0.75, 0.9)
+            }
+            for stage in ("before", "after")
         },
+        "counties_250k_plus_grade_d": {
+            stage: int(
+                (
+                    (per_county["pep_population"] >= 250_000)
+                    & (per_county[f"ess_{stage}"].fillna(0.0).map(grade) == "D")
+                ).sum()
+            )
+            for stage in ("before", "after")
+        },
+        "spine_weight_share": {
+            stage: (
+                pd.Series(w).groupby(households["household_spine"].to_numpy()).sum()
+                / w.sum()
+            ).to_dict()
+            for stage, w in (("before", w0), ("after", weights))
+        },
+        "state_total_drift": state_total_drift(table),
+        "holdout_baselines": holdout_baselines(table),
+        "fit_vs_published": fit_vs_published(table),
         "reliability_grades": {
             "thresholds_ess": dict(RELIABILITY_GRADES),
+            "basis": "Kish ESS of calibrated weight merged by source household",
+            "provisional": True,
+            "counties_before": {
+                k: int(v)
+                for k, v in per_county["ess_before"]
+                .fillna(0.0)
+                .map(grade)
+                .value_counts()
+                .items()
+            },
             "counties": {k: int(v) for k, v in grades.items()},
+            "population_share_before": {
+                k: float(v)
+                for k, v in (
+                    per_county.assign(g=per_county["ess_before"].fillna(0.0).map(grade))
+                    .groupby("g")["pep_population"]
+                    .sum()
+                    / pep.sum()
+                ).items()
+            },
             "population_share": {k: float(v) for k, v in population_by_grade.items()},
         },
         "median_income_vs_acs_b19013": {
