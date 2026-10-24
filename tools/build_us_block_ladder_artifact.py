@@ -2,15 +2,22 @@
 
 Downloads (with a local cache) the 2020 P.L. 94-171 geographic headers
 (block populations), the 119th Congressional District block equivalency
-file, the 2020 Block Assignment Files (SLDU/SLDL/INCPLACE_CDP), and the OMB
-CBSA delineation workbook; joins them at 2020-tabulation-block grain; and
-writes one national NPZ artifact whose embedded metadata records a vintage
-and source per derived layer (``vintage_policy: error`` — the loader refuses
-an artifact missing any of them). No per-area files, the standing rule.
+file, the 2020 Block Assignment Files (SLDU/SLDL/INCPLACE_CDP, plus the MCD
+layer for Connecticut), the OMB CBSA delineation workbook, and Census's
+Connecticut county-to-county-subdivision crosswalk; joins them at
+2020-tabulation-block grain; and writes one national NPZ artifact whose
+embedded metadata records a vintage and source per derived layer
+(``vintage_policy: error`` — the loader refuses an artifact missing any of
+them). No per-area files, the standing rule.
+
+Connecticut blocks reach their CBSA through their town's 2022 planning
+region, the county-equivalent the OMB 2023 delineations list the state by
+(see ``block_ladder_sources``).
 
 The artifact is self-checked by loading it back through
 ``microcosm.build.us_runtime.load_us_block_ladder`` before the summary is
-written, so a published ladder is by construction a loadable ladder.
+written, so a published ladder is by construction a loadable ladder; the
+loaded ladder must also leave no CBSA-delineated state without a CBSA.
 
 Example:
     uv run python tools/build_us_block_ladder_artifact.py \
@@ -37,13 +44,19 @@ import numpy as np
 
 from microcosm.build.us_runtime import load_us_block_ladder
 from microcosm.build.us_runtime.block_ladder_sources import (
+    CT_STATE_FIPS,
     US_STATES,
     assemble_us_block_ladder,
+    cbsa_delineated_states,
+    ct_planning_region_by_block,
+    parse_baf_county_subdivision_file,
     parse_baf_district_file,
     parse_baf_place_file,
     parse_cbsa_delineations,
+    parse_ct_planning_region_crosswalk,
     parse_national_cd_bef,
     parse_pl_geo_blocks,
+    us_block_ladder_cbsa_coverage_failures,
 )
 
 CD119_BEF_URL = (
@@ -62,6 +75,10 @@ PL94171_URL_TEMPLATE = (
 CBSA_DELINEATIONS_URL = (
     "https://www2.census.gov/programs-surveys/metro-micro/geographies/"
     "reference-files/2023/delineation-files/list1_2023.xlsx"
+)
+CT_PLANNING_REGION_CROSSWALK_URL = (
+    "https://www2.census.gov/geo/docs/reference/ct_change/"
+    "ct_cou_to_cousub_crosswalk.txt"
 )
 
 LAYER_VINTAGES = {
@@ -95,9 +112,12 @@ LAYER_VINTAGES = {
         "vintage": "omb_2023_delineations",
         "source": (
             "OMB Bulletin No. 23-01 CBSA delineation file (list1_2023.xlsx), "
-            "county to CBSA"
+            "county-equivalent to CBSA; Connecticut blocks by 2022 planning "
+            "region via the 2020 BAF MCD layer and the Census CT "
+            "county-to-county-subdivision crosswalk"
         ),
         "url": CBSA_DELINEATIONS_URL,
+        "ct_planning_region_crosswalk_url": CT_PLANNING_REGION_CROSSWALK_URL,
     },
 }
 
@@ -220,6 +240,7 @@ def main(argv: list[str] | None = None) -> None:
     sldu_by_block: dict[int, str] = {}
     sldl_by_block: dict[int, str] = {}
     place_by_block: dict[int, int] = {}
+    ct_cousub_by_block: dict[int, str] = {}
     missing_layers: dict[str, list[str]] = {"SLDU": [], "SLDL": [], "INCPLACE_CDP": []}
     for fips, usps, dirname in states:
         _log(f"  state {fips} {usps}")
@@ -261,6 +282,36 @@ def main(argv: list[str] | None = None) -> None:
                 target.update(parse_baf_place_file(lines, label=member))
             else:
                 target.update(parse_baf_district_file(lines, label=member))
+        if fips == CT_STATE_FIPS:
+            # Connecticut's CBSAs are delineated by planning region, which a
+            # block reaches only through its town (see block_ladder_sources).
+            member = f"BlockAssign_ST{fips}_{usps}_MCD.txt"
+            lines = _optional_baf_layer(baf_zip, member)
+            if lines is None:
+                raise SystemExit(
+                    f"{baf_zip} has no {member}; Connecticut blocks need their "
+                    "county subdivision to reach a CBSA."
+                )
+            ct_cousub_by_block = parse_baf_county_subdivision_file(lines, label=member)
+
+    cbsa_county_by_block: dict[int, str] = {}
+    if any(fips == CT_STATE_FIPS for fips, _, _ in states):
+        crosswalk = _download(CT_PLANNING_REGION_CROSSWALK_URL, args.cache_dir)
+        source_files["ct_planning_region_crosswalk"] = {
+            "path": str(crosswalk),
+            "sha256": _sha256(crosswalk),
+        }
+        cbsa_county_by_block = ct_planning_region_by_block(
+            block_population,
+            cousub_by_block=ct_cousub_by_block,
+            planning_region_by_cousub=parse_ct_planning_region_crosswalk(
+                crosswalk.read_text(encoding="utf-8-sig").splitlines(keepends=True)
+            ),
+        )
+        _log(
+            f"  Connecticut: {len(cbsa_county_by_block):,} blocks in "
+            f"{len(set(cbsa_county_by_block.values()))} planning regions"
+        )
 
     metadata = {
         "schema_version": 1,
@@ -272,6 +323,11 @@ def main(argv: list[str] | None = None) -> None:
         "missing_baf_layers": {
             layer: sorted(values) for layer, values in missing_layers.items()
         },
+        # States the delineation covers territory in: each must come out with
+        # a CBSA somewhere (us_block_ladder_cbsa_coverage_failures).
+        "cbsa_delineated_states": cbsa_delineated_states(
+            cbsa_by_county, (fips for fips, _, _ in states)
+        ),
         "source_files": source_files,
     }
     _log(f"  assembling {len(block_population):,} populated blocks")
@@ -283,11 +339,20 @@ def main(argv: list[str] | None = None) -> None:
         place_by_block=place_by_block,
         cbsa_by_county=cbsa_by_county,
         metadata=metadata,
+        cbsa_county_by_block=cbsa_county_by_block,
     )
     args.out.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(args.out, **payload)
 
     ladder = load_us_block_ladder(args.out)  # self-check: must load cleanly
+    coverage_failures = us_block_ladder_cbsa_coverage_failures(ladder)
+    if coverage_failures:
+        raise SystemExit(
+            f"{args.out} failed the CBSA coverage check:\n  "
+            + "\n  ".join(coverage_failures)
+        )
+    block_state = ladder.block_geoid // 10**13
+    in_cbsa = ladder.cbsa_code > 0
     summary = {
         "output": str(args.out.resolve()),
         "output_sha256": _sha256(args.out),
@@ -300,6 +365,14 @@ def main(argv: list[str] | None = None) -> None:
         "layer_vintages": ladder.layer_vintages,
         "states": [fips for fips, _, _ in states],
         "missing_baf_layers": metadata["missing_baf_layers"],
+        "cbsa_delineated_states": metadata["cbsa_delineated_states"],
+        "cbsa_population_share_by_state": {
+            f"{state:02d}": float(
+                ladder.population[(block_state == state) & in_cbsa].sum()
+                / ladder.population[block_state == state].sum()
+            )
+            for state in np.unique(block_state).tolist()
+        },
         "source_files": source_files,
     }
     summary_path = (

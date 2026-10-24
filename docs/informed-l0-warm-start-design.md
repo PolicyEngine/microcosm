@@ -192,7 +192,7 @@ identity omission (#326) is orthogonal and not blocking here.
 
 ## Testing (synthetic fixtures + refusal)
 
-Unit tests in `packages/microcosm-build/tests/test_us_warm_start_selection.py`, all
+Unit tests in `packages/microcosm-build/tests/engine_free/us/test_us_warm_start_selection.py`, all
 on tiny synthetic frames (no network, no large H5):
 
 1. **Join maps a clone-aware support** — a base with 2-year × 2-clone records; a

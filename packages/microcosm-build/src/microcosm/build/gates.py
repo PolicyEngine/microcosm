@@ -188,6 +188,7 @@ def ledger_compile_parity_gate(
     fixture: TargetRegistry | Mapping[str, object],
     *,
     signed_differences: Iterable[Mapping[str, object]] = (),
+    unsupported: Iterable[Mapping[str, object]] = (),
     signed_difference_tolerance: float = 1e-9,
     name: str = "ledger_compile_parity",
 ) -> GateResult:
@@ -197,6 +198,12 @@ def ledger_compile_parity_gate(
     absent or calibration-different on either side. Every unsigned row gap or
     target-value difference is still reported by the shared registry parity
     comparator.
+
+    ``unsupported`` is the compile's own report of the references that did not
+    resolve at this period. A fixture row whose reference is on it is
+    ``ledger_absent``, as the signed-differences resource classifies it. Without
+    the report the same row reads as ``fixture_only``, and a signed
+    ``ledger_absent`` row fails as a changed kind.
     """
 
     actual = _ledger_compile_value_registry(
@@ -207,7 +214,10 @@ def ledger_compile_parity_gate(
     )
     signed_rows = tuple(signed_differences)
     signed_keys = _signed_difference_keys(signed_rows)
-    live_signed_report = ledger_compile_parity_signed_differences(actual, expected)
+    unsupported_rows = tuple(unsupported)
+    live_signed_report = ledger_compile_parity_signed_differences(
+        actual, expected, unsupported=unsupported_rows
+    )
     signed_failures, checked_signed = _signed_difference_check_failures(
         signed_rows,
         live_signed_report["differences"],
@@ -232,6 +242,7 @@ def ledger_compile_parity_gate(
             "signed_difference_count": len(signed_keys),
             "signed_difference_tolerance": signed_difference_tolerance,
             "signed_differences": checked_signed,
+            "unsupported_reference_count": len(unsupported_rows),
         },
     )
 
@@ -1110,6 +1121,50 @@ def _unique_observed_values(values: np.ndarray) -> np.ndarray:
         return np.asarray(sorted({repr(value) for value in values}), dtype=object)
 
 
+def observed_value_counts(values: Iterable[object]) -> list[tuple[object, int]]:
+    """Each distinct observed value of a column and how many records carry it.
+
+    Observation is the degeneracy gates' own rule (:func:`default_valued_columns_gate`,
+    :func:`nonconstant_columns_gate`): nulls and non-finite floats are not
+    observed. Values are returned as JSON scalars, largest count first. The
+    release dry run bounds how many records a household selection must keep for
+    a column to stay non-degenerate or nonconstant.
+    """
+
+    observed = _observed_column_values(values)
+    if observed.size == 0:
+        return []
+    try:
+        unique, counts = np.unique(observed, return_counts=True)
+        pairs = [
+            (_json_scalar(value), int(count))
+            for value, count in zip(unique, counts, strict=True)
+        ]
+    except TypeError:
+        tallies: dict[str, tuple[object, int]] = {}
+        for value in observed:
+            key = repr(value)
+            first, count = tallies.get(key, (value, 0))
+            tallies[key] = (first, count + 1)
+        pairs = [(_json_scalar(value), count) for value, count in tallies.values()]
+    return sorted(pairs, key=lambda pair: -pair[1])
+
+
+def non_default_record_count(values: Iterable[object], default: object) -> int:
+    """How many observed records differ from the engine ``default``.
+
+    Uses :func:`default_valued_columns_gate`'s comparison, so a column whose
+    count is zero is exactly one that gate calls degenerate (or unobserved).
+    """
+
+    target = _json_scalar(default)
+    return sum(
+        count
+        for value, count in observed_value_counts(values)
+        if not _scalar_values_equal(value, target)
+    )
+
+
 def nonconstant_columns_gate(
     column_values: Mapping[str, Iterable[object]],
     required_nonconstant: Iterable[str],
@@ -1808,6 +1863,10 @@ def _enum_domain_names(domain: Iterable[object] | object) -> tuple[str, ...]:
 def enum_domain_gate(
     column_values: Mapping[str, Iterable[object]],
     enum_domains: Mapping[str, Iterable[object] | object],
+    *,
+    partitions: Mapping[str, Iterable[object]] | None = None,
+    partition_domains: Mapping[str, Mapping[str, Iterable[object] | object]]
+    | None = None,
 ) -> GateResult:
     """Validate exported enum inputs against their engine enum domains.
 
@@ -1821,17 +1880,28 @@ def enum_domain_gate(
         column_values: Exported enum column -> stored values.
         enum_domains: Exported enum column -> valid enum members, member
             names, or an enum class exposing ``__members__``.
+        partitions: Optional column -> one partition label per stored value,
+            in the same order (a household's nation, say).
+        partition_domains: Optional column -> partition label -> the members
+            valid for rows with that label. Each must lie inside the column's
+            enum domain. A value passes only when it is in the enum domain and
+            in its row's partition domain; a label with no declared domain
+            fails its rows.
 
     Returns:
         Pass iff every provided enum column's non-missing values are inside
-        its declared domain. Missing values are treated as invalid because a
-        present enum input column should be fully interpretable by the engine;
-        omit the column to let the engine default it.
+        its declared domain, and inside its row's partition domain where one
+        is declared. Missing values are treated as invalid because a present
+        enum input column should be fully interpretable by the engine; omit
+        the column to let the engine default it.
     """
+    partitions = partitions or {}
+    partition_domains = partition_domains or {}
     failures: list[str] = []
     invalid_counts: dict[str, int] = {}
     invalid_examples: dict[str, list[str]] = {}
     allowed_values: dict[str, list[str]] = {}
+    partition_allowed_values: dict[str, dict[str, list[str]]] = {}
     columns_checked = 0
 
     for column, values in sorted(column_values.items()):
@@ -1839,10 +1909,41 @@ def enum_domain_gate(
             continue
         allowed = set(_enum_domain_names(enum_domains[column]))
         allowed_values[column] = sorted(allowed)
+        labels: list[str] | None = None
+        by_partition: dict[str, set[str]] = {}
+        if column in partition_domains:
+            if column not in partitions:
+                raise ValueError(
+                    f"{column}: partition domains need the rows' partition labels."
+                )
+            by_partition = {
+                str(label): set(_enum_domain_names(domain))
+                for label, domain in partition_domains[column].items()
+            }
+            outside_enum = {
+                label: sorted(domain - allowed)
+                for label, domain in sorted(by_partition.items())
+                if domain - allowed
+            }
+            if outside_enum:
+                raise ValueError(
+                    f"{column}: partition domains {outside_enum} lie outside "
+                    "the enum domain."
+                )
+            partition_allowed_values[column] = {
+                label: sorted(domain) for label, domain in sorted(by_partition.items())
+            }
+            labels = [str(label) for label in partitions[column]]
+            values = list(values)
+            if len(labels) != len(values):
+                raise ValueError(
+                    f"{column}: {len(labels)} partition labels for "
+                    f"{len(values)} values."
+                )
         columns_checked += 1
         invalid: list[str] = []
         total = 0
-        for value in values:
+        for index, value in enumerate(values):
             total += 1
             if value is None or (
                 isinstance(value, (float, np.floating)) and np.isnan(value)
@@ -1852,26 +1953,33 @@ def enum_domain_gate(
             name = _enum_member_name(value)
             if name not in allowed:
                 invalid.append(name)
+                continue
+            if labels is not None and name not in by_partition.get(labels[index], ()):
+                invalid.append(f"{name}@{labels[index]}")
         if not invalid:
             continue
         examples = sorted(set(invalid))[:8]
         invalid_counts[column] = len(invalid)
         invalid_examples[column] = examples
+        domain_text = "its partition's domain" if labels is not None else "enum domain"
         failures.append(
-            f"{column}: {len(invalid)}/{total} value(s) outside enum domain; "
+            f"{column}: {len(invalid)}/{total} value(s) outside {domain_text}; "
             f"invalid examples {examples}; allowed values {sorted(allowed)[:8]}."
         )
 
+    details: dict[str, object] = {
+        "columns_checked": columns_checked,
+        "invalid_counts": invalid_counts,
+        "invalid_examples": invalid_examples,
+        "allowed_values": allowed_values,
+    }
+    if partition_allowed_values:
+        details["partition_allowed_values"] = partition_allowed_values
     return GateResult(
         name="enum_domain",
         passed=not failures,
         failures=tuple(failures),
-        details={
-            "columns_checked": columns_checked,
-            "invalid_counts": invalid_counts,
-            "invalid_examples": invalid_examples,
-            "allowed_values": allowed_values,
-        },
+        details=details,
     )
 
 
@@ -2421,6 +2529,66 @@ def support_gate(
     )
 
 
+def area_support_shortfalls(
+    rows: float,
+    effective_sample_size: float,
+    sources: float,
+    *,
+    minimum_rows: int,
+    minimum_effective_sample_size: float,
+    minimum_distinct_sources: int,
+) -> list[str]:
+    """The support floors one area misses, worded as :func:`area_support_gate` reports them.
+
+    Each shortfall names the floor, never the area's measured value: the
+    gate's failures and its reviewed-exclusion details ship in a signed
+    release file, and an area's rows, ESS and distinct sources are per-area
+    support figures a release withholds (microcosm#1301). The figures stay
+    in the build's area-support table.
+    """
+
+    shortfalls = []
+    if rows < minimum_rows:
+        shortfalls.append(f"rows < {minimum_rows}")
+    if effective_sample_size < minimum_effective_sample_size:
+        shortfalls.append(f"ESS < {float(minimum_effective_sample_size):.6g}")
+    if sources < minimum_distinct_sources:
+        shortfalls.append(f"distinct sources < {minimum_distinct_sources}")
+    return shortfalls
+
+
+def area_support_below_floor(
+    area_support: pd.DataFrame,
+    *,
+    minimum_rows: int,
+    minimum_effective_sample_size: float,
+    minimum_distinct_sources: int,
+) -> pd.Series:
+    """Whether each area of a support table misses any floor, by the gate's rule.
+
+    A reviewed exclusion does not lift the flag: an excluded area is still
+    below the floor, which is what a consumer of the area's estimates needs.
+    """
+
+    return pd.Series(
+        [
+            bool(
+                area_support_shortfalls(
+                    row.nonzero_households,
+                    row.effective_sample_size,
+                    row.nonzero_source_households,
+                    minimum_rows=minimum_rows,
+                    minimum_effective_sample_size=minimum_effective_sample_size,
+                    minimum_distinct_sources=minimum_distinct_sources,
+                )
+            )
+            for row in area_support.itertuples(index=False)
+        ],
+        index=area_support.index,
+        dtype=bool,
+    )
+
+
 def area_support_gate(
     area_support: pd.DataFrame,
     *,
@@ -2435,7 +2603,13 @@ def area_support_gate(
 
     ``area_support`` is the long-form candidate receipt.  The independently
     declared ``area_roster`` is load-bearing: a missing weak area cannot make
-    the minima look better by disappearing from the evidence table.
+    the gate look better by disappearing from the evidence table.
+
+    The details and failures carry no per-area support figures
+    (microcosm#1301): a failure and a reviewed exclusion name the floors the
+    area misses, and each geography level reports how many areas were
+    checked and how many sit below a floor. A level's minima would be one
+    area's figures, so they are not reported either.
     """
 
     levels = tuple(str(level) for level in geography_levels)
@@ -2526,34 +2700,24 @@ def area_support_gate(
     failures: list[str] = []
     used_exclusions: dict[str, dict[str, object]] = {}
     stale_exclusions: list[str] = []
+    below_floor = dict.fromkeys(levels, 0)
     for row in rows.sort_values(["geography_level", "area_code"]).itertuples(
         index=False
     ):
         key = f"{row.geography_level}/{row.area_code}"
-        shortfalls = []
-        if row.nonzero_households < minimum_rows:
-            shortfalls.append(f"rows {int(row.nonzero_households)} < {minimum_rows}")
-        if row.effective_sample_size < minimum_effective_sample_size:
-            shortfalls.append(
-                "ESS "
-                f"{float(row.effective_sample_size):.6g} < "
-                f"{float(minimum_effective_sample_size):.6g}"
-            )
-        if row.nonzero_source_households < minimum_distinct_sources:
-            shortfalls.append(
-                "distinct sources "
-                f"{int(row.nonzero_source_households)} < "
-                f"{minimum_distinct_sources}"
-            )
+        shortfalls = area_support_shortfalls(
+            row.nonzero_households,
+            row.effective_sample_size,
+            row.nonzero_source_households,
+            minimum_rows=minimum_rows,
+            minimum_effective_sample_size=minimum_effective_sample_size,
+            minimum_distinct_sources=minimum_distinct_sources,
+        )
+        if shortfalls:
+            below_floor[row.geography_level] += 1
         record = exclusions.get(key)
         if record is not None and shortfalls:
-            used_exclusions[key] = {
-                "shortfalls": shortfalls,
-                "rows": int(row.nonzero_households),
-                "ess": float(row.effective_sample_size),
-                "sources": int(row.nonzero_source_households),
-                "record": dict(record),
-            }
+            used_exclusions[key] = {"shortfalls": shortfalls, "record": dict(record)}
         elif record is not None:
             stale_exclusions.append(key)
             failures.append(
@@ -2570,19 +2734,13 @@ def area_support_gate(
         for key in unknown_exclusions
     )
 
-    by_level: dict[str, dict[str, object]] = {}
-    for level in levels:
-        level_rows = rows.loc[rows["geography_level"] == level]
-        by_level[level] = {
-            "areas_checked": int(len(level_rows)),
-            "minimum_rows": int(level_rows["nonzero_households"].min()),
-            "minimum_effective_sample_size": float(
-                level_rows["effective_sample_size"].min()
-            ),
-            "minimum_distinct_sources": int(
-                level_rows["nonzero_source_households"].min()
-            ),
+    by_level = {
+        level: {
+            "areas_checked": int((rows["geography_level"] == level).sum()),
+            "areas_below_floor": below_floor[level],
         }
+        for level in levels
+    }
     return GateResult(
         name="area_support",
         passed=not failures,

@@ -90,3 +90,11 @@ aggregate-only extracts under `docs/evidence/uk-cgt-970/`. The full `microcosm-b
 passed (8,459 tests, 0 failures, 0 errors, 48 licensed or network-gated skips, 3 h 14 min); the shard on each later
 head is reported in the PR thread. Still open: the dashboard measurement (after the staged upload) and María's ruling
 on demoted donors.
+
+**2026-09-29 (microcosm#1045).** María's ruling on the demoted donors: the band-donor stage is retired. The
+Table 3 redraw owns every gain amount and places rows by wealth rank, so the donors' band-mean values were
+notional and the demoted rows were an artefact of drawing support by income and placing it by wealth; #1045
+replaces the stack with `cgt_support_split`, a deterministic mass-conserving split of the wealthiest households
+of each Table 3 income column into light copies before the incidence clone, which supplies the top-band row
+support from the households the redraw already places and leaves the sub-exempt population to the
+anchor-trimmed Advani–Summers clone composition.

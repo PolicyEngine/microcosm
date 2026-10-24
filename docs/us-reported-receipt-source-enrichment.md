@@ -144,6 +144,13 @@ cannot certify a new child until the parent is re-cut with the live WIC name
 (`takes_up_wic_if_eligible`) and without the retired Part B column, which the
 build no longer produces (#590).
 
+The probe measures only the tested policyengine-us version. A child certified
+with a publisher compatibility range admits other versions no check measured;
+certification records which one was measured under
+`compatibility.claim_measurement`, and the replay refuses any other record. See
+[what a declared range is measured against](us-native-spm-role-source-enrichment.md#what-a-declared-range-is-measured-against)
+before declaring one.
+
 Measured in this change: the three receipt variables are registered in
 policyengine-us 2.2.1 as Boolean inputs with no formula, on `person`,
 `spm_unit` and `spm_unit`. A `requires_us` test supplies all three on a
@@ -246,12 +253,13 @@ Every step up to the preflight is local and never contacts the Hub.
 
 ```bash
 python -m pytest \
-  packages/microcosm-build/tests/test_us_receipt_enrichment_release.py \
-  packages/microcosm-build/tests/test_us_acs_donor_receipt_qualification.py \
-  packages/microcosm-data/tests/test_source_enrichment.py \
-  packages/microcosm-build/tests/test_us_spm_role_enrichment_builder.py \
-  packages/microcosm-data/tests/test_release.py
-python tools/ci_test_groups.py --verify
+  packages/microcosm-build/tests/engine_free/us/test_us_receipt_enrichment_release.py \
+  packages/microcosm-build/tests/engine/us/test_us_receipt_enrichment_release.py \
+  packages/microcosm-build/tests/engine_free/us/test_us_acs_donor_receipt_qualification.py \
+  packages/microcosm-data/tests/engine_free/shared/test_source_enrichment.py \
+  packages/microcosm-build/tests/engine_free/us/test_us_spm_role_enrichment_builder.py \
+  packages/microcosm-data/tests/engine_free/shared/test_release.py
+python3 tools/ci_test_plan.py verify
 ```
 
 These tests use invented populations and pins. Passing them does not certify

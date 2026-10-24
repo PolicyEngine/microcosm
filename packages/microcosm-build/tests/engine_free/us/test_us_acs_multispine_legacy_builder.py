@@ -1,0 +1,1465 @@
+from __future__ import annotations
+
+import hashlib
+import importlib.util
+import json
+from pathlib import Path
+from types import SimpleNamespace
+
+import numpy as np
+import pandas as pd
+import pytest
+
+from microcosm.build import FitWeightRecord, GateResult
+from microcosm.build.us_runtime.acs_sources import (
+    AcsSourceArtifact,
+    AcsSourceManifest,
+)
+from microcosm.build.us_runtime.base_pool import spine_column
+from microcosm.build.us_runtime.puf_support import support_channel_column
+from microcosm.build.us_runtime.spm_role_source import NATIVE_SPM_ROLE
+from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
+from test_support.paths import paths_for
+
+_TEST_PATHS = paths_for("microcosm-build")
+
+
+def _load_builder_module():
+    root = _TEST_PATHS.repository
+    path = root / "tools" / "_legacy" / "build_us_acs_multispine_base.py"
+    spec = importlib.util.spec_from_file_location(
+        "legacy_build_us_acs_multispine_base",
+        path,
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def _frame(
+    *,
+    benefit_participation: bool = True,
+    spm_role: bool = True,
+    spines: tuple[str, str] | None = None,
+) -> Frame:
+    person = pd.DataFrame(
+        {
+            "person_id": [1, 2],
+            "person_household_id": [1, 2],
+            "person_tax_unit_id": [1, 2],
+            "person_spm_unit_id": [1, 2],
+            "person_family_id": [1, 2],
+            "person_marital_unit_id": [1, 2],
+            "age": [35, 67],
+            "is_female": [False, True],
+            "detailed_occupation_recode": [8, 53],
+            "detailed_industry_recode": [13, 23],
+            "major_industry_recode": [9, 15],
+            "worked_last_year": [True, False],
+        }
+    )
+    if benefit_participation:
+        person["takes_up_snap_if_eligible"] = [True, False]
+    if spm_role:
+        person[NATIVE_SPM_ROLE] = np.asarray([True, True])
+    tables = {
+        "person": person,
+        "household": pd.DataFrame({"household_id": [1, 2], "state_fips": [6, 36]}),
+        "tax_unit": pd.DataFrame({"tax_unit_id": [1, 2]}),
+        "spm_unit": pd.DataFrame({"spm_unit_id": [1, 2]}),
+        "family": pd.DataFrame({"family_id": [1, 2]}),
+        "marital_unit": pd.DataFrame({"marital_unit_id": [1, 2]}),
+    }
+    if spines is not None:
+        for entity, table in tables.items():
+            table[spine_column(entity)] = list(spines)
+    return Frame(
+        tables,
+        US_SCHEMA,
+        {
+            "household": Weights(
+                np.asarray([40.0, 60.0]),
+                WeightKind.CALIBRATED,
+            )
+        },
+    )
+
+
+def _spm_role_receipt(*, persons: int) -> dict[str, object]:
+    return {
+        "column": NATIVE_SPM_ROLE,
+        "rule": "RELSHIPP rule",
+        "partition": "household",
+        "asec_rule": "ASEC rule",
+        "persons": persons,
+        "role_true_persons": persons,
+        "independent_minor_persons": 0,
+        "housing_units_classified_only_by_role": 0,
+        "group_quarters_units_without_classified_adult": 0,
+    }
+
+
+def _manifest() -> AcsSourceManifest:
+    source_directory = (
+        "https://www2.census.gov/programs-surveys/acs/data/pums/2024/1-Year/"
+    )
+    return AcsSourceManifest(
+        version=1,
+        spine="acs_2024_1yr",
+        vintage=2024,
+        verified_on="2026-07-10",
+        source_directory=source_directory,
+        artifacts=(
+            AcsSourceArtifact(
+                role="household",
+                filename="csv_hus.zip",
+                url=f"{source_directory}csv_hus.zip",
+                sha256="1" * 64,
+                size_bytes=123,
+            ),
+            AcsSourceArtifact(
+                role="person",
+                filename="csv_pus.zip",
+                url=f"{source_directory}csv_pus.zip",
+                sha256="2" * 64,
+                size_bytes=456,
+            ),
+        ),
+    )
+
+
+def test_parser_exposes_production_defaults_and_transfer_controls() -> None:
+    builder = _load_builder_module()
+
+    args = builder._parse_args(
+        [
+            "--base-h5",
+            "dense.h5",
+            "--out-h5",
+            "combined.h5",
+        ]
+    )
+
+    assert args.inputs_dir == builder.DEFAULT_INPUTS_DIR
+    assert args.inputs_dir.is_absolute()
+    assert args.inputs_dir.parts[-2:] == ("inputs", "acs_2024_1yr")
+    assert args.puma_ladder == builder.DEFAULT_PUMA_LADDER
+    assert args.puma_ladder.is_absolute()
+    assert args.n_estimators == 32
+    assert args.max_targets_per_fit == 8
+    assert args.period == 2024
+    assert args.acs_share == 0.5
+    assert args.seed == 0
+    assert args.geography_seed == 0
+    assert args.donor_channel == builder.ACS_DONOR_CHANNEL_AUTO
+
+    custom = builder._parse_args(
+        [
+            "--base-h5",
+            "dense.h5",
+            "--out-h5",
+            "combined.h5",
+            "--chunksize",
+            "1234",
+            "--acs-share",
+            "0.3",
+            "--seed",
+            "17",
+            "--geography-seed",
+            "23",
+            "--puma-ladder",
+            "ladder.npz",
+            "--n-estimators",
+            "9",
+            "--max-targets-per-fit",
+            "3",
+            "--donor-channel",
+            "benefit_support",
+        ]
+    )
+    assert custom.chunksize == 1234
+    assert custom.acs_share == 0.3
+    assert custom.seed == 17
+    assert custom.geography_seed == 23
+    assert custom.puma_ladder == Path("ladder.npz")
+    assert custom.n_estimators == 9
+    assert custom.max_targets_per_fit == 3
+    assert custom.donor_channel == "benefit_support"
+
+
+@pytest.mark.parametrize("staging_hours_pass", [True, False])
+def test_main_wires_verified_sources_transfer_audit_export_and_summary(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    staging_hours_pass: bool,
+) -> None:
+    builder = _load_builder_module()
+    manifest = _manifest()
+    base = _frame()
+    combined = _frame(spines=("asec_puf", "acs_2024_1yr"))
+    combined.table("household")["puma"] = ["0100100", "0200100"]
+    combined.table("household")["congressional_district_geoid"] = [101, 200]
+    combined.table("household")["county_fips"] = ["01001", "02020"]
+    combined.table("household")["TYPEHUGQ"] = [1.0, 3.0]
+    base_h5 = tmp_path / "dense.h5"
+    base_h5.write_bytes(b"dense-base")
+    manifest_path = tmp_path / "acs_sources.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    puma_ladder_path = tmp_path / "us_puma_ladder_2020.npz"
+    puma_ladder_path.write_bytes(b"puma-ladder")
+    puma_ladder = builder.UsPumaLadder(
+        puma=np.asarray([100_100], dtype=np.int64),
+        puma_population=np.asarray([100.0]),
+        cd_overlap_puma=np.asarray([100_100], dtype=np.int64),
+        cd_overlap_cd=np.asarray([101], dtype=np.int64),
+        cd_overlap_population=np.asarray([100.0]),
+        county_overlap_puma=np.asarray([100_100], dtype=np.int64),
+        county_overlap_county=np.asarray([1_001], dtype=np.int32),
+        county_overlap_population=np.asarray([100.0]),
+        tract_overlap_puma=np.asarray([100_100], dtype=np.int64),
+        tract_overlap_tract=np.asarray([1_001_000_100], dtype=np.int64),
+        tract_overlap_population=np.asarray([100.0]),
+        metadata={
+            "schema_version": 1,
+            "kind": "us_puma_ladder",
+            "puma_vintage": "2020_puma",
+            "sampling_basis": "population",
+            "layers": {
+                "congressional_district": {"vintage": "119th_congress"},
+                "county": {"vintage": "2020_census"},
+                "tract": {"vintage": "2020_census"},
+            },
+        },
+    )
+    inputs_dir = tmp_path / "inputs"
+    household_zip = inputs_dir / "csv_hus.zip"
+    person_zip = inputs_dir / "csv_pus.zip"
+    source = builder.AcsPumsSource(household_zip, person_zip)
+    output_h5 = tmp_path / "combined.h5"
+    summary_path = tmp_path / "combined.summary.json"
+    captured: dict[str, object] = {}
+    transfer_plan = {
+        "person": {
+            "benefit_participation": ("takes_up_snap_if_eligible",),
+        }
+    }
+
+    def fake_load_manifest(path):
+        captured["manifest_path"] = path
+        return manifest
+
+    def fake_fetch(cache_dir, *, manifest):
+        captured["fetch"] = (cache_dir, manifest)
+        return source
+
+    def fake_build(actual_base, actual_source, **kwargs):
+        captured["build"] = (actual_base, actual_source, kwargs)
+        return builder.AcsMultispineResult(
+            frame=combined,
+            fit_records=(FitWeightRecord("acs_transfer:person:benefits", "design"),),
+            provenance={
+                "enabled": True,
+                "acs_group_quarters_children": {
+                    "rule": "invented rule",
+                    "authority": "invented authority",
+                    "decision": "microcosm#1263 (d1484)",
+                    "status": "interim",
+                    "flip_condition": "invented flip condition",
+                    "group_quarters_households": 1,
+                    "households_dropped": 0,
+                    "persons_dropped": 0,
+                    "household_weight_share_dropped": 0.0,
+                },
+                "deferred_inputs": ["block_geoid", "tract_geoid"],
+                "geography_ladder": {
+                    "applied": True,
+                    "household_rows": 2,
+                    "ladder_pumas": 1,
+                    "layer_vintages": puma_ladder.layer_vintages,
+                    "sampling_basis": "population",
+                    "seed": 19,
+                    "resolved_model_inputs": [
+                        "congressional_district_geoid",
+                        "county_fips",
+                    ],
+                    "unresolved_sub_puma_inputs": [
+                        "block_geoid",
+                        "tract_geoid",
+                    ],
+                },
+                "imputed_inputs": [
+                    {
+                        "column": "takes_up_snap_if_eligible",
+                        "family": "benefit_participation",
+                        "unmodeled_recipient_rows": 0,
+                    }
+                ],
+                "spm_independence_role": _spm_role_receipt(persons=1),
+            },
+        )
+
+    def fake_write(frame, path, *, period):
+        captured["write"] = (frame, path, period)
+        path.write_bytes(b"combined-output")
+
+    def fake_load_puma_ladder(path):
+        captured["puma_ladder_path"] = path
+        return puma_ladder
+
+    def staging_hours_gate(frame, *, source_null_audit):
+        assert frame is combined
+        assert source_null_audit == [reviewed_null]
+        captured["staging_hours_gate"] = True
+        return GateResult(
+            name="acs_local_hours_signal",
+            passed=staging_hours_pass,
+            failures=() if staging_hours_pass else ("asec_puf: usual hours missing",),
+        )
+
+    reviewed_null = {
+        "entity": "person",
+        "column": "pre_subsidy_rent",
+        "dtype": "float",
+        "missing_rows": 1,
+        "rows": 2,
+        "missing_rows_by_spine": {"acs_2024_1yr": 1},
+    }
+
+    monkeypatch.setattr(builder, "_load_base_frame", lambda path: base)
+    monkeypatch.setattr(
+        builder,
+        "prepare_acs_local_hours_donor",
+        lambda frame, **kwargs: (frame, frame, {"source_agreement": True}),
+    )
+    monkeypatch.setattr(
+        builder,
+        "_require_dense_donor_coverage",
+        lambda frame, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        builder,
+        "acs_local_transfer_target_families",
+        lambda: transfer_plan,
+    )
+    monkeypatch.setattr(
+        builder, "declared_acs_transfer_target_families", lambda: transfer_plan
+    )
+    monkeypatch.setattr(
+        builder.acs_sources,
+        "load_acs_source_manifest",
+        fake_load_manifest,
+    )
+    monkeypatch.setattr(
+        builder.acs_sources,
+        "fetch_acs_pums_sources",
+        fake_fetch,
+    )
+    monkeypatch.setattr(builder, "build_optional_acs_multispine", fake_build)
+    # The engine-free lane has no policyengine-us to ask whether it scopes SPM
+    # by universe; the decision itself is tested below.
+    monkeypatch.setattr(builder, "_drop_acs_group_quarters_children", lambda: True)
+    monkeypatch.setattr(
+        builder,
+        "load_us_puma_ladder",
+        fake_load_puma_ladder,
+    )
+    monkeypatch.setattr(
+        builder,
+        "_engine_input_null_audit",
+        lambda frame: [reviewed_null],
+    )
+    monkeypatch.setattr(
+        builder,
+        "_preflight_staging_export",
+        lambda frame: 123_456,
+    )
+    monkeypatch.setattr(builder, "_write_dataset", fake_write)
+    monkeypatch.setattr(builder, "acs_local_hours_signal_gate", staging_hours_gate)
+
+    arguments = [
+        "--base-h5",
+        str(base_h5),
+        "--out-h5",
+        str(output_h5),
+        "--summary",
+        str(summary_path),
+        "--source-manifest",
+        str(manifest_path),
+        "--inputs-dir",
+        str(inputs_dir),
+        "--puma-ladder",
+        str(puma_ladder_path),
+        "--max-households",
+        "7",
+        "--chunksize",
+        "2000",
+        "--acs-share",
+        "0.4",
+        "--seed",
+        "11",
+        "--geography-seed",
+        "19",
+    ]
+    if not staging_hours_pass:
+        with pytest.raises(
+            SystemExit, match="Local staging hours gate failed.*asec_puf"
+        ):
+            builder.main(arguments)
+        assert captured["staging_hours_gate"] is True
+        assert "write" not in captured
+        assert not output_h5.exists()
+        assert not summary_path.exists()
+        return
+    exit_code = builder.main(arguments)
+
+    assert exit_code == 0
+    assert captured["manifest_path"] == manifest_path
+    assert captured["puma_ladder_path"] == puma_ladder_path
+    assert captured["fetch"] == (inputs_dir, manifest)
+    actual_base, actual_source, build_options = captured["build"]
+    assert actual_base is base
+    assert actual_source.max_households == 7
+    assert build_options.pop("puma_ladder") is puma_ladder
+    assert callable(build_options.pop("hours_donor_factory"))
+    assert build_options.pop("drop_group_quarters_children") is True
+    assert build_options == {
+        "chunksize": 2000,
+        "acs_share": 0.4,
+        "target_families": transfer_plan,
+        "hours_under15_policy": None,
+        "donor_channel": builder.ACS_DONOR_CHANNEL_AUTO,
+        "seed": 11,
+        "n_estimators": 32,
+        "max_targets_per_fit": 8,
+        "geography_seed": 19,
+    }
+    assert captured["write"] == (combined, output_h5, 2024)
+
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert summary["artifact_kind"] == "nullable_precalibration_staging_h5"
+    assert summary["calibration_applied"] is False
+    assert summary["simulation_ready"] is False
+    assert summary["simulation_ready_except_calibration"] is True
+    assert summary["simulation_readiness_blockers"] == ["calibration_not_applied"]
+    assert [item["id"] for item in summary["reviewed_limitations"]] == [
+        "acs_group_quarters_housing_universe",
+        "native_acs_source_universe_blanks",
+        "sub_puma_geographic_precision",
+        "acs_spm_independence_role_household_partition",
+        "acs_group_quarters_children_outside_spm_universe",
+    ]
+    assert summary["reviewed_limitations"][2]["unavailable_exact_geography"] == [
+        "block_geoid",
+        "tract_geoid",
+    ]
+    assert summary["reviewed_engine_input_nulls"] == [reviewed_null]
+    assert summary["local_hours_gate"]["passed"] is True
+    assert "pending_engine_input_nulls" not in summary
+    assert summary["staging_export_peak_estimate_bytes"] == 123_456
+    assert summary["geography_ladder"] == {
+        "path": str(puma_ladder_path.resolve()),
+        "sha256": hashlib.sha256(b"puma-ladder").hexdigest(),
+        "pumas": 1,
+        "layer_vintages": {
+            "congressional_district": "119th_congress",
+            "county": "2020_census",
+            "puma": "2020_puma",
+            "tract": "2020_census",
+        },
+        "seed": 19,
+        "assignment": summary["orchestration"]["provenance"]["geography_ladder"],
+    }
+    assert summary["acs_sources"]["manifest"] == str(manifest_path.resolve())
+    assert (
+        summary["acs_sources"]["manifest_sha256"] == hashlib.sha256(b"{}").hexdigest()
+    )
+    assert summary["acs_sources"]["artifacts"] == [
+        {
+            "role": "household",
+            "filename": "csv_hus.zip",
+            "url": manifest.artifacts[0].url,
+            "sha256": "1" * 64,
+            "size_bytes": 123,
+            "local_path": str(household_zip.resolve()),
+        },
+        {
+            "role": "person",
+            "filename": "csv_pus.zip",
+            "url": manifest.artifacts[1].url,
+            "sha256": "2" * 64,
+            "size_bytes": 456,
+            "local_path": str(person_zip.resolve()),
+        },
+    ]
+    assert summary["weights_audit"]["details"]["resolved_weight_kinds"] == {
+        "acs_transfer:person:benefits": "design"
+    }
+    assert summary["rows"]["combined"] == {entity: 2 for entity in US_SCHEMA.entities}
+    assert summary["household_weight_totals"] == {
+        "base": 100.0,
+        "combined": 100.0,
+    }
+    assert summary["spine_totals"] == {
+        "acs_2024_1yr": {
+            "rows": {entity: 1 for entity in US_SCHEMA.entities},
+            "household_weight_total": 60.0,
+        },
+        "asec_puf": {
+            "rows": {entity: 1 for entity in US_SCHEMA.entities},
+            "household_weight_total": 40.0,
+        },
+    }
+    assert summary["output"]["sha256"] == hashlib.sha256(b"combined-output").hexdigest()
+
+
+def test_weights_audit_failure_aborts_before_export() -> None:
+    builder = _load_builder_module()
+    result = builder.AcsMultispineResult(
+        frame=_frame(),
+        fit_records=(FitWeightRecord("acs_transfer:person:benefits", "none"),),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        builder._audit_fits(result)
+
+    assert "Weights audit failed" in str(exc.value)
+    assert "acs_transfer:person:benefits" in str(exc.value)
+    assert "unweighted" in str(exc.value)
+
+
+def test_default_transfer_fails_closed_before_fetch_without_benefit_participation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        builder.acs_sources,
+        "load_acs_source_manifest",
+        lambda path: _manifest(),
+    )
+    monkeypatch.setattr(
+        builder,
+        "_load_base_frame",
+        lambda path: _frame(benefit_participation=False),
+    )
+    monkeypatch.setattr(builder, "_sha256", lambda path: "0" * 64)
+
+    def must_not_fetch(*_args, **_kwargs):
+        raise AssertionError("source fetch must not run for an incomplete donor")
+
+    monkeypatch.setattr(
+        builder.acs_sources,
+        "fetch_acs_pums_sources",
+        must_not_fetch,
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        builder.main(
+            [
+                "--base-h5",
+                "incomplete.h5",
+                "--out-h5",
+                "combined.h5",
+            ]
+        )
+
+    assert "no takes_up_*" in str(exc.value)
+    assert "must run after the benefit input-family stages" in str(exc.value)
+
+
+def test_empty_transfer_audit_is_not_treated_as_success() -> None:
+    builder = _load_builder_module()
+
+    with pytest.raises(SystemExit) as exc:
+        builder._audit_fits(
+            SimpleNamespace(
+                fit_records=(),
+            )
+        )
+
+    assert "produced no fit records" in str(exc.value)
+
+
+class _DefaultsEngine:
+    _defaults = {
+        "age": 0,
+        "alimony_income": 0.0,
+        "employment_income_before_lsr": 0.0,
+        "has_esi": False,
+        "is_female": False,
+        "state_fips": 0,
+        "takes_up_snap_if_eligible": True,
+        "weekly_hours_worked_before_lsr": 40.0,
+    }
+
+    def default_values(self, names):
+        return {name: self._defaults[name] for name in names if name in self._defaults}
+
+
+def test_dense_donor_ignores_default_runtime_column_not_consumed_by_transfer() -> None:
+    builder = _load_builder_module()
+    base = _frame()
+    base.person["weekly_hours_worked_before_lsr"] = [40.0, 40.0]
+
+    builder._require_dense_donor_coverage(
+        base,
+        engine=_DefaultsEngine(),
+        donor_channel=None,
+        target_families={
+            "person": {
+                "benefit_participation": ("takes_up_snap_if_eligible",),
+            }
+        },
+    )
+
+
+def test_dense_donor_missing_transfer_consumed_column_fails_hard() -> None:
+    builder = _load_builder_module()
+
+    with pytest.raises(SystemExit) as exc:
+        builder._require_dense_donor_coverage(
+            _frame(),
+            engine=_DefaultsEngine(),
+            donor_channel=None,
+            target_families={"person": {"health": ("has_esi",)}},
+        )
+
+    message = str(exc.value)
+    assert "hard ACS transfer-consumption gate" in message
+    assert "person.has_esi" in message
+    assert "transfer-consumed column is absent" in message
+
+
+def test_dense_donor_default_transfer_consumed_column_fails_hard() -> None:
+    builder = _load_builder_module()
+    base = _frame()
+    base.person["has_esi"] = [False, False]
+
+    with pytest.raises(SystemExit) as exc:
+        builder._require_dense_donor_coverage(
+            base,
+            engine=_DefaultsEngine(),
+            donor_channel=None,
+            target_families={"person": {"health": ("has_esi",)}},
+        )
+
+    message = str(exc.value)
+    assert "hard ACS transfer-consumption gate" in message
+    assert "person.has_esi" in message
+    assert "every observed donor value equals the engine default" in message
+
+
+def test_dense_donor_default_consumed_optional_feature_fails_hard() -> None:
+    builder = _load_builder_module()
+    base = _frame()
+    base.person["employment_income_before_lsr"] = [0.0, 0.0]
+
+    with pytest.raises(SystemExit) as exc:
+        builder._require_dense_donor_coverage(
+            base,
+            engine=_DefaultsEngine(),
+            donor_channel=None,
+            target_families={
+                "person": {
+                    "benefit_participation": ("takes_up_snap_if_eligible",),
+                }
+            },
+        )
+
+    message = str(exc.value)
+    assert "person.employment_income_before_lsr" in message
+    assert "every observed donor value equals the engine default" in message
+
+
+def test_signal_bearing_release_exclusion_is_irrelevant_to_donor_gate(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    builder = _load_builder_module()
+    base = _frame()
+    base.person["alimony_income"] = [0.0, 100.0]
+
+    builder._require_dense_donor_coverage(
+        base,
+        engine=_DefaultsEngine(),
+        donor_channel=None,
+        target_families={
+            "person": {
+                "benefit_participation": ("takes_up_snap_if_eligible",),
+            }
+        },
+    )
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+
+
+def test_dense_donor_coverage_is_checked_on_resolved_puf_channel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builder = _load_builder_module()
+    base = _frame()
+    channel_column = support_channel_column("person")
+    for entity in base.entities:
+        base.table(entity)[support_channel_column(entity)] = [
+            "asec",
+            "puf_tax_detail",
+        ]
+    captured: dict[str, Frame] = {}
+
+    def fake_requirements(frame, target_families):
+        captured["frame"] = frame
+        return {"person": ("age",)}
+
+    monkeypatch.setattr(
+        builder,
+        "acs_transfer_donor_requirements",
+        fake_requirements,
+    )
+
+    builder._require_dense_donor_coverage(
+        base,
+        engine=_DefaultsEngine(),
+        target_families={"person": {"test": ("age",)}},
+    )
+
+    selected = captured["frame"]
+    assert selected.n("person") == 1
+    assert selected.person[channel_column].tolist() == ["puf_tax_detail"]
+
+
+def test_partial_donor_channel_metadata_fails_before_coverage_gate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builder = _load_builder_module()
+    base = _frame()
+    base.table("household")[support_channel_column("household")] = [
+        "asec",
+        "puf_tax_detail",
+    ]
+    called = False
+
+    def fake_requirements(frame, target_families):
+        nonlocal called
+        called = True
+        return {"person": ("age",)}
+
+    monkeypatch.setattr(
+        builder,
+        "acs_transfer_donor_requirements",
+        fake_requirements,
+    )
+
+    with pytest.raises(SystemExit, match="partial support metadata"):
+        builder._require_dense_donor_coverage(
+            base,
+            engine=_DefaultsEngine(),
+            target_families={"person": {"test": ("age",)}},
+        )
+
+    assert not called
+
+
+def test_default_transfer_cannot_report_success_without_benefit_imputation() -> None:
+    builder = _load_builder_module()
+    result = builder.AcsMultispineResult(
+        frame=_frame(),
+        provenance={
+            "imputed_inputs": [
+                {
+                    "column": "qualified_dividend_income",
+                    "family": "puf_tax_itemization",
+                }
+            ]
+        },
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        builder._require_benefit_participation_transfer(result)
+
+    assert "no takes_up_* benefit-participation input" in str(exc.value)
+
+
+def test_default_transfer_must_register_every_planned_input(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builder = _load_builder_module()
+    result = builder.AcsMultispineResult(
+        frame=_frame(),
+        provenance={
+            "imputed_inputs": [
+                {
+                    "column": "takes_up_snap_if_eligible",
+                    "family": "benefit_participation",
+                }
+            ]
+        },
+    )
+    monkeypatch.setattr(
+        builder,
+        "default_acs_transfer_target_families",
+        lambda donor: {
+            "person": {
+                "benefit_participation": ("takes_up_snap_if_eligible",),
+                "model_required": ("has_esi",),
+            }
+        },
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        builder._require_default_transfer_coverage(result, _frame())
+
+    assert "omitted donor-observed model input" in str(exc.value)
+    assert "has_esi" in str(exc.value)
+
+
+def test_staging_h5_round_trips_base_only_nullable_boolean(tmp_path: Path) -> None:
+    pytest.importorskip("tables")  # pandas HDF backend
+    builder = _load_builder_module()
+    frame = _frame(spines=("asec_puf", "acs_2024_1yr"))
+    frame.table("person")["is_snap_abawd_discretionary_exempt"] = pd.Series(
+        [True, np.nan], dtype=object
+    )
+    output = tmp_path / "nullable-bool-staging.h5"
+
+    builder._write_dataset(frame, output, period=2024)
+
+    stored = pd.read_hdf(output, key="person")
+    assert stored.loc[0, "is_snap_abawd_discretionary_exempt"] is True
+    assert pd.isna(stored.loc[1, "is_snap_abawd_discretionary_exempt"])
+
+
+def test_engine_input_null_audit_includes_float_bool_and_spine_counts() -> None:
+    builder = _load_builder_module()
+    frame = _frame(spines=("asec_puf", "acs_2024_1yr"))
+    frame.person["age"] = [35.0, np.nan]
+    frame.person["takes_up_snap_if_eligible"] = pd.Series([True, np.nan], dtype=object)
+
+    class FakeEngine:
+        def variables(self):
+            return ["age", "takes_up_snap_if_eligible"]
+
+        def variable_metadata(self, name):
+            return SimpleNamespace(
+                dtype={
+                    "age": "float",
+                    "takes_up_snap_if_eligible": "bool",
+                }[name]
+            )
+
+    audit = builder._engine_input_null_audit(frame, FakeEngine())
+
+    assert audit == [
+        {
+            "entity": "person",
+            "column": "age",
+            "dtype": "float",
+            "missing_rows": 1,
+            "rows": 2,
+            "missing_rows_by_spine": {"acs_2024_1yr": 1},
+        },
+        {
+            "entity": "person",
+            "column": "takes_up_snap_if_eligible",
+            "dtype": "bool",
+            "missing_rows": 1,
+            "rows": 2,
+            "missing_rows_by_spine": {"acs_2024_1yr": 1},
+        },
+    ]
+
+
+def test_nullable_staging_writer_round_trips_group_quarters_blanks(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")  # pandas HDF backend
+    builder = _load_builder_module()
+    frame = _frame(spines=("asec_puf", "acs_2024_1yr"))
+    frame.person["real_estate_taxes"] = [1_000.0, np.nan]
+    frame.person["pre_subsidy_rent"] = [1_200.0, np.nan]
+    frame.table("household")["TYPEHUGQ"] = [1.0, 3.0]
+    frame.table("household")["tenure_type"] = ["RENTED", np.nan]
+    frame.table("spm_unit")["spm_unit_tenure_type"] = ["RENTER", np.nan]
+    output = tmp_path / "staging.h5"
+
+    builder._write_dataset(frame, output, period=2024)
+
+    with pd.HDFStore(output, mode="r") as store:
+        assert store["person"]["real_estate_taxes"].isna().sum() == 1
+        assert store["person"]["pre_subsidy_rent"].isna().sum() == 1
+        assert store["household"]["tenure_type"].isna().sum() == 1
+        assert store["spm_unit"]["spm_unit_tenure_type"].isna().sum() == 1
+        assert store["household"]["household_weight"].tolist() == [40.0, 60.0]
+        metadata = json.loads(store["_populace_staging_metadata"].iloc[0])
+    assert metadata == {
+        "artifact_kind": "nullable_precalibration_staging_h5",
+        "entity_hdf_format": "fixed_nullable",
+        "household_weight_kind": "calibrated",
+    }
+
+
+def test_staging_export_preflight_enforces_decimal_30gb_limit() -> None:
+    builder = _load_builder_module()
+    frame = _frame()
+
+    estimate = builder._preflight_staging_export(frame)
+    assert estimate < builder.DEFAULT_STAGING_EXPORT_PEAK_LIMIT_BYTES
+    with pytest.raises(MemoryError, match="above the 0.00 GB limit"):
+        builder._preflight_staging_export(frame, max_peak_bytes=1)
+
+
+def test_registered_transfer_with_unmodeled_required_rows_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builder = _load_builder_module()
+    frame = _frame(spines=("asec_puf", "acs_2024_1yr"))
+    frame.person["has_esi"] = pd.Series([True, np.nan], dtype=object)
+    result = builder.AcsMultispineResult(
+        frame=frame,
+        provenance={
+            "imputed_inputs": [
+                {
+                    "column": "has_esi",
+                    "family": "model_required_boolean",
+                    "unmodeled_recipient_rows": 1,
+                }
+            ]
+        },
+    )
+    monkeypatch.setattr(
+        builder,
+        "default_acs_transfer_target_families",
+        lambda donor: {"person": {"model_required_boolean": ("has_esi",)}},
+    )
+
+    with pytest.raises(SystemExit, match="left 1 unmodeled row"):
+        builder._require_default_transfer_coverage(result, _frame())
+
+
+def test_group_quarters_rent_gap_is_explicit_structural_pending(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builder = _load_builder_module()
+    frame = _frame(spines=("asec_puf", "acs_2024_1yr"))
+    frame.person["pre_subsidy_rent"] = [1_000.0, np.nan]
+    frame.table("household")["TYPEHUGQ"] = [np.nan, 3.0]
+    result = builder.AcsMultispineResult(
+        frame=frame,
+        provenance={
+            "imputed_inputs": [
+                {
+                    "column": "pre_subsidy_rent",
+                    "family": "housing",
+                    "unmodeled_recipient_rows": 1,
+                }
+            ]
+        },
+    )
+    monkeypatch.setattr(
+        builder,
+        "default_acs_transfer_target_families",
+        lambda donor: {"person": {"housing": ("pre_subsidy_rent",)}},
+    )
+
+    coverage = builder._require_default_transfer_coverage(result, _frame())
+
+    assert coverage["structural_pending"] == [
+        {
+            "column": "pre_subsidy_rent",
+            "entity": "person",
+            "rows": 1,
+            "reason": (
+                "ACS group-quarters rows are outside the housing-tenure universe"
+            ),
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    "missing_rows,observed_rows,modeled_rows",
+    [(0, 1, None), (1, 0, None), (0, 2, None), (1, 0, 1), (1, 0, 2)],
+)
+def test_native_complete_hours_satisfy_coverage_without_a_fabricated_fit(
+    missing_rows, observed_rows, modeled_rows
+):
+    builder = _load_builder_module()
+    before = _frame(spines=("asec_puf", "acs_2024_1yr"))
+    tables = {entity: before.table(entity).copy() for entity in before.entities}
+    column = "weekly_hours_worked_before_lsr"
+    tables["person"][column] = [40.0, 0.0]
+    if modeled_rows is not None:
+        tables["person"].loc[1, "age"] = 12
+    frame = Frame(
+        tables,
+        before.schema,
+        {"household": before.weights_for("household")},
+    )
+    result = builder.AcsMultispineResult(
+        frame=frame,
+        provenance={
+            "imputed_inputs": [],
+            "native_inputs": {
+                column: {
+                    "entity": "person",
+                    "provenance": "acs_2024_1yr_native",
+                    "source_columns": ["WKHP", "AGEP", "WKL", "FWKHP"],
+                    "missing_rows": missing_rows,
+                    "observed_rows": observed_rows,
+                }
+            },
+        },
+    )
+    if modeled_rows is not None:
+        result.provenance["hours_modeled_completion"] = {
+            "policy": builder.ACS_UNDER15_ZERO_POLICY,
+            "version": 1,
+            "provenance": "modeled_assumption",
+            "column": column,
+            "modeled_rows": modeled_rows,
+        }
+    plan = {"person": {"source_operator_hours_worked": (column,)}}
+    if missing_rows != (modeled_rows or 0) or observed_rows + (modeled_rows or 0) != 1:
+        with pytest.raises(SystemExit):
+            builder._require_default_transfer_coverage(
+                result, before, target_families=plan
+            )
+    else:
+        coverage = builder._require_default_transfer_coverage(
+            result, before, target_families=plan
+        )
+        assert coverage["native_registered_inputs"] == [column]
+        assert coverage["registered_inputs"] == []
+        if modeled_rows is not None:
+            assert coverage["modeled_hours_rows"] == modeled_rows
+
+
+def test_reviewed_limitations_close_gq_and_sub_puma_gaps() -> None:
+    builder = _load_builder_module()
+    frame = _frame(spines=("asec_puf", "acs_2024_1yr"))
+    frame.table("household")["TYPEHUGQ"] = [np.nan, 3.0]
+    result = builder.AcsMultispineResult(
+        frame=frame,
+        provenance={
+            "geography_ladder": {
+                "applied": True,
+                "seed": 29,
+                "layer_vintages": {
+                    "puma": "2020_puma",
+                    "congressional_district": "119th_congress",
+                    "county": "2020_census",
+                    "tract": "2020_census",
+                },
+                "unresolved_sub_puma_inputs": ["block_geoid", "tract_geoid"],
+            }
+        },
+    )
+    transfer_coverage = {
+        "structural_pending": [
+            {
+                "column": "pre_subsidy_rent",
+                "entity": "person",
+                "rows": 1,
+                "reason": (
+                    "ACS group-quarters rows are outside the housing-tenure universe"
+                ),
+            }
+        ]
+    }
+    input_null_audit = [
+        {
+            "entity": "person",
+            "column": "pre_subsidy_rent",
+            "missing_rows_by_spine": {"acs_2024_1yr": 1},
+        },
+        {
+            "entity": "person",
+            "column": "employment_income_before_lsr",
+            "missing_rows_by_spine": {"acs_2024_1yr": 1},
+        },
+    ]
+
+    limitations = builder._reviewed_limitations(
+        result,
+        transfer_coverage=transfer_coverage,
+        input_null_audit=input_null_audit,
+    )
+
+    gq, native, geography = limitations
+    assert gq["status"] == "reviewed_structural_absence"
+    assert gq["affected_rows"] == {"household": 1, "person": 1, "spm_unit": 1}
+    assert gq["engine_input_nulls"] == [input_null_audit[0]]
+    assert gq["transfer_evidence"] == transfer_coverage["structural_pending"]
+    assert native["engine_input_nulls_excluding_group_quarters_housing"] == [
+        input_null_audit[1]
+    ]
+    assert geography["status"] == "reviewed_probabilistic_assignment"
+    assert geography["unavailable_exact_geography"] == [
+        "block_geoid",
+        "tract_geoid",
+    ]
+    assert geography["assignment_seed"] == 29
+    assert all(item["calibration_blocker"] is False for item in limitations)
+
+
+@pytest.mark.parametrize(
+    ("declares_universe", "drop"),
+    [(False, True), (True, False)],
+)
+def test_group_quarters_children_drop_exactly_while_the_engine_does_not_scope(
+    declares_universe, drop
+) -> None:
+    """d1484's flip condition, in code: the staging drops them under an engine
+    that measures every SPM unit, and keeps them under one that scopes SPM by
+    measurement universe."""
+
+    builder = _load_builder_module()
+    variables = {"age", "spm_unit_spm_threshold"}
+    if declares_universe:
+        variables.add("spm_unit_spm_universe_status")
+
+    assert builder._drop_acs_group_quarters_children(variables) is drop
+
+
+def test_the_drop_is_disclosed_as_a_reviewed_interim_limitation() -> None:
+    builder = _load_builder_module()
+    receipt = {
+        "rule": "TYPEHUGQ in {2, 3} AND age < 15",
+        "authority": "Census SEHSD-WP2020-09 pp. 6-7",
+        "decision": "microcosm#1263 (d1484)",
+        "status": "interim",
+        "flip_condition": "keep them once the engine scopes",
+        "group_quarters_households": 183_206,
+        "households_dropped": 1_946,
+        "persons_dropped": 1_946,
+        "household_weight_share_dropped": 0.00005,
+        "household_weight_dropped": 123.0,
+    }
+
+    limitation = builder._group_quarters_children_limitation(receipt)
+
+    assert limitation["id"] == "acs_group_quarters_children_outside_spm_universe"
+    assert limitation["status"] == "reviewed_interim_exclusion"
+    assert limitation["affected_spine"] == "acs_2024_1yr"
+    assert limitation["decision"] == "microcosm#1263 (d1484)"
+    assert limitation["flip_condition"] == receipt["flip_condition"]
+    assert limitation["counts"] == {
+        "group_quarters_households": 183_206,
+        "households_dropped": 1_946,
+        "persons_dropped": 1_946,
+        "household_weight_share_dropped": 0.00005,
+    }
+    assert "fiscal total" in limitation["treatment"]
+    assert limitation["calibration_blocker"] is False
+    json.dumps(limitation, allow_nan=False)
+
+
+def test_donor_release_identity_verifies_sha_and_pins_provenance(
+    tmp_path: Path,
+) -> None:
+    module = _load_builder_module()
+    sha = "a" * 64
+    manifest = tmp_path / "release_manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "dataset_role": "national_default",
+                "is_default": True,
+                "build": {"build_id": "populace-us-2024-buildo-sparse-x"},
+                "artifacts": {
+                    "populace_us_2024": {
+                        "kind": "microdata",
+                        "path": "populace_us_2024.h5",
+                        "repo_id": "policyengine/populace-us",
+                        "revision": "populace-us-2024-buildo-sparse-x",
+                        "sha256": sha,
+                    },
+                    "calibration_diagnostics": {
+                        "kind": "diagnostics",
+                        "path": "calibration_diagnostics.json",
+                        "sha256": "b" * 64,
+                    },
+                },
+            }
+        )
+    )
+
+    identity = module._donor_release_identity(manifest, sha)
+
+    assert identity == {
+        "manifest_path": str(manifest.resolve()),
+        "artifact": "populace_us_2024",
+        "release_id": "populace-us-2024-buildo-sparse-x",
+        "revision": "populace-us-2024-buildo-sparse-x",
+        "repo_id": "policyengine/populace-us",
+        "sha256": sha,
+        "dataset_role": "national_default",
+        "is_default": True,
+    }
+    assert module._donor_release_identity(None, sha) is None
+
+
+def test_donor_release_identity_rejects_sha_mismatch(tmp_path: Path) -> None:
+    module = _load_builder_module()
+    manifest = tmp_path / "release_manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "artifacts": {
+                    "populace_us_2024": {
+                        "kind": "microdata",
+                        "sha256": "a" * 64,
+                    }
+                }
+            }
+        )
+    )
+
+    with pytest.raises(SystemExit, match="does not match its release manifest"):
+        module._donor_release_identity(manifest, "c" * 64)
+
+
+def test_donor_release_identity_requires_one_microdata_artifact(
+    tmp_path: Path,
+) -> None:
+    module = _load_builder_module()
+    manifest = tmp_path / "release_manifest.json"
+    manifest.write_text(json.dumps({"artifacts": {}}))
+
+    with pytest.raises(SystemExit, match="exactly one microdata artifact"):
+        module._donor_release_identity(manifest, "a" * 64)
+
+
+@pytest.mark.parametrize(
+    "column",
+    [
+        "detailed_occupation_recode",
+        "detailed_industry_recode",
+        "major_industry_recode",
+        "worked_last_year",
+    ],
+)
+def test_donor_without_work_experience_fails_before_fetch(
+    monkeypatch: pytest.MonkeyPatch,
+    column: str,
+) -> None:
+    builder = _load_builder_module()
+    donor = _frame()
+    donor.person.drop(columns=[column], inplace=True)
+    monkeypatch.setattr(
+        builder.acs_sources, "load_acs_source_manifest", lambda path: _manifest()
+    )
+    monkeypatch.setattr(builder, "_load_base_frame", lambda path: donor)
+    monkeypatch.setattr(builder, "_sha256", lambda path: "0" * 64)
+
+    def must_not_fetch(*_args, **_kwargs):
+        pytest.fail("source fetch must not run for an incomplete work-experience donor")
+
+    monkeypatch.setattr(builder.acs_sources, "fetch_acs_pums_sources", must_not_fetch)
+
+    with pytest.raises(SystemExit, match=f"lacks canonical work-experience.*{column}"):
+        builder.main(["--base-h5", "donor.h5", "--out-h5", "combined.h5"])
+
+
+@pytest.mark.parametrize(
+    "column",
+    [
+        "detailed_occupation_recode",
+        "detailed_industry_recode",
+        "major_industry_recode",
+        "worked_last_year",
+    ],
+)
+@pytest.mark.parametrize("invalid", [None, np.inf, "invalid"])
+def test_donor_work_experience_rejects_null_or_nonfinite_values(
+    column, invalid
+) -> None:
+    builder = _load_builder_module()
+    donor = _frame()
+    donor.person[column] = pd.Series(
+        [donor.person[column].iloc[0], invalid], dtype=object
+    )
+
+    with pytest.raises(SystemExit, match=f"missing or nonfinite.*{column}"):
+        builder._require_donor_work_experience(donor)
+
+
+def test_complete_donor_work_experience_passes_without_changing_rows() -> None:
+    builder = _load_builder_module()
+    donor = _frame()
+    before = donor.person.copy(deep=True)
+
+    builder._require_donor_work_experience(donor)
+
+    pd.testing.assert_frame_equal(donor.person, before)
+
+
+def test_donor_without_the_spm_role_fails_before_fetch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        builder.acs_sources, "load_acs_source_manifest", lambda path: _manifest()
+    )
+    monkeypatch.setattr(
+        builder, "_load_base_frame", lambda path: _frame(spm_role=False)
+    )
+    monkeypatch.setattr(builder, "_sha256", lambda path: "0" * 64)
+
+    def must_not_fetch(*_args, **_kwargs):
+        raise AssertionError("source fetch must not run for a role-free donor")
+
+    monkeypatch.setattr(builder.acs_sources, "fetch_acs_pums_sources", must_not_fetch)
+
+    with pytest.raises(SystemExit, match=f"carries no {NATIVE_SPM_ROLE}"):
+        builder.main(["--base-h5", "donor.h5", "--out-h5", "combined.h5"])
+
+
+@pytest.mark.parametrize(
+    "values,match",
+    [
+        (pd.Series([True, None], dtype=object), "null on 1 person row"),
+        (pd.Series([1, 0]), "must be Boolean"),
+    ],
+)
+def test_donor_spm_role_must_be_complete_and_boolean(values, match) -> None:
+    builder = _load_builder_module()
+    donor = _frame()
+    donor.person[NATIVE_SPM_ROLE] = values
+
+    with pytest.raises(SystemExit, match=match):
+        builder._require_donor_spm_independence_role(donor)
+
+
+def _pooled_result(builder, *, role, receipt):
+    frame = _frame(spines=("asec_puf", "acs_2024_1yr"))
+    if role is None:
+        frame.person.drop(columns=[NATIVE_SPM_ROLE], inplace=True)
+    else:
+        frame.person[NATIVE_SPM_ROLE] = role
+    provenance = {} if receipt is None else {"spm_independence_role": receipt}
+    return builder.AcsMultispineResult(frame=frame, provenance=provenance)
+
+
+def test_pooled_spm_role_passes_when_complete_boolean_and_receipted() -> None:
+    builder = _load_builder_module()
+    receipt = _spm_role_receipt(persons=1)
+
+    result = _pooled_result(builder, role=np.asarray([True, False]), receipt=receipt)
+
+    assert builder._require_pooled_spm_independence_role(result) is receipt
+
+
+@pytest.mark.parametrize(
+    "role,receipt,match",
+    [
+        (np.asarray([True, False]), None, "derived no SPM independence role"),
+        (None, _spm_role_receipt(persons=1), "lost is_spm_independent_minor_role"),
+        (
+            pd.Series([True, None], dtype=object),
+            _spm_role_receipt(persons=1),
+            r"null on 1 person row\(s\) \(by spine \{'acs_2024_1yr': 1\}\)",
+        ),
+        (pd.Series([1, 0]), _spm_role_receipt(persons=1), "must be Boolean"),
+        (
+            np.asarray([True, False]),
+            _spm_role_receipt(persons=2),
+            "receipt covers 2 person",
+        ),
+    ],
+)
+def test_pooled_spm_role_refuses_an_incomplete_or_unreceipted_role(
+    role, receipt, match
+) -> None:
+    builder = _load_builder_module()
+
+    with pytest.raises(SystemExit, match=match):
+        builder._require_pooled_spm_independence_role(
+            _pooled_result(builder, role=role, receipt=receipt)
+        )
+
+
+def test_engine_input_null_audit_refuses_a_declared_source_input() -> None:
+    """A null source role never enters the register, even via a stub engine."""
+
+    builder = _load_builder_module()
+    frame = _frame(spines=("asec_puf", "acs_2024_1yr"))
+    frame.person[NATIVE_SPM_ROLE] = pd.Series([True, None], dtype=object)
+
+    class FakeEngine:  # declares no source inputs of its own
+        def variables(self):
+            return ["age", NATIVE_SPM_ROLE]
+
+        def variable_metadata(self, name):
+            return SimpleNamespace(
+                dtype={"age": "float", NATIVE_SPM_ROLE: "bool"}[name]
+            )
+
+    with pytest.raises(SystemExit) as exc:
+        builder._engine_input_null_audit(frame, FakeEngine())
+
+    assert f"person.{NATIVE_SPM_ROLE} (1 null rows" in str(exc.value)
+    assert "{'acs_2024_1yr': 1}" in str(exc.value)
+    assert "does not permit synthesizing a default" in str(exc.value)
+
+
+def test_engine_input_null_audit_honors_the_engine_declaration() -> None:
+    builder = _load_builder_module()
+    frame = _frame(spines=("asec_puf", "acs_2024_1yr"))
+    frame.person["future_source_input"] = [1.0, np.nan]
+
+    class FakeEngine:
+        def variables(self):
+            return ["future_source_input", NATIVE_SPM_ROLE]
+
+        def variable_metadata(self, name):
+            return SimpleNamespace(dtype="float")
+
+        def _dataset_source_inputs(self):
+            return frozenset({NATIVE_SPM_ROLE, "future_source_input"})
+
+    with pytest.raises(SystemExit, match="person.future_source_input"):
+        builder._engine_input_null_audit(frame, FakeEngine())
+
+
+def test_reviewed_limitations_document_the_acs_spm_role() -> None:
+    builder = _load_builder_module()
+    frame = _frame(spines=("asec_puf", "acs_2024_1yr"))
+    frame.table("household")["TYPEHUGQ"] = [np.nan, 1.0]
+    receipt = {
+        **_spm_role_receipt(persons=1),
+        "group_quarters_units_without_classified_adult": 0,
+        "housing_units_classified_only_by_role": 1,
+    }
+    result = builder.AcsMultispineResult(
+        frame=frame,
+        provenance={
+            "geography_ladder": {"applied": True, "seed": 3},
+            "spm_independence_role": receipt,
+        },
+    )
+
+    limitation = builder._reviewed_limitations(
+        result, transfer_coverage={}, input_null_audit=[]
+    )[-1]
+
+    assert limitation["id"] == "acs_spm_independence_role_household_partition"
+    assert limitation["status"] == "reviewed_source_derivation"
+    assert limitation["affected_columns"] == {"person": [NATIVE_SPM_ROLE]}
+    assert limitation["rule"] == receipt["rule"]
+    assert limitation["counts"]["housing_units_classified_only_by_role"] == 1
+    assert limitation["validation"] == "experiments/acs-spm-role-asec-validation.md"
+    assert limitation["calibration_blocker"] is False
+
+
+def test_staging_h5_round_trips_a_complete_boolean_spm_role(tmp_path: Path) -> None:
+    pytest.importorskip("tables")  # pandas HDF backend
+    builder = _load_builder_module()
+    frame = _frame(spines=("asec_puf", "acs_2024_1yr"))
+    frame.person[NATIVE_SPM_ROLE] = np.asarray([True, False])
+    output = tmp_path / "role-staging.h5"
+
+    builder._write_dataset(frame, output, period=2024)
+
+    stored = pd.read_hdf(output, key="person")[NATIVE_SPM_ROLE]
+    assert stored.dtype == np.dtype(bool)
+    assert stored.tolist() == [True, False]

@@ -68,6 +68,21 @@ against, because the same process records it as
   (``tools/build_us_acs_local_release.py``), on the calibrated H5, through
   :func:`require_h5_stored_inputs`, before the release directory exists.
 
+The publisher contract (:mod:`microcosm.data.contract`) imports no engine, so
+it does not re-run the rule for the fiscal-refresh and ACS local-area lanes. It
+requires each lane's verdict as release evidence instead (microcosm#1034): the
+fiscal-refresh tool's ``stored_inputs.json`` and the manifests'
+``stored_inputs`` block, and the ACS package stage's ``stored_inputs`` gate.
+Each must name the built-with engine and the release's bytes, so a release
+packaged by a tool without the check cannot validate.
+
+Every seam grades one engine: the installed, built-with version. A
+source-enrichment publisher claim widens the policyengine-us range consumers
+accept, but no seam grades the other versions the range admits, later or
+earlier; the certified report records the one measured version as
+``compatibility.claim_measurement``
+(:func:`microcosm.data.source_enrichment.claim_measurement_record`).
+
 **Naming convention, measured rather than assumed.** policyengine-us 2.2.1
 defines 6,167 variables. 6,114 match ``[a-z][a-z0-9_]*``. The other 53 are the
 postal codes of the 50 states, DC, PR and VI:
@@ -265,6 +280,12 @@ _US_ENTITIES = ("person", "household", "tax_unit", "spm_unit", "family", "marita
 #: - the ACS local-area release ``populace-us-2024-buildo-acs-local-
 #:   767312d60-20260923T074941Z`` (the ``*_spine`` tags as well).
 #:
+#: One pair postdates those files: ``parent_1_id`` and ``parent_2_id``
+#: (microcosm#884). No examined file stores them yet, so they rest on their
+#: live producer, ``eligibility_inputs.US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS``,
+#: which ``test_us_stored_input_register.py`` binds, and leave the register
+#: once the pinned engine defines them.
+#:
 #: Two model-named non-variable columns that the published default, its
 #: receipt child and the ACS local-area release store are deliberately absent,
 #: because each is a retired engine input rather than metadata:
@@ -287,6 +308,10 @@ _US_ENTITIES = ("person", "household", "tax_unit", "spm_unit", "family", "marita
 #:   ``medicare_part_b_premium`` itself. #590 dropped the transfer from the
 #:   build, and the rehearsal export no longer stores it, so the remedy is to
 #:   stop storing it.
+#:
+#: The ACS local-area chain inherits both from its donor and applies these
+#: remedies to its consumer artifact
+#: (``microcosm.build.us_runtime.retired_stored_inputs``, microcosm#1263).
 #:
 #: An entry must never be a variable of the certified engine. The engine reads
 #: such a column as an input, so the entry would be dead, and its reason (that
@@ -407,6 +432,21 @@ US_STORED_NON_VARIABLE_COLUMNS: Mapping[str, str] = MappingProxyType(
         "puf_capital_gains_tail_transfer_weight": _PUF_TAIL.format(
             detail="the donor weight carried by the transfer"
         ),
+        **{
+            column: (
+                f"The person_id of the co-resident parent the person's CPS "
+                f"ASEC {pointer} pointer names, or 0 when unknown, written by "
+                "microcosm.build.us_runtime.eligibility_inputs "
+                "(US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS; microcosm#884). The "
+                "certified engine does not define it yet, so it is ignored "
+                "there; policyengine-us#9406 adds it as an input. Remove this "
+                "entry when the pinned engine defines the variable."
+            )
+            for column, pointer in (
+                ("parent_1_id", "PEPAR1"),
+                ("parent_2_id", "PEPAR2"),
+            )
+        },
     }
 )
 

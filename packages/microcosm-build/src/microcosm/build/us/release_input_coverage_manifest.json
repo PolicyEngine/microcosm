@@ -57,7 +57,7 @@
    "status": "required"
   },
   "detailed_industry_recode": {
-   "note": "Industry of the longest job last year, 23 CPS detailed groups, carried by the org_wages release stage (org_wages.derive_us_org_occupation_inputs) from ASEC WEIND (restored before pooling by asec_census_person_columns) and, on ACS-spine people, from native INDP/WKWN through the release predictor join; a formula-less person input in PolicyEngine-US 2.2.1. Required with NO reviewed exclusion per PolicyEngine/microcosm#719: the county-file person schema carries a working indicator, industry and occupation on every record. Currently absent from every published US default (all predate #719) — this is the intended red gate until the next release is built with the carry.",
+   "note": "Industry of the longest job last year, 23 CPS detailed groups, carried from ASEC WEIND (restored before pooling by asec_census_person_columns) by the org_wages release stage (org_wages.derive_us_org_occupation_inputs). ACS derives the same input from native INDP/WKWN through the shared crosswalk in the fiscal release predictor join and native ACS mapper; a formula-less person input in PolicyEngine-US 2.2.1. Required with NO reviewed exclusion per PolicyEngine/microcosm#719: the county-file person schema carries a working indicator, industry and occupation on every record. Currently absent from every published US default (all predate #719) — this is the intended red gate until the next release is built with the carry.",
    "status": "required"
   },
   "detailed_occupation_recode": {
@@ -259,7 +259,7 @@
   },
   "is_unmarried_partner_of_household_head": {
    "issue": "PolicyEngine/microcosm#38",
-   "reason": "SOURCE UNAVAILABILITY WITH EVIDENCE: archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py lines 1214-1221 derives is_unmarried_partner_of_household_head exclusively from person PERRP; datasets/cps/census_cps.py lines 306-318 declares that person source. All three SHA-recorded 2022-2024 ASEC HDF inputs consumed by the hermetic build omit PERRP. The 2022 and 2023 inputs also omit PECOHAB, A_EXPRRP, and A_FAMREL; only 2024 carries those alternatives, and its A_EXPRRP code 13 conflates partner with roommate. Microcosm's older-year relationship fallback uses only line, spouse, sex, and parent pointers and never identifies a partner. Using the 2024 pointer for one-third of the pool while treating the other two-thirds as false, or assigning partner status from the combined partner/roommate code, would synthesize statuses the locked sources do not report.",
+   "reason": "SOURCE UNAVAILABILITY WITH EVIDENCE: archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py lines 1214-1221 derives is_unmarried_partner_of_household_head exclusively from person PERRP; datasets/cps/census_cps.py lines 306-318 declares that person source. All three SHA-recorded 2022-2024 ASEC HDF inputs consumed by the hermetic Build J base (experiments/build_j_recert) omit PERRP, and the 2022 and 2023 inputs also omit PECOHAB, A_EXPRRP, and A_FAMREL. Build J predates microcosm #720 and derived its 2022 and 2023 relationship codes from line, spouse, sex, parent, and household-size inputs, a fallback that never emits code 13. Since #720 (PR #991), tools/build_us_puf_support_base.py and tools/build_us_asec_pooled_source_base.py bind each pooled year to its pinned Census person file, and microcosm.build.us_runtime.asec_pool._prepare_year_input restores the microcosm.build.us_runtime.asec_census_person_columns.ASEC_CENSUS_PERSON_COLUMNS an input lacks before the relationship recode, so every vintage those tools pool carries Census A_EXPRRP and none reaches the fallback; a raw-stage checkpoint built before #720, such as the asec_raw_stage the US spec sources.yaml has pinned since 2026-08-17, keeps the fallback codes. Those reviewed columns exclude PERRP, PECOHAB, and A_FAMREL, although the pinned 2022-2024 Census person files carry all three. A_EXPRRP code 13 conflates partner with roommate, and partners who have their own relatives in the household fall in code 12 with other such nonrelatives. Using the 2024 pointer for one-third of Build J's pool while treating the other two-thirds as false, or assigning partner status from the combined partner/roommate code, would synthesize statuses that neither Build J's HDF inputs nor A_EXPRRP codes 12 and 13 report.",
    "status": "reviewed_exclusion"
   },
   "is_wic_at_nutritional_risk": {
@@ -277,7 +277,7 @@
    "status": "required"
   },
   "major_industry_recode": {
-   "note": "Industry of the longest job last year, 15 CPS major groups, carried by the org_wages release stage (org_wages.derive_us_org_occupation_inputs) from ASEC WEMIND (restored before pooling by asec_census_person_columns) and, on ACS-spine people, from native INDP/WKWN through the release predictor join; a formula-less person input in PolicyEngine-US 2.2.1. Required with NO reviewed exclusion per PolicyEngine/microcosm#719: the county-file person schema carries a working indicator, industry and occupation on every record. Currently absent from every published US default (all predate #719) — this is the intended red gate until the next release is built with the carry.",
+   "note": "Industry of the longest job last year, 15 CPS major groups, carried from ASEC WEMIND (restored before pooling by asec_census_person_columns) by the org_wages release stage (org_wages.derive_us_org_occupation_inputs). ACS derives the same input from native INDP/WKWN through the shared crosswalk in the fiscal release predictor join and native ACS mapper; a formula-less person input in PolicyEngine-US 2.2.1. Required with NO reviewed exclusion per PolicyEngine/microcosm#719: the county-file person schema carries a working indicator, industry and occupation on every record. Currently absent from every published US default (all predate #719) — this is the intended red gate until the next release is built with the carry.",
    "status": "required"
   },
   "meets_ssi_disability_criteria": {
@@ -551,7 +551,7 @@
    "status": "required"
   },
   "worked_last_year": {
-   "note": "Worked at any time last year, carried by the org_wages release stage (org_wages.derive_us_org_occupation_inputs) from ASEC WKSWORK > 0 (restored before pooling by asec_census_person_columns) and, on ACS-spine people, from native INDP/WKWN through the release predictor join; a formula-less person input in PolicyEngine-US 2.2.1. Required with NO reviewed exclusion per PolicyEngine/microcosm#719: the county-file person schema carries a working indicator, industry and occupation on every record. Currently absent from every published US default (all predate #719) — this is the intended red gate until the next release is built with the carry.",
+   "note": "Worked at any time last year, carried from ASEC WKSWORK > 0 by the org_wages release stage (org_wages.derive_us_org_occupation_inputs). ACS derives the same input from native INDP/WKWN through the shared crosswalk in the fiscal release predictor join and native ACS mapper; a formula-less person input in PolicyEngine-US 2.2.1. Required with NO reviewed exclusion per PolicyEngine/microcosm#719: the county-file person schema carries a working indicator, industry and occupation on every record. Currently absent from every published US default (all predate #719) — this is the intended red gate until the next release is built with the carry.",
    "status": "required"
   },
   "workers_compensation": {
@@ -566,7 +566,7 @@
   "reviewed_exclusion": 7,
   "total": 177
  },
- "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, five desired retirement-contribution inputs, meets_ssi_disability_criteria required by shipped validation probes, the #282 Schedule-D capital-gain-distributions route leg schedule_d_capital_gain_distributions (PolicyEngine/microcosm#462), the three ASEC reported-receipt inputs receives_wic, receives_snap, receives_tanf that the ACS local-area transfer requires in its donor (PolicyEngine/microcosm#978 option 1), and the engine's declared dataset source input is_spm_independent_minor_role (the spm_independence_role base-builder stage; PolicyEngine/microcosm#893). status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/microcosm#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
+ "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, five desired retirement-contribution inputs, meets_ssi_disability_criteria required by shipped validation probes, the #282 Schedule-D capital-gain-distributions route leg schedule_d_capital_gain_distributions (PolicyEngine/microcosm#462), the three ASEC reported-receipt inputs receives_wic, receives_snap, receives_tanf that the ACS local-area transfer requires in its donor (PolicyEngine/microcosm#978 option 1), the work-experience inputs detailed_industry_recode, major_industry_recode, worked_last_year (PolicyEngine/microcosm#719), and the engine's declared dataset source input is_spm_independent_minor_role (the spm_independence_role base-builder stage; PolicyEngine/microcosm#893). status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/microcosm#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
  "description": "Declared full-coverage contract for a US release: every input column the reference eCPS exports must be persisted as a key with non-default signal, or carry a reviewed exclusion. Enforced as a hard release gate (microcosm.build.us_runtime.release_input_coverage) that generalizes assert_required_us_release_source_columns from 5 columns to the full eCPS input surface.",
  "issue": "PolicyEngine/microcosm#368",
  "reference": {
@@ -1053,7 +1053,6 @@
     "gov.usda.snap.income.sources.unearned": {
      "2024-01-01.2024-12-31": [
       "ssi",
-      "tanf",
       "general_assistance",
       "pension_income",
       "veterans_benefits",
@@ -1115,7 +1114,6 @@
     "gov.usda.snap.income.sources.unearned": {
      "2024-01-01.2024-12-31": [
       "ssi",
-      "tanf",
       "general_assistance",
       "pension_income",
       "veterans_benefits",
@@ -1152,7 +1150,6 @@
     "gov.usda.snap.income.sources.unearned": {
      "2024-01-01.2024-12-31": [
       "ssi",
-      "tanf",
       "general_assistance",
       "pension_income",
       "veterans_benefits",
@@ -1172,7 +1169,7 @@
     }
    },
    "period": 2024,
-   "reason": "Removing only workers_compensation from SNAP unearned-income sources lowers countable income and must increase SNAP for some recipients. A production-ingredient 30,000-household smoke scored +$28.26M reform-minus-baseline; without the measured WC_VAL carry and PUF-half QRF, the source-list reform is a structural zero."
+   "reason": "Removing only workers_compensation from SNAP unearned-income sources lowers countable income and must increase SNAP for some recipients. On the 2026-09-27 Route A export (PolicyEngine-US 2.2.1) the corrected list scored +$277.9M reform-minus-baseline over all 1,708 households carrying the leaf; without the measured WC_VAL carry and PUF-half QRF, the source-list reform is a structural zero. The list must equal the engine's person-level unearned sources minus this leaf: TANF is counted once on unearned_spm_unit and must not be re-added here."
   },
   {
    "binding_inputs": [
@@ -1235,12 +1232,26 @@
    "min_abs_effect": 1000000.0,
    "name": "Alimony expense above-the-line deduction abolition",
    "parameter_changes": {
-    "gov.irs.ald.alimony_expense.divorce_year_threshold[0].amount": {
-     "2024-01-01.2100-12-31": false
+    "gov.irs.ald.deductions": {
+     "2024-01-01.2024-12-31": [
+      "loss_ald",
+      "self_employment_tax_ald",
+      "student_loan_interest_ald",
+      "early_withdrawal_penalty",
+      "educator_expense",
+      "health_savings_account_ald",
+      "self_employed_health_insurance_ald",
+      "self_employed_pension_contribution_ald",
+      "traditional_ira_contributions",
+      "qualified_adoption_assistance_expense",
+      "us_bonds_for_higher_ed",
+      "specified_possession_income",
+      "puerto_rico_income"
+     ]
     }
    },
    "period": 2024,
-   "reason": "The retired export has no nondefault divorce_year input, so PolicyEngine-US applies its default year 0 through the first eligibility bracket. Setting that bracket's amount to false abolishes the alimony-expense above-the-line deduction on the release, so baseline-minus-reform income tax must be negative. With alimony_expense absent or degenerate, the abolition scores exactly $0."
+   "reason": "Removing only alimony_expense_ald from the above-the-line deduction list raises payers' taxable income, so baseline-minus-reform income tax must be negative. The divorce_year_threshold bracket is not used: since PolicyEngine-US a8e8a2e2ab it also gates the recipient-side taxable_alimony_income, so flipping it untaxes receipts too; on the 2026-09-27 Route A export that scored +$1.89B, the wrong sign. On the same export the corrected list scored -$2.52B. With alimony_expense absent or degenerate, the abolition scores exactly $0."
   },
   {
    "binding_inputs": [

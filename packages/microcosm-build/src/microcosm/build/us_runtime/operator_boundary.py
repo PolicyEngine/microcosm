@@ -14,6 +14,11 @@ from typing import Any
 
 import pandas as pd
 
+from microcosm.build.us_runtime.acs_inputs import (
+    _ACS_UNRESOLVED_PARENT_POINTER_TRANSFORMATION,
+    ACS_UNRESOLVED_PARENT_ID_MAPPINGS,
+    ACS_WORK_EXPERIENCE_NATIVE_MAPPINGS,
+)
 from microcosm.build.us_runtime.acs_transfer import ACS_DERIVED_TRANSFER_INPUTS
 from microcosm.build.us_runtime.adult_care import US_ADULT_CARE_OUTPUT_COLUMNS
 from microcosm.build.us_runtime.child_support import (
@@ -131,6 +136,12 @@ _ACS_NATIVE_INPUT_CONTRACTS: Mapping[
     str,
     tuple[str, tuple[str, ...], str],
 ] = {
+    **{
+        output: ("person", source_columns, transformation)
+        for output, (_, source_columns, transformation) in (
+            ACS_WORK_EXPERIENCE_NATIVE_MAPPINGS.items()
+        )
+    },
     "age": ("person", ("AGEP",), "identity"),
     "is_female": ("person", ("SEX",), "SEX == 2"),
     "is_household_head": ("person", ("RELSHIPP",), "RELSHIPP == 20"),
@@ -190,6 +201,14 @@ _ACS_NATIVE_INPUT_CONTRACTS: Mapping[
         ("TAXAMT", "ADJHSG", "RELSHIPP"),
         "TAXAMT * ADJHSG / 1_000_000; reference-person carry",
     ),
+    **{
+        output: (
+            "person",
+            (pointer_column,),
+            _ACS_UNRESOLVED_PARENT_POINTER_TRANSFORMATION,
+        )
+        for output, pointer_column in ACS_UNRESOLVED_PARENT_ID_MAPPINGS
+    },
 }
 _CAPITAL_GAINS_TAIL_PROVENANCE_COLUMNS = frozenset(
     {

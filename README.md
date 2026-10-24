@@ -44,16 +44,34 @@ until you restart the kernel, load it by path with
 `load_country_spec(Path(...))` (always re-read), or call
 `microcosm.build.country_spec._load_packaged_country_spec.cache_clear()`.
 
-## Staging build telemetry
+## Build progress and staging run files
 
-US fiscal refresh builds emit pre-release staging telemetry **by default**:
-progress JSON is uploaded to `policyengine/populace-us-staging` while the build
-runs (best-effort — a missing token or failed upload never fails the build), so
-every candidate shows up on the staging dashboard before it is published.
-Disable with `--no-staging`, or point elsewhere with `--staging-repo-id` /
-`POPULACE_STAGING_REPO_ID`. An *empty* `POPULACE_STAGING_REPO_ID` is ignored
-rather than read as off, and staging with no destination at all is an argparse
-error — `--no-staging` is the only way a build produces no telemetry.
+UK build completion automatically exports Orrery execution graphs, attempts
+immutable publication before Hugging Face artifact staging, and preserves
+durable retry jobs and receipt snapshots. See
+[graph publication](docs/orrery-publication.md) for configuration and retry.
+
+Supported US and UK build commands start one local emitter service with separate
+telemetry and graph-publication workers. Microcosm supplies build metadata and
+graph files; the required `microcosm-emitter` package owns authentication,
+durable queues and delivery. Telemetry and graph publication are internal
+libraries in that single package, not separate installations.
+This draft migration requires a published emitter release before merge; see the
+[migration prerequisites](docs/orrery-publication.md#deferred-migration-prerequisites).
+The telemetry worker reports live progress to the hosted collector when the operator's
+existing Hugging Face login is accepted; otherwise it retains the events
+locally and the build continues. This live event path is independent of the
+staging run files described below.
+
+US fiscal refresh builds also write pre-release staging run files **by
+default**. Progress JSON is uploaded to `policyengine/populace-us-staging`
+while the build runs (best-effort — a missing token or failed upload never
+fails the build), so every candidate shows up on the staging dashboard before
+it is published. Disable these files with `--no-staging`, or point them
+elsewhere with `--staging-repo-id` / `POPULACE_STAGING_REPO_ID`. An *empty*
+`POPULACE_STAGING_REPO_ID` is ignored rather than read as off, and staging with
+no destination at all is an argparse error. `--no-staging` does not disable
+the local telemetry emitter service.
 
 The build manifest records what staging did: the run id, the destination, and
 how many files actually reached it, or an explicit `enabled: false` for a
@@ -71,11 +89,12 @@ This writes `progress.json`, `events.ndjson`, `calibration_progress.json`, and
 final candidate diagnostics under `runs/<run_id>/` without updating production
 `latest.json`.
 
-The UK commands (`tools/build_uk_frs_spine.py` and
-`tools/build_uk_rowwise_candidate.py`, whose `--release-role` builds either
-the national or the dense line) stage version 2 telemetry to
-`policyengine/populace-uk-staging` under the same switch. The rowwise
-candidate command also **stages the finished dataset bundle** it built,
+The UK commands (`tools/build_uk_frs_spine.py`, a shim over the package's
+`uk_runtime.spine_build`, and `microcosm-build-uk` / `tools/build_uk_full.py`,
+whose `--release-role` builds either the national or the dense line;
+`tools/build_uk_rowwise_candidate.py` is a stub over the same driver) stage
+version 2 staging run files to `policyengine/populace-uk-staging` under the
+same switch. The build command also **stages the finished dataset bundle** it built,
 national, dense or exact-count, under `staged/<run_id>/` in the
 private `policyengine/populace-uk-private` repository so the team can inspect
 it without publishing it: `releases/` and `latest.json` are untouched, the
@@ -123,6 +142,9 @@ AT-RISK only, `0` clean):
    support but zero selected support **fails** (the input the frozen selection
    cannot express); a thin selection or a signed leaf whose net sign
    contradicts the probe's `expected_sign` is AT-RISK.
+5. **SPM measurement composition** — every SPM unit has a classified adult. A
+   single unit without one makes spm-calculator refuse the whole population's
+   SPM measurement, which the release otherwise hits hours in.
 
 **A new lineage** — a release built on a fresh base with no selection source
 ([docs/us-release-build-rule.md](docs/us-release-build-rule.md) §3) — has no
@@ -149,8 +171,171 @@ selection source.
 **Run it** at base-build exit, before any release launch, and after any change
 to the selection-source manifest or the target/coverage registry. The
 synthetic-fixture unit tests
-(`packages/microcosm-build/tests/test_us_release_gate_preflight.py`) run in the
+(`packages/microcosm-build/tests/engine_free/us/test_us_release_gate_preflight.py`) run in the
 normal `uv run pytest` suite; the real-H5 mode above is a local/runbook step.
+
+### Dry-running the release's registers
+
+The checks above read the raw base. The release's waiver registers are graded on
+something else: the *staged* frame, after the input stages the release runs
+itself. Five QRF stages run inside the release (`scf_wealth`, `org_wages`,
+`ssi_disability_criteria`, `sipp_head_start`, `voluntary_filing_input`), and
+the release grades those registers only at the end. On 2026-09-26, route A run
+`310842b986d7` ran 13,707 s and then failed on its QRF tail-concentration
+waiver register alone. After microcosm#1033 changed the QRF draws:
+
+- four columns crossed the 0.75 top-100 share unwaived (`bond_assets`, which
+  exists only after the release's SCF stage, `domestic_production_ald`,
+  `estate_income` and `w2_wages_from_qualified_business`);
+- two entries went stale (`alimony_expense`, `qualified_bdc_income`);
+- one went thin (`farm_income`).
+
+That run's own `build.timing` splits it: at most 2,049 s for the base load,
+input stages and pre-solve gates, then 9,951 s of target compilation and
+1,668 s of calibration. The dry run replaces everything after the first part.
+
+The dry run replays the release itself and stops before the expensive part:
+
+```bash
+# The release config a supervisor saved ("argv" holds the full command):
+uv run python tools/dry_run_us_release_gates.py \
+  --release-config run/release-config.json \
+  --json-out run/dry-run-gates.json
+
+# A new base, or a candidate register, against that same config:
+uv run python tools/dry_run_us_release_gates.py \
+  --release-config run/release-config.json \
+  --base-h5 base-out/base_populace_us_2024_puf_support.h5 \
+  --qrf-tail-concentration-exclusions candidate_register.json \
+  --json-out dry-run-gates.json
+
+# Or the release command itself, with one flag added:
+uv run python tools/build_us_fiscal_refresh_release.py <release args> \
+  --dry-run-gates-report dry-run-gates.json
+```
+
+`--dry-run-gates-report` runs the release's own code path: the same argv, base
+load, input stages and pre-solve gates. It stops where the staged frame would
+go to target materialization. There it grades the staged frame at its base
+weights, calling the release tool's own gate functions (none is
+re-implemented), and exits `1` on any certain failure, `2` on AT-RISK only,
+and `0` when clean. An argparse error also exits `2` but writes no report, so
+the wrapper returns `64` whenever no report was written. It writes only its
+report: nothing under `--out`, no staging run files, no receipts. The local
+telemetry emitter service still reports dry-run progress. A base or
+donor that the config does not name locally is still downloaded, into the same
+caches the release uses. A refusal before the stop point becomes the report's
+certain failure. A crash while grading is reported as the dry run's own error,
+never as a release refusal. The checks:
+
+- **`qrf_tail_register`** covers every QRF output and every register entry. It
+  reports each one's release class at base weights (`over`, `at_or_under`,
+  `thin`, `dense`, `absent`, `non_numeric` or `not_qrf_output`), the verdict
+  that class gives (`used`, `stale`, `unused`, `unwaived`, `waived` or, under
+  `--evidence-release`, `owned`), and every verdict the solve could still
+  reach. A register file that does not load is a certain failure here: the
+  release reads it only at its terminal gates. Under `--evidence-release` it
+  is AT-RISK when an owner matches the release's degraded-mode line, because
+  with other terminal failures on record the release ships it.
+- **`export_input_mass`** runs the export input-mass gate with the staged
+  frame standing in for the export. It classifies the
+  `US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS` register as the gate does: `used`,
+  `below_reference_floor` or `unused`.
+- **`degenerate_input_register`**, **`ecps_parity_register`**,
+  **`input_coverage_register`**, **`stored_inputs`**, **`spm_composition`**,
+  **`zero_support_preview`** and **`pre_solve_battery`** grade the remaining
+  base-computable pre-export gates. `pre_solve_battery` holds the batched early
+  failures and every signal gate's lines.
+- **`export_signal_regrades`** covers the health-input and
+  reported-coverage-vintage gates, which the release grades before the solve
+  and again on the export. Neither reads weights, so on the full-pool path the
+  re-grade repeats the staged verdict. On the L0 path it can flip, and the
+  check flags each signal a selection could empty.
+- Under `--evidence-release`, a certain failure whose every release line
+  matches an owner pattern (the release's own matching rule) becomes AT-RISK,
+  marked OWNED, because the evidence tier ships it as a known failure. Any
+  unowned line still refuses. The exception is the input-mass-reference,
+  degenerate-input and eCPS gates when no earlier terminal failure is on
+  record: the release raises on them before the solve, outside the evidence
+  batch, so they stay certain failures.
+- **`not_previewable`** lists every gate that depends on the solve, on target
+  materialization or on the written H5, so the report never implies coverage
+  it lacks.
+
+The report also records what the run is bound to:
+
+- the base sha256;
+- the build commit;
+- the staged frame's sha256 and the target-frame materializer identity, which
+  the release's own checkpoint will carry;
+- whether an existing target-frame checkpoint matches it, in which case the
+  release will skip materialization;
+- each register's path, sha256 and entry count.
+
+**What is certain.** The solve can change two things: record weights, and on
+the L0 path which records ship. The full-pool solve parametrizes each weight as
+`exp(log w)`, so on that path carrier counts, nonzero shares and every value
+are exact at base weights. A column's top-k share is not exact, and nor is any
+weighted mass. For each graded item the dry run lists the release classes that
+the stated margins allow. If they all give one verdict, the item is certain (a
+FAIL when that verdict fails). If they give several and some fail, the item is
+AT-RISK. With every margin at zero, the verdict equals the release gate's
+verdict at base weights, which the tests check against the release tool's own
+functions.
+
+On the L0 path the solve also picks which households ship and refits their
+weights. Nobody has measured how that moves a top-k share, so by default no
+share verdict there is certain. A value-only verdict the release re-grades on
+the selected export (input coverage, the two signal re-grades, zero support)
+stays certain only while every signal it rests on keeps at least one record
+under the carrier-retention margin. The default margins:
+
+| Margin | Default | Basis |
+| --- | --- | --- |
+| `--dry-run-tail-share-rise-margin` | 0.35 | largest measured rise +0.299 (run 310842b986d7, 32 columns); d177 register pairs up to +0.29 |
+| `--dry-run-tail-share-fall-margin` | 0.05 | largest measured fall −0.033 |
+| `--dry-run-mass-drift-margin` | 0.10 | flags in-band columns near the ±50% edge; measured drift moves reach +0.84, so no nonzero-mass verdict is certain |
+| `--dry-run-l0-tail-share-rise-margin`, `--dry-run-l0-tail-share-fall-margin` | 1.0 | L0 path only; unmeasured, so the default admits any share |
+| `--dry-run-support-nonzero-share-margin` | 0.02 | L0 path only; a conservative default, not a measurement |
+| `--dry-run-support-carrier-retention` | 0.25 | L0 path only; the smallest kept fraction of the records carrying one signal; a conservative default, not a measurement |
+
+The measurements behind them are in
+[experiments/us-release-dry-run-margin-evidence.md](experiments/us-release-dry-run-margin-evidence.md).
+
+**Checked on the failed run.** The dry run was replayed on run 310842b986d7's
+own release config with its d177 register. The replay ran at commit
+`21c1f9ba3`, the first revision of this tool. Later revisions added the
+`export_signal_regrades` check, the L0 bounds, evidence-tier ownership and
+the unloadable-register handling, none of which changes a full-pool,
+non-evidence verdict on a register that loads:
+
+- It exits `1` on `farm_income`, a thin column (469 carriers) whose unused
+  entry is certain.
+- Every other column that release refused is AT-RISK, and none is PASS. That
+  includes `bond_assets`, at 0.520 at base weights against the release's 0.766.
+- At the stop point, the staged frame with the release's saved final weights
+  attached reproduces the release's recorded tail surface exactly: every
+  share, carrier count, refusal and register-mismatch entry.
+- Its staged-frame digest matches the identity of the release's own
+  target-frame checkpoint.
+
+On a saturated host the replay reached its stop point in at most 17,455 s.
+Its report's 17,691 s was taken after grading (236 s) and the replay's own
+differential. The whole process got 0.79 CPU-seconds per second, was switched
+out 115 million times, and used 14,046 CPU-seconds, grading and differential
+included. The original run had used about 11,000 CPU-seconds by the same
+point, which it reached in at most 2,049 s.
+
+Exit `0` does not certify export input mass: calibration moves a column's drift
+further than the band, so only a structural refusal there is certain (the
+report's `not_previewable` check says so).
+
+**Run it** after the base build exits and before launching the release, with
+the release config you will launch. Run it again after any change to a waiver
+register. The certainty model lives in
+`microcosm.build.us_runtime.release_gate_dry_run`; its tests
+(`packages/microcosm-build/tests/engine_free/us/test_us_release_gate_dry_run.py`,
+including Hypothesis properties) run in the normal `uv run pytest` suite.
 
 ## Releasing & alerts
 
@@ -163,12 +348,47 @@ type publishes the [reported-receipt child of the national default](docs/us-repo
 as a tag-only donor for the ACS local chain. It is never the `latest.json`
 default.
 
+A [compatibility recertification](docs/us-compatibility-recertification.md)
+republishes a published US calibration release byte for byte under a new id,
+with a measured `compatible_model_packages` claim for a newer policyengine-us:
+a loader replay under the tested country, Core and calculator wheels, the engine's reviewed column
+changes, and the drift of the critical rows and headline totals between the
+built-with and tested engines. It never recalibrates. Publication refuses a
+child whose parent tag on the Hub does not serve the carried manifest bytes.
+
 The non-default ACS local-area chain (`tools/build_us_acs_local_release.py`)
 calibrates to the SOI `state` surface by default, the 4,459-target contract of
 Build O and Build P; `--soi-mode totals` and `--soi-mode full` are explicit
 opt-ins. See
 [the ACS local-area SOI target surface](docs/us-acs-local-soi-target-surface.md)
-for what each mode contains and where the build records it.
+for what each mode contains and where the build records it. Its
+`--l2-basis chi_square` and `--mass-parametrization softmax` options (defaults:
+the historical `record` and `projection`) penalize distance from the design
+weights; see [penalized calibration toward the design weights](docs/calibration-l2-basis.md)
+for the algebra, the evidence and the measured frontier.
+
+National and ACS local-area builds now use the same typed schema-8 calibration
+diagnostics writer. The local builder adds its Census population marginals to a
+versioned `TargetRegistry`, including provider, category, geography, and target
+hierarchy, before calibration. Both builders always attempt diagnostics after
+the calibrated dataset exists. If construction, validation, serialization, or
+writing fails, the release manifest records the failure and publication emits a
+warning without discarding the dataset release.
+
+Current UK national and rowwise builders use that same schema and writer. The
+UK extension is fully typed: weight summaries, zero-weight strata,
+geography-level pass rates, local fit summaries, and rotated holdout evidence
+are validated at construction, including their cross-field reconciliations.
+UK release workflows stop when diagnostics are unavailable because their later
+release checks require that evidence; historical schema-6 and schema-7 UK
+artifacts remain readable through isolated compatibility validation.
+
+A Draft 2020-12 JSON Schema for schema 8, generated from those models, is
+committed at
+`packages/microcosm-diagnostics/src/microcosm/diagnostics/schemas/calibration_diagnostics.v8.schema.json`
+for consumers that check the file without importing them, such as the
+collector. Its description lists the model rules a JSON Schema cannot express;
+see the [package README](packages/microcosm-diagnostics/README.md).
 
 Standard publication uploads the locally built `releases/<id>/` artifacts to
 the Hugging Face dataset, tags the release, and updates `latest.json`. It runs
@@ -192,11 +412,12 @@ on the June 2023 release. Promotion reuses the immutable cut tag the inspect pub
 The publisher uploads only the contract files, the release manifest's
 artifacts and any `--extra-file`. The US fiscal-refresh tool therefore binds
 its terminal gate verdicts as manifest artifacts: `input_coverage.json`,
-`input_mass_parity.json`, `qrf_tail_concentration.json` and
-`reform_coverage_smoke.json`. Both manifests also record the per-run QRF tail
-register (`qrf_tail_register`) and the export-mass reference, so a waiver
-ships with the release it waives, and a `gate_evidence` block that says of
-each verdict whether it is bound, skipped by flag or never evaluated.
+`input_mass_parity.json`, `qrf_tail_concentration.json`,
+`reform_coverage_smoke.json` and `stored_inputs.json`. Both manifests also
+record the per-run QRF tail register (`qrf_tail_register`), the export-mass
+reference and the stored-input verdict (`stored_inputs`), so a waiver ships
+with the release it waives, and a `gate_evidence` block that says of each
+verdict whether it is bound, skipped by flag or never evaluated.
 
 A US release may not store a column that looks like a policyengine-us variable
 (lowercase snake_case) unless the engine it is certified against defines that
@@ -221,6 +442,46 @@ engine inputs, `would_claim_wic` and `medicare_part_b_premiums` (replaced by
 would now be refused.
 Check local files from HDF metadata alone with
 `uv run python -m microcosm.data.stored_inputs path/to/populace_us_2024.h5`.
+
+The publisher cannot run the check without the engine, so it requires each
+lane's verdict as release evidence instead (microcosm#1034), from JSON alone. A
+US national calibration release must bind `stored_inputs.json` (a
+`gate_evidence` status of `bound` and a manifest artifact) and carry the same
+`stored_inputs` block in both manifests, bound to the H5 they pin. The verdict
+must name the built-with engine; a certified release must have refused nothing,
+and an evidence release must carry each refusal line verbatim in
+`known_failures`. A US local-area release must list the package stage's
+`stored_inputs` gate, naming the built-with engine and the microdata sha256 the
+release ships. No release already on the Hub carries this evidence, and none is
+exempt. Nothing re-validates a published release automatically. The two paths
+that run the contract on one again are re-certifications: a publish retry of
+its local directory, and an annual-projection cut on a national base. Every
+published US national base already fails the unchanged calibration-diagnostics
+schema rule, and local-area releases cannot be annual bases. So publishing one
+again means rebuilding or re-packaging it, which runs the check. An
+evidence-tier run that ships a stored-input refusal needs a per-run
+`--evidence-failure-owners` entry naming its owner; the standing owner register
+covers none.
+
+The ACS local-area package stage also grades the calibrated H5's SPM
+measurement composition (microcosm#1263;
+`microcosm.build.us_runtime.spm_measurement_gate`). spm-calculator refuses a
+whole simulation's SPM measurement when one unit it measures has no classified
+adult (`age >= 18 or (age >= 15 and is_spm_independent_minor_role)`), and an
+engine that does not scope SPM by measurement universe, such as
+policyengine-us 2.2.1, measures every unit. The stage refuses an artifact on
+which any unit the built-with engine measures has no classified adult, or
+whose stored role is missing, null or not Boolean. It records the counts,
+split by source SPM universe, as the `spm_measurement_composition` gate,
+bound to the microdata sha256. The publisher requires that gate of every US
+local-area release. See [the ACS SPM role page](docs/us-acs-spm-role.md#the-release-gate).
+
+Each check grades one engine version, the built-with one. A source-enrichment
+bundle certified with a publisher compatibility range admits versions no check
+measured, later ones and possibly earlier ones; the bundle records the version
+that was measured as `compatibility.claim_measurement`, and the SPM-role
+runbook says how to grade a candidate against another released version before
+declaring a range.
 
 US exact-k ladder candidates use a tag-only lane. Run
 `tools/build_us_exact_k_ladder_release.py`, then execute the `publish_command`

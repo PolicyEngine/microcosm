@@ -47,6 +47,10 @@ from microcosm.build.uk_runtime.bus_use_incidence import (
     nts_band_shares,
 )
 from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
+from microcosm.build.uk_runtime.household_income import (
+    UK_HBAI_GROSS_INCOME_VARIABLES,
+    hbai_gross_income,
+)
 from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_mass_conservation_receipt,
@@ -188,6 +192,14 @@ REST_OF_ENGLAND_GROUP = "rest_of_england"
 RESIDENCE_GROUPS: tuple[str, str] = (LONDON_GROUP, REST_OF_ENGLAND_GROUP)
 FREQUENCY_SOURCE_INTERVIEW = "interview_band"
 FREQUENCY_SOURCE_PUBLISHED_SHARES = "published_shares"
+#: The disclosure floor of the fare-mix receipt lines (UK Data Service End User
+#: Licence CD137 clause 8 and CD171 section 5.2.1, whose working floor is 10
+#: cases): a line, and its complement, must rest on at least this many
+#: unweighted boardings and this many distinct households, because one
+#: respondent makes many boardings; otherwise it reads ``"<10"``.
+UK_NTS_RECEIPT_MINIMUM_BOARDINGS = 10
+UK_NTS_RECEIPT_MINIMUM_HOUSEHOLDS = 10
+UK_NTS_RECEIPT_SUPPRESSED = "<10"
 
 
 class NTSBusTravelError(ValueError):
@@ -408,6 +420,57 @@ class NTSColumns:
         )
 
 
+@dataclass(frozen=True)
+class FareCapRegime:
+    """The declared fare-cap regime of the donor's survey years (microcosm#1331).
+
+    England's per-journey cap outside London (``cap_fare``) covers the whole of
+    each of ``cap_years`` (an NTS survey year is a calendar year) and none of
+    ``pre_cap_years``. The single-fare share is read on the cap years, because
+    most of the base year sits under the same cap: nine months of FRS 2024-25
+    under England's £2 cap, the last three under the £3 cap, which no survey
+    year of the extract observes. The pre-cap years show the uncapped fare
+    mix. A fare paid within ``cap_tolerance`` of the cap pays the cap.
+    """
+
+    cap_fare: float
+    cap_years: tuple[int, ...]
+    pre_cap_years: tuple[int, ...]
+    cap_tolerance: float
+
+    @classmethod
+    def from_parameters(
+        cls, parameters: Mapping[str, Any], *, survey_years: Sequence[int]
+    ) -> FareCapRegime:
+        regime = _mapping(parameters.get("fare_cap_regime"), "derive.fare_cap_regime")
+        declared = {int(year) for year in survey_years}
+        cap_years = tuple(int(year) for year in regime.get("cap_years", ()))
+        pre_cap_years = tuple(int(year) for year in regime.get("pre_cap_years", ()))
+        if not cap_years or not set(cap_years) <= declared:
+            raise NTSBusTravelError(
+                "derive.fare_cap_regime.cap_years must name declared survey years "
+                f"{sorted(declared)}."
+            )
+        if not set(pre_cap_years) <= declared or set(pre_cap_years) & set(cap_years):
+            raise NTSBusTravelError(
+                "derive.fare_cap_regime.pre_cap_years must be declared survey years "
+                "outside the cap years."
+            )
+        cap_fare = float(regime.get("cap_fare", 0.0))
+        cap_tolerance = float(regime.get("cap_tolerance", 0.0))
+        if not cap_fare > 0.0 or not 0.0 <= cap_tolerance < cap_fare:
+            raise NTSBusTravelError(
+                "derive.fare_cap_regime needs a positive cap_fare and a "
+                "cap_tolerance from 0 up to below it."
+            )
+        return cls(
+            cap_fare=cap_fare,
+            cap_years=cap_years,
+            pre_cap_years=pre_cap_years,
+            cap_tolerance=cap_tolerance,
+        )
+
+
 def _mapping(value: object, label: str) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
         raise NTSBusTravelError(f"{label} must be a mapping.")
@@ -462,6 +525,7 @@ def clean_nts_travel_tables(
     *,
     columns: NTSColumns,
     cars_clip: tuple[int, int] = (0, 5),
+    fare_cap: FareCapRegime | None = None,
 ) -> NTSDonor:
     """One row per NTS individual of the declared survey years, with predictors.
 
@@ -477,7 +541,9 @@ def clean_nts_travel_tables(
     positive boarding cost), a non-concessionary season ticket or pass, a
     concessionary pass (the declared ticket codes), free with no ticket, or
     unknown (no cost recorded); the share of fare-paying boardings paid at the
-    point of use is the single-fare share a per-journey cap binds on.
+    point of use is the single-fare share a per-journey cap binds on. With
+    ``fare_cap`` the ticket receipt also carries the fare-mix lines of
+    England outside London before and under the cap.
     """
 
     hh = _lower(household)
@@ -712,7 +778,9 @@ def clean_nts_travel_tables(
                     .to_numpy(dtype=float)
                     * WEEKS_IN_YEAR
                 )
-        ticket_receipt = _ticket_receipt(stg, person, hh_keep, columns)
+        ticket_receipt = _ticket_receipt(
+            stg, person, hh_keep, columns, fare_cap=fare_cap
+        )
     person = person.rename(
         columns={
             columns.individual_id: "individual_id",
@@ -777,13 +845,16 @@ def _ticket_receipt(
     person: pd.DataFrame,
     hh_keep: pd.DataFrame,
     columns: NTSColumns,
+    *,
+    fare_cap: FareCapRegime | None = None,
 ) -> dict[str, Any]:
     """Boarding payment classes, fares paid and boardings per trip on the diary.
 
-    Weighted by the trip factor (the trip weight on the diary household
-    weight basis); by residence group and survey year, so the fare paid at the
-    point of use can be read before and after a fare cap. Disclosure-safe
-    aggregates only.
+    Weighted by the full trip weight (the diary household weight W2 times the
+    within-household trip factor, W5 x JJXSC on the NTS basis), as the
+    single-fare share is; by residence group and survey year, so the fare paid
+    at the point of use can be read before and after a fare cap.
+    Disclosure-safe aggregates only.
     """
 
     person_group = person.set_index(columns.individual_id)["residence_group"]
@@ -792,7 +863,16 @@ def _ticket_receipt(
     year = pd.to_numeric(
         stg[columns.stage_individual_id].map(person_year), errors="coerce"
     )
-    w = stg["weighted_boardings"].to_numpy(dtype=float)
+    # The stage's trip factor has W2 divided out for the person sums the
+    # W2-weighted shares read; a boarding-level aggregate multiplies it back,
+    # or every diary household would count alike.
+    household_weight = (
+        stg[columns.stage_individual_id]
+        .map(person.set_index(columns.individual_id)["weight"])
+        .to_numpy(dtype=float)
+    )
+    w = stg["weighted_boardings"].to_numpy(dtype=float) * household_weight
+    trip_weight = stg["trip_factor"].to_numpy(dtype=float) * household_weight
     out: dict[str, Any] = {"by_group_and_year": {}, "by_series": {}}
     for g in RESIDENCE_GROUPS:
         for y in sorted(int(v) for v in year.dropna().unique()):
@@ -838,9 +918,9 @@ def _ticket_receipt(
             ),
             "boardings_per_bus_trip": (
                 float(
-                    stg.loc[cell, "weighted_boardings"].sum()
-                    / stg.loc[cell]
-                    .groupby(columns.stage_trip_id)["trip_factor"]
+                    w[cell.to_numpy()].sum()
+                    / pd.Series(trip_weight[cell.to_numpy()])
+                    .groupby(stg.loc[cell, columns.stage_trip_id].to_numpy())
                     .first()
                     .sum()
                 )
@@ -850,11 +930,103 @@ def _ticket_receipt(
         }
     out["basis"] = (
         "bus stages of the diary sample, each stage a boarding weighted by its "
-        "trip's weight; fare paid at the point of use = no ticket record and a "
+        "trip's full weight (W2 x the within-household trip factor); fare paid at the point of use = no ticket record and a "
         "positive boarding cost; season_or_pass = a non-concessionary ticket "
         "record; concessionary_pass = the declared concessionary ticket codes"
     )
+    if fare_cap is not None:
+        household = stg[columns.stage_individual_id].map(
+            person.set_index(columns.individual_id)[columns.household_id]
+        )
+        out["fare_mix"] = _fare_mix_receipt(
+            stg,
+            group.to_numpy(),
+            year.to_numpy(dtype=float),
+            household.to_numpy(),
+            w,
+            fare_cap,
+        )
     return out
+
+
+def _fare_mix_receipt(
+    stg: pd.DataFrame,
+    group: np.ndarray,
+    year: np.ndarray,
+    household: np.ndarray,
+    w: np.ndarray,
+    fare_cap: FareCapRegime,
+) -> dict[str, Any]:
+    """Fare-mix lines for England outside London, before and under the cap (microcosm#1331).
+
+    Point-of-use boardings only (singles, returns and day tickets bought for
+    the journey), weighted as the boarding classes are. Before the cap: the
+    share paid above the cap, by more than the tolerance, and their mean fare,
+    at that year's prices. Under the cap: the share paid at the cap, within
+    the tolerance. A line reads ``"<10"`` unless it and its complement each
+    rest on ``UK_NTS_RECEIPT_MINIMUM_BOARDINGS`` unweighted boardings and
+    ``UK_NTS_RECEIPT_MINIMUM_HOUSEHOLDS`` distinct households. Shares are
+    rounded to two decimals and fares to the penny; no minimum, maximum or
+    percentile is reported.
+    """
+
+    fare = stg["fare_per_boarding"].to_numpy(dtype=float)
+    paid = (
+        (group == REST_OF_ENGLAND_GROUP)
+        & (stg["boarding_class"] == BOARDING_FARE_PAID).to_numpy()
+        & np.isfinite(fare)
+        & (w > 0)
+    )
+
+    def supported(mask: np.ndarray) -> bool:
+        return (
+            int(mask.sum()) >= UK_NTS_RECEIPT_MINIMUM_BOARDINGS
+            and int(pd.Series(household[mask]).nunique())
+            >= UK_NTS_RECEIPT_MINIMUM_HOUSEHOLDS
+        )
+
+    def share(base: np.ndarray, part: np.ndarray) -> float | str:
+        if not (supported(part) and supported(base & ~part)):
+            return UK_NTS_RECEIPT_SUPPRESSED
+        return round(float(w[part].sum() / w[base].sum()), 2)
+
+    def mean_fare(part: np.ndarray) -> float | str:
+        if not supported(part):
+            return UK_NTS_RECEIPT_SUPPRESSED
+        return round(float(np.average(fare[part], weights=w[part])), 2)
+
+    finite = np.where(np.isfinite(fare), fare, 0.0)
+    above_cap = paid & (finite > fare_cap.cap_fare + fare_cap.cap_tolerance)
+    at_cap = paid & (np.abs(finite - fare_cap.cap_fare) <= fare_cap.cap_tolerance)
+    before_cap = {}
+    for y in fare_cap.pre_cap_years:
+        base = paid & (year == y)
+        before_cap[str(y)] = {
+            "share_above_cap": share(base, base & above_cap),
+            "mean_fare_above_cap": mean_fare(base & above_cap),
+        }
+    under_cap = {}
+    for y in fare_cap.cap_years:
+        base = paid & (year == y)
+        under_cap[str(y)] = {"share_at_cap": share(base, base & at_cap)}
+    return {
+        "residence_group": REST_OF_ENGLAND_GROUP,
+        "cap_fare": fare_cap.cap_fare,
+        "cap_tolerance": fare_cap.cap_tolerance,
+        "before_cap": before_cap,
+        "under_cap": under_cap,
+        "minimum_cell": {
+            "boardings": UK_NTS_RECEIPT_MINIMUM_BOARDINGS,
+            "households": UK_NTS_RECEIPT_MINIMUM_HOUSEHOLDS,
+        },
+        "basis": (
+            "point-of-use boardings (singles, returns and day tickets bought for "
+            "the journey) of residents of England outside London; the fare is the "
+            "price paid, so it is capped in the cap years and the uncapped mix "
+            "shows before the cap only, at that year's prices (uprate by the "
+            "BUS0415a index before comparing it with fares at other prices)"
+        ),
+    }
 
 
 def nts_support_ranges(donor: pd.DataFrame) -> dict[str, tuple[float, float]]:
@@ -880,7 +1052,12 @@ def nts_support_ranges(donor: pd.DataFrame) -> dict[str, tuple[float, float]]:
 # Recipient predictors
 # --------------------------------------------------------------------------
 
-UK_NTS_ENGINE_PREDICTORS: tuple[str, ...] = ("household_gross_income",)
+#: The engine variables the recipient's income band is built from: the HBAI
+#: net income and the deductions that, added back, give gross cash income, the
+#: concept of the NTS household income band (microcosm#1164; the engine's
+#: ``household_gross_income`` adds capital gains and imputed NHS, education and
+#: transport spending, which put a fifth of households a band too high).
+UK_NTS_ENGINE_PREDICTORS: tuple[str, ...] = UK_HBAI_GROSS_INCOME_VARIABLES
 
 
 def _enum_name(value: object) -> str:
@@ -929,11 +1106,7 @@ def recipient_predictors(
             f"recipient regions {unknown} are outside the donor's regions; declare a "
             "region_remap for them."
         )
-    gross = np.asarray(materialized["household_gross_income"], dtype=float)
-    if len(gross) != len(household):
-        raise NTSBusTravelError(
-            "household_gross_income did not materialize at household grain."
-        )
+    gross = hbai_gross_income(frame, engine, materialized)
     gross_by_household = (
         pd.Series(gross, index=by_household.index).reindex(hh_ids).to_numpy()
     )
@@ -1128,15 +1301,29 @@ def draw_band_from_published_shares(
 
 def single_fare_shares_from_donor(
     donor: pd.DataFrame,
+    *,
+    years: Sequence[int] | None = None,
 ) -> tuple[dict[str, dict[str, dict[int, float]]], dict[str, Any]]:
     """Share of fare-paying boardings paid at the point of use, per series, group and band.
 
-    Weighted by the diary household weight over the cell's boardings. A cell
-    with no fare-paying boardings takes its group's all-band share, then the
-    all-England share, receipted; a series with no fare-paying boardings at
-    all is refused.
+    Weighted by the diary household weight over the cell's boardings.
+    ``years`` keeps the donors of those survey years only: the stage passes
+    the declared cap years, so the share a per-journey cap binds on is read
+    under a cap, as most of the base year's is (microcosm#1331); ``None`` pools every
+    donor year. A cell with no fare-paying boardings takes its group's
+    all-band share, then the all-England share, receipted; a series with no
+    fare-paying boardings at all is refused.
     """
 
+    donor_years = pd.to_numeric(donor["survey_year"], errors="coerce")
+    if years is not None:
+        keep = donor_years.isin([int(year) for year in years]).to_numpy()
+        donor = donor.loc[keep]
+        donor_years = donor_years.loc[keep]
+        if donor.empty:
+            raise NTSBusTravelError(
+                f"no donor persons in the single-fare share's survey years {list(years)}."
+            )
     weights = donor["weight"].to_numpy(dtype=float)
     bands = donor[BAND_COLUMN].to_numpy() if BAND_COLUMN in donor else None
     groups = donor["residence_group"].to_numpy().astype(str)
@@ -1178,6 +1365,7 @@ def single_fare_shares_from_donor(
                 shares[series][group][band] = float(value)
     receipt = {
         "source": "donor_diary_boarding_classes",
+        "survey_years": sorted(int(year) for year in donor_years.dropna().unique()),
         "all_england_single_share": overall,
         "shares": {
             series: {
@@ -1501,7 +1689,7 @@ def published_car_availability(parameters: Mapping[str, Any]) -> dict[str, float
 def frame_car_availability(
     household: pd.DataFrame, weights: np.ndarray, *, england_regions: Sequence[str]
 ) -> dict[str, float]:
-    """The frame's design-weighted no / one / two-plus car shares over England households."""
+    """The frame's prior-weighted no / one / two-plus car shares over England households."""
 
     region = household["region"].map(_enum_name).to_numpy().astype(str)
     cars = (
@@ -1593,6 +1781,9 @@ class UKNTSBusTravelStageTransform:
         assert_rules_engine_country(self.engine, "uk")
         derive = _operation(self.stage, CLEAN_NTS_TRAVEL_TABLES_KIND)
         columns = NTSColumns.from_parameters(derive)
+        fare_cap = FareCapRegime.from_parameters(
+            derive, survey_years=columns.survey_years
+        )
         cars_clip = tuple(int(v) for v in derive.get("cars_clip", (0, 5)))
         donor = clean_nts_travel_tables(
             self._table(
@@ -1612,6 +1803,7 @@ class UKNTSBusTravelStageTransform:
             ),
             columns=columns,
             cars_clip=(cars_clip[0], cars_clip[1]),
+            fare_cap=fare_cap,
         )
         band_parameters = _operation(self.stage, IMPUTE_BUS_USE_BAND_KIND)
         income_edges = [float(v) for v in band_parameters["income_band_edges"]]
@@ -1648,7 +1840,7 @@ class UKNTSBusTravelStageTransform:
             )
             means, means_receipt = band_means_from_donor(donor.person)
             single_fare_shares, shares_receipt = single_fare_shares_from_donor(
-                donor.person
+                donor.person, years=fare_cap.cap_years
             )
         else:
             imputation = draw_band_from_published_shares(
@@ -1662,7 +1854,7 @@ class UKNTSBusTravelStageTransform:
                 self.stage, band_shares=shares
             )
             single_fare_shares, shares_receipt = single_fare_shares_from_donor(
-                donor.person
+                donor.person, years=fare_cap.cap_years
             )
         band = imputation.band
         trips = assign_trips_from_band_means(
@@ -1804,7 +1996,7 @@ class UKNTSBusTravelStageTransform:
                 england_regions=[r for r in columns.region_codes.values()],
             ),
             "published": published_car_availability(band_parameters),
-            "basis": "design-weighted England households; num_vehicles is the was_wealth draw",
+            "basis": "prior-weighted England households (SPI support rows included); num_vehicles is the was_wealth draw",
         }
         result = uk_national_frame(
             person=person,
@@ -1880,7 +2072,7 @@ def _trip_rate_receipt(
                 for series, column in SERIES_TRIP_COLUMNS.items()
             }
     return {
-        "basis": "design-weighted persons of the frame",
+        "basis": "prior-weighted persons of the frame (SPI support rows included)",
         "frame_trips_per_person": frame_rates,
         "published_trips_per_person": published,
         "published_period_value": int(parameters["trip_rates_period_value"]),

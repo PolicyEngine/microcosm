@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -10,10 +10,23 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.source_manifest import SourceStageSpec
+from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.trace import sha256_file
+from microcosm.build.uk_runtime.birth_month import (
+    UK_BIRTH_MONTH_COLUMN,
+    uk_months_since_last_birthday,
+)
+from microcosm.build.uk_runtime.council_tax_constants import (
+    UK_COUNCIL_TAX_BANDS,
+    UK_COUNCIL_TAX_PLACEHOLDER_BAND,
+)
 from microcosm.build.uk_runtime.national_frame import (
     uk_national_frame,
     validate_uk_national_frame,
+)
+from microcosm.build.uk_runtime.pension_coherence import (
+    cap_net_pay_contributions,
+    coherence_receipt,
 )
 from microcosm.build.uk_runtime.uc_relationships import frs_uc_claimant_mask
 from microcosm.frame import Frame, WeightKind
@@ -22,6 +35,7 @@ __all__ = [
     "FRS_SPINE_TABLES",
     "OUTPUT_COLUMNS",
     "REGION_MAP",
+    "STATE_PENSION_WEEKS_IN_YEAR",
     "TIME_PERIOD",
     "UC_CAPITAL_UNAVAILABLE",
     "WEEKS_IN_YEAR",
@@ -57,6 +71,13 @@ FRS_SPINE_TABLES = (
 )
 
 WEEKS_IN_YEAR = 365.25 / 7
+#: The State Pension alone annualises at 52 weeks (María's ruling of 2026-10-20,
+#: an exception to microcosm#1095's weekly amounts). It is paid at weekly rates,
+#: and policyengine-uk reads ``state_pension_reported`` back to a weekly amount
+#: at 52 weeks a year before comparing it with the full rate, so at 365.25 / 7 a
+#: full-rate pensioner would read 0.34% above the full rate and the excess
+#: would become a protected payment.
+STATE_PENSION_WEEKS_IN_YEAR = 52
 TIME_PERIOD = "2024"
 
 # Raw TOTCAPB4 blanks, nonnumeric values, and negative codes mean that the
@@ -107,16 +128,10 @@ ACCOMMODATION_MAP = {
     7: "OTHER",
 }
 
+#: FRS ``ctband`` codes 1-9 are the engine's bands A-I in order; any other
+#: code takes the placeholder band (``frs_council_tax_band``).
 COUNCIL_TAX_BAND_MAP = {
-    1: "A",
-    2: "B",
-    3: "C",
-    4: "D",
-    5: "E",
-    6: "F",
-    7: "G",
-    8: "H",
-    9: "I",
+    code: band for code, band in enumerate(UK_COUNCIL_TAX_BANDS, start=1)
 }
 
 MARITAL_MAP = {
@@ -128,27 +143,33 @@ MARITAL_MAP = {
     6: "DIVORCED",
 }
 
+# FRS BENEFITS codes summed into each reported amount. Scotland's Adult
+# Disability Payment (117 daily living, 118 mobility) mirrors PIP's components
+# and rates, and Child Disability Payment (121 care, 122 mobility) mirrors DLA's,
+# so each lands in the column of the benefit it replaces (FRS 2024-25 variable
+# listing, UKDS SN 9563; uk-data#500, microcosm#1095). Codes 69 and 70 are
+# benefit recoveries, not income, and stay unmapped.
 BENEFIT_CODES = {
-    "child_benefit": 3,
-    "income_support": 19,
-    "housing_benefit": 94,
-    "attendance_allowance": 12,
-    "dla_sc": 1,
-    "dla_m": 2,
-    "iidb": 15,
-    "carers_allowance": 13,
-    "sda": 10,
-    "afcs": 8,
-    "ssmg": 22,
-    "pension_credit": 4,
-    "child_tax_credit": 91,
-    "working_tax_credit": 90,
-    "state_pension": 5,
-    "winter_fuel_allowance": 62,
-    "incapacity_benefit": 17,
-    "universal_credit": 95,
-    "pip_m": 97,
-    "pip_dl": 96,
+    "child_benefit": (3,),
+    "income_support": (19,),
+    "housing_benefit": (94,),
+    "attendance_allowance": (12,),
+    "dla_sc": (1, 121),
+    "dla_m": (2, 122),
+    "iidb": (15,),
+    "carers_allowance": (13,),
+    "sda": (10,),
+    "afcs": (8,),
+    "ssmg": (22,),
+    "pension_credit": (4,),
+    "child_tax_credit": (91,),
+    "working_tax_credit": (90,),
+    "state_pension": (5,),
+    "winter_fuel_allowance": (62,),
+    "incapacity_benefit": (17,),
+    "universal_credit": (95,),
+    "pip_m": (97, 118),
+    "pip_dl": (96, 117),
 }
 
 # FRS adult HOURTOT: total hours of care provided per week, a banded derived
@@ -171,26 +192,53 @@ FRS_CARE_HOURS_BY_BAND = {
     10: 35.0,  # varies, 35 hours or more
 }
 
+# FRS adult RENTPROF (question RentProf): whether the rent from other property
+# in ROYYR1 is a profit (1) or a loss (2). ROYYR1 itself is always positive.
+FRS_RENTPROF_LOSS = 2
+
+#: The six owned-company inputs the root stage sets from the FRS job tab
+#: (microcosm#1095); see frs_owner_manager_inputs.
+OWNER_MANAGER_COLUMNS = (
+    "stands_as_sole_owner_or_partner_of_company",
+    "is_engaged_in_owned_company_trade",
+    "owned_company_is_main_employment",
+    "owned_company_carries_on_trade",
+    "owned_company_carries_on_property_business",
+    "owned_company_income_share",
+)
 OUTPUT_COLUMNS = (
     "person_id",
     "person_benunit_id",
     "person_household_id",
     "age",
     "gender",
+    UK_BIRTH_MONTH_COLUMN,
     "marital_status",
     "hours_worked",
     "care_hours",
     "is_household_head",
     "is_benunit_head",
     "is_parent",
+    "is_blind",
     "is_uc_claimant",
+    "is_claimant_or_partner",
+    "is_hbai_dependent_child",
+    "uc_is_in_startup_period",
+    "uc_is_in_gainful_self_employment",
+    "rent_paid_as_boarder",
+    "rent_paid_as_lodger",
     "employment_income",
     "self_employment_income",
+    "trading_loss",
+    "loss_relief",
+    "ni_class_4_losses_brought_forward",
     "private_pension_income",
     "tax_free_savings_income",
     "savings_interest_income",
     "dividend_income",
+    *OWNER_MANAGER_COLUMNS,
     "property_income",
+    "reports_rent_from_other_property",
     "maintenance_income",
     "miscellaneous_income",
     "private_transfer_income",
@@ -198,6 +246,7 @@ OUTPUT_COLUMNS = (
     "student_loan_repayments",
     "statutory_sick_pay",
     "statutory_maternity_pay",
+    "statutory_paternity_pay",
     "student_loans",
     "access_fund",
     "education_grants",
@@ -238,11 +287,14 @@ OUTPUT_COLUMNS = (
     "jsa_income_reported",
     "esa_contrib_reported",
     "esa_income_reported",
+    "esa_includes_support_component",
     "bsp_reported",
+    "war_widows_pension_reported",
     "benunit_id",
     "frs_benunit_capital",
     "is_married",
     "dependent_children",
+    "liable_for_share_of_household_rent",
     "household_id",
     "region",
     "tenure_type",
@@ -271,11 +323,18 @@ class UKFRSSpineStageTransform:
         self.raw_dir = Path(raw_dir)
         self.stage = stage
         self._sentinel_mapped_rows: int | None = None
+        self._access_fund: dict[str, object] | None = None
+        self._net_pay: dict[str, object] | None = None
 
     def __call__(self, frame: Frame) -> Frame:
-        result = build_uk_frs_spine_frame(self.raw_dir, stage=self.stage)
+        evidence: dict[str, object] = {}
+        result = build_uk_frs_spine_frame(
+            self.raw_dir, stage=self.stage, evidence=evidence
+        )
         capital = result.table("benunit")["frs_benunit_capital"]
         self._sentinel_mapped_rows = int((capital == UC_CAPITAL_UNAVAILABLE).sum())
+        self._access_fund = dict(evidence["access_fund"])
+        self._net_pay = dict(evidence["net_pay_contributions"])
         return result
 
     @staticmethod
@@ -283,9 +342,14 @@ class UKFRSSpineStageTransform:
         return OUTPUT_COLUMNS
 
     def checkpoint_metadata(self) -> dict[str, object]:
-        """Report how loudly the FRS capital availability rule fired."""
+        """Report how loudly the capital availability rule and the
+        access-fund repair fired."""
 
-        if self._sentinel_mapped_rows is None:
+        if (
+            self._sentinel_mapped_rows is None
+            or self._access_fund is None
+            or self._net_pay is None
+        ):
             raise RuntimeError("checkpoint metadata requires a completed stage run.")
         return {
             "evidence": {
@@ -294,6 +358,8 @@ class UKFRSSpineStageTransform:
                     "unavailable_sentinel": UC_CAPITAL_UNAVAILABLE,
                     "mapped_rows": self._sentinel_mapped_rows,
                 },
+                "access_fund": dict(self._access_fund),
+                "net_pay_contributions": dict(self._net_pay),
             }
         }
 
@@ -319,8 +385,17 @@ def uk_frs_spine_seed_frame() -> Frame:
     )
 
 
-def build_uk_frs_spine_frame(raw_dir: str | Path, *, stage: SourceStageSpec) -> Frame:
-    """Build the direct raw FRS spine Frame from pinned local tab files."""
+def build_uk_frs_spine_frame(
+    raw_dir: str | Path,
+    *,
+    stage: SourceStageSpec,
+    evidence: dict[str, object] | None = None,
+) -> Frame:
+    """Build the direct raw FRS spine Frame from pinned local tab files.
+
+    ``evidence``, when given, receives the access-fund repair's record under
+    ``"access_fund"`` (see :func:`access_fund_annual`).
+    """
 
     raw_root = Path(raw_dir)
     artifacts = _artifact_by_table(stage)
@@ -331,7 +406,7 @@ def build_uk_frs_spine_frame(raw_dir: str | Path, *, stage: SourceStageSpec) -> 
         for table in FRS_SPINE_TABLES
     }
     normalized = {name: _normalize_ids(table) for name, table in tables.items()}
-    frame = _assemble_frame(normalized)
+    frame = _assemble_frame(normalized, evidence=evidence)
     validate_uk_national_frame(frame)
     return frame
 
@@ -353,7 +428,20 @@ def _artifact_by_table(stage: SourceStageSpec) -> dict[str, Mapping[str, Any]]:
     return by_table
 
 
-def _read_pinned_tab(path: Path, artifact: Mapping[str, Any]) -> pd.DataFrame:
+def _read_pinned_tab(
+    path: Path,
+    artifact: Mapping[str, Any],
+    *,
+    columns: Collection[str] | None = None,
+) -> pd.DataFrame:
+    """Read a size- and sha256-pinned tab with lower-cased column names.
+
+    ``columns`` (matched case-insensitively) reads only those columns, for wide
+    tabs where a full read costs gigabytes (the WAS round-8 person tab has
+    4,079 columns); every one must be present, and the pins are checked on the
+    whole file first either way.
+    """
+
     if not path.exists():
         raise FileNotFoundError(f"FRS spine tab is missing: {path}.")
     expected_size = int(artifact["size_bytes"])
@@ -370,11 +458,37 @@ def _read_pinned_tab(path: Path, artifact: Mapping[str, Any]) -> pd.DataFrame:
             f"FRS spine tab {path.name} hashes to {actual_sha}, "
             f"not the pinned {expected_sha}."
         )
-    raw = pd.read_csv(path, sep="\t")
+    if columns is None:
+        raw = pd.read_csv(path, sep="\t")
+    else:
+        wanted = {str(column).lower() for column in columns}
+        # One pass over the selected columns: pandas' chunked parser
+        # mis-indexes a column whose type changes between chunks under a
+        # callable column filter, and raises IndexError on a long tab (FRS
+        # 2024-25 adult.tab). The values after the numeric conversion below
+        # are the chunked read's wherever that read succeeds.
+        raw = pd.read_csv(
+            path,
+            sep="\t",
+            usecols=lambda column: str(column).lower() in wanted,
+            low_memory=False,
+        )
     raw.columns = raw.columns.str.lower()
+    if columns is not None:
+        if raw.columns.duplicated().any():
+            duplicates = sorted(set(raw.columns[raw.columns.duplicated()]))
+            raise ValueError(
+                f"{path.name} has duplicate column(s) after lower-casing: {duplicates}."
+            )
+        missing = sorted(wanted - set(raw.columns))
+        if missing:
+            raise ValueError(f"{path.name} is missing required column(s): {missing}.")
     converted = raw.apply(pd.to_numeric, errors="coerce")
     if path.stem == "job" and "salsac" in raw.columns:
         converted["salsac_raw"] = raw["salsac"].astype(str)
+    # UCSTART is a month/day/year date, which numeric conversion would blank.
+    if path.stem == "benefits" and "ucstart" in raw.columns:
+        converted["ucstart_raw"] = raw["ucstart"].astype("string")
     return converted
 
 
@@ -395,7 +509,9 @@ def _normalize_ids(table: pd.DataFrame) -> pd.DataFrame:
     return frame
 
 
-def _assemble_frame(frs: Mapping[str, pd.DataFrame]) -> Frame:
+def _assemble_frame(
+    frs: Mapping[str, pd.DataFrame], *, evidence: dict[str, object] | None = None
+) -> Frame:
     person = (
         pd.concat([frs["adult"], frs["child"]], ignore_index=True, sort=False)
         .fillna(0)
@@ -431,6 +547,19 @@ def _assemble_frame(frs: Mapping[str, pd.DataFrame]) -> Frame:
         raise ValueError("FRS age80/age columns must be integral to build person.age.")
     pe_person["age"] = age.astype("int64")
     pe_person["gender"] = np.where(_number(person, "sex") == 1, "MALE", "FEMALE")
+    # The months since each person's last birthday, stored once here so the
+    # engine reads the same date of birth at every later stage, in the solve
+    # and in the release: left unset, it spreads them by the weights and the
+    # identifiers each file carries (uk_runtime.birth_month, microcosm#1095).
+    pe_person[UK_BIRTH_MONTH_COLUMN] = uk_months_since_last_birthday(
+        age=pe_person["age"].to_numpy(),
+        is_male=pe_person["gender"].to_numpy() == "MALE",
+        person_ids=pe_person["person_id"].to_numpy(),
+        weights=person["household_id"]
+        .map(_raw_number(household, "gross4"))
+        .fillna(0.0)
+        .to_numpy(dtype=np.float64),
+    )
     pe_person["marital_status"] = _map_codes(person, "marital", MARITAL_MAP, "SINGLE")
     pe_person["hours_worked"] = _positive(person, "tothours") * WEEKS_IN_YEAR
     pe_person["care_hours"] = frs_care_hours(person)
@@ -443,12 +572,32 @@ def _assemble_frame(frs: Mapping[str, pd.DataFrame]) -> Frame:
     pe_person["is_parent"] = pe_person["person_id"].isin(adult_ids) & pe_person[
         "person_benunit_id"
     ].map(dependent_by_benunit).fillna(0).gt(0)
+    # Registered blind or severely sight impaired with the local authority
+    # (SPCREG1, asked on the adult and child tabs alike). Registration follows
+    # the consultant ophthalmologist's certificate the engine's is_blind
+    # names; partial-sight registration (SPCREG2) does not meet that test
+    # (uk-data#523).
+    pe_person["is_blind"] = _number(person, "spcreg1") == FRS_REGISTERED_YES
 
     pe_person["employment_income"] = _positive(person, "inearns") * WEEKS_IN_YEAR
-    pe_person["self_employment_income"] = _positive(person, "seincam2") * WEEKS_IN_YEAR
+    # SEINCAM2 is the self-employment income the respondent gives, a loss as a
+    # negative amount. policyengine-uk takes profits in self_employment_income,
+    # never below zero, and the year's losses in trading_loss as a positive
+    # amount (pe-uk#2085, from 2.131.0), so the amount splits by its sign
+    # (uk-data#528).
+    self_employment = _number(person, "seincam2") * WEEKS_IN_YEAR
+    pe_person["self_employment_income"] = np.maximum(self_employment, 0)
+    pe_person["trading_loss"] = np.maximum(-self_employment, 0)
+    # The FRS records no losses of earlier years; the SPI channel moves the
+    # tape's into both inputs (microcosm#1095).
+    pe_person["loss_relief"] = 0.0
+    pe_person["ni_class_4_losses_brought_forward"] = 0.0
     _add_private_pension(pe_person, person, frs["pension"])
     _add_accounts(pe_person, person, frs["accounts"])
-    _add_person_income(pe_person, person, household, frs["oddjob"])
+    owner_managers = frs_owner_manager_inputs(person, frs["job"])
+    for column in OWNER_MANAGER_COLUMNS:
+        pe_person[column] = owner_managers[column].to_numpy()
+    _add_person_income(pe_person, person, household, frs["oddjob"], evidence=evidence)
     _add_benefits(pe_person, person, frs["benefits"])
     # The engine pays Carer's Allowance on hours or receipt; a dataset keeps it
     # on reported receipt so that care_hours qualifies carers for the UC carer
@@ -456,7 +605,7 @@ def _assemble_frame(frs: Mapping[str, pd.DataFrame]) -> Frame:
     pe_person["would_claim_carers_allowance"] = (
         pe_person["carers_allowance_reported"] > 0
     )
-    _add_person_expenses(pe_person, person, frs)
+    _add_person_expenses(pe_person, person, frs, evidence=evidence)
 
     pe_benunit["is_married"] = _number(benunit_raw, "famtypb2").isin([5, 7])
     pe_benunit["dependent_children"] = dependent_children
@@ -464,6 +613,37 @@ def _assemble_frame(frs: Mapping[str, pd.DataFrame]) -> Frame:
     # does not promote a dependent child to a partner, and legal marriage
     # alone does not establish that a partner lives in this benefit unit.
     pe_person["is_uc_claimant"] = frs_uc_claimant_mask(pe_person, pe_benunit)
+    pe_benunit["liable_for_share_of_household_rent"] = (
+        frs_liable_for_share_of_household_rent(
+            benunit_raw, person, household, frs["benefits"]
+        )
+    )
+    boarder_rent, lodger_rent = frs_rent_paid_to_householder(person)
+    pe_person["rent_paid_as_boarder"] = boarder_rent
+    pe_person["rent_paid_as_lodger"] = lodger_rent
+    # policyengine-uk's person types (pe-uk#1896). Every FRS person is on the
+    # adult table or the child table: the adult table holds each benefit
+    # unit's head and any partner (uk-data#524), the child table its HBAI
+    # dependent children (uk-data#486). Supplying both stops the engine
+    # inferring them from ages.
+    # The claimant mask above already refuses a benefit unit without one or
+    # two adult records, so membership is a well-formed role.
+    adult_record = pe_person["person_id"].isin(adult_ids).to_numpy()
+    pe_person["is_claimant_or_partner"] = adult_record
+    pe_person["is_hbai_dependent_child"] = ~adult_record
+    pe_person["uc_is_in_startup_period"] = frs_uc_start_up_period(
+        person,
+        pe_person,
+        pe_benunit,
+        household,
+        job=frs["job"],
+        benefits=frs["benefits"],
+    )
+    pe_person["uc_is_in_gainful_self_employment"] = uc_gainful_self_employment(
+        _number(person, "empstati").isin(FRS_SELF_EMPLOYED_EMPSTATI).to_numpy(),
+        pe_person["self_employment_income"],
+        pe_person["employment_income"],
+    )
 
     _add_household_columns(pe_household, household, frs)
 
@@ -543,26 +723,83 @@ def _add_accounts(
     pe_person["dividend_income"] = np.maximum(0, dividends)
 
 
+#: FRS job-table answers that make a person like a sole owner or partner of a
+#: company, which Universal Credit treats as self-employed (UC Regs 2013 reg
+#: 77, policyengine-uk's owned-company inputs from pe-uk#1965): a director
+#: (DIRECTOR 1, or NATURE 1 "Director") who owns at least half of the company
+#: (DIRPERC 1 "100%", 2 "More than 50% but not 100%", 3 "50%"; María's
+#: ruling of 2026-10-16, microcosm#1095).
+OWNER_MANAGER_DIRPERC_CODES = (1, 2, 3)
+#: JOBTYPE 1, the first (main) job.
+FRS_MAIN_JOB_JOBTYPE = 1
+#: SIC 2007 division 68, real estate activities. ADULT.SIC codes the main job
+#: only, so it says whether an owned company held as the main job carries on
+#: a property business or a trade; another job's company carries on neither
+#: on this release, which leaves the engine's company-owner rules off for it.
+PROPERTY_BUSINESS_SIC_DIVISION = 68
+OWNER_MANAGER_JOB_COLUMNS = ("director", "nature", "dirperc", "jobtype", "dividend")
+
+
+def frs_owner_manager_inputs(person: pd.DataFrame, job: pd.DataFrame) -> pd.DataFrame:
+    """Six of policyengine-uk's eleven owned-company inputs, from the job tab.
+
+    A director owning at least half of a company stands as its sole owner or
+    partner and works in it. The company is their main employment when the job
+    is their first. Its income share is the dividends the job records (DIVIDEND,
+    the last 12 months, after tax): the engine reads the company's profit,
+    which the FRS does not ask, and the dividends paid out of it are its part
+    the survey sees. The stocks and the intermediaries inputs keep the engine's
+    defaults.
+    """
+
+    missing = [column for column in OWNER_MANAGER_JOB_COLUMNS if column not in job]
+    if missing:
+        raise KeyError(
+            f"The FRS job tab has no {missing} column(s), so owner-managers "
+            "cannot be set."
+        )
+    if "sic" not in person:
+        raise KeyError("The FRS adult tab has no SIC column.")
+    job_person = job["person_id"]
+    director = (_number(job, "director") == 1) | (_number(job, "nature") == 1)
+    owner = director & _number(job, "dirperc").isin(OWNER_MANAGER_DIRPERC_CODES)
+    main = owner & (_number(job, "jobtype") == FRS_MAIN_JOB_JOBTYPE)
+    persons = person["person_id"]
+    stands = _sum_to_entity(owner.astype(float), job_person, persons) > 0
+    main_employment = _sum_to_entity(main.astype(float), job_person, persons) > 0
+    property_division = (
+        _number(person, "sic").to_numpy() == PROPERTY_BUSINESS_SIC_DIVISION
+    )
+    return pd.DataFrame(
+        {
+            "stands_as_sole_owner_or_partner_of_company": stands,
+            "is_engaged_in_owned_company_trade": stands,
+            "owned_company_is_main_employment": main_employment,
+            "owned_company_carries_on_trade": main_employment & ~property_division,
+            "owned_company_carries_on_property_business": (
+                main_employment & property_division
+            ),
+            "owned_company_income_share": _sum_to_entity(
+                np.maximum(_number(job, "dividend"), 0) * owner,
+                job_person,
+                persons,
+            ),
+        },
+        index=person.index,
+    )
+
+
 def _add_person_income(
     pe_person: pd.DataFrame,
     person: pd.DataFrame,
     household: pd.DataFrame,
     oddjob: pd.DataFrame,
+    *,
+    evidence: dict[str, object] | None = None,
 ) -> None:
-    is_head = _number(person, "hrpid") == 1
-    household_property = _number(household, "tentyp2").isin((5, 6)).astype(
-        float
-    ) * _number(household, "subrent")
-    property_by_household = pd.Series(household_property.values, index=household.index)
-    pe_person["property_income"] = (
-        np.maximum(
-            0,
-            is_head.to_numpy(dtype=float)
-            * person["household_id"].map(property_by_household).fillna(0).to_numpy()
-            + _number(person, "cvpay").to_numpy()
-            + _number(person, "royyr1").to_numpy(),
-        )
-        * WEEKS_IN_YEAR
+    pe_person["property_income"] = frs_property_income(person, household)
+    pe_person[FRS_LANDLORD_CARRIER_COLUMN] = frs_reports_rent_from_other_property(
+        person
     )
     maintenance_to_self = np.maximum(
         np.where(
@@ -575,6 +812,9 @@ def _add_person_income(
     pe_person["maintenance_income"] = (
         maintenance_to_self + _positive(person, "mntamt2").to_numpy()
     ) * WEEKS_IN_YEAR
+    # ALLPAY2, "Amount of allowance: organisation", is one amount, so it is
+    # miscellaneous income alone and not also a private transfer
+    # (microcosm#1320, uk-data#627; María's ruling of 2026-10-20).
     pe_person["miscellaneous_income"] = (
         _odd_job_income(person, oddjob)
         + _sum_positive_fields(
@@ -583,7 +823,7 @@ def _add_person_income(
     ) * WEEKS_IN_YEAR
     pe_person["private_transfer_income"] = (
         _sum_positive_fields(
-            person, ("apamt", "apdamt", "pareamt", "allpay2", "allpay3", "allpay4")
+            person, ("apamt", "apdamt", "pareamt", "allpay3", "allpay4")
         )
         * WEEKS_IN_YEAR
     )
@@ -591,8 +831,20 @@ def _add_person_income(
     pe_person["student_loan_repayments"] = _number(person, "slrepamt") * WEEKS_IN_YEAR
     pe_person["statutory_sick_pay"] = _number(person, "sspadj") * WEEKS_IN_YEAR
     pe_person["statutory_maternity_pay"] = _number(person, "smpadj") * WEEKS_IN_YEAR
+    # SPPADJ, "SPP amount": the weekly statutory paternity pay an adult gets
+    # for their main job (FRS 2024-25 adult table, beside SSPADJ and SMPADJ).
+    # A tab without it refuses, rather than set nobody's (uk-data#575).
+    if "sppadj" not in person.columns:
+        raise KeyError(
+            "The FRS adult tab has no SPPADJ column, so statutory paternity pay "
+            "cannot be set."
+        )
+    pe_person["statutory_paternity_pay"] = _number(person, "sppadj") * WEEKS_IN_YEAR
     pe_person["student_loans"] = _positive(person, "tuborr")
-    pe_person["access_fund"] = _positive(person, "accssamt") * WEEKS_IN_YEAR
+    access_fund_evidence: dict[str, object] = {}
+    pe_person["access_fund"] = access_fund_annual(person, evidence=access_fund_evidence)
+    if evidence is not None:
+        evidence["access_fund"] = access_fund_evidence
     pe_person["education_grants"] = np.maximum(
         _number(person, "grtdir1") + _number(person, "grtdir2"), 0
     )
@@ -604,6 +856,98 @@ def _add_person_income(
     pe_person["free_school_breakfasts"] = _positive(person, "fsbval") * WEEKS_IN_YEAR
     pe_person["free_school_fruit_veg"] = _positive(person, "fsfvval") * WEEKS_IN_YEAR
     pe_person["free_school_meals"] = _positive(person, "fsmval") * WEEKS_IN_YEAR
+
+
+#: The internal landlord carrier ``frs_reports_rent_from_other_property`` writes.
+FRS_LANDLORD_CARRIER_COLUMN = "reports_rent_from_other_property"
+
+
+def frs_reports_rent_from_other_property(person: pd.DataFrame) -> np.ndarray:
+    """Whether the person reports rent from other property, at a profit or a loss.
+
+    ROYYR1 is entered as a positive amount whether the letting made a profit or
+    a loss (RENTPROF 2 marks the loss), so a positive ROYYR1 marks a landlord
+    either way. ``property_income`` counts a loss as zero
+    (``frs_property_income``), so this internal carrier keeps the landlord
+    signal the CGT stages read for loss-making landlords too. It is not an
+    engine input and does not leave the release.
+    """
+
+    return (_positive(person, "royyr1") > 0).to_numpy(dtype=bool)
+
+
+def frs_property_income(person: pd.DataFrame, household: pd.DataFrame) -> np.ndarray:
+    """Annual property income each person reports in the FRS.
+
+    Two FRS amounts, both weekly in the released data:
+
+    - SUBRENT, the rent the household received from sub-letting. The FRS asks
+      every household (SubLet), whatever its tenure, and DWP's derived
+      SUBLTAMT and INRINC count it for every tenure, so renting and rent-free
+      households count too. It goes to the household reference person.
+      ``household`` must be indexed by ``household_id``.
+    - ROYYR1, the person's rent before tax from other property, in the UK or
+      abroad, after paying for the things on show card K6 (question
+      PropRent). The card lists mortgage payments and interest on a loan to
+      buy the property alongside repairs, rent, rates, insurance and
+      services, so ROYYR1 is also net of finance costs and mortgage capital,
+      which a landlord cannot deduct for tax. The questionnaire cannot take a
+      negative amount, so a loss is entered as a positive amount and
+      RENTPROF = 2 (question RentProf) marks it. A loss counts as zero: the
+      engine has no property loss input, and a loss is not set against the
+      household's SUBRENT. That matches the general rule for the year: an
+      individual's UK property loss is carried forward against future profits
+      of the same property business (ITA 2007 ss. 118-119). Sideways relief
+      against general income exists only for the part of a loss from capital
+      allowances or agricultural expenses (ITA 2007 s. 120), which the FRS
+      does not identify.
+
+    Because ROYYR1 nets mortgage capital and interest, it sits below the SPI's
+    net income from property (after allowable expenses, before residential
+    finance costs) for landlords with a mortgage. Binding the SPI amounts on
+    this variable (microcosm#1106) therefore leans on reweighting unless the
+    other-property mortgage is added back.
+
+    SUBRENT is used as reported. SUBALLOW records whether it is before (1) or
+    after (2) allowable expenses, but the FRS records no sub-letting expense
+    amount to take off the before-expenses answers.
+
+    Negative values are FRS missing-value codes (-1 to -9), not amounts, so
+    each amount is floored at zero before the two are added.
+
+    CVPAY is not included. It is the rent a boarder or lodger pays the
+    householder (question CvPay, "How much rent did [name] pay"), recorded on
+    the boarder's or lodger's own adult record, so it is not their income.
+    Within the household the payment is a transfer, so household totals are
+    unaffected, but the householder's receipt is not credited to anyone: the
+    householder's benefit unit understates that income.
+
+    SUBRENT and lodger receipts qualify for Rent a Room relief (ITTOIA 2005
+    Part 7 Chapter 1: £7,500 a year, £3,750 if shared) when the letting is of
+    furnished accommodation in the householder's only or main residence
+    (s. 786). Here SUBRENT is taxable
+    ``property_income``, so the engine applies only the £1,000 property
+    allowance and overstates tax on it, and lodger receipts are not counted at
+    all (above). Routing SUBRENT to policyengine-uk's ``sublet_income`` and the
+    lodgers' payments to the householder needs the engine to apply the relief
+    first.
+    """
+
+    is_head = (_number(person, "hrpid") == 1).to_numpy(dtype=float)
+    subrent = pd.Series(
+        _positive(household, "subrent").to_numpy(), index=household.index
+    )
+    persons_household_subrent = (
+        person["household_id"].map(subrent).fillna(0).to_numpy(dtype="float64")
+    )
+    rent_from_other_property = (
+        _positive(person, "royyr1")
+        .where(_number(person, "rentprof") != FRS_RENTPROF_LOSS, 0)
+        .to_numpy(dtype="float64")
+    )
+    return (
+        is_head * persons_household_subrent + rent_from_other_property
+    ) * WEEKS_IN_YEAR
 
 
 def _odd_job_income(person: pd.DataFrame, oddjob: pd.DataFrame) -> np.ndarray:
@@ -621,9 +965,9 @@ def _add_benefits(
     var2 = _number(benefits, "var2")
     amount = _number(benefits, "benamt")
     person_id = benefits.get("person_id", pd.Series(dtype="float64"))
-    for name, code in BENEFIT_CODES.items():
+    for name, codes in BENEFIT_CODES.items():
         pe_person[f"{name}_reported"] = (
-            _sum_to_entity(amount * (benefit == code), person_id, person["person_id"])
+            _sum_to_entity(amount * benefit.isin(codes), person_id, person["person_id"])
             * WEEKS_IN_YEAR
         )
     pe_person["jsa_contrib_reported"] = (
@@ -658,17 +1002,40 @@ def _add_benefits(
         )
         * WEEKS_IN_YEAR
     )
+    pe_person["esa_includes_support_component"] = _esa_includes_support_component(
+        benefits, person_id, person["person_id"]
+    )
     pe_person["bsp_reported"] = (
-        _sum_to_entity(amount * benefit.isin((6, 9)), person_id, person["person_id"])
+        _sum_to_entity(amount * (benefit == 6), person_id, person["person_id"])
+        * WEEKS_IN_YEAR
+    )
+    # FRS code 9 is War Widow's or Widower's Pension, which rises with CPI while
+    # Bereavement Support Payment's rates are frozen. policyengine-uk 2.135.7
+    # gives it its own input (pe-uk#2382), so it leaves bsp_reported (#1222).
+    pe_person["war_widows_pension_reported"] = (
+        _sum_to_entity(amount * (benefit == 9), person_id, person["person_id"])
         * WEEKS_IN_YEAR
     )
     pe_person["winter_fuel_allowance_reported"] = (
         pe_person["winter_fuel_allowance_reported"] / WEEKS_IN_YEAR
     )
+    # The State Pension's weekly amounts, re-summed at its own 52 weeks.
+    pe_person["state_pension_reported"] = (
+        _sum_to_entity(
+            amount * benefit.isin(BENEFIT_CODES["state_pension"]),
+            person_id,
+            person["person_id"],
+        )
+        * STATE_PENSION_WEEKS_IN_YEAR
+    )
 
 
 def _add_person_expenses(
-    pe_person: pd.DataFrame, person: pd.DataFrame, frs: Mapping[str, pd.DataFrame]
+    pe_person: pd.DataFrame,
+    person: pd.DataFrame,
+    frs: Mapping[str, pd.DataFrame],
+    *,
+    evidence: dict[str, object] | None = None,
 ) -> None:
     household = frs["househol"].set_index("household_id").sort_index()
     ctrebamt = pd.Series(_number(household, "ctrebamt").values, index=household.index)
@@ -704,18 +1071,22 @@ def _add_person_expenses(
     )
     penprov = frs["penprov"]
     pension_amount = _number(penprov, "penamt")
-    pension_clip = float(pension_amount.quantile(0.95)) if len(pension_amount) else 0.0
+    # Personal and stakeholder pension contributions as reported, no longer
+    # clipped at the 95th percentile of every PENPROV amount: the clip removed
+    # 28% of the reported amount (1.8% of rows) against HMRC's relief-at-source
+    # total, which SPI Table 3.8 now binds by income band; the engine caps the
+    # relief itself at the annual allowance (microcosm#1069 c8).
     pe_person["personal_pension_contributions"] = np.maximum(
         0,
         _sum_to_entity(
             pension_amount[_number(penprov, "stemppen").isin((5, 6))],
             penprov.loc[_number(penprov, "stemppen").isin((5, 6)), "person_id"],
             person["person_id"],
-        ).clip(0, pension_clip)
+        )
         * WEEKS_IN_YEAR,
     )
     job = frs["job"]
-    pe_person["employee_pension_contributions"] = np.maximum(
+    deducted = np.maximum(
         0,
         _sum_to_entity(
             _number(job, "deduc1").fillna(0),
@@ -724,6 +1095,36 @@ def _add_person_expenses(
         )
         * WEEKS_IN_YEAR,
     )
+    # A net-pay deduction cannot exceed the pay it comes out of; the FRS
+    # records each job's deduction apart from the adult's usual earnings, so
+    # the deduction is capped at them (uk_runtime.pension_coherence).
+    capped, changed = cap_net_pay_contributions(
+        np.asarray(deducted, dtype=np.float64),
+        pe_person["employment_income"].to_numpy(dtype=np.float64),
+    )
+    pe_person["employee_pension_contributions"] = capped
+    if evidence is not None:
+        # A deduction beside no recorded pay may stand for pay the adult tab
+        # left blank, not for a contribution above pay, so the two cases are
+        # counted apart.
+        recorded_pay = pe_person["employment_income"].to_numpy(dtype=np.float64) > 0.0
+        receipt = {
+            "before": np.asarray(deducted, dtype=np.float64),
+            "after": capped,
+            "weights": person["household_id"]
+            .map(_raw_number(household, "gross4"))
+            .fillna(0.0)
+            .to_numpy(dtype=np.float64),
+            "source_ids": person["household_id"].to_numpy(),
+        }
+        evidence["net_pay_contributions"] = {
+            "above_recorded_pay": coherence_receipt(
+                changed=changed & recorded_pay, **receipt
+            ),
+            "beside_no_recorded_pay": coherence_receipt(
+                changed=changed & ~recorded_pay, **receipt
+            ),
+        }
     pe_person["pension_contributions_via_salary_sacrifice"] = np.maximum(
         0,
         _sum_to_entity(
@@ -771,9 +1172,7 @@ def _add_household_columns(
     )
     pe_household["num_bedrooms"] = _number(household, "bedroom6")
     pe_household["council_tax_reported"] = _positive(household, "ctannual")
-    pe_household["council_tax_band"] = _map_codes(
-        household, "ctband", COUNCIL_TAX_BAND_MAP, "D"
-    )
+    pe_household["council_tax_band"] = frs_council_tax_band(household)
     pe_household["council_tax_rebate"] = (
         _positive(household, "ctrebamt") * WEEKS_IN_YEAR
     )
@@ -799,7 +1198,7 @@ def _add_household_columns(
         * WEEKS_IN_YEAR
     ).astype(float)
     pe_household["rent"] = _number(household, "hhrent") * WEEKS_IN_YEAR
-    pe_household["subrent"] = _number(household, "subrent") * WEEKS_IN_YEAR
+    pe_household["subrent"] = _positive(household, "subrent") * WEEKS_IN_YEAR
     pe_household["mortgage_interest_repayment"] = (
         _number(household, "mortint") * WEEKS_IN_YEAR
     )
@@ -858,6 +1257,21 @@ def _sum_positive_fields(frame: pd.DataFrame, columns: tuple[str, ...]) -> np.nd
     return total
 
 
+def frs_council_tax_band(household: pd.DataFrame) -> pd.Series:
+    """The engine's council-tax band for each FRS household.
+
+    ``ctband`` maps through ``COUNCIL_TAX_BAND_MAP``. Northern Ireland pays
+    domestic rates, not council tax, so its households take the placeholder
+    band whatever ``ctband`` holds (microcosm#1278).
+    """
+
+    band = _map_codes(
+        household, "ctband", COUNCIL_TAX_BAND_MAP, UK_COUNCIL_TAX_PLACEHOLDER_BAND
+    )
+    region = _map_codes(household, "gvtregno", REGION_MAP, "UNKNOWN")
+    return band.mask(region == "NORTHERN_IRELAND", UK_COUNCIL_TAX_PLACEHOLDER_BAND)
+
+
 def _map_codes(
     frame: pd.DataFrame,
     column: str,
@@ -884,6 +1298,41 @@ def frs_care_hours(person: pd.DataFrame) -> pd.Series:
     if unknown:
         raise ValueError(f"FRS hourtot carries unknown band code(s) {unknown}.")
     return codes.astype(int).map(FRS_CARE_HOURS_BY_BAND).astype("float64")
+
+
+def _esa_includes_support_component(
+    benefits: pd.DataFrame, person_id: pd.Series, person_ids: pd.Series
+) -> np.ndarray:
+    """Whether each person's ESA includes the support component.
+
+    An ESA row (BENEFIT 16) records the group in VAR3 (ESAGROUP): 1 the
+    work-related activity group, 2 the support group, 3 the assessment phase.
+    The FRS 2024-25 variable listing gives the codes (UK Data Service SN 9563,
+    ``9563_frs2425_variable_listing_eul.xlsx``, sheet BENEFITS_table): on an
+    ESA row VAR3 holds the questionnaire's ESAGroup, formatted 1
+    Work-related activity group, 2 Support group, 3 Assessment phase.
+    A stored column replaces policyengine-uk's default for everyone, which
+    assumes the support group for anyone with an ESA award of their own
+    (2.129.0), so the column is false only where the survey records a group
+    outside it and never the support group, and true everywhere else: the
+    engine reads it only where there is an award of one's own (microcosm#1095).
+    A tab without VAR3 refuses, rather than set nobody's group.
+    """
+
+    if "var3" not in benefits.columns:
+        raise KeyError(
+            "The FRS benefits tab has no VAR3 column, so the ESA group "
+            "(esa_includes_support_component) cannot be set."
+        )
+    esa_row = _number(benefits, "benefit") == 16
+    group = _number(benefits, "var3")
+    outside = _sum_to_entity(
+        (esa_row & group.isin((1, 3))).astype(float), person_id, person_ids
+    )
+    support = _sum_to_entity(
+        (esa_row & (group == 2)).astype(float), person_id, person_ids
+    )
+    return ~((np.asarray(outside) > 0) & ~(np.asarray(support) > 0))
 
 
 def _number(frame: pd.DataFrame, column: str) -> pd.Series:
@@ -914,14 +1363,441 @@ def _positive(frame: pd.DataFrame, column: str) -> pd.Series:
     return np.maximum(_number(frame, column), 0)
 
 
+#: HOUSEHOL.HHSTAT 2: a shared household (shared on an equal basis, the head
+#: of household unclear or arbitrary).
+FRS_HHSTAT_SHARED = 2
+#: ADULT.CONVBL 1: the payer's rent to the householder includes meals (a
+#: boarder); anything else is lodging alone (a lodger).
+FRS_CONVBL_BOARD_AND_LODGING = 1
+
+
+def frs_liable_for_share_of_household_rent(
+    benunit: pd.DataFrame,
+    person: pd.DataFrame,
+    household: pd.DataFrame,
+    benefits: pd.DataFrame,
+) -> np.ndarray:
+    """Whether each benefit unit shares liability for its household's rent.
+
+    In a shared household (HHSTAT 2) each benefit unit after the first is
+    asked the rent it pays (SRENTAMT, on its adults' records) and the Housing
+    Benefit it gets (HBOTHAMT). SRENTAMT is asked after state help with the
+    rent, so a unit whose share Universal Credit meets in full can report
+    zero in both; a linked UC record with a housing element (UCHOUSEL on a
+    BENEFIT 95 record) still makes it liable. A later unit with any of the
+    three is one of the people liable for HHRENT, the whole dwelling's rent,
+    which policyengine-uk splits among them (pe-uk#2006, uk-data#512).
+    Conventional households (HHSTAT 1) are left out: their later units may
+    owe the landlord a share or pay the householder as boarders or lodgers,
+    and the survey does not say which.
+    """
+
+    missing = [
+        f"{table}.{column}"
+        for table, frame, column in (
+            ("househol", household, "hhstat"),
+            ("adult", person, "srentamt"),
+            ("benunit", benunit, "hbothamt"),
+            ("benefits", benefits, "uchousel"),
+        )
+        if column not in frame.columns
+    ]
+    if missing:
+        raise KeyError(f"Shared rent liability needs the FRS columns {missing}.")
+    benunit_id = benunit["benunit_id"].to_numpy()
+    shared = (
+        _number(household, "hhstat")
+        .reindex(benunit["household_id"].to_numpy())
+        .eq(FRS_HHSTAT_SHARED)
+        .to_numpy()
+    )
+    share_paid = (
+        _positive(person, "srentamt")
+        .groupby(person["benunit_id"].to_numpy())
+        .sum()
+        .reindex(benunit_id, fill_value=0.0)
+        .to_numpy()
+    )
+    housing_benefit = _positive(benunit, "hbothamt").to_numpy()
+    with_housing_element = benefits.loc[
+        _number(benefits, "benefit").isin(BENEFIT_CODES["universal_credit"])
+        & _number(benefits, "uchousel").gt(0),
+        "benunit_id",
+    ]
+    uc_housing = np.isin(benunit_id, with_housing_element.to_numpy())
+    later_unit = benunit_id % 100 > 1
+    return later_unit & shared & ((share_paid > 0) | (housing_benefit > 0) | uc_housing)
+
+
+def frs_rent_paid_to_householder(person: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+    """Annual rent a boarder and a lodger pays the householder (CVPAY on the payer).
+
+    CONVBL 1 marks board and lodging, a room and at least some meals; anything
+    else is lodging alone (pe-uk#2006's rent_paid_as_boarder and
+    rent_paid_as_lodger, uk-data#506/#511).
+    """
+
+    paid = _positive(person, "cvpay").to_numpy() * WEEKS_IN_YEAR
+    boarder = _number(person, "convbl").eq(FRS_CONVBL_BOARD_AND_LODGING).to_numpy()
+    return np.where(boarder, paid, 0.0), np.where(boarder, 0.0, paid)
+
+
+#: Universal Credit start-up period (UC Regs 2013 reg 63; uk-data#527). The
+#: codes are from the FRS 2024-25 variable listing (SN 9563).
+UC_START_UP_PERIOD_MONTHS = 12
+#: ADULT.EMPSTATI full- and part-time self-employed.
+FRS_SELF_EMPLOYED_EMPSTATI = (3, 4)
+#: ADULT.SDEMP01-12 self employed working full- and part-time.
+FRS_SELF_EMPLOYED_ACTIVITIES = (3, 4)
+#: JOB.ETYPE: every self-employed description (1 is an employee).
+FRS_SELF_EMPLOYED_JOB_ETYPES = (2, 3, 4, 5, 6, 7)
+#: JOB.JOBBUS "A business", against "Job".
+FRS_JOBBUS_BUSINESS = 2
+#: ADULT.SAMESIT "No": the respondent's situation did not change in 12 months.
+FRS_SITUATION_UNCHANGED = 2
+#: The identity-keyed stream that draws the claim recency of a UC record
+#: without a linked claim start date, one draw per benefit unit.
+UC_START_UP_CLAIM_RECENCY_SEED = 0
+UC_START_UP_CLAIM_RECENCY_SALT = "uc_is_in_startup_period"
+_UC_START_UP_PERSON_COLUMNS = (
+    "empstati",
+    "samesit",
+    "seincam2",
+    *(f"sdemp{month:02d}" for month in range(1, 13)),
+)
+_UC_START_UP_JOB_COLUMNS = ("etype", "jobtype", "seend", "sejblong", "jobbus")
+
+
+def frs_interview_dates(household: pd.DataFrame) -> pd.Series:
+    """Interview dates from HOUSEHOL.INTDATE, a SAS date (days since 1960-01-01)."""
+
+    raw = _raw_number(household, "intdate")
+    if raw.isna().any():
+        raise ValueError("FRS INTDATE (interview date) is missing for some households.")
+    return pd.to_datetime(raw, unit="D", origin="1960-01-01")
+
+
+def parse_frs_uc_claim_start(raw: pd.Series) -> pd.Series:
+    """UC claim start dates from BENEFITS.UCSTART, written month/day/year.
+
+    UCSTART comes from DWP administrative data; it is blank where the survey's
+    UC record has no linked administrative record. Any other value refuses,
+    so a changed format cannot pass silently.
+    """
+
+    text = pd.Series(raw, dtype="string").str.strip()
+    text = text.mask(text == "")
+    parsed = pd.to_datetime(text, format="%m/%d/%Y", errors="coerce")
+    unparsed = text.notna() & parsed.isna()
+    if unparsed.any():
+        raise ValueError(
+            f"{int(unparsed.sum())} FRS UCSTART values are not month/day/year dates."
+        )
+    return parsed
+
+
+def completed_months(later: pd.Series, earlier: pd.Series) -> np.ndarray:
+    """Whole calendar months from ``earlier`` to ``later``; NaN where either is missing."""
+
+    later = pd.DatetimeIndex(later)
+    earlier = pd.DatetimeIndex(earlier)
+    months = (
+        (later.year - earlier.year) * 12
+        + (later.month - earlier.month)
+        - (later.day < earlier.day)
+    )
+    return np.where(later.isna() | earlier.isna(), np.nan, months)
+
+
+def uc_trade_years(
+    years_in_job: np.ndarray,
+    describes_business: np.ndarray,
+    self_employed_all_year: np.ndarray,
+) -> np.ndarray:
+    """Completed years in the trade behind a self-employed job; NaN when unknown.
+
+    SEJBLONG asks someone running a business how long they have run it and
+    anyone else how long they have been in their current self-employed job.
+    For a person self-employed throughout the last 12 months, a job under a
+    year old is a new engagement in the same trade (ADM H4102 example 4 treats
+    a hairdresser turned hairstylist as one trade), so it does not date the
+    trade.
+    """
+
+    years = np.asarray(years_in_job, dtype=float)
+    new_engagement = (
+        (years < 1)
+        & ~np.asarray(describes_business, dtype=bool)
+        & np.asarray(self_employed_all_year, dtype=bool)
+    )
+    return np.where(new_engagement, np.nan, years)
+
+
+def frs_uc_start_up_period(
+    person: pd.DataFrame,
+    pe_person: pd.DataFrame,
+    pe_benunit: pd.DataFrame,
+    household: pd.DataFrame,
+    *,
+    job: pd.DataFrame,
+    benefits: pd.DataFrame,
+) -> np.ndarray:
+    """Whether each person is in a Universal Credit start-up period at interview.
+
+    Reg 63(1), as substituted from 23 September 2020 (SI 2019/1152), starts a
+    12-month start-up period when DWP finds a claimant in gainful
+    self-employment, unless the minimum income floor already applied for the
+    trade; the period is no longer limited to new trades. DWP decides that at
+    the start of a claim or when a new trade is reported, so the period is
+    running when the person is self-employed and either the benefit unit's UC
+    claim (UCSTART) or the trade (SEJBLONG) began less than 12 calendar months
+    before interview (INTDATE). A UC record without a linked claim date is
+    drawn, keyed on its benefit unit, at the survey-weighted share of linked
+    self-employed claimants whose claim began inside the window (uk-data#527).
+    The FRS cannot see earlier awards, so a re-claim after the floor applied,
+    or a second period within five years, reads as a start-up period; nor a
+    move into the all-work-related-requirements group on an old claim, which
+    starts a period the flag misses.
+    """
+
+    missing = [
+        f"{table}.{column}"
+        for table, frame, columns in (
+            ("adult", person, _UC_START_UP_PERSON_COLUMNS),
+            ("job", job, _UC_START_UP_JOB_COLUMNS),
+            ("benefits", benefits, ("ucstart_raw",)),
+        )
+        for column in columns
+        if column not in frame.columns
+    ]
+    if missing:
+        raise KeyError(
+            f"The UC start-up period needs the FRS columns {missing} (uk-data#527)."
+        )
+    interview = frs_interview_dates(household)
+    uc_rows = benefits.loc[
+        _number(benefits, "benefit").isin(BENEFIT_CODES["universal_credit"])
+    ]
+    claim_months = pd.Series(
+        completed_months(
+            interview.reindex(uc_rows["household_id"].to_numpy()),
+            parse_frs_uc_claim_start(uc_rows["ucstart_raw"]),
+        ),
+        index=uc_rows["benunit_id"].to_numpy(),
+    )
+    benunit_ids = pe_benunit["benunit_id"].to_numpy()
+    # One claim per benefit unit; the latest start where its rows disagree.
+    months = claim_months.groupby(level=0).min().reindex(benunit_ids).to_numpy()
+    unlinked = np.isin(benunit_ids, uc_rows["benunit_id"].to_numpy()) & np.isnan(months)
+
+    held = job.loc[
+        _number(job, "etype").isin(FRS_SELF_EMPLOYED_JOB_ETYPES)
+        & ~(_number(job, "seend") > 0)
+    ]
+    # The person's first self-employed job (main job first) is the trade the
+    # start-up period follows.
+    first_job = (
+        held.sort_values(["person_id", "jobtype"])
+        .drop_duplicates("person_id")
+        .set_index("person_id")
+    )
+    person_ids = person["person_id"].to_numpy()
+    main_job_self_employed = (
+        _number(person, "empstati").isin(FRS_SELF_EMPLOYED_EMPSTATI).to_numpy()
+    )
+    calendar = pd.concat(
+        [_number(person, f"sdemp{month:02d}") for month in range(1, 13)], axis=1
+    )
+    self_employed_all_year = main_job_self_employed & (
+        _number(person, "samesit").eq(FRS_SITUATION_UNCHANGED).to_numpy()
+        | calendar.isin(FRS_SELF_EMPLOYED_ACTIVITIES).all(axis=1).to_numpy()
+    )
+    sejblong = _raw_number(first_job, "sejblong")
+    trade_years = uc_trade_years(
+        sejblong.where(sejblong >= 0).reindex(person_ids).to_numpy(),
+        _number(first_job, "jobbus")
+        .eq(FRS_JOBBUS_BUSINESS)
+        .reindex(person_ids, fill_value=False)
+        .to_numpy(),
+        self_employed_all_year,
+    )
+    self_employed = (
+        main_job_self_employed
+        | np.isin(person_ids, held["person_id"].to_numpy())
+        | (_number(person, "seincam2").to_numpy() != 0)
+    )
+
+    person_benunit = pd.Index(benunit_ids).get_indexer(pe_person["person_benunit_id"])
+    if (person_benunit < 0).any():
+        raise ValueError("A person's benefit unit is missing from the FRS spine.")
+    person_months = months[person_benunit]
+    linked = self_employed & ~np.isnan(person_months)
+    weight = (
+        _raw_number(household, "gross4")
+        .reindex(pe_person["person_household_id"].to_numpy())
+        .to_numpy()
+    )
+    # The household-weighted share of linked self-employed claimants whose
+    # claim began inside the window; it treats a missing link as unrelated to
+    # the claim's age.
+    linked_share = (
+        float(
+            np.average(
+                (person_months[linked] < UC_START_UP_PERIOD_MONTHS).astype(float),
+                weights=weight[linked],
+            )
+        )
+        if weight[linked].sum() > 0
+        else 0.0
+    )
+    draws = stable_identity_uniforms(
+        benunit_ids,
+        seed=UC_START_UP_CLAIM_RECENCY_SEED,
+        salt=UC_START_UP_CLAIM_RECENCY_SALT,
+    )
+    claim_in_window = (months < UC_START_UP_PERIOD_MONTHS) | (
+        unlinked & (draws < linked_share)
+    )
+    return self_employed & (claim_in_window[person_benunit] | (trade_years < 1))
+
+
+def uc_gainful_self_employment(
+    self_employed_main_job: Any, self_employment_income: Any, employment_income: Any
+) -> np.ndarray:
+    """Whether each person is in gainful self-employment for Universal Credit.
+
+    UC Regs 2013 reg 64(a) asks whether the person carries on a trade as their
+    main employment. DWP's Advice for Decision Making starts from hours (H4031)
+    but lets earnings outweigh them (H4034). So the flag holds for a
+    self-employed main job (FRS EMPSTATI 3 or 4) whatever its profit, since a
+    trade at a loss or breaking even is still carried on (H4013, H4054,
+    H4503), and for a side trade whose profit is above the person's employment
+    income (uk-data#525). It overrides the engine's default, which reads any
+    nonzero self-employment income as gainful. The flag is fixed at the
+    survey-year (or SPI-drawn) incomes: uprating reprices the two incomes by
+    different indices, and the flag does not follow.
+    """
+
+    profit = np.asarray(self_employment_income, dtype=float)
+    pay = np.asarray(employment_income, dtype=float)
+    main_job = np.asarray(self_employed_main_job, dtype=bool)
+    return main_job | ((profit > 0) & (profit > pay))
+
+
+#: FRS yes code for the local-authority registration questions (SPCREG1-3).
+FRS_REGISTERED_YES = 1
+#: FRS period codes (SN 9563 code frame) for an amount reported per calendar
+#: month and per year.
+FRS_PERIOD_CALENDAR_MONTH = 5
+FRS_PERIOD_YEAR = 52
+#: A calendar-month access-fund award is read as annual only when it
+#: annualises to more than this multiple of the largest annual-coded award, so
+#: a large but plausible monthly payment is left as reported.
+ACCESS_FUND_MONTHLY_REPAIR_MULTIPLE = 2.0
+
+
+def access_fund_annual(
+    person: pd.DataFrame, evidence: dict[str, object] | None = None
+) -> pd.Series:
+    """Annual access-fund award, with one period-code repair.
+
+    The FRS weeklyises ``ACCSSAMT`` from the reported amount and its period
+    code ``ACCSSPD``, and the spine annualises it. An access-fund award is paid
+    per academic year or term, and on the 2024-25 tab the calendar-month
+    amounts run up to the size of a whole annual award: read as monthly, such
+    an award annualises to more than ten times every award the survey records
+    as annual (microcosm#1095, from the review of #1100). So a calendar-month
+    award (code 5) that annualises to more than
+    ``ACCESS_FUND_MONTHLY_REPAIR_MULTIPLE`` times the largest award the same
+    tab records as annual (code 52) is read as the annual award: its
+    per-period amount, ``ACCSSAMT`` x 52/12. On the 2024-25 tab that repairs
+    fewer than 10 awards and leaves large but plausible monthly payments as
+    reported. Every other award stays as the FRS weeklyised it, including the
+    few with no period code on the tab. The threshold moves
+    with the tab's largest annual-coded award, so a tab with calendar-month
+    awards but no annual-coded award refuses rather than repair nothing
+    silently, and so does a tab without the ``ACCSSPD`` column, since the rule
+    cannot be applied to either.
+
+    ``evidence``, when given, records the paid awards by period code, the
+    annual threshold (``None`` when no award is paid) and how many awards
+    were repaired, for the stage's checkpoint evidence.
+    """
+
+    amount = _positive(person, "accssamt")
+    annual = amount * WEEKS_IN_YEAR
+    paid = amount > 0
+    record: dict[str, object] = {
+        "paid_awards": int(paid.sum()),
+        "annual_coded_awards": 0,
+        "calendar_month_awards": 0,
+        "repair_multiple": ACCESS_FUND_MONTHLY_REPAIR_MULTIPLE,
+        "repair_threshold_annual": None,
+        "repaired_awards": 0,
+    }
+    if evidence is not None:
+        evidence.update(record)
+    if not bool(paid.any()):
+        return annual
+    if "accsspd" not in person.columns:
+        raise KeyError("FRS access fund needs the period code ACCSSPD beside ACCSSAMT.")
+    period = _raw_number(person, "accsspd")
+    annual_coded = paid & period.eq(FRS_PERIOD_YEAR)
+    calendar_month = paid & period.eq(FRS_PERIOD_CALENDAR_MONTH)
+    if not bool(annual_coded.any()):
+        if bool(calendar_month.any()):
+            raise ValueError(
+                "FRS access fund has calendar-month awards (ACCSSPD 5) but no "
+                "annual-coded award (ACCSSPD 52), so the calendar-month repair "
+                "has no threshold on this tab."
+            )
+        return annual
+    threshold = ACCESS_FUND_MONTHLY_REPAIR_MULTIPLE * float(annual[annual_coded].max())
+    implausible = calendar_month & annual.gt(threshold)
+    if evidence is not None:
+        evidence.update(
+            annual_coded_awards=int(annual_coded.sum()),
+            calendar_month_awards=int(calendar_month.sum()),
+            repair_threshold_annual=threshold,
+            repaired_awards=int(implausible.sum()),
+        )
+    return annual.where(~implausible, amount * 52 / 12)
+
+
+#: The Water Charges Reduction Scheme's maximum reduction, 2021-27. A council
+#: tax reduction recipient's charges fall by R = 35 x (A/B) - D percentage
+#: points of the gross charge, unless R < 0, on top of the council tax status
+#: discount D, where A is the reduction and B the council tax before it, after
+#: discounts (Scottish Government, "Water services - charging principles: 2021
+#: to 2027", Annex A): the combined reduction is the larger of D and 35% x A/B.
+SCOTTISH_WATER_CHARGES_REDUCTION_MAXIMUM = 0.35
+#: Share of the gross charges a full council tax reduction recipient without a
+#: status discount pays, and the share DWP's CTANNUAL carries for every
+#: recipient, which ``frs_council_tax`` nets (uk-data#499, microcosm#1095).
+SCOTTISH_WATER_CHARGES_REDUCTION_RECIPIENT_SHARE = (
+    1.0 - SCOTTISH_WATER_CHARGES_REDUCTION_MAXIMUM
+)
+#: FRS 2024-25 CT25D50D codes to the status discount they record, for
+#: households with CTDISC 1 (SN 9563 variable listing).
+FRS_STATUS_DISCOUNT_BY_CODE = {1: 0.25, 2: 0.5}
+SCOTTISH_WATER_AND_SEWERAGE_RAW_COLUMNS = (
+    "cwatamt1",
+    "csewamt1",
+    "cwatamtd",
+    "ctdisc",
+    "ct25d50d",
+    "ctreb",
+)
+
+
 def scottish_water_and_sewerage_weekly(household: pd.DataFrame) -> pd.Series:
-    """Weekly Scottish water + sewerage charge, net of the household's discount.
+    """Weekly Scottish water + sewerage charge the household pays.
 
     Scotland is not asked ``WATSEWRT`` — its water and sewerage charges ride on
-    the council tax bill — so the amount must be assembled from the council-tax
+    the council tax bill — so the amount is assembled from the council-tax
     water/sewerage cells.
 
-    FRS 2024-25 retired the two cells the incumbent used.  ``CWATAMT``/
+    FRS 2024-25 retired the two cells the incumbent used. ``CWATAMT``/
     ``CSEWAMT`` ("Wat./Sew. Charge: Final value after discount") are still
     present as headers but carry no data at all in this vintage, and the FRS
     replaced them with the derived ``CWATAMT1``/``CSEWAMT1`` ("Weeklyised gross
@@ -929,46 +1805,71 @@ def scottish_water_and_sewerage_weekly(household: pd.DataFrame) -> pd.Series:
     2024-25 as variable was removed from the dataset for 2024-25" — SN 9563
     ``9563_dv_summary_2425.xlsx``).
 
-    The replacements are **gross**, where the retired cells were **after
-    discount**, and the FRS publishes no discounted sewerage counterpart.
-    ``CWATAMTD`` ("Deriv Council Tax water charge -Scot") does carry the
-    discount, so the household's own discount factor is observable as
-    ``CWATAMTD / CWATAMT1`` and applies to the sewerage side of the same bill.
-    That keeps the incumbent's semantics — what the household actually pays —
-    across the vintage change rather than silently switching to a gross basis.
+    The household pays the gross charges less the status discount its council
+    tax records, which applies to the water and sewerage charges too (25% or
+    50%: ``CTDISC`` 1 with ``CT25D50D`` 1 or 2). For a council tax reduction
+    recipient (``CTREB`` 1) the Water Charges Reduction Scheme tops that
+    discount up to ``SCOTTISH_WATER_CHARGES_REDUCTION_MAXIMUM`` of the gross
+    charges, so a recipient pays the gross charges less the larger of its
+    discount and 35% (uk-data#499, microcosm#1095). ``CWATAMTD`` ("Deriv
+    Council Tax water charge -Scot") is not that amount: on the 2024-25 tab it
+    sits at a median 0.83 of the gross water charge for undiscounted
+    non-recipients and 0.87 for undiscounted recipients, so it is read only
+    where no gross water cell exists.
 
-    Every value is weeklyised (all five cells sit in the FRS "weekly variables"
-    listing), so callers apply ``WEEKS_IN_YEAR`` themselves.
+    The scheme's 35% tapers with the share A/B of the council tax the
+    reduction covers, but every recipient here takes the full-reduction case,
+    A/B = 1. 86% of Scotland's recipients receive full council tax reduction
+    (Council Tax Reduction in Scotland 2024-25, March 2025, average award
+    GBP 16.55 a week), while none of the 234 Scottish recipients with a
+    recorded ``CTREBAMT`` on the 2024-25 tab pays nothing after it (19% of
+    English recipients do) and their recorded amounts have a median of GBP 6 a
+    week, so the recorded amount cannot carry the share.
+
+    Every value is weeklyised (all the amount cells sit in the FRS "weekly
+    variables" listing), so callers apply ``WEEKS_IN_YEAR`` themselves.
 
     On the 2024-25 tab the domain splits cleanly: 1,641 Scottish households
-    carry a positive gross water charge and a well-defined factor in
-    (1/3, 1]; 22 carry a recorded ``CWATAMTD`` with no gross bill cell, and
-    their ``CSEWAMT1`` is zero, so the fallback factor cannot move them; 21
-    carry no council-tax cells at all and fall to zero.
+    carry a positive gross water charge; 22 carry a recorded ``CWATAMTD``
+    with no gross bill cell, and their ``CSEWAMT1`` is zero, so they pay the
+    recorded water charge; 21 carry no council-tax cells at all and fall to
+    zero.
     """
 
-    water = _positive(household, "cwatamtd")
+    missing = sorted(set(SCOTTISH_WATER_AND_SEWERAGE_RAW_COLUMNS) - set(household))
+    if missing:
+        raise KeyError(f"Scottish water assembly needs raw household cells {missing}.")
     water_gross = _positive(household, "cwatamt1")
     sewerage_gross = _positive(household, "csewamt1")
     billed = water_gross > 0
-    # The correctness of the discount fallback rests on the domain claim
-    # above: a household with no gross water bill carries no sewerage gross
-    # either, so the fallback factor of 1.0 can never re-introduce the gross
-    # basis this helper exists to avoid. That claim is a property of the
-    # vintage, not of the code — so it is asserted, and a vintage that breaks
-    # it refuses at build time instead of silently paying gross sewerage.
-    undiscountable = ~billed & (sewerage_gross > 0)
-    if bool(undiscountable.any()):
+    # A household with no gross water bill carries no gross sewerage either,
+    # so its recorded CWATAMTD is the whole charge. That claim is a property
+    # of the vintage, not of the code — so it is asserted, and a vintage that
+    # breaks it refuses at build time instead of mixing the two bases.
+    unbilled_sewerage = ~billed & (sewerage_gross > 0)
+    if bool(unbilled_sewerage.any()):
         raise ValueError(
             "Scottish water assembly: "
-            f"{int(undiscountable.sum())} household(s) carry a gross sewerage "
-            "charge (CSEWAMT1 > 0) with no gross water bill (CWATAMT1 == 0), "
-            "so no discount factor is observable for them. Adding sewerage at "
-            "gross would silently change the charge's after-discount meaning; "
-            "this vintage needs an adjudicated rule for these households."
+            f"{int(unbilled_sewerage.sum())} household(s) carry a gross sewerage "
+            "charge (CSEWAMT1 > 0) with no gross water bill (CWATAMT1 == 0), so "
+            "their charge cannot be assembled on one basis; this vintage needs "
+            "an adjudicated rule for these households."
         )
-    discount = np.where(billed, water / water_gross.where(billed, 1.0), 1.0)
-    return water + sewerage_gross * discount
+    discount = (
+        _number(household, "ct25d50d")
+        .map(FRS_STATUS_DISCOUNT_BY_CODE)
+        .where(_number(household, "ctdisc") == 1, 0.0)
+        .fillna(0.0)
+    )
+    reduction = np.where(
+        _number(household, "ctreb") == 1,
+        np.maximum(discount, SCOTTISH_WATER_CHARGES_REDUCTION_MAXIMUM),
+        discount,
+    )
+    paid = (water_gross + sewerage_gross) * (1.0 - reduction)
+    return pd.Series(
+        np.where(billed, paid, _positive(household, "cwatamtd")), index=household.index
+    )
 
 
 def _reject_nan(frame: pd.DataFrame, entity: str) -> None:

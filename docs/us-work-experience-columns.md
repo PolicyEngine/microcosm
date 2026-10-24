@@ -38,8 +38,11 @@ year that have weeks worked and an industry.
 - **ACS rows.** The release predictor join (`acs_release_predictors`,
   crosswalk version 2) materializes `WEIND`, `WEMIND` and `WKSWORK` for ACS
   people from the pinned ACS 2024 person archive, the same boundary that maps
-  `OCCP` to `POCCU2`.
-- **Every row.** The release-time `org_wages` carry
+  `OCCP` to `POCCU2`. The newer ACS local-area native-input mapper uses the
+  same `crosswalk_acs_occupation_and_work_experience` helper and writes the
+  canonical occupation, industry and worked-last-year inputs directly. Its
+  source loader retains the required `OCCP`, `INDP`, `WKWN` and `ESR` fields.
+- **Pooled release rows.** The release-time `org_wages` carry
   (`derive_us_org_occupation_inputs`) turns them into the three columns next
   to `detailed_occupation_recode`.
 
@@ -109,3 +112,17 @@ It changes code and manifests only. Released files carry the columns once the
 pooled base and multispine pool are rebuilt with the restoration and a new
 release runs (#922 sequencing step 1); until then the release input-coverage
 gate is red on these three columns by design.
+
+The ACS local-area staging lane also preserves its ASEC donor rows. It now
+refuses a donor missing complete canonical occupation, industry or
+worked-last-year inputs before acquiring ACS data. Historical donors need
+the exact ASEC restoration and fiscal `org_wages` carry before that lane can
+produce a complete stacked export. Packaging rechecks the final H5 person
+rows and binds the result to its hash, so an older green staging summary
+cannot bypass this requirement. The assembly-first nullable pool remains
+an intermediate input; its fiscal release applies that carry to every row.
+
+The 2026-10-23 branch refresh preserves main's current stage and graph
+structure. The real-data measurements above are historical evidence; the
+refresh validates synthetic contracts without rebuilding ASEC, ACS or a
+release, so it does not certify any existing or newly built data artifact.

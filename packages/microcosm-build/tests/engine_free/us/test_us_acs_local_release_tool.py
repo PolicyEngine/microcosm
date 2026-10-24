@@ -1,0 +1,2706 @@
+"""Unit tests for the pure parts of tools/build_us_acs_local_release.py."""
+
+from __future__ import annotations
+
+import importlib.util
+import inspect
+import json
+import os
+import shlex
+from pathlib import Path
+from types import SimpleNamespace
+
+import numpy as np
+import pandas as pd
+import pytest
+
+from microcosm.build.gates import GateResult
+from microcosm.build.us_runtime import spm_measurement_gate
+from microcosm.build.us_runtime.org_wages import (
+    US_ORG_OCCUPATION_AND_WORK_EXPERIENCE_OUTPUT_COLUMNS,
+)
+from microcosm.data import stored_inputs
+from test_support.paths import paths_for
+
+_TEST_PATHS = paths_for("microcosm-build")
+
+#: The sampling block a full-scale materialize records in run_identity.json.
+_FULL_RUNG = {"sample_fraction": 1.0, "rung": "f100", "sampled": False}
+
+# Tests that write real H5 bytes go through pandas' HDFStore, which needs
+# pytables; the base wheel gate installs the shards without it.
+requires_pytables = pytest.mark.skipif(
+    importlib.util.find_spec("tables") is None,
+    reason="requires pytables (the build environment)",
+)
+
+
+#: The stored-input contract's real entry points, kept before the autouse
+#: fixture below replaces them, for the tests that pin the contract itself.
+_REAL_REQUIRE_H5_STORED_INPUTS = stored_inputs.require_h5_stored_inputs
+#: A policyengine-us stand-in for the package stage's stored-input contract.
+_PACKAGE_ENGINE = stored_inputs.CertifiedEngine(
+    label="policyengine-us 2.2.1",
+    variables=frozenset(
+        {
+            "person_id",
+            "person_household_id",
+            "person_tax_unit_id",
+            "person_spm_unit_id",
+            "person_family_id",
+            "person_marital_unit_id",
+            "household_id",
+            "tax_unit_id",
+            "spm_unit_id",
+            "family_id",
+            "marital_unit_id",
+            "household_weight",
+            "weekly_hours_worked_before_lsr",
+            "hours_worked_last_week",
+            "takes_up_wic_if_eligible",
+            *US_ORG_OCCUPATION_AND_WORK_EXPERIENCE_OUTPUT_COLUMNS,
+        }
+    ),
+)
+
+
+@pytest.fixture(autouse=True)
+def _stored_input_contract_passes(monkeypatch):
+    """The package stage checks the calibrated H5 against the installed
+    policyengine-us (microcosm#1026). The engine-free lane has none, and most
+    package tests here hash placeholder bytes rather than an H5, so the
+    contract passes by default. The tests that pin it restore the real reader
+    against :data:`_PACKAGE_ENGINE`."""
+
+    monkeypatch.setattr(stored_inputs, "installed_us_engine", lambda: _PACKAGE_ENGINE)
+    monkeypatch.setattr(
+        stored_inputs,
+        "require_h5_stored_inputs",
+        lambda path, *, engine: {
+            "register_sha256": stored_inputs.register_sha256(),
+            "registered_non_variables": [],
+        },
+    )
+
+
+#: The SPM measurement gate's real entry point, kept before the autouse
+#: fixture below replaces it, for the tests that grade real bytes.
+_REAL_CHECK_RELEASE_SPM_MEASUREMENT = spm_measurement_gate.check_release_spm_measurement
+#: What the stand-in gate reports: a measurable release under an engine that
+#: measures every unit, in the shape the publisher's contract requires.
+_MEASURABLE_DETAILS = {
+    "role_column_present": True,
+    "role_null_values": 0,
+    "role_non_boolean_values": 0,
+    "engine_scopes_spm_universe": False,
+    "universe_declared_in_release": False,
+    "measured_scope": "all_units",
+    "n_units": 8,
+    "n_units_by_universe": {"INCLUDED": 8, "OUTSIDE": 0},
+    "n_measured_units": 8,
+    "n_measured_units_without_classified_adult": 0,
+    "n_units_without_classified_adult": 0,
+    "n_units_without_classified_adult_by_universe": {"INCLUDED": 0, "OUTSIDE": 0},
+}
+
+
+@pytest.fixture(autouse=True)
+def _spm_measurement_gate_passes(monkeypatch):
+    """The package stage grades the calibrated frame's SPM measurement
+    (microcosm#1263). Most package tests here load a frame built for another
+    gate, so the verdict passes by default. The tests that pin it restore
+    :data:`_REAL_CHECK_RELEASE_SPM_MEASUREMENT` against real bytes."""
+
+    monkeypatch.setattr(
+        spm_measurement_gate,
+        "check_release_spm_measurement",
+        lambda frame, *, engine_scopes_universe: GateResult(
+            name=spm_measurement_gate.SPM_MEASUREMENT_GATE_NAME,
+            passed=True,
+            details=dict(_MEASURABLE_DETAILS),
+        ),
+    )
+
+
+def _load_tool_module():
+    root = _TEST_PATHS.repository
+    path = root / "tools" / "build_us_acs_local_release.py"
+    spec = importlib.util.spec_from_file_location(
+        "build_us_acs_local_release",
+        path,
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_staging_builder_module():
+    root = _TEST_PATHS.repository
+    path = root / "tools" / "build_us_acs_multispine_base.py"
+    spec = importlib.util.spec_from_file_location(
+        "build_us_acs_multispine_base",
+        path,
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_household_chunks_refuse_population_aggregates(monkeypatch, tmp_path) -> None:
+    module = _load_tool_module()
+    import build_us_fiscal_refresh_release as release
+
+    fixture_spec = importlib.util.spec_from_file_location(
+        "batched_materialization_fixtures",
+        Path(__file__).with_name("test_us_batched_target_materialization.py"),
+    )
+    fixtures = importlib.util.module_from_spec(fixture_spec)
+    assert fixture_spec.loader is not None
+    fixture_spec.loader.exec_module(fixtures)
+    aggregate = "medicaid_slcsp_state_denominator"
+    ledger = fixtures._install_fake_engine(
+        release,
+        monkeypatch,
+        reform_specs=(),
+        aggregate_reads={"aggregate_probe": (aggregate,)},
+    )
+    monkeypatch.setattr(module, "project_input_only", lambda frame, **kw: (frame, {}))
+    monkeypatch.setattr(module, "fill_reviewed_nulls", lambda *args, **kw: None)
+    specs = (fixtures._variable("aggregate_total", base_variable="aggregate_probe"),)
+
+    with pytest.raises(
+        ValueError,
+        match=rf"household batch 1/1 computed .*{aggregate}@2024",
+    ):
+        module.materialize_chunked(
+            fixtures._nested_frame(),
+            specs,
+            hh_chunk=2,
+            batch=2,
+            summary_path=tmp_path / "summary.json",
+        )
+    assert len(ledger.simulations) == 1
+    assert ledger.simulations[0].dataset is None
+
+
+def test_spine_composition_reports_per_spine_weight_and_size() -> None:
+    module = _load_tool_module()
+    households = pd.DataFrame(
+        {
+            "household_id": [1, 2, 3],
+            "household_spine": ["asec_puf", "asec_puf", "acs_2024_1yr"],
+        }
+    )
+    persons = pd.DataFrame({"person_household_id": [1, 2, 2, 3, 3, 3]})
+    weights = np.asarray([10.0, 30.0, 60.0])
+
+    composition = module.spine_composition(households, persons, weights)
+
+    asec = composition["asec_puf"]
+    assert asec["households"] == 2
+    assert asec["household_weight"] == pytest.approx(40.0)
+    assert asec["household_weight_share"] == pytest.approx(0.4)
+    # person weight: 10*1 + 30*2 = 70 -> 70/40 persons per household.
+    assert asec["person_weight"] == pytest.approx(70.0)
+    assert asec["implied_persons_per_household"] == pytest.approx(1.75)
+    acs = composition["acs_2024_1yr"]
+    assert acs["implied_persons_per_household"] == pytest.approx(3.0)
+    overall = composition["_all"]
+    assert overall["households"] == 3
+    assert overall["effective_sample_size"] == pytest.approx(
+        (10 + 30 + 60) ** 2 / (10**2 + 30**2 + 60**2)
+    )
+
+
+def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
+    module = _load_tool_module()
+    staging_summary = {
+        "base": {
+            "donor_release": {
+                "release_id": "populace-us-2024-buildo-sparse-rmloss100-x",
+            }
+        },
+        "reviewed_limitations": [
+            {"id": "acs_group_quarters_housing_universe", "status": "reviewed"},
+            {
+                "id": "cd_population_marginal_vintage_2020",
+                "status": "stale_staging_copy",
+            },
+        ],
+    }
+    diagnostics = {
+        "effective_sample_size": 4853.9,
+        "ess_fraction": 0.003,
+        "households": 1_600_000,
+    }
+    spine_qa = {
+        "per_spine": {
+            "acs_2024_1yr": {"ssi_incidence": 0.0259},
+            "asec_puf": {"ssi_incidence": 0.0185},
+        }
+    }
+
+    limitations = module.finalize_reviewed_limitations(
+        staging_summary, diagnostics, spine_qa
+    )
+
+    by_id = {item["id"]: item for item in limitations}
+    # Staging entries carried; finalize's own entry wins the id collision.
+    assert "acs_group_quarters_housing_universe" in by_id
+    assert by_id["cd_population_marginal_vintage_2020"]["status"] == (
+        "reviewed_vintage"
+    )
+    # Lineage entries present, none blocking.
+    for required in (
+        "ssi_aged_band_collapse_inherited",
+        "miscellaneous_income_loss_side_donor_defect",
+        "tips_return_count_carrier_deficit_inherited",
+        "low_effective_sample_size_lambda_zero",
+        "donor_sparse_selection_training_set",
+        "mixed_sub_puma_column_coverage",
+    ):
+        assert required in by_id, required
+        assert by_id[required]["calibration_blocker"] is False
+    ssi = by_id["ssi_aged_band_collapse_inherited"]
+    assert ssi["measured_spine_ssi"] == {
+        "acs_2024_1yr": 0.0259,
+        "asec_puf": 0.0185,
+    }
+    donor = by_id["donor_sparse_selection_training_set"]
+    assert "populace-us-2024-buildo-sparse-rmloss100-x" in donor["reason"]
+    # Every published donor predates microcosm#1186, so the inherited
+    # Social Security erasure is disclosed by default.
+    social_security = by_id["social_security_cps_reporters_erased_inherited"]
+    assert social_security["status"] == "reviewed_inherited_defect"
+    assert social_security["calibration_blocker"] is False
+    assert social_security["donor_release"] == (
+        "populace-us-2024-buildo-sparse-rmloss100-x"
+    )
+    assert "microcosm#1186" in social_security["fixed_by"]
+    # Ids are unique after dedupe.
+    assert len(by_id) == len(limitations)
+
+
+def test_a_donor_verified_free_of_the_social_security_erasure_drops_the_disclosure(
+    monkeypatch,
+) -> None:
+    """The disclosure is fail-safe: it leaves the register only for a donor
+    added to DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE after checking."""
+
+    module = _load_tool_module()
+    assert module.DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE == frozenset()
+    staging_summary = {
+        "base": {"donor_release": {"release_id": "populace-us-2024-after-1186"}},
+        "reviewed_limitations": [],
+    }
+    diagnostics = {"effective_sample_size": 1.0, "ess_fraction": 0.5}
+
+    def ids():
+        return {
+            item["id"]
+            for item in module.finalize_reviewed_limitations(
+                staging_summary, diagnostics, {}
+            )
+        }
+
+    assert "social_security_cps_reporters_erased_inherited" in ids()
+    monkeypatch.setattr(
+        module,
+        "DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE",
+        frozenset({"populace-us-2024-after-1186"}),
+    )
+    assert "social_security_cps_reporters_erased_inherited" not in ids()
+
+
+def test_the_acs_wic_assumption_is_disclosed_exactly_when_it_was_applied() -> None:
+    """microcosm#1263: the limitation follows the consumer export's receipt."""
+
+    module = _load_tool_module()
+    staging_summary = {"base": {"donor_release": {}}, "reviewed_limitations": []}
+    diagnostics = {"effective_sample_size": 1.0, "ess_fraction": 0.5}
+
+    def limitation(consumer_export):
+        return {
+            item["id"]: item
+            for item in module.finalize_reviewed_limitations(
+                staging_summary, diagnostics, {}, consumer_export=consumer_export
+            )
+        }.get("acs_wic_takeup_assumed_interim")
+
+    applied = {
+        "live_stored_inputs": {
+            "wic": {
+                "renamed": True,
+                "from": "would_claim_wic",
+                "to": "takes_up_wic_if_eligible",
+                "people_assumed_true": 12,
+                "flip_condition": "Drop it once microcosm#1156 lands.",
+            }
+        }
+    }
+    entry = limitation(applied)
+    assert entry["status"] == "reviewed_interim_assumption"
+    assert entry["column"] == "takes_up_wic_if_eligible"
+    assert entry["people_assumed_true"] == 12
+    assert entry["treatment"] == "Drop it once microcosm#1156 lands."
+    assert entry["calibration_blocker"] is False
+    assert limitation(None) is None
+    assert limitation({}) is None
+    assert limitation({"live_stored_inputs": {"wic": {"renamed": False}}}) is None
+
+
+def _spine_frame(spines, decisions):
+    from microcosm.frame import Frame
+    from test_support.microcosm_build.us_acs_spm_role import acs_frame
+
+    frame = acs_frame([[(20, 40.0)] for _ in spines])
+    person = frame.table("person").copy()
+    person["person_spine"] = spines
+    person["would_claim_wic"] = pd.Series(decisions, dtype=object)
+    person["medicare_part_b_premiums"] = [
+        0.0 if decision is not None else np.nan for decision in decisions
+    ]
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables["person"] = person
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+    )
+
+
+def test_only_acs_spine_people_may_lack_a_wic_decision() -> None:
+    """The tool hands the rule the ACS spine, read from the spine tag."""
+
+    module = _load_tool_module()
+    frame = _spine_frame(
+        ["asec_puf", "acs_2024_1yr", "acs_2024_1yr"], [False, None, None]
+    )
+
+    result = module._with_live_stored_inputs(frame)
+
+    person = result.frame.table("person")
+    assert person["takes_up_wic_if_eligible"].tolist() == [False, True, True]
+    assert "would_claim_wic" not in person.columns
+    assert "medicare_part_b_premiums" not in person.columns
+    assert result.provenance["wic"]["people_assumed_true"] == 2
+    # Neither retired name, nor the live one, is left for the package gate to
+    # refuse.
+    engine = stored_inputs.installed_us_engine()
+    refused = stored_inputs.undefined_stored_inputs(
+        person.columns, engine_variables=engine.variables
+    )
+    assert not {
+        "would_claim_wic",
+        "medicare_part_b_premiums",
+        "takes_up_wic_if_eligible",
+    } & set(refused)
+
+    with pytest.raises(SystemExit, match="did not allow"):
+        module._with_live_stored_inputs(
+            _spine_frame(["asec_puf", "acs_2024_1yr"], [None, None])
+        )
+
+
+def test_parse_args_enforces_stage_requirements(tmp_path: Path) -> None:
+    module = _load_tool_module()
+    base = [
+        "--staging-h5",
+        str(tmp_path / "staging.h5"),
+        "--checkpoint-dir",
+        str(tmp_path / "ckpt"),
+    ]
+
+    with pytest.raises(SystemExit):
+        module._parse_args(["--stage", "materialize", *base])
+    with pytest.raises(SystemExit):
+        module._parse_args(["--stage", "calibrate", *base])
+    with pytest.raises(SystemExit):
+        module._parse_args(
+            ["--stage", "package", *base, "--out-h5", str(tmp_path / "o.h5")]
+        )
+
+    args = module._parse_args(
+        [
+            "--stage",
+            "all",
+            *base,
+            "--feed",
+            str(tmp_path / "facts.jsonl"),
+            "--out-h5",
+            str(tmp_path / "out.h5"),
+            "--out",
+            str(tmp_path / "release"),
+        ]
+    )
+    assert args.stages == ["materialize", "calibrate", "qa", "finalize", "package"]
+    assert args.out_summary == tmp_path / "out.summary.json"
+    assert args.gate_report == tmp_path / "ckpt" / "gate_summary.json"
+
+
+def test_release_id_prefix_and_manifest_constants() -> None:
+    module = _load_tool_module()
+    assert module.RELEASE_ID_PREFIX == "populace-us-2024-buildo-acs-local"
+    assert module.RELEASE_NAMESPACE == "buildo_acs_local"
+    assert module.ARTIFACT_FILENAME == "populace_us_2024_acs_local.h5"
+    assert module.HF_REPO_ID == "policyengine/populace-us"
+
+
+def test_documented_staging_recipe_matches_legacy_and_release_parsers(
+    tmp_path: Path,
+) -> None:
+    release = _load_tool_module()
+    staging_builder = _load_staging_builder_module()
+    recipe = shlex.split(release.LEGACY_STAGING_REFRESH_RECIPE)
+
+    assert recipe[:3] == [
+        "uv",
+        "run",
+        "tools/build_us_acs_multispine_base.py",
+    ]
+    staging_args = staging_builder._legacy._parse_args(recipe[3:])
+    staging_summary = staging_args.summary or staging_args.out_h5.with_suffix(
+        ".summary.json"
+    )
+    release_args = release._parse_args(
+        [
+            "--stage",
+            "materialize",
+            "--staging-h5",
+            str(staging_args.out_h5),
+            "--checkpoint-dir",
+            str(tmp_path / "ckpt"),
+            "--feed",
+            str(tmp_path / "facts.jsonl"),
+        ]
+    )
+
+    assert release._staging_summary_path(release_args) == staging_summary
+
+
+def test_do_finalize_requires_calibration_summary(tmp_path: Path) -> None:
+    module = _load_tool_module()
+    staging = tmp_path / "staging.h5"
+    staging.touch()
+    (tmp_path / "staging.summary.json").write_text(json.dumps({}))
+    args = module._parse_args(
+        [
+            "--stage",
+            "finalize",
+            "--staging-h5",
+            str(staging),
+            "--checkpoint-dir",
+            str(tmp_path / "ckpt"),
+            "--out-h5",
+            str(tmp_path / "out.h5"),
+        ]
+    )
+
+    with pytest.raises(SystemExit, match="No calibration summary"):
+        module.do_finalize(args)
+
+
+def test_local_hours_gate_refuses_missing_source_audit() -> None:
+    module = _load_tool_module()
+    with pytest.raises(SystemExit, match="staging input-null audit"):
+        module._require_local_hours(None, {})
+
+
+def test_local_hours_failure_propagates_to_release_boundary(monkeypatch) -> None:
+    from microcosm.build.gates import GateResult
+
+    module = _load_tool_module()
+    seen = []
+
+    def failed_gate(frame, *, source_null_audit):
+        seen.append((frame, source_null_audit))
+        return GateResult(
+            name="acs_local_hours_signal",
+            passed=False,
+            failures=("acs_2024_1yr: unresolved hours",),
+        )
+
+    monkeypatch.setattr(module, "acs_local_hours_signal_gate", failed_gate)
+    marker = object()
+    audit = [{"entity": "person", "column": "weekly_hours_worked_before_lsr"}]
+    with pytest.raises(SystemExit, match="acs_2024_1yr: unresolved hours"):
+        module._require_local_hours(marker, {"reviewed_engine_input_nulls": audit})
+    assert seen == [(marker, audit)]
+
+
+def _package_evidence_args(module, tmp_path: Path, monkeypatch, *, hours_report):
+    """Every package-stage input, with the finalize report's hours entry given.
+
+    ``hours_report`` is what ``gate_summary.json`` records under
+    ``acs_local_hours_signal`` (``None`` omits the key, as a report finalized
+    before the gate existed would). The staging frame and the hours gate are
+    stubbed: the test is about the binding, not the classification.
+    """
+    from microcosm.build.gates import GateResult
+
+    ckpt = tmp_path / "ckpt"
+    ckpt.mkdir()
+    staging = tmp_path / "staging.h5"
+    staging.write_bytes(b"staging")
+    (tmp_path / "staging.summary.json").write_text(
+        json.dumps(
+            {
+                "reviewed_engine_input_nulls": [],
+                "reviewed_limitations": [],
+                # An uncapped staging run, so the package stage's cap check
+                # (which runs first) lets these inputs reach the hours gates.
+                "orchestration": {"max_households": None},
+            }
+        )
+    )
+    out_h5 = tmp_path / "out.h5"
+    out_h5.write_bytes(b"artifact")
+    artifact_sha = module._sha256(out_h5)
+    gates = {
+        "us_puma_ladder_gate": {"passed": True, "failures": []},
+        # The general hours gate, bound to these bytes: the package stage
+        # requires it before it reaches the ACS local-hours re-check.
+        "hours_worked_signal": {
+            "passed": True,
+            "failures": [],
+            "detail": {},
+            "artifact_sha256": artifact_sha,
+        },
+    }
+    if hours_report is not None:
+        gates["acs_local_hours_signal"] = hours_report
+    evidence = {
+        "calibration_summary.json": {
+            "households": 1,
+            "calibration_diagnostics": {
+                "status": "failed",
+                "expected_schema_version": 8,
+                "error_code": "validation_error",
+                "message": "test fixture",
+            },
+        },
+        "gate_summary.json": {"gates": gates, "reviewed_limitations": []},
+        "run_identity.json": {
+            "staging_sha256": module._sha256(staging),
+            "population_cells_dropped": [],
+            "sampling": _FULL_RUNG,
+        },
+        "spine_qa.json": {
+            "plain_consumption": True,
+            "artifact_sha256": artifact_sha,
+            "per_spine": {},
+        },
+        "consumer_export.json": {"staging_sha256": module._sha256(staging)},
+        "held_back_columns.json": {"total": 0},
+        "reviewed_null_fills.json": {"columns_filled": []},
+        "materialize_rss.json": {
+            "soi_mode": "totals",
+            "materialize_peak_rss_gb": 1.0,
+            "hh_chunk": 1,
+        },
+        "consumer_reviewed_null_fills.json": {"columns_filled": []},
+    }
+    for name, payload in evidence.items():
+        (ckpt / name).write_text(json.dumps(payload))
+    (tmp_path / "out.summary.json").write_text(json.dumps({"simulation_ready": True}))
+    monkeypatch.setattr(
+        module, "_load_staging_frame", lambda *_a, **_k: _plausible_hours_frame()
+    )
+    monkeypatch.setattr(
+        module,
+        "acs_local_hours_signal_gate",
+        lambda frame, *, source_null_audit: GateResult(
+            name="acs_local_hours_signal",
+            passed=True,
+            failures=(),
+            details={"per_spine": {"acs_2024_1yr": {"rows": 1}}},
+        ),
+    )
+    return module._parse_args(
+        [
+            "--stage",
+            "package",
+            "--staging-h5",
+            str(staging),
+            "--checkpoint-dir",
+            str(ckpt),
+            "--out-h5",
+            str(out_h5),
+            "--out",
+            str(tmp_path / "release"),
+            "--allow-dirty",
+        ]
+    )
+
+
+@pytest.mark.parametrize(
+    "hours_report",
+    [None, {"passed": False, "failures": ["invented"]}, {"passed": "true"}],
+    ids=["finalized-before-the-gate", "finalize-failed", "truthy-not-true"],
+)
+def test_package_requires_a_passing_hours_gate_in_the_finalize_report(
+    tmp_path: Path, monkeypatch, hours_report
+) -> None:
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module, tmp_path, monkeypatch, hours_report=hours_report
+    )
+    with pytest.raises(SystemExit, match="Re-run --stage finalize"):
+        module.do_package(args)
+    assert not (args.out / "package_result.json").exists()
+
+
+def test_package_binds_the_hours_gate_to_the_packaged_bytes(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    result = module.do_package(args)
+    release_dir = Path(result["release_dir"])
+    expected_sha = module._sha256(args.out_h5)
+    for name in ("build_manifest.json", "gate_summary.json"):
+        gate = json.loads((release_dir / name).read_text())["gates"][
+            "acs_local_hours_signal"
+        ]
+        assert gate["passed"] is True
+        assert gate["artifact_sha256"] == expected_sha
+        assert gate["checked_at_stage"] == "package"
+        assert gate["detail"] == {"per_spine": {"acs_2024_1yr": {"rows": 1}}}
+    # The cap check that runs before the hours gates records what it passed.
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    assert build_manifest["staging_orchestration"]["max_households"] is None
+
+
+def test_package_refuses_when_the_packaged_bytes_fail_the_hours_gate(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A passing finalize entry does not stand in for the package-time re-check.
+
+    The re-check runs on the calibrated H5 being packaged; if it fails, nothing
+    ships: no manifest, no package result, no artifact at the release root.
+    """
+    from microcosm.build.gates import GateResult
+
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    loaded = []
+
+    def load_frame(path, *_a, **_k):
+        loaded.append(Path(path))
+        return _plausible_hours_frame()
+
+    monkeypatch.setattr(module, "_load_staging_frame", load_frame)
+    monkeypatch.setattr(
+        module,
+        "acs_local_hours_signal_gate",
+        lambda frame, *, source_null_audit: GateResult(
+            name="acs_local_hours_signal",
+            passed=False,
+            failures=("acs_2024_1yr: invented unresolved hours",),
+        ),
+    )
+    with pytest.raises(
+        SystemExit, match="Local hours coverage failed: acs_2024_1yr: invented"
+    ):
+        module.do_package(args)
+    assert loaded == [Path(args.out_h5)]
+    assert not (args.out / "package_result.json").exists()
+    assert not list((args.out / "releases").rglob("*.json"))
+    assert not (args.out / module.ARTIFACT_FILENAME).exists()
+
+
+_UNSET = object()
+
+
+def _package_args_before_evidence(
+    module, tmp_path: Path, *, max_households=_UNSET, soi_mode="totals"
+):
+    """The package stage's inputs up to (not including) the qa/consumer evidence.
+
+    ``max_households`` is what the staging summary records under
+    ``orchestration``; the sentinel omits the block entirely. ``soi_mode`` is
+    what ``materialize_rss.json`` records; the sentinel omits the file.
+    """
+    ckpt = tmp_path / "ckpt"
+    ckpt.mkdir()
+    if soi_mode is not _UNSET:
+        (ckpt / "materialize_rss.json").write_text(json.dumps({"soi_mode": soi_mode}))
+    staging = tmp_path / "staging.h5"
+    staging.write_bytes(b"staging")
+    summary: dict = {}
+    if max_households is not _UNSET:
+        summary["orchestration"] = {
+            "max_households": max_households,
+            "n_estimators": 32,
+            "max_targets_per_fit": 8,
+        }
+    (tmp_path / "staging.summary.json").write_text(json.dumps(summary))
+    out_h5 = tmp_path / "out.h5"
+    out_h5.write_bytes(b"artifact")
+    (ckpt / "calibration_summary.json").write_text(
+        json.dumps(
+            {
+                "households": 1,
+                "calibration_diagnostics": {
+                    "status": "failed",
+                    "expected_schema_version": 8,
+                    "error_code": "validation_error",
+                    "message": "test fixture",
+                },
+            }
+        )
+    )
+    (ckpt / "gate_summary.json").write_text(json.dumps({"gates": {}}))
+    (ckpt / "run_identity.json").write_text(
+        json.dumps(
+            {
+                "staging_sha256": module._sha256(staging),
+                "population_cells_dropped": [],
+                "sampling": _FULL_RUNG,
+            }
+        )
+    )
+    (tmp_path / "out.summary.json").write_text(json.dumps({"simulation_ready": True}))
+    return module._parse_args(
+        [
+            "--stage",
+            "package",
+            "--staging-h5",
+            str(staging),
+            "--checkpoint-dir",
+            str(ckpt),
+            "--out-h5",
+            str(out_h5),
+            "--out",
+            str(tmp_path / "release"),
+            "--allow-dirty",
+        ]
+    )
+
+
+@pytest.mark.parametrize(
+    ("max_households", "message"),
+    [
+        (5000, r"capped at 5000 ACS household"),
+        (0, r"capped at 0 ACS household"),
+        (_UNSET, r"does not record orchestration\.max_households"),
+    ],
+    ids=["capped", "capped-at-zero", "cap-not-recorded"],
+)
+def test_package_refuses_a_capped_or_unattested_staging_run(
+    tmp_path: Path, max_households, message
+) -> None:
+    """A capped smoke passes every finalize gate (the donor spine keeps every
+    ladder cell populated), so the cap itself must refuse packaging, before
+    any release directory exists."""
+
+    module = _load_tool_module()
+    args = _package_args_before_evidence(
+        module, tmp_path, max_households=max_households
+    )
+    with pytest.raises(SystemExit, match=message):
+        module.do_package(args)
+    assert not (args.out / "package_result.json").exists()
+    assert not (args.out / "releases").exists(), "a refused smoke leaves no release"
+
+
+def test_package_checks_the_cap_before_reading_the_evidence(tmp_path: Path) -> None:
+    """An uncapped summary reaches the evidence checks; the cap check is first."""
+
+    module = _load_tool_module()
+    args = _package_args_before_evidence(module, tmp_path, max_households=None)
+    with pytest.raises(SystemExit, match="spine_qa.json is missing"):
+        module.do_package(args)
+
+
+def test_do_package_requires_qa_and_consumer_evidence(tmp_path: Path) -> None:
+    """Absent evidence must refuse packaging, never read as vacuously green."""
+
+    module = _load_tool_module()
+    ckpt = tmp_path / "ckpt"
+    ckpt.mkdir()
+    staging = tmp_path / "staging.h5"
+    staging.write_bytes(b"staging")
+    (tmp_path / "staging.summary.json").write_text(
+        json.dumps({"orchestration": {"max_households": None}})
+    )
+    out_h5 = tmp_path / "out.h5"
+    out_h5.write_bytes(b"artifact")
+    (ckpt / "calibration_summary.json").write_text(
+        json.dumps(
+            {
+                "households": 1,
+                "calibration_diagnostics": {
+                    "status": "failed",
+                    "expected_schema_version": 8,
+                    "error_code": "validation_error",
+                    "message": "test fixture",
+                },
+            }
+        )
+    )
+    (ckpt / "gate_summary.json").write_text(json.dumps({"gates": {}}))
+    (ckpt / "materialize_rss.json").write_text(json.dumps({"soi_mode": "totals"}))
+    (ckpt / "run_identity.json").write_text(
+        json.dumps(
+            {
+                "staging_sha256": module._sha256(staging),
+                "population_cells_dropped": [],
+                "sampling": _FULL_RUNG,
+            }
+        )
+    )
+    args = module._parse_args(
+        [
+            "--stage",
+            "package",
+            "--staging-h5",
+            str(staging),
+            "--checkpoint-dir",
+            str(ckpt),
+            "--out-h5",
+            str(out_h5),
+            "--out",
+            str(tmp_path / "release"),
+            "--allow-dirty",
+        ]
+    )
+    (tmp_path / "out.summary.json").write_text(json.dumps({"simulation_ready": True}))
+
+    with pytest.raises(SystemExit, match="spine_qa.json is missing"):
+        module.do_package(args)
+
+    (ckpt / "spine_qa.json").write_text(
+        json.dumps(
+            {
+                "plain_consumption": True,
+                "artifact_sha256": module._sha256(out_h5),
+                "per_spine": {},
+            }
+        )
+    )
+    with pytest.raises(SystemExit, match="consumer_export.json is missing"):
+        module.do_package(args)
+
+
+# ---------------------------------------------------------------------------
+# SOI target surface: state (Build O contract) by default; totals and full opt-in
+# ---------------------------------------------------------------------------
+
+
+def _materialize_argv(tmp_path: Path, *extra: str) -> list[str]:
+    return [
+        "--stage",
+        "materialize",
+        "--staging-h5",
+        str(tmp_path / "staging.h5"),
+        "--checkpoint-dir",
+        str(tmp_path / "ckpt"),
+        "--feed",
+        str(tmp_path / "facts.jsonl"),
+        *extra,
+    ]
+
+
+def test_soi_mode_defaults_to_state_and_totals_and_full_are_explicit_opt_ins(
+    tmp_path: Path,
+) -> None:
+    """Max's ruling of 2026-09-22: the ACS local default is Build O's
+    state-geography SOI contract; ``totals`` and ``full`` are reachable only by
+    asking for them."""
+
+    module = _load_tool_module()
+    assert module.SOI_MODES == ("state", "totals", "full", "state_cd")
+    assert module.DEFAULT_SOI_MODE == module.SOI_MODE_STATE == "state"
+    assert module._parse_args(_materialize_argv(tmp_path)).soi_mode == "state"
+    for mode in ("totals", "full", "state_cd"):
+        assert (
+            module._parse_args(_materialize_argv(tmp_path, "--soi-mode", mode)).soi_mode
+            == mode
+        )
+    signature = inspect.signature(module.state_admin_specs)
+    assert signature.parameters["soi_mode"].default == "state"
+    with pytest.raises(SystemExit):
+        module._parse_args(_materialize_argv(tmp_path, "--soi-mode", "ful"))
+
+
+_HT2_BROAD = "irs_soi.historic_table_2.state_broad_totals.v1"
+_HT2_AGI = "irs_soi.historic_table_2.state_agi_counts_and_amounts.v1"
+_CD_FILE = "irs_soi.congressional_district_2022.all_returns.v1"
+
+
+def _spec(
+    role: str | None,
+    *,
+    state: bool = True,
+    geography: str | None = "state",
+    record_set: str | None = _HT2_BROAD,
+) -> SimpleNamespace:
+    metadata: dict[str, str] = {}
+    if state:
+        metadata["state_fips"] = "06"
+    if role is not None:
+        metadata["target_role"] = role
+    if geography is not None:
+        metadata["ledger_geography_level"] = geography
+    if record_set is not None:
+        metadata["ledger_layout_record_set_spec_id"] = record_set
+    return SimpleNamespace(metadata=metadata)
+
+
+def test_state_soi_surface_is_build_o_contract_by_record_set_and_geography() -> None:
+    """``state`` keeps state-geography specs outside the district file, of any
+    role (AGI-band rows included), and refuses to guess on missing metadata."""
+
+    module = _load_tool_module()
+    state = module.soi_surface_predicate("state")
+
+    for role in ("soi_fiscal_distribution", "aca_ptc_returns", "aca_spending", None):
+        assert state(_spec(role)), role
+        assert state(_spec(role, record_set=_HT2_AGI)), role
+    # The TY2023 congressional-district file is excluded even at state geography
+    # (its <st>_total rows restate the Historic Table 2 totals a year later).
+    assert not state(_spec("soi_fiscal_distribution", record_set=_CD_FILE))
+    assert not state(_spec("aca_ptc_returns", record_set=_CD_FILE))
+    # District geography is excluded even from Historic Table 2.
+    assert not state(
+        _spec("soi_fiscal_distribution", geography="congressional_district")
+    )
+    # No state_fips: never on the state surface.
+    assert not state(_spec("soi_fiscal_distribution", state=False))
+    # Missing either key: the mode cannot tell which contract the spec is in.
+    assert not state(_spec("soi_fiscal_distribution", geography=None))
+    assert not state(_spec("soi_fiscal_distribution", record_set=None))
+    assert not state(_spec("soi_fiscal_distribution", record_set=""))
+
+
+def test_soi_surface_predicate_drops_soi_fiscal_distribution_only_in_totals() -> None:
+    module = _load_tool_module()
+    totals = module.soi_surface_predicate("totals")
+    full = module.soi_surface_predicate("full")
+
+    band = _spec("soi_fiscal_distribution")
+    assert not totals(band)
+    assert full(band)
+    for role in ("aca_ptc_returns", "aca_spending", None):
+        assert totals(_spec(role)) and full(_spec(role)), role
+    # Neither mode reaches past the state surface.
+    for mode_predicate in (totals, full):
+        assert not mode_predicate(_spec("aca_spending", state=False))
+        assert not mode_predicate(_spec("soi_fiscal_distribution", state=False))
+
+
+def test_unknown_soi_mode_is_refused_before_the_feed_is_read(tmp_path: Path) -> None:
+    """A typo must never fall through to either surface (the old predicate
+    treated every value other than ``full`` as totals)."""
+
+    module = _load_tool_module()
+    missing_feed = tmp_path / "never-read.jsonl"
+    for call in (
+        lambda: module.soi_surface_predicate("ful"),
+        lambda: module.state_admin_specs(missing_feed, ["soi"], soi_mode="ful"),
+        lambda: module.release_refresh_recipe("ful"),
+    ):
+        with pytest.raises(ValueError, match="soi_mode must be one of"):
+            call()
+
+
+@pytest.mark.parametrize("soi_mode", ["state", "totals", "full"])
+def test_release_refresh_recipe_reproduces_its_soi_mode(
+    tmp_path: Path, soi_mode: str
+) -> None:
+    """The recipe names the mode, so re-running it cannot drift with the
+    parser default."""
+
+    module = _load_tool_module()
+    recipe = shlex.split(module.release_refresh_recipe(soi_mode))
+    assert recipe[:3] == ["uv", "run", "tools/build_us_acs_local_release.py"]
+    assert recipe[recipe.index("--soi-mode") + 1] == soi_mode
+    args = module._parse_args(recipe[3:])
+    assert args.soi_mode == soi_mode
+    assert args.stages == ["materialize", "calibrate", "qa", "finalize", "package"]
+
+
+@pytest.mark.parametrize(
+    ("recorded", "message"),
+    [
+        (_UNSET, r"records soi_mode=None"),
+        ("bands", r"records soi_mode='bands'"),
+    ],
+    ids=["not-recorded", "unknown"],
+)
+def test_package_refuses_a_checkpoint_without_a_known_soi_mode(
+    tmp_path: Path, recorded, message
+) -> None:
+    module = _load_tool_module()
+    args = _package_args_before_evidence(
+        module, tmp_path, max_households=None, soi_mode=recorded
+    )
+    with pytest.raises(SystemExit, match=message):
+        module.do_package(args)
+    assert not (args.out / "releases").exists(), "a refusal leaves no release"
+
+
+@pytest.mark.parametrize("recorded", ["state", "totals", "full"])
+def test_package_records_the_materialized_soi_mode_not_the_parser_default(
+    tmp_path: Path, monkeypatch, recorded: str
+) -> None:
+    """The package invocation passes no ``--soi-mode`` (so the parser says
+    ``state``); the manifest and recipe must carry what materialize used."""
+
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    assert args.soi_mode == "state"
+    (args.checkpoint_dir / "materialize_rss.json").write_text(
+        json.dumps({"soi_mode": recorded, "hh_chunk": 1})
+    )
+
+    result = module.do_package(args)
+
+    release_dir = Path(result["release_dir"])
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    assert build_manifest["materialize"]["soi_mode"] == recorded
+    for manifest in (build_manifest, release_manifest):
+        recipe = shlex.split(manifest["refresh_recipe"]["release"])
+        assert recipe[recipe.index("--soi-mode") + 1] == recorded
+
+
+def test_pinned_feed_soi_surfaces_match_their_contracts() -> None:
+    """On the real feed: the default ``state`` surface is Build O/P's
+    3,972-spec admin contract plus the 408 state AGI-band rows of
+    microcosm#940 (4,380 specs), built only from the Historic Table 2 state
+    tables at state geography; ``totals`` holds no
+    ``soi_fiscal_distribution`` spec; ``full`` adds exactly those specs to
+    ``totals`` and contains ``state``.
+
+    The pinned consumer-facts feed is a 164 MB public aggregate export that
+    no CI lane carries, so this runs only when ``MICROCOSM_US_CHRONICLE_FACTS``
+    points at it (the convention of the #969 state-surface arm). Three
+    registry compiles; about 3 GB peak RSS.
+    """
+
+    feed = os.environ.get("MICROCOSM_US_CHRONICLE_FACTS", "")
+    if not feed or not Path(feed).exists():
+        pytest.skip(
+            "set MICROCOSM_US_CHRONICLE_FACTS to the pinned consumer-facts feed"
+        )
+
+    module = _load_tool_module()
+    families = ["snap", "medicaid", "soi"]
+    state_registry, _ = module.state_admin_specs(feed, families)
+    totals_registry, _ = module.state_admin_specs(feed, families, soi_mode="totals")
+    full_registry, _ = module.state_admin_specs(feed, families, soi_mode="full")
+    state_specs = state_registry.specs
+    totals_names = {spec.name for spec in totals_registry.specs}
+    full_by_name = {spec.name: spec for spec in full_registry.specs}
+
+    # Build P's ACS local contract: 102 SNAP + 51 Medicaid + 3,819 SOI admin
+    # specs (4,459 with the 487 population marginals); Build O's 4,461 plus the
+    # Vermont under-$1 taxable-interest pair the compiler now excludes. The
+    # TY2023 state AGI bands (#940: 51 states x 4 bands x 2 measures, same
+    # record-set spec) add 408 SOI specs.
+    families_count = {}
+    for spec in state_specs:
+        families_count[spec.family] = families_count.get(spec.family, 0) + 1
+    assert families_count == {"usda_snap": 102, "cms_medicaid": 51, "irs_soi": 4227}
+    soi = [spec for spec in state_specs if spec.family == "irs_soi"]
+    record_sets = {}
+    for spec in soi:
+        key = spec.metadata["ledger_layout_record_set_spec_id"]
+        record_sets[key] = record_sets.get(key, 0) + 1
+    assert record_sets == {
+        "irs_soi.historic_table_2.state_broad_totals.v1": 2397,
+        "irs_soi.historic_table_2.state_agi_counts_and_amounts.v1": 1320,
+        "irs_soi.historic_table_2.state_eitc.v1": 510,
+    }
+    assert {spec.metadata["ledger_geography_level"] for spec in soi} == {"state"}
+    assert {spec.name for spec in state_specs} <= set(full_by_name)
+
+    assert not [
+        spec
+        for spec in totals_registry.specs
+        if spec.metadata.get("target_role") == "soi_fiscal_distribution"
+    ]
+    assert totals_names < set(full_by_name)
+    added = [full_by_name[name] for name in set(full_by_name) - totals_names]
+    assert added
+    assert {(spec.family, spec.metadata.get("target_role")) for spec in added} == {
+        ("irs_soi", "soi_fiscal_distribution")
+    }
+
+
+def _staging_frame_with_hours(weekly: list[float], last_week: list[float]):
+    """A minimal US-schema staging frame carrying the two pool hours columns."""
+
+    from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
+
+    n = len(weekly)
+    ids = np.arange(1, n + 1)
+    person = pd.DataFrame(
+        {
+            "person_id": ids,
+            "person_household_id": ids,
+            "person_tax_unit_id": ids,
+            "person_spm_unit_id": ids,
+            "person_family_id": ids,
+            "person_marital_unit_id": ids,
+            "weekly_hours_worked_before_lsr": np.asarray(weekly, dtype=float),
+            "hours_worked_last_week": np.asarray(last_week, dtype=float),
+            "detailed_occupation_recode": np.where(np.asarray(weekly) > 0, 8, 53),
+            "detailed_industry_recode": np.where(np.asarray(weekly) > 0, 13, 23),
+            "major_industry_recode": np.where(np.asarray(weekly) > 0, 9, 15),
+            "worked_last_year": np.asarray(weekly) > 0,
+        }
+    )
+    tables = {
+        "person": person,
+        "household": pd.DataFrame({"household_id": ids}),
+        "tax_unit": pd.DataFrame({"tax_unit_id": ids}),
+        "spm_unit": pd.DataFrame({"spm_unit_id": ids}),
+        "family": pd.DataFrame({"family_id": ids}),
+        "marital_unit": pd.DataFrame({"marital_unit_id": ids}),
+    }
+    return Frame(
+        tables,
+        US_SCHEMA,
+        {"household": Weights(np.ones(n, dtype=np.float64), WeightKind.DESIGN)},
+    )
+
+
+def _finalize_args(module, tmp_path: Path):
+    staging = tmp_path / "staging.h5"
+    staging.touch()
+    (tmp_path / "staging.summary.json").write_text(
+        json.dumps(
+            {
+                "reviewed_limitations": [],
+                "reviewed_engine_input_nulls": [],
+                # The current staging builder records its cap; an uncapped run
+                # is what the package-stage tests built on this fixture need.
+                "orchestration": {"max_households": None},
+            }
+        )
+    )
+    # finalize hashes the calibrated H5 before loading it; tests that do not
+    # load real bytes still need bytes to hash.
+    (tmp_path / "out.h5").write_bytes(b"invented-finalize-artifact")
+    ckpt = tmp_path / "ckpt"
+    ckpt.mkdir(exist_ok=True)
+    (ckpt / "calibration_summary.json").write_text(
+        json.dumps(
+            {
+                "final_loss": 0.1,
+                "initial_loss": 0.5,
+                "mass_conserved_ratio": 1.0,
+                "calibration_diagnostics": {
+                    "status": "failed",
+                    "expected_schema_version": 8,
+                    "error_code": "validation_error",
+                    "message": "test fixture",
+                },
+            }
+        )
+    )
+    # Every checkpoint materialize writes records its SOI mode; package
+    # refuses one that does not.
+    (ckpt / "materialize_rss.json").write_text(json.dumps({"soi_mode": "totals"}))
+    ladder = tmp_path / "ladder.npz"
+    ladder.write_bytes(b"ladder-bytes")
+    return module._parse_args(
+        [
+            "--stage",
+            "finalize",
+            "--staging-h5",
+            str(staging),
+            "--checkpoint-dir",
+            str(ckpt),
+            "--out-h5",
+            str(tmp_path / "out.h5"),
+            "--ladder",
+            str(ladder),
+        ]
+    )
+
+
+def _stub_local_hours_gate(module, monkeypatch) -> None:
+    """Make the ACS local-hours classification pass; its own tests cover it."""
+
+    from microcosm.build.gates import GateResult
+
+    monkeypatch.setattr(
+        module,
+        "acs_local_hours_signal_gate",
+        lambda frame, *, source_null_audit: GateResult(
+            name="acs_local_hours_signal", passed=True, failures=(), details={}
+        ),
+    )
+
+
+def _patch_finalize_collaborators(module, monkeypatch, frame=None, *, identity=True):
+    """Stub the ladder gate and composition; ``frame=None`` loads real bytes."""
+
+    import microcosm.build.us_runtime.puma_ladder as puma
+    from microcosm.build.gates import GateResult
+
+    monkeypatch.setattr(puma, "load_us_puma_ladder", lambda *a, **k: None)
+    monkeypatch.setattr(
+        puma,
+        "us_puma_ladder_gate",
+        lambda *a, **k: GateResult(
+            name="us_puma_ladder", passed=True, failures=(), details={}
+        ),
+    )
+    monkeypatch.setattr(module, "spine_composition", lambda *a, **k: {})
+    _stub_local_hours_gate(module, monkeypatch)
+    if frame is not None:
+        monkeypatch.setattr(module, "_load_staging_frame", lambda *a, **k: frame)
+    if identity:
+        monkeypatch.setattr(
+            module,
+            "_verify_run_identity",
+            lambda a: {"ladder_sha256": module._sha256(a.ladder)},
+        )
+
+
+def _run_finalize(module, monkeypatch, args, frame=None):
+    _patch_finalize_collaborators(module, monkeypatch, frame)
+    with pytest.raises(SystemExit) as exc:
+        module.do_finalize(args)
+    report = (
+        json.loads(args.gate_report.read_text()) if args.gate_report.exists() else None
+    )
+    return str(exc.value), report
+
+
+def _write_frame_h5(path: Path, frame) -> None:
+    """Write a staging frame as the tool's loader reads it (fixed format)."""
+
+    from microcosm.frame import put_frame_table
+
+    with pd.HDFStore(path, mode="w") as store:
+        for entity in frame.entities:
+            table = frame.table(entity).copy()
+            if entity == "household":
+                table["household_weight"] = frame.weights_for(entity).values
+            put_frame_table(store, entity, table, preferred_format="fixed")
+
+
+def _plausible_hours_frame():
+    return _staging_frame_with_hours(
+        [40.0, 38.0, 20.0, 45.0, 0.0, 0.0, 0.0, 0.0],
+        [40.0, 35.0, 22.0, 40.0, 0.0, 0.0, 0.0, 5.0],
+    )
+
+
+def test_do_finalize_hard_fails_on_constant_forty_hours(tmp_path, monkeypatch) -> None:
+    # microcosm#765: an artifact whose usual weekly hours are the engine's
+    # constant-40 default must block packaging via the finalize hard gate.
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    frame = _staging_frame_with_hours([40.0] * 8, [40.0] * 8)
+    message, report = _run_finalize(module, monkeypatch, args, frame)
+    assert "hours_worked_signal" in message
+    assert report["gates"]["hours_worked_signal"]["passed"] is False
+
+
+def test_do_finalize_hours_gate_passes_on_plausible_surface(
+    tmp_path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    weekly = [40.0, 38.0, 20.0, 45.0, 0.0, 0.0, 0.0, 0.0]
+    last_week = [40.0, 35.0, 22.0, 40.0, 0.0, 0.0, 0.0, 5.0]
+    frame = _staging_frame_with_hours(weekly, last_week)
+    _message, report = _run_finalize(module, monkeypatch, args, frame)
+    assert report["gates"]["hours_worked_signal"]["passed"] is True
+
+
+@requires_pytables
+def test_finalize_binds_the_hours_gate_to_the_calibrated_artifact_bytes(
+    tmp_path, monkeypatch
+) -> None:
+    """The gate entry must carry the digest of the bytes it evaluated."""
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    _write_frame_h5(args.out_h5, _plausible_hours_frame())
+    hashed = []
+    original_sha = module._sha256
+
+    def recording_sha(path):
+        result = original_sha(path)
+        if Path(path) == args.out_h5:
+            hashed.append(result)
+        return result
+
+    monkeypatch.setattr(module, "_sha256", recording_sha)
+    loads = []
+    real_load = module._load_staging_frame
+    monkeypatch.setattr(
+        module,
+        "_load_staging_frame",
+        lambda p: (loads.append(len(hashed)), real_load(p))[1],
+    )
+    _message, report = _run_finalize(module, monkeypatch, args)
+    gate = report["gates"]["hours_worked_signal"]
+    assert gate["passed"] is True
+    assert gate["artifact_sha256"] == original_sha(args.out_h5)
+    # Hashed once before the frame was loaded, then re-checked after the gate.
+    assert loads == [1]
+    assert hashed == [gate["artifact_sha256"]] * 2
+
+
+@requires_pytables
+def test_finalize_refuses_artifact_changed_during_hours_validation(
+    tmp_path, monkeypatch
+) -> None:
+    import microcosm.build.us_runtime.hours_worked as hours_worked
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    _write_frame_h5(args.out_h5, _plausible_hours_frame())
+    original_gate = hours_worked.us_hours_worked_signal_gate
+
+    def changed_artifact(frame, **kwargs):
+        result = original_gate(frame, **kwargs)
+        args.out_h5.write_bytes(b"different-invented-artifact")
+        return result
+
+    monkeypatch.setattr(hours_worked, "us_hours_worked_signal_gate", changed_artifact)
+    message, report = _run_finalize(module, monkeypatch, args)
+    assert "changed during hours_worked_signal validation" in message
+    assert report is None
+    assert not args.out_summary.exists()
+
+
+@requires_pytables
+def test_finalize_report_round_trips_into_package(tmp_path, monkeypatch) -> None:
+    """A finalize-written report must satisfy the package stage's binding."""
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    _write_frame_h5(args.out_h5, _plausible_hours_frame())
+    artifact_sha = module._sha256(args.out_h5)
+    evidence = {
+        "run_identity.json": {
+            "staging_sha256": module._sha256(args.staging_h5),
+            "ladder_sha256": module._sha256(args.ladder),
+            "population_cells_dropped": [],
+            "sampling": _FULL_RUNG,
+        },
+        "spine_qa.json": {
+            "plain_consumption": True,
+            "artifact_sha256": artifact_sha,
+            "per_spine": {},
+        },
+        "consumer_export.json": {"staging_sha256": artifact_sha},
+        "consumer_reviewed_null_fills.json": {"columns_filled": []},
+    }
+    for name, value in evidence.items():
+        (args.checkpoint_dir / name).write_text(json.dumps(value))
+    _patch_finalize_collaborators(module, monkeypatch, identity=False)
+    module.do_finalize(args)
+    report = json.loads(args.gate_report.read_text())
+    assert report["gates"]["hours_worked_signal"]["artifact_sha256"] == artifact_sha
+    assert json.loads(args.out_summary.read_text())["simulation_ready"] is True
+
+    args.out = tmp_path / "release"
+    args.allow_dirty = True
+    result = module.do_package(args)
+    shipped = json.loads(
+        (Path(result["release_dir"]) / "gate_summary.json").read_text()
+    )["gates"]["hours_worked_signal"]
+    assert shipped["passed"] is True
+    assert (
+        shipped["artifact_sha256"]
+        == result["root_artifact"]["sha256"]
+        == module._sha256(Path(result["root_artifact"]["local_path"]))
+        == artifact_sha
+    )
+
+
+def test_a_sparse_era_calibration_is_bound_through_finalize_and_package(
+    tmp_path, monkeypatch
+) -> None:
+    """The run-identity, weights and QA bindings at their real call sites.
+
+    A sparse-era checkpoint (its identity records the roles digest) round-trips
+    when every piece of evidence names the same materialization, weights and
+    bytes; an interrupted recalibration (the export's weights differ from the
+    summary's) or QA of other bytes is refused before any gate report or
+    release directory is written.
+    """
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    _write_frame_h5(args.out_h5, _plausible_hours_frame())
+    artifact_sha = module._sha256(args.out_h5)
+    ckpt = args.checkpoint_dir
+    for name, content in (
+        ("target_registry.json", "{}"),
+        (module.TARGET_ROLES_FILENAME, "[]"),
+        (module.TARGET_MATRIX_FILENAME, "matrix"),
+    ):
+        (ckpt / name).write_text(content)
+    identity = {
+        "staging_sha256": module._sha256(args.staging_h5),
+        "ladder_sha256": module._sha256(args.ladder),
+        "population_cells_dropped": [],
+        "sampling": _FULL_RUNG,
+        "target_registry_sha256": module._sha256(ckpt / "target_registry.json"),
+        "target_roles_sha256": module._sha256(ckpt / module.TARGET_ROLES_FILENAME),
+        "target_matrix": {
+            "sha256": module._sha256(ckpt / module.TARGET_MATRIX_FILENAME)
+        },
+    }
+    stamp = module._run_identity_digest(identity)
+    summary = {
+        **json.loads((ckpt / "calibration_summary.json").read_text()),
+        "run_identity_sha256": stamp,
+        "weights_sha256": "w",
+    }
+    export = {
+        "staging_sha256": artifact_sha,
+        "run_identity_sha256": stamp,
+        "out_h5_sha256": artifact_sha,
+        "weights_sha256": "w",
+    }
+    qa = {
+        "plain_consumption": True,
+        "artifact_sha256": artifact_sha,
+        "per_spine": {},
+        "run_identity_sha256": stamp,
+    }
+    evidence = {
+        "run_identity.json": identity,
+        "calibration_summary.json": summary,
+        "consumer_export.json": export,
+        "spine_qa.json": qa,
+        "consumer_reviewed_null_fills.json": {"columns_filled": []},
+    }
+    for name, value in evidence.items():
+        (ckpt / name).write_text(json.dumps(value))
+    _patch_finalize_collaborators(module, monkeypatch, identity=False)
+
+    # An interrupted recalibration: a new H5 and export, the old summary.
+    (ckpt / "consumer_export.json").write_text(
+        json.dumps({**export, "weights_sha256": "new"})
+    )
+    with pytest.raises(SystemExit, match="describe different weights"):
+        module.do_finalize(args)
+    assert not args.gate_report.exists()
+    (ckpt / "consumer_export.json").write_text(json.dumps(export))
+
+    module.do_finalize(args)
+    assert json.loads(args.out_summary.read_text())["simulation_ready"] is True
+    args.out = tmp_path / "release"
+    args.allow_dirty = True
+
+    # QA of the wrong materialization: package refuses before any release dir.
+    (ckpt / "spine_qa.json").write_text(
+        json.dumps({**qa, "run_identity_sha256": "old"})
+    )
+    with pytest.raises(SystemExit, match="another materialization"):
+        module.do_package(args)
+    assert not (args.out / "releases").exists()
+    (ckpt / "spine_qa.json").write_text(json.dumps(qa))
+
+    result = module.do_package(args)
+    assert result["root_artifact"]["sha256"] == artifact_sha
+
+
+def _package_args_with_hours(module, tmp_path, monkeypatch, *, gate_state):
+    """Real tiny H5 bytes; gate edits model stale separately resumed finalize."""
+
+    _stub_local_hours_gate(module, monkeypatch)
+    args = _finalize_args(module, tmp_path)
+    args.out = tmp_path / "release"
+    args.allow_dirty = True
+    _write_frame_h5(args.out_h5, _plausible_hours_frame())
+    artifact_sha = module._sha256(args.out_h5)
+    gate = {"passed": True, "failures": [], "artifact_sha256": artifact_sha}
+    if gate_state == "failed":
+        gate.update(passed=False, failures=["invented hours failure"])
+    elif gate_state == "truthy":
+        gate["passed"] = "true"
+    elif gate_state == "unbound":
+        del gate["artifact_sha256"]
+    elif gate_state == "stale":
+        gate["artifact_sha256"] = "0" * 64
+    local_gate = {
+        "passed": True,
+        "failures": [],
+        "detail": {},
+        "artifact_sha256": artifact_sha,
+    }
+    gates = (
+        {}
+        if gate_state == "missing"
+        else {"hours_worked_signal": gate, "acs_local_hours_signal": local_gate}
+    )
+    args.gate_report.write_text(json.dumps({"gates": gates}))
+    args.out_summary.write_text(json.dumps({"simulation_ready": True}))
+    evidence = {
+        "run_identity.json": {
+            "staging_sha256": module._sha256(args.staging_h5),
+            "population_cells_dropped": [],
+            "sampling": _FULL_RUNG,
+        },
+        "spine_qa.json": {
+            "plain_consumption": True,
+            "artifact_sha256": artifact_sha,
+            "per_spine": {},
+        },
+        "consumer_export.json": {"staging_sha256": artifact_sha},
+        "consumer_reviewed_null_fills.json": {"columns_filled": []},
+    }
+    for name, value in evidence.items():
+        (args.checkpoint_dir / name).write_text(json.dumps(value))
+    return args
+
+
+@requires_pytables
+@pytest.mark.parametrize(
+    "gate_state", ["missing", "failed", "truthy", "unbound", "stale"]
+)
+def test_package_requires_current_hours_gate_even_with_green_old_summary(
+    tmp_path, monkeypatch, gate_state
+):
+    module = _load_tool_module()
+    args = _package_args_with_hours(
+        module, tmp_path, monkeypatch, gate_state=gate_state
+    )
+    with pytest.raises(SystemExit, match="hours_worked_signal"):
+        module.do_package(args)
+    assert not (args.out / "package_result.json").exists()
+
+
+@requires_pytables
+def test_package_accepts_passing_hours_gate_bound_to_the_packaged_bytes(
+    tmp_path, monkeypatch
+):
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    result = module.do_package(args)
+    release_dir = Path(result["release_dir"])
+    gate = json.loads((release_dir / "gate_summary.json").read_text())["gates"][
+        "hours_worked_signal"
+    ]
+    copied_sha = module._sha256(Path(result["root_artifact"]["local_path"]))
+    assert gate["passed"] is True
+    assert gate["artifact_sha256"] == result["root_artifact"]["sha256"] == copied_sha
+    for name in ("build_manifest.json", "gate_summary.json"):
+        work_gate = json.loads((release_dir / name).read_text())["gates"][
+            "work_experience_inputs"
+        ]
+        assert work_gate == {
+            "passed": True,
+            "failures": [],
+            "columns": list(US_ORG_OCCUPATION_AND_WORK_EXPERIENCE_OUTPUT_COLUMNS),
+            "person_rows": 8,
+            "artifact_sha256": copied_sha,
+            "checked_at_stage": "package",
+        }
+
+
+@requires_pytables
+@pytest.mark.parametrize("defect", ["missing", "asec_null", "acs_null", "nonfinite"])
+def test_package_refuses_historical_staging_with_incomplete_work_experience(
+    tmp_path, monkeypatch, defect
+):
+    """A green historical staging/finalize summary cannot stand in for inputs."""
+    from microcosm.frame import Frame
+
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    frame = _plausible_hours_frame()
+    person = frame.person.copy()
+    spines = ["asec_puf"] * 4 + ["acs_2024_1yr"] * 4
+    person["person_spine"] = spines
+    if defect == "missing":
+        person = person.drop(
+            columns=[
+                column
+                for column in US_ORG_OCCUPATION_AND_WORK_EXPERIENCE_OUTPUT_COLUMNS
+                if column != "detailed_occupation_recode"
+            ]
+        )
+    else:
+        person["major_industry_recode"] = person["major_industry_recode"].astype(float)
+        row = 7 if defect == "acs_null" else 0
+        person.loc[row, "major_industry_recode"] = (
+            np.inf if defect == "nonfinite" else np.nan
+        )
+    incomplete = Frame(
+        {
+            **{entity: frame.table(entity) for entity in frame.entities},
+            "person": person,
+            "household": frame.table("household").assign(household_spine=spines),
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+    _write_frame_h5(args.out_h5, incomplete)
+    args.staging_h5.write_bytes(args.out_h5.read_bytes())
+    identity_path = args.checkpoint_dir / "run_identity.json"
+    identity = json.loads(identity_path.read_text())
+    identity["staging_sha256"] = module._sha256(args.staging_h5)
+    identity_path.write_text(json.dumps(identity))
+    _refresh_package_evidence_bindings(module, args)
+
+    with pytest.raises(SystemExit, match="Refusing to package:.*work-experience"):
+        module.do_package(args)
+    assert not (args.out / "releases").exists()
+    assert not (args.out / "package_result.json").exists()
+    assert not (args.out / module.ARTIFACT_FILENAME).exists()
+
+
+@requires_pytables
+def test_package_records_the_stored_input_gate_bound_to_the_packaged_bytes(
+    tmp_path, monkeypatch
+):
+    """microcosm#1026: the package stage grades the calibrated H5 it ships
+    against the engine it records as built-with, and the gate summary and
+    build manifest carry that verdict bound to the packaged bytes."""
+
+    monkeypatch.setattr(
+        stored_inputs, "require_h5_stored_inputs", _REAL_REQUIRE_H5_STORED_INPUTS
+    )
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    result = module.do_package(args)
+
+    release_dir = Path(result["release_dir"])
+    for name in ("gate_summary.json", "build_manifest.json"):
+        gate = json.loads((release_dir / name).read_text())["gates"]["stored_inputs"]
+        assert gate == {
+            "passed": True,
+            "failures": [],
+            "engine": "policyengine-us 2.2.1",
+            "register_sha256": stored_inputs.register_sha256(),
+            "registered_non_variables": [],
+            "artifact_sha256": result["root_artifact"]["sha256"],
+            "checked_at_stage": "package",
+        }
+
+
+def test_the_package_stage_output_meets_the_publisher_gate_requirement(
+    tmp_path, monkeypatch
+):
+    """Producer and publisher agree (microcosm#1034): the gate the package
+    stage writes, keyed and staged by the contract's own constants, passes
+    the publisher's US local-area stored-input requirement against the
+    release manifest and build manifest written alongside it, and the same
+    output with the gate dropped is refused."""
+
+    import importlib.metadata as metadata
+
+    from microcosm.data import contract
+
+    real_version = metadata.version
+    # The built-with record reads installed metadata; the engine-free lane has
+    # no policyengine-us, so pin it to the stand-in engine's version.
+    monkeypatch.setattr(
+        metadata,
+        "version",
+        lambda name: "2.2.1" if name == "policyengine-us" else real_version(name),
+    )
+    module = _load_tool_module()
+    assert (
+        module.US_STORED_INPUTS_EVIDENCE_KEY == contract.US_STORED_INPUTS_EVIDENCE_KEY
+    )
+    assert (
+        module.US_LOCAL_AREA_STORED_INPUTS_STAGE
+        == contract.US_LOCAL_AREA_STORED_INPUTS_STAGE
+    )
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    release_dir = Path(module.do_package(args)["release_dir"])
+
+    def load(name):
+        return json.loads((release_dir / name).read_text())
+
+    gate_summary = load("gate_summary.json")
+    release_manifest = load("release_manifest.json")
+    build_manifest = load("build_manifest.json")
+    assert release_manifest["build"]["built_with_model_package"] == {
+        "name": "policyengine-us",
+        "version": "2.2.1",
+    }
+    failures: list[str] = []
+    contract._check_local_area_gates(gate_summary, failures)
+    contract._check_us_local_area_stored_inputs_gate(
+        gate_summary,
+        release_manifest=release_manifest,
+        build_manifest=build_manifest,
+        failures=failures,
+    )
+    assert failures == []
+
+    del gate_summary["gates"][contract.US_STORED_INPUTS_EVIDENCE_KEY]
+    contract._check_us_local_area_stored_inputs_gate(
+        gate_summary,
+        release_manifest=release_manifest,
+        build_manifest=build_manifest,
+        failures=failures,
+    )
+    assert len(failures) == 1
+    assert "must carry the 'stored_inputs' gate" in failures[0]
+
+
+def _write_measurable_lane_h5(
+    path: Path, *, group_quarters_child: bool, role=None
+) -> None:
+    """The plausible-hours frame with the columns the SPM gate reads.
+
+    Eight one-person ACS housing units of adults; with
+    ``group_quarters_child`` the last is instead a group-quarters record of a
+    ten-year-old, whom no role can classify. ``role`` replaces the stored
+    role column, which is otherwise Boolean ``True`` for everyone.
+    """
+
+    from microcosm.frame import Frame
+
+    staging = _load_staging_builder_module()
+    frame = _plausible_hours_frame()
+    ages = [40.0, 38.0, 20.0, 45.0, 70.0, 67.0, 30.0, 50.0]
+    kinds = [1.0] * 8
+    if group_quarters_child:
+        ages[-1], kinds[-1] = 10.0, 2.0
+    person = frame.table("person").assign(
+        age=ages,
+        is_spm_independent_minor_role=[True] * 8 if role is None else role,
+        person_support_clone_index=0,
+    )
+    household = frame.table("household").assign(
+        household_spine="acs_2024_1yr", TYPEHUGQ=kinds
+    )
+    frame = Frame(
+        {
+            **{entity: frame.table(entity) for entity in frame.entities},
+            "person": person,
+            "household": household,
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+    staging._write_dataset(
+        frame, path, period=2024, artifact_kind="calibrated_local_area_artifact"
+    )
+
+
+@requires_pytables
+def test_package_records_the_spm_measurement_gate_bound_to_the_packaged_bytes(
+    tmp_path, monkeypatch
+):
+    """microcosm#1263: the package stage grades the calibrated H5 it ships
+    against the engine it records as built-with, and both manifests carry the
+    verdict bound to the packaged bytes."""
+
+    monkeypatch.setattr(
+        spm_measurement_gate,
+        "check_release_spm_measurement",
+        _REAL_CHECK_RELEASE_SPM_MEASUREMENT,
+    )
+    module = _load_tool_module()
+    assert (
+        module.US_SPM_MEASUREMENT_EVIDENCE_KEY
+        == spm_measurement_gate.SPM_MEASUREMENT_GATE_NAME
+    )
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    _write_measurable_lane_h5(args.out_h5, group_quarters_child=False)
+    _refresh_package_evidence_bindings(module, args)
+
+    result = module.do_package(args)
+
+    release_dir = Path(result["release_dir"])
+    recorded = [
+        json.loads((release_dir / name).read_text())["gates"][
+            "spm_measurement_composition"
+        ]
+        for name in ("gate_summary.json", "build_manifest.json")
+    ]
+    assert recorded[0] == recorded[1]
+    gate = recorded[0]
+    assert gate["passed"] is True
+    assert gate["failures"] == []
+    assert gate["engine"] == "policyengine-us 2.2.1"
+    assert gate["checked_at_stage"] == "package"
+    assert gate["artifact_sha256"] == result["root_artifact"]["sha256"]
+    assert gate["details"]["measured_scope"] == "all_units"
+    assert gate["details"]["n_measured_units"] == 8
+    assert gate["details"]["n_measured_units_without_classified_adult"] == 0
+
+
+@requires_pytables
+def test_package_refuses_an_unmeasurable_release_before_any_release_dir(
+    tmp_path, monkeypatch
+):
+    """The 2026-09-23 failure in this lane: one group-quarters child makes
+    every SPM measurement on the release raise SPM_COMPOSITION_REQUIRED under
+    an engine that measures every unit. The package stage refuses it, and no
+    release directory is created."""
+
+    monkeypatch.setattr(
+        spm_measurement_gate,
+        "check_release_spm_measurement",
+        _REAL_CHECK_RELEASE_SPM_MEASUREMENT,
+    )
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    _write_measurable_lane_h5(args.out_h5, group_quarters_child=True)
+    _refresh_package_evidence_bindings(module, args)
+
+    with pytest.raises(SystemExit) as refusal:
+        module.do_package(args)
+
+    message = str(refusal.value)
+    assert message.startswith("Refusing to package: the SPM measurement gate failed")
+    assert "1 of 8 SPM units" in message
+    assert "0 inside the source SPM universe and 1 outside it" in message
+    assert not (args.out / "releases").exists()
+    assert not (args.out / "package_result.json").exists()
+
+
+@requires_pytables
+def test_package_refuses_a_complex_role_after_the_h5_round_trip(tmp_path, monkeypatch):
+    """A complex role column survives the lane's H5 writer and reader. Its
+    ``1j`` casts to True, yet its real part is 0, so the gate must refuse the
+    column on the bytes the release would ship rather than read it one way."""
+
+    monkeypatch.setattr(
+        spm_measurement_gate,
+        "check_release_spm_measurement",
+        _REAL_CHECK_RELEASE_SPM_MEASUREMENT,
+    )
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    _write_measurable_lane_h5(
+        args.out_h5,
+        group_quarters_child=False,
+        role=np.array([1 + 0j] * 7 + [1j], dtype=np.complex128),
+    )
+    _refresh_package_evidence_bindings(module, args)
+    stored = module._load_staging_frame(args.out_h5).table("person")[
+        "is_spm_independent_minor_role"
+    ]
+    assert pd.api.types.is_complex_dtype(stored.dtype)
+
+    with pytest.raises(SystemExit) as refusal:
+        module.do_package(args)
+
+    message = str(refusal.value)
+    assert message.startswith("Refusing to package: the SPM measurement gate failed")
+    assert "8 person row(s)" in message
+    assert "complex" in message
+    assert not (args.out / "releases").exists()
+
+
+def test_package_refuses_an_spm_gate_without_an_importable_engine(
+    tmp_path, monkeypatch
+):
+    """The gate grades against the built-with engine, so it needs one."""
+
+    module = _load_tool_module()
+
+    def missing():
+        raise ImportError("No module named 'policyengine_us'")
+
+    monkeypatch.setattr(stored_inputs, "installed_us_engine", missing)
+    with pytest.raises(SystemExit, match="SPM measurement cannot be graded"):
+        module._require_spm_measurement(object())
+
+
+@pytest.mark.parametrize(
+    ("defines_declaration", "registered", "refused"),
+    [
+        (False, False, False),
+        (True, True, False),
+        (True, False, True),
+        (False, True, True),
+    ],
+)
+def test_package_refuses_an_engine_whose_scoping_disagrees_with_the_register(
+    monkeypatch, defines_declaration, registered, refused
+):
+    """The publisher trusts the reviewed register of universe-scoping engines.
+    An engine that defines the declaration without being registered, or is
+    registered without defining it, has not been reviewed: no verdict graded
+    on either reading is recorded."""
+
+    from microcosm.build.us_runtime.spm_universe_source import UNIVERSE_INPUT
+    from microcosm.data import contract
+
+    variables = set(_PACKAGE_ENGINE.variables)
+    if defines_declaration:
+        variables.add(UNIVERSE_INPUT)
+    monkeypatch.setattr(
+        stored_inputs,
+        "installed_us_engine",
+        lambda: stored_inputs.CertifiedEngine(
+            label="policyengine-us 2.2.1", variables=frozenset(variables)
+        ),
+    )
+    monkeypatch.setattr(
+        contract,
+        "US_SPM_UNIVERSE_SCOPING_MODEL_VERSIONS",
+        frozenset({"2.2.1"}) if registered else frozenset(),
+    )
+    graded_as = []
+    monkeypatch.setattr(
+        spm_measurement_gate,
+        "check_release_spm_measurement",
+        lambda frame, *, engine_scopes_universe: (
+            graded_as.append(engine_scopes_universe)
+            or GateResult(
+                name=spm_measurement_gate.SPM_MEASUREMENT_GATE_NAME,
+                passed=True,
+                details=dict(_MEASURABLE_DETAILS),
+            )
+        ),
+    )
+    module = _load_tool_module()
+
+    if refused:
+        with pytest.raises(SystemExit, match="reviewed register"):
+            module._require_spm_measurement(object())
+        assert graded_as == []
+    else:
+        module._require_spm_measurement(object())
+        assert graded_as == [defines_declaration]
+
+
+@requires_pytables
+def test_the_spm_measurement_gate_meets_the_publisher_requirement(
+    tmp_path, monkeypatch
+):
+    """Producer and publisher agree (microcosm#1263): the gate the package
+    stage writes from real bytes passes the publisher's requirement against
+    the manifests written alongside it, and the same output with the gate
+    dropped, or recording a measured unit without an adult, is refused."""
+
+    import importlib.metadata as metadata
+
+    from microcosm.data import contract
+
+    real_version = metadata.version
+    monkeypatch.setattr(
+        metadata,
+        "version",
+        lambda name: "2.2.1" if name == "policyengine-us" else real_version(name),
+    )
+    monkeypatch.setattr(
+        spm_measurement_gate,
+        "check_release_spm_measurement",
+        _REAL_CHECK_RELEASE_SPM_MEASUREMENT,
+    )
+    module = _load_tool_module()
+    assert (
+        module.US_LOCAL_AREA_SPM_MEASUREMENT_STAGE
+        == contract.US_LOCAL_AREA_SPM_MEASUREMENT_STAGE
+    )
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    _write_measurable_lane_h5(args.out_h5, group_quarters_child=False)
+    _refresh_package_evidence_bindings(module, args)
+    release_dir = Path(module.do_package(args)["release_dir"])
+
+    def load(name):
+        return json.loads((release_dir / name).read_text())
+
+    gate_summary = load("gate_summary.json")
+    release_manifest = load("release_manifest.json")
+    build_manifest = load("build_manifest.json")
+
+    def failures_for(summary, build=build_manifest):
+        failures: list[str] = []
+        contract._check_us_local_area_spm_measurement_gate(
+            summary,
+            release_manifest=release_manifest,
+            build_manifest=build,
+            failures=failures,
+        )
+        return failures
+
+    assert failures_for(gate_summary) == []
+
+    key = contract.US_SPM_MEASUREMENT_EVIDENCE_KEY
+    dropped = json.loads(json.dumps(gate_summary))
+    del dropped["gates"][key]
+    assert len(failures_for(dropped)) == 1
+    assert (
+        "must carry the 'spm_measurement_composition' gate"
+        in (failures_for(dropped)[0])
+    )
+
+    crashing = json.loads(json.dumps(gate_summary))
+    crashing["gates"][key]["details"].update(
+        n_measured_units_without_classified_adult=1,
+        n_units_without_classified_adult=1,
+        n_units_without_classified_adult_by_universe={"INCLUDED": 1, "OUTSIDE": 0},
+    )
+    build = json.loads(json.dumps(build_manifest))
+    build["gates"][key] = crashing["gates"][key]
+    assert any(
+        "SPM_COMPOSITION_REQUIRED" in line for line in failures_for(crashing, build)
+    )
+
+
+def _write_lane_h5(path: Path, **person_columns) -> None:
+    """The plausible-hours frame, written by the lane's own writer: the shared
+    nullable writer, which adds the ``_populace_staging_metadata`` series."""
+
+    from microcosm.frame import Frame
+
+    staging = _load_staging_builder_module()
+    frame = _plausible_hours_frame()
+    person = frame.table("person").assign(**person_columns)
+    frame = Frame(
+        {
+            **{entity: frame.table(entity) for entity in frame.entities},
+            "person": person,
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+    staging._write_dataset(
+        frame, path, period=2024, artifact_kind="calibrated_local_area_artifact"
+    )
+
+
+@requires_pytables
+def test_the_contract_reads_the_lane_writer_output(tmp_path):
+    """The lane writes through the shared nullable writer, whose H5 carries a
+    ``_populace_staging_metadata`` series next to the entity tables. The
+    contract reads that layout rather than refusing it."""
+
+    path = tmp_path / "out.h5"
+    _write_lane_h5(path, would_claim_wic=[True, False] * 4)
+
+    tables = stored_inputs.h5_stored_tables(path)
+
+    assert set(tables) == {
+        "person",
+        "household",
+        "tax_unit",
+        "spm_unit",
+        "family",
+        "marital_unit",
+    }
+    assert "would_claim_wic" in tables["person"]
+    assert "household_weight" in tables["household"]
+    import h5py
+
+    with h5py.File(path, "r") as h5:
+        assert "_populace_staging_metadata" in h5
+
+
+@requires_pytables
+def test_package_refuses_a_stale_stored_input_before_any_release_dir(
+    tmp_path, monkeypatch
+):
+    """The #1026 regression in this lane: a calibrated H5 carrying the WIC
+    draw under its retired name is refused by name, with both remedies, and
+    no release directory is created."""
+
+    monkeypatch.setattr(
+        stored_inputs, "require_h5_stored_inputs", _REAL_REQUIRE_H5_STORED_INPUTS
+    )
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    _write_lane_h5(args.out_h5, would_claim_wic=[True, False] * 4)
+
+    with pytest.raises(SystemExit) as refusal:
+        module.do_package(args)
+
+    message = str(refusal.value)
+    assert message.startswith(
+        "Refusing to package: stored-input contract refused the release: "
+        "stored column 'would_claim_wic' (person table)"
+    )
+    assert "policyengine-us 2.2.1" in message
+    assert "Rename it to the live input" in message
+    assert not (args.out / "releases").exists()
+    assert not (args.out / "package_result.json").exists()
+
+    _write_lane_h5(args.out_h5, takes_up_wic_if_eligible=[True, False] * 4)
+    _refresh_package_evidence_bindings(module, args)
+    result = module.do_package(args)
+    assert Path(result["release_dir"]).is_dir()
+
+
+def _refresh_package_evidence_bindings(module, args) -> None:
+    """Rebind the package evidence to rewritten artifact bytes."""
+
+    artifact_sha = module._sha256(args.out_h5)
+    report = json.loads(args.gate_report.read_text())
+    for gate in report["gates"].values():
+        gate["artifact_sha256"] = artifact_sha
+    args.gate_report.write_text(json.dumps(report))
+    for name in ("spine_qa.json", "consumer_export.json"):
+        path = args.checkpoint_dir / name
+        evidence = json.loads(path.read_text())
+        key = "artifact_sha256" if name == "spine_qa.json" else "staging_sha256"
+        evidence[key] = artifact_sha
+        path.write_text(json.dumps(evidence))
+
+
+def test_package_refuses_without_an_importable_engine(tmp_path, monkeypatch):
+    """No engine, no certification: the release would record a built-with
+    engine the artifact was never checked against."""
+
+    def missing():
+        raise ImportError("No module named 'policyengine_us'")
+
+    monkeypatch.setattr(stored_inputs, "installed_us_engine", missing)
+    module = _load_tool_module()
+    args = _package_args_before_evidence(module, tmp_path, max_households=None)
+
+    with pytest.raises(SystemExit, match="policyengine-us cannot be imported"):
+        module.do_package(args)
+    assert not (args.out / "releases").exists()
+
+
+@requires_pytables
+@pytest.mark.parametrize("copy_state", ["new", "already_present", "no_copy"])
+def test_package_rechecks_final_bytes_after_copy_or_reuse(
+    tmp_path, monkeypatch, copy_state
+):
+    import shutil as real_shutil
+
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    root_copy = args.out / module.ARTIFACT_FILENAME
+    original_sha = module._sha256
+    root_hashes = []
+    if copy_state == "new":
+
+        def changed_copy(source, destination):
+            result = real_shutil.copy2(source, destination)
+            Path(destination).write_bytes(b"changed-during-copy")
+            return result
+
+        class _ToolShutil:
+            """Rebind only the tool's own ``shutil`` name, not the global module."""
+
+            copy2 = staticmethod(changed_copy)
+
+            def __getattr__(self, name):
+                return getattr(real_shutil, name)
+
+        monkeypatch.setattr(module, "shutil", _ToolShutil())
+    elif copy_state == "already_present":
+        root_copy.parent.mkdir(parents=True)
+        root_copy.write_bytes(args.out_h5.read_bytes())
+
+        def changed_after_reuse_check(path):
+            result = original_sha(path)
+            if Path(path) == root_copy:
+                root_hashes.append(result)
+                if len(root_hashes) == 1:
+                    root_copy.write_bytes(b"changed-after-reuse-check")
+            return result
+
+        monkeypatch.setattr(module, "_sha256", changed_after_reuse_check)
+    else:
+        # The artifact root IS the calibrated H5, so nothing is copied and only
+        # the final re-hash can notice a source that changed after the gates.
+        root_copy.parent.mkdir(parents=True)
+        args.out_h5.rename(root_copy)
+        args.out_h5 = root_copy
+        releases = args.out / "releases"
+        changed = []
+
+        def changed_while_writing_sums(path):
+            if not changed and releases in Path(path).parents:
+                changed.append(path)
+                with root_copy.open("ab") as stream:
+                    stream.write(b"changed-after-the-gates")
+            return original_sha(path)
+
+        monkeypatch.setattr(module, "_sha256", changed_while_writing_sums)
+    with pytest.raises(SystemExit, match="packaged H5.*hours_worked_signal"):
+        module.do_package(args)
+    assert not (args.out / "package_result.json").exists()
+    if copy_state == "already_present":
+        assert len(root_hashes) == 2, "the reuse check and the final re-hash"
+    if copy_state == "no_copy":
+        assert root_copy.exists(), "the calibrated H5 itself is never removed"
+    else:
+        assert not root_copy.exists(), "a refused copy is not left at the root"
+
+
+def _calibrate_stage_argv(tmp_path: Path, *extra: str) -> list[str]:
+    return [
+        "--stage",
+        "calibrate",
+        "--staging-h5",
+        str(tmp_path / "staging.h5"),
+        "--checkpoint-dir",
+        str(tmp_path / "ckpt"),
+        "--out-h5",
+        str(tmp_path / "out.h5"),
+        *extra,
+    ]
+
+
+def test_penalty_options_default_to_the_historical_solve(tmp_path: Path) -> None:
+    """``--l2-basis`` and ``--mass-parametrization`` take the kernel's names.
+
+    Their defaults are the kernel defaults, so a refresh that passes neither
+    solves exactly as every earlier ACS local release did.
+    """
+    from microcosm.calibrate import (
+        L2_BASES,
+        L2_BASIS_RECORD,
+        MASS_PARAMETRIZATION_PROJECTION,
+        MASS_PARAMETRIZATIONS,
+        calibrate,
+    )
+
+    module = _load_tool_module()
+    # The tool spells the kernel's values so parsing never imports torch.
+    assert module.L2_BASIS_CHOICES == tuple(sorted(L2_BASES))
+    assert module.MASS_PARAMETRIZATION_CHOICES == tuple(sorted(MASS_PARAMETRIZATIONS))
+    defaults = inspect.signature(calibrate).parameters
+    for key, value in module.HISTORICAL_PENALTY.items():
+        assert defaults[key].default == value, key
+    args = module._parse_args(_calibrate_stage_argv(tmp_path))
+    assert args.l2_basis == L2_BASIS_RECORD
+    assert args.mass_parametrization == MASS_PARAMETRIZATION_PROJECTION
+    assert args.l2_lambda == 0.0
+    for basis in L2_BASES:
+        parsed = module._parse_args(
+            _calibrate_stage_argv(tmp_path, "--l2-basis", basis)
+        )
+        assert parsed.l2_basis == basis
+    for parametrization in MASS_PARAMETRIZATIONS:
+        parsed = module._parse_args(
+            _calibrate_stage_argv(tmp_path, "--mass-parametrization", parametrization)
+        )
+        assert parsed.mass_parametrization == parametrization
+    for flag in ("--l2-basis", "--mass-parametrization"):
+        with pytest.raises(SystemExit):
+            module._parse_args(_calibrate_stage_argv(tmp_path, flag, "bogus"))
+
+
+def _tiny_calibration_surface(n: int = 30):
+    """A real frame, design weights and target set small enough to solve."""
+
+    from microcosm.calibrate import Target, TargetSet
+    from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
+
+    rng = np.random.default_rng(0)
+    income = rng.lognormal(10.0, 1.0, n)
+    design = rng.lognormal(2.0, 0.8, n)
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {"person_id": range(n), "person_household_id": range(n)}
+            ),
+            "household": pd.DataFrame({"household_id": range(n), "income": income}),
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(values=design, kind=WeightKind.DESIGN)},
+    )
+    targets = TargetSet(
+        (
+            Target(
+                name="income",
+                entity="household",
+                value=float((income * design).sum() * 1.2),
+                measure="income",
+            ),
+        )
+    )
+    return frame, design, targets
+
+
+def _recording_calibrate(monkeypatch) -> list[dict]:
+    """Wrap the kernel's calibrate to record each call's keyword arguments."""
+
+    import microcosm.calibrate as calibrate_package
+
+    calls: list[dict] = []
+    real = calibrate_package.calibrate
+
+    def recording(*args, **kwargs):
+        calls.append(kwargs)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(calibrate_package, "calibrate", recording)
+    return calls
+
+
+def test_calibrate_surface_threads_the_penalty_settings(monkeypatch) -> None:
+    module = _load_tool_module()
+    calls = _recording_calibrate(monkeypatch)
+    frame, _design, targets = _tiny_calibration_surface()
+    result, done = module.calibrate_surface(
+        frame,
+        targets,
+        epochs=4,
+        epoch_batch=2,
+        max_weight_ratio=5.0,
+        target_loss_cap=1.0,
+        l2_lambda=0.01,
+        seed=0,
+        l2_basis="chi_square",
+        mass_parametrization="softmax",
+    )
+    assert done == 4 and len(calls) == 2
+    for kwargs in calls:
+        assert kwargs["l2_basis"] == "chi_square"
+        assert kwargs["mass_parametrization"] == "softmax"
+        assert kwargs["l2_lambda"] == 0.01
+    assert result.options["mass_parametrization"] == "softmax"
+    # Callers that pass neither get the historical solve.
+    calls.clear()
+    module.calibrate_surface(
+        frame,
+        targets,
+        epochs=2,
+        epoch_batch=2,
+        max_weight_ratio=5.0,
+        target_loss_cap=1.0,
+        l2_lambda=0.0,
+        seed=0,
+    )
+    assert calls[0]["l2_basis"] == "record"
+    assert calls[0]["mass_parametrization"] == "projection"
+
+
+def test_do_calibrate_stamps_and_records_the_penalty_settings(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The penalty settings reach the solve, its stamp, the checkpoint and summary."""
+
+    from scipy import sparse
+
+    import microcosm.calibrate as calibrate_package
+    from microcosm.calibrate import TargetSpec
+
+    module = _load_tool_module()
+    calls = _recording_calibrate(monkeypatch)
+    frame, design, targets = _tiny_calibration_surface()
+    identity = {"staging_sha256": "s", "target_roles_sha256": "r"}
+    monkeypatch.setattr(module, "_verify_run_identity", lambda args: identity)
+    income = TargetSpec(
+        name="income",
+        entity="household",
+        measure="income",
+        value=next(iter(targets)).value,
+        source="fixture",
+        family="irs_soi",
+        metadata={
+            "measure_mode": "sum",
+            "source_measure_id": "adjusted_gross_income_amount",
+            "ledger_measure_unit": "usd",
+            "ledger_geography_level": "state",
+            "state_fips": "06",
+        },
+    )
+    monkeypatch.setattr(
+        module,
+        "load_checkpoint_surface",
+        lambda *a, **k: (
+            frame,
+            design,
+            SimpleNamespace(specs=(income,)),
+            [{"name": "income", "role": "train"}],
+            sparse.csr_array((1, len(design)), dtype=np.float32),
+        ),
+    )
+    monkeypatch.setattr(
+        module.cd_surface, "calibration_target_set", lambda *a, **k: targets
+    )
+    monkeypatch.setattr(
+        module,
+        "calibration_evidence",
+        lambda **kwargs: {"cd_holdout": {"n_targets": 0}, "n_holdout_targets": 0},
+    )
+    monkeypatch.setattr(module, "_write_calibrated_artifact", lambda *a, **k: None)
+    monkeypatch.setattr(
+        calibrate_package,
+        "write_calibration_diagnostics",
+        lambda *a, **k: SimpleNamespace(
+            status="available", schema_version=8, sha256="diagnostics"
+        ),
+    )
+    args = module._parse_args(
+        _calibrate_stage_argv(
+            tmp_path,
+            "--epochs",
+            "4",
+            "--epoch-batch",
+            "2",
+            "--l2-lambda",
+            "0.01",
+            "--l2-basis",
+            "chi_square",
+            "--mass-parametrization",
+            "softmax",
+        )
+    )
+    args.checkpoint_dir.mkdir()
+    module.do_calibrate(args)
+
+    assert len(calls) == 2
+    for kwargs in calls:
+        assert kwargs["l2_basis"] == "chi_square"
+        assert kwargs["mass_parametrization"] == "softmax"
+    summary = json.loads((args.checkpoint_dir / "calibration_summary.json").read_text())
+    assert summary["l2_basis"] == "chi_square"
+    assert summary["mass_parametrization"] == "softmax"
+    assert summary["chi_square_distance"] >= 0.0
+    exhausted = summary["softmax_cap_rounds_exhausted_epochs"]
+    assert isinstance(exhausted, int) and 0 <= exhausted <= 2
+    assert summary["solver_settings"]["l2_basis"] == "chi_square"
+    assert summary["solver_settings"]["mass_parametrization"] == "softmax"
+    saved = np.load(args.checkpoint_dir / "weights_latest.npz")
+    stamp = json.loads(str(saved["solver_settings"]))
+    assert stamp["l2_basis"] == "chi_square"
+    assert stamp["mass_parametrization"] == "softmax"
+
+    # Extending the run under another basis is refused before any solve.
+    calls.clear()
+    args.epochs = 6
+    args.resume = True
+    args.l2_basis = "record"
+    with pytest.raises(SystemExit, match="different solver settings"):
+        module.do_calibrate(args)
+    assert calls == []
+
+
+def test_a_stamp_from_before_the_penalty_settings_reads_as_the_historical_solve(
+    tmp_path: Path,
+) -> None:
+    module = _load_tool_module()
+    defaults = module._parse_args(_calibrate_stage_argv(tmp_path))
+    softmax = module._parse_args(
+        _calibrate_stage_argv(tmp_path, "--mass-parametrization", "softmax")
+    )
+    target_loss = module.release_target_loss_weights(defaults, [])[1]
+    legacy = {
+        key: value
+        for key, value in module._solver_settings(defaults, target_loss).items()
+        if key not in ("l2_basis", "mass_parametrization")
+    }
+    assert module._stamped_settings(legacy) == module._solver_settings(
+        defaults, target_loss
+    )
+    assert module._stamped_settings(legacy) != module._solver_settings(
+        softmax, target_loss
+    )
+    assert module._stamped_settings(None) is None
+    # A recorded value always wins over the fill.
+    recorded = {**legacy, "mass_parametrization": "softmax"}
+    assert module._stamped_settings(recorded) == module._solver_settings(
+        softmax, target_loss
+    )
+    # The loss weights are not filled: a stamp from before them never matches.
+    unweighted = {k: v for k, v in legacy.items() if k != "target_loss"}
+    assert module._stamped_settings(unweighted) != module._solver_settings(
+        defaults, target_loss
+    )
+
+
+def test_package_manifest_records_the_penalty_settings(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    summary_path = args.checkpoint_dir / "calibration_summary.json"
+    summary = json.loads(summary_path.read_text())
+    summary.update(
+        l2_lambda=0.003,
+        l2_basis="chi_square",
+        mass_parametrization="softmax",
+        chi_square_distance=0.21,
+    )
+    summary_path.write_text(json.dumps(summary))
+
+    result = module.do_package(args)
+
+    manifest = json.loads(
+        (Path(result["release_dir"]) / "build_manifest.json").read_text()
+    )
+    assert manifest["calibration"]["l2_lambda"] == 0.003
+    assert manifest["calibration"]["l2_basis"] == "chi_square"
+    assert manifest["calibration"]["mass_parametrization"] == "softmax"
+    assert manifest["calibration"]["chi_square_distance"] == 0.21
+    recipe = shlex.split(manifest["refresh_recipe"]["release"])
+    assert recipe[recipe.index("--l2-lambda") + 1] == "0.003"
+    assert recipe[recipe.index("--l2-basis") + 1] == "chi_square"
+    assert recipe[recipe.index("--mass-parametrization") + 1] == "softmax"
+
+
+def test_package_manifest_records_the_loss_weights(tmp_path: Path, monkeypatch) -> None:
+    """The package stage carries the loss-weight stamp and its multipliers."""
+
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    summary_path = args.checkpoint_dir / "calibration_summary.json"
+    summary = json.loads(summary_path.read_text())
+    target_loss = {
+        "weighting": (
+            "sqrt_value_concept_budget_weighted_mape_50_50_amount_count_"
+            "target_scale_cap_100pct"
+        ),
+        "row_mapping": "us_acs_local.v1",
+        "family_multipliers": {"usda_snap": 4.0},
+        "n_targets": 3,
+        "weights_sha256": "0" * 64,
+    }
+    summary["target_loss"] = target_loss
+    summary_path.write_text(json.dumps(summary))
+
+    result = module.do_package(args)
+
+    manifest = json.loads(
+        (Path(result["release_dir"]) / "build_manifest.json").read_text()
+    )
+    assert manifest["calibration"]["target_loss"] == target_loss
+    recipe = shlex.split(manifest["refresh_recipe"]["release"])
+    assert recipe[recipe.index("--target-family-loss-multiplier") + 1] == (
+        "usda_snap=4.0"
+    )
+
+
+def test_refresh_recipe_rebuilds_the_recorded_solve(tmp_path: Path) -> None:
+    """The recipe names every penalty setting, so a default change cannot move it."""
+
+    module = _load_tool_module()
+    plain = shlex.split(module.release_refresh_recipe("state"))
+    assert plain[plain.index("--l2-lambda") + 1] == "0.0"
+    assert plain[plain.index("--l2-basis") + 1] == "record"
+    assert plain[plain.index("--mass-parametrization") + 1] == "projection"
+    # A legacy summary records none of them: the historical solve.
+    legacy = {"l2_lambda": None, "l2_basis": None, "mass_parametrization": None}
+    assert shlex.split(module.release_refresh_recipe("state", penalty=legacy)) == plain
+    assert (
+        shlex.split(
+            module.release_refresh_recipe("state", penalty=module.HISTORICAL_PENALTY)
+        )
+        == plain
+    )
+    # Every flag is spelled out (asserted above), so the parse below does not
+    # lean on the parser's defaults: the historical recipe is the historical
+    # solve whatever those defaults become.
+    historical = module._parse_args(plain[3:])
+    assert historical.l2_lambda == 0.0
+    assert historical.l2_basis == "record"
+    assert historical.mass_parametrization == "projection"
+    penalized = shlex.split(
+        module.release_refresh_recipe(
+            "state",
+            penalty={
+                "l2_lambda": 0.03,
+                "l2_basis": "chi_square",
+                "mass_parametrization": "projection",
+            },
+        )
+    )
+    assert penalized[penalized.index("--l2-lambda") + 1] == "0.03"
+    assert penalized[penalized.index("--l2-basis") + 1] == "chi_square"
+    assert penalized[penalized.index("--mass-parametrization") + 1] == "projection"
+    # The recipe's arguments are ones the tool itself accepts.
+    args = module._parse_args(penalized[3:])
+    assert args.l2_lambda == 0.03
+    assert args.l2_basis == "chi_square"
+    assert args.mass_parametrization == "projection"
+
+
+def test_package_manifest_reads_a_legacy_summary_as_the_historical_solve(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A summary from before the settings existed was solved the only way there was."""
+
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    result = module.do_package(args)
+    manifest = json.loads(
+        (Path(result["release_dir"]) / "build_manifest.json").read_text()
+    )
+    assert manifest["calibration"]["l2_basis"] == "record"
+    assert manifest["calibration"]["mass_parametrization"] == "projection"
+    assert manifest["calibration"]["chi_square_distance"] is None
+    assert manifest["calibration"]["softmax_cap_rounds_exhausted_epochs"] is None
+
+
+def test_concentration_limitation_is_true_to_the_penalty_solved() -> None:
+    module = _load_tool_module()
+    base = {
+        "effective_sample_size": 13631.3,
+        "ess_fraction": 0.0086,
+        "households": 1_588_854,
+        "max_weight_ratio": 5.0,
+    }
+    historical = module._ess_concentration_limitation({**base, "l2_lambda": 0.0})
+    assert historical["id"] == "low_effective_sample_size_lambda_zero"
+    assert historical["status"] == "reviewed_concentration"
+    assert module._ess_concentration_limitation(base) == historical
+
+    assert (
+        module._ess_concentration_limitation(
+            {**base, "l2_lambda": 0.0, "mass_parametrization": "projection"}
+        )
+        == historical
+    )
+    # An unpenalized softmax solve is a new optimizer, not the certified default.
+    unpenalized_softmax = module._ess_concentration_limitation(
+        {**base, "l2_lambda": 0.0, "mass_parametrization": "softmax"}
+    )
+    assert unpenalized_softmax["id"] == "effective_sample_size_under_nondefault_solve"
+    assert unpenalized_softmax["status"] == "recorded_concentration"
+    assert "certified default" not in unpenalized_softmax["reason"]
+
+    penalized = module._ess_concentration_limitation(
+        {
+            **base,
+            "l2_lambda": 0.003,
+            "l2_basis": "chi_square",
+            "mass_parametrization": "softmax",
+            "chi_square_distance": 0.21,
+        }
+    )
+    assert penalized["id"] == "effective_sample_size_under_nondefault_solve"
+    # A summary from before l2_basis was recorded used the record basis.
+    legacy_penalized = module._ess_concentration_limitation({**base, "l2_lambda": 0.1})
+    assert "l2_basis='record'" in legacy_penalized["reason"]
+    assert penalized["status"] == "recorded_concentration"
+    assert "l2_lambda=0.003" in penalized["reason"]
+    assert "'chi_square'" in penalized["reason"]
+    assert "'softmax'" in penalized["reason"]
+    assert "l2_lambda=0 " not in penalized["reason"]

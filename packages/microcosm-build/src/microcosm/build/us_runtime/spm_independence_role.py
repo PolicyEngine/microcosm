@@ -51,8 +51,8 @@ from microcosm.build.source_runtime import (
     SourceRuntimeError,
     run_source_stage,
 )
+from microcosm.build.us_runtime.asec_sources import ASEC_DEFAULT_POOL_INCOME_YEARS
 from microcosm.build.us_runtime.education_assistance_source import (
-    ASEC_EDUCATION_ASSISTANCE_INCOME_YEARS,
     fetch_asec_education_assistance_source,
 )
 from microcosm.build.us_runtime.spm_composition import check_spm_composition
@@ -79,6 +79,7 @@ __all__ = [
     "US_SPM_INDEPENDENCE_ROLE_STAGE_NAME",
     "derive_us_spm_independence_role_from_manifest",
     "resolve_asec_spm_role_source_paths",
+    "us_declared_dataset_source_inputs",
     "us_spm_independence_role_signal_gate",
     "us_spm_independence_role_stage_spec",
     "us_spm_independence_role_summary",
@@ -130,13 +131,32 @@ _SPM_UNIT_TABLE = "spm_unit"
 _SPM_UNIT_ID = "spm_unit_id"
 _DERIVE_PARAMETER_KEYS = frozenset()
 
-#: Plausibility bands, measured on the three pinned vintages: the role share
+#: Plausibility bands, measured on the three Build P vintages (income years
+#: 2022-2024; the 2023-2025 default pool measured 0.628 and 1.81 %): the role share
 #: among all persons (the SPM head plus spouses; 0.601-0.603 per vintage on the
 #: phase-2 base, 0.567 on Build P) and among 15-to-17-year-olds (1.49 %-1.73 %
 #: per vintage). See ``docs/us-spm-role-stage.md`` §2 and the committed
 #: receipts under ``experiments/``.
 _ROLE_SHARE_BAND = (0.40, 0.75)
 _MINOR_ROLE_SHARE_BAND = (0.003, 0.06)
+
+
+def us_declared_dataset_source_inputs(engine: Any | None = None) -> frozenset[str]:
+    """Names no reviewed-null register may admit and no engine pass may default.
+
+    ``policyengine_us.spm.DATASET_SOURCE_INPUTS`` "does not permit
+    synthesizing a default value when data are absent". The set is this
+    stage's output united with the engine's own declaration, read through
+    ``engine._dataset_source_inputs()`` when the engine adapter exposes it, so
+    a future declaration is honored and a stub engine or an engine-free caller
+    can never shrink the set below the role.
+    """
+
+    declared = set(US_SPM_INDEPENDENCE_ROLE_OUTPUT_COLUMNS)
+    reader = getattr(engine, "_dataset_source_inputs", None)
+    if callable(reader):
+        declared.update(reader())
+    return frozenset(declared)
 
 
 def us_spm_independence_role_stage_spec() -> SourceStageSpec:
@@ -163,7 +183,7 @@ def us_spm_independence_role_stage_spec() -> SourceStageSpec:
 def resolve_asec_spm_role_source_paths(
     paths: Mapping[int, str | Path] | None,
     *,
-    income_years: tuple[int, ...] = ASEC_EDUCATION_ASSISTANCE_INCOME_YEARS,
+    income_years: tuple[int, ...] = ASEC_DEFAULT_POOL_INCOME_YEARS,
 ) -> dict[int, Path]:
     """Return one pinned complete person source path per pooled income year.
 

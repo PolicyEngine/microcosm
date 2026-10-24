@@ -53,7 +53,10 @@ import pandas as pd
 
 from microcosm.build.gates import GateResult
 from microcosm.build.source_manifest import SourceStageSpec, load_source_manifest
-from microcosm.build.us_runtime.asec_census_person_columns import WEIND_TO_WEMIND
+from microcosm.build.us_runtime.asec_census_person_columns import (
+    WEIND_TO_WEMIND,
+    WORKER_INDUSTRY_CODES,
+)
 from microcosm.frame import Frame
 from microcosm.frame.units import US_SCHEMA
 
@@ -64,6 +67,7 @@ __all__ = [
     "ORG_2024_DONOR_CONTENT_SHA256",
     "ORG_2024_DONOR_FILENAME",
     "ORG_PREDICTORS",
+    "US_ORG_OCCUPATION_AND_WORK_EXPERIENCE_OUTPUT_COLUMNS",
     "US_ORG_WAGES_NONCONSTANT_PERSON_COLUMNS",
     "US_ORG_WAGES_OUTPUT_COLUMNS",
     "US_ORG_WAGES_REQUIRED_SOURCE_COLUMNS",
@@ -73,6 +77,7 @@ __all__ = [
     "fetch_org_2024_donor",
     "impute_us_org_wages",
     "load_org_2024_donor",
+    "require_us_occupation_and_work_experience_inputs",
     "us_org_wages_signal_gate",
     "us_org_wages_stage_spec",
     "us_org_wages_summary",
@@ -116,13 +121,16 @@ ORG_QRF_TARGETS: tuple[str, ...] = ("hourly_wage", "is_paid_hourly")
 _DONOR_WEIGHT_COLUMN = "sample_weight"
 _DEFAULT_N_ESTIMATORS = 100
 
-US_ORG_WAGES_OUTPUT_COLUMNS: tuple[str, ...] = (
-    "cps_race",
-    "is_hispanic",
+US_ORG_OCCUPATION_AND_WORK_EXPERIENCE_OUTPUT_COLUMNS: tuple[str, ...] = (
     "detailed_occupation_recode",
     "detailed_industry_recode",
     "major_industry_recode",
     "worked_last_year",
+)
+US_ORG_WAGES_OUTPUT_COLUMNS: tuple[str, ...] = (
+    "cps_race",
+    "is_hispanic",
+    *US_ORG_OCCUPATION_AND_WORK_EXPERIENCE_OUTPUT_COLUMNS,
     "has_never_worked",
     "is_military",
     "is_computer_scientist",
@@ -149,9 +157,6 @@ US_ORG_WAGES_REQUIRED_SOURCE_COLUMNS: tuple[str, ...] = (
     "hours_worked_last_week",
     "weeks_worked",
 )
-
-#: WEIND worker codes: civilian industry groups 1--21 and Armed Forces 22.
-_WORKER_INDUSTRY_CODES = np.arange(1, 23)
 
 FLSA_OVERTIME_OCCUPATION_CODES: dict[str, int] = {
     "has_never_worked": 53,
@@ -548,6 +553,40 @@ def load_org_2024_donor(
     return result
 
 
+def require_us_occupation_and_work_experience_inputs(
+    person: pd.DataFrame, *, label: str
+) -> None:
+    """Require complete canonical job inputs on a donor or an existing staging H5.
+
+    The local ACS lane preserves its ASEC donor rows and can package an
+    existing staging file. Both boundaries must refuse a historical file
+    which lacks the source-derived occupation, industry or working inputs.
+    """
+
+    missing = [
+        column
+        for column in US_ORG_OCCUPATION_AND_WORK_EXPERIENCE_OUTPUT_COLUMNS
+        if column not in person
+    ]
+    if missing:
+        raise ValueError(
+            f"{label} lacks canonical work-experience input(s) {missing}."
+        )
+    invalid_counts = {}
+    for column in US_ORG_OCCUPATION_AND_WORK_EXPERIENCE_OUTPUT_COLUMNS:
+        values = pd.to_numeric(person[column], errors="coerce").to_numpy(
+            dtype=np.float64, na_value=np.nan
+        )
+        invalid = ~np.isfinite(values)
+        if invalid.any():
+            invalid_counts[column] = int(invalid.sum())
+    if invalid_counts:
+        raise ValueError(
+            f"{label} has missing or nonfinite canonical work-experience "
+            f"inputs: {invalid_counts}."
+        )
+
+
 def _complete_codes(person: pd.DataFrame, column: str, upper: int) -> np.ndarray:
     values = pd.to_numeric(person[column], errors="coerce").to_numpy(dtype=np.float64)
     invalid = ~np.isfinite(values) | (values != np.floor(values))
@@ -595,7 +634,7 @@ def derive_us_org_occupation_inputs(person: pd.DataFrame) -> pd.DataFrame:
         )
     worked = weeks_worked > 0
     worked_without_industry = int(
-        (worked & ~np.isin(detailed_industry, _WORKER_INDUSTRY_CODES)).sum()
+        (worked & ~np.isin(detailed_industry, WORKER_INDUSTRY_CODES)).sum()
     )
     if worked_without_industry:
         raise ValueError(
@@ -1074,7 +1113,7 @@ def us_org_wages_summary(frame: Frame) -> dict[str, object]:
             (known_detailed & (major_industry != expected_major)).sum()
         ),
         "worked_without_worker_industry": int(
-            (worked & ~np.isin(detailed_industry, _WORKER_INDUSTRY_CODES)).sum()
+            (worked & ~np.isin(detailed_industry, WORKER_INDUSTRY_CODES)).sum()
         ),
     }
     return {

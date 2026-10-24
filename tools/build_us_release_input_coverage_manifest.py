@@ -200,11 +200,17 @@ POST_REFERENCE_COLUMN_NOTES = {
     ),
     **{
         column: (
-            f"{description}, carried by the org_wages release stage "
-            "(org_wages.derive_us_org_occupation_inputs) from ASEC "
-            f"{source} (restored before pooling by asec_census_person_columns) "
-            "and, on ACS-spine people, from native INDP/WKWN through the "
-            "release predictor join; a formula-less person input in "
+            f"{description}, carried from ASEC {source}"
+            + (
+                " (restored before pooling by asec_census_person_columns)"
+                if source in {"WEIND", "WEMIND"}
+                else ""
+            )
+            + " by the org_wages release stage "
+            "(org_wages.derive_us_org_occupation_inputs). ACS derives the "
+            "same input from native INDP/WKWN through the shared crosswalk "
+            "in the fiscal release predictor join and native ACS mapper; "
+            "a formula-less person input in "
             "PolicyEngine-US 2.2.1. Required with NO reviewed exclusion per "
             "PolicyEngine/microcosm#719: the county-file person schema "
             "carries a working indicator, industry and occupation on every "
@@ -1026,7 +1032,6 @@ REFORM_COVERAGE_PROBES = [
             "gov.usda.snap.income.sources.unearned": {
                 "2024-01-01.2024-12-31": [
                     "ssi",
-                    "tanf",
                     "general_assistance",
                     "pension_income",
                     "veterans_benefits",
@@ -1094,7 +1099,6 @@ REFORM_COVERAGE_PROBES = [
             "gov.usda.snap.income.sources.unearned": {
                 "2024-01-01.2024-12-31": [
                     "ssi",
-                    "tanf",
                     "general_assistance",
                     "pension_income",
                     "veterans_benefits",
@@ -1134,7 +1138,6 @@ REFORM_COVERAGE_PROBES = [
             "gov.usda.snap.income.sources.unearned": {
                 "2024-01-01.2024-12-31": [
                     "ssi",
-                    "tanf",
                     "general_assistance",
                     "pension_income",
                     "veterans_benefits",
@@ -1162,9 +1165,13 @@ REFORM_COVERAGE_PROBES = [
         "reason": (
             "Removing only workers_compensation from SNAP unearned-income "
             "sources lowers countable income and must increase SNAP for some "
-            "recipients. A production-ingredient 30,000-household smoke scored "
-            "+$28.26M reform-minus-baseline; without the measured WC_VAL carry "
-            "and PUF-half QRF, the source-list reform is a structural zero."
+            "recipients. On the 2026-09-27 Route A export (PolicyEngine-US "
+            "2.2.1) the corrected list scored +$277.9M reform-minus-baseline "
+            "over all 1,708 households carrying the leaf; without the measured "
+            "WC_VAL carry and PUF-half QRF, the source-list reform is a "
+            "structural zero. The list must equal the engine's person-level "
+            "unearned sources minus this leaf: TANF is counted once on "
+            "unearned_spm_unit and must not be re-added here."
         ),
         "issue": "PolicyEngine/microcosm#32",
     },
@@ -1228,8 +1235,22 @@ REFORM_COVERAGE_PROBES = [
         "id": "alimony_expense_ald_abolition",
         "name": "Alimony expense above-the-line deduction abolition",
         "parameter_changes": {
-            "gov.irs.ald.alimony_expense.divorce_year_threshold[0].amount": {
-                "2024-01-01.2100-12-31": False
+            "gov.irs.ald.deductions": {
+                "2024-01-01.2024-12-31": [
+                    "loss_ald",
+                    "self_employment_tax_ald",
+                    "student_loan_interest_ald",
+                    "early_withdrawal_penalty",
+                    "educator_expense",
+                    "health_savings_account_ald",
+                    "self_employed_health_insurance_ald",
+                    "self_employed_pension_contribution_ald",
+                    "traditional_ira_contributions",
+                    "qualified_adoption_assistance_expense",
+                    "us_bonds_for_higher_ed",
+                    "specified_possession_income",
+                    "puerto_rico_income",
+                ]
             }
         },
         "budget_measure": "income_tax",
@@ -1239,12 +1260,15 @@ REFORM_COVERAGE_PROBES = [
         "binding_inputs": ["alimony_expense"],
         "min_abs_effect": 1_000_000.0,
         "reason": (
-            "The retired export has no nondefault divorce_year input, so "
-            "PolicyEngine-US applies its default year 0 through the first "
-            "eligibility bracket. Setting that bracket's amount to false "
-            "abolishes the alimony-expense above-the-line deduction on the "
-            "release, so baseline-minus-reform income tax must be negative. "
-            "With alimony_expense absent or degenerate, the abolition scores "
+            "Removing only alimony_expense_ald from the above-the-line "
+            "deduction list raises payers' taxable income, so "
+            "baseline-minus-reform income tax must be negative. The "
+            "divorce_year_threshold bracket is not used: since "
+            "PolicyEngine-US a8e8a2e2ab it also gates the recipient-side "
+            "taxable_alimony_income, so flipping it untaxes receipts too; on "
+            "the 2026-09-27 Route A export that scored +$1.89B, the wrong "
+            "sign. On the same export the corrected list scored -$2.52B. With "
+            "alimony_expense absent or degenerate, the abolition scores "
             "exactly $0."
         ),
         "issue": "PolicyEngine/microcosm#38",
@@ -1640,7 +1664,9 @@ def build_manifest() -> dict:
             "(PolicyEngine/microcosm#462), the three ASEC reported-receipt "
             "inputs receives_wic, receives_snap, receives_tanf that the ACS "
             "local-area transfer requires in its donor "
-            "(PolicyEngine/microcosm#978 option 1), and the engine's declared "
+            "(PolicyEngine/microcosm#978 option 1), the work-experience inputs "
+            "detailed_industry_recode, major_industry_recode, worked_last_year "
+            "(PolicyEngine/microcosm#719), and the engine's declared "
             "dataset source input is_spm_independent_minor_role (the "
             "spm_independence_role base-builder stage; "
             "PolicyEngine/microcosm#893). "

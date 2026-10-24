@@ -30,7 +30,35 @@ NON_ADVANCED_EDUCATION_LEVELS = (
     "UPPER_SECONDARY",
     "POST_SECONDARY",
 )
-FRS_APPROVED_TRAINING_CODES = tuple(range(1, 10))
+#: FRS TRAINEE, "Whether on a government scheme for employment training"
+#: (1 yes, 2 no), on the adult and child tables of FRS 2024-25 (SN 9563). The
+#: FRS counts a 16- to 19-year-old as a dependent child only in full-time
+#: non-advanced education or unwaged government training, so a child-table
+#: record with TRAINEE = 1 is a dependant in approved training (uk-data#560,
+#: uk-data#561). An adult-table record is never flagged: the FRS has already
+#: decided it is not a dependant, and its TRAINEE answer does not say the
+#: training is unwaged, so it may be training under a contract of employment,
+#: which is not approved training (UC Regs 2013 reg 5(3)). The adult table's
+#: TRAIN2 names DWP employment schemes (Work Programme, Kickstart and others)
+#: and is not read: microcosm#1063 read it, which flagged those adults and no
+#: dependant.
+FRS_TRAINEE_COLUMN = "trainee"
+FRS_TRAINEE_YES = 1
+#: FRS SLOS, "Do you have an outstanding student loan?" (1 yes, 2 no), adult
+#: table of FRS 2024-25 (SN 9563). Adults who answer SLREPAY ("Whether making
+#: student loan repayments") no answer it, so it carries the borrowers below the
+#: repayment threshold whom the repayment amount misses (microcosm#868).
+FRS_STUDENT_LOAN_OUTSTANDING_COLUMN = "slos"
+FRS_STUDENT_LOAN_OUTSTANDING_YES = 1
+#: FRS EDUCLEFT, "Age completed full-time education", adult table. The
+#: student-loan stage dates a borrower's course from it; an age outside
+#: [MIN, MAX] is no answer and is stored as 0 (microcosm#868).
+FRS_AGE_LEFT_FULL_TIME_EDUCATION_COLUMN = "educleft"
+AGE_LEFT_FULL_TIME_EDUCATION_MIN = 10
+AGE_LEFT_FULL_TIME_EDUCATION_MAX = 90
+#: The tab a raw person row came from; set before the adult and child tabs are
+#: concatenated, as ``frs_relationships`` does.
+FRS_TABLE_COLUMN = "_frs_table"
 UNKNOWN_QUALIFYING_EDUCATION_OR_TRAINING_ENTRY_AGE = 1000
 BENEFITS_IN_OWN_RIGHT_REPORTED_COLUMNS = (
     "universal_credit_reported",
@@ -106,6 +134,8 @@ FRS_EDUCATION_OUTPUT_COLUMNS = (
     "adult_ema",
     "child_ema",
     "receives_benefits_in_own_right",
+    "reports_outstanding_student_loan",
+    "age_left_full_time_education",
 )
 
 
@@ -129,12 +159,29 @@ def add_frs_education(
 ) -> Frame:
     artifacts = _artifact_by_table(stage)
     adult = normalize_ids(
-        read_pinned_tab(Path(raw_dir) / str(artifacts["adult"]["locator"]), artifacts["adult"])
+        read_pinned_tab(
+            Path(raw_dir) / str(artifacts["adult"]["locator"]), artifacts["adult"]
+        )
     )
     child = normalize_ids(
-        read_pinned_tab(Path(raw_dir) / str(artifacts["child"]["locator"]), artifacts["child"])
+        read_pinned_tab(
+            Path(raw_dir) / str(artifacts["child"]["locator"]), artifacts["child"]
+        )
     )
-    raw_person = pd.concat([adult, child], ignore_index=True, sort=False)
+    for table, tab in (("adult", adult), ("child", child)):
+        if FRS_TRAINEE_COLUMN not in tab.columns:
+            raise KeyError(
+                f"The FRS {table} tab has no TRAINEE column, so approved "
+                "training cannot be derived."
+            )
+    raw_person = pd.concat(
+        [
+            adult.assign(**{FRS_TABLE_COLUMN: "adult"}),
+            child.assign(**{FRS_TABLE_COLUMN: "child"}),
+        ],
+        ignore_index=True,
+        sort=False,
+    )
     person = frame.table("person").copy()
     derived = derive_frs_education(person, raw_person)
     for column in FRS_EDUCATION_OUTPUT_COLUMNS:
@@ -152,7 +199,9 @@ def add_frs_education(
     return result
 
 
-def derive_frs_education(person: pd.DataFrame, raw_person: pd.DataFrame) -> pd.DataFrame:
+def derive_frs_education(
+    person: pd.DataFrame, raw_person: pd.DataFrame
+) -> pd.DataFrame:
     raw = raw_person.set_index("person_id").reindex(person["person_id"])
     values = pd.DataFrame(index=person.index)
     age = pd.to_numeric(person["age"], errors="coerce").fillna(0).to_numpy()
@@ -167,12 +216,24 @@ def derive_frs_education(person: pd.DataFrame, raw_person: pd.DataFrame) -> pd.D
     values["is_in_non_advanced_education"] = np.isin(
         current, NON_ADVANCED_EDUCATION_LEVELS
     )
-    train = _num(raw, "train") if "train" in raw.columns else pd.Series(0, index=raw.index)
-    values["is_in_approved_training"] = train.isin(FRS_APPROVED_TRAINING_CODES).to_numpy()
-    in_qualifying = (
-        values["is_in_non_advanced_education"].to_numpy(dtype=bool)
-        | values["is_in_approved_training"].to_numpy(dtype=bool)
-    )
+    missing = [
+        column
+        for column in (FRS_TRAINEE_COLUMN, FRS_TABLE_COLUMN)
+        if column not in raw.columns
+    ]
+    if missing:
+        # Fail rather than mark nobody as in training: a silent default is
+        # what left every dependant unflagged before.
+        raise KeyError(
+            f"FRS person rows lack {missing}, so approved training cannot be derived."
+        )
+    approved = _num(raw, FRS_TRAINEE_COLUMN).eq(FRS_TRAINEE_YES) & raw[
+        FRS_TABLE_COLUMN
+    ].eq("child")
+    values["is_in_approved_training"] = approved.to_numpy(dtype=bool)
+    in_qualifying = values["is_in_non_advanced_education"].to_numpy(
+        dtype=bool
+    ) | values["is_in_approved_training"].to_numpy(dtype=bool)
     # Integer by the stage's own contract, whatever dtype ``age`` arrives in
     # (int64 from the root since #845; float in synthetic frames).
     values["age_started_or_accepted_current_education_or_training"] = np.where(
@@ -181,8 +242,8 @@ def derive_frs_education(person: pd.DataFrame, raw_person: pd.DataFrame) -> pd.D
         UNKNOWN_QUALIFYING_EDUCATION_OR_TRAINING_ENTRY_AGE,
     ).astype("int64")
     values["is_before_universal_credit_qualifying_young_person_terminal_date"] = (
-        (age == 19) & in_qualifying
-    )
+        age == 19
+    ) & in_qualifying
     if "adema" in raw.columns:
         values["adult_ema"] = _ema(raw, code_column="adema", amount_column="ademaamt")
     else:
@@ -195,6 +256,41 @@ def derive_frs_education(person: pd.DataFrame, raw_person: pd.DataFrame) -> pd.D
     ]
     values["receives_benefits_in_own_right"] = (
         person[benefit_columns].fillna(0).sum(axis=1) > 0 if benefit_columns else False
+    )
+    student_loan_columns = [
+        column
+        for column in (
+            FRS_STUDENT_LOAN_OUTSTANDING_COLUMN,
+            FRS_AGE_LEFT_FULL_TIME_EDUCATION_COLUMN,
+        )
+        if column not in raw.columns
+    ]
+    if student_loan_columns:
+        # Fail rather than read nobody as a borrower: the student-loan stage
+        # would then assign plans from repayments alone.
+        raise KeyError(
+            f"FRS person rows lack {student_loan_columns}, so student-loan "
+            "borrowers and course dates cannot be derived."
+        )
+    # Adult-table answers only; a child record has neither question.
+    adult = raw[FRS_TABLE_COLUMN].eq("adult")
+    values["reports_outstanding_student_loan"] = (
+        _num(raw, FRS_STUDENT_LOAN_OUTSTANDING_COLUMN).eq(
+            FRS_STUDENT_LOAN_OUTSTANDING_YES
+        )
+        & adult
+    ).to_numpy(dtype=bool)
+    left = _num(raw, FRS_AGE_LEFT_FULL_TIME_EDUCATION_COLUMN)
+    values["age_left_full_time_education"] = (
+        left.where(
+            adult
+            & left.between(
+                AGE_LEFT_FULL_TIME_EDUCATION_MIN, AGE_LEFT_FULL_TIME_EDUCATION_MAX
+            ),
+            0,
+        )
+        .to_numpy()
+        .astype("int64")
     )
     return values
 
@@ -264,5 +360,7 @@ def _artifact_by_table(stage: SourceStageSpec) -> dict[str, Mapping[str, Any]]:
     by_table = {str(artifact.get("table")): artifact for artifact in stage.artifacts}
     missing = sorted({"adult", "child"} - set(by_table))
     if missing:
-        raise ValueError(f"frs_education manifest is missing tab artifact(s): {missing}.")
+        raise ValueError(
+            f"frs_education manifest is missing tab artifact(s): {missing}."
+        )
     return by_table

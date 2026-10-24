@@ -1,0 +1,315 @@
+"""Tests split from packages/microcosm-build/tests/test_uk_take_up_contract.py."""
+
+# ruff: noqa: F403, F405
+import numpy as np
+
+from test_support.microcosm_build.uk_take_up_contract import *
+from test_support.paths import paths_for
+
+_TEST_PATHS = paths_for("microcosm-build")
+
+
+def test_uk_contract_loads_and_selects_build_year_rates() -> None:
+    contract = load_uk_take_up_contract()
+
+    assert contract.country == "uk"
+    assert contract.build_year == 2024
+    assert [entry.key for entry in contract.programs] == [
+        "child_benefit",
+        "child_benefit_opts_out_rate",
+        "pension_credit",
+        "pension_credit_guarantee_credit",
+        "pension_credit_savings_credit_only",
+        "pension_credit_newly_entitled",
+        "carers_allowance_newly_entitled",
+        "universal_credit",
+        "marriage_allowance",
+        "tax_free_childcare",
+        "extended_childcare",
+        "extended_childcare_age_0_usage",
+        "extended_childcare_age_1_usage",
+        "universal_childcare",
+        "targeted_childcare",
+        "uc_childcare_single",
+        "uc_childcare_couple",
+        "scp_under_6",
+        "scp_6_plus",
+    ]
+    assert [contract.rate(entry.key) for entry in contract.programs] == [
+        0.89,
+        0.23,
+        0.7,
+        0.69,
+        0.37,
+        0.37,
+        # microcosm#1319: María's ruling of 2026-10-20.
+        0.6,
+        0.55,
+        0.5,
+        # The tool-version-7 refit: the DfE rows at the spring term, universal
+        # nested under working parent (at its lower bound), one usage share per
+        # DfE age under 2 (age 1 at its upper bound).
+        0.9697,
+        0.8262,
+        0.6962,
+        1.0,
+        0.0,
+        0.6551,
+        0.441,
+        0.2682,
+        0.97,
+        0.85,
+    ]
+    assert [contract.rate(entry.key) for entry in contract.stochastic] == [
+        0.95,
+        0.1252,
+        0.384,
+        0.0385,
+        0.593,
+    ]
+
+
+def test_landed_fitting_receipt_must_name_the_engine() -> None:
+    from microcosm.build.uk_runtime.take_up_contract import _entries
+
+    entry = {
+        "key": "extended_childcare",
+        "output": "would_claim_extended_childcare",
+        "entity": "benunit",
+        "values": {"2024-04-06": 0.6054},
+        "source": {"source": "fit", "status": "fitted_offline"},
+        "fitting_receipt": {"seed": 0, "engine_version": None},
+    }
+    with pytest.raises(ValueError, match="hermetic receipt"):
+        _entries([entry], section="programs")
+
+    entry["fitting_receipt"]["engine_version"] = "2.94.0"
+    assert _entries([entry], section="programs")[0].key == "extended_childcare"
+
+    # The incumbent parity records carry no engine field and stay valid.
+    entry["fitting_receipt"] = {"source": "incumbent UK pipeline", "seed": 42}
+    assert _entries([entry], section="programs")
+
+
+def test_nested_rate_needs_a_conditional_basis_receipt() -> None:
+    from microcosm.build.uk_runtime.take_up_contract import (
+        NESTED_RATE_MIN_TOOL_VERSION,
+        _entries,
+    )
+
+    entry = {
+        "key": "universal_childcare",
+        "output": "would_claim_universal_childcare",
+        "nested_under": "would_claim_extended_childcare",
+        "entity": "benunit",
+        "values": {"2024-04-06": 0.05},
+        "source": {"source": "fit", "status": "fitted_offline"},
+        "fitting_receipt": {
+            "engine_version": "2.134.4",
+            "tool_version": NESTED_RATE_MIN_TOOL_VERSION - 1,
+        },
+    }
+    with pytest.raises(ValueError, match="conditional basis"):
+        _entries([entry], section="programs")
+    for receipt in (None, {"engine_version": "2.134.4"}, {"tool_version": True}):
+        entry["fitting_receipt"] = receipt
+        with pytest.raises(ValueError, match="conditional basis"):
+            _entries([entry], section="programs")
+
+    entry["fitting_receipt"] = {
+        "engine_version": "2.134.4",
+        "tool_version": NESTED_RATE_MIN_TOOL_VERSION,
+    }
+    assert _entries([entry], section="programs")[0].key == "universal_childcare"
+
+    # An entry that is not nested keeps any receipt, as before.
+    del entry["nested_under"]
+    entry["fitting_receipt"] = {"engine_version": "2.134.4", "tool_version": 1}
+    assert _entries([entry], section="programs")
+
+    # The landed nested entry carries a conditional-basis receipt.
+    contract = load_uk_take_up_contract()
+    universal = contract.entry("universal_childcare").raw
+    assert universal["nested_under"] == "would_claim_extended_childcare"
+    assert universal["fitting_receipt"]["tool_version"] >= NESTED_RATE_MIN_TOOL_VERSION
+
+
+def test_year_selection_uses_latest_value_at_or_before_build_year() -> None:
+    contract = load_uk_take_up_contract()
+
+    assert contract.rate("child_benefit", 2021) == 0.97
+    assert contract.rate("child_benefit", 2023) == 0.89
+    assert contract.rate("tax_free_childcare", 2024) == 0.9697
+    assert contract.rate("tax_free_childcare", 2023) == 0.586
+    assert contract.rate("tv_licence_evasion_rate", 2024) == 0.1252
+    assert contract.rate("tax_free_childcare_spend_routed_share", 2017) == 0.359
+    assert contract.rate("tax_free_childcare_spend_routed_share", 2024) == 0.593
+    assert contract.rate("tax_free_childcare_spend_routed_share", 2025) == 0.582
+
+
+def test_rate_entity_is_closed_world(monkeypatch) -> None:
+    raw = _resource()
+    mutated = copy.deepcopy(raw)
+    mutated["stochastic"][-1]["entity"] = "government"
+    _reload_with(monkeypatch, mutated)
+    with pytest.raises(ValueError, match="invalid entity"):
+        load_uk_take_up_contract()
+
+
+def test_rate_without_source_is_refused(monkeypatch) -> None:
+    raw = _resource()
+    mutated = copy.deepcopy(raw)
+    del mutated["programs"][0]["source"]["source"]
+
+    _reload_with(monkeypatch, mutated)
+
+    with pytest.raises(ValueError, match="requires source"):
+        load_uk_take_up_contract()
+
+
+def test_frozen_and_fitted_status_blocks_are_required(monkeypatch) -> None:
+    raw = _resource()
+    mutated = copy.deepcopy(raw)
+    universal_credit = next(
+        entry for entry in mutated["programs"] if entry["key"] == "universal_credit"
+    )
+    del universal_credit["source"]["freeze"]
+    _reload_with(monkeypatch, mutated)
+    with pytest.raises(ValueError, match="freeze block"):
+        load_uk_take_up_contract()
+
+    mutated = copy.deepcopy(raw)
+    mutated["continuous"].append(
+        {
+            "key": "synthetic_fitted_entry",
+            "source": {
+                "source": "synthetic test source",
+                "status": "fitted_offline",
+            },
+        }
+    )
+    _reload_with(monkeypatch, mutated)
+    with pytest.raises(ValueError, match="fitting_receipt"):
+        load_uk_take_up_contract()
+
+
+def test_resource_digest_binds_complete_json() -> None:
+    raw = _resource()
+    canonical = json.dumps(
+        raw,
+        allow_nan=False,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    expected = hashlib.sha256(canonical).hexdigest()
+    contract = load_uk_take_up_contract()
+
+    assert contract.resource_sha256 == expected
+    assert uk_take_up_contract_identity(contract)["resource_sha256"] == expected
+
+
+def test_tfc_routed_share_series_matches_pinned_chronicle_feed_when_present() -> None:
+    feed = _TEST_PATHS.repository / ".codex-work/consumer_facts_uk.jsonl"
+    if not feed.exists():
+        pytest.skip("pinned Chronicle UK feed is not present")
+
+    annual: dict[int, float] = {}
+    monthly: dict[int, list[float]] = {}
+    matched = 0
+    with feed.open(encoding="utf-8") as rows:
+        for line in rows:
+            if "hmrc-tax-free-childcare-march-2026" not in line:
+                continue
+            row = json.loads(line)
+            matched += 1
+            period = row["period"]
+            measure = row["observed_measure"]["source_measure_id"]
+            if measure == "annual_unique_children_with_used_accounts":
+                annual[int(period["value"])] = float(row["value"])
+            elif measure == "monthly_children_with_used_accounts":
+                year, month = map(int, str(period["value"]).split("-"))
+                financial_year = year if month >= 4 else year - 1
+                monthly.setdefault(financial_year, []).append(float(row["value"]))
+
+    assert matched == 126
+    contract = load_uk_take_up_contract()
+    entry = contract.entry("tax_free_childcare_spend_routed_share")
+    for year in range(2017, 2026):
+        assert len(monthly[year]) == 12
+        derived = sum(monthly[year]) / annual[year] / 12
+        assert round(derived, 3) == entry.values[f"{year}-04-01"]
+    assert entry.values["2017-04-01"] == 0.359
+    assert entry.values["2024-04-01"] == 0.593
+
+
+def test_forbidden_source_dependency_strings_absent_from_uk_resources() -> None:
+    for resource in ("take_up_contract.json", "brma_private_rented_households.json"):
+        text = files("microcosm.build.uk").joinpath(resource).read_text().lower()
+        assert "policyengine_" + "uk_data" not in text
+        assert "policyengine-" + "uk-data" not in text
+
+
+def test_extended_hours_usage_reproduces_dfe_additional_hours_ptes() -> None:
+    """The clipped draw's mean is the DfE-implied total weekly hours (#1126).
+
+    DfE funds 341,988.09 additional-hours PTEs (15 hours x 38 weeks each) for
+    the 379,000 3- and 4-year-olds registered for the working parent
+    entitlement in January 2025, on top of the universal 15 hours.
+    """
+
+    from microcosm.build.stochastic_assignment import clipped_normal_from_uniforms
+
+    contract = load_uk_take_up_contract()
+    entry = contract.continuous_entry("maximum_extended_childcare_hours_usage")
+    assert entry["source"]["status"] == "sourced_administrative_derived"
+    assert (entry["lower"], entry["upper"]) == (0, 30)
+
+    n = 200_000
+    uniforms = (np.arange(n) + 0.5) / n
+    draws = clipped_normal_from_uniforms(
+        uniforms,
+        mean=float(entry["mean"]),
+        sd=float(entry["sd"]),
+        lower=float(entry["lower"]),
+        upper=float(entry["upper"]),
+    )
+    dfe_mean_hours = 15 + 15 * 341_988.09 / 379_000
+    assert draws.mean() == pytest.approx(dfe_mean_hours, abs=0.01)
+
+
+def test_a_version_6_receipt_says_what_it_estimates_and_why_it_sits_at_a_bound() -> (
+    None
+):
+    from microcosm.build.uk_runtime.take_up_contract import (
+        ESTIMAND_MIN_TOOL_VERSION,
+        _entries,
+    )
+
+    entry = {
+        "key": "tax_free_childcare",
+        "output": "would_claim_tfc",
+        "entity": "benunit",
+        "values": {"2024-04-06": 0.99},
+        "source": {"source": "fit", "status": "fitted_offline"},
+        "fitting_receipt": {
+            "engine_version": "2.147.2",
+            "tool_version": ESTIMAND_MIN_TOOL_VERSION,
+        },
+    }
+    with pytest.raises(ValueError, match="estimand"):
+        _entries([entry], section="programs")
+    entry["fitting_receipt"]["estimand"] = "A fit to HMRC's two rows."
+    assert _entries([entry], section="programs")
+    entry["fitting_receipt"]["params_at_bound"] = ["tax_free_childcare"]
+    with pytest.raises(ValueError, match="at_bound_reason"):
+        _entries([entry], section="programs")
+    entry["fitting_receipt"]["at_bound_reason"] = "The rows ask for more than all."
+    assert _entries([entry], section="programs")
+    # Another rate at its bound needs no reason here.
+    entry["fitting_receipt"]["params_at_bound"] = ["universal_childcare"]
+    del entry["fitting_receipt"]["at_bound_reason"]
+    assert _entries([entry], section="programs")
+    # Earlier receipts are unaffected.
+    entry["fitting_receipt"] = {"engine_version": "2.134.4", "tool_version": 5}
+    assert _entries([entry], section="programs")

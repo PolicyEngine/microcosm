@@ -4,9 +4,9 @@
     "version": 1
   },
   "country": "us",
-  "documentation_sha256": "4d8abb7d30a87d75e2c0b8ddeeba5b192299e5c26446ae0f5971aae0a5146fed",
+  "documentation_sha256": "5636f298577c0c76caa318674ac6db9594c372e37e7ac5f17f25167b66a443f1",
   "field_usage": {
-    "authored_normative_field_count": 32411,
+    "authored_normative_field_count": 32415,
     "claim_count": 49,
     "claims": [
       {
@@ -514,8 +514,8 @@
         ],
         "mode": "legacy_behavior",
         "pointer_class": "all",
-        "pointer_count": 1720,
-        "pointer_sha256": "7e187b42fb027a57d156f93992d455d6e28cc387d792be94058c08e796fb56a1",
+        "pointer_count": 1724,
+        "pointer_sha256": "88f38d5e0a71f618a36f2457fb115b727afbf7aa00379ce3a066acba55fab294",
         "rationale": null,
         "relative_sink_prefix": "/source_manifest/stages",
         "source_prefix": "/authored/spec~1sources.yaml/stages",
@@ -772,20 +772,20 @@
         "verifier": "vintages"
       }
     ],
-    "configuration_field_count": 42191,
-    "consumed_field_count": 42191,
+    "configuration_field_count": 42195,
+    "consumed_field_count": 42195,
     "generation0_effect_counts": {
-      "legacy_behavior": 38505,
+      "legacy_behavior": 38509,
       "no_generation0_effect": 3686
     },
     "mode_counts": {
       "compiler_semantic": 27717,
       "front_end_validation": 354,
       "identity_only": 103,
-      "legacy_behavior": 14017
+      "legacy_behavior": 14021
     },
     "multiple_primary_use_field_count": 0,
-    "pointer_inventory_sha256": "b2ac963388957209c6d644d40a86d0f60f5d8592afb7f31e983ed76bf95df98c",
+    "pointer_inventory_sha256": "21ca2d1aa3da38244b3147340e09481bd6115b5a8a3fbe63c98484284064f431",
     "resolved_binding_field_count": 9780,
     "unused_field_count": 0
   },
@@ -1361,12 +1361,12 @@
         ],
         "expected": {
           "producer_count": 38,
-          "sha256": "397adfd4f4efb4450c17bec74155e0f56b55f2729198b0e1f792bfbeb1010cd7"
+          "sha256": "0684d34c1d3453f61e207db9acca6545f2af8dbb7ea7f09056e3a86f73d8c85c"
         },
         "failures": [],
         "observed": {
           "producer_count": 38,
-          "sha256": "397adfd4f4efb4450c17bec74155e0f56b55f2729198b0e1f792bfbeb1010cd7"
+          "sha256": "0684d34c1d3453f61e207db9acca6545f2af8dbb7ea7f09056e3a86f73d8c85c"
         },
         "status": "covered"
       },
@@ -1656,13 +1656,13 @@
           "compiler_ir.node_slices"
         ],
         "expected": {
-          "map_sha256": "dad44808366198b8826823b837c7b592c9ecee2299adbd9f8a20251dd6d0b00a",
-          "protocol_sha256": "5f6d3b527060bc6f15f1871c64a42994d4882ee5962f3350ea8a71a83ffcd6bf"
+          "map_sha256": "0db599df419dd16779097361dc72afdefb8df2abf8b134078da9c52d31d8e017",
+          "protocol_sha256": "2b7bdc1d6b0da1bdaf54b4cac29f10f2d3c8bed2e177729c2c89e6b33a099cc5"
         },
         "failures": [],
         "observed": {
-          "map_sha256": "dad44808366198b8826823b837c7b592c9ecee2299adbd9f8a20251dd6d0b00a",
-          "protocol_sha256": "5f6d3b527060bc6f15f1871c64a42994d4882ee5962f3350ea8a71a83ffcd6bf"
+          "map_sha256": "0db599df419dd16779097361dc72afdefb8df2abf8b134078da9c52d31d8e017",
+          "protocol_sha256": "2b7bdc1d6b0da1bdaf54b4cac29f10f2d3c8bed2e177729c2c89e6b33a099cc5"
         },
         "status": "covered"
       },
@@ -1677,7 +1677,7 @@
           "compiler_ir.seed_stream_map"
         ],
         "expected": {
-          "implementation_sha256": "5f6d3b527060bc6f15f1871c64a42994d4882ee5962f3350ea8a71a83ffcd6bf",
+          "implementation_sha256": "2b7bdc1d6b0da1bdaf54b4cac29f10f2d3c8bed2e177729c2c89e6b33a099cc5",
           "protocol": "legacy-v1",
           "streams": [
             "build_model",
@@ -1698,7 +1698,7 @@
         },
         "failures": [],
         "observed": {
-          "implementation_sha256": "5f6d3b527060bc6f15f1871c64a42994d4882ee5962f3350ea8a71a83ffcd6bf",
+          "implementation_sha256": "2b7bdc1d6b0da1bdaf54b4cac29f10f2d3c8bed2e177729c2c89e6b33a099cc5",
           "protocol": "legacy-v1",
           "streams": [
             "build_model",
@@ -1775,12 +1775,12 @@
           "legacy_adapter.imputation.late_producer_resource_semantics"
         ],
         "expected": {
-          "sha256": "ee7b7541a6925351d4acbfa0064f9586dd14c095e9208c38f492a83bb8a1afa1",
+          "sha256": "8f4cae118fa0e22c5606b9977bb2561f4e4014b96401404d077981da65cad669",
           "stages": 37
         },
         "failures": [],
         "observed": {
-          "sha256": "ee7b7541a6925351d4acbfa0064f9586dd14c095e9208c38f492a83bb8a1afa1",
+          "sha256": "8f4cae118fa0e22c5606b9977bb2561f4e4014b96401404d077981da65cad669",
           "stages": 38
         },
         "status": "covered"
@@ -1887,7 +1887,7 @@
             "alpha",
             "zeta"
           ],
-          "sha256": "3bf611d9efdba2a2edd813f0d4a39739d397c4769e9d47767996fea941f05a42"
+          "sha256": "d775bd3af8dba3e9535c914f44ab30af1a6abdbcc29cd8b66cc1ea64a9c0203b"
         },
         "failures": [],
         "observed": {
@@ -1911,7 +1911,7 @@
             "alpha",
             "zeta"
           ],
-          "sha256": "3bf611d9efdba2a2edd813f0d4a39739d397c4769e9d47767996fea941f05a42"
+          "sha256": "d775bd3af8dba3e9535c914f44ab30af1a6abdbcc29cd8b66cc1ea64a9c0203b"
         },
         "status": "covered"
       },
@@ -1975,7 +1975,7 @@
             "take_up_contract",
             "us_qbi_reconciliation_contract"
           ],
-          "sha256": "56d2b08be5b745c04d43610c340da08406aa17c7aa49f09dfc6207c70d9b0cf3"
+          "sha256": "d9f03f240b5827950036bac2cca26d877f29490daf737c83af728a2a65af69a2"
         },
         "status": "covered"
       },
@@ -2045,7 +2045,7 @@
             "congressional_district_vintage_crosswalk",
             "puma_ladder"
           ],
-          "sha256": "f49425ca8734ac559c73cf44f6458d86d3162a48956b98a27e6e758959361585",
+          "sha256": "44e7f5f6cd7ceeef85d532c3d46306d03de4f4ee811376e6d29920742746b65c",
           "target_vintage": "119th_congress"
         },
         "failures": [],
@@ -2054,7 +2054,7 @@
             "congressional_district_vintage_crosswalk",
             "puma_ladder"
           ],
-          "sha256": "f49425ca8734ac559c73cf44f6458d86d3162a48956b98a27e6e758959361585",
+          "sha256": "44e7f5f6cd7ceeef85d532c3d46306d03de4f4ee811376e6d29920742746b65c",
           "target_vintage": "119th_congress"
         },
         "status": "covered"
@@ -2599,7 +2599,7 @@
       "country": "us",
       "schema_id": "country_spec",
       "schema_version": 1,
-      "spec_sha256": "bbe92884034547e0cd9eb9be502fc539c33633e7552908406d3dabcfbcb96e3a"
+      "spec_sha256": "2a3172fb04b80e75ee72f0811d6d8d2fbf5c51608d097ffc25548ede287fd17d"
     }
   },
   "report_schema_version": 3,
@@ -2609,7 +2609,7 @@
     "country": "us",
     "schema_id": "country_spec",
     "schema_version": 1,
-    "spec_sha256": "bbe92884034547e0cd9eb9be502fc539c33633e7552908406d3dabcfbcb96e3a"
+    "spec_sha256": "2a3172fb04b80e75ee72f0811d6d8d2fbf5c51608d097ffc25548ede287fd17d"
   },
   "status": "pass"
 }

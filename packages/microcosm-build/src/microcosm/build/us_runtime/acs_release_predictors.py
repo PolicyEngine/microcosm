@@ -49,7 +49,10 @@ from zipfile import ZipFile
 import numpy as np
 import pandas as pd
 
-from microcosm.build.us_runtime.asec_census_person_columns import WEIND_TO_WEMIND
+from microcosm.build.us_runtime.asec_census_person_columns import (
+    WEIND_TO_WEMIND,
+    WORKER_INDUSTRY_CODES,
+)
 from microcosm.build.us_runtime.support_provenance import (
     support_channel_column,
     support_clone_index_column,
@@ -69,6 +72,7 @@ __all__ = [
     "ACS_TEN_TO_SPM_TENMORTSTATUS",
     "AcsReleasePredictorJoinResult",
     "acs_release_predictor_crosswalk_payload",
+    "crosswalk_acs_occupation_and_work_experience",
     "join_acs_release_predictors",
 ]
 
@@ -1066,8 +1070,7 @@ def acs_release_predictor_crosswalk_payload() -> dict[str, Any]:
                 str(key): value for key, value in WEIND_TO_WEMIND.items()
             },
             "observed_INDP_reference": (
-                "most recent job in the past 5 years (CPS WEIND: longest job "
-                "last year)"
+                "most recent job in the past 5 years (CPS WEIND: longest job last year)"
             ),
         },
         "work_experience": {
@@ -1710,6 +1713,30 @@ def _crosswalk_people(joined: pd.DataFrame) -> pd.DataFrame:
         raise ValueError(f"ACS HISP contains unsupported code(s): {unknown_hisp}.")
     result["PRDTHSP"] = hisp.map(_ACS_HISP_TO_CONSUMED_PRDTHSP).to_numpy(dtype=np.int16)
 
+    work_experience = crosswalk_acs_occupation_and_work_experience(joined)
+    return pd.concat([result, work_experience], axis=1)
+
+
+def crosswalk_acs_occupation_and_work_experience(joined: pd.DataFrame) -> pd.DataFrame:
+    """Map native ACS job fields to the reviewed CPS occupation/work recodes.
+
+    Both ACS input mapping and the authenticated release predictor join use
+    this crosswalk. Required source columns are AGEP, ESR, OCCP, INDP and
+    WKWN; optional SERIALNO/SPORDER identify refused source rows. The returned
+    PEIOOCC, POCCU2, WEIND, WEMIND and WKSWORK retain the input's row index.
+    """
+
+    required = ("AGEP", "ESR", "OCCP", "INDP", "WKWN")
+    missing = [column for column in required if column not in joined]
+    if missing:
+        raise ValueError(
+            f"ACS work-experience crosswalk needs source column(s): {missing}."
+        )
+    age = _required_integral(joined["AGEP"], label="ACS AGEP", minimum=0)
+    identity_columns = [
+        column for column in ("SERIALNO", "SPORDER") if column in joined
+    ]
+    result = pd.DataFrame(index=joined.index)
     occupation_raw = joined["OCCP"]
     occupation = pd.to_numeric(occupation_raw, errors="coerce")
     employment_raw = joined["ESR"]
@@ -1720,7 +1747,7 @@ def _crosswalk_people(joined: pd.DataFrame) -> pd.DataFrame:
         | (age.ge(16) & ~employment.isin(range(1, 7)))
     )
     if invalid_employment.any():
-        bad = joined.loc[invalid_employment, ["SERIALNO", "SPORDER", "AGEP", "ESR"]]
+        bad = joined.loc[invalid_employment, [*identity_columns, "AGEP", "ESR"]]
         raise ValueError(
             "ACS ESR code/universe mismatch (blank below age 16; codes 1--6 "
             "from age 16); examples="
@@ -1733,7 +1760,7 @@ def _crosswalk_people(joined: pd.DataFrame) -> pd.DataFrame:
         bad_mask = invalid_occupation | invalid_observed_universe
         bad = joined.loc[
             bad_mask,
-            ["SERIALNO", "SPORDER", "AGEP", "OCCP", "ESR"],
+            [*identity_columns, "AGEP", "OCCP", "ESR"],
         ]
         raise ValueError(
             "ACS OCCP code/universe mismatch (blank below age 16); examples="
@@ -1742,7 +1769,7 @@ def _crosswalk_people(joined: pd.DataFrame) -> pd.DataFrame:
     if invalid_blank.any():
         bad = joined.loc[
             invalid_blank,
-            ["SERIALNO", "SPORDER", "AGEP", "OCCP", "ESR"],
+            [*identity_columns, "AGEP", "OCCP", "ESR"],
         ]
         raise ValueError(
             "ACS OCCP is blank inside its observed employment universe; examples="
@@ -1781,16 +1808,14 @@ def _crosswalk_people(joined: pd.DataFrame) -> pd.DataFrame:
         industry.notna() & age.lt(16)
     )
     if invalid_industry.any():
-        bad = joined.loc[invalid_industry, ["SERIALNO", "SPORDER", "AGEP", "INDP"]]
+        bad = joined.loc[invalid_industry, [*identity_columns, "AGEP", "INDP"]]
         raise ValueError(
             "ACS INDP code/universe mismatch (blank below age 16); examples="
             f"{bad.head().to_dict('records')}."
         )
     blank_industry = industry.isna() & age.ge(16) & ~employment.eq(6)
     if blank_industry.any():
-        bad = joined.loc[
-            blank_industry, ["SERIALNO", "SPORDER", "AGEP", "INDP", "ESR"]
-        ]
+        bad = joined.loc[blank_industry, [*identity_columns, "AGEP", "INDP", "ESR"]]
         raise ValueError(
             "ACS INDP is blank inside its observed employment universe; examples="
             f"{bad.head().to_dict('records')}."
@@ -1815,16 +1840,16 @@ def _crosswalk_people(joined: pd.DataFrame) -> pd.DataFrame:
         | (weeks.notna() & ~weeks.isin(range(1, 53)))
     )
     if invalid_weeks.any():
-        bad = joined.loc[invalid_weeks, ["SERIALNO", "SPORDER", "AGEP", "WKWN"]]
+        bad = joined.loc[invalid_weeks, [*identity_columns, "AGEP", "WKWN"]]
         raise ValueError(
             "ACS WKWN code/universe mismatch (blank below age 16; 1--52 weeks "
             f"from age 16); examples={bad.head().to_dict('records')}."
         )
     wkswork = weeks.fillna(0).astype(np.int64)
-    worked_without_industry = wkswork.gt(0) & ~weind.between(1, 22)
+    worked_without_industry = wkswork.gt(0) & ~weind.isin(WORKER_INDUSTRY_CODES)
     if worked_without_industry.any():
         bad = joined.loc[
-            worked_without_industry, ["SERIALNO", "SPORDER", "AGEP", "INDP", "WKWN"]
+            worked_without_industry, [*identity_columns, "AGEP", "INDP", "WKWN"]
         ]
         raise ValueError(
             "ACS WKWN reports weeks worked without a worker INDP code; examples="
@@ -1878,8 +1903,8 @@ def _validate_canonical_ssi_reporter_values(
             "canonical raw join."
         )
     by_source = pd.Series(reported.to_numpy(), index=native[source_id_column])
-    pool_aligned = canonical["person_source_id"].map(by_source).to_numpy(
-        dtype=np.float64
+    pool_aligned = (
+        canonical["person_source_id"].map(by_source).to_numpy(dtype=np.float64)
     )
 
     raw_ssip = pd.to_numeric(joined["SSIP"], errors="coerce")

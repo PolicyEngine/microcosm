@@ -13,6 +13,7 @@ __all__ = [
     "assign_binary_from_rate",
     "assign_binary_with_anchored_residual",
     "clipped_normal_from_uniforms",
+    "integer_record_keys",
     "sample_categorical_from_counts",
     "stable_identity_uniforms",
 ]
@@ -44,6 +45,25 @@ def stable_identity_uniforms(
     )
 
 
+def integer_record_keys(
+    ids: Sequence[object] | np.ndarray, *, label: str
+) -> np.ndarray:
+    """Record ids to key ``stable_identity_uniforms`` on: integers, each once.
+
+    The key string formats each id, so the integer ``1001`` and the float
+    ``1001.0`` draw differently, and a merge that turned an id column into
+    floats would silently redraw every record. A repeated id would give two
+    records the same uniforms.
+    """
+
+    keys = np.asarray(ids)
+    if keys.ndim != 1 or not np.issubdtype(keys.dtype, np.integer):
+        raise TypeError(f"{label} must be a one-dimensional array of integer ids.")
+    if np.unique(keys).size != keys.size:
+        raise ValueError(f"{label} must name each record once.")
+    return keys
+
+
 def assign_binary_from_rate(
     draws: Sequence[float] | np.ndarray,
     rate: float,
@@ -64,8 +84,8 @@ def assign_binary_with_anchored_residual(
 
     The target count is ``int(rate * n_units)`` over the unweighted
     population; ``population`` restricts that population to the rows the
-    programme can reach (a benefit unit with no adult under State Pension age
-    cannot claim Universal Credit), so the rate is a share of the reachable
+    programme can reach (a benefit unit with no claimant or partner of working
+    age cannot claim Universal Credit), so the rate is a share of the reachable
     rows and rows outside it are never drawn. Anchored overshoot is accepted,
     an anchor outside the population stays true (reported receipt is a fact),
     and the residual fills only non-anchored rows inside the population.

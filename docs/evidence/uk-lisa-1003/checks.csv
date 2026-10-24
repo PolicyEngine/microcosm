@@ -1,0 +1,15 @@
+check,spine,spine_arm_b,spine_arm_d
+cap: households over gross financial wealth,<10,76,10
+cap: owners cleared,0,<10,0
+cap: pct of weighted LISA mass removed,0.515,12.702,0.557
+support clip: rows clipped low / high,0 / 0,0 / 0,0 / 0
+H5: no household total above gross financial wealth,True,True,True
+H5: household total equals the sum of its persons,True,True,True
+H5: holds exactly where the balance is positive,True,True,True
+H5: support gate on uk/was_lisa_support_bounds.json,True,True,True
+H5: nonnegative,True,True,True
+H5: on the export allow-list,True,True,True
+H5: no degenerate cell,True,True,True
+spine gates passed (control: 26 of 26),27 of 27,27 of 27,27 of 27
+"twin against main: only the three cells differ, mass log gains the conserved was_lisa record",True,,
+"determinism: second build payload-identical, equal mass log and stage evidence",True,,

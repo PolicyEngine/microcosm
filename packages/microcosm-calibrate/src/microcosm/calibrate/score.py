@@ -179,6 +179,8 @@ def score_targets(
                 if target_loss_scales_input is not None
                 else "default_target",
                 target_loss_cap=target_loss_cap,
+                targets=problem.target_vector,
+                target_loss_weights=aligned_target_loss_weights,
             ),
             **dict(options or {}),
         },
