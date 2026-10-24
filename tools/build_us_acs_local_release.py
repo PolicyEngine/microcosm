@@ -3034,18 +3034,22 @@ def _require_local_hours(frame, staging_summary: dict) -> None:
         raise SystemExit("Local hours coverage failed: " + "; ".join(gate.failures))
 
 
-def _require_acs_self_employment_identity(frame) -> None:
-    """Refuse staging whose ACS self-employment leaves add to SEMP (#1380).
+def _require_acs_self_employment_identity(frame):
+    """Refuse a frame whose ACS self-employment leaves add to SEMP (#1380).
 
     Staging built before the ACS transfer zeroed donor self-employment
-    components carries them on top of SEMP, and the release refuses it.
+    components carries them on top of SEMP, and so does any checkpoint
+    calibrated from it. Materialize and calibrate check the staging frame;
+    package checks the calibrated H5 it ships, so a historical checkpoint
+    cannot reach a release through qa and finalize alone. Returns the
+    passing gate.
     """
 
     person = frame.table("person")
     tag = spine_column("person")
     if tag not in person.columns:
         raise SystemExit(
-            f"Staging frame has no {tag}; cannot select the ACS rows the "
+            f"The frame has no {tag}; cannot select the ACS rows the "
             "self-employment identity covers."
         )
     gate = acs_self_employment_identity_gate(
@@ -3062,6 +3066,7 @@ def _require_acs_self_employment_identity(frame) -> None:
         raise SystemExit(
             "ACS self-employment identity failed: " + "; ".join(gate.failures)
         )
+    return gate
 
 
 def do_finalize(args) -> None:
@@ -3649,6 +3654,9 @@ def do_package(args) -> dict:
     # release records as built-with.
     spm_measurement_gate = _require_spm_measurement(artifact_frame)
     package_hours_gate = _local_hours_gate(artifact_frame, staging_summary)
+    # microcosm#1380: a checkpoint calibrated from pre-fix staging stacks
+    # donor self-employment on SEMP; grade the bytes being packaged.
+    self_employment_gate = _require_acs_self_employment_identity(artifact_frame)
     del artifact_frame
     gc.collect()
     if not package_hours_gate.passed:
@@ -3671,6 +3679,13 @@ def do_package(args) -> dict:
                 "passed": True,
                 "failures": [],
                 "detail": dict(package_hours_gate.details),
+                "artifact_sha256": h5_sha,
+                "checked_at_stage": "package",
+            },
+            self_employment_gate.name: {
+                "passed": True,
+                "failures": [],
+                "detail": dict(self_employment_gate.details),
                 "artifact_sha256": h5_sha,
                 "checked_at_stage": "package",
             },

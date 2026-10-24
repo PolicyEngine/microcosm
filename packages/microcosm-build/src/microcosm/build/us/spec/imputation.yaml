@@ -485,7 +485,7 @@ transfer_execution:
         - partnership_self_employment_net_earnings
         - sstb_self_employment_income_before_lsr
         operation: set_to_zero
-        mutable_rows: newly_imputed_component_cells_where_total_not_imputed
+        mutable_rows: newly_imputed_component_cells_where_recipient_total_not_imputed
   profiles:
     acs_transfer_default:
       derive_schedule_d: false

@@ -16,9 +16,9 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # budget_search_bracket move it, and the fit kernels' bytes, so the QRF
     # chain step's caller-owned uniforms move it too. microcosm#1380's
     # self-employment feature in the imputation schema moves the schema-set
-    # receipt.
+    # receipt, and its post-transfer step moves acs_transfer's attested bytes.
     assert first.spec_sha256 == (
-        "bdfe8346e30a898e80e736b9250760c5abc77fe1b5a3b2e2a31fe99fa1996bf4"
+        "4e77efa940bfd7c0099fcb84aab47f2f5c02772898502be13d0ab21be2d4a83c"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")

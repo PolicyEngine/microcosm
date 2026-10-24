@@ -665,8 +665,9 @@ def acs_self_employment_identity_gate(
     across the leaves passes; a donor draw added on top of it fails
     (microcosm#1380). A row with blank SEMP is outside the ACS
     self-employment universe and must carry no self-employment; its blank
-    leaves are reviewed structural nulls. A blank leaf or ``ADJINC`` on a row
-    that reports SEMP fails, because the identity cannot be checked there.
+    leaves are reviewed structural nulls. A blank or infinite leaf or
+    ``ADJINC`` on a row that reports SEMP fails, because the identity cannot
+    be checked there, and so does an infinite SEMP, which is not a blank.
     """
 
     name = "acs_self_employment_identity"
@@ -700,16 +701,19 @@ def acs_self_employment_identity_gate(
     adjinc = numeric("ADJINC")
     leaves = np.column_stack([numeric(column) for column in _SELF_EMPLOYMENT_LEAVES])
     reported = np.isfinite(semp)
-    blank_leaf = reported & np.isnan(leaves).any(axis=1)
-    blank_adjinc = reported & ~np.isfinite(adjinc)
-    checkable = reported & ~blank_leaf & ~blank_adjinc
+    blank_semp = np.isnan(semp)
+    infinite_semp = np.isinf(semp)
+    nonfinite_leaf = reported & ~np.isfinite(leaves).all(axis=1)
+    nonfinite_adjinc = reported & ~np.isfinite(adjinc)
+    checkable = reported & ~nonfinite_leaf & ~nonfinite_adjinc
     filled = np.where(np.isnan(leaves), 0.0, leaves)
     gap = np.zeros(len(subset), dtype=np.float64)
     gap[checkable] = filled[checkable].sum(axis=1) - (
         semp[checkable] * adjinc[checkable] / _INFLATION_FACTOR_DENOMINATOR
     )
-    mismatched = checkable & (np.abs(gap) > tolerance)
-    outside_nonzero = ~reported & (filled != 0.0).any(axis=1)
+    # Negated so a gap that overflows to a nonfinite value also fails.
+    mismatched = checkable & ~(np.abs(gap) <= tolerance)
+    outside_nonzero = blank_semp & (filled != 0.0).any(axis=1)
 
     failures: list[str] = []
     if not selected.any():
@@ -727,15 +731,19 @@ def acs_self_employment_identity_gate(
             f"{int(outside_nonzero.sum())} ACS person row(s) with blank SEMP "
             "carry nonzero self-employment."
         )
-    if blank_leaf.any():
+    if infinite_semp.any():
         failures.append(
-            f"{int(blank_leaf.sum())} ACS person row(s) reporting SEMP have a "
-            "blank self-employment leaf."
+            f"{int(infinite_semp.sum())} ACS person row(s) have an infinite SEMP."
         )
-    if blank_adjinc.any():
+    if nonfinite_leaf.any():
         failures.append(
-            f"{int(blank_adjinc.sum())} ACS person row(s) reporting SEMP have "
-            "a blank ADJINC."
+            f"{int(nonfinite_leaf.sum())} ACS person row(s) reporting SEMP have a "
+            "blank or infinite self-employment leaf."
+        )
+    if nonfinite_adjinc.any():
+        failures.append(
+            f"{int(nonfinite_adjinc.sum())} ACS person row(s) reporting SEMP have "
+            "a blank or infinite ADJINC."
         )
     return GateResult(
         name=name,
@@ -748,10 +756,11 @@ def acs_self_employment_identity_gate(
             "mismatched_rows": int(mismatched.sum()),
             "max_abs_gap": float(np.abs(gap).max()) if len(gap) else 0.0,
             "excess_over_semp": float(gap[mismatched].clip(min=0.0).sum()),
-            "blank_semp_rows": int((~reported).sum()),
+            "blank_semp_rows": int(blank_semp.sum()),
             "blank_semp_nonzero_rows": int(outside_nonzero.sum()),
-            "blank_leaf_rows": int(blank_leaf.sum()),
-            "blank_adjinc_rows": int(blank_adjinc.sum()),
+            "infinite_semp_rows": int(infinite_semp.sum()),
+            "nonfinite_leaf_rows": int(nonfinite_leaf.sum()),
+            "nonfinite_adjinc_rows": int(nonfinite_adjinc.sum()),
             "nonzero_rows_by_leaf": {
                 column: int((filled[:, index] != 0.0).sum())
                 for index, column in enumerate(_SELF_EMPLOYMENT_LEAVES)

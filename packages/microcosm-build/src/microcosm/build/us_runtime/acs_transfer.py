@@ -365,7 +365,7 @@ def acs_transfer_execution_contract_identity(
                 "components": list(ACS_SELF_EMPLOYMENT_COMPONENT_INPUTS),
                 "operation": "set_to_zero",
                 "mutable_rows": (
-                    "newly_imputed_component_cells_where_total_not_imputed"
+                    "newly_imputed_component_cells_where_recipient_total_not_imputed"
                 ),
             },
         },
@@ -1863,11 +1863,15 @@ def keep_measured_self_employment_totals(
     transfer also drew the row's ``self_employment_income_before_lsr``. When
     the total was not drawn, it is the row's own source value (or the
     source's structural blank), and the component it would split is already
-    inside it. Cells the transfer did not fill are never changed, and the
-    total itself is never changed. ``person`` is updated in place; the return
-    value maps each touched component to its receipt counts.
+    inside it. A recipient with no self-employment total at all has nothing
+    a component could add to, so its draws stand. Cells the transfer did not
+    fill are never changed, and the total itself is never changed. ``person``
+    is updated in place; the return value maps each touched component to its
+    receipt counts.
     """
 
+    if _SELF_EMPLOYMENT_TOTAL not in person.columns:
+        return {}
     rows = len(person)
     total_drawn = np.asarray(
         imputed_masks.get(("person", _SELF_EMPLOYMENT_TOTAL), np.zeros(rows, bool)),

@@ -6,6 +6,8 @@ table and imputation mask:
 * **Total untouched.** ``self_employment_income_before_lsr`` never changes.
 * **Kept at zero.** A component cell the transfer filled is zero unless the
   transfer also drew that row's total.
+* **No total, no change.** A table with no total column is left exactly as
+  it was: there is no measured total for a component to add to.
 * **Joint draws survive.** A component filled on a row whose total was drawn
   alongside it keeps its drawn value.
 * **Observed cells untouched.** A component cell the transfer did not fill
@@ -21,6 +23,8 @@ Invariants of :func:`acs_self_employment_identity_gate`:
 * **Additions fail.** Moving one reporting row's leaves off that total by more
   than the tolerance fails, and the gate counts exactly that row.
 * **Selection.** Rows outside ``rows`` never affect the verdict.
+* **Finite only.** An infinite SEMP, leaf or ADJINC never passes, even when
+  opposing infinities would cancel.
 
 The composition test runs the real transfer and requires its output to pass
 the gate, and the same transfer without the post-transfer step to fail it:
@@ -77,6 +81,10 @@ def _imputed_tables(draw):
         filled = table[column].to_numpy(copy=True)
         filled[mask & np.isnan(filled)] = 0.0
         table[column] = filled
+    # A recipient may carry no total at all; then the transfer drew none.
+    if draw(st.booleans()):
+        table = table.drop(columns=[_TOTAL])
+        masks.pop(("person", _TOTAL), None)
     return table, masks
 
 
@@ -87,6 +95,10 @@ def test_post_transfer_step_keeps_measured_totals(case) -> None:
     after = before.copy(deep=True)
     counts = keep_measured_self_employment_totals(after, imputed_masks=masks)
 
+    if _TOTAL not in before.columns:
+        assert counts == {}
+        pd.testing.assert_frame_equal(after, before)
+        return
     rows = len(before)
     total_drawn = masks.get(("person", _TOTAL), np.zeros(rows, dtype=bool))
     pd.testing.assert_series_equal(after[_TOTAL], before[_TOTAL])
@@ -189,8 +201,56 @@ def test_gate_refuses_rows_it_cannot_check() -> None:
     gate = acs_self_employment_identity_gate(person, rows=_all(person))
 
     assert not gate.passed
-    assert gate.details["blank_adjinc_rows"] == 1
-    assert gate.details["blank_leaf_rows"] == 1
+    assert gate.details["nonfinite_adjinc_rows"] == 1
+    assert gate.details["nonfinite_leaf_rows"] == 1
+
+
+def test_gate_refuses_opposing_infinite_leaves() -> None:
+    person = _person(
+        SEMP=[100.0],
+        self_employment_income_before_lsr=[100.0],
+        farm_operations_income=[np.inf],
+        partnership_self_employment_net_earnings=[-np.inf],
+    )
+
+    gate = acs_self_employment_identity_gate(person, rows=_all(person))
+
+    assert not gate.passed
+    assert gate.details["nonfinite_leaf_rows"] == 1
+    assert "blank or infinite self-employment leaf" in gate.failures[0]
+
+
+def test_gate_refuses_infinite_semp_adjinc_and_leaves_outside_the_universe() -> (
+    None
+):
+    person = _person(
+        SEMP=[np.inf, 100.0, np.nan],
+        ADJINC=[1_000_000.0, np.inf, 1_000_000.0],
+        self_employment_income_before_lsr=[0.0, 100.0, np.nan],
+        sstb_self_employment_income_before_lsr=[0.0, 0.0, -np.inf],
+    )
+
+    gate = acs_self_employment_identity_gate(person, rows=_all(person))
+
+    assert not gate.passed
+    assert gate.details["infinite_semp_rows"] == 1
+    assert gate.details["blank_semp_rows"] == 1
+    assert gate.details["nonfinite_adjinc_rows"] == 1
+    assert gate.details["blank_semp_nonzero_rows"] == 1
+    assert gate.details["semp_reported_rows"] == 1
+
+
+def test_gate_refuses_a_gap_that_overflows() -> None:
+    person = _person(
+        SEMP=[1e308],
+        ADJINC=[1e7],
+        self_employment_income_before_lsr=[1e308],
+    )
+
+    gate = acs_self_employment_identity_gate(person, rows=_all(person))
+
+    assert not gate.passed
+    assert gate.details["mismatched_rows"] == 1
 
 
 @pytest.mark.parametrize("column", ("SEMP", "ADJINC", *_LEAVES))
@@ -398,6 +458,46 @@ def _transfer(monkeypatch, recipient, donor):
         donor_channel=None,
         n_estimators=1,
     )
+
+
+def test_component_only_transfer_without_a_total_keeps_its_draws(
+    monkeypatch,
+) -> None:
+    """A recipient with no self-employment total has none to protect.
+
+    Its component draws are the only self-employment it gets, so the step
+    leaves them as drawn and records nothing.
+    """
+
+    recipient, donor = _transfer_case()
+    from microcosm.frame import Frame
+
+    recipient = Frame(
+        {
+            "person": recipient.table("person").drop(columns=[_TOTAL]),
+            "household": recipient.table("household"),
+        },
+        recipient.schema,
+        {"household": recipient.weights_for("household")},
+    )
+    monkeypatch.setattr(acs_transfer_module, "QRF", _DonorMeanQRF)
+    result = acs_transfer_module.transfer_acs_inputs(
+        recipient,
+        donor,
+        target_families={"person": {"farm": ("farm_operations_income",)}},
+        donor_channel=None,
+        n_estimators=1,
+    )
+    person = result.frame.table("person")
+
+    assert _TOTAL not in person.columns
+    assert np.allclose(person["farm_operations_income"], -500.0)
+    record = next(
+        item
+        for item in result.imputed_inputs
+        if item.column == "farm_operations_income"
+    )
+    assert record.reconciliation is None
 
 
 def test_transfer_output_passes_the_gate_only_with_the_step(monkeypatch) -> None:

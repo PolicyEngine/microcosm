@@ -346,7 +346,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # and so do microcosm#454's meps_esi_premiums stage and
             # microcosm#1376's puma_county_vintage draw module, and
             # microcosm#1380's self-employment post-transfer contract.
-            "spec_sha256": "7bcb067c6bf3c7998602647654fb9bcdd8a8ee55d574a920a3d0ca66b11e2fd3",
+            "spec_sha256": "c677d50bd0bbcd76c8c141c2c281a7bd49145369f08da8d5db324f2febbada5f",
         },
     }
 
