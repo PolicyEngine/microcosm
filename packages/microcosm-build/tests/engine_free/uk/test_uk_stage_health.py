@@ -2888,10 +2888,12 @@ def test_excise_quantities_gate_recomputes_every_level_from_the_vendored_rows(
     declaration = excise_declaration()
     patch_excise_facts(monkeypatch, declaration)
     resolved = excise_levels(declaration)
-    tobacco, on_trade, gambling = (
+    tobacco, on_trade, gambling, lottery_share, betting_share = (
         "tobacco_share_of_alcohol_and_tobacco",
         "on_trade_alcohol_share_of_restaurants_and_hotels",
         "gambling_stakes_share_of_recreation",
+        "national_lottery_share_of_gambling_stakes",
+        "betting_and_gaming_share_of_other_gambling_stakes",
     )
     draws = pd.DataFrame(
         {
@@ -2901,6 +2903,8 @@ def test_excise_quantities_gate_recomputes_every_level_from_the_vendored_rows(
             tobacco: [0.25, 1.0, 0.0, 0.0],
             on_trade: [0.1, 0.0, 0.5, 0.0],
             gambling: [0.02, 0.0, 0.0, 0.05],
+            lottery_share: [0.5, 0.0, 0.0, 0.0],
+            betting_share: [0.0, 0.0, 0.0, 0.75],
         }
     )
     _, quantities = level_excise_quantities(
@@ -2919,7 +2923,13 @@ def test_excise_quantities_gate_recomputes_every_level_from_the_vendored_rows(
             "frame": {"draws_outside_unit_interval": 0},
             "donor": {"positive_support": "30+", "total_beside_lines": residual},
         }
-        for name, residual in ((tobacco, 0.004), (on_trade, None), (gambling, None))
+        for name, residual in (
+            (tobacco, 0.004),
+            (on_trade, None),
+            (gambling, None),
+            (lottery_share, None),
+            (betting_share, None),
+        )
     }
     parameters = {
         "stage": "lcfs_consumption",
@@ -2969,6 +2979,14 @@ def test_excise_quantities_gate_recomputes_every_level_from_the_vendored_rows(
     )
     failing(
         lambda e, s: beer(e, s).update(positive_share=0.99), "where its spending is"
+    )
+    # A betting and gaming base positive where the National Lottery's stakes
+    # are, not where its own are.
+    failing(
+        lambda e, s: e["outputs"]["remote_gaming_net_losses"].update(
+            positive_share=e["keys"]["national_lottery"]["positive_share"]
+        ),
+        "where its spending is",
     )
     failing(lambda e, s: e["outputs"].pop("wine_litres"), "not the declared")
     failing(lambda e, s: e.update(weeks_per_year=52.18), "weeks_per_year")

@@ -218,6 +218,19 @@ UK_LCFS_GAMBLING_STAKE_CODES = (
     "c94316",
     "c94319",
 )
+#: The National Lottery's stake lines, scratchcards (row 1646) and draws (row
+#: 1649), which Lottery Duty is charged on, and the stake lines beside them.
+UK_LCFS_NATIONAL_LOTTERY_STAKE_CODES = ("c94316", "c94319")
+UK_LCFS_OTHER_GAMBLING_STAKE_CODES = tuple(
+    code
+    for code in UK_LCFS_GAMBLING_STAKE_CODES
+    if code not in UK_LCFS_NATIONAL_LOTTERY_STAKE_CODES
+)
+#: Of those, the lines that carry the other duties: football pools (Pool
+#: Betting Duty), bingo, and bookmaker, tote and other betting with the gaming
+#: machines Volume D files there (rows 1631, 1634 and 1640). Society lotteries
+#: (c94313) and the Irish Lottery (c94315) pay no UK gambling duty.
+UK_LCFS_BETTING_AND_GAMING_STAKE_CODES = ("c94311", "c94312", "c94314")
 #: LCFS fuel, light and power (p537) by fuel, from the LCF 2024-25 User Guide
 #: Volume F (SN 9603, ``9603_volume_f_derived_variables_2024_25.xlsx``):
 #: the variable labels on sheet "Part 2" (rows cited below) and the P537
@@ -454,6 +467,13 @@ UK_LCFS_GAMBLING_BASES: Mapping[str, tuple[str, str, str]] = {
         "machine_games_higher",
     ),
 }
+#: The stakes each gambling base is shared out by: Lottery Duty's base by the
+#: National Lottery's stakes, every other base by the betting and gaming
+#: stakes (football pools, bingo, bookmakers and machines), so neither follows
+#: the other's players and the society and Irish lotteries carry no base.
+UK_LCFS_NATIONAL_LOTTERY_INPUT = "national_lottery_ticket_spending"
+UK_LCFS_NATIONAL_LOTTERY_KEY = "national_lottery"
+UK_LCFS_BETTING_AND_GAMING_KEY = "betting_and_gaming"
 #: General Betting Duty's base (its receipts over the fixed-odds rate, the
 #: rate of every part it is split into in the base year) is split by the
 #: Gambling Commission's gross gambling yield for Great Britain: (sector,
@@ -653,11 +673,29 @@ UK_LCFS_CONSUMPTION_TARGET_COLUMNS = (
 #: restaurants and hotels (P611), whose published total the 2024-25 tab stores
 #: to one decimal place, so its lines can pass it by pennies and the share is
 #: clipped at one. Gambling stakes are a share of recreation (P609), stored
-#: the same way. Each maps to the total it splits, the diary lines over it and
-#: the diary lines (or published total) under it.
+#: the same way, and are split in turn: the National Lottery's share of the
+#: stakes, then the betting and gaming share of the rest, which leaves the
+#: society and Irish lotteries no duty base. Each maps to the total it splits
+#: (a drawn total, or the stakes an earlier share gives), the diary lines over
+#: it and the diary lines (or published total) under it.
 UK_LCFS_TOBACCO_SHARE = "tobacco_share_of_alcohol_and_tobacco"
 UK_LCFS_ON_TRADE_ALCOHOL_SHARE = "on_trade_alcohol_share_of_restaurants_and_hotels"
 UK_LCFS_GAMBLING_SHARE = "gambling_stakes_share_of_recreation"
+UK_LCFS_NATIONAL_LOTTERY_SHARE = "national_lottery_share_of_gambling_stakes"
+UK_LCFS_BETTING_AND_GAMING_SHARE = "betting_and_gaming_share_of_other_gambling_stakes"
+#: The spending the shares give, scratch columns no table carries.
+UK_LCFS_TOBACCO_SPENDING = "tobacco_spending"
+UK_LCFS_OFF_TRADE_ALCOHOL_SPENDING = "off_trade_alcohol_spending"
+UK_LCFS_ON_TRADE_ALCOHOL_SPENDING = "on_trade_alcohol_spending"
+UK_LCFS_GAMBLING_SPENDING = "gambling_stakes"
+UK_LCFS_NATIONAL_LOTTERY_SPENDING = "national_lottery_stakes"
+UK_LCFS_OTHER_GAMBLING_SPENDING = "other_gambling_stakes"
+UK_LCFS_BETTING_AND_GAMING_SPENDING = "betting_and_gaming_stakes"
+#: The stakes a share can split: scratch, so the donor has no published total
+#: of them and the share's denominator is its diary lines.
+UK_LCFS_EXCISE_SPENDING_TOTALS = frozenset(
+    {UK_LCFS_GAMBLING_SPENDING, UK_LCFS_OTHER_GAMBLING_SPENDING}
+)
 UK_LCFS_EXCISE_SHARES: Mapping[str, tuple[str, tuple[str, ...], tuple[str, ...]]] = {
     UK_LCFS_TOBACCO_SHARE: (
         "alcohol_and_tobacco_consumption",
@@ -674,12 +712,17 @@ UK_LCFS_EXCISE_SHARES: Mapping[str, tuple[str, tuple[str, ...], tuple[str, ...]]
         UK_LCFS_GAMBLING_STAKE_CODES,
         ("p609",),
     ),
+    UK_LCFS_NATIONAL_LOTTERY_SHARE: (
+        UK_LCFS_GAMBLING_SPENDING,
+        UK_LCFS_NATIONAL_LOTTERY_STAKE_CODES,
+        UK_LCFS_GAMBLING_STAKE_CODES,
+    ),
+    UK_LCFS_BETTING_AND_GAMING_SHARE: (
+        UK_LCFS_OTHER_GAMBLING_SPENDING,
+        UK_LCFS_BETTING_AND_GAMING_STAKE_CODES,
+        UK_LCFS_OTHER_GAMBLING_STAKE_CODES,
+    ),
 }
-#: The spending the shares give, scratch columns no table carries.
-UK_LCFS_TOBACCO_SPENDING = "tobacco_spending"
-UK_LCFS_OFF_TRADE_ALCOHOL_SPENDING = "off_trade_alcohol_spending"
-UK_LCFS_ON_TRADE_ALCOHOL_SPENDING = "on_trade_alcohol_spending"
-UK_LCFS_GAMBLING_SPENDING = "gambling_stakes"
 #: ``UKLCFSConsumptionResult`` evidence key of the shares' report-only receipt.
 UK_LCFS_EXCISE_SHARES_RECEIPT = "excise_shares"
 RECOMPOSE_FROM_REMAINDER_KIND = "recompose_from_remainder"
@@ -2160,8 +2203,8 @@ class ExciseQuantityLevel:
     ``annual`` is in the engine's units a year: litres of the product, or
     cigarettes, or grams, or pounds; the step divides the weekly tobacco
     inputs by ``UK_PE_UK_WEEKS_IN_YEAR`` after levelling. ``key`` is the
-    household spending the quantity is shared out by: alcohol, tobacco or
-    gambling stakes.
+    household spending the quantity is shared out by: alcohol, tobacco, the
+    National Lottery's stakes or the betting and gaming stakes.
     """
 
     column: str
@@ -2527,7 +2570,9 @@ def gambling_levels(
         levels[column] = ExciseQuantityLevel(
             column,
             annual,
-            "gambling",
+            UK_LCFS_NATIONAL_LOTTERY_KEY
+            if column == UK_LCFS_NATIONAL_LOTTERY_INPUT
+            else UK_LCFS_BETTING_AND_GAMING_KEY,
             {
                 **receipt,
                 "unit": UK_LCFS_EXCISE_GAMBLING_UNIT,
@@ -2577,7 +2622,7 @@ def gambling_levels(
         levels[column] = ExciseQuantityLevel(
             column,
             annual,
-            "gambling",
+            UK_LCFS_BETTING_AND_GAMING_KEY,
             {
                 **receipt,
                 "unit": UK_LCFS_EXCISE_GAMBLING_UNIT,
@@ -2627,18 +2672,20 @@ def level_excise_quantities(
 
     Each household's alcohol inputs are the national volumes in proportion to
     its alcohol spending, its tobacco inputs the national clearances in
-    proportion to its tobacco spending and its gambling inputs the national
-    bases in proportion to its gambling stakes, all at prior weights: one
-    factor per input, the ``level_road_fuel`` scaling, so the frame's
-    weighted total is the published quantity. Under the published on-trade
-    share each channel's volume goes to that channel's spenders; by spending,
-    a pound buys the same volume in either, which leans the alcohol inputs
-    towards drinkers in pubs (``UK_LCFS_ALCOHOL_VOLUME_BY_SPENDING`` records
-    by how much). Every gambling base follows the same stakes, since the
-    diary cannot tell remote from land-based play. Weekly inputs are the
-    annual quantity over the engine's 52 weeks; a draught share is written as
-    published. The spending is the drawn shares of the drawn totals, so no
-    total moves (microcosm#1359).
+    proportion to its tobacco spending, its National Lottery ticket spending
+    the national base in proportion to its National Lottery stakes and its
+    other gambling inputs the national bases in proportion to its betting and
+    gaming stakes, all at prior weights: one factor per input, the
+    ``level_road_fuel`` scaling, so the frame's weighted total is the
+    published quantity. Under the published on-trade share each channel's
+    volume goes to that channel's spenders; by spending, a pound buys the same
+    volume in either, which leans the alcohol inputs towards drinkers in pubs
+    (``UK_LCFS_ALCOHOL_VOLUME_BY_SPENDING`` records by how much). The betting
+    and gaming bases all follow the same stakes, since the diary cannot tell
+    remote from land-based play. Weekly inputs are the annual quantity over
+    the engine's 52 weeks; a draught share is written as published. The
+    spending is the drawn shares of the drawn totals, so no total moves
+    (microcosm#1359).
     """
 
     weight_values = np.asarray(weights, dtype=float)
@@ -2647,7 +2694,10 @@ def level_excise_quantities(
     off_trade = spending[UK_LCFS_OFF_TRADE_ALCOHOL_SPENDING].to_numpy(dtype=float)
     on_trade = spending[UK_LCFS_ON_TRADE_ALCOHOL_SPENDING].to_numpy(dtype=float)
     tobacco = spending[UK_LCFS_TOBACCO_SPENDING].to_numpy(dtype=float)
-    gambling = spending[UK_LCFS_GAMBLING_SPENDING].to_numpy(dtype=float)
+    stakes = spending[UK_LCFS_GAMBLING_SPENDING].to_numpy(dtype=float)
+    lottery = spending[UK_LCFS_NATIONAL_LOTTERY_SPENDING].to_numpy(dtype=float)
+    other_stakes = spending[UK_LCFS_OTHER_GAMBLING_SPENDING].to_numpy(dtype=float)
+    betting = spending[UK_LCFS_BETTING_AND_GAMING_SPENDING].to_numpy(dtype=float)
     volume = levels.volume
     if volume.rule == UK_LCFS_ALCOHOL_VOLUME_BY_SPENDING:
         alcohol = off_trade + on_trade
@@ -2657,7 +2707,12 @@ def level_excise_quantities(
             raise ValueError("the frame draws no alcohol in one of the two channels.")
         share = float(volume.on_trade_share)
         alcohol = (1.0 - share) * off_trade / totals[0] + share * on_trade / totals[1]
-    keys = {"alcohol": alcohol, "tobacco": tobacco, "gambling": gambling}
+    keys = {
+        "alcohol": alcohol,
+        "tobacco": tobacco,
+        UK_LCFS_NATIONAL_LOTTERY_KEY: lottery,
+        UK_LCFS_BETTING_AND_GAMING_KEY: betting,
+    }
     quantities = pd.DataFrame(index=household_draws.index)
     outputs: dict[str, Any] = {}
     for column, level in levels.quantities.items():
@@ -2688,7 +2743,10 @@ def level_excise_quantities(
             (UK_LCFS_TOBACCO_SPENDING, tobacco),
             (UK_LCFS_OFF_TRADE_ALCOHOL_SPENDING, off_trade),
             (UK_LCFS_ON_TRADE_ALCOHOL_SPENDING, on_trade),
-            (UK_LCFS_GAMBLING_SPENDING, gambling),
+            (UK_LCFS_GAMBLING_SPENDING, stakes),
+            (UK_LCFS_NATIONAL_LOTTERY_SPENDING, lottery),
+            (UK_LCFS_OTHER_GAMBLING_SPENDING, other_stakes),
+            (UK_LCFS_BETTING_AND_GAMING_SPENDING, betting),
         )
     }
     receipt = {
@@ -3861,10 +3919,12 @@ def donor_excise_shares(
     per share, the weighted share of the denominator its lines hold, the
     weighted share of donors with a positive line, the support of those
     donors as a band, how many donors the clip at one held, and, where the
-    denominator is lines, the weighted share of donors whose published total
-    sits beside those lines by more than its rounding ("<10" when one to nine
-    donors do): a donor stage receipt is UKDS output (CD171 §5.2.1), so it
-    gives no donor value and no small count.
+    denominator is lines under a published total, the weighted share of
+    donors whose published total sits beside those lines by more than its
+    rounding ("<10" when one to nine donors do): a donor stage receipt is
+    UKDS output (CD171 §5.2.1), so it gives no donor value and no small
+    count. A share of the stakes an earlier share gives has no published
+    total; its denominator is the stake lines it splits.
     """
 
     weights = _numeric(household["household_weight"]).to_numpy(dtype=float)
@@ -3872,12 +3932,20 @@ def donor_excise_shares(
     columns: dict[str, np.ndarray] = {}
     receipt: dict[str, Any] = {}
     for name, (total, numerator, denominator) in shares.items():
-        source_total = next(
-            code
-            for code, column in CONSUMPTION_VARIABLE_RENAMES.items()
-            if column == total
+        source_total = (
+            None
+            if total in UK_LCFS_EXCISE_SPENDING_TOTALS
+            else next(
+                code
+                for code, column in CONSUMPTION_VARIABLE_RENAMES.items()
+                if column == total
+            )
         )
-        for code in (*numerator, *denominator, source_total):
+        for code in (
+            *numerator,
+            *denominator,
+            *([source_total] if source_total else []),
+        ):
             if code not in household:
                 raise ValueError(f"LCFS household donor is missing {code!r}.")
 
@@ -3904,7 +3972,7 @@ def donor_excise_shares(
             "positive_support": support_band(int(positive.sum())),
             "clipped_at_one": extreme_count(clipped),
         }
-        if source_total not in denominator:
+        if source_total is not None and source_total not in denominator:
             published = _numeric(household[source_total]).to_numpy(dtype=float)
             beside = np.abs(published - bottom) > UK_LCFS_TOTAL_ROUNDING + 1e-9
             entry["total_beside_lines"] = small_cell_share(
@@ -3921,20 +3989,31 @@ def excise_spending(draws: pd.DataFrame) -> pd.DataFrame:
     Tobacco and off-trade alcohol split the drawn alcohol and tobacco total
     between them, so together they are that total; on-trade alcohol is its
     share of restaurants and hotels, and gambling stakes theirs of recreation.
+    The National Lottery's stakes are their share of the stakes, and the
+    betting and gaming stakes theirs of the rest.
     """
 
     tobacco = draws[UK_LCFS_TOBACCO_SHARE].to_numpy(dtype=float)
     alcohol_and_tobacco = draws["alcohol_and_tobacco_consumption"].to_numpy(dtype=float)
     on_trade = draws[UK_LCFS_ON_TRADE_ALCOHOL_SHARE].to_numpy(dtype=float)
-    gambling = draws[UK_LCFS_GAMBLING_SHARE].to_numpy(dtype=float)
+    stakes = draws[UK_LCFS_GAMBLING_SHARE].to_numpy(dtype=float) * draws[
+        "recreation_consumption"
+    ].to_numpy(dtype=float)
+    lottery = draws[UK_LCFS_NATIONAL_LOTTERY_SHARE].to_numpy(dtype=float)
+    other_stakes = (1.0 - lottery) * stakes
     return pd.DataFrame(
         {
             UK_LCFS_TOBACCO_SPENDING: tobacco * alcohol_and_tobacco,
             UK_LCFS_OFF_TRADE_ALCOHOL_SPENDING: (1.0 - tobacco) * alcohol_and_tobacco,
             UK_LCFS_ON_TRADE_ALCOHOL_SPENDING: on_trade
             * draws["restaurants_and_hotels_consumption"].to_numpy(dtype=float),
-            UK_LCFS_GAMBLING_SPENDING: gambling
-            * draws["recreation_consumption"].to_numpy(dtype=float),
+            UK_LCFS_GAMBLING_SPENDING: stakes,
+            UK_LCFS_NATIONAL_LOTTERY_SPENDING: lottery * stakes,
+            UK_LCFS_OTHER_GAMBLING_SPENDING: other_stakes,
+            UK_LCFS_BETTING_AND_GAMING_SPENDING: draws[
+                UK_LCFS_BETTING_AND_GAMING_SHARE
+            ].to_numpy(dtype=float)
+            * other_stakes,
         },
         index=draws.index,
     )
@@ -3982,11 +4061,15 @@ def excise_shares_receipt(
         UK_LCFS_TOBACCO_SHARE: spending[UK_LCFS_TOBACCO_SPENDING],
         UK_LCFS_ON_TRADE_ALCOHOL_SHARE: spending[UK_LCFS_ON_TRADE_ALCOHOL_SPENDING],
         UK_LCFS_GAMBLING_SHARE: spending[UK_LCFS_GAMBLING_SPENDING],
+        UK_LCFS_NATIONAL_LOTTERY_SHARE: spending[UK_LCFS_NATIONAL_LOTTERY_SPENDING],
+        UK_LCFS_BETTING_AND_GAMING_SHARE: spending[UK_LCFS_BETTING_AND_GAMING_SPENDING],
     }
     receipt: dict[str, Any] = {}
     for name, (total, _numerator, _denominator) in shares.items():
         part = parts[name].to_numpy(dtype=float)
-        whole = draws[total].to_numpy(dtype=float)
+        whole = (spending if total in UK_LCFS_EXCISE_SPENDING_TOTALS else draws)[
+            total
+        ].to_numpy(dtype=float)
         receipt[name] = {
             "total": total,
             "frame": {
