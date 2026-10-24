@@ -16,6 +16,9 @@ import pytest
 
 from microcosm.build.gates import GateResult
 from microcosm.build.us_runtime import spm_measurement_gate
+from microcosm.build.us_runtime.org_wages import (
+    US_ORG_OCCUPATION_AND_WORK_EXPERIENCE_OUTPUT_COLUMNS,
+)
 from microcosm.data import stored_inputs
 from test_support.paths import paths_for
 
@@ -55,6 +58,7 @@ _PACKAGE_ENGINE = stored_inputs.CertifiedEngine(
             "weekly_hours_worked_before_lsr",
             "hours_worked_last_week",
             "takes_up_wic_if_eligible",
+            *US_ORG_OCCUPATION_AND_WORK_EXPERIENCE_OUTPUT_COLUMNS,
         }
     ),
 )
@@ -601,7 +605,9 @@ def _package_evidence_args(module, tmp_path: Path, monkeypatch, *, hours_report)
     for name, payload in evidence.items():
         (ckpt / name).write_text(json.dumps(payload))
     (tmp_path / "out.summary.json").write_text(json.dumps({"simulation_ready": True}))
-    monkeypatch.setattr(module, "_load_staging_frame", lambda *_a, **_k: object())
+    monkeypatch.setattr(
+        module, "_load_staging_frame", lambda *_a, **_k: _plausible_hours_frame()
+    )
     monkeypatch.setattr(
         module,
         "acs_local_hours_signal_gate",
@@ -693,7 +699,7 @@ def test_package_refuses_when_the_packaged_bytes_fail_the_hours_gate(
 
     def load_frame(path, *_a, **_k):
         loaded.append(Path(path))
-        return object()
+        return _plausible_hours_frame()
 
     monkeypatch.setattr(module, "_load_staging_frame", load_frame)
     monkeypatch.setattr(
@@ -1158,6 +1164,10 @@ def _staging_frame_with_hours(weekly: list[float], last_week: list[float]):
             "person_marital_unit_id": ids,
             "weekly_hours_worked_before_lsr": np.asarray(weekly, dtype=float),
             "hours_worked_last_week": np.asarray(last_week, dtype=float),
+            "detailed_occupation_recode": np.where(np.asarray(weekly) > 0, 8, 53),
+            "detailed_industry_recode": np.where(np.asarray(weekly) > 0, 13, 23),
+            "major_industry_recode": np.where(np.asarray(weekly) > 0, 9, 15),
+            "worked_last_year": np.asarray(weekly) > 0,
         }
     )
     tables = {
@@ -1597,6 +1607,70 @@ def test_package_accepts_passing_hours_gate_bound_to_the_packaged_bytes(
     copied_sha = module._sha256(Path(result["root_artifact"]["local_path"]))
     assert gate["passed"] is True
     assert gate["artifact_sha256"] == result["root_artifact"]["sha256"] == copied_sha
+    for name in ("build_manifest.json", "gate_summary.json"):
+        work_gate = json.loads((release_dir / name).read_text())["gates"][
+            "work_experience_inputs"
+        ]
+        assert work_gate == {
+            "passed": True,
+            "failures": [],
+            "columns": list(US_ORG_OCCUPATION_AND_WORK_EXPERIENCE_OUTPUT_COLUMNS),
+            "person_rows": 8,
+            "artifact_sha256": copied_sha,
+            "checked_at_stage": "package",
+        }
+
+
+@requires_pytables
+@pytest.mark.parametrize("defect", ["missing", "asec_null", "acs_null", "nonfinite"])
+def test_package_refuses_historical_staging_with_incomplete_work_experience(
+    tmp_path, monkeypatch, defect
+):
+    """A green historical staging/finalize summary cannot stand in for inputs."""
+    from microcosm.frame import Frame
+
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    frame = _plausible_hours_frame()
+    person = frame.person.copy()
+    spines = ["asec_puf"] * 4 + ["acs_2024_1yr"] * 4
+    person["person_spine"] = spines
+    if defect == "missing":
+        person = person.drop(
+            columns=[
+                column
+                for column in US_ORG_OCCUPATION_AND_WORK_EXPERIENCE_OUTPUT_COLUMNS
+                if column != "detailed_occupation_recode"
+            ]
+        )
+    else:
+        person["major_industry_recode"] = person["major_industry_recode"].astype(float)
+        row = 7 if defect == "acs_null" else 0
+        person.loc[row, "major_industry_recode"] = (
+            np.inf if defect == "nonfinite" else np.nan
+        )
+    incomplete = Frame(
+        {
+            **{entity: frame.table(entity) for entity in frame.entities},
+            "person": person,
+            "household": frame.table("household").assign(household_spine=spines),
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+    _write_frame_h5(args.out_h5, incomplete)
+    args.staging_h5.write_bytes(args.out_h5.read_bytes())
+    identity_path = args.checkpoint_dir / "run_identity.json"
+    identity = json.loads(identity_path.read_text())
+    identity["staging_sha256"] = module._sha256(args.staging_h5)
+    identity_path.write_text(json.dumps(identity))
+    _refresh_package_evidence_bindings(module, args)
+
+    with pytest.raises(SystemExit, match="Refusing to package:.*work-experience"):
+        module.do_package(args)
+    assert not (args.out / "releases").exists()
+    assert not (args.out / "package_result.json").exists()
+    assert not (args.out / module.ARTIFACT_FILENAME).exists()
 
 
 @requires_pytables

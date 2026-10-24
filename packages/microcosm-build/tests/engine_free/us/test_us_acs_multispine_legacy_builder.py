@@ -53,6 +53,10 @@ def _frame(
             "person_marital_unit_id": [1, 2],
             "age": [35, 67],
             "is_female": [False, True],
+            "detailed_occupation_recode": [8, 53],
+            "detailed_industry_recode": [13, 23],
+            "major_industry_recode": [9, 15],
+            "worked_last_year": [True, False],
         }
     )
     if benefit_participation:
@@ -1223,6 +1227,70 @@ def test_donor_release_identity_requires_one_microdata_artifact(
 
     with pytest.raises(SystemExit, match="exactly one microdata artifact"):
         module._donor_release_identity(manifest, "a" * 64)
+
+
+@pytest.mark.parametrize(
+    "column",
+    [
+        "detailed_occupation_recode",
+        "detailed_industry_recode",
+        "major_industry_recode",
+        "worked_last_year",
+    ],
+)
+def test_donor_without_work_experience_fails_before_fetch(
+    monkeypatch: pytest.MonkeyPatch,
+    column: str,
+) -> None:
+    builder = _load_builder_module()
+    donor = _frame()
+    donor.person.drop(columns=[column], inplace=True)
+    monkeypatch.setattr(
+        builder.acs_sources, "load_acs_source_manifest", lambda path: _manifest()
+    )
+    monkeypatch.setattr(builder, "_load_base_frame", lambda path: donor)
+    monkeypatch.setattr(builder, "_sha256", lambda path: "0" * 64)
+
+    def must_not_fetch(*_args, **_kwargs):
+        pytest.fail("source fetch must not run for an incomplete work-experience donor")
+
+    monkeypatch.setattr(builder.acs_sources, "fetch_acs_pums_sources", must_not_fetch)
+
+    with pytest.raises(SystemExit, match=f"lacks canonical work-experience.*{column}"):
+        builder.main(["--base-h5", "donor.h5", "--out-h5", "combined.h5"])
+
+
+@pytest.mark.parametrize(
+    "column",
+    [
+        "detailed_occupation_recode",
+        "detailed_industry_recode",
+        "major_industry_recode",
+        "worked_last_year",
+    ],
+)
+@pytest.mark.parametrize("invalid", [None, np.inf, "invalid"])
+def test_donor_work_experience_rejects_null_or_nonfinite_values(
+    column, invalid
+) -> None:
+    builder = _load_builder_module()
+    donor = _frame()
+    donor.person[column] = pd.Series(
+        [donor.person[column].iloc[0], invalid], dtype=object
+    )
+
+    with pytest.raises(SystemExit, match=f"missing or nonfinite.*{column}"):
+        builder._require_donor_work_experience(donor)
+
+
+def test_complete_donor_work_experience_passes_without_changing_rows() -> None:
+    builder = _load_builder_module()
+    donor = _frame()
+    before = donor.person.copy(deep=True)
+
+    builder._require_donor_work_experience(donor)
+
+    pd.testing.assert_frame_equal(donor.person, before)
 
 
 def test_donor_without_the_spm_role_fails_before_fetch(

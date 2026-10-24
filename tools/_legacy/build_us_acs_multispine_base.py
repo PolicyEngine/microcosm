@@ -59,6 +59,9 @@ from microcosm.build.us_runtime.h5_io import (
     refuse_denied_frame,
     refuse_denied_pool_h5,
 )
+from microcosm.build.us_runtime.org_wages import (
+    require_us_occupation_and_work_experience_inputs,
+)
 from microcosm.build.us_runtime.puma_ladder import (
     UsPumaLadder,
     load_us_puma_ladder,
@@ -246,6 +249,7 @@ def main(argv: list[str] | None = None) -> int:
     base = _load_base_frame(args.base_h5)
     _require_benefit_participation_inputs(base)
     _require_donor_spm_independence_role(base)
+    _require_donor_work_experience(base)
     transfer_plan = declared_acs_transfer_target_families()
     _require_dense_donor_coverage(
         base,
@@ -405,6 +409,26 @@ def _require_donor_spm_independence_role(base: Frame) -> None:
     failure = _spm_role_column_failure(person[NATIVE_SPM_ROLE])
     if failure is not None:
         raise SystemExit(f"Dense ASEC-by-PUF donor {NATIVE_SPM_ROLE} {failure}")
+
+
+def _require_donor_work_experience(base: Frame) -> None:
+    """Keep historical donors from leaving ASEC job inputs null after pooling.
+
+    The local lane appends the donor's original rows to native ACS rows; it
+    never runs the fiscal ORG carry on those donor rows. The donor must
+    already carry the canonical occupation, industry and working inputs.
+    """
+
+    try:
+        require_us_occupation_and_work_experience_inputs(
+            base.table("person"), label="Dense ASEC-by-PUF donor"
+        )
+    except ValueError as error:
+        raise SystemExit(
+            f"{error} Build a fresh donor through the exact ASEC "
+            "WEIND/WEMIND restoration and fiscal org_wages carry first; "
+            "the ACS local lane preserves donor rows and cannot default these inputs."
+        ) from error
 
 
 def _drop_acs_group_quarters_children(engine_variables=None) -> bool:

@@ -345,7 +345,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # fit_draw_next's caller-owned uniforms (microcosm#1332) move it,
             # and so do microcosm#454's meps_esi_premiums stage and
             # microcosm#1376's puma_county_vintage draw module.
-            "spec_sha256": "77df608c9b343219cd2717aa08af5198c0ba69b70c61691fb2459f7a886528ba",
+            "spec_sha256": "53fb8de63585a27fc86a10a94eeae4ca546a4ded2d528514c64e4df574b430f8",
         },
     }
 

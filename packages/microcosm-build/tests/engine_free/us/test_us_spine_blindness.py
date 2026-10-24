@@ -3506,19 +3506,21 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
 
     for tool in _SPINE_BLIND_BUILD_TOOLS:
         runtime_graph, missing_modules = _us_runtime_import_graph(tool)
-        # 75 = main's 70 plus spm_independence_role.py, spm_role_source.py and
+        # 77 = main's 70 plus spm_independence_role.py, spm_role_source.py and
         # spm_composition.py, reached because the pool's engine-input
         # projection names the SPM role as a required source input (#893),
         # plus asec_sources.py, whose default ASEC pool the education sidecar
         # loader now defaults to, plus esi_premiums.py, whose output family
         # operator_boundary registers so a raw source frame that already
-        # carries it is refused (#454). 78 adds county_vintage.py and
-        # puma_county_vintage.py, which write county_fips_2023, and
-        # block_ladder_sources.py, whose CT_STATE_FIPS they import (#1376).
-        # All are classified in _OTHER_US_RUNTIME_MODULES and scanned below
-        # like every other reached module.
-        assert len(runtime_graph) == 78, (
-            f"{tool.name} must reach the pinned 78-module runtime graph; "
+        # carries it is refused (#454), plus acs_release_predictors.py and
+        # asec_census_person_columns.py, reached through the shared native ACS
+        # occupation/work-experience crosswalk (#719), and county_vintage.py and
+        # puma_county_vintage.py, which write county_fips_2023, with
+        # block_ladder_sources.py, whose CT_STATE_FIPS they import (#1376). All
+        # are classified by the runtime registries and scanned below like every
+        # reached module.
+        assert len(runtime_graph) == 80, (
+            f"{tool.name} must reach the pinned 80-module runtime graph; "
             f"reached {len(runtime_graph)}"
         )
         assert not missing_modules, (

@@ -18,6 +18,9 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from microcosm.build.us_runtime.acs_release_predictors import (
+    crosswalk_acs_occupation_and_work_experience,
+)
 from microcosm.build.us_runtime.spm_role_source import (
     NATIVE_SPM_ROLE,
     SPM_ADULT_RULE,
@@ -29,6 +32,7 @@ __all__ = [
     "ACS_SPM_ROLE_PARTITION",
     "ACS_SPM_ROLE_RULE",
     "ACS_UNRESOLVED_PARENT_ID_MAPPINGS",
+    "ACS_WORK_EXPERIENCE_NATIVE_MAPPINGS",
     "ACS_GROUP_QUARTERS_CHILD_RULE",
     "AcsGroupQuartersChildrenResult",
     "AcsNativeInputResult",
@@ -74,6 +78,33 @@ ACS_UNRESOLVED_PARENT_ID_MAPPINGS: tuple[tuple[str, str], ...] = (
     ("parent_1_id", "PEPAR1"),
     ("parent_2_id", "PEPAR2"),
 )
+
+#: Native work-experience receipts shared with the pre-assembly boundary.
+#: The same reviewed crosswalk serves fiscal-refresh and fresh ACS releases.
+ACS_WORK_EXPERIENCE_NATIVE_MAPPINGS: Mapping[
+    str, tuple[str, tuple[str, ...], str]
+] = {
+    "detailed_occupation_recode": (
+        "POCCU2",
+        ("OCCP", "AGEP", "ESR"),
+        "OCCP via ACS_OCCP_TO_POCCU2; source-universe sentinels",
+    ),
+    "detailed_industry_recode": (
+        "WEIND",
+        ("INDP", "AGEP", "ESR"),
+        "INDP via ACS_INDP_TO_WEIND; source-universe sentinels",
+    ),
+    "major_industry_recode": (
+        "WEMIND",
+        ("INDP", "AGEP", "ESR"),
+        "WEIND_TO_WEMIND of INDP via ACS_INDP_TO_WEIND",
+    ),
+    "worked_last_year": (
+        "WKSWORK",
+        ("WKWN", "AGEP"),
+        "WKWN > 0; blank outside past-year work universe becomes False",
+    ),
+}
 
 _FORMULA_OWNED_AGGREGATES = frozenset(
     {
@@ -186,6 +217,7 @@ def map_acs_native_inputs(frame: Frame) -> AcsNativeInputResult:
         )
 
     _map_usual_hours(person, register=native)
+    _map_work_experience(person, register=native)
 
     _map_adjusted_person_amount(
         person,
@@ -609,6 +641,32 @@ def _refuse_units(offending: pd.Index, problem: str) -> None:
         raise ValueError(
             f"ACS SPM independence role refuses {len(offending)} SPM unit(s) "
             f"with {problem}. Example unit id(s): {examples}."
+        )
+
+
+def _map_work_experience(
+    person: pd.DataFrame, *, register: dict[str, Mapping[str, Any]]
+) -> None:
+    # Sparse in-memory frames may omit this entire source surface. The PUMS
+    # loader requires it on every production archive; a partial surface never
+    # silently drops the contract.
+    if not {"OCCP", "INDP", "WKWN"}.intersection(person.columns):
+        return
+    mapped = crosswalk_acs_occupation_and_work_experience(person)
+    for output, (source, columns, transformation) in (
+        ACS_WORK_EXPERIENCE_NATIVE_MAPPINGS.items()
+    ):
+        values = mapped[source].to_numpy()
+        if output == "worked_last_year":
+            values = values > 0
+        _add_native(
+            person,
+            output,
+            values,
+            entity="person",
+            source_columns=columns,
+            transformation=transformation,
+            register=register,
         )
 
 

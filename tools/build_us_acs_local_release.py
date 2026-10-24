@@ -52,7 +52,9 @@ package; each is separately resumable):
                 ``microcosm.data.stored_inputs``), or on which that engine's
                 SPM measurement would refuse a unit with no classified adult
                 (microcosm#1263;
-                ``microcosm.build.us_runtime.spm_measurement_gate``), then
+                ``microcosm.build.us_runtime.spm_measurement_gate``), or that
+                lacks complete occupation, industry and worked-last-year
+                inputs on any person (microcosm#719), then
                 assemble releases/<id>/ with the non-default local-area
                 manifest shape (dataset_role ``non_default_local_area``,
                 namespace ``buildo_acs_local``, donor identity chain, the
@@ -84,6 +86,10 @@ import pandas as pd
 from microcosm.build.us_runtime import target_loss_weights as loss_weighting
 from microcosm.build.us_runtime.acs_local_hours import acs_local_hours_signal_gate
 from microcosm.build.us_runtime.esi_premiums import refuse_unassigned_us_esi_premiums
+from microcosm.build.us_runtime.org_wages import (
+    US_ORG_OCCUPATION_AND_WORK_EXPERIENCE_OUTPUT_COLUMNS,
+    require_us_occupation_and_work_experience_inputs,
+)
 from microcosm.data.contract import (
     US_LOCAL_AREA_SPM_MEASUREMENT_STAGE,
     US_LOCAL_AREA_STORED_INPUTS_STAGE,
@@ -3592,6 +3598,18 @@ def do_package(args) -> dict:
             "finalize."
         )
     artifact_frame = _load_staging_frame(calibrated_h5)
+    # Historical staging can predate the donor/native work-experience gates.
+    # Grade the actual final rows, even when its old summary is green.
+    try:
+        require_us_occupation_and_work_experience_inputs(
+            artifact_frame.table("person"), label="ACS local-area release"
+        )
+    except ValueError as error:
+        raise SystemExit(
+            f"Refusing to package: {error} Rebuild staging with a complete "
+            "ASEC donor and the native ACS occupation/work-experience mapping."
+        ) from error
+    work_experience_rows = artifact_frame.n("person")
     # microcosm#1263: the bytes must also be measurable by the engine the
     # release records as built-with.
     spm_measurement_gate = _require_spm_measurement(artifact_frame)
@@ -3606,6 +3624,14 @@ def do_package(args) -> dict:
         **gate_report,
         "gates": {
             **gate_report.get("gates", {}),
+            "work_experience_inputs": {
+                "passed": True,
+                "failures": [],
+                "columns": list(US_ORG_OCCUPATION_AND_WORK_EXPERIENCE_OUTPUT_COLUMNS),
+                "person_rows": work_experience_rows,
+                "artifact_sha256": h5_sha,
+                "checked_at_stage": "package",
+            },
             "acs_local_hours_signal": {
                 "passed": True,
                 "failures": [],
