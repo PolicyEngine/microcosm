@@ -2863,12 +2863,9 @@ def _precalibration_ancestry_dags(draw):
 
 
 def _precalibration_reference_accepts(model):
-    """The stage rules, expressed on generated kinds and column-use edges."""
+    """The stage rules on generated kinds and column-use edges, upstream of calibration."""
     nodes, _, declared = model
     relevant = {len(nodes) - 1}
-    relevant.update(
-        index for index, node in enumerate(nodes) if node["binding"] in declared
-    )
     for index in range(len(nodes) - 1, -1, -1):
         if index in relevant:
             relevant.update(nodes[index]["dependencies"])
@@ -3050,10 +3047,8 @@ def _precalibration_synthetic_graph(model):
     return spec, graph, config
 
 
-@settings(max_examples=2000, deadline=None, database=None)
-@given(model=_precalibration_ancestry_dags())
-def test_precalibration_stages_calibration_ancestry_property(model):
-    expected = _precalibration_reference_accepts(model)
+def _precalibration_property_outcomes(model):
+    """Acceptance by the guard and by today's guard, in both passes."""
     spec, graph, config = _precalibration_synthetic_graph(model)
     compile_graph(graph)
     extension_spec = copy.deepcopy(spec)
@@ -3076,19 +3071,68 @@ def test_precalibration_stages_calibration_ancestry_property(model):
     )
     if not model[2]:
         extension_spec = spec
+    outcomes = {}
     for label, document, compiled in (
         ("declaration", spec, None),
         ("compiled extensions", extension_spec, graph),
     ):
-        try:
-            compose_module.validate_transport_calibration_ancestry(
-                document, graph=compiled, config=config
-            )
-        except ValueError:
-            actual = False
-        else:
-            actual = True
+        for guard_name, guard in (
+            ("guard", compose_module.validate_transport_calibration_ancestry),
+            ("today", _precalibration_reference_guard),
+        ):
+            try:
+                guard(document, graph=compiled, config=config)
+            except ValueError:
+                outcomes[label, guard_name] = False
+            else:
+                outcomes[label, guard_name] = True
+    return outcomes
+
+
+@settings(max_examples=2000, deadline=None, database=None)
+@given(model=_precalibration_ancestry_dags(), data=st.data())
+def test_precalibration_stages_calibration_ancestry_property(model, data):
+    nodes, bindings, declared = model
+    expected = _precalibration_reference_accepts(model)
+    outcomes = _precalibration_property_outcomes(model)
+    labels = ("declaration", "compiled extensions")
+    for label in labels:
+        actual = outcomes[label, "guard"]
         assert actual == expected, (label, model)
+        if not declared:
+            # I1 with no stages: exactly today's guard.
+            assert actual == outcomes[label, "today"], (label, model)
+        elif all(bindings[name]["entity"] == "person" for name in declared):
+            # I1: person stages only restrict today's guard.
+            assert outcomes[label, "today"] or not actual, (label, model)
+    if not declared:
+        return
+    dropped = data.draw(st.sampled_from(sorted(declared)))
+    smaller = (
+        nodes,
+        bindings,
+        {name: columns for name, columns in declared.items() if name != dropped},
+    )
+    reduced = _precalibration_property_outcomes(smaller)
+    for label in labels:
+        assert reduced[label, "guard"] == _precalibration_reference_accepts(smaller), (
+            label,
+            smaller,
+        )
+        if bindings[dropped]["entity"] == "person":
+            # I2: dropping a person stage never refuses what listing it admitted.
+            assert reduced[label, "guard"] or not outcomes[label, "guard"], (
+                label,
+                model,
+                dropped,
+            )
+        else:
+            # I2: dropping a unit stage never admits what listing it refused.
+            assert outcomes[label, "guard"] or not reduced[label, "guard"], (
+                label,
+                model,
+                dropped,
+            )
 
 
 @pytest.mark.parametrize("shared_module", [False, True])
@@ -3197,22 +3241,73 @@ def test_precalibration_ancestry_schema_checked_before_graph(
         compose_module.validate_transport_calibration_ancestry(spec)
 
 
-def test_precalibration_ancestry_postcalibration_stage_checks_sibling_producer(
-    calibration_ancestry_composed,
+@pytest.mark.parametrize("compiled", [False, True])
+def test_precalibration_ancestry_postcalibration_stage_nodes_are_not_checked(
+    calibration_ancestry_composed, compiled
 ):
+    """A stage node after calibration is an output; its hold-out sibling is allowed."""
     composed = calibration_ancestry_composed
     spec = _precalibration_spec(composed)
-    nodes = spec["resources"]["transport_graph"]["nodes"]
-    for row in nodes:
+    for row in spec["resources"]["transport_graph"]["nodes"]:
         if row["id"] in {"nz.as.inputs", "nz.precal.family"}:
             row["population"] = "nz.as"
-        if row["id"] == "nz.as.inputs":
-            row["sources"] = ["nz_holdout_facts"]
         if row["id"] == CALIBRATION:
             row["inputs"] = [
                 item for item in row["inputs"] if item["entity"] != "family"
             ]
-    with pytest.raises(ValueError, match="node 'nz.as.inputs' carries hold-out source"):
+    graph = compose_transport_graph(spec, composed.config)
+    if compiled:
+        graph = replace(
+            graph,
+            nodes=tuple(
+                replace(node, sources=("nz_holdout_facts",))
+                if node.id == "nz.as.inputs"
+                else node
+                for node in graph.nodes
+            ),
+        )
+    else:
+        row = next(
+            item
+            for item in spec["resources"]["transport_graph"]["nodes"]
+            if item["id"] == "nz.as.inputs"
+        )
+        row["sources"] = ["nz_holdout_facts"]
+    compose_module.validate_transport_calibration_ancestry(
+        spec, graph=graph if compiled else None, config=composed.config
+    )
+
+
+def test_precalibration_ancestry_stage_binding_after_calibration_is_not_checked(
+    calibration_ancestry_composed,
+):
+    """A binding listed before calibration may also run after it, beside hold-out data."""
+    composed = calibration_ancestry_composed
+    spec = _precalibration_spec(composed)
+    nodes = spec["resources"]["transport_graph"]["nodes"]
+    holdout = {
+        "id": "nz.postcal.holdout",
+        "kernel": "transport.probe@1",
+        "population": "nz.as",
+        "sources": ["nz_holdout_facts"],
+        "params": {"holdout": {"resource": "holdout_references", "encoding": "json"}},
+    }
+    nodes.extend(
+        [
+            holdout,
+            {
+                "id": "nz.postcal.family",
+                "kernel": RULES,
+                "population": "nz.as",
+                "rules_binding": "family_housing",
+                "artifact_inputs": [{"producer": holdout["id"]}],
+            },
+        ]
+    )
+    compose_module.validate_transport_calibration_ancestry(spec, config=composed.config)
+    # The same node before calibration refuses: the check is not vacuous.
+    holdout["population"] = "nz.open"
+    with pytest.raises(ValueError, match="node 'nz.postcal.holdout' carries"):
         compose_module.validate_transport_calibration_ancestry(
             spec, config=composed.config
         )

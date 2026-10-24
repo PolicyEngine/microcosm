@@ -893,10 +893,11 @@ def _validate_precalibration_ancestry(
                 }
                 if row.get("rules_binding") in bindings:
                     node_bindings[name].add(row["rules_binding"])
-        stage_nodes = {
-            name for name in rows if node_bindings[name].intersection(stages)
-        }
-        ancestors = _ancestor_closure(predecessors, roots | stage_nodes)
+        # Only nodes upstream of calibration are pre-calibration. A stage node
+        # there brings its own ancestors into this closure, so each listed
+        # stage's ancestry passes the same checks; a stage binding's nodes
+        # after calibration (extension checkpoints) are outputs, not inputs.
+        ancestors = _ancestor_closure(predecessors, roots)
         inputs = {
             name: {
                 (item["entity"], column)

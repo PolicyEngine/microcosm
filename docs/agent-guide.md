@@ -520,6 +520,9 @@ An optional `entitlement_graph.json` legacy resource installs the entitlement
 extension in both composition and the local driver. Its scenario templates,
 bridge parameters, comparison references and receipt connections are described
 in [the entitlement declaration contract](transport-entitlement.md).
+An optional `precalibration_stages.json` legacy resource lists the rules
+bindings whose declared outputs may feed calibration; see
+[pre-calibration stages](transport-precalibration-stages.md).
 The zero solver requires independent, non-increasing row residuals and verifies
 the returned answers after its fixed iterations. Its receipt counts the final
 verification. The local differential driver validates call and output identities
