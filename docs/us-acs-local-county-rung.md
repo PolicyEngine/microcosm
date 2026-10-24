@@ -57,7 +57,9 @@ county measure row = existing state CSR measure row * 1[county]
 ```
 
 The source package currently carries two eligible concepts. Both already have
-state parents, so the additional engine-column count is zero:
+state parents, so the additional engine-column count is zero. `state_county`
+requires both concepts, complete county facts and matching state parents for
+every state, even when an entire concept or parent block is absent:
 
 | Source measure ID | Concept | Unit |
 |---|---|---|
@@ -92,12 +94,17 @@ are also reported and refused outside that smoke exception. The exception
 does not excuse missing source facts or mismatched county boundaries, and
 development samples cannot be packaged as releases.
 
-Calibration writes `county_reliability.json` next to its calibration outputs
-and includes it in the packaged evidence. Each county reports its supporting
-household rows, distinct `(household_spine, household_source_id)` pairs when
-available, Kish ESS of the final weights, and training/holdout target counts
-and mean/maximum absolute relative errors. Missing source provenance is
-reported as unavailable. The report binds the run identity, calibrated weights,
+Calibration writes schema-2 `county_reliability.json` next to its calibration
+outputs and includes it in the packaged evidence. Each county reports its
+supporting household rows, distinct `(household_spine, household_source_id)` pairs when
+available, and training/holdout target counts and mean/maximum absolute relative
+errors. `kish_ess` aggregates final weights by those source pairs within each
+county before calculating ESS; grades use this source ESS. `kish_ess_rows`
+separately labels physical-row ESS, including clones. For example, 200 equal
+donors each split into two clones have source ESS 200 (grade B at adequate fit)
+and row ESS 400; cloning cannot earn grade A. Missing or null source provenance
+makes source ESS unavailable and the grade U. The report binds the run identity,
+calibrated weights,
 and configured county column. Unsupported smoke counties remain explicit with
 zero support and grade `U`.
 
@@ -105,16 +112,19 @@ For each target, relative error is
 `abs(estimate - target) / max(abs(target), 1)`. The grade uses the maximum error
 across all of the county's training and holdout targets:
 
-| Grade | Minimum Kish ESS | Maximum error |
+The A/B/C/D thresholds are **provisional** and recorded as such in the report.
+
+| Grade | Minimum source Kish ESS | Maximum error |
 |---|---:|---:|
 | A | 400 | 0.10 |
 | B | 100 | 0.20 |
 | C | 30 | 0.50 |
 | D | otherwise, with holdout evidence | otherwise |
-| U | any | no county holdout evidence |
+| U | any | no county holdout or source-identity evidence |
 
 Rules are evaluated from A through C, then D; a county without holdout evidence
-receives U even if its training fit is good. Thus a 10% block holdout can leave
+receives U even if its training fit is good, as does a county without source
+identity. Thus a 10% block holdout can leave
 many counties ungraded when only two concepts are available. At fixed error,
 raising ESS cannot worsen a grade. These are report-only evidence grades;
 Kish ESS is not a county standard error or a guarantee of unbiased estimates.

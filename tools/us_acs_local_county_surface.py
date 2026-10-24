@@ -30,6 +30,7 @@ COUNTY_PREFIX = "0500000US"
 # The LWI release contract covers the 50 states and DC on planning-region
 # county boundaries. A self-consistent but incomplete ladder is not complete.
 REQUIRED_COUNTY_COUNT = 3_144
+COUNTY_SOI_REQUIRED_MEASURES = ("return_count", "adjusted_gross_income")
 
 
 def _concatenate(parts, dtype):
@@ -232,9 +233,10 @@ class CountySurface:
 def state_county_soi_surface(state_specs, facts, county_populations):
     """Rebase complete county fact blocks onto existing broad state totals.
 
-    Only measures actually carried by county facts and by an unsliced state
-    parent are eligible. New ACS families can produce the same child metadata
-    and use split_state_rows without extending the engine materializer.
+    Every state must carry county return count and AGI with unsliced state
+    parents. Other measures require both county facts and a state parent.
+    New ACS families can produce the same child metadata and use split_state_rows
+    without extending the engine materializer.
     """
     blocks = defaultdict(dict)
     for fact in facts:
@@ -285,7 +287,9 @@ def state_county_soi_surface(state_specs, facts, county_populations):
             metadata.get("source_measure_id"),
             str(metadata.get("source_period", "")),
         )
-        if key[1] not in {block[1] for block in blocks}:
+        if key[1] not in COUNTY_SOI_REQUIRED_MEASURES and key[1] not in {
+            block[1] for block in blocks
+        }:
             continue
         if key in parents:
             raise ValueError(f"Two state SOI parents for county concept {key}.")
@@ -294,6 +298,13 @@ def state_county_soi_surface(state_specs, facts, county_populations):
         raise ValueError(
             "No county SOI concept has an already materialized broad state parent."
         )
+    for state in sorted({int(code) // 1000 for code in county_populations}):
+        for measure in COUNTY_SOI_REQUIRED_MEASURES:
+            if not any(key[:2] == (state, measure) for key in parents):
+                raise ValueError(
+                    f"Missing broad state SOI parent state={state:02d}, concept={measure}; "
+                    "state_county requires return count and AGI in every state."
+                )
     specs, receipts = [], []
     for key, parent in sorted(parents.items()):
         state, measure, period = key
@@ -574,12 +585,12 @@ def score_county_holdout(
 
 
 def reliability_grade(ess, error):
-    """A/B/C require ESS >=400/100/30 and error <=10/20/50%; else D.
+    """Provisional A/B/C: source ESS >=400/100/30, error <=10/20/50%; else D.
 
-    U means no holdout evidence. ESS is a precision diagnostic, not a standard
-    error or a guarantee of unbiased county estimates.
+    U means no holdout or source-identity evidence. ESS is a precision
+    diagnostic, not a standard error or a guarantee of unbiased county estimates.
     """
-    if error is None or not math.isfinite(error):
+    if ess is None or error is None or not math.isfinite(error):
         return "U"
     for grade, minimum, maximum in (("A", 400, 0.1), ("B", 100, 0.2), ("C", 30, 0.5)):
         if ess >= minimum and error <= maximum:
@@ -621,16 +632,28 @@ def reliability_report(
             if provenance
             else None
         )
-        distinct = (
-            len(source.drop_duplicates())
-            if source is not None and not source.isna().any().any()
-            else None
-        )
+        if source is not None and not source.isna().any().any():
+            source_weights = cd_surface.distinct_household_weights(
+                weights[mask],
+                source["household_spine"].to_numpy(),
+                source["household_source_id"].to_numpy(),
+            )
+        elif not mask.any():
+            source_weights = np.empty(0)
+        else:
+            source_weights = None
         cell = {
             "state_fips": f"{int(code) // 1000:02d}",
             "supporting_households": int(mask.sum()),
-            "distinct_source_households": distinct,
-            "kish_ess": cd_surface.kish_ess(weights[mask]),
+            "distinct_source_households": (
+                len(source_weights) if source_weights is not None else None
+            ),
+            "kish_ess": (
+                cd_surface.kish_ess(source_weights)
+                if source_weights is not None
+                else None
+            ),
+            "kish_ess_rows": cd_surface.kish_ess(weights[mask]),
             "status": "supported" if mask.any() else "no_support",
         }
         for role, label in (
@@ -659,15 +682,20 @@ def reliability_report(
         cell["grade"] = reliability_grade(cell["kish_ess"], error)
         result[f"{int(code):05d}"] = cell
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "county_column": county_column,
+        "ess_basis": {
+            "kish_ess": "final weights summed within county by (household_spine, household_source_id)",
+            "kish_ess_rows": "final weights over physical household rows, including clones",
+        },
         "counties": result,
         "grade_rule": {
-            "A": "ESS >=400 and max error <=0.10",
-            "B": "ESS >=100 and max error <=0.20",
-            "C": "ESS >=30 and max error <=0.50",
+            "provisional": True,
+            "A": "source ESS >=400 and max error <=0.10",
+            "B": "source ESS >=100 and max error <=0.20",
+            "C": "source ESS >=30 and max error <=0.50",
             "D": "otherwise with holdout evidence",
-            "U": "no county holdout evidence",
+            "U": "no county holdout evidence or source household identity unavailable",
             "error": "maximum training/holdout absolute relative error; denominator max(abs(target),1)",
         },
     }
@@ -899,6 +927,7 @@ def _bound_report(summary, identity):
                     "supporting_households": 0,
                     "distinct_source_households": 0,
                     "kish_ess": 0.0,
+                    "kish_ess_rows": 0.0,
                     "training": {"n_targets": 0, "mean_abs_rel_error": None},
                     "holdout": {"n_targets": 0, "mean_abs_rel_error": None},
                     "grade": "U",

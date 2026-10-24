@@ -238,7 +238,60 @@ def test_an_incomplete_or_unusable_county_fact_block_is_refused(bad_facts) -> No
         facts = [{**fact, "value": 0.0} for fact in facts]
     with pytest.raises(ValueError):
         _county().state_county_soi_surface(
-            [_state_spec()], facts, {1001: 50.0, 1003: 50.0}
+            [_state_spec(), _state_spec("adjusted_gross_income", 1000.0)],
+            facts
+            + [
+                _fact("01001", "adjusted_gross_income", 2.0),
+                _fact("01003", "adjusted_gross_income", 3.0),
+            ],
+            {1001: 50.0, 1003: 50.0},
+        )
+
+
+@pytest.mark.parametrize("measure", ["return_count", "adjusted_gross_income"])
+@pytest.mark.parametrize("omission", ["county_concept", "state_parent"])
+@pytest.mark.parametrize("omitted_state", [None, "06"])
+def test_state_county_requires_both_concepts_and_parents_in_every_state(
+    measure, omission, omitted_state
+) -> None:
+    parents = [
+        _state_spec(concept, state=state)
+        for state in ("01", "06")
+        for concept in ("return_count", "adjusted_gross_income")
+        if not (
+            omission == "state_parent"
+            and concept == measure
+            and omitted_state in (None, state)
+        )
+    ]
+    facts = [
+        _fact(code, concept, 1.0)
+        for code in ("01001", "01003", "06001")
+        for concept in ("return_count", "adjusted_gross_income")
+        if not (
+            omission == "county_concept"
+            and concept == measure
+            and omitted_state in (None, code[:2])
+        )
+    ]
+    with pytest.raises(ValueError, match=f"concept={measure}"):
+        _county().state_county_soi_surface(
+            parents, facts, {1001: 50.0, 1003: 50.0, 6001: 100.0}
+        )
+
+
+def test_kalawao_gap_still_refuses_the_county_surface_with_the_missing_code() -> None:
+    with pytest.raises(ValueError, match="15005"):
+        _county().state_county_soi_surface(
+            [
+                _state_spec(measure, state="15")
+                for measure in ("return_count", "adjusted_gross_income")
+            ],
+            [
+                _fact("15001", measure, 1.0)
+                for measure in ("return_count", "adjusted_gross_income")
+            ],
+            {15001: 50.0, 15005: 50.0},
         )
 
 
@@ -262,13 +315,19 @@ def test_all_return_county_facts_do_not_become_sliced_state_targets(
         metadata={**parent.metadata, **slice_metadata},
     )
     surface = _county().state_county_soi_surface(
-        [parent, sliced],
-        [_fact("01001", "return_count", 1.0), _fact("01003", "return_count", 3.0)],
+        [parent, sliced, _state_spec("adjusted_gross_income", 1000.0)],
+        [
+            _fact(code, measure, value)
+            for measure in ("return_count", "adjusted_gross_income")
+            for code, value in (("01001", 1.0), ("01003", 3.0))
+        ],
         {1001: 50.0, 1003: 50.0},
     )
-    assert len(surface.specs) == 2
+    assert len(surface.specs) == 4
     assert {
-        spec.metadata["state_county_parent_target_name"] for spec in surface.specs
+        spec.metadata["state_county_parent_target_name"]
+        for spec in surface.specs
+        if spec.metadata["source_measure_id"] == "return_count"
     } == {parent.name}
 
 
@@ -277,10 +336,12 @@ def test_county_soi_uses_exact_parent_household_values_including_signed_values()
 ):
     parent = _state_spec("adjusted_gross_income", 600.0)
     surface = _county().state_county_soi_surface(
-        [parent],
+        [parent, _state_spec()],
         [
             _fact("01001", "adjusted_gross_income", 1.0),
             _fact("01003", "adjusted_gross_income", 2.0),
+            _fact("01001", "return_count", 1.0),
+            _fact("01003", "return_count", 2.0),
         ],
         {1001: 50.0, 1003: 50.0},
     )
@@ -295,7 +356,11 @@ def test_county_soi_uses_exact_parent_household_values_including_signed_values()
     matrix = _county().split_state_rows(
         [parent],
         state_matrix,
-        surface.specs,
+        [
+            spec
+            for spec in surface.specs
+            if spec.metadata["state_county_parent_target_name"] == parent.name
+        ],
         households,
         county_column="county_fips_2023",
     )
@@ -421,7 +486,8 @@ def test_reliability_report_counts_source_households_and_absent_counties() -> No
     assert set(cells) == {"01001", "01003", "01005"}
     assert cells["01001"]["supporting_households"] == 3
     assert cells["01001"]["distinct_source_households"] == 2
-    assert cells["01001"]["kish_ess"] == pytest.approx(16 / 6)
+    assert cells["01001"]["kish_ess"] == pytest.approx(2.0)
+    assert cells["01001"]["kish_ess_rows"] == pytest.approx(16 / 6)
     assert cells["01001"]["training"]["mean_abs_rel_error"] == pytest.approx(0.0)
     assert cells["01001"]["holdout"]["mean_abs_rel_error"] == pytest.approx(0.0)
     assert cells["01001"]["grade"] == "D"
@@ -429,6 +495,79 @@ def test_reliability_report_counts_source_households_and_absent_counties() -> No
     assert cells["01005"]["supporting_households"] == 0
     assert cells["01005"]["distinct_source_households"] == 0
     assert cells["01005"]["kish_ess"] == 0.0
+    assert cells["01005"]["kish_ess_rows"] == 0.0
+    assert report["schema_version"] == 2
+    assert report["grade_rule"]["provisional"] is True
+    assert "household_source_id" in report["ess_basis"]["kish_ess"]
+
+
+def test_two_clones_of_200_donors_do_not_raise_the_source_ess_or_grade() -> None:
+    households = pd.DataFrame(
+        {
+            "county_fips": [1001] * 400,
+            "state_fips": [1] * 400,
+            "household_spine": ["asec_puf"] * 400,
+            "household_source_id": np.repeat(np.arange(200), 2),
+        }
+    )
+    report = _county().reliability_report(
+        households,
+        [
+            {
+                "name": "held_01001",
+                "value": 400.0,
+                "role": "holdout",
+                "geography_level": "county",
+                "county_fips": "01001",
+            }
+        ],
+        sparse.csr_array(np.ones((1, 400))),
+        final_weights=np.ones(400),
+    )
+    cell = report["counties"]["01001"]
+    assert cell["distinct_source_households"] == 200
+    assert cell["kish_ess"] == 200.0
+    assert cell["kish_ess_rows"] == 400.0
+    assert cell["grade"] == "B"
+
+
+@pytest.mark.parametrize(
+    "missing_identity", ["household_spine", "household_source_id", "null"]
+)
+def test_missing_source_identity_cannot_produce_a_row_based_reliability_grade(
+    missing_identity,
+) -> None:
+    households = pd.DataFrame(
+        {
+            "county_fips": [1001],
+            "state_fips": [1],
+            "household_spine": ["asec_puf"],
+            "household_source_id": [7],
+        }
+    )
+    if missing_identity == "null":
+        households["household_source_id"] = None
+    else:
+        households = households.drop(columns=missing_identity)
+    report = _county().reliability_report(
+        households,
+        [
+            {
+                "name": "held_01001",
+                "value": 1.0,
+                "role": "holdout",
+                "geography_level": "county",
+                "county_fips": "01001",
+            }
+        ],
+        sparse.csr_array([[1.0]]),
+        final_weights=np.ones(1),
+    )
+    cell = report["counties"]["01001"]
+    assert cell["distinct_source_households"] is None
+    assert cell["kish_ess"] is None
+    assert cell["kish_ess_rows"] == 1.0
+    assert cell["grade"] == "U"
 
 
 @pytest.mark.skipif(
@@ -502,9 +641,9 @@ def test_county_hooks_materialize_a_fixture_and_preserve_configured_geography(
             "0.5",
         ]
     )
-    parent = _state_spec()
+    parents = [_state_spec(), _state_spec("adjusted_gross_income", 1000.0)]
     surface = SimpleNamespace(
-        registry=TargetRegistry([parent], country="us"),
+        registry=TargetRegistry(parents, country="us"),
         ri_substitutions=[],
         soi_receipt={},
     )
@@ -526,8 +665,8 @@ def test_county_hooks_materialize_a_fixture_and_preserve_configured_geography(
         ),
     )
     materialized = SimpleNamespace(
-        compiled_specs=[parent],
-        matrix=sparse.csr_array(np.ones((1, 3), np.float32)),
+        compiled_specs=parents,
+        matrix=sparse.csr_array(np.asarray([[1, 1, 1], [10, 10, 10]], np.float32)),
         chunk_stats=[],
         carrier_check={},
     )
@@ -544,13 +683,14 @@ def test_county_hooks_materialize_a_fixture_and_preserve_configured_geography(
         "load_ledger_consumer_artifact",
         lambda *_a: SimpleNamespace(
             facts=[
-                _fact("01001", "return_count", 1.0),
-                _fact("01003", "return_count", 3.0),
+                _fact(code, measure, value)
+                for measure in ("return_count", "adjusted_gross_income")
+                for code, value in (("01001", 1.0), ("01003", 3.0))
             ]
         ),
     )
     module.do_materialize(args)
-    assert seen == [parent]
+    assert seen == parents
     identity = json.loads((args.checkpoint_dir / "run_identity.json").read_text())
     loaded, design, registry, records, matrix = module.load_checkpoint_surface(
         args.checkpoint_dir, identity
@@ -559,8 +699,8 @@ def test_county_hooks_materialize_a_fixture_and_preserve_configured_geography(
     np.testing.assert_array_equal(
         loaded.table("household")["planning_region"], [1001, 1003, 1001]
     )
-    assert matrix.shape == (6, 3)
-    assert len(registry) == 6
+    assert matrix.shape == (9, 3)
+    assert len(registry) == 9
     assert {
         record["county_column"]
         for record in records
@@ -583,7 +723,7 @@ def test_county_hooks_materialize_a_fixture_and_preserve_configured_geography(
         weights=np.asarray([10.0, 75.0, 15.0]),
         target_loss_cap=1.0,
     )
-    assert evidence["county_holdout"]["n_targets"] == 2
+    assert evidence["county_holdout"]["n_targets"] == 4
     assert evidence["county_reliability"]["county_column"] == "planning_region"
     assert set(evidence["county_reliability"]["counties"]) == {"01001", "01003"}
     county.write_reports(args.checkpoint_dir, evidence, identity=identity)

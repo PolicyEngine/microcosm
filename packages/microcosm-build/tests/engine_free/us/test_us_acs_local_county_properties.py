@@ -275,3 +275,85 @@ def test_reliability_grades_are_monotone_in_ess_for_fixed_error(
         rank[county.reliability_grade(low, error)]
         <= rank[county.reliability_grade(high, error)]
     )
+
+
+@_SETTINGS
+@given(
+    st.sampled_from((1, 29, 30, 99, 100, 200, 399, 400, 450)),
+    st.integers(1, 12),
+    st.data(),
+)
+def test_splitting_a_source_household_into_clones_preserves_county_ess_and_grade(
+    count, clones, data
+) -> None:
+    county = _fixtures()._county()
+    weights = np.asarray(
+        data.draw(
+            st.one_of(
+                st.just([1] * count),
+                st.lists(st.integers(1, 1000), min_size=count, max_size=count),
+            )
+        ),
+        dtype=float,
+    )
+    selected = data.draw(st.integers(0, count - 1))
+    # Integer partitions make the original weight and sum of clone weights
+    # exactly equal, including unequal and zero-weight clones.
+    cuts = sorted(
+        data.draw(
+            st.lists(
+                st.integers(0, int(weights[selected])),
+                min_size=clones - 1,
+                max_size=clones - 1,
+            )
+        )
+    )
+    clone_weights = np.diff([0, *cuts, int(weights[selected])]).astype(float)
+    households = pd.DataFrame(
+        {
+            "county_fips": [1001] * count,
+            "state_fips": [1] * count,
+            # Source ids intentionally collide across spines: both columns
+            # form the source identity, as in the production multispine pool.
+            "household_spine": np.where(
+                np.arange(count) % 2, "acs_2024_1yr", "asec_puf"
+            ),
+            "household_source_id": np.arange(count) // 2,
+        }
+    )
+    clone_positions = np.repeat(
+        np.arange(count), np.where(np.arange(count) == selected, clones, 1)
+    )
+    split_households = households.iloc[clone_positions].reset_index(drop=True)
+    split_weights = np.concatenate(
+        (weights[:selected], clone_weights, weights[selected + 1 :])
+    )
+    assert split_weights.sum() == weights.sum()
+    records = [
+        {
+            "name": "held_01001",
+            "value": float(weights.sum()),
+            "role": "holdout",
+            "geography_level": "county",
+            "county_fips": "01001",
+        }
+    ]
+
+    def cell(frame, final_weights):
+        return county.reliability_report(
+            frame,
+            records,
+            sparse.csr_array(np.ones((1, len(frame)))),
+            final_weights=final_weights,
+        )["counties"]["01001"]
+
+    original = cell(households, weights)
+    split = cell(split_households, split_weights)
+    assert split["supporting_households"] == count + clones - 1
+    assert (
+        split["distinct_source_households"]
+        == original["distinct_source_households"]
+        == count
+    )
+    assert split["kish_ess"] == pytest.approx(original["kish_ess"])
+    assert split["grade"] == original["grade"]
