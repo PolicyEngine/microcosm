@@ -367,8 +367,8 @@ EXPECTED_HASHES = {
     # moves both again: calibrate gains budget_search_bracket, whose default
     # keeps the US bracket, and the budget search, which the US solve does
     # not run, changes its probes, so again no US solve changes.
-    "seed_map": "0db599df419dd16779097361dc72afdefb8df2abf8b134078da9c52d31d8e017",
-    "seed_protocol": "2b7bdc1d6b0da1bdaf54b4cac29f10f2d3c8bed2e177729c2c89e6b33a099cc5",
+    "seed_map": "54223ee7d55283c8b2c6127ecece8ba6e76b8da0b72946b3cac88a1ba8fa7883",
+    "seed_protocol": "72d918a0cda5ccc95dee3aaabaa4ad1cbabbf4f282abc5046b49b5f183dc0dc9",
     "source_manifest": "f4f8bfeb79268a4043a843b47cec1d1c0e58e9f5dd6bc23417ada95446dd7b8e",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "ac92829c88a1a4fb6460d61190918d5d99c6c377fc8dd8f62f02b332d09bf59c",

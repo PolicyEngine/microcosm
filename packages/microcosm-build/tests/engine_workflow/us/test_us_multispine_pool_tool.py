@@ -342,8 +342,9 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # bytes (its seed protocol); microcosm#1124's opt-in
             # retain_best_objective and microcosm#1301's budget_search_bracket
             # move it. It covers microcosm.fit.qrf's attested bytes too, so
-            # fit_draw_next's caller-owned uniforms (microcosm#1332) move it.
-            "spec_sha256": "19460fc168a6f9ed44e580d0e36777cce78bb33cb52b75630ee86203fa795684",
+            # fit_draw_next's caller-owned uniforms (microcosm#1332) and the
+            # opt-in cross-fitted gate calibration move it.
+            "spec_sha256": "08fbb11e05114797f0b8977fd0cfd1f7afb5196f51c9dc4ad4941b8f0aa2154e",
         },
     }
 
