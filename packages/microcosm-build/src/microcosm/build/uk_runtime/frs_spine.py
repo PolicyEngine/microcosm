@@ -871,6 +871,12 @@ def _add_person_income(
     # where ALIUS says the last was not usual; APAMT is the allowances from a
     # husband or wife who lives away, which the FRS asks only of married
     # adults. A tab without the three refuses, rather than set nobody's.
+    # ALIAMT is an approximation (Vahid's review of #1383, item 13): the FRS
+    # 2024-25 asks for payments "from a previous partner" (AliMny), so it also
+    # holds a former cohabitant's, which pe-uk's spousal_maintenance_income
+    # leaves out and Universal Credit and Pension Credit do not count. The
+    # survey does not say whether the previous partner was a spouse or civil
+    # partner, so those payments count as unearned income here.
     missing_alimony = sorted(
         column for column in ("aliamt", "aluamt", "alius") if column not in person
     )

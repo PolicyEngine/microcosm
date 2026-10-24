@@ -29760,7 +29760,7 @@
         "source_measure_id": "total",
         "layout_groupby_value_id": "e92000001"
       },
-      "selector_note": "MHCLG Council Taxbase line 8, all bands, England row (the October count of the latest return not after the build base period, as the band rows take line 7); the household proxy is the band rows' (voa_dwellings_vs_household_frame).",
+      "selector_note": "MHCLG Council Taxbase line 8, all bands, England row, from the latest return not after the build base period, as the band rows take line 7: Council Taxbase 2025, as at September 2025, in its revision of 21 January 2026 (the feed labels the count 2025-10); the household proxy is the band rows' (voa_dwellings_vs_household_frame).",
       "category_id": "mhclg.council_tax_stock",
       "label": "Single adult discount"
     },
