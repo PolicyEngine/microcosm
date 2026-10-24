@@ -877,7 +877,12 @@
       "dfe.funded_childcare.working_parent_children_age_2": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): bind every DfE funded-childcare count the model can carry, even on few records, and sign out only those with a real reason. The working parent registrations at 9 to 11 months and by single year of age (1, 2 and 3) and the universal registrations in nursery at age 3, from the DfE January census, England, measured at the spring term (María's ruling of 2026-10-22); the age-4 cells are signed out, as the bound rows fix them (accounting note dfe_funded_childcare_single_ages). No incumbent row has this row's definition.",
       "dfe.funded_childcare.working_parent_children_age_3": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): bind every DfE funded-childcare count the model can carry, even on few records, and sign out only those with a real reason. The working parent registrations at 9 to 11 months and by single year of age (1, 2 and 3) and the universal registrations in nursery at age 3, from the DfE January census, England, measured at the spring term (María's ruling of 2026-10-22); the age-4 cells are signed out, as the bound rows fix them (accounting note dfe_funded_childcare_single_ages). No incumbent row has this row's definition.",
       "dfe.funded_childcare.universal_nursery_children_age_3": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): bind every DfE funded-childcare count the model can carry, even on few records, and sign out only those with a real reason. The working parent registrations at 9 to 11 months and by single year of age (1, 2 and 3) and the universal registrations in nursery at age 3, from the DfE January census, England, measured at the spring term (María's ruling of 2026-10-22); the age-4 cells are signed out, as the bound rows fix them (accounting note dfe_funded_childcare_single_ages). No incumbent row has this row's definition.",
-      "mhclg.council_tax_stock.single_adult_discount": "No incumbent target: uk-data binds no council-tax discount; microcosm#953 binds MHCLG Council Taxbase line 8 now that policyengine-uk applies the single adult discount (pe-uk#1864)."
+      "mhclg.council_tax_stock.single_adult_discount": "No incumbent target: uk-data binds no council-tax discount; microcosm#953 binds MHCLG Council Taxbase line 8 now that policyengine-uk applies the single adult discount (pe-uk#1864).",
+      "obr.beer_and_cider_duties": "No incumbent target: uk-data never measured excise duty, which scored zero on its data; microcosm#1359 writes the excise inputs and measures this OBR FY2024-25 line as a held-out diagnostic.",
+      "obr.wine_duties": "No incumbent target: uk-data never measured excise duty, which scored zero on its data; microcosm#1359 writes the excise inputs and measures this OBR FY2024-25 line as a held-out diagnostic.",
+      "obr.spirits_duties": "No incumbent target: uk-data never measured excise duty, which scored zero on its data; microcosm#1359 writes the excise inputs and measures this OBR FY2024-25 line as a held-out diagnostic.",
+      "obr.tobacco_duties": "No incumbent target: uk-data never measured excise duty, which scored zero on its data; microcosm#1359 writes the excise inputs and measures this OBR FY2024-25 line as a held-out diagnostic.",
+      "obr.betting_and_gaming_duties": "No incumbent target: uk-data never measured excise duty, which scored zero on its data; microcosm#1359 writes the excise inputs and measures this OBR FY2024-25 line as a held-out diagnostic."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -1160,6 +1165,11 @@
       "ons.household_electricity_expenditure",
       "ons.household_gas_expenditure",
       "ons.household_road_fuel_expenditure",
+      "obr.beer_and_cider_duties",
+      "obr.wine_duties",
+      "obr.spirits_duties",
+      "obr.tobacco_duties",
+      "obr.betting_and_gaming_duties",
       "scotgov.bus.passenger_revenue",
       "scotgov.bus.government_support",
       "welshgov.bus.public_support",
@@ -17432,7 +17442,7 @@
         "policyengine": {
           "metric_name": "ons/household_road_fuel_expenditure",
           "value_expression": "petrol_spending + diesel_spending",
-          "notes": "ONS Consumer Trends COICOP 07.2.2 fuels and lubricants for personal transport equipment, current prices, calendar year, bound on the frame's petrol plus diesel spend (microcosm#1113). The publisher class also carries other motor fuels and lubricants, about 0.46 percent of it on the LCFS 2024-25 diary (c72213), which the measure does not. The lcfs_consumption stage levels petrol plus diesel to the calendar-2024 row less that share, so this row reads about 0.5 percent low from scope alone: a known offset, left in place and not scaled into the target (María's ruling of 2026-10-10). ONS publishes the class on the domestic concept (spending on UK territory; PolicyEngine/chronicle#322): it includes non-residents' fuel bought in the UK, which the residents-only frame does not hold, and leaves out residents' fuel bought abroad. Consumer Trends publishes those two flows for total spending only (for 2024, GBP 64.7bn by non-residents in the UK, 3.8 percent of the domestic total, and GBP 78.9bn by residents abroad) and splits them by no class, so no national bridge is applied and their size for road fuel is not known. The row binds ONS's calendar-2024 figure (GBP 37.025bn) on the frame's own 2024 petrol and diesel columns, declared as the frame's period (measurement_period 2024, require_matching_fact_period; microcosm#1324). The fact and the stored columns are then the same year, so the binding does not depend on the engine's 2024-to-2025 fuel projection. Before #1324 the row was compared, as a stored read at 2024, with the calendar-2025 figure (GBP 35.099bn), so its reported fit measured neither year; measuring the 2025 figure through the engine instead would put the engine's fuel projection, which falls faster than ONS's own move, into the weights. Household-scope road fuel replaces the OBR cars receipts as the bound fuel row: those are a fiscal-year duty total that includes business use of cars, which the frame reaches only through the engine's conversion of spend to litres, so they stay measured as a diagnostic (calibration_measure_exclusions.json).",
+          "notes": "ONS Consumer Trends COICOP 07.2.2 fuels and lubricants for personal transport equipment, current prices, calendar year, bound on the frame's petrol plus diesel spend (microcosm#1113). The publisher class also carries other motor fuels and lubricants, about 0.46 percent of it on the LCFS 2024-25 diary (c72213), which the measure does not. The lcfs_consumption stage levels petrol plus diesel to the calendar-2024 row less that share, so this row reads about 0.5 percent low from scope alone: a known offset, left in place and not scaled into the target (María's ruling of 2026-10-10). ONS publishes the class on the domestic concept (spending on UK territory; PolicyEngine/chronicle#322): it includes non-residents' fuel bought in the UK, which the residents-only frame does not hold, and leaves out residents' fuel bought abroad. Consumer Trends publishes those two flows for total spending only (for 2024, GBP 64.7bn by non-residents in the UK, 3.8 percent of the domestic total, and GBP 78.9bn by residents abroad) and splits them by no class, so no national bridge is applied and their size for road fuel is not known. The row binds ONS's calendar-2024 figure (GBP 35.460bn in the September 2026 Consumer Trends edition the feed carries since microcosm#1359; GBP 37.025bn in the June edition before it) on the frame's own 2024 petrol and diesel columns, declared as the frame's period (measurement_period 2024, require_matching_fact_period; microcosm#1324). The fact and the stored columns are then the same year, so the binding does not depend on the engine's 2024-to-2025 fuel projection. Before #1324 the row was compared, as a stored read at 2024, with the calendar-2025 figure (GBP 35.099bn in the June edition), so its reported fit measured neither year; measuring the 2025 figure through the engine instead would put the engine's fuel projection, which falls faster than ONS's own move, into the weights. Household-scope road fuel replaces the OBR cars receipts as the bound fuel row: those are a fiscal-year duty total that includes business use of cars, which the frame reaches only through the engine's conversion of spend to litres, so they stay measured as a diagnostic (calibration_measure_exclusions.json).",
           "measurement_period": 2024,
           "require_matching_fact_period": true
         },
@@ -17458,6 +17468,196 @@
       },
       "category_id": "ons.consumer_trends",
       "label": "Fuels and lubricants for personal transport (COICOP 07.2.2)"
+    },
+    {
+      "target_id": "obr.beer_and_cider_duties",
+      "family": "obr",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.tax.alcohol_duty.beer_and_cider.amount"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "obr/beer_and_cider_duties",
+          "value_expression": "beer_duty + cider_duty + sparkling_cider_duty",
+          "notes": "OBR's FY2024-25 accrued beer and cider duty receipts (EFO March 2026 detailed forecast tables, sheet 3.12), measured as the engine's 2024 beer, cider and sparkling cider duty on the frame's stored beer and cider litres and draught shares (measurement_period 2024, require_matching_fact_period): policyengine-uk charges model year 2024 at the FY2024-25 rates and holds the excise inputs flat after it (PolicyEngine/policyengine-uk#2596), so a later year would read the engine's projection, not the data (María's ruling of 2026-10-23, microcosm#1359). The lcfs_consumption stage levels beer and cider litres to HMRC's FY2024-25 clearances at the engine's strengths and takes their draught shares from the draught-relief clearances, so the row reads the duty those clearances imply under the engine's rates and reliefs against the receipts HMRC accrued: the gap is the spread of strengths about the engine's one strength per product, the small producer relief the engine does not model and sparkling cider, which the clearances count within cider, not the weights. Held out of the objective as a measured diagnostic (calibration_measure_exclusions.json) and measured with tools/diagnose_uk_consumption_taxes.py.",
+          "measurement_period": 2024,
+          "require_matching_fact_period": true
+        },
+        "axiom": {
+          "metric_name": "obr/beer_and_cider_duties",
+          "status": "pending",
+          "value_rule": "uk.tax.alcohol_duty.beer_and_cider.amount"
+        }
+      },
+      "assertion_policy": "allow_source_projection",
+      "ledger_selector": {
+        "source_name": "obr",
+        "source_concept": "obr.beer_and_cider_duties",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "period_value": 2024,
+        "dimension_values": {
+          "accounting_basis": "accrual"
+        }
+      },
+      "category_id": "obr.efo_receipts",
+      "label": "Beer and cider duties (accrued)"
+    },
+    {
+      "target_id": "obr.wine_duties",
+      "family": "obr",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.tax.alcohol_duty.wine.amount"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "obr/wine_duties",
+          "value_expression": "wine_duty + other_fermented_duty",
+          "notes": "OBR's FY2024-25 accrued wine duty receipts, which include other fermented products (EFO March 2026 detailed forecast tables, sheet 3.12), measured as the engine's 2024 wine and other fermented product duty on the frame's stored wine and other fermented litres (measurement_period 2024, require_matching_fact_period): policyengine-uk charges model year 2024 at the FY2024-25 rates and holds the excise inputs flat after it (PolicyEngine/policyengine-uk#2596), so a later year would read the engine's projection, not the data (María's ruling of 2026-10-23, microcosm#1359). The lcfs_consumption stage levels wine and other fermented litres to HMRC's FY2024-25 clearances at the engine's strengths, so the row reads the duty those clearances imply under the engine's rates against the receipts HMRC accrued: the gap is the spread of strengths about the engine's one strength per product and the draught relief the engine leaves at zero for these products, not the weights. Held out of the objective as a measured diagnostic (calibration_measure_exclusions.json) and measured with tools/diagnose_uk_consumption_taxes.py.",
+          "measurement_period": 2024,
+          "require_matching_fact_period": true
+        },
+        "axiom": {
+          "metric_name": "obr/wine_duties",
+          "status": "pending",
+          "value_rule": "uk.tax.alcohol_duty.wine.amount"
+        }
+      },
+      "assertion_policy": "allow_source_projection",
+      "ledger_selector": {
+        "source_name": "obr",
+        "source_concept": "obr.wine_duties",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "period_value": 2024,
+        "dimension_values": {
+          "accounting_basis": "accrual"
+        }
+      },
+      "category_id": "obr.efo_receipts",
+      "label": "Wine duties (accrued)"
+    },
+    {
+      "target_id": "obr.spirits_duties",
+      "family": "obr",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.tax.alcohol_duty.spirits.amount"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "obr/spirits_duties",
+          "value_variable": "spirits_duty",
+          "notes": "OBR's FY2024-25 accrued spirits duty receipts (EFO March 2026 detailed forecast tables, sheet 3.12), measured as the engine's 2024 spirits duty on the frame's stored spirits litres (measurement_period 2024, require_matching_fact_period): policyengine-uk charges model year 2024 at the FY2024-25 rates and holds the excise inputs flat after it (PolicyEngine/policyengine-uk#2596), so a later year would read the engine's projection, not the data (María's ruling of 2026-10-23, microcosm#1359). The lcfs_consumption stage levels spirits litres to HMRC's FY2024-25 clearances at the engine's strength, so the row reads the duty those clearances imply under the engine's rates against the receipts HMRC accrued: the gap is the spread of strengths about the engine's one strength, not the weights, not the weights. Held out of the objective as a measured diagnostic (calibration_measure_exclusions.json) and measured with tools/diagnose_uk_consumption_taxes.py.",
+          "measurement_period": 2024,
+          "require_matching_fact_period": true
+        },
+        "axiom": {
+          "metric_name": "obr/spirits_duties",
+          "status": "pending",
+          "value_rule": "uk.tax.alcohol_duty.spirits.amount"
+        }
+      },
+      "assertion_policy": "allow_source_projection",
+      "ledger_selector": {
+        "source_name": "obr",
+        "source_concept": "obr.spirits_duties",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "period_value": 2024,
+        "dimension_values": {
+          "accounting_basis": "accrual"
+        }
+      },
+      "category_id": "obr.efo_receipts",
+      "label": "Spirits duties (accrued)"
+    },
+    {
+      "target_id": "obr.tobacco_duties",
+      "family": "obr",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.tax.tobacco_duty.amount"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "obr/tobacco_duties",
+          "value_variable": "tobacco_duty",
+          "notes": "OBR's FY2024-25 tobacco duty cash receipts (EFO March 2026 detailed forecast tables, sheet 3.8; OBR publishes tobacco on a cash basis only), measured as the engine's 2024 tobacco duty on the frame's stored cigarettes and grams of tobacco a week (measurement_period 2024, require_matching_fact_period): policyengine-uk charges model year 2024 at the FY2024-25 rates and holds the excise inputs flat after it (PolicyEngine/policyengine-uk#2596), so a later year would read the engine's projection, not the data (María's ruling of 2026-10-23, microcosm#1359). The lcfs_consumption stage levels cigarettes and hand-rolling, cigar and other tobacco to HMRC's FY2024-25 clearances, so the row reads the duty those clearances imply under the engine's specific and ad valorem rates against the cash HMRC received: the gap is the engine's price for the ad valorem element, heated tobacco charged at the other-tobacco rate and the timing of cash against clearances, not the weights. Held out of the objective as a measured diagnostic (calibration_measure_exclusions.json) and measured with tools/diagnose_uk_consumption_taxes.py.",
+          "measurement_period": 2024,
+          "require_matching_fact_period": true
+        },
+        "axiom": {
+          "metric_name": "obr/tobacco_duties",
+          "status": "pending",
+          "value_rule": "uk.tax.tobacco_duty.amount"
+        }
+      },
+      "assertion_policy": "allow_source_projection",
+      "ledger_selector": {
+        "source_name": "obr",
+        "source_concept": "obr.tobacco_duties",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "period_value": 2024,
+        "dimension_values": {
+          "accounting_basis": "cash"
+        }
+      },
+      "category_id": "obr.efo_receipts",
+      "label": "Tobacco duties"
+    },
+    {
+      "target_id": "obr.betting_and_gaming_duties",
+      "family": "obr",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.tax.gambling_duty.amount"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "obr/betting_and_gaming_duties",
+          "value_variable": "gambling_duty",
+          "notes": "OBR's FY2024-25 betting and gaming duty cash receipts (EFO March 2026 detailed forecast tables, sheet 3.8), measured as the engine's 2024 gambling duty on the frame's stored gambling duty bases (policyengine-uk 2.151.0) (measurement_period 2024, require_matching_fact_period): policyengine-uk charges model year 2024 at the FY2024-25 rates and holds the excise inputs flat after it (PolicyEngine/policyengine-uk#2596), so a later year would read the engine's projection, not the data (María's ruling of 2026-10-23, microcosm#1359). The lcfs_consumption stage levels each gambling duty base to HMRC's FY2024-25 receipts for the duty, or Machine Games Duty's liabilities for the band, over the engine's rate, so the row reads the HMRC receipts back by construction, against OBR's total: the gap is spread betting, which has no published base, and the difference between HMRC's receipts series and OBR's, not the weights. Held out of the objective as a measured diagnostic (calibration_measure_exclusions.json) and measured with tools/diagnose_uk_consumption_taxes.py.",
+          "measurement_period": 2024,
+          "require_matching_fact_period": true
+        },
+        "axiom": {
+          "metric_name": "obr/betting_and_gaming_duties",
+          "status": "pending",
+          "value_rule": "uk.tax.gambling_duty.amount"
+        }
+      },
+      "assertion_policy": "allow_source_projection",
+      "ledger_selector": {
+        "source_name": "obr",
+        "source_concept": "obr.betting_and_gaming_duties",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "period_value": 2024,
+        "dimension_values": {
+          "accounting_basis": "cash"
+        }
+      },
+      "category_id": "obr.efo_receipts",
+      "label": "Betting and gaming duties"
     },
     {
       "target_id": "scotgov.bus.passenger_revenue",

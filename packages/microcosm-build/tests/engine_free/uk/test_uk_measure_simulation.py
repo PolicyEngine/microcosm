@@ -670,6 +670,14 @@ _PACKAGED_EXCLUSION_CENSUS = {
     # versus 7271 basis ruling is open (microcosm#890 G), held out after the
     # national hold-out arm.
     "orr.": 1,
+    # microcosm#1359 (2026-10-23): OBR's FY2024-25 excise receipts, whose
+    # level the stage sets from published clearances and bases at the
+    # engine's rates, measured with tools/diagnose_uk_consumption_taxes.py.
+    "obr.beer_and_cider_duties": 1,
+    "obr.wine_duties": 1,
+    "obr.spirits_duties": 1,
+    "obr.tobacco_duties": 1,
+    "obr.betting_and_gaming_duties": 1,
 }
 
 # The carer and childcare rows were retired on 2026-09-16 with the repairs
@@ -706,7 +714,8 @@ def test_packaged_exclusions_load():
     # with it (ruling D3). The ten HMRC £1m-and-over cells it bound on arm 1
     # are held again on that arm's measured distortion. Arm 2 binds four of
     # the twelve UC payment bands, which it fits unbound (microcosm#1344).
-    assert len(names) == len(set(names)) == 33
+    # microcosm#1359 adds the five OBR excise rows, measured at FY2024-25.
+    assert len(names) == len(set(names)) == 38
     rehold = [entry for entry in exclusions if "_1_000_000_to_inf" in entry["name"]]
     assert {(e["approved_on"], e["expires_on"], e["tracking"]) for e in rehold} == {
         ("2026-10-23", "2027-01-23", "microcosm#1095")
