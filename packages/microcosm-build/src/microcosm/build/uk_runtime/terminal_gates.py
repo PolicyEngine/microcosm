@@ -411,6 +411,10 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     # Bonus sacrifice (#1340, pe-uk#2572 section 1): the enhanced FRS carries
     # salary sacrifice only.
     "person.pension_contributions_via_bonus_sacrifice",
+    # Liquid and solid heating fuels (#1278, pe-uk#2572): the enhanced FRS
+    # draws no fuel beside electricity and gas.
+    "household.liquid_fuel_consumption",
+    "household.solid_fuel_consumption",
 )
 
 UK_KNOWN_MISSING_REFERENCE_EXPORT_COLUMNS: tuple[str, ...] = (

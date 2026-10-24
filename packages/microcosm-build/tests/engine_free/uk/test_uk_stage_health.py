@@ -1805,6 +1805,8 @@ def test_recomposed_totals_gate_holds_totals_above_their_components() -> None:
     drawn = pd.DataFrame(
         {
             "domestic_energy_consumption": [2000.0, 900.0],
+            "liquid_fuel_consumption": [0.0, 0.0],
+            "solid_fuel_consumption": [0.0, 0.0],
             "petrol_spending": [800.0, 0.0],
             "diesel_spending": [0.0, 700.0],
             "bus_fare_spending": [100.0, 0.0],
@@ -1815,6 +1817,8 @@ def test_recomposed_totals_gate_holds_totals_above_their_components() -> None:
             "housing_water_and_electricity_consumption": [7000.0, 600.0],
             "electricity_consumption": [900.0, 600.0],
             "gas_consumption": [700.0, 0.0],
+            "liquid_fuel_consumption": [0.0, 0.0],
+            "solid_fuel_consumption": [0.0, 0.0],
             "transport_consumption": [2000.0, 1000.0],
             "petrol_spending": [1500.0, 0.0],
             "diesel_spending": [0.0, 900.0],
@@ -1851,7 +1855,9 @@ def test_recomposed_totals_gate_holds_totals_above_their_components() -> None:
 
     passed = run(receipt)
     assert passed.passed, passed.failures
-    assert passed.details["uncarried_total"] == receipt["uncarried"]["total"]
+    assert (
+        passed.details["published_fuels_total"] == receipt["published_fuels"]["total"]
+    )
     housing = "housing_water_and_electricity_consumption"
     # 7000 - 2000 + 1600 is held at 6000 (microcosm#1164).
     assert receipt["parents"][housing]["rows_held_at_maximum"] == 1
@@ -1895,7 +1901,7 @@ def test_recomposed_totals_gate_holds_totals_above_their_components() -> None:
         "drawn_subtracts",
     )
     failing(lambda r: r["parents"].pop("transport_consumption"), "not the declared")
-    failing(lambda r: r["uncarried"].update(total=0.0), "uncarried spend")
+    failing(lambda r: r["published_fuels"].update(total=0.0), "published fuel spend")
     with pytest.raises(ValueError, match="recomposed_totals must be an object"):
         run(None)
 

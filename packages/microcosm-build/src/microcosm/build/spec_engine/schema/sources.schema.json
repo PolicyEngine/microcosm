@@ -12407,7 +12407,7 @@
       "kind",
       "parents",
       "maximum_total",
-      "uncarried"
+      "published_fuels"
      ],
      "properties": {
       "kind": {
@@ -12446,7 +12446,7 @@
         }
        }
       },
-      "uncarried": {
+      "published_fuels": {
        "type": "object",
        "additionalProperties": false,
        "required": [
@@ -12469,13 +12469,17 @@
           "additionalProperties": false,
           "required": [
            "coicop",
-           "concept"
+           "concept",
+           "column"
           ],
           "properties": {
            "coicop": {
             "type": "string"
            },
            "concept": {
+            "type": "string"
+           },
+           "column": {
             "type": "string"
            }
           }

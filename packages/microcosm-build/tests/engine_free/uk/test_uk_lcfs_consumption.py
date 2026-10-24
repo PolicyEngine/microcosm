@@ -1289,10 +1289,11 @@ def test_stage_transform_prices_bus_fares_from_journeys() -> None:
 
     out = result.table("household")
     assert set(UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS) <= set(out.columns)
-    # The 18 chain targets, the road-fuel redraw's total and petrol share,
-    # the prepayment-meter flag (microcosm#1110), then the gas-payer
-    # classifier and amount model the connection walk reads (microcosm#1164).
-    assert len(transform.fit_weight_records) == 23
+    # The 20 chain targets (the heating fuels last, pe-uk#2572), the road-fuel
+    # redraw's total and petrol share, the prepayment-meter flag
+    # (microcosm#1110), then the gas-payer classifier and amount model the
+    # connection walk reads (microcosm#1164).
+    assert len(transform.fit_weight_records) == 25
     assert transform.fit_weight_records[-4].fit_name.endswith(
         ":petrol_share_of_road_fuel"
     )
@@ -1860,20 +1861,33 @@ def test_division_capture_places_an_over_draw_in_the_tail() -> None:
     assert "tail" not in capture["total"]
 
 
-def test_uncarried_spend_sits_beside_the_donors_other_fuels() -> None:
-    from microcosm.build.uk_runtime.lcfs_consumption import uncarried_beside_donor
-
-    uncarried = {"resource": "r", "classes": [], "total": 2.0e9}
-    beside = uncarried_beside_donor(uncarried, {"other_fuels": 1.5e9})
-    assert beside["donor_other_fuels_at_diary_prices"] == 1.5e9
-    assert beside["donor_over_published"] == pytest.approx(0.75)
-    assert {key: beside[key] for key in uncarried} == uncarried
-    assert (
-        uncarried_beside_donor({**uncarried, "total": 0.0}, {"other_fuels": 1.0})[
-            "donor_over_published"
-        ]
-        is None
+def test_published_fuels_sit_beside_the_donors_and_the_frames_draws() -> None:
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        published_fuels_beside_draws,
     )
+
+    published = {
+        "resource": "r",
+        "classes": [
+            {"coicop": "04.5.3", "column": "liquid_fuel_consumption", "value": 2.0e9},
+            {"coicop": "04.5.4", "column": "solid_fuel_consumption", "value": 0.0},
+        ],
+        "total": 2.0e9,
+    }
+    beside = published_fuels_beside_draws(
+        published,
+        {"liquid_fuel_consumption": 1.5e9, "solid_fuel_consumption": 1.0e8},
+        {"liquid_fuel_consumption": 1.8e9, "solid_fuel_consumption": 2.0e8},
+    )
+    liquid, solid = beside["classes"]
+    assert liquid["donor_at_diary_prices"] == 1.5e9
+    assert liquid["donor_over_published"] == pytest.approx(0.75)
+    assert liquid["frame"] == 1.8e9
+    assert liquid["frame_over_published"] == pytest.approx(0.9)
+    # A published zero gives no ratio.
+    assert solid["donor_over_published"] is None
+    assert solid["frame_over_published"] is None
+    assert beside["total"] == published["total"]
 
 
 def test_report_only_diagnostics_fail_closed_on_ambiguous_rows(monkeypatch) -> None:
@@ -2360,17 +2374,22 @@ def test_recompose_writes_each_total_around_its_levelled_parts() -> None:
     drawn = pd.DataFrame(
         {
             "domestic_energy_consumption": [2000.0, 900.0, 0.0],
+            "liquid_fuel_consumption": [300.0, 0.0, 0.0],
+            "solid_fuel_consumption": [0.0, 50.0, 0.0],
             "petrol_spending": [800.0, 0.0, 0.0],
             "diesel_spending": [0.0, 700.0, 0.0],
             "bus_fare_spending": [100.0, 0.0, 50.0],
         }
     )
-    # The levelled parts, beside the totals as the chain drew them.
+    # The levelled parts, beside the totals as the chain drew them; the
+    # heating fuels are drawn parts, added back unchanged.
     draws = pd.DataFrame(
         {
             "housing_water_and_electricity_consumption": [7000.0, 600.0, 800.0],
             "electricity_consumption": [900.0, 600.0, 0.0],
             "gas_consumption": [700.0, 0.0, 0.0],
+            "liquid_fuel_consumption": [300.0, 0.0, 0.0],
+            "solid_fuel_consumption": [0.0, 50.0, 0.0],
             "transport_consumption": [2000.0, 1000.0, 0.0],
             "petrol_spending": [1500.0, 0.0, 0.0],
             "diesel_spending": [0.0, 900.0, 0.0],
@@ -2389,10 +2408,11 @@ def test_recompose_writes_each_total_around_its_levelled_parts() -> None:
         donor_support=_WIDE_RECOMPOSE_SUPPORT,
     )
 
-    # Housing: 7000 - 2000 + 1600; 600 - 900 floors at 0, + 600; 800 + 0.
+    # Housing: 7000 - 2300 + 1900; 600 - 950 floors at 0, + 650, so the total
+    # holds its solid fuel as well as its electricity; 800 + 0.
     assert out["housing_water_and_electricity_consumption"].tolist() == [
         6600.0,
-        600.0,
+        650.0,
         800.0,
     ]
     # Transport nets the drawn fuel and bus and adds the levelled fuel and the
@@ -2409,7 +2429,7 @@ def test_recompose_writes_each_total_around_its_levelled_parts() -> None:
 
     # With the parent on a 1.02 bridge, drawn energy and bus left at 1.0 and
     # petrol at 0.9, the remainders keep the gap between the factors: housing
-    # (2 x 2000 + 900) x 0.02; transport 1600 x (1.02 / 0.9 - 1) + 700 x 0.02
+    # (2 x 2300 + 950) x 0.02; transport 1600 x (1.02 / 0.9 - 1) + 700 x 0.02
     # + 350 x 0.02 (the #1167 re-review's item 2, recorded not corrected).
     _, with_factors = recompose_parent_totals(
         draws,
@@ -2425,16 +2445,20 @@ def test_recompose_writes_each_total_around_its_levelled_parts() -> None:
     )
     housing = with_factors["parents"]["housing_water_and_electricity_consumption"]
     transport = with_factors["parents"]["transport_consumption"]
-    assert housing["uprating_residue"]["weighted_residue_gbp"] == pytest.approx(98.0)
+    assert housing["uprating_residue"]["weighted_residue_gbp"] == pytest.approx(111.0)
     assert transport["uprating_residue"]["weighted_residue_gbp"] == pytest.approx(
         1600.0 * (1.02 / 0.9 - 1.0) + 700.0 * 0.02 + 350.0 * 0.02
     )
     assert transport["uprating_residue"]["part_factors"]["petrol_spending"] == 0.9
     housing = receipt["parents"]["housing_water_and_electricity_consumption"]
-    assert housing["drawn_subtracts"] == ["domestic_energy_consumption"]
+    assert housing["drawn_subtracts"] == [
+        "domestic_energy_consumption",
+        "liquid_fuel_consumption",
+        "solid_fuel_consumption",
+    ]
     assert housing["weighted_drawn_total"] == 2.0 * 7000.0 + 600.0 + 3.0 * 800.0
     assert housing["rows_floored"] == 1
-    assert housing["weighted_floored_mass"] == 300.0
+    assert housing["weighted_floored_mass"] == 350.0
     assert housing["weighted_remainder"] == pytest.approx(
         housing["weighted_drawn_total"]
         - housing["weighted_drawn_subtracts"]
@@ -2453,7 +2477,7 @@ def test_recompose_writes_each_total_around_its_levelled_parts() -> None:
     assert transport["weighted_total"] == 2.0 * 2600.0 + 1450.0 + 3.0 * 400.0
     assert transport["weighted_components"] == 2.0 * 1500.0 + 1150.0 + 3.0 * 400.0
     assert transport["rows_floored"] == 1
-    uncarried = receipt["uncarried"]
+    published = receipt["published_fuels"]
     expected = [
         float(
             vendored_rows(
@@ -2470,8 +2494,12 @@ def test_recompose_writes_each_total_around_its_levelled_parts() -> None:
             ("04.5.4", "ons.household_expenditure.solid_fuels"),
         )
     ]
-    assert [entry["value"] for entry in uncarried["classes"]] == expected
-    assert uncarried["total"] == pytest.approx(sum(expected))
+    assert [entry["value"] for entry in published["classes"]] == expected
+    assert [entry["column"] for entry in published["classes"]] == [
+        "liquid_fuel_consumption",
+        "solid_fuel_consumption",
+    ]
+    assert published["total"] == pytest.approx(sum(expected))
 
 
 @pytest.mark.parametrize(
@@ -2491,12 +2519,20 @@ def test_recompose_writes_each_total_around_its_levelled_parts() -> None:
         ),
         (lambda d: d["parents"].pop("transport_consumption"), "must declare"),
         (
-            lambda d: d["uncarried"].update(resource="family_resources.json"),
+            lambda d: d["published_fuels"].update(resource="family_resources.json"),
             "not a vendored",
         ),
         (
-            lambda d: d["uncarried"]["classes"][0].update(concept="ons.other"),
+            lambda d: d["published_fuels"]["classes"][0].update(concept="ons.other"),
             "expected one",
+        ),
+        (
+            lambda d: d["published_fuels"]["classes"][0].update(column="gas"),
+            "not a heating-fuel column",
+        ),
+        (
+            lambda d: d["published_fuels"]["classes"].pop(),
+            "once each",
         ),
         (lambda d: d.pop("maximum_total"), "maximum_total"),
     ],
@@ -2513,6 +2549,8 @@ def test_recompose_refuses_a_declaration_it_does_not_apply(change, match) -> Non
         "domestic_energy_consumption",
         "electricity_consumption",
         "gas_consumption",
+        "liquid_fuel_consumption",
+        "solid_fuel_consumption",
         "transport_consumption",
         "petrol_spending",
         "diesel_spending",
@@ -2537,6 +2575,8 @@ def test_recompose_holds_each_total_to_the_donor_maximum() -> None:
     drawn = pd.DataFrame(
         {
             "domestic_energy_consumption": [2000.0, 100.0, 0.0],
+            "liquid_fuel_consumption": [0.0, 0.0, 0.0],
+            "solid_fuel_consumption": [0.0, 0.0, 0.0],
             "petrol_spending": [0.0, 0.0, 0.0],
             "diesel_spending": [0.0, 0.0, 0.0],
             "bus_fare_spending": [0.0, 0.0, 0.0],
@@ -2548,6 +2588,8 @@ def test_recompose_holds_each_total_to_the_donor_maximum() -> None:
             "housing_water_and_electricity_consumption": [7800.0, 5000.0, 3000.0],
             "electricity_consumption": [2500.0, 700.0, 4000.0],
             "gas_consumption": [1500.0, 200.0, 3000.0],
+            "liquid_fuel_consumption": [0.0, 0.0, 0.0],
+            "solid_fuel_consumption": [0.0, 0.0, 0.0],
             "transport_consumption": [10.0, 10.0, 10.0],
             "petrol_spending": [0.0, 0.0, 0.0],
             "diesel_spending": [0.0, 0.0, 0.0],

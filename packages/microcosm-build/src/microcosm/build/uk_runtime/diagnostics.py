@@ -58,6 +58,7 @@ __all__ = [
     "UK_TARGET_GEOGRAPHY_LEVELS",
     "uk_calibration_diagnostics_payload",
     "uk_consumption_drift",
+    "uk_consumption_drift_flags",
     "uk_fit_by_family",
     "uk_support_limited_misses",
     "uk_target_geography_levels",
@@ -666,6 +667,18 @@ _UK_DRIFT_TOTAL_COLUMNS: tuple[str, ...] = (
     "petrol_spending",
     "diesel_spending",
 )
+#: The heating fuels the stage draws at the donor's level (pe-uk#2572), read
+#: where the frame carries them: a spine built before them has a drift block
+#: without them.
+_UK_DRIFT_OPTIONAL_TOTAL_COLUMNS: tuple[str, ...] = (
+    "liquid_fuel_consumption",
+    "solid_fuel_consumption",
+)
+#: Warn-only drift flags (microcosm#1278, R1): a total moving more than 2
+#: percent between the design and the final weights, or a share more than half
+#: a percentage point. Nothing is gated on them.
+UK_DRIFT_TOTAL_FLAG = 0.02
+UK_DRIFT_SHARE_FLAG = 0.005
 
 
 def _drift_value(design: float, final: float) -> dict[str, float | None]:
@@ -721,7 +734,14 @@ def uk_consumption_drift(
 
     totals = {
         name: _drift_value(design @ column(name), final @ column(name))
-        for name in _UK_DRIFT_TOTAL_COLUMNS
+        for name in (
+            *_UK_DRIFT_TOTAL_COLUMNS,
+            *(
+                name
+                for name in _UK_DRIFT_OPTIONAL_TOTAL_COLUMNS
+                if name in household.columns
+            ),
+        )
     }
     consumption = sum(column(name) for name in UK_LCFS_COICOP_DIVISION_COLUMNS)
     totals["consumption"] = _drift_value(design @ consumption, final @ consumption)
@@ -755,6 +775,34 @@ def uk_consumption_drift(
         )
     }
     return {"report_only": True, "totals": totals, "shares": shares}
+
+
+def uk_consumption_drift_flags(drift: Mapping[str, object]) -> dict[str, object]:
+    """The warn-only flags over a consumption drift block (microcosm#1278, R1).
+
+    A total that moves more than ``UK_DRIFT_TOTAL_FLAG`` of its design value,
+    or a share that moves more than ``UK_DRIFT_SHARE_FLAG``, between the design
+    and the final weights. Report only: the receipts read them, nothing is
+    gated on them, and the diagnostics payload's schema stays as it is.
+    """
+
+    totals = drift.get("totals") or {}
+    shares = drift.get("shares") or {}
+    return {
+        "total_relative_change_above": UK_DRIFT_TOTAL_FLAG,
+        "share_change_above": UK_DRIFT_SHARE_FLAG,
+        "totals": sorted(
+            name
+            for name, value in totals.items()
+            if value.get("relative_change") is not None
+            and abs(float(value["relative_change"])) > UK_DRIFT_TOTAL_FLAG
+        ),
+        "shares": sorted(
+            name
+            for name, value in shares.items()
+            if abs(float(value["change"])) > UK_DRIFT_SHARE_FLAG
+        ),
+    }
 
 
 def uk_zero_weight_strata(

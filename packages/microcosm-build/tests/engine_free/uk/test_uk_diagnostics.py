@@ -700,6 +700,55 @@ def test_consumption_drift_compares_design_and_final_weights() -> None:
     assert "full_rate_vat_base" not in drift["totals"]
 
 
+def test_consumption_drift_carries_the_heating_fuels_where_the_frame_has_them() -> None:
+    """The liquid and solid fuels the stage draws (pe-uk#2572), read only where
+    the frame carries them, so an older spine keeps its drift block."""
+
+    from microcosm.build.uk_runtime.diagnostics import uk_consumption_drift
+
+    household = pd.DataFrame(_consumption_columns(4))
+    design = np.array([1.0, 1.0, 1.0, 1.0])
+    final = np.array([2.0, 0.0, 1.0, 1.0])
+    assert (
+        "liquid_fuel_consumption"
+        not in uk_consumption_drift(household, design, final)["totals"]
+    )
+    household["liquid_fuel_consumption"] = [100.0, 0.0, 50.0, 0.0]
+    household["solid_fuel_consumption"] = [0.0, 30.0, 0.0, 0.0]
+    totals = uk_consumption_drift(household, design, final)["totals"]
+    assert totals["liquid_fuel_consumption"]["final"] == 250.0
+    assert totals["solid_fuel_consumption"]["relative_change"] == -1.0
+
+
+def test_drift_flags_mark_totals_past_two_percent_and_shares_past_half_a_point() -> (
+    None
+):
+    """Warn-only flags at #1278's R1 thresholds; the payload keeps its shape."""
+
+    from microcosm.build.uk_runtime.diagnostics import (
+        UK_DRIFT_SHARE_FLAG,
+        UK_DRIFT_TOTAL_FLAG,
+        uk_consumption_drift_flags,
+    )
+
+    drift = {
+        "totals": {
+            "moves": {"relative_change": 0.021, "change": 21.0},
+            "edge": {"relative_change": -0.02, "change": -20.0},
+            "none": {"relative_change": None, "change": 0.0},
+        },
+        "shares": {
+            "moves": {"change": -0.0051},
+            "edge": {"change": 0.005},
+        },
+    }
+    flags = uk_consumption_drift_flags(drift)
+    assert flags["total_relative_change_above"] == UK_DRIFT_TOTAL_FLAG == 0.02
+    assert flags["share_change_above"] == UK_DRIFT_SHARE_FLAG == 0.005
+    assert flags["totals"] == ["moves"]
+    assert flags["shares"] == ["moves"]
+
+
 def test_consumption_drift_carries_the_full_rate_vat_base() -> None:
     """Consumption times the ETB VAT stage's full-rate share (#1207)."""
 

@@ -1228,7 +1228,9 @@
           "person.war_widows_pension_reported",
           "person.widowed_parents_allowance_reported",
           "person.spousal_maintenance_income",
-          "person.pension_contributions_via_bonus_sacrifice"
+          "person.pension_contributions_via_bonus_sacrifice",
+          "household.liquid_fuel_consumption",
+          "household.solid_fuel_consumption"
         ],
         "reviewed_exclusions": {
           "person.incapacity_benefit_reported": "The enhanced FRS stores this legacy reported-benefit input as an all-zero layer; the candidate must drop dead zero layers.",

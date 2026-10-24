@@ -907,6 +907,9 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
                 "domestic_energy_consumption",
                 "electricity_consumption",
                 "gas_consumption",
+                # The heating fuels policyengine-uk 2.149.0 reads (pe-uk#2572).
+                "liquid_fuel_consumption",
+                "solid_fuel_consumption",
             ),
         ),
         _Cell("household", "has_fuel_consumption", "bool"),

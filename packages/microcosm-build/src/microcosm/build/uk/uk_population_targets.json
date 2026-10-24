@@ -17310,18 +17310,18 @@
       ],
       "measurement": {
         "entity": "household",
-        "concept": "uk.consumption.domestic_energy.amount"
+        "concept": "uk.consumption.fuel_light_and_power.amount"
       },
       "bindings": {
         "policyengine": {
           "metric_name": "ons/household_energy_expenditure",
-          "value_variable": "domestic_energy_consumption",
-          "notes": "ONS Consumer Trends COICOP 04.5 electricity, gas and other fuels, current prices, calendar year; the publisher class includes other fuels (heating oil, solid fuel), which the frame's electricity plus gas column does not carry, so the bound total is a few percent wide of the modelled scope (#890 F1). Signed out of calibration once the 04.5.1 electricity and 04.5.2 gas sub-classes were published and bound per fuel (chronicle #271); since microcosm#1113 those per-fuel rows are reviewed measure exclusions, measured on every evaluation and held out of the objective; retained for registry parity."
+          "value_expression": "electricity_consumption + gas_consumption + liquid_fuel_consumption + solid_fuel_consumption",
+          "notes": "ONS Consumer Trends COICOP 04.5 electricity, gas and other fuels, current prices, calendar year, measured on the frame's electricity, gas, liquid fuel and solid fuel spend (María's ruling of 2026-10-22: LPG with liquid, heat in the remainder; the heating fuels are policyengine-uk 2.149.0's inputs, pe-uk#2572). The publisher class also holds 04.5.5 heat energy, which no column carries. Signed out of calibration once the 04.5.1 electricity and 04.5.2 gas sub-classes were published and bound per fuel (chronicle #271); since microcosm#1113 those per-fuel rows are reviewed measure exclusions, measured on every evaluation and held out of the objective; retained for registry parity."
         },
         "axiom": {
           "metric_name": "ons/household_energy_expenditure",
           "status": "pending",
-          "value_rule": "uk.consumption.domestic_energy.amount"
+          "value_rule": "uk.consumption.fuel_light_and_power.amount"
         }
       },
       "ledger_selector": {

@@ -6,6 +6,7 @@ import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 import numpy as np
@@ -201,11 +202,12 @@ UK_LCFS_COMBINED_PAYMENTS: tuple[tuple[str, str | None, tuple[str, str]], ...] =
 #: sign have moved, and the stage refuses the donor. On the 2024-25 tab the
 #: identity holds for about 98 % of each fuel's account payers.
 UK_LCFS_ACCOUNT_IDENTITY_MINIMUM = 0.95
-#: The rest of p537, which no output column carries and the housing total
-#: keeps: central-heating oil (b017, Part 2 row 211; diary c45312, with
-#: paraffin, row 1066), bottled gas (b018, row 212; diary c45222, row 1063),
-#: coal and coke (c45411, row 1069), wood and peat (c45412, row 1072), and hot
-#: water, steam and ice (c45511, row 1075).
+#: The rest of p537 beside electricity and gas: central-heating oil (b017,
+#: Part 2 row 211; diary c45312, with paraffin, row 1066), bottled gas (b018,
+#: row 212; diary c45222, row 1063), coal and coke (c45411, row 1069), wood and
+#: peat (c45412, row 1072), and hot water, steam and ice (c45511, row 1075).
+#: The liquid and solid fuels have columns of their own (below); hot water,
+#: steam and ice has no engine input and stays in the housing remainder.
 UK_LCFS_OTHER_FUEL_PARTS = (
     "b017",
     "b018",
@@ -234,6 +236,18 @@ UK_LCFS_ENERGY_CODES = tuple(
 )
 #: The donor scratch column for the other fuels, read by the split receipt.
 UK_LCFS_OTHER_FUELS_COLUMN = "lcfs_other_fuels"
+#: The two heating fuels policyengine-uk 2.149.0 reads (pe-uk#2572), parts of
+#: housing_water_and_electricity_consumption that add nothing to consumption:
+#: liquid fuels (COICOP 04.5.3), central-heating oil and paraffin with bottled
+#: gas, LPG with liquid (María's ruling of 2026-10-22); and solid fuels
+#: (COICOP 04.5.4), coal, coke, wood and peat.
+UK_LCFS_FUEL_PARTS: Mapping[str, tuple[str, ...]] = MappingProxyType(
+    {
+        "liquid_fuel_consumption": ("b017", "c45312", "b018", "c45222"),
+        "solid_fuel_consumption": ("c45411", "c45412"),
+    }
+)
+UK_LCFS_FUEL_COLUMNS = tuple(UK_LCFS_FUEL_PARTS)
 #: ``donor.attrs`` key of the donor energy-split receipt.
 UK_LCFS_ENERGY_SPLIT_RECEIPT = "donor_energy_split"
 #: ``attrs`` key under which the split records the account identity shares.
@@ -248,7 +262,11 @@ UK_LCFS_DONOR_FLOORED_COLUMNS = (
 #: The spend columns a price index carries from the April-to-March diary to
 #: the calendar base year (microcosm#1113). Energy and road fuel are not here:
 #: later steps set their levels for that year.
-UK_LCFS_DIARY_PRICE_COLUMNS = (*UK_LCFS_COICOP_DIVISION_COLUMNS, "bus_fare_spending")
+UK_LCFS_DIARY_PRICE_COLUMNS = (
+    *UK_LCFS_COICOP_DIVISION_COLUMNS,
+    "bus_fare_spending",
+    *UK_LCFS_FUEL_COLUMNS,
+)
 #: Cars and vans available to the household: LCFS ``a124`` on the donor, the
 #: was_wealth QRF draw of WAS ``vcarnr8`` on the recipient (the FRS carries no
 #: vehicle variable). Both sides are rounded and clipped to this closed range so
@@ -395,6 +413,10 @@ UK_LCFS_CONSUMPTION_TARGET_COLUMNS = (
     "domestic_energy_consumption",
     "electricity_consumption",
     "gas_consumption",
+    # Drawn last, after the totals and the levelled parts they condition on,
+    # so every earlier draw is the chain's own (pe-uk#2572).
+    "liquid_fuel_consumption",
+    "solid_fuel_consumption",
 )
 RECOMPOSE_FROM_REMAINDER_KIND = "recompose_from_remainder"
 #: The COICOP totals that contain columns the stage levels (microcosm#1113):
@@ -404,13 +426,15 @@ RECOMPOSE_FROM_REMAINDER_KIND = "recompose_from_remainder"
 #: chain's domestic-energy draw, which is the electricity and gas
 #: ``derive_energy_from_lcfs`` makes of the diary's fuel, light and power
 #: (``p537``) by its labelled parts, so the diary's oil, bottled gas, solid
-#: fuels and heat stay in the housing remainder (microcosm#1164). Transport (p607) nets the drawn petrol and
+#: fuels and heat stay in the housing remainder (microcosm#1164); the liquid and
+#: solid fuels' own draws are netted and added back unchanged, so the total
+#: always holds them (pe-uk#2572). Transport (p607) nets the drawn petrol and
 #: diesel (c72211, c72212) and the drawn bus fares (which the pricing step
 #: replaces with journeys times yield), and keeps other motor fuels.
 UK_LCFS_RECOMPOSED_PARENTS: Mapping[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "housing_water_and_electricity_consumption": (
-        ("domestic_energy_consumption",),
-        ("electricity_consumption", "gas_consumption"),
+        ("domestic_energy_consumption", *UK_LCFS_FUEL_COLUMNS),
+        ("electricity_consumption", "gas_consumption", *UK_LCFS_FUEL_COLUMNS),
     ),
     "transport_consumption": (
         ("petrol_spending", "diesel_spending", "bus_fare_spending"),
@@ -649,8 +673,13 @@ class UKLCFSConsumptionStageTransform:
         )
         energy_split = donor.attrs.get(UK_LCFS_ENERGY_SPLIT_RECEIPT)
         if recomposed_totals_receipt is not None and isinstance(energy_split, Mapping):
-            recomposed_totals_receipt["uncarried"] = uncarried_beside_donor(
-                recomposed_totals_receipt["uncarried"], energy_split
+            recomposed_totals_receipt["published_fuels"] = published_fuels_beside_draws(
+                recomposed_totals_receipt["published_fuels"],
+                energy_split,
+                {
+                    column: float(np.dot(weights, household_draws[column].to_numpy()))
+                    for column in UK_LCFS_FUEL_COLUMNS
+                },
             )
         uprating = uprating_operation(self.stage)
         capture = (
@@ -1816,19 +1845,21 @@ def check_recomposed_parents(parameters: Mapping[str, Any]) -> None:
         )
 
 
-def uncarried_spend(parameters: Mapping[str, Any]) -> dict[str, Any]:
-    """The published spend inside a recomposed total that no column carries.
+def published_fuel_spend(parameters: Mapping[str, Any]) -> dict[str, Any]:
+    """The published spend on the heating fuels the stage draws.
 
     ONS Consumer Trends classes read from the vendored rows the declaration
-    names: the liquid and solid fuels of COICOP 04.5, which have no column of
-    their own and stay inside the housing remainder (the chain's draw less the
-    diary's electricity and gas; microcosm#1164), and the receipt records their
-    published spend.
+    names: the liquid and solid fuels of COICOP 04.5, each beside the column
+    that carries it (``UK_LCFS_FUEL_PARTS``). Report-only: the stage draws the
+    two at the donor's level, and the receipt records how much of the
+    published spend that reaches.
     """
 
-    spec = parameters.get("uncarried")
+    spec = parameters.get("published_fuels")
     if not isinstance(spec, Mapping):
-        raise ValueError(f"{RECOMPOSE_FROM_REMAINDER_KIND} must declare uncarried.")
+        raise ValueError(
+            f"{RECOMPOSE_FROM_REMAINDER_KIND} must declare published_fuels."
+        )
     resource = str(spec.get("resource") or "")
     if resource not in UK_LCFS_VENDORED_RESOURCES:
         raise ValueError(f"{resource!r} is not a vendored lcfs_consumption resource.")
@@ -1836,6 +1867,11 @@ def uncarried_spend(parameters: Mapping[str, Any]) -> dict[str, Any]:
     classes = []
     for entry in spec.get("classes", ()):
         coicop, concept = str(entry["coicop"]), str(entry["concept"])
+        column = str(entry["column"])
+        if column not in UK_LCFS_FUEL_COLUMNS:
+            raise ValueError(
+                f"{column!r} is not a heating-fuel column the stage draws."
+            )
         rows = vendored_rows(
             resource,
             concept=concept,
@@ -1853,12 +1889,16 @@ def uncarried_spend(parameters: Mapping[str, Any]) -> dict[str, Any]:
             {
                 "coicop": coicop,
                 "concept": concept,
+                "column": column,
                 "source_record_id": str(rows[0].get("source_record_id", "")),
                 "value": float(rows[0]["value"]),
             }
         )
-    if not classes:
-        raise ValueError(f"{RECOMPOSE_FROM_REMAINDER_KIND} declares no classes.")
+    if sorted(entry["column"] for entry in classes) != sorted(UK_LCFS_FUEL_COLUMNS):
+        raise ValueError(
+            f"{RECOMPOSE_FROM_REMAINDER_KIND} published_fuels must name "
+            f"{sorted(UK_LCFS_FUEL_COLUMNS)} once each."
+        )
     return {
         "resource": resource,
         "period_value": period_value,
@@ -1867,26 +1907,34 @@ def uncarried_spend(parameters: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def uncarried_beside_donor(
-    uncarried: Mapping[str, Any], energy_split: Mapping[str, Any]
+def published_fuels_beside_draws(
+    published: Mapping[str, Any],
+    energy_split: Mapping[str, Any],
+    frame_totals: Mapping[str, float],
 ) -> dict[str, Any]:
-    """The published liquid and solid fuels beside the donor's own other fuels.
+    """The published heating fuels beside the donor's and the frame's.
 
-    Report-only (microcosm#1207's liquid and solid fuels item): the donor's
-    other fuels, the diary codes the energy split leaves in the housing total
-    (``UK_LCFS_OTHER_FUEL_PARTS``), are its weighted annual diary total at
-    diary prices, before the donor is carried to the base year, so the ratio
-    reads how much of ONS 04.5.3 and 04.5.4 the survey captures, not a level
-    the stage sets.
+    Report-only: the donor's figure is its weighted annual diary total at
+    diary prices, before the donor is carried to the base year, so it reads
+    how much of ONS 04.5.3 and 04.5.4 the survey captures; the frame's is the
+    stage's draws at the stage's weights, at calendar-2024 prices.
     """
 
-    donor_other = float(energy_split["other_fuels"])
-    published = float(uncarried["total"])
-    return {
-        **uncarried,
-        "donor_other_fuels_at_diary_prices": donor_other,
-        "donor_over_published": donor_other / published if published > 0 else None,
-    }
+    classes = []
+    for entry in published["classes"]:
+        value = float(entry["value"])
+        donor = float(energy_split[entry["column"]])
+        frame = float(frame_totals[entry["column"]])
+        classes.append(
+            {
+                **entry,
+                "donor_at_diary_prices": donor,
+                "donor_over_published": donor / value if value > 0 else None,
+                "frame": frame,
+                "frame_over_published": frame / value if value > 0 else None,
+            }
+        )
+    return {**published, "classes": classes}
 
 
 def recompose_parent_totals(
@@ -1970,7 +2018,7 @@ def recompose_parent_totals(
     receipt = {
         "operation": RECOMPOSE_FROM_REMAINDER_KIND,
         "parents": parents,
-        "uncarried": uncarried_spend(parameters),
+        "published_fuels": published_fuel_spend(parameters),
     }
     return result, receipt
 
@@ -2702,6 +2750,7 @@ def clean_lcfs_consumption_table(
         "household_gross_income",
         "electricity_consumption",
         "gas_consumption",
+        *UK_LCFS_FUEL_COLUMNS,
     ]
     for column in annualize:
         household[column] = _numeric(household[column]) * WEEKS_IN_YEAR
@@ -2809,6 +2858,10 @@ def donor_energy_split_receipt(household: pd.DataFrame) -> dict[str, Any]:
         "electricity": electricity,
         "gas": gas,
         "other_fuels": other,
+        **{
+            column: total(_numeric(household[column]))
+            for column in UK_LCFS_FUEL_COLUMNS
+        },
         "fuel_light_and_power": fuel_light_power,
         "parts_over_fuel_light_and_power": over(electricity + gas + other),
         "clipping_over_fuel_light_and_power": over(total(parts - unclipped)),
@@ -3020,6 +3073,8 @@ def derive_energy_from_lcfs(household: pd.DataFrame) -> pd.DataFrame:
     result[UK_LCFS_OTHER_FUELS_COLUMN] = sum(
         part(code) for code in UK_LCFS_OTHER_FUEL_PARTS
     )
+    for column, codes in UK_LCFS_FUEL_PARTS.items():
+        result[column] = sum(part(code) for code in codes)
     result.attrs[UK_LCFS_ACCOUNT_IDENTITY_RECEIPT] = {
         fuel_name: None if share_holding is None else floored_share(share_holding)
         for fuel_name, share_holding in shares.items()

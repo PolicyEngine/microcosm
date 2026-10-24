@@ -52,7 +52,7 @@
     {
       "target_id": "ons.household_energy_expenditure",
       "reason_id": "superseded_by_component_targets",
-      "rationale": "ONS Consumer Trends COICOP 04.5 (electricity, gas and other fuels) carries liquid and solid fuels the frame does not model; chronicle #271 (chronicle#270) published the 04.5.1 electricity and 04.5.2 gas sub-classes, which ons.household_electricity_expenditure and ons.household_gas_expenditure carry per fuel on the frame's own columns. Both were bound until microcosm#1113 made them measured diagnostics (María's ruling of 2026-10-08, D1), so no ONS energy row is fitted. The total row is retained in the contract for registry parity and signed out here (microcosm#890 F1).",
+      "rationale": "ONS Consumer Trends COICOP 04.5 (electricity, gas and other fuels): chronicle #271 (chronicle#270) published the 04.5.1 electricity and 04.5.2 gas sub-classes, which ons.household_electricity_expenditure and ons.household_gas_expenditure carry per fuel on the frame's own columns. Since microcosm#1278 the frame also carries the 04.5.3 liquid and 04.5.4 solid fuels (liquid_fuel_consumption, solid_fuel_consumption), which the lcfs_consumption receipt sets beside ONS's own two rows; heat energy (04.5.5) stays in the housing remainder. The electricity and gas rows were bound until microcosm#1113 made them measured diagnostics (María's ruling of 2026-10-08, D1), so no ONS energy row is fitted. The total row is retained in the contract for registry parity, measured on the four fuels (María's ruling of 2026-10-22), and signed out here (microcosm#890 F1).",
       "tracking": "microcosm#890",
       "approved_by": "juaristi22",
       "approved_on": "2026-09-16"

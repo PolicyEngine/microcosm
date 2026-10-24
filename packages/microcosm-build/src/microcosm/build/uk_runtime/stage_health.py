@@ -3074,14 +3074,14 @@ def _recomposed_totals_gate(
     ``maximum_relative_deviation``, the weighted remainder equals the drawn
     total less the drawn parts plus the floored mass, and the weighted total
     the remainder plus the components less the mass held at the maximum; and
-    the uncarried ONS spend is recomputed from the vendored rows through the
-    stage's own declaration.
+    the published ONS heating-fuel spend is recomputed from the vendored rows
+    through the stage's own declaration.
     """
 
     from microcosm.build.country_spec import load_country_spec
     from microcosm.build.uk_runtime.lcfs_consumption import (
+        published_fuel_spend,
         recompose_from_remainder_operation,
-        uncarried_spend,
     )
 
     check = "recomposed_totals"
@@ -3167,20 +3167,30 @@ def _recomposed_totals_gate(
                 f"{stage}: {parent} weighted total {total} is not its remainder plus "
                 f"components less the mass held at the maximum ({parts})."
             )
-    uncarried = uncarried_spend(declared)
-    observed = _mapping(receipt.get("uncarried"), label=f"{stage}.uncarried")
+    published = published_fuel_spend(declared)
+    observed = _mapping(
+        receipt.get("published_fuels"), label=f"{stage}.published_fuels"
+    )
+    observed_classes = observed.get("classes")
+    published_keys = ("coicop", "concept", "column", "source_record_id", "value")
     if (
-        observed.get("classes") != uncarried["classes"]
-        or observed.get("total") != uncarried["total"]
+        not isinstance(observed_classes, list)
+        or [
+            {key: entry.get(key) for key in published_keys}
+            for entry in observed_classes
+            if isinstance(entry, Mapping)
+        ]
+        != published["classes"]
+        or observed.get("total") != published["total"]
     ):
         failures.append(
-            f"{stage}: the uncarried spend {observed.get('total')!r} is not the vendored "
-            f"{uncarried['total']}."
+            f"{stage}: the published fuel spend {observed.get('total')!r} is not the "
+            f"vendored {published['total']}."
         )
     details = {
         "maximum_relative_deviation": tolerance,
         "parents": sorted(parents),
-        "uncarried_total": uncarried["total"],
+        "published_fuels_total": published["total"],
     }
     return (
         _fail(stage, check, failures, details)
