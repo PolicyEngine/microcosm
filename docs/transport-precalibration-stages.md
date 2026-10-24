@@ -85,6 +85,9 @@ variant calibration reads is in that variant's ancestry, so it is checked.
   Reads among a stage's own nodes do not count. The rule follows the producing
   node, not the column name, so another binding that declares the same variable
   name is unaffected.
+- Outputs are columns, so a stage's artifacts are never declared. A node
+  outside the stage that reads an artifact one of the stage's nodes produces
+  upstream of calibration refuses the same way.
 - A parameter that carries the prepared `engine_refs` inventory refuses as
   "prepared engine_refs map", on stage nodes too. The inventory may be a
   mapping, a JSON string in any spelling, nested in lists or mappings, or JSON
@@ -104,11 +107,17 @@ These are tested, as properties and examples, in
   the guard without stages does, malformed benefit-unit entities included.
 - Person stages only restrict: a graph accepted with only person stages listed
   is accepted without them.
-- Dropping a person stage never refuses a graph its listing admitted. Dropping
-  a benefit-unit stage never admits a graph its listing refused, except when
-  the refusal was that stage's own declaration error: its schema, a hold-out
-  measure, or a derived output that no upstream stage node produces.
-- No hold-out source or selection is upstream of calibration, with or without
-  stages, and no stage output or stage module carries a hold-out measure.
+- Dropping a person stage never refuses a graph its listing admitted. While
+  another stage stays listed, dropping a benefit-unit stage never admits a
+  graph its listing refused, except when the refusal was that stage's own
+  declaration error: its schema, a hold-out measure, or a derived output that
+  no upstream stage node produces. Dropping the last stage gives exactly the
+  guard without stages, which can admit more: its declaration pass follows
+  structural and artifact edges, not column reads, and a resource selection
+  leaves no marker in the composed graph.
+- With stages listed, no hold-out source or selection is upstream of
+  calibration, and no stage output or stage module carries a hold-out measure.
+  The guard without stages is unchanged, so it still misses a hold-out
+  selection that calibration reaches only through column reads.
 - With stages listed, a refusal names the first offending node in declaration
   order.

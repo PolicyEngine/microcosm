@@ -1010,6 +1010,18 @@ def _validate_precalibration_ancestry(
             }
             for name, row in rows.items()
         }
+        # Outputs are columns, so a stage's artifacts are never declared: only
+        # the stage's own nodes may read them.
+        artifact_stages = {
+            name: {
+                binding
+                for edge in row.get("artifact_inputs", ())
+                if edge["producer"] in ancestors
+                for binding in node_bindings.get(edge["producer"], ())
+                if binding in stages
+            }
+            for name, row in rows.items()
+        }
         encoded = {
             (output["entity"], output["column"])
             for row in rows.values()
@@ -1113,7 +1125,10 @@ def _validate_precalibration_ancestry(
             elif outputs & encoded:
                 reason = reason or "not a declared pre-calibration stage"
             for binding in stages:
-                if binding not in own and inputs[name] & restricted[binding]:
+                if binding not in own and (
+                    inputs[name] & restricted[binding]
+                    or binding in artifact_stages[name]
+                ):
                     reason = "undeclared pre-calibration stage output"
             if _embeds_engine_ref(
                 row.get("params", {}),
@@ -1152,6 +1167,9 @@ def _validate_precalibration_ancestry(
             ],
             "params": node.params,
             "sources": node.sources,
+            "artifact_inputs": [
+                {"producer": edge.producer} for edge in node.artifact_inputs
+            ],
         }
         for node in graph.nodes
     }

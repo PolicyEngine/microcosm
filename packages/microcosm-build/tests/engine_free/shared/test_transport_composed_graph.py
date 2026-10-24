@@ -2836,10 +2836,13 @@ def _precalibration_ancestry_dags(draw, kinds, holdout_sources):
             bindings[binding]["derived"].append(f"derived_{index}")
         reads = []
         dependencies = []
+        artifacts = []
         for predecessor, earlier in enumerate(nodes):
             edge = draw(st.integers(min_value=0, max_value=3))
             if edge:
                 dependencies.append(predecessor)
+            if edge == 1:
+                artifacts.append(predecessor)
             if edge > 1:
                 columns = earlier["outputs"] if edge == 3 else earlier["outputs"][:1]
                 reads.extend((predecessor, column) for column in columns)
@@ -2851,6 +2854,7 @@ def _precalibration_ancestry_dags(draw, kinds, holdout_sources):
                 "outputs": outputs,
                 "reads": reads,
                 "dependencies": dependencies,
+                "artifacts": artifacts,
                 "holdout_selection": kind == "holdout" and draw(st.booleans()),
                 "holdout_source": holdout_sources
                 and binding is not None
@@ -2866,10 +2870,13 @@ def _precalibration_ancestry_dags(draw, kinds, holdout_sources):
             )
     dependencies = []
     reads = []
+    artifacts = []
     for predecessor, earlier in enumerate(nodes):
         edge = draw(st.integers(min_value=0, max_value=3))
         if edge:
             dependencies.append(predecessor)
+        if edge == 1:
+            artifacts.append(predecessor)
         if edge > 1:
             columns = earlier["outputs"] if edge == 3 else earlier["outputs"][:1]
             reads.extend((predecessor, column) for column in columns)
@@ -2881,6 +2888,7 @@ def _precalibration_ancestry_dags(draw, kinds, holdout_sources):
             "outputs": [],
             "reads": reads,
             "dependencies": dependencies,
+            "artifacts": artifacts,
             "holdout_selection": False,
             "holdout_source": False,
         }
@@ -2911,7 +2919,7 @@ def _precalibration_reference_missing_derived(model, binding):
 
 
 def _precalibration_reference_accepts(model):
-    """The stage rules on generated kinds and column-use edges, upstream of calibration."""
+    """The stage rules on generated kinds, column reads and artifact edges, upstream of calibration."""
     nodes, _, declared = model
     relevant = _precalibration_reference_relevant(nodes)
     if any(_precalibration_reference_missing_derived(model, name) for name in declared):
@@ -2945,6 +2953,11 @@ def _precalibration_reference_accepts(model):
                 and source_binding != binding
                 and column not in declared[source_binding]
             ):
+                return False
+        # A stage's artifacts are never declared outputs.
+        for producer in node["artifacts"]:
+            source_binding = nodes[producer]["binding"]
+            if source_binding in declared and source_binding != binding:
                 return False
     return True
 
@@ -2999,9 +3012,10 @@ def _precalibration_synthetic_graph(model):
                 prepared_params["selection"] = "{}"
             else:
                 sources = ("synthetic_holdout_facts",)
+        # A column read is its own edge; an artifact carries the rest.
         edges = tuple(
             ArtifactInput(f"edge_{producer}", f"p1.node_{producer}", "trace", trace)
-            for producer in item["dependencies"]
+            for producer in item["artifacts"]
         )
         graph_nodes.append(
             Node(
@@ -3036,7 +3050,7 @@ def _precalibration_synthetic_graph(model):
             "params": params,
             "sources": list(sources),
             "artifact_inputs": [
-                {"producer": f"p1.node_{producer}"} for producer in item["dependencies"]
+                {"producer": f"p1.node_{producer}"} for producer in item["artifacts"]
             ],
         }
         if binding is not None and item["kind"] != "selector":
@@ -3164,16 +3178,17 @@ def test_precalibration_stages_calibration_ancestry_property(domain, data):
         _precalibration_ancestry_dags(**_PRECALIBRATION_PROPERTY_DOMAINS[domain])
     )
     nodes, bindings, declared = model
-    expected = _precalibration_reference_accepts(model)
     outcomes = _precalibration_property_outcomes(model)
     labels = ("declaration", "compiled extensions")
     for label in labels:
         actual = outcomes[label, "guard"]
-        assert actual == expected, (label, model)
         if not declared:
-            # I1 with no stages: exactly today's guard.
+            # I1 with no stages: exactly today's guard. Its declaration pass
+            # follows artifact and structural edges only, not column reads.
             assert actual == outcomes[label, "today"], (label, model)
-        elif all(bindings[name]["entity"] == "person" for name in declared):
+            continue
+        assert actual == _precalibration_reference_accepts(model), (label, model)
+        if all(bindings[name]["entity"] == "person" for name in declared):
             # I1: person stages only restrict today's guard.
             assert outcomes[label, "today"] or not actual, (label, model)
     if not declared:
@@ -3186,10 +3201,11 @@ def test_precalibration_stages_calibration_ancestry_property(domain, data):
     )
     reduced = _precalibration_property_outcomes(smaller)
     for label in labels:
-        assert reduced[label, "guard"] == _precalibration_reference_accepts(smaller), (
-            label,
-            smaller,
-        )
+        assert reduced[label, "guard"] == (
+            _precalibration_reference_accepts(smaller)
+            if smaller[2]
+            else reduced[label, "today"]
+        ), (label, smaller)
         if bindings[dropped]["entity"] == "person":
             # I2: dropping a person stage never refuses what listing it admitted.
             assert reduced[label, "guard"] or not outcomes[label, "guard"], (
@@ -3197,9 +3213,14 @@ def test_precalibration_stages_calibration_ancestry_property(domain, data):
                 model,
                 dropped,
             )
-        elif not _precalibration_reference_missing_derived(model, dropped):
+        elif smaller[2] and not _precalibration_reference_missing_derived(
+            model, dropped
+        ):
             # I2: dropping a unit stage never admits what listing it refused,
-            # unless the refusal is that stage's own declaration error.
+            # unless the refusal is that stage's own declaration error. Dropping
+            # the last stage restores today's guard exactly (checked above),
+            # and today's guard does not follow column-only paths to a
+            # resource selection or, in its declaration pass, at all.
             assert outcomes[label, "guard"] or not reduced[label, "guard"], (
                 label,
                 model,
@@ -3383,6 +3404,102 @@ def test_precalibration_ancestry_stage_binding_after_calibration_is_not_checked(
         compose_module.validate_transport_calibration_ancestry(
             spec, config=composed.config
         )
+
+
+def _stage_artifact_case(entity, reader):
+    """A stage node writes an artifact; calibration or another stage node reads it."""
+    binding = _synthetic_binding("u", entity, ["u_out"])
+    trace = ArtifactType("synthetic.trace", 1)
+    selector = {"engine_ref": {"binding": "u", "field": "engine_ref"}}
+    # Calibration reads the artifact itself, or a second stage node turns it
+    # into the declared column that calibration reads.
+    writer = "probe" if reader == "calibration" else "own"
+    rows = [
+        {
+            "id": "probe",
+            "kernel": "synthetic.probe@1",
+            "population": "create",
+            "params": selector,
+            **(
+                {"outputs": [{"entity": entity, "column": "u_out"}]}
+                if writer == "probe"
+                else {}
+            ),
+        },
+        {
+            "id": "cal",
+            "kernel": "calibrate.synthetic@1",
+            "population": "create",
+            "inputs": [{"entity": entity, "columns": ["u_out"]}],
+        },
+    ]
+    edge = ArtifactInput("trace", "probe", "trace", trace)
+    nodes = [
+        Node(
+            "probe",
+            "synthetic.probe@1",
+            population="create",
+            params={"engine_ref": "u-ref"},
+            outputs=(Owned(entity, "u_out", "float64"),) if writer == "probe" else (),
+            artifact_outputs=(ArtifactOutput("trace", trace),),
+        )
+    ]
+    if writer == "probe":
+        rows[1]["artifact_inputs"] = [{"name": "trace", "producer": "probe"}]
+    else:
+        rows.insert(
+            1,
+            {
+                "id": "own",
+                "kernel": "synthetic.probe@1",
+                "population": "create",
+                "params": selector,
+                "outputs": [{"entity": entity, "column": "u_out"}],
+                "artifact_inputs": [{"name": "trace", "producer": "probe"}],
+            },
+        )
+        nodes.append(
+            Node(
+                "own",
+                "synthetic.probe@1",
+                population="create",
+                params={"engine_ref": "u-ref"},
+                outputs=(Owned(entity, "u_out", "float64"),),
+                artifact_inputs=(edge,),
+            )
+        )
+    nodes.append(
+        Node(
+            "cal",
+            "calibrate.synthetic@1",
+            population="create",
+            inputs=(Slice(entity, ("u_out",)),),
+            artifact_inputs=(edge,) if writer == "probe" else (),
+        )
+    )
+    stage = _synthetic_stage(binding, ["u_out"])
+    return _synthetic_stage_spec([binding], [stage], rows), nodes
+
+
+@pytest.mark.parametrize("reader", ["calibration", "own_stage"])
+@pytest.mark.parametrize("entity", ["family", "person"])
+def test_precalibration_ancestry_stage_artifact_is_not_a_declared_output(
+    entity, reader
+):
+    """Outputs are columns, so only a stage's own nodes may read its artifacts."""
+    spec, nodes = _stage_artifact_case(entity, reader)
+    outcomes = _synthetic_outcomes(spec, nodes, {"u": "u-ref"})
+    if reader == "own_stage":
+        assert outcomes == {"declaration": None, "composed": None}
+        return
+    message = (
+        "Transport calibration ancestry: node 'cal' carries undeclared "
+        "pre-calibration stage output."
+    )
+    assert outcomes == {
+        "declaration": (ValueError, message),
+        "composed": (ValueError, message),
+    }
 
 
 def _variant_calibration_case(post, feeds_variant):
