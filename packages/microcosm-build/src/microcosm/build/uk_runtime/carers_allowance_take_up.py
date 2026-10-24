@@ -22,8 +22,9 @@ identity-keyed uniform:
 
 A reporter stays true. A carer under the limit who reports no allowance
 stays false, as the survey records them entitled and not claiming. Scotland
-is drawn too (María's ruling of 2026-10-23): Carer Support Payment replaces the
-allowance there and reads the same flag, and since policyengine-uk 2.146.1
+is drawn too, at the same rate (María's ruling of 2026-10-23): Carer Support
+Payment replaces the allowance there and reads the same flag, and the take-up
+contract holds no rate of its own for it. Since policyengine-uk 2.146.1
 (PolicyEngine/policyengine-uk#2473) the engine pays it only under its own
 earnings limit, so a drawn Scottish carer is paid only where its rules allow.
 The receipt reports Scotland apart. The incoming flag must still follow
