@@ -5,12 +5,14 @@ from __future__ import annotations
 import copy
 import json
 import os
+from datetime import date
 from decimal import Decimal, localcontext
 from fractions import Fraction
 from pathlib import Path
 
 import pytest
 
+from microcosm.build import reference_factors
 from microcosm.build.ledger_artifact import (
     LexicalFloat,
     load_ledger_consumer_artifact,
@@ -19,6 +21,7 @@ from microcosm.build.ledger_artifact import (
 from microcosm.build.ledger_targets import fact_matches_selector
 from microcosm.build.reference_factors import (
     replay_reference_factor,
+    require_current_factors,
     resolve_reference_factor,
     validate_factor_context,
 )
@@ -90,6 +93,37 @@ def test_generated_aging_resource_reproduces_pinned_feed_and_all_receipts(artifa
     for entry in _document()["factors"]:
         assert entry["declaration"]["feed_identity"] == identity
         assert entry["receipt"]["feed_identity"] == identity
+
+
+def test_packaged_factor_context_validation_ignores_the_wall_clock(monkeypatch):
+    class FutureDate(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 11, 5)
+
+    monkeypatch.setattr(reference_factors, "date", FutureDate)
+
+    assert set(validate_factor_context(_document())) == set(_EXPECTED)
+
+
+@pytest.mark.parametrize(
+    "today,current",
+    [
+        (date(2026, 10, 22), False),
+        (date(2026, 10, 23), True),
+        (date(2026, 11, 3), True),
+        (date(2026, 11, 4), False),
+    ],
+)
+def test_factor_currency_uses_inclusive_declared_boundaries(today, current):
+    selected = validate_factor_context(_document())
+    if current:
+        require_current_factors(selected, today=today)
+    else:
+        with pytest.raises(ValueError, match="reviewed re-declaration") as error:
+            require_current_factors(selected, today=today)
+        for factor_id in selected:
+            assert factor_id in str(error.value)
 
 
 @pytest.mark.parametrize("factor_id", list(_EXPECTED))

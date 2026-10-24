@@ -413,6 +413,30 @@ def reference_profile_view(
     return view
 
 
+def reference_profile_views(spec: Mapping[str, object]) -> tuple:
+    """Resolve the default profile view and each distinct scenario-knob view.
+
+    Activation and run entry share this walk. Scenario views resolve only when
+    both ``reference_profiles`` and ``scenarios`` are declared; knob sets that
+    repeat, or equal the default selection, resolve once.
+    """
+    view = reference_profile_view(spec)
+    if view is None:
+        return ()
+    views = [view]
+    if _has_resource(spec, "scenarios"):
+        checked_selections = {canonical_json({})}
+        for scenario in _sequence(
+            _raw_transport_resource(spec, "scenarios").get("scenarios"), "scenarios"
+        ):
+            knobs = _mapping(_mapping(scenario, "scenario").get("knobs", {}), "knobs")
+            identity = canonical_json(knobs)
+            if identity not in checked_selections:
+                views.append(reference_profile_view(spec, knobs))
+                checked_selections.add(identity)
+    return tuple(views)
+
+
 def transport_resource(
     spec: Mapping[str, object], name: str, *, profile_selection: Mapping | None = None
 ) -> Mapping:
@@ -552,17 +576,7 @@ def validate_transport_activation(spec: Mapping[str, object]) -> None:
 
     missing = []
     # Resolve first so activation never inspects an executable profile's raw rows.
-    reference_profile_view(spec)
-    if _has_resource(spec, "reference_profiles") and _has_resource(spec, "scenarios"):
-        checked_selections = {canonical_json({})}
-        for scenario in _sequence(
-            _raw_transport_resource(spec, "scenarios").get("scenarios"), "scenarios"
-        ):
-            knobs = _mapping(_mapping(scenario, "scenario").get("knobs", {}), "knobs")
-            identity = canonical_json(knobs)
-            if identity not in checked_selections:
-                reference_profile_view(spec, knobs)
-                checked_selections.add(identity)
+    reference_profile_views(spec)
     selections = (
         tuple(_declared_resource_selections(transport_resource(spec, GRAPH_RESOURCE)))
         if _has_resource(spec, GRAPH_RESOURCE)

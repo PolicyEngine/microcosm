@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+from datetime import date
 
 import pytest
 from hypothesis import HealthCheck, given, settings
@@ -614,11 +615,98 @@ def test_legacy_receipt_without_transformed_names_refuses_as_a_value_error():
 def test_unnamed_unresolved_rows_still_validate_without_factor_evidence():
     references, declarations = _inputs()
     effective, _, receipt = resolve_reference_profiles(references, declarations, {})
-    effective["target_references"].append({"entity": "household", "metadata": {}})
+    effective["target_references"].extend(
+        [
+            {"entity": "household", "metadata": {}},
+            {"entity": "household", "metadata": {}},
+        ]
+    )
     receipt.pop("receipt_sha256")
     receipt["effective_references_sha256"] = reference_document_sha256(effective)
     receipt["receipt_sha256"] = reference_document_sha256(receipt)
     assert validate_reference_resolution(effective, receipt) == receipt
+
+
+def test_duplicate_unresolved_factor_companion_refuses():
+    references, declarations, context = _scaling_inputs()
+    effective, _, receipt = resolve_reference_profiles(
+        references, declarations, {}, factor_context=context
+    )
+    duplicate = copy.deepcopy(effective["target_references"][0])
+    assert duplicate["name"] == "count_0"
+    duplicate["metadata"].pop("reference_profiles_resolved")
+    effective["target_references"].append(duplicate)
+    receipt["effective_references_sha256"] = reference_document_sha256(effective)
+    receipt.pop("receipt_sha256")
+    receipt["receipt_sha256"] = reference_document_sha256(receipt)
+    with pytest.raises(ValueError, match="Duplicate factor companion"):
+        validate_reference_resolution(effective, receipt)
+
+
+@pytest.mark.parametrize("with_factors", [False, True], ids=["v1", "v2"])
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "transformations_list",
+        "transformations_null",
+        "transformation_scalar",
+        "resolved_name_missing",
+        "resolved_name_null",
+        "resolved_name_empty",
+        "resolved_name_scalar",
+        "resolved_name_list",
+    ],
+)
+def test_malformed_resolution_shapes_refuse_as_value_errors(with_factors, mutation):
+    if with_factors:
+        references, declarations, context = _scaling_inputs()
+        effective, _, receipt = resolve_reference_profiles(
+            references, declarations, {}, factor_context=context
+        )
+    else:
+        references, declarations = _inputs()
+        effective, _, receipt = resolve_reference_profiles(references, declarations, {})
+    row = effective["target_references"][0]
+    if mutation == "transformations_list":
+        receipt["transformations"] = []
+    elif mutation == "transformations_null":
+        receipt["transformations"] = None
+    elif mutation == "transformation_scalar":
+        receipt["transformations"][row["name"]] = 7
+    elif mutation == "resolved_name_missing":
+        row.pop("name")
+    else:
+        row["name"] = {
+            "resolved_name_null": None,
+            "resolved_name_empty": "",
+            "resolved_name_scalar": 7,
+            "resolved_name_list": [],
+        }[mutation]
+    receipt["effective_references_sha256"] = reference_document_sha256(effective)
+    receipt.pop("receipt_sha256")
+    receipt["receipt_sha256"] = reference_document_sha256(receipt)
+    with pytest.raises(ValueError, match="transformations|reference names"):
+        validate_reference_resolution(effective, receipt)
+
+
+@pytest.mark.parametrize(
+    "name_fields",
+    [{}, {"name": None}, {"name": ""}, {"name": 7}, {"name": []}],
+    ids=["missing", "null", "empty", "int", "list"],
+)
+def test_unnamed_unresolved_factor_rows_refuse_as_value_errors(name_fields):
+    references, declarations, context = _scaling_inputs()
+    effective, _, receipt = resolve_reference_profiles(
+        references, declarations, {}, factor_context=context
+    )
+    effective["target_references"].append(
+        {"entity": "household", "metadata": {}, **name_fields}
+    )
+    receipt["effective_references_sha256"] = reference_document_sha256(effective)
+    receipt.pop("receipt_sha256")
+    receipt["receipt_sha256"] = reference_document_sha256(receipt)
+    with pytest.raises(ValueError, match="reference names"):
+        validate_reference_resolution(effective, receipt)
 
 
 def test_nz_default_factor_receipt_is_compact_and_covers_the_exact_roster():
@@ -658,6 +746,26 @@ def test_nz_default_factor_receipt_is_compact_and_covers_the_exact_roster():
         }
     assert receipt["factor_companions_sha256"] == reference_document_sha256(companions)
     assert len(canonical_json(receipt)) < 2_600_000
+
+
+def test_nz_default_factor_resolution_validates_after_declaration_expiry(monkeypatch):
+    from microcosm.build import reference_factors
+
+    class LaterDate(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 11, 5)
+
+    monkeypatch.setattr(reference_factors, "date", LaterDate)
+    spec = paths_for("microcosm-build").package / "src/microcosm/build/nz"
+    base = json.loads((spec / "target_references.json").read_text())
+    declarations = json.loads((spec / "reference_profiles.json").read_text())
+    context = json.loads((spec / "reference_aging.json").read_text())
+    effective, _, receipt = resolve_reference_profiles(
+        base, declarations, {}, factor_context=context
+    )
+    assert receipt["selected_factors"]
+    assert validate_reference_resolution(effective, receipt) == receipt
 
 
 def test_unrelated_direct_fact_references_are_outside_companion_rosters():

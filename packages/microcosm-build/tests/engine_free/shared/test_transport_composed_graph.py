@@ -43,6 +43,7 @@ import re
 import shutil
 import time
 from dataclasses import replace
+from datetime import UTC, date, datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -1454,7 +1455,10 @@ def test_packaged_spec_refuses_before_reading_any_source(tmp_path):
         )
 
 
-def test_cli_main_refuses_the_packaged_spec_and_writes_nothing(tmp_path, capsys):
+def test_cli_main_refuses_the_packaged_spec_and_writes_nothing(
+    tmp_path, monkeypatch, capsys
+):
+    monkeypatch.setattr(cli_module, "_today", lambda: date(2026, 10, 24))
     out = tmp_path / "out"
     assert cli_module.main(["--country", "nz", "--out", str(out)]) == 1
     message = capsys.readouterr().err
@@ -1643,6 +1647,50 @@ def test_cli_main_turns_key_errors_into_refusals(
     assert not (out / EXPORT_FILENAME).exists()
 
 
+_AFTER_FACTOR_EXPIRY = date(2100, 1, 1)
+
+
+@pytest.mark.parametrize("resume", ["auto", "forbid"])
+@pytest.mark.parametrize("selection", ["default", "scenario"])
+def test_cli_main_refuses_expired_factors_before_create(
+    tmp_path, monkeypatch, capsys, resume, selection
+):
+    _, _, _, _, spec = factor_transport_fixture(tmp_path)
+    if selection == "scenario":
+        spec["resources"]["reference_profiles"]["dimensions"]["index"]["profiles"][
+            "central"
+        ]["transformations"] = []
+        spec["resources"]["scenarios"]["scenarios"].append(
+            {"id": "variant", "knobs": {"index": "low"}}
+        )
+    monkeypatch.setattr(cli_module, "_today", lambda: _AFTER_FACTOR_EXPIRY)
+    monkeypatch.setattr(cli_module, "load_transport_spec", lambda source: spec)
+    prepare = Mock(side_effect=AssertionError("Must refuse before preparation."))
+    create = Mock(side_effect=AssertionError("Must refuse before CREATE."))
+    monkeypatch.setattr(cli_module, "prepare_transport_build", prepare)
+    monkeypatch.setattr(cli_module.TRANSPORT_CREATE, "run", create)
+    out = tmp_path / "out"
+    assert (
+        cli_module.main(["--country", "xx", "--out", str(out), "--resume", resume]) == 1
+    )
+    error = capsys.readouterr().err
+    assert "toy_factor" in error
+    assert "reviewed re-declaration" in error
+    prepare.assert_not_called()
+    create.assert_not_called()
+    assert not out.exists()
+
+
+def test_cli_factor_currency_decision_allows_historical_replay(tmp_path, monkeypatch):
+    # The factor fixture has parked measurement rows and no runnable skeleton.
+    # Exercise the CLI decision directly; the warm-store test below verifies
+    # actual require execution with the engine-free composed skeleton.
+    _, _, _, _, spec = factor_transport_fixture(tmp_path)
+    assert compose_module.reference_profile_view(spec)[2]["selected_factors"]
+    monkeypatch.setattr(cli_module, "_today", lambda: _AFTER_FACTOR_EXPIRY)
+    cli_module._require_current_run_factors(spec, resume="require")
+
+
 def test_cli_main_and_path_loader_success(composed, tmp_path, monkeypatch, capsys):
     # Real Path loading, registry preparation and execution; only the injected
     # engine seam replaces Axiom with the fixture's pure-Python adapters.
@@ -1691,8 +1739,105 @@ def test_cli_main_and_path_loader_success(composed, tmp_path, monkeypatch, capsy
     assert (out / EXPORT_FILENAME).is_file()
     assert json.loads((out / "manifest.json").read_bytes())["nodes"]
     observe_warm.append(True)
+    monkeypatch.setattr(cli_module, "_today", lambda: _AFTER_FACTOR_EXPIRY)
     assert cli_module.main([*argv, "--resume", "require"]) == 0
     assert capsys.readouterr().err == ""
+    assert calls == []
+
+
+def test_cli_run_date_is_the_utc_date(monkeypatch):
+    # 11:30pm in New York on 3 November is already 4 November in UTC, where CI runs.
+    instant = datetime(2026, 11, 4, 3, 30, tzinfo=UTC)
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return instant.astimezone(tz or timezone(timedelta(hours=-5)))
+
+    monkeypatch.setattr(cli_module, "datetime", Clock)
+    assert cli_module._today() == date(2026, 11, 4)
+
+
+def test_cli_currency_check_walks_the_views_activation_walks(tmp_path, monkeypatch):
+    # Activation resolves scenario views only when both resources exist and
+    # validates their shapes; the run-entry check shares that walk.
+    _, _, _, _, spec = factor_transport_fixture(tmp_path)
+    del spec["resources"]["scenarios"]
+    assert len(compose_module.reference_profile_views(spec)) == 1
+    monkeypatch.setattr(cli_module, "_today", lambda: date(2050, 1, 1))
+    cli_module._require_current_run_factors(spec, resume="auto")
+    monkeypatch.setattr(cli_module, "_today", lambda: _AFTER_FACTOR_EXPIRY)
+    with pytest.raises(ValueError, match="toy_factor"):
+        cli_module._require_current_run_factors(spec, resume="auto")
+    spec["resources"]["scenarios"] = {"scenarios": {"id": "malformed"}}
+    with pytest.raises(TypeError) as activation:
+        compose_module.validate_transport_activation(spec)
+    with pytest.raises(TypeError) as run_entry:
+        cli_module._require_current_run_factors(spec, resume="auto")
+    assert str(run_entry.value) == str(activation.value) == "scenarios must be a list."
+
+
+def test_cli_require_replays_a_warm_store_after_selected_factors_expire(
+    composed, tmp_path, monkeypatch, capsys
+):
+    # End to end: warm a real store while a selected factor is current, then
+    # replay it past valid_until. require verifies and runs nothing; a new run
+    # of the same spec refuses on that factor before preparation.
+    _, _, _, _, factors = factor_transport_fixture(tmp_path / "factor")
+    spec = copy.deepcopy(composed.spec)
+    spec["resources"].update(
+        factor_target_references=factors["resources"]["target_references"],
+        factor_context=factors["resources"]["factor_context"],
+        reference_profiles={
+            **factors["resources"]["reference_profiles"],
+            "reference_resource": "factor_target_references",
+        },
+    )
+    assert compose_module.reference_profile_view(spec)[2]["selected_factors"]
+    directory = _write_local_transport_spec(tmp_path / "spec", spec)
+    build_registry = cli_module.build_transport_registry
+    observe_warm = []
+    calls = []
+
+    def injected_registry(bindings, root, *, unit_rule, engines_by_binding=None):
+        registry = build_registry(
+            bindings,
+            root,
+            unit_rule=unit_rule,
+            engines_by_binding=composed.engines_by_binding,
+        )
+        if observe_warm:
+            for ref in registry.kernels.refs():
+                kernel = registry.kernels.get(ref)
+                run = kernel.run
+
+                def counted(context, _run=run, _ref=ref):
+                    calls.append(_ref)
+                    return _run(context)
+
+                monkeypatch.setattr(kernel, "run", counted)
+        return registry
+
+    monkeypatch.setattr(cli_module, "build_transport_registry", injected_registry)
+    out = tmp_path / "out"
+    argv = ["--spec-dir", str(directory), "--out", str(out)]
+    for name, path in composed.sources.items():
+        argv.extend(["--source", f"{name}={path}"])
+    monkeypatch.setattr(cli_module, "_today", lambda: date(2050, 1, 1))
+    assert cli_module.main(argv) == 0
+    assert capsys.readouterr().err == ""
+    exported = (out / EXPORT_FILENAME).read_bytes()
+    observe_warm.append(True)
+    monkeypatch.setattr(cli_module, "_today", lambda: _AFTER_FACTOR_EXPIRY)
+    assert cli_module.main([*argv, "--resume", "require"]) == 0
+    assert capsys.readouterr().err == ""
+    # require reads back the stored run's export and rewrites nothing.
+    assert (out / EXPORT_FILENAME).read_bytes() == exported
+    assert calls == []
+    assert cli_module.main([*argv, "--resume", "auto"]) == 1
+    error = capsys.readouterr().err
+    assert "toy_factor" in error
+    assert "reviewed re-declaration" in error
     assert calls == []
 
 

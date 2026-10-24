@@ -233,8 +233,6 @@ def _declaration(declaration: object) -> dict:
         raise ValueError(
             "Factor declaration is expired or not yet valid at its declared as_of."
         )
-    if not dates["valid_from"] <= date.today() <= dates["valid_until"]:
-        raise ValueError("Factor declaration is expired or not yet valid today.")
     for key in ("evidence", "decision_references"):
         if any(not isinstance(item, str) or not item for item in _list(row[key], key)):
             raise ValueError(f"{key} must contain nonempty text.")
@@ -715,6 +713,28 @@ def validate_factor_context(
             raise ValueError("Factor declaration and receipt are incompatible.")
         result[factor_id] = entry
     return result
+
+
+def require_current_factors(selected: Mapping[str, dict], *, today: date) -> None:
+    """Require current declarations from ``validate_factor_context``'s result.
+
+    The currency check guards new runs only. Validation and replay remain pure
+    functions of their recorded inputs; run entry supplies the explicit date.
+    """
+    outside_validity = []
+    for factor_id, entry in selected.items():
+        validity = entry["declaration"]["validity"]
+        if not (
+            date.fromisoformat(validity["valid_from"])
+            <= today
+            <= date.fromisoformat(validity["valid_until"])
+        ):
+            outside_validity.append(factor_id)
+    if outside_validity:
+        raise ValueError(
+            f"Selected factors {sorted(outside_validity)} are expired or not yet "
+            f"valid on {today.isoformat()}; a reviewed re-declaration is needed."
+        )
 
 
 def replay_reference_factor(

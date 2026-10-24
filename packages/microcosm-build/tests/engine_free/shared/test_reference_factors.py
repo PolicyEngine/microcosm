@@ -1,6 +1,7 @@
 """Exact factor arithmetic, evidence and replay without country assumptions."""
 
 from copy import deepcopy
+from datetime import date
 from decimal import Decimal
 from fractions import Fraction
 
@@ -14,6 +15,7 @@ from microcosm.build.reference_factors import (
     certified_nth_root_bounds,
     factor_document_sha256,
     replay_reference_factor,
+    require_current_factors,
     resolve_reference_factor,
     validate_factor_context,
 )
@@ -106,6 +108,10 @@ def test_factor_resolves_exact_operands_once_and_replays():
         entry["declaration"], facts, identity, entry["operational_factor"], receipt
     )
     assert validate_factor_context(context, ["toy_factor"]) == {"toy_factor": entry}
+
+
+def test_currency_check_without_selected_factors_is_a_noop():
+    require_current_factors({}, today=date(2026, 11, 5))
 
 
 def test_factor_resolution_and_replay_ignore_caller_feed_pin_prose():
@@ -401,7 +407,7 @@ def test_numeric_and_schedule_guards(mutation, message):
     elif mutation == "sensitivity":
         declaration["growth"]["sensitivity_provenance"] = []
     elif mutation == "expired":
-        declaration["validity"]["valid_until"] = "2005-01-01"
+        declaration["validity"]["valid_until"] = "2001-12-31"
     elif mutation == "wrong_expected":
         declaration["expected_operational_factor"]["numerator"] += 1
     elif mutation == "wrong_feed":

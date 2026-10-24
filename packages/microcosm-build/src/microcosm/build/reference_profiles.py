@@ -645,24 +645,35 @@ def validate_reference_resolution(
         isinstance(name, str) for name in transformed_names
     ):
         raise ValueError("Resolution receipt transformed names are malformed.")
+    transformations = _mapping(
+        resolution.get("transformations"), "resolution transformations"
+    )
+    if any(not isinstance(action, Mapping) for action in transformations.values()):
+        raise ValueError("Resolution transformations must map names to objects.")
     other_names = set(transformed_names) - set(factor_bindings)
     names, used_factors, seen_names = [], set(), set()
     for row in document.get("target_references", ()):
-        if factors:
-            if row.get("name") in seen_names:
-                raise ValueError("Duplicate factor companion reference roster name.")
-            seen_names.add(row.get("name"))
+        name = row.get("name")
         metadata = row.get("metadata", {})
-        if metadata.get("reference_profiles_resolved"):
-            names.append(row["name"])
+        resolved = metadata.get("reference_profiles_resolved")
+        if (factors or resolved) and (not isinstance(name, str) or not name):
+            raise ValueError(
+                "Resolved and factor reference names must be nonempty strings."
+            )
+        if factors:
+            if name in seen_names:
+                raise ValueError("Duplicate factor companion reference roster name.")
+            seen_names.add(name)
+        if resolved:
+            names.append(name)
             if metadata.get("reference_selection_sha256") != selection_hash or (
                 metadata.get("effective_intervals_sha256")
                 != resolution.get("effective_intervals_sha256")
             ):
                 raise ValueError("Effective reference profile identity mismatch.")
-            action = resolution.get("transformations", {}).get(row["name"], {})
-            binding = factor_bindings.get(row["name"])
-            if factors and binding is None and row["name"] not in other_names:
+            action = transformations.get(name, {})
+            binding = factor_bindings.get(name)
+            if factors and binding is None and name not in other_names:
                 raise ValueError(
                     "Factor action names a row outside its companion roster."
                 )
