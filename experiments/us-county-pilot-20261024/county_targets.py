@@ -6,19 +6,19 @@ state ``s`` and a measure ``m`` (households, persons, earnings):
     target(c) = M_s(w0) * public(c) / sum(public(c') for c' in s)
 
 where ``M_s(w0)`` is the state total of ``m`` under the release weights
-``w0``. Each state total stays where the release calibration put it; the county
-rows only redistribute it across the state's counties in proportion to the
-public county figures. The pilot therefore tests whether the microdata can
-carry county distributions, not whether the release's state levels are right
-(those were already calibrated to national and state targets).
+``w0``, so a family's targets sum to the release's state totals and only
+redistribute them across each state's counties in proportion to the public
+county figures. The rows are soft constraints: achieved state totals can move,
+and the pilot reports that drift. It tests whether the microdata can carry
+county distributions, not whether the release's state levels are right.
 
 Trained families:
 
 * ``county_households``: ACS 2020-2024 5-year B11001_001E (households).
 * ``county_population``: Census PEP Vintage 2024 county population, July 2024.
 * ``county_earnings``: ACS B19061_001E (aggregate household earnings), against
-  wages plus all self-employment: base and SSTB Schedule C income on every
-  record, and farm self-employment on donor records (see ``pilot.py``).
+  wages plus all self-employment: on ACS records the base leaf, which is SEMP;
+  on donor records also the SSTB and farm self-employment leaves.
 * ``cd_households`` / ``cd_population``: each congressional district's total
   under ``w0``, held so the county rows cannot undo the district fit.
 
@@ -349,7 +349,9 @@ def ct_planning_region_tables(
     """CT lookups from public Census files.
 
     Returns ``(tract_region, cell_regions)``: each 2020 CT tract's planning
-    region (tracts nest in towns, so each has one), and for each
+    region, through the towns its blocks sit in (18 of 883 tracts span more
+    than one town, each within one region; a tract spanning regions is
+    refused), and for each
     ``"<7-digit PUMA>|<5-digit 2020 county>"`` cell the 2020 census population
     of each planning region in it. The files are the Census CT county-to-town
     crosswalk, the 2020 block assignment file's town layer, the 2020 tract to

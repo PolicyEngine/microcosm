@@ -199,6 +199,11 @@ def extract(ct_texts: dict[str, str]) -> dict:
     measures, measure_report = county_targets.household_measures(
         household, person, weights
     )
+    if not measure_report["acs_semp_check"]["checked"]:
+        raise SystemExit(
+            "the release person table has no SEMP or ADJINC, so ACS base "
+            "self-employment can't be checked against SEMP; refusing to extract"
+        )
     report.update(measure_report)
 
     geo = pd.DataFrame({"household_id": household["household_id"].to_numpy()})

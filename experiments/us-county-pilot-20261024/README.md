@@ -36,8 +36,11 @@ and the sha256 of the extract's `households.parquet` and `lean.h5`.
 The release assigns each household a 2020 county inside its PUMA, drawn from
 population-weighted PUMA overlaps. Only Connecticut differs between the 2020
 and 2023 county sets. Each CT household gets its 2022 planning region from its
-2020 tract where it carries one; tracts nest in towns, and towns nest in
-regions. Otherwise the region comes from its PUMA and 2020 county.
+2020 tract where it carries one, through the towns that tract's blocks sit in
+(2020 block assignment file) and the regions those towns belong to. 18 of the
+883 tracts span more than one town, each within one region; the extract
+refuses a tract that spans two regions. Otherwise the region comes from its PUMA and 2020
+county.
 
 Every CT (PUMA, 2020 county) cell lies inside one planning region except one:
 Tolland County's part of PUMA 20301. That cell holds 12,257 people in 2020;
@@ -57,8 +60,9 @@ target(c) = M_s(w0) * public(c) / sum over counties c' in state s of public(c')
 `M_s(w0)` is the state total of the measure under the release weights, so a
 family's targets sum to the release's state totals. The targets only
 redistribute each state total across its counties. They don't hold it: the
-rows are soft constraints and only national household mass is conserved, so
-achieved state totals can move. Each run reports that drift (below). A held-out
+rows are soft constraints and the solver conserves only total record weight
+(households and group-quarters records together), so achieved state totals,
+and the national household total, can move. Each run reports that drift (below). A held-out
 family whose source omits a county (SOI has no Kalawao row) takes both the
 share and the state total over the counties it publishes.
 
@@ -103,9 +107,11 @@ counted those dollars twice; the release itself carries the same stacking into
 PolicyEngine-US, whose `total_self_employment_income` adds both leaves
 (microcosm#1380).
 
-Weighted national totals under the release weights (`out/extract_run1_report.json`):
-wages $10,654B, ACS base self-employment $158B, donor base and SSTB
-self-employment $563B, donor farm $15B; earnings $11,391B. Two gaps remain.
+Weighted national totals over all records, group quarters included, under the
+release weights (`out/extract_run1_report.json`): wages $10,654B, ACS base
+self-employment $158B, donor base and SSTB self-employment $563B, donor farm
+$15B; earnings $11,391B, of which $11,382B is in the household universe the
+earnings rows use. Two gaps remain.
 Donor earnings omit `partnership_self_employment_net_earnings` ($53.0B, all on
 the PUF channel, 0.7% of donor earnings), which ACS SEMP counts; adding it
 would count it twice in the income approximation, where donor
@@ -241,8 +247,12 @@ levels. The release's state totals differ from the published state sums by a
 median of 7.2% for households, 1.9% for population and 5.5% for earnings.
 Nationally the release has 6.0% fewer households than ACS B11001 (121.5
 million against 129.2 million), 2.6% less population than PEP and 1.9% less
-earnings than B19061. The household gap is not a vintage effect: the release
-is a 2024 file and B11001 averages 2020–2024, over which households grew.
+earnings than B19061. Part of that may be vintage. The release's incomes are
+2024, but it calibrates state and district population to 2020 Census
+populations from its PUMA ladder (`us_puma_ladder_2020` in
+`tools/build_us_acs_local_release.py`), and its 331.4 million people sit
+below PEP's 340.1 million for July 2024. This pilot doesn't establish how much
+of the household gap is vintage.
 Measured against the raw published county levels instead:
 
 | Share of counties within 10% of the published level | Release | Run 1 | Run 2 | Run 3 | Run 4 |
@@ -286,13 +296,16 @@ calibration and 22–23% after.
    hold 31%. Most counties' precision is set by a handful of heavy donor
    records, and that reaches large counties too: 169 of the 292 counties with
    250,000 or more people have an ESS below 30 under the release weights.
-4. **Calibrating to county totals doesn't make large counties more
-   reliable.** Total source-household ESS rises 14–32% and the median county's
-   ESS from 8.0 to 11.6–12.5, but the gain is in small and mid-sized counties.
-   The median ESS of the 292 counties of 250,000+ stays at 24–27. Under the
-   release's settings (run 1), 180 of them are graded D, against 169 before,
-   and the population share in A–C counties falls from 48.3% to 46.3%. Only
-   run 3 improves both, and only slightly: 163 graded D, 50.2% in A–C counties.
+4. **Calibrating to county totals doesn't consistently make large counties
+   more reliable, and most stay graded D.** Total source-household ESS rises
+   14–32% and the median county's ESS from 8.0 to 11.6–12.5. Among the 292
+   counties of 250,000+, ESS rises in 90 to 177 of them, depending on the run,
+   and their median moves from 25.1 to 24.1–27.0. Under the release's settings
+   (run 1), 10 leave grade D and 21 enter it, so 180 are graded D against 169
+   before, and the population share in A–C counties falls from 48.3% to
+   46.3%. Run 3 does best: ESS rises in 177, 15 leave grade D and 9 enter it
+   (163 graded D), and 50.2% of the population is in A–C counties. These are
+   the provisional ESS grades.
 5. **Rows past the loss cap get no gradient, and the release's cap leaves
    many there.** Under capped MAPE a row whose error passes the cap adds a
    constant to the loss (`microcosm.calibrate.diagnostics.past_cap_census`).
@@ -305,7 +318,7 @@ calibration and 22–23% after.
    31 rows in 24 counties start past it and 28 recover. The other three are
    Culberson TX's. One donor record holds 19,038 of the county's 19,117
    weighted households, against a target of 810. With no gradient from its
-   county rows it ends at 43,223 in run 3, 52 times the target. No run pushes
+   county rows it ends at 43,223 in run 3, 53 times the target. No run pushes
    a row from inside the cap to past it. Unlike in the superseded runs, the
    looser cap barely changes weight concentration: donor weight share 57.3%
    against run 1's 59.8%, source-household ESS 14,558 against 13,253.
