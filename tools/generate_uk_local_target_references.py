@@ -463,6 +463,7 @@ def _area_signed_deferrals(
         allow_empty: bool = False,
         defer_if_compiles: bool = False,
         skip_declared: bool = False,
+        declared_value: float | None = None,
     ) -> None:
         if target_id not in target_ids:
             raise ValueError(
@@ -498,6 +499,7 @@ def _area_signed_deferrals(
                 rationale=rationale,
                 area_ids=matched_area_ids,
                 defer_if_compiles=defer_if_compiles,
+                declared_value=declared_value,
             )
         )
         declared_area_keys.update(
@@ -653,9 +655,13 @@ def _area_signed_deferrals(
             "DESNZ's sub-national gas statistics carry no domestic consumption "
             "for Orkney (S12000023) or Shetland (S12000027), which have no "
             "mains gas network; the cells are signed absent rather than bound "
-            "at zero (never_fabricate; microcosm#1207)."
+            "at zero (never_fabricate; microcosm#1207). Reconciliation counts "
+            "them at a declared zero, the gas they hold, so their region's "
+            "other cells keep their own share (María's ruling of 2026-10-25, "
+            "microcosm#1095)."
         ),
         area_ids=gas_network_absent_area_ids,
+        declared_value=0.0,
     )
     add(
         target_id="desnz.subnational.gas_connected_households",
@@ -667,10 +673,13 @@ def _area_signed_deferrals(
             "share puts their census households on the gas network. The "
             "census base compiles there, so the cells are deferred by this "
             "adjudication (defer_if_compiles) rather than bound at zero "
-            "(microcosm#1207)."
+            "(microcosm#1207). Reconciliation counts them at a declared zero "
+            "gas-connected households, not their census base (María's ruling "
+            "of 2026-10-25, microcosm#1095)."
         ),
         area_ids=gas_network_absent_area_ids,
         defer_if_compiles=True,
+        declared_value=0.0,
     )
     # microcosm#1095: the Orkney and Shetland seat is the two councils, so it
     # has no mains gas network either and DESNZ's split gives it no gas row.
@@ -684,9 +693,12 @@ def _area_signed_deferrals(
             "no domestic gas for, which have no mains gas network, so the split "
             "of the authorities' gas onto constituencies gives the seat no row; "
             "the cell is signed absent rather than bound at zero "
-            "(never_fabricate; microcosm#1095)."
+            "(never_fabricate; microcosm#1095). Reconciliation counts it at a "
+            "declared zero, as the councils' cells, so the two grains agree "
+            "within Scotland (María's ruling of 2026-10-25)."
         ),
         area_ids=gas_network_absent_seat_ids,
+        declared_value=0.0,
     )
     add(
         target_id="desnz.subnational.gas_connected_households",
@@ -697,10 +709,13 @@ def _area_signed_deferrals(
             "gas meters in DESNZ's split, so no meter share puts its census "
             "households on the gas network. The census base compiles there, so "
             "the cell is deferred by this adjudication (defer_if_compiles) "
-            "rather than bound at zero (microcosm#1095)."
+            "rather than bound at zero (microcosm#1095). Reconciliation counts "
+            "it at a declared zero gas-connected households, not its census "
+            "base (María's ruling of 2026-10-25)."
         ),
         area_ids=gas_network_absent_seat_ids,
         defer_if_compiles=True,
+        declared_value=0.0,
     )
     for target in contract.get("targets", ()):
         if "local_authority" not in target.get("geography_levels", ()):

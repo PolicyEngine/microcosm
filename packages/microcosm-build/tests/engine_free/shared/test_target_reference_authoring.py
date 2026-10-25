@@ -1242,3 +1242,27 @@ def test_a_list_source_name_prefilters_to_its_sources_in_feed_order() -> None:
     assert [
         fact["id"] for fact in authoring._source_prefilter(facts, buckets, single)
     ] == [1, 4]
+
+
+def test_a_declared_value_must_be_finite_and_non_negative() -> None:
+    # A no-network area's zero (microcosm#1095); a negative or NaN value would
+    # move its leg's control.
+    deferral = AreaSignedDeferral(
+        target_id="t",
+        geography_level="local_authority",
+        reason_id="r",
+        rationale="no network",
+        area_ids=("A",),
+        declared_value=0.0,
+    )
+    assert deferral.declared_value == 0.0
+    for value in (-1.0, float("nan")):
+        with pytest.raises(ValueError, match="declared_value"):
+            AreaSignedDeferral(
+                target_id="t",
+                geography_level="local_authority",
+                reason_id="r",
+                rationale="no network",
+                area_ids=("A",),
+                declared_value=value,
+            )

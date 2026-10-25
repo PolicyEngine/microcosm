@@ -779,3 +779,36 @@ def test_the_withholding_families_of_the_energy_rows() -> None:
     members, parents = families["desnz.subnational.gas_connected_households"]
     assert "ons.census.households" in members
     assert parents
+
+
+def test_the_no_gas_cells_reconcile_at_a_declared_zero() -> None:
+    # Orkney and Shetland, councils and seat, have no mains gas: both gas
+    # families count them at zero in reconciliation and bind none of them
+    # (María's ruling of 2026-10-25), and no other cell declares a value.
+    from microcosm.build.uk_runtime.ledger_targets import (
+        load_uk_local_target_reference_membership,
+    )
+
+    declared = {}
+    for target_id, target in load_uk_local_target_reference_membership()[
+        "targets"
+    ].items():
+        for level, payload in target["geography_levels"].items():
+            for candidate in payload["candidates"]:
+                if "declared_value" in candidate:
+                    assert candidate["status"] != "active"
+                    declared[(target_id, level, candidate["geography_id"])] = candidate[
+                        "declared_value"
+                    ]
+    assert declared == {
+        (target_id, level, area): 0.0
+        for target_id in (
+            "desnz.subnational.gas_kwh",
+            "desnz.subnational.gas_connected_households",
+        )
+        for level, areas in (
+            ("local_authority", ("S12000023", "S12000027")),
+            ("constituency", ("S14000051",)),
+        )
+        for area in areas
+    }
