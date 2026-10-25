@@ -627,13 +627,31 @@ def _assemble_frame(
     )
     pe_person["is_uc_claimant"] = frs_uc_claimant_mask(pe_person, pe_benunit)
     # policyengine-uk derives is_uc_claimant from is_claimant_or_partner
-    # (2.107.0 on), so the two supplied roles must name the same people.
+    # (2.107.0 on), so the two supplied roles must name the same people. The
+    # refusal counts the two ways they part, never naming a record: a
+    # DEPCHLDB other than the unit's child records, or a child record at
+    # UPERSON 1, which is_benunit_head reads as a second head.
     disagree = int((pe_person["is_uc_claimant"].to_numpy() != adult_record).sum())
     if disagree:
+        child_records = (
+            pd.Series(~adult_record).groupby(pe_person["person_benunit_id"]).sum()
+        )
+        miscounted = int(
+            (
+                child_records.reindex(pe_benunit["benunit_id"]).fillna(0).to_numpy()
+                != pe_benunit["dependent_children"].to_numpy()
+            ).sum()
+        )
+        child_heads = int(
+            (pe_person["is_benunit_head"].to_numpy() & ~adult_record).sum()
+        )
         raise ValueError(
-            "FRS adult-table membership and the dependant-count claimant rule "
-            f"disagree for {disagree} person(s): is_claimant_or_partner and "
-            "is_uc_claimant must be the same roles."
+            "FRS adult-table membership and the UC claimant rule (head, adult "
+            "with dependants, or member of a unit without them) disagree for "
+            f"{disagree} person(s): is_claimant_or_partner and is_uc_claimant "
+            f"must be the same roles. {miscounted} benefit unit(s) have a "
+            "DEPCHLDB other than their child-record count, and "
+            f"{child_heads} child record(s) are at UPERSON 1."
         )
     pe_benunit["liable_for_share_of_household_rent"] = (
         frs_liable_for_share_of_household_rent(

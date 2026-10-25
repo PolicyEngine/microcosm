@@ -224,9 +224,10 @@ def _is_engine_computed(variable: Any) -> bool:
 
 
 #: Supplied benefit-unit roles and the first policyengine-uk release that
-#: reads each. ``is_claimant_or_partner`` and ``is_hbai_dependent_child``
-#: (2.107.0) are read across the model's programmes, and ``is_uc_claimant``
-#: derives from ``is_claimant_or_partner`` from that release.
+#: reads each. ``is_claimant_or_partner`` (2.107.0) is read across the
+#: model's programmes, and ``is_uc_claimant`` derives from it from that
+#: release. ``is_hbai_dependent_child`` (2.107.0) sets the HBAI person
+#: types, which the BHC and AHC equivalisation reads.
 SUPPLIED_ROLE_INPUTS: tuple[tuple[str, str], ...] = (
     ("is_uc_claimant", "2.98.0"),
     ("is_claimant_or_partner", "2.107.0"),

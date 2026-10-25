@@ -1830,7 +1830,13 @@ def test_claimant_roles_must_agree_with_the_dependant_count(tmp_path: Path) -> N
     tables = _fixture_tables()
     tables["benunit"][1]["DEPCHLDB"] = 0
     stage = _write_fixture(tmp_path, tables)
-    with pytest.raises(ValueError, match="must be the same roles"):
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"must be the same roles\. 1 benefit unit\(s\) have a DEPCHLDB other "
+            r"than their child-record count, and 0 child record\(s\) are at UPERSON 1"
+        ),
+    ):
         build_uk_frs_spine_frame(tmp_path, stage=stage)
 
 
@@ -1842,7 +1848,13 @@ def test_a_child_record_at_uperson_1_refuses(tmp_path: Path) -> None:
     tables = _fixture_tables()
     tables["child"][0]["UPERSON"] = 1
     stage = _write_fixture(tmp_path, tables)
-    with pytest.raises(ValueError, match="must be the same roles"):
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"must be the same roles\. 0 benefit unit\(s\) have a DEPCHLDB other "
+            r"than their child-record count, and 1 child record\(s\) are at UPERSON 1"
+        ),
+    ):
         build_uk_frs_spine_frame(tmp_path, stage=stage)
 
 
@@ -1927,7 +1939,8 @@ def test_claimant_or_partner_agrees_with_the_dependant_count_rule(
     person = pd.DataFrame(
         {
             "person_benunit_id": frame["benunit_id"],
-            "is_benunit_head": adult & (frame["uperson"] == 1).to_numpy(),
+            # The spine reads UPERSON 1 on either tab as the head.
+            "is_benunit_head": (frame["uperson"] == 1).to_numpy(),
             "is_parent": adult & frame["benunit_id"].map(children).gt(0).to_numpy(),
         }
     )
