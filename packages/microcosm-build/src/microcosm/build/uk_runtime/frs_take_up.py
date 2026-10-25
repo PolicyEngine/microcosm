@@ -616,8 +616,16 @@ def uk_take_up_signal_gate(
     *,
     contract: UKTakeUpContract | None = None,
     maximum_share_deviation: float = 0.05,
+    under_two_usage_maximum_share_deviation: float | None = None,
 ) -> GateResult:
-    """Require non-constant UK stochastic flags near contract target shares."""
+    """Require non-constant UK stochastic flags near contract target shares.
+
+    The under-2 usage share takes ``under_two_usage_maximum_share_deviation``
+    when it is given, every other flag ``maximum_share_deviation``: the DfE
+    9-to-11-month row binds a thin cell of that draw's children, so the
+    calibrated weights move the share further from its rates than they move
+    any other flag's.
+    """
 
     resolved = contract if contract is not None else load_uk_take_up_contract()
     failures: list[str] = []
@@ -659,10 +667,17 @@ def uk_take_up_signal_gate(
             )
         else:
             target = _target_share(table, key, resolved, weights)
+        bound = (
+            under_two_usage_maximum_share_deviation
+            if key == UK_UNDER_TWO_USAGE_SIGNAL_KEY
+            and under_two_usage_maximum_share_deviation is not None
+            else maximum_share_deviation
+        )
         details[f"{entity}.{output}"] = {
             "weighted_share": share,
             "target": target,
             "absolute_deviation": abs(share - target),
+            "maximum_share_deviation": bound,
             "unique_count": unique_count,
             "population_units": int(population.sum()),
         }
@@ -690,11 +705,10 @@ def uk_take_up_signal_gate(
                 f"{entity}.{output}: constant column; stochastic take-up "
                 "assignment must not collapse to a universal default."
             )
-        if abs(share - target) > maximum_share_deviation:
+        if abs(share - target) > bound:
             failures.append(
                 f"{entity}.{output}: weighted share {share:.3f} differs from "
-                f"contract target {target:.3f} by more than "
-                f"{maximum_share_deviation:.3f}."
+                f"contract target {target:.3f} by more than {bound:.3f}."
             )
     return GateResult(
         name="take_up_signal",

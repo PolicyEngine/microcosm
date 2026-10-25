@@ -264,7 +264,7 @@ def _fixture_coverage_registry():
             evaluator=lambda context, parameters: GateResult(
                 name="take_up_signal", passed=True
             ),
-            parameter_keys=frozenset({"maximum_share_deviation"}),
+            parameter_keys=UK_GATE_REGISTRY["take_up_signal"].parameter_keys,
         ),
         "enum_domain": UKGateBinding(
             name="enum_domain",

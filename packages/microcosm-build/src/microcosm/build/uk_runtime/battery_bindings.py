@@ -2291,7 +2291,9 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
     "take_up_signal": UKGateBinding(
         name="take_up_signal",
         evaluator=_evaluate_take_up_signal,
-        parameter_keys=frozenset({"maximum_share_deviation"}),
+        parameter_keys=frozenset(
+            {"maximum_share_deviation", "under_two_usage_maximum_share_deviation"}
+        ),
     ),
     "enum_domain": UKGateBinding(
         name="enum_domain",
