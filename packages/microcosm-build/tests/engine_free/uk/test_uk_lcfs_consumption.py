@@ -1576,6 +1576,8 @@ def _synthetic_lcfs_stage(household_columns=None, *, excise=True):
             "person_benunit_id": np.repeat(np.arange(1, n + 1), 2),
             "person_household_id": np.repeat(np.arange(1, n + 1), 2),
             "age": ages,
+            # As the spine spells it; the gambling top-up reads it.
+            "gender": np.where(np.arange(2 * n) % 2 == 0, "MALE", "FEMALE"),
             # The nts_bus_travel stage's cells: journeys per series and the
             # statutory concessionary eligibility (here, 66 and over).
             "bus_in_london_trips": np.where(
@@ -3945,6 +3947,87 @@ def test_stage_writes_the_engines_excise_inputs_when_declared(monkeypatch) -> No
         },
     )
     assert gate.passed, gate.failures
+
+
+def test_stage_tops_up_the_gambling_keys_when_declared(monkeypatch) -> None:
+    """End to end: the top-up re-keys the gambling bases and moves nothing else."""
+
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS,
+        UK_LCFS_EXCISE_GAMBLING_OUTPUTS,
+    )
+    from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
+    from test_support.microcosm_build.uk_excise_facts import (
+        excise_declaration,
+        patch_excise_facts,
+    )
+    from test_support.microcosm_build.uk_gambling_participation_facts import (
+        participation_declaration,
+        patch_gambling_participation_facts,
+    )
+
+    patch_excise_facts(monkeypatch, excise_declaration())
+    plain = _synthetic_lcfs_stage()
+    before = plain.transform(plain.frame).table("household")
+    patch_gambling_participation_facts(monkeypatch, participation_declaration())
+    synthetic = _synthetic_lcfs_stage()
+    result = synthetic.transform(synthetic.frame)
+
+    out = result.table("household")
+    weights = result.weights_for("household").values
+    assert list(out.columns) == list(before.columns)
+    unchanged = [
+        column
+        for column in before.columns
+        if column not in UK_LCFS_EXCISE_GAMBLING_OUTPUTS
+    ]
+    # The spend columns and the alcohol and tobacco inputs among them.
+    assert set(UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS) & set(unchanged)
+    pd.testing.assert_frame_equal(out[unchanged], before[unchanged])
+    evidence = synthetic.transform.checkpoint_metadata()["evidence"]
+    for column in UK_LCFS_EXCISE_GAMBLING_OUTPUTS:
+        level = evidence["excise_quantities"]["outputs"][column]["annual_level"]
+        assert weights @ out[column].to_numpy() == pytest.approx(level)
+        assert (out[column] > 0).mean() > (before[column] > 0).mean()
+    # The two gambling classifiers and stake models follow the gas payer's.
+    assert len(synthetic.transform.fit_weight_records) == 34
+    assert synthetic.transform.fit_weight_records[-1].fit_name.endswith(
+        ":betting_and_gaming_participation_stake"
+    )
+    for check, parameters in (
+        (
+            "gambling_participation",
+            {"maximum_stratum_shortfall": 0.01, "required_support_band": "30+"},
+        ),
+        (
+            "excise_quantities",
+            {"maximum_parent_residual_share": 0.01, "required_support_band": "30+"},
+        ),
+    ):
+        gate = uk_stage_health_gate(
+            evidence=evidence,
+            stage="lcfs_consumption",
+            check=check,
+            parameters={
+                "stage": "lcfs_consumption",
+                "check": check,
+                "maximum_relative_deviation": 1e-9,
+                **parameters,
+            },
+        )
+        assert gate.passed, gate.failures
+
+
+def test_gambling_participation_needs_the_excise_levelling(monkeypatch) -> None:
+    from test_support.microcosm_build.uk_gambling_participation_facts import (
+        participation_declaration,
+        patch_gambling_participation_facts,
+    )
+
+    patch_gambling_participation_facts(monkeypatch, participation_declaration())
+    synthetic = _synthetic_lcfs_stage(excise=False)
+    with pytest.raises(ValueError, match="re-keys level_excise_quantities"):
+        synthetic.transform(synthetic.frame)
 
 
 def test_gambling_bases_are_receipts_over_rates_with_betting_split_by_yield(

@@ -3025,3 +3025,125 @@ def test_excise_quantities_gate_recomputes_every_level_from_the_vendored_rows(
     assert run(receipt, withheld).passed
     with pytest.raises(ValueError, match="excise_quantities must be an object"):
         run(None)
+
+
+def test_gambling_participation_gate_recomputes_the_rates_and_checks_the_shares(
+    monkeypatch,
+) -> None:
+    """The lcfs gambling_participation receipt is fact-checked at stage time (#1359)."""
+
+    import copy
+
+    from microcosm.build.uk_runtime.gambling_participation import (
+        top_up_gambling_participation,
+    )
+    from test_support.microcosm_build.uk_gambling_participation_facts import (
+        participation_declaration,
+        participation_inputs,
+        patch_gambling_participation_facts,
+    )
+
+    patch_gambling_participation_facts(monkeypatch, participation_declaration())
+    inputs = participation_inputs()
+    topped = top_up_gambling_participation(**inputs)
+    weights = inputs["weights"]
+    receipt = copy.deepcopy(dict(topped.receipt))
+    # The levelling's keys, as level_excise_quantities reads them.
+    excise = {
+        "keys": {
+            key: {"positive_share": float(weights[values > 0].sum() / weights.sum())}
+            for key, values in topped.keys.items()
+        }
+    }
+    parameters = {
+        "stage": "lcfs_consumption",
+        "check": "gambling_participation",
+        "maximum_relative_deviation": 1e-9,
+        "maximum_stratum_shortfall": 0.01,
+        "required_support_band": "30+",
+    }
+
+    def run(participation, levelled=excise):
+        return uk_stage_health_gate(
+            evidence={
+                "stage": "lcfs_consumption",
+                "gambling_participation": participation,
+                "excise_quantities": levelled,
+            },
+            stage="lcfs_consumption",
+            check="gambling_participation",
+            parameters=parameters,
+        )
+
+    def failing(change, fragment: str) -> None:
+        participation, levelled = copy.deepcopy(receipt), copy.deepcopy(excise)
+        change(participation, levelled)
+        result = run(participation, levelled)
+        assert not result.passed and any(fragment in f for f in result.failures), (
+            fragment,
+            result.failures,
+        )
+
+    passed = run(receipt)
+    assert passed.passed, passed.failures
+    lottery = lambda r, e: r["keys"]["national_lottery"]  # noqa: E731
+    shipped = next(
+        label
+        for label, entry in receipt["keys"]["national_lottery"]["strata"].items()
+        if entry != {"withheld": True}
+    )
+    stratum = lambda r, e: lottery(r, e)["strata"][shipped]  # noqa: E731
+    failing(
+        lambda r, e: r["facts"]["rates"]["national_lottery"]["regular"].update(
+            {"MALE:18": 0.9}
+        ),
+        "not the vendored",
+    )
+    failing(lambda r, e: r["facts"].update(rows_read=1), "rows_read")
+    failing(
+        lambda r, e: r["settings"]["theta"].update(national_lottery=0.5),
+        "not the declared",
+    )
+    failing(
+        lambda r, e: stratum(r, e).update(
+            after_regular=stratum(r, e)["regular_target"] - 0.05
+        ),
+        "more than 0.01",
+    )
+    failing(
+        lambda r, e: stratum(r, e).update(before=1.0),
+        "but moved",
+    )
+    failing(lambda r, e: stratum(r, e).pop("after_annual"), "no shares")
+    failing(
+        lambda r, e: lottery(r, e).update(
+            after_annual=lottery(r, e)["annual_target"] - 0.05
+        ),
+        "falls short",
+    )
+    failing(
+        lambda r, e: lottery(r, e)["stake_shares"].update(seen=0.9),
+        "do not split",
+    )
+    failing(lambda r, e: lottery(r, e).update(added_without_stake="<10"), "no stake")
+    failing(
+        lambda r, e: lottery(r, e)["propensity"].update(positive_support="10-29"),
+        "rest on",
+    )
+    failing(
+        lambda r, e: e["keys"]["national_lottery"].update(positive_share=0.1),
+        "excise levelling",
+    )
+    failing(
+        lambda r, e: r["keys"].update(national_lottery={"withheld": True}),
+        "withholds",
+    )
+    failing(lambda r, e: r["keys"].pop("betting_and_gaming"), "tops up no")
+    # A withheld stratum is counted, not checked.
+    withheld = copy.deepcopy(receipt)
+    withheld["keys"]["national_lottery"]["strata"][shipped] = {"withheld": True}
+    result = run(withheld)
+    assert result.passed
+    assert result.details["strata_withheld"] == passed.details["strata_withheld"] + 1
+    with pytest.raises(ValueError, match="gambling_participation must be an object"):
+        run(None)

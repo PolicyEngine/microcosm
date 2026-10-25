@@ -57,6 +57,14 @@ from microcosm.build.uk_runtime.energy_pricing import (
     spend_to_kwh,
 )
 from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
+from microcosm.build.uk_runtime.gambling_participation import (
+    TOP_UP_GAMBLING_PARTICIPATION_KIND,
+    UK_GAMBLING_PARTICIPATION_KEYS,
+    UK_GAMBLING_PARTICIPATION_RECEIPT,
+    GamblingParticipation,
+    gambling_participation_operation,
+    top_up_gambling_participation,
+)
 from microcosm.build.uk_runtime.household_income import (
     UK_HBAI_GROSS_INCOME_DEDUCTIONS,
     UK_HBAI_NET_INCOME_PREDICTOR,
@@ -825,6 +833,7 @@ class UKLCFSConsumptionResult:
     recomposed_totals: Mapping[str, Any] | None = None
     division_capture: Mapping[str, Any] | None = None
     excise_shares: Mapping[str, Any] | None = None
+    gambling_participation: Mapping[str, Any] | None = None
     excise_quantities: Mapping[str, Any] | None = None
 
     def evidence(self) -> dict[str, object]:
@@ -860,6 +869,10 @@ class UKLCFSConsumptionResult:
             evidence["division_capture"] = dict(self.division_capture)
         if self.excise_shares is not None:
             evidence[UK_LCFS_EXCISE_SHARES_RECEIPT] = dict(self.excise_shares)
+        if self.gambling_participation is not None:
+            evidence[UK_GAMBLING_PARTICIPATION_RECEIPT] = dict(
+                self.gambling_participation
+            )
         if self.excise_quantities is not None:
             evidence[UK_LCFS_EXCISE_QUANTITIES_RECEIPT] = dict(self.excise_quantities)
         return evidence
@@ -1059,8 +1072,24 @@ class UKLCFSConsumptionStageTransform:
             if shares
             else None
         )
+        gambling = lcfs_gambling_participation(
+            self.stage,
+            household_draws,
+            donor=donor,
+            recipient=recipient,
+            drawn=imputation.draws,
+            person=frame.table("person"),
+            household_ids=frame.table("household")["household_id"].to_numpy(),
+            weights=weights,
+            sources=sources,
+            shares=shares,
+        )
         quantities, excise_quantities = lcfs_excise_quantities(
-            self.stage, household_draws, weights=weights, shares=shares
+            self.stage,
+            household_draws,
+            weights=weights,
+            shares=shares,
+            participation=None if gambling is None else gambling.keys,
         )
         household = frame.table("household").copy()
         for column in UK_LCFS_CONSUMPTION_TARGET_COLUMNS:
@@ -1097,6 +1126,7 @@ class UKLCFSConsumptionStageTransform:
             *incidence.fit_weight_records,
             *(() if prepayment is None else prepayment.fit_weight_records),
             *(() if gas_payers is None else gas_payers.fit_weight_records),
+            *(() if gambling is None else gambling.fit_weight_records),
         )
         self.last_result = UKLCFSConsumptionResult(
             frame=result,
@@ -1115,6 +1145,7 @@ class UKLCFSConsumptionStageTransform:
             recomposed_totals=recomposed_totals_receipt,
             division_capture=capture,
             excise_shares=excise_shares,
+            gambling_participation=None if gambling is None else gambling.receipt,
             excise_quantities=excise_quantities,
         )
         return result
@@ -2667,6 +2698,7 @@ def level_excise_quantities(
     *,
     levels: ExciseLevels,
     weights: Sequence[float],
+    participation: Mapping[str, np.ndarray] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Give each household its part of each national quantity, by its spending.
 
@@ -2685,7 +2717,10 @@ def level_excise_quantities(
     remote from land-based play. Weekly inputs are the annual quantity over
     the engine's 52 weeks; a draught share is written as published. The
     spending is the drawn shares of the drawn totals, so no total moves
-    (microcosm#1359).
+    (microcosm#1359). ``participation`` gives the two gambling keys the
+    declared ``top_up_gambling_participation`` step brought to published
+    participation, in place of the drawn stakes; the stored spending stays
+    the drawn one.
     """
 
     weight_values = np.asarray(weights, dtype=float)
@@ -2713,6 +2748,17 @@ def level_excise_quantities(
         UK_LCFS_NATIONAL_LOTTERY_KEY: lottery,
         UK_LCFS_BETTING_AND_GAMING_KEY: betting,
     }
+    if participation is not None:
+        if set(participation) != set(UK_GAMBLING_PARTICIPATION_KEYS):
+            raise ValueError(
+                f"the topped-up gambling keys must be {UK_GAMBLING_PARTICIPATION_KEYS}, "
+                f"not {sorted(participation)}."
+            )
+        for key, values in participation.items():
+            topped = np.asarray(values, dtype=float)
+            if topped.shape != (len(household_draws),):
+                raise ValueError(f"the topped-up {key} key is not one per household.")
+            keys[key] = topped
     quantities = pd.DataFrame(index=household_draws.index)
     outputs: dict[str, Any] = {}
     for column, level in levels.quantities.items():
@@ -2771,6 +2817,7 @@ def lcfs_excise_quantities(
     *,
     weights: Sequence[float],
     shares: Mapping[str, object],
+    participation: Mapping[str, np.ndarray] | None = None,
 ) -> tuple[pd.DataFrame | None, dict[str, Any] | None]:
     """Apply the declared ``level_excise_quantities`` step (none if undeclared)."""
 
@@ -2784,7 +2831,7 @@ def lcfs_excise_quantities(
         )
     levels = excise_levels(parameters)
     quantities, receipt = level_excise_quantities(
-        household_draws, levels=levels, weights=weights
+        household_draws, levels=levels, weights=weights, participation=participation
     )
     receipt = {
         "operation": LEVEL_EXCISE_QUANTITIES_KIND,
@@ -2797,6 +2844,73 @@ def lcfs_excise_quantities(
         **receipt,
     }
     return quantities, receipt
+
+
+def lcfs_gambling_participation(
+    stage: SourceStageSpec,
+    household_draws: pd.DataFrame,
+    *,
+    donor: pd.DataFrame,
+    recipient: pd.DataFrame,
+    drawn: pd.DataFrame,
+    person: pd.DataFrame,
+    household_ids: np.ndarray,
+    weights: Sequence[float],
+    sources: np.ndarray | None,
+    shares: Mapping[str, object],
+) -> GamblingParticipation | None:
+    """Apply the declared ``top_up_gambling_participation`` step (none if undeclared).
+
+    The keys are the drawn National Lottery and betting and gaming stakes,
+    and the donor's own. Both fits read the chain's predictors and the spend
+    targets the shares were drawn on: the donor's diary totals, and the
+    chain's raw draws on the frame. The step only re-keys
+    ``level_excise_quantities``, so it needs that step and the shares.
+    """
+
+    parameters = gambling_participation_operation(stage)
+    if parameters is None:
+        return None
+    if excise_quantities_operation(stage) is None or set(shares) != set(
+        UK_LCFS_EXCISE_SHARES
+    ):
+        raise ValueError(
+            f"{stage.stage}: {TOP_UP_GAMBLING_PARTICIPATION_KIND} re-keys "
+            f"{LEVEL_EXCISE_QUANTITIES_KIND}, so it needs that step and the "
+            f"excise shares {tuple(UK_LCFS_EXCISE_SHARES)}."
+        )
+    columns = {
+        UK_LCFS_NATIONAL_LOTTERY_KEY: UK_LCFS_NATIONAL_LOTTERY_SPENDING,
+        UK_LCFS_BETTING_AND_GAMING_KEY: UK_LCFS_BETTING_AND_GAMING_SPENDING,
+    }
+    spending = excise_spending(household_draws)
+    donor_spending = excise_spending(donor)
+    donor_encoded, recipient_encoded, predictors = _encode_consumption_predictors(
+        donor, recipient
+    )
+    features = [*predictors, *UK_LCFS_CONSUMPTION_TARGET_COLUMNS]
+    recipient_features = recipient_encoded[list(predictors)].reset_index(drop=True)
+    for column in UK_LCFS_CONSUMPTION_TARGET_COLUMNS:
+        recipient_features[column] = drawn[column].to_numpy(dtype=float)
+    return top_up_gambling_participation(
+        {
+            key: spending[column].to_numpy(dtype=float)
+            for key, column in columns.items()
+        },
+        person=person,
+        household_ids=household_ids,
+        weights=weights,
+        sources=sources,
+        donor_features=donor_encoded[features].reset_index(drop=True),
+        donor_keys={
+            key: donor_spending[column].to_numpy(dtype=float)
+            for key, column in columns.items()
+        },
+        donor_weights=donor_encoded["household_weight"].to_numpy(dtype=float),
+        recipient_features=recipient_features,
+        parameters=parameters,
+        fit_name=UK_LCFS_CONSUMPTION_FIT_NAME,
+    )
 
 
 def recompose_from_remainder_operation(
