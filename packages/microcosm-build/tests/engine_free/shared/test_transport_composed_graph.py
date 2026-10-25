@@ -5307,19 +5307,51 @@ def test_precalibration_ancestry_engine_refs_text_is_not_the_map(note):
     )
 
 
-def test_precalibration_ancestry_inventory_scan_is_linear():
+@pytest.mark.parametrize("scope", ["helper", "person_stage"])
+def test_precalibration_ancestry_inventory_scan_is_linear(scope):
     """A harmless parameter full of escaped quotes costs one pass per layer.
 
-    Decoding JSON from every quote made this quadratic: 8 KB took 0.6 s and
-    32 KB took 24 s. Decoding layer by layer takes milliseconds.
+    Decoding JSON from every quote made the inventory scan quadratic, four
+    times the cost per doubling: on an idle host 32 KB took 0.5 s and 128 KB
+    7.5 s. Decoding layer by layer takes milliseconds at 128 KB. The guard case
+    lists only a person stage, because the engine-reference scan that predates
+    the stages (``_embeds_engine_ref``) still decodes JSON from every quote of
+    a parameter when a benefit-unit engine reference is looked for.
     """
-    spec = _shape_case()
-    _shape_rows(spec)["mid"]["params"] = {"note": "prefix" + r"\"" * 16_000}
-    started = time.perf_counter()
-    assert (
-        _shape_outcome(compose_module.validate_transport_calibration_ancestry, spec)
-        is None
+    note = "prefix" + r"\"" * 64_000
+    binding = {**_synthetic_binding("p", "person", ["p_out"]), "engine_ref": "p-ref"}
+    rows = [
+        {
+            "id": "probe",
+            "kernel": "synthetic.probe@1",
+            "population": "create",
+            "params": {"engine_ref": {"binding": "p", "field": "engine_ref"}},
+            "outputs": [{"entity": "person", "column": "p_out"}],
+        },
+        {
+            "id": "mid",
+            "kernel": "synthetic.mid@1",
+            "population": "create",
+            "params": {"note": note},
+            "inputs": [{"entity": "person", "columns": ["p_out"]}],
+            "outputs": [{"entity": "person", "column": "mid_out"}],
+        },
+        {
+            "id": "cal",
+            "kernel": "calibrate.synthetic@1",
+            "population": "create",
+            "inputs": [{"entity": "person", "columns": ["mid_out"]}],
+        },
+    ]
+    spec = _synthetic_stage_spec(
+        [binding], [_synthetic_stage(binding, ["p_out"])], rows
     )
+    guard = compose_module.validate_transport_calibration_ancestry
+    started = time.perf_counter()
+    if scope == "helper":
+        assert not compose_module._carries_engine_ref_inventory(note)
+    else:
+        assert _shape_outcome(guard, spec) is None
     assert time.perf_counter() - started < 1
 
 
