@@ -25,7 +25,10 @@
       "hmrc/higher_rate_taxpayers/count",
       "high_value_homes/over_1m",
       "high_value_homes/over_1_5m",
-      "high_value_homes/over_2m"
+      "high_value_homes/over_2m",
+      "energy/electricity_kwh",
+      "energy/gas_kwh",
+      "energy/gas_connected_households"
     ],
     "la": [
       "hmrc/self_employment_income/amount",
@@ -274,11 +277,12 @@
         "desnz_meters_for_households",
         "desnz_regional_meter_share_in_stage"
       ],
-      "description": "Domestic electricity and gas consumption (kWh) and gas-connected households by local authority, Great Britain, from DESNZ's sub-national statistics (microcosm#1207). The kWh cells keep DESNZ's split between authorities at the lcfs stage's Energy Trends level (one factor per fuel); the gas-connected cells are each authority's census households times its gas meters over its electricity meters, a member of the census household partition. The frame reads each household's stored spend at the dataset period and turns it back into kWh at the stage's declared prices. DESNZ publishes no constituency cut, so the family is local-authority only.",
+      "description": "Domestic electricity and gas consumption (kWh) and gas-connected households by local authority, Great Britain, from DESNZ's sub-national statistics (microcosm#1207). The kWh cells keep DESNZ's split between authorities at the lcfs stage's Energy Trends level (one factor per fuel); the gas-connected cells are each authority's census households times its gas meters over its electricity meters, a member of the census household partition. The frame reads each household's stored spend at the dataset period and turns it back into kWh at the stage's declared prices. DESNZ publishes no constituency cut, so the constituency cells bind Microcosm's split of each authority's totals by DESNZ's LSOA and data zone figures, which keeps every authority's total (microcosm#1095).",
       "family": "domestic_energy",
       "sources": [
         "desnz_subnational_electricity_la",
         "desnz_subnational_gas_la",
+        "desnz_small_area_constituency_split",
         "desnz_subnational_electricity_ni",
         "desnz_subnational_gas_ni",
         "ons_census2021_ts041_households",
@@ -475,6 +479,7 @@
     },
     {
       "area_types": [
+        "constituency",
         "la"
       ],
       "family": "council_tax",
@@ -491,6 +496,7 @@
     },
     {
       "area_types": [
+        "constituency",
         "la"
       ],
       "family": "domestic_energy",
@@ -499,6 +505,7 @@
     },
     {
       "area_types": [
+        "constituency",
         "la"
       ],
       "family": "domestic_energy",
@@ -1090,6 +1097,35 @@
       "verified_on": "2026-10-14"
     },
     {
+      "derived_resource_pin": {
+        "inputs_sha256": "d9101beaa519148bd63089989859ebfe71016e5a9775d0bb3d0f6f5037eb68d4",
+        "resource": "desnz_constituency_energy_facts.json",
+        "rows": 2526,
+        "rows_sha256": "4858c6c470a78c0dc9bdaaac0071b8d398501443b16fbf8ce3e2b32c94f0917c"
+      },
+      "geographies": [
+        "constituency"
+      ],
+      "latest_vintage": "2024",
+      "ledger_fact_pin": {
+        "artifact": ".codex-work/consumer_facts_uk.jsonl",
+        "build": "build-bundle --suite uk -> build-consumer-artifact",
+        "fact_row_count": 1499301,
+        "facts_sha256": "2b64fecfe746164203dac1726aae6ffdb3e5d8e478bd3d64d118ac76cb00780b",
+        "manifest": ".codex-work/consumer_facts_uk_manifest.json",
+        "manifest_sha256": "b90fb1b8f1a910458fac41425360209d101796e6de0b134f952ad93323ca6e21",
+        "source_commit": "abf0921b896d29ee0745ed2aefde8d6337ed7164",
+        "source_repo": "PolicyEngine/chronicle"
+      },
+      "notes": "The pinned feed record sets desnz.lsoa.electricity.cy2024 and desnz.lsoa.gas.gy2024 (LSOA_domestic_elec_2010-2024.xlsx and LSOA_domestic_gas_2010-2024.xlsx, December 2025) carry DESNZ's domestic consumption and meter counts for every England and Wales LSOA and Scottish data zone it publishes, on the same periods and temperature bases as the authority rows. tools/build_uk_desnz_constituency_energy_facts.py shares each authority's total among its constituency pieces in proportion to them, an LSOA in two seats by its output areas' census households, so every authority keeps its total and DESNZ's unallocated meters follow the split. The seat cells take the authority cells' factor per fuel and read their meter share off the split. Northern Ireland publishes no small areas and is outside the family.",
+      "product": "Domestic electricity and gas consumption (kWh) and meter counts by July 2024 constituency, Great Britain, 2024: each authority's sub-national total split over its constituencies by DESNZ's 2021 LSOA and 2022 data zone figures for the same year, through the committed atomic supports (microcosm#1095).",
+      "publisher": "Department for Energy Security and Net Zero (LSOA and data zone statistics), ONS and NRS (output area lookups); Microcosm derivation",
+      "source_id": "desnz_small_area_constituency_split",
+      "status": "pinned_in_derived_resource",
+      "url": "https://assets.publishing.service.gov.uk/media/69427b7bd8156a816c419351/LSOA_domestic_elec_2010-2024.xlsx",
+      "verified_on": "2026-10-25"
+    },
+    {
       "geographies": [
         "country"
       ],
@@ -1139,7 +1175,7 @@
   "status_definitions": {
     "bound_in_code": "The household-side metric is computed today by local_targets.compute_household_metrics from its declaration's policyengine binding in uk_population_targets.json.",
     "documented_unpinned": "The official product exists and was verified at the recorded URL on verified_on, but no exact table, vintage, or hash is pinned; binding work pins it per family.",
-    "pinned_in_derived_resource": "The official product is registered raw-only in Chronicle (its bytes are pinned by sha256 but parsed into no fact) and Microcosm's committed derived-facts resource, built by the recorded tool from those pins, carries the target values; derived_resource_pin records the resource and its row digest.",
+    "pinned_in_derived_resource": "The official product is pinned in Chronicle, registered raw-only (its bytes pinned by sha256 but parsed into no fact) or parsed into the sha-pinned feed, and Microcosm's committed derived-facts resource, built by the recorded tool from those pins, carries the target values; derived_resource_pin records the resource and its row digest.",
     "pinned_in_ledger_facts": "The official product's target facts are present in the sha-pinned Ledger consumer fact feed recorded on the source row.",
     "review_required_before_binding": "The fence is a reviewed adjudication requirement enforced by the rowwise doctrine solve (local_rowwise.require_adjudicated_uk_local_binding): binding a family whose fences lack an in-force entry in local_binding_adjudications.json is refused before any solve runs.",
     "signed_deferred": "The official product is present or documented, but this target surface does not bind it in the current compile; the source row carries signed_reason_id and signed_rationale."
