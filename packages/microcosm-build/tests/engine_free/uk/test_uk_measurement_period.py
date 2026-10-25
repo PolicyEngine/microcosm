@@ -368,6 +368,8 @@ REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
         "benefit_cap_reduction",
         "benunit_tenure_type",
         "council_tax_band",
+        # Engine-computed from the household's adults (pe-uk#1864; microcosm#953).
+        "council_tax_discount_rate",
         "country",
         "dfe_age_at_31_december",
         "dfe_spring_early_learning_2",
@@ -410,6 +412,7 @@ REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
         "tenure_type",
         "total_income_after_loss_relief",
         "uc_LCWRA_element",
+        "uc_benefit_cap_reduction_after_floor",
         "uc_calibration_administrative_family_type",
         "uc_calibration_child_count",
         "uc_calibration_has_child_under_one",

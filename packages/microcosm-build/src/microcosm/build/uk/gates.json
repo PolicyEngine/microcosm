@@ -143,7 +143,7 @@
         "check": "wealth_coherence",
         "maximum_owner_share_without_main_residence_excess": 0.005
       },
-      "notes": "Stage-time coherence gate over the WAS wealth receipt (microcosm#1063). Zero rows may carry a main-residence mortgage off the mortgaged tenure or main_residence_value off an owner tenure: both columns are fitted and drawn inside their tenure stratum, so a non-zero count is a defect of the stage, not of a draw; mortgage_debt itself is the main-residence mortgage plus the mortgages on other property, held on any tenure. Every derived total must equal its components on every row (property_wealth, corporate_wealth, gross_financial_wealth, mortgage_debt, and net_financial_wealth as gross less consumer debt and the student loan balance); the stage derives them, so only a support clip of a total can open a gap, and the support gate allows none. The weighted share of owner households without a main-residence value may exceed the donor's own share by at most the reviewed excess (the donor's share is zero on the pinned round-8 tab, where every owner reports a value). The receipt's donor comparisons (positive shares by tenure, the mortgaged share owing more than the main-residence value, the mortgage mass held off the mortgaged tenure on each side) and the rows the donor-range cap adjusted are recorded in the details and carry no threshold."
+      "notes": "Stage-time coherence gate over the WAS wealth receipt (microcosm#1063). Zero rows may carry a main-residence mortgage off the mortgaged tenure or main_residence_value off an owner tenure: both columns are fitted and drawn inside their tenure stratum, so a non-zero count is a defect of the stage, not of a draw; mortgage_debt itself is the main-residence mortgage plus the mortgages on other property, held on any tenure. Every derived total must equal its components on every row (property_wealth, corporate_wealth, gross_financial_wealth, mortgage_debt, and net_financial_wealth as gross less consumer debt and the student loan balance); the stage derives them, so only a support clip of a total can open a gap, and the support gate allows none. The share split and the stocks-and-shares ISA must sum to corporate_wealth, and every debt secured on other property must sit on a held asset of its class, be non-negative, and with the other within the mortgages on other property (share_split_violation_rows, secured_debt_violation_rows; the WAS property draw of microcosm#1095), all written by the stage on the final totals. The weighted share of owner households without a main-residence value may exceed the donor's own share by at most the reviewed excess (the donor's share is zero on the pinned round-8 tab, where every owner reports a value). The receipt's donor comparisons (positive shares by tenure, the mortgaged share owing more than the main-residence value, the mortgage mass held off the mortgaged tenure on each side) and the rows the donor-range cap adjusted are recorded in the details and carry no threshold."
     },
     {
       "id": "uk_stage_was_lisa_support",
@@ -390,7 +390,7 @@
         "check": "recomposed_totals",
         "maximum_relative_deviation": 1e-09
       },
-      "notes": "Stage-time check on the lcfs recomposed_totals receipt (microcosm#1113): housing_water_and_electricity_consumption and transport_consumption each keep their own chain draw less the chain's draws of the parts the stage re-levels (the drawn electricity and gas, or the drawn petrol, diesel and bus fares; floored at zero where the parts outgrow the total) and add the levelled parts back, so no household's total is below its electricity and gas, or its petrol, diesel and priced bus fares, and no remainder is negative. The declared parts must be the receipt's, the weighted remainder must equal the drawn total less the drawn parts plus the floored mass, and the weighted total the remainder plus the levelled parts, to the declared tolerance. The step floors the remainder and adds the parts, so on a receipt the declared step wrote these are identities: the check guards the declaration and the receipt, not the size of the totals. The committed support bounds do that, on the emitted frame, through the terminal uk_support gate. The ONS 04.5.3 and 04.5.4 liquid and solid fuel spend no frame column carries is recomputed from the vendored rows and must equal the receipt's; the housing remainder holds the diary's other fuels, which the stage's energy derivation leaves out of electricity and gas (microcosm#1164). A population fact check: the synthetic smoke records it without blocking."
+      "notes": "Stage-time check on the lcfs recomposed_totals receipt (microcosm#1113): housing_water_and_electricity_consumption and transport_consumption each keep their own chain draw less the chain's draws of the parts the stage re-levels (the drawn electricity and gas, or the drawn petrol, diesel and bus fares; floored at zero where the parts outgrow the total) and add the levelled parts back, so no household's total is below its electricity and gas, or its petrol, diesel and priced bus fares, and no remainder is negative. The declared parts must be the receipt's, the weighted remainder must equal the drawn total less the drawn parts plus the floored mass, and the weighted total the remainder plus the levelled parts, to the declared tolerance. The step floors the remainder and adds the parts, so on a receipt the declared step wrote these are identities: the check guards the declaration and the receipt, not the size of the totals. The committed support bounds do that, on the emitted frame, through the terminal uk_support gate. The ONS 04.5.3 and 04.5.4 liquid and solid fuel spend no frame column carries is recomputed from the vendored rows and must equal the receipt's; the housing remainder holds the diary's other fuels, which the stage's energy derivation leaves out of electricity and gas (microcosm#1164). A population fact check: the synthetic smoke records it without blocking. Since microcosm#1278 (María's ruling of 2026-10-23) the stage levels the divisions' relative over-draw before the hold, so a recomposed total's remainder is its draw less the drawn parts plus the floored mass, times its recorded levelling factor, which must lie in [0, 1]; the published heating-fuel spend (published_fuels, ONS 04.5.3 and 04.5.4) replaced the uncarried block when the stage began drawing those fuels."
     },
     {
       "id": "uk_stage_lcfs_consumption_basis",
@@ -564,7 +564,8 @@
           "iidb_reported",
           "afcs_reported",
           "bsp_reported",
-          "war_widows_pension_reported"
+          "war_widows_pension_reported",
+          "widowed_parents_allowance_reported"
         ]
       },
       "notes": "Stage-time structural gate over the SPI benefit coherence receipt (microcosm#1095, uk-data#514): no SPI-channel row keeps a zeroed legacy report, every restored report equals the FRS twin's, receives_benefits_in_own_right agrees with each person's own reports, FRS rows are unchanged, every SPI benefit unit with a Universal Credit reporter claims, and no SPI unit outside the Universal Credit age population claims without reporting."
@@ -800,6 +801,70 @@
       "notes": "Stage-time invariants over the #791 relationship receipt: exactly one HEAD per household agreeing with hrpid and hrpnum, contiguous person numbers, no person with two partners, no unmapped relhrp code, family index and enum domains consistent, and the ten-cell household-type partition covering every household exactly once. The grid reciprocity tolerance is the reviewed 2024-25 tape count; a re-issued tape with a different count refuses for review."
     },
     {
+      "id": "uk_stage_regional_home_values_ranking",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "regional_home_values",
+        "check": "regional_home_values",
+        "regions": [
+          "E12000001",
+          "E12000002",
+          "E12000003",
+          "E12000004",
+          "E12000005",
+          "E12000006",
+          "E12000007",
+          "E12000008",
+          "E12000009",
+          "W92000004"
+        ],
+        "maximum_sources_at_cap": 0,
+        "knots_basis_year": 2024,
+        "rank_basis": "weighted_midpoint_within_frs_region"
+      },
+      "notes": "Stage-time gate over the regional home-values receipt (microcosm#1308, gated with the next policyengine-uk bump on María's ruling of 2026-10-17): every English region and Wales has rows re-ranked on the regional knots, no more rows are rewritten than the stage carries, no source sits at the value cap, the knots are the 2024 basis and the ranking is the weighted midpoint within each FRS region, and the weighted value stays positive before and after the stage. A synthetic smoke build records a failure without blocking on it (population_fact_check): the fixture holds a few regions, not the population the regional knots describe."
+    },
+    {
+      "id": "uk_stage_property_purchases_fit",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "property_purchases",
+        "check": "property_purchases",
+        "kinds": [
+          "additional_residential",
+          "non_residential"
+        ],
+        "maximum_transactions_relative_deviation": 0.05,
+        "maximum_value_shortfall_share": 0.2
+      },
+      "notes": "Stage-time gate over the property purchases receipt (microcosm#1308, gated with the next policyengine-uk bump on María's ruling of 2026-10-17): the additional-dwelling and non-residential kinds are each drawn once; each draws HMRC's Stamp Tax transactions within 5 percent (the events are drawn, so the count is near, not exact); each fits HMRC's value less its recorded shortfall, which may not pass one fifth, the floor the stage itself refuses below; and the individuals' shares of HMRC's all-buyers totals are proper shares. A synthetic smoke build records a failure without blocking on it (population_fact_check): the fixture sizes its own targets to its few households and carries none of HMRC's published shares."
+    },
+    {
+      "id": "uk_stage_uc_legacy_closure_take_up_contract",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "uc_legacy_closure_take_up",
+        "check": "legacy_closure_take_up",
+        "p_basis": "spine_design_weights_great_britain",
+        "rate_sources": [
+          "combination",
+          "all_households"
+        ]
+      },
+      "notes": "Stage-time gate over the Move to UC take-up receipt (microcosm#1308, gated with the next policyengine-uk bump on María's ruling of 2026-10-17). The receipt withholds what a thin combination realizes, so the gate holds the contract it can read: the share is measured at the spine's design weights over Great Britain, every combination's rate is a probability taken from its combination or from all households, its support is a printed band, its unreachable flag is a boolean, a withheld \"<10\" or absent, and the share claiming at closure is a share or withheld."
+    },
+    {
       "id": "uk_release_input_coverage",
       "gate": "release_input_coverage",
       "phase": "terminal",
@@ -907,6 +972,10 @@
             ],
             "owners": "household_reference_person_unit",
             "valuation": 0.9,
+            "secured_debt": {
+              "other_residential_property_value": "other_residential_property_secured_debt",
+              "non_residential_property_value": "non_residential_property_secured_debt"
+            },
             "units_reporting_universal_credit": "no_share"
           },
           "pension_credit_reported_capital": {
@@ -916,12 +985,16 @@
               "non_residential_property_value"
             ],
             "owners": "household_reference_person_unit",
-            "valuation": 0.9
+            "valuation": 0.9,
+            "secured_debt": {
+              "other_residential_property_value": "other_residential_property_secured_debt",
+              "non_residential_property_value": "non_residential_property_secured_debt"
+            }
           }
         },
         "sum_tolerance": 0.01
       },
-      "notes": "Benunit-aggregated reported Universal Credit must imply would_claim_uc. Both recorded capitals, uc_reported_capital and pension_credit_reported_capital, are bounded below by the named -1 unavailable sentinel and may use it only where the FRS carrier frs_benunit_capital is unavailable. Otherwise each equals the carrier plus the household property the unit holds, re-derived here with the stage's own rule (microcosm#1095): the household reference person's benefit unit holds the household's property at 90% of its value, market value less 10% for the costs of sale, and no other unit holds any. UC counts other residential and non-residential property, and a unit that reports Universal Credit keeps its receipt and carries none; Pension Credit counts those and owned land. The sum may differ by GBP 0.01 plus one float32 step of the expected value, so a float32 round-trip of the export does not fail it. No unit may sit on the -1 sentinel beside a unit that records a property share for either scheme: since policyengine-uk 2.136.1 the sentinel unit would take its own share of property the recording unit already holds, so the engine would count it twice (Vahid's review of microcosm#1333)."
+      "notes": "Benunit-aggregated reported Universal Credit must imply would_claim_uc. Both recorded capitals, uc_reported_capital and pension_credit_reported_capital, are bounded below by the named -1 unavailable sentinel and may use it only where the FRS carrier frs_benunit_capital is unavailable. Otherwise each equals the carrier plus the household property the unit holds, re-derived here with the stage's own rule (microcosm#1095): the household reference person's benefit unit holds the household's property at 90% of its value, market value less 10% for the costs of sale, less the debt secured on it class by class and floored at zero per class (UC Regs 2013 reg 49(1)(b); SPC Regs 2002 reg 19(b); the WAS property draw of microcosm#1095, owned land carrying none), and no other unit holds any. UC counts other residential and non-residential property, and a unit that reports Universal Credit keeps its receipt and carries none; Pension Credit counts those and owned land. The sum may differ by GBP 0.01 plus one float32 step of the expected value, so a float32 round-trip of the export does not fail it. No unit may sit on the -1 sentinel beside a unit that records a property share for either scheme: since policyengine-uk 2.136.1 the sentinel unit would take its own share of property the recording unit already holds, so the engine would count it twice (Vahid's review of microcosm#1333)."
     },
     {
       "id": "uk_support",
@@ -1160,7 +1233,16 @@
           "household.itl2_code",
           "household.itl3_code",
           "household.ward_code",
-          "person.war_widows_pension_reported"
+          "person.war_widows_pension_reported",
+          "person.widowed_parents_allowance_reported",
+          "person.spousal_maintenance_income",
+          "person.pension_contributions_via_bonus_sacrifice",
+          "household.liquid_fuel_consumption",
+          "household.solid_fuel_consumption",
+          "household.directly_held_shares",
+          "household.unit_and_investment_trusts",
+          "household.other_residential_property_secured_debt",
+          "household.non_residential_property_secured_debt"
         ],
         "reviewed_exclusions": {
           "person.incapacity_benefit_reported": "The enhanced FRS stores this legacy reported-benefit input as an all-zero layer; the candidate must drop dead zero layers.",

@@ -48,6 +48,8 @@ def test_live_engine_screen_reads_the_recorded_capital_with_property() -> None:
             # At 90% of its value, GBP 18,000 of property is GBP 16,200.
             "other_residential_property_value": [0.0, 0.0, 18_000.0],
             "non_residential_property_value": [0.0, 0.0, 0.0],
+            "other_residential_property_secured_debt": [0.0, 0.0, 0.0],
+            "non_residential_property_secured_debt": [0.0, 0.0, 0.0],
             "corporate_wealth": [0.0, 0.0, 0.0],
         }
     )

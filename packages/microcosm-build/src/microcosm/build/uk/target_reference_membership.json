@@ -1,11 +1,11 @@
 {
   "source_fact_feed": "chronicle-uk-abf0921-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1360,
-  "contract_target_count": 378,
-  "active_reference_count": 1338,
+  "candidate_count": 1358,
+  "contract_target_count": 376,
+  "active_reference_count": 1336,
   "status_counts": {
-    "active": 1338,
+    "active": 1336,
     "no_fact_at_or_before_period": 5,
     "signed_excluded": 17
   },
@@ -101,14 +101,6 @@
     "obr.tv_licence_fee": {
       "geography_level": "country",
       "geography_id": "K02000001"
-    },
-    "obr.universal_credit_in_cap": {
-      "geography_level": "country",
-      "geography_id": "K03000001"
-    },
-    "obr.universal_credit_outside_cap": {
-      "geography_level": "country",
-      "geography_id": "K03000001"
     },
     "obr.winter_fuel_allowance": {
       "geography_level": "country",
@@ -1949,10 +1941,6 @@
       "geography_id": "E92000001"
     },
     "slc.repayments.england_plan_2": {
-      "geography_level": "country",
-      "geography_id": "E92000001"
-    },
-    "slc.repayments.england_postgraduate": {
       "geography_level": "country",
       "geography_id": "E92000001"
     },
@@ -4479,6 +4467,10 @@
           "geography_id": "W92000004"
         }
       ]
+    },
+    "mhclg.council_tax_stock.single_adult_discount": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
     }
   },
   "genuine_sum_residue": [
@@ -4657,7 +4649,6 @@
     "slc.repayments.england_plan_1",
     "slc.repayments.england_plan_2",
     "slc.repayments.england_plan_5",
-    "slc.repayments.england_postgraduate",
     "slc.repayments.england_total_higher_education",
     "welshgov.bus.public_support"
   ],
@@ -10898,6 +10889,11 @@
       "index": "hmrc.itl_2026.total_tax_growth_by_total_income_band",
       "factor": "1.21312442637997",
       "value_before_uprating": "522000000.0"
+    },
+    {
+      "name": "mhclg.council_tax_stock.single_adult_discount",
+      "from": "2025-10",
+      "to": "2025"
     }
   ],
   "targets": {
@@ -11228,36 +11224,6 @@
           "resolved_value": 3858750000.0,
           "resolved_fact_period": "2025",
           "resolved_fact_key": "ledger_aggregate_fact_v2_b0f0afcd44c93532837c9f2a"
-        }
-      ]
-    },
-    "obr.universal_credit_in_cap": {
-      "status": "active",
-      "candidates": [
-        {
-          "name": "obr.universal_credit_in_cap",
-          "status": "active",
-          "matched_fact_count_overall": 7,
-          "matched_fact_count_at_or_before_period": 2,
-          "resolved_period": 2025,
-          "resolved_value": 63016849758.31539,
-          "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_0e10f670e44a5d30d75c358f"
-        }
-      ]
-    },
-    "obr.universal_credit_outside_cap": {
-      "status": "active",
-      "candidates": [
-        {
-          "name": "obr.universal_credit_outside_cap",
-          "status": "active",
-          "matched_fact_count_overall": 7,
-          "matched_fact_count_at_or_before_period": 2,
-          "resolved_period": 2025,
-          "resolved_value": 13037904629.457691,
-          "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_d7377a28ca45388650d961e0"
         }
       ]
     },
@@ -19295,21 +19261,6 @@
         }
       ]
     },
-    "slc.repayments.england_postgraduate": {
-      "status": "active",
-      "candidates": [
-        {
-          "name": "slc.repayments.england_postgraduate",
-          "status": "active",
-          "matched_fact_count_overall": 4,
-          "matched_fact_count_at_or_before_period": 4,
-          "resolved_period": 2025,
-          "resolved_value": 427019983.79,
-          "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_d1ed6adea71769e10e3c3f36"
-        }
-      ]
-    },
     "slc.repayments.england_plan_5": {
       "status": "active",
       "candidates": [
@@ -19977,7 +19928,7 @@
           "status": "signed_excluded",
           "matched_fact_count_overall": 6,
           "matched_fact_count_at_or_before_period": 6,
-          "signed_rationale": "ONS Consumer Trends COICOP 04.5 (electricity, gas and other fuels) carries liquid and solid fuels the frame does not model; chronicle #271 (chronicle#270) published the 04.5.1 electricity and 04.5.2 gas sub-classes, which ons.household_electricity_expenditure and ons.household_gas_expenditure carry per fuel on the frame's own columns. Both were bound until microcosm#1113 made them measured diagnostics (Mar\u00eda's ruling of 2026-10-08, D1), so no ONS energy row is fitted. The total row is retained in the contract for registry parity and signed out here (microcosm#890 F1)."
+          "signed_rationale": "ONS Consumer Trends COICOP 04.5 (electricity, gas and other fuels): chronicle #271 (chronicle#270) published the 04.5.1 electricity and 04.5.2 gas sub-classes, which ons.household_electricity_expenditure and ons.household_gas_expenditure carry per fuel on the frame's own columns. Since microcosm#1278 the frame also carries the 04.5.3 liquid and 04.5.4 solid fuels (liquid_fuel_consumption, solid_fuel_consumption), which the lcfs_consumption receipt sets beside ONS's own two rows; heat energy (04.5.5) stays in the housing remainder. The electricity and gas rows were bound until microcosm#1113 made them measured diagnostics (Mar\u00eda's ruling of 2026-10-08, D1), so no ONS energy row is fitted. The total row is retained in the contract for registry parity, measured on the four fuels (Mar\u00eda's ruling of 2026-10-22), and signed out here (microcosm#890 F1)."
         }
       ]
     },
@@ -30551,6 +30502,21 @@
           "signed_rationale": "Wales's derived stock of owner-occupied homes over \u00a32m is below the 400-home floor of the local small-cell rule (hvcts_la_household_floor in local_small_cell_rule.json), which already defers every \u00a32m local-authority cell there. That is about one household weight at the ruled 150,000 households, so the row's fit would be noise, and a gate-only sign-off, which is public, would narrow an estimate expected to rest on fewer than 10 records. Signed out of the region fan-out; the same area's \u00a31m and \u00a31.5m rows, which count these homes, stay bound, as do the other regions' \u00a32m rows."
         }
       ]
+    },
+    "mhclg.council_tax_stock.single_adult_discount": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "mhclg.council_tax_stock.single_adult_discount",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "resolved_period": 2025,
+          "resolved_value": 8496178.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_8cb05d2d0434301a7e422afe"
+        }
+      ]
     }
   },
   "fanout_family_outcomes": [
@@ -30588,8 +30554,8 @@
     {
       "family": "council_tax_stock",
       "status": "active_declared_rows",
-      "active_reference_count": 100,
-      "signed_rationale": "MHCLG council taxbase (England), Welsh Government CT1 (Wales) and Scottish Government CTAXBASE (Scotland) council-tax stock bands are declared as explicit target rows per band plus total (England and Scotland A-H, Wales A-I). The Welsh and Scottish rows resolve with their country-level geography and band pin; the English rows fan out over the nine English regions of the region tier (microcosm#905), each cell composed as the linear combination of the billing-authority facts the crosswalk places in that region (microcosm#929)."
+      "active_reference_count": 101,
+      "signed_rationale": "MHCLG council taxbase (England), Welsh Government CT1 (Wales) and Scottish Government CTAXBASE (Scotland) council-tax stock bands are declared as explicit target rows per band plus total (England and Scotland A-H, Wales A-I). The Welsh and Scottish rows resolve with their country-level geography and band pin; the English rows fan out over the nine English regions of the region tier (microcosm#905), each cell composed as the linear combination of the billing-authority facts the crosswalk places in that region (microcosm#929). England's single adult discount is one national row, MHCLG Council Taxbase line 8 for all bands (microcosm#953)."
     },
     {
       "family": "hmrc_cgt",

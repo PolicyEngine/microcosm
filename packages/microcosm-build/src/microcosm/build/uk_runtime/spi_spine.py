@@ -242,6 +242,7 @@ UK_SPI_INCOME_SPINE_REWRITE_COLUMNS = (
     "afcs_reported",
     "bsp_reported",
     "war_widows_pension_reported",
+    "widowed_parents_allowance_reported",
     "winter_fuel_allowance_reported",
     "council_tax_benefit_reported",
     "jsa_contrib_reported",

@@ -129,6 +129,7 @@ SPI_RESTORED_REPORT_COLUMNS = (
     "afcs_reported",
     "bsp_reported",
     "war_widows_pension_reported",
+    "widowed_parents_allowance_reported",
 )
 SPI_RESTORED_REPORT_REASON = "follows an injury, service or a death, not income"
 SPI_TWIN_LINKAGE = "person_source_id -> FRS-channel person_id"

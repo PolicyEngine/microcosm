@@ -1018,6 +1018,7 @@ class UKFullGateKernel(KernelBase):
         )
         from .diagnostics import (
             uk_refuse_named_withheld_rows,
+            uk_withheld_gate_areas,
             uk_withheld_gate_keys,
             uk_withhold_brma_figures,
         )
@@ -1027,7 +1028,10 @@ class UKFullGateKernel(KernelBase):
         # (María's ruling of 2026-10-19); a report that names one fails the
         # build rather than leaving it.
         uk_refuse_named_withheld_rows(
-            report_payload, names=withheld, keys=uk_withheld_gate_keys(diagnostics)
+            report_payload,
+            names=withheld,
+            keys=uk_withheld_gate_keys(diagnostics),
+            areas=uk_withheld_gate_areas(diagnostics),
         )
         payload = {
             "schema_version": 1,

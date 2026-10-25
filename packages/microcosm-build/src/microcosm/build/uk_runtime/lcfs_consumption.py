@@ -6,6 +6,7 @@ import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 import numpy as np
@@ -201,11 +202,12 @@ UK_LCFS_COMBINED_PAYMENTS: tuple[tuple[str, str | None, tuple[str, str]], ...] =
 #: sign have moved, and the stage refuses the donor. On the 2024-25 tab the
 #: identity holds for about 98 % of each fuel's account payers.
 UK_LCFS_ACCOUNT_IDENTITY_MINIMUM = 0.95
-#: The rest of p537, which no output column carries and the housing total
-#: keeps: central-heating oil (b017, Part 2 row 211; diary c45312, with
-#: paraffin, row 1066), bottled gas (b018, row 212; diary c45222, row 1063),
-#: coal and coke (c45411, row 1069), wood and peat (c45412, row 1072), and hot
-#: water, steam and ice (c45511, row 1075).
+#: The rest of p537 beside electricity and gas: central-heating oil (b017,
+#: Part 2 row 211; diary c45312, with paraffin, row 1066), bottled gas (b018,
+#: row 212; diary c45222, row 1063), coal and coke (c45411, row 1069), wood and
+#: peat (c45412, row 1072), and hot water, steam and ice (c45511, row 1075).
+#: The liquid and solid fuels have columns of their own (below); hot water,
+#: steam and ice has no engine input and stays in the housing remainder.
 UK_LCFS_OTHER_FUEL_PARTS = (
     "b017",
     "b018",
@@ -234,6 +236,28 @@ UK_LCFS_ENERGY_CODES = tuple(
 )
 #: The donor scratch column for the other fuels, read by the split receipt.
 UK_LCFS_OTHER_FUELS_COLUMN = "lcfs_other_fuels"
+#: The two heating fuels policyengine-uk 2.149.0 reads (pe-uk#2572), parts of
+#: housing_water_and_electricity_consumption that add nothing to consumption:
+#: liquid fuels (COICOP 04.5.3), central-heating oil and paraffin with bottled
+#: gas, LPG with liquid (María's ruling of 2026-10-22); and solid fuels
+#: (COICOP 04.5.4), coal, coke, wood and peat. COICOP puts liquefied
+#: hydrocarbons under 04.5.2 (gas), and c45222 is a 04.5.2 code, so ONS's 04.5.3
+#: leaves out the bottled gas the liquid column holds; the receipt reports it
+#: apart (Vahid's review of #1383, item 8). Neither column is levelled to ONS,
+#: unlike electricity and gas: the donor's diary totals are about twice ONS's,
+#: and the frame's draws reach neither those nor ONS's. No engine formula reads
+#: them yet; a costing on either needs levelling to ONS first.
+UK_LCFS_FUEL_PARTS: Mapping[str, tuple[str, ...]] = MappingProxyType(
+    {
+        "liquid_fuel_consumption": ("b017", "c45312", "b018", "c45222"),
+        "solid_fuel_consumption": ("c45411", "c45412"),
+    }
+)
+#: The bottled gas inside the liquid fuels (b018 and its diary line c45222), and
+#: the donor scratch column the split receipt reads it from.
+UK_LCFS_BOTTLED_GAS_PARTS = ("b018", "c45222")
+UK_LCFS_BOTTLED_GAS_COLUMN = "lcfs_bottled_gas"
+UK_LCFS_FUEL_COLUMNS = tuple(UK_LCFS_FUEL_PARTS)
 #: ``donor.attrs`` key of the donor energy-split receipt.
 UK_LCFS_ENERGY_SPLIT_RECEIPT = "donor_energy_split"
 #: ``attrs`` key under which the split records the account identity shares.
@@ -248,7 +272,11 @@ UK_LCFS_DONOR_FLOORED_COLUMNS = (
 #: The spend columns a price index carries from the April-to-March diary to
 #: the calendar base year (microcosm#1113). Energy and road fuel are not here:
 #: later steps set their levels for that year.
-UK_LCFS_DIARY_PRICE_COLUMNS = (*UK_LCFS_COICOP_DIVISION_COLUMNS, "bus_fare_spending")
+UK_LCFS_DIARY_PRICE_COLUMNS = (
+    *UK_LCFS_COICOP_DIVISION_COLUMNS,
+    "bus_fare_spending",
+    *UK_LCFS_FUEL_COLUMNS,
+)
 #: Cars and vans available to the household: LCFS ``a124`` on the donor, the
 #: was_wealth QRF draw of WAS ``vcarnr8`` on the recipient (the FRS carries no
 #: vehicle variable). Both sides are rounded and clipped to this closed range so
@@ -395,6 +423,10 @@ UK_LCFS_CONSUMPTION_TARGET_COLUMNS = (
     "domestic_energy_consumption",
     "electricity_consumption",
     "gas_consumption",
+    # Drawn last, after the totals and the levelled parts they condition on,
+    # so every earlier draw is the chain's own (pe-uk#2572).
+    "liquid_fuel_consumption",
+    "solid_fuel_consumption",
 )
 RECOMPOSE_FROM_REMAINDER_KIND = "recompose_from_remainder"
 #: The COICOP totals that contain columns the stage levels (microcosm#1113):
@@ -404,13 +436,15 @@ RECOMPOSE_FROM_REMAINDER_KIND = "recompose_from_remainder"
 #: chain's domestic-energy draw, which is the electricity and gas
 #: ``derive_energy_from_lcfs`` makes of the diary's fuel, light and power
 #: (``p537``) by its labelled parts, so the diary's oil, bottled gas, solid
-#: fuels and heat stay in the housing remainder (microcosm#1164). Transport (p607) nets the drawn petrol and
+#: fuels and heat stay in the housing remainder (microcosm#1164); the liquid and
+#: solid fuels' own draws are netted and added back unchanged, so the total
+#: always holds them (pe-uk#2572). Transport (p607) nets the drawn petrol and
 #: diesel (c72211, c72212) and the drawn bus fares (which the pricing step
 #: replaces with journeys times yield), and keeps other motor fuels.
 UK_LCFS_RECOMPOSED_PARENTS: Mapping[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "housing_water_and_electricity_consumption": (
-        ("domestic_energy_consumption",),
-        ("electricity_consumption", "gas_consumption"),
+        ("domestic_energy_consumption", *UK_LCFS_FUEL_COLUMNS),
+        ("electricity_consumption", "gas_consumption", *UK_LCFS_FUEL_COLUMNS),
     ),
     "transport_consumption": (
         ("petrol_spending", "diesel_spending", "bus_fare_spending"),
@@ -423,6 +457,20 @@ UK_LCFS_RECOMPOSED_PARENTS: Mapping[str, tuple[tuple[str, ...], tuple[str, ...]]
 #: range plus levelled parts larger than the drawn ones cannot leave the range
 #: the terminal support gate holds the emitted totals to.
 UK_LCFS_RECOMPOSED_MAXIMUM_TOTAL = "donor_support"
+#: The declared levelling of the divisions' relative over-draw (María's rulings
+#: of 2026-10-23 and 2026-10-24, microcosm#1278; Vahid's review of #1383, item
+#: 9). A division's ratio is the spend the chain drew for it per frame
+#: household over the donor's mean of the same spend per donor household: a
+#: recomposed total's remainder against the donor's total less the same parts,
+#: since its levelled energy, road fuel and priced fares keep their published
+#: levels and are no over-draw, and any other division's whole draw. A
+#: division above the divisions' shared ratio, measured once before any
+#: levelling, comes down to it; no other moves. Measured again after each
+#: cut, the shared ratio would fall until every division sat at the lowest
+#: one's, close to levelling to the donor totals (María's ruling of
+#: 2026-10-24). Only the chain's own draws move.
+UK_LCFS_LEVEL_DIVISION_EXCESS = "excess_over_shared_ratio"
+UK_LCFS_LEVEL_DIVISION_BASIS = "drawn_spend_over_donor_spend_per_household"
 #: The chain draws a recomposition subtracts, kept before any step re-levels them.
 UK_LCFS_RECOMPOSED_DRAWN_COLUMNS = tuple(
     dict.fromkeys(
@@ -646,11 +694,17 @@ class UKLCFSConsumptionStageTransform:
             weights=weights,
             donor_support=donor_realized_ranges(donor),
             uprating_factors=uprating_factors,
+            donor_division_means=lcfs_donor_drawn_means(donor),
         )
         energy_split = donor.attrs.get(UK_LCFS_ENERGY_SPLIT_RECEIPT)
         if recomposed_totals_receipt is not None and isinstance(energy_split, Mapping):
-            recomposed_totals_receipt["uncarried"] = uncarried_beside_donor(
-                recomposed_totals_receipt["uncarried"], energy_split
+            recomposed_totals_receipt["published_fuels"] = published_fuels_beside_draws(
+                recomposed_totals_receipt["published_fuels"],
+                energy_split,
+                {
+                    column: float(np.dot(weights, household_draws[column].to_numpy()))
+                    for column in UK_LCFS_FUEL_COLUMNS
+                },
             )
         uprating = uprating_operation(self.stage)
         capture = (
@@ -1814,21 +1868,33 @@ def check_recomposed_parents(parameters: Mapping[str, Any]) -> None:
             f"{RECOMPOSE_FROM_REMAINDER_KIND} must declare maximum_total: "
             f"{UK_LCFS_RECOMPOSED_MAXIMUM_TOTAL}."
         )
+    levelling = parameters.get("level_division_excess")
+    if levelling is not None and dict(levelling) != {
+        "rule": UK_LCFS_LEVEL_DIVISION_EXCESS,
+        "basis": UK_LCFS_LEVEL_DIVISION_BASIS,
+        "divisions": list(UK_LCFS_COICOP_DIVISION_COLUMNS),
+    }:
+        raise ValueError(
+            f"{RECOMPOSE_FROM_REMAINDER_KIND} declares level_division_excess "
+            f"{levelling!r}, not the rule the stage applies."
+        )
 
 
-def uncarried_spend(parameters: Mapping[str, Any]) -> dict[str, Any]:
-    """The published spend inside a recomposed total that no column carries.
+def published_fuel_spend(parameters: Mapping[str, Any]) -> dict[str, Any]:
+    """The published spend on the heating fuels the stage draws.
 
     ONS Consumer Trends classes read from the vendored rows the declaration
-    names: the liquid and solid fuels of COICOP 04.5, which have no column of
-    their own and stay inside the housing remainder (the chain's draw less the
-    diary's electricity and gas; microcosm#1164), and the receipt records their
-    published spend.
+    names: the liquid and solid fuels of COICOP 04.5, each beside the column
+    that carries it (``UK_LCFS_FUEL_PARTS``). Report-only: the stage draws the
+    two from the donor without levelling them, and the receipt records how
+    much of the published spend the donor and the frame reach.
     """
 
-    spec = parameters.get("uncarried")
+    spec = parameters.get("published_fuels")
     if not isinstance(spec, Mapping):
-        raise ValueError(f"{RECOMPOSE_FROM_REMAINDER_KIND} must declare uncarried.")
+        raise ValueError(
+            f"{RECOMPOSE_FROM_REMAINDER_KIND} must declare published_fuels."
+        )
     resource = str(spec.get("resource") or "")
     if resource not in UK_LCFS_VENDORED_RESOURCES:
         raise ValueError(f"{resource!r} is not a vendored lcfs_consumption resource.")
@@ -1836,6 +1902,11 @@ def uncarried_spend(parameters: Mapping[str, Any]) -> dict[str, Any]:
     classes = []
     for entry in spec.get("classes", ()):
         coicop, concept = str(entry["coicop"]), str(entry["concept"])
+        column = str(entry["column"])
+        if column not in UK_LCFS_FUEL_COLUMNS:
+            raise ValueError(
+                f"{column!r} is not a heating-fuel column the stage draws."
+            )
         rows = vendored_rows(
             resource,
             concept=concept,
@@ -1853,12 +1924,16 @@ def uncarried_spend(parameters: Mapping[str, Any]) -> dict[str, Any]:
             {
                 "coicop": coicop,
                 "concept": concept,
+                "column": column,
                 "source_record_id": str(rows[0].get("source_record_id", "")),
                 "value": float(rows[0]["value"]),
             }
         )
-    if not classes:
-        raise ValueError(f"{RECOMPOSE_FROM_REMAINDER_KIND} declares no classes.")
+    if sorted(entry["column"] for entry in classes) != sorted(UK_LCFS_FUEL_COLUMNS):
+        raise ValueError(
+            f"{RECOMPOSE_FROM_REMAINDER_KIND} published_fuels must name "
+            f"{sorted(UK_LCFS_FUEL_COLUMNS)} once each."
+        )
     return {
         "resource": resource,
         "period_value": period_value,
@@ -1867,26 +1942,48 @@ def uncarried_spend(parameters: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def uncarried_beside_donor(
-    uncarried: Mapping[str, Any], energy_split: Mapping[str, Any]
+def published_fuels_beside_draws(
+    published: Mapping[str, Any],
+    energy_split: Mapping[str, Any],
+    frame_totals: Mapping[str, float],
 ) -> dict[str, Any]:
-    """The published liquid and solid fuels beside the donor's own other fuels.
+    """The published heating fuels beside the donor's and the frame's.
 
-    Report-only (microcosm#1207's liquid and solid fuels item): the donor's
-    other fuels, the diary codes the energy split leaves in the housing total
-    (``UK_LCFS_OTHER_FUEL_PARTS``), are its weighted annual diary total at
-    diary prices, before the donor is carried to the base year, so the ratio
-    reads how much of ONS 04.5.3 and 04.5.4 the survey captures, not a level
-    the stage sets.
+    Report-only: the donor's figure is its weighted annual diary total at
+    diary prices, before the donor is carried to the base year, so it reads
+    how much of ONS 04.5.3 and 04.5.4 the survey captures; the frame's is the
+    stage's draws at the stage's weights, at calendar-2024 prices. ONS's
+    04.5.3 leaves out the bottled gas the liquid column holds, so the liquid
+    fuels' donor figure is also given without it (``UK_LCFS_FUEL_PARTS``).
     """
 
-    donor_other = float(energy_split["other_fuels"])
-    published = float(uncarried["total"])
-    return {
-        **uncarried,
-        "donor_other_fuels_at_diary_prices": donor_other,
-        "donor_over_published": donor_other / published if published > 0 else None,
-    }
+    classes = []
+    for entry in published["classes"]:
+        value = float(entry["value"])
+        donor = float(energy_split[entry["column"]])
+        frame = float(frame_totals[entry["column"]])
+        row = {
+            **entry,
+            "donor_at_diary_prices": donor,
+            "donor_over_published": donor / value if value > 0 else None,
+            "frame": frame,
+            "frame_over_published": frame / value if value > 0 else None,
+        }
+        if entry["column"] == "liquid_fuel_consumption" and "bottled_gas" in (
+            energy_split
+        ):
+            bottled = float(energy_split["bottled_gas"])
+            row["donor_bottled_gas_at_diary_prices"] = bottled
+            row["donor_without_bottled_gas_over_published"] = (
+                (donor - bottled) / value if value > 0 else None
+            )
+            row["concept_note"] = (
+                "COICOP puts liquefied hydrocarbons under 04.5.2 (gas), so ONS's "
+                "04.5.3 leaves out the bottled gas this column holds (María's "
+                "ruling of 2026-10-22)."
+            )
+        classes.append(row)
+    return {**published, "classes": classes}
 
 
 def recompose_parent_totals(
@@ -1897,6 +1994,7 @@ def recompose_parent_totals(
     weights: Sequence[float],
     donor_support: Mapping[str, tuple[float, float]],
     uprating_factors: Mapping[str, float] | None = None,
+    donor_division_means: Mapping[str, float] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Write each recomposed total around the levelled parts the stage set.
 
@@ -1913,6 +2011,13 @@ def recompose_parent_totals(
     (``donor_support``, the declared ``maximum_total``; microcosm#1164), never
     below its parts: what it gives up comes out of the remainder, and the
     receipt counts the rows held and the weighted mass taken.
+
+    Where the declaration levels the divisions' relative over-draw
+    (``level_division_excess``), each division above the shared ratio of the
+    spend the chain drew is brought down to it before the hold
+    (:func:`division_excess_factors`; ``donor_division_means`` is then the
+    donor's drawn spend, :func:`lcfs_donor_drawn_means`): a recomposed total
+    by its remainder alone, any other division by its draw.
     """
 
     check_recomposed_parents(parameters)
@@ -1920,14 +2025,50 @@ def recompose_parent_totals(
     factors = dict(uprating_factors or {})
     result = household_draws.copy()
     parents: dict[str, Any] = {}
+    split: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = {}
     for parent, (subtracted, components) in UK_LCFS_RECOMPOSED_PARENTS.items():
-        if parent not in donor_support:
-            raise ValueError(f"{parent}: no donor support to hold the total to.")
-        maximum = float(donor_support[parent][1])
         drawn_total = result[parent].to_numpy(dtype=float)
         drawn_parts = sum(drawn[column].to_numpy(dtype=float) for column in subtracted)
         rest = np.maximum(drawn_total - drawn_parts, 0.0)
         parts = sum(result[column].to_numpy(dtype=float) for column in components)
+        split[parent] = (drawn_total, drawn_parts, rest, parts)
+    levelling = None
+    level_factors: dict[str, float] = {}
+    if parameters.get("level_division_excess") is not None:
+        if donor_division_means is None:
+            raise ValueError(
+                "Levelling the divisions' excess needs the donor's division means."
+            )
+        # The spend the chain drew: a recomposed total's remainder, any other
+        # division's whole draw.
+        frame_drawn = {
+            division: float(
+                np.dot(
+                    weight,
+                    split[division][2]
+                    if division in split
+                    else result[division].to_numpy(dtype=float),
+                )
+            )
+            for division in UK_LCFS_COICOP_DIVISION_COLUMNS
+        }
+        levelling = division_excess_factors(
+            frame_drawn, donor_division_means, households=float(weight.sum())
+        )
+        level_factors = {
+            division: entry["factor"]
+            for division, entry in levelling["divisions"].items()
+        }
+        for division, factor in level_factors.items():
+            if division not in split and factor != 1.0:
+                result[division] = result[division].to_numpy(dtype=float) * factor
+    for parent, (subtracted, components) in UK_LCFS_RECOMPOSED_PARENTS.items():
+        if parent not in donor_support:
+            raise ValueError(f"{parent}: no donor support to hold the total to.")
+        maximum = float(donor_support[parent][1])
+        drawn_total, drawn_parts, rest, parts = split[parent]
+        level_factor = float(level_factors.get(parent, 1.0))
+        rest = rest * level_factor
         unheld = rest + parts
         total = np.maximum(np.minimum(unheld, maximum), parts)
         result[parent] = total
@@ -1952,6 +2093,7 @@ def recompose_parent_totals(
             },
             "drawn_subtracts": list(subtracted),
             "components": list(components),
+            "levelling_factor": level_factor,
             "weighted_drawn_total": float(np.dot(weight, drawn_total)),
             "weighted_drawn_subtracts": float(np.dot(weight, drawn_parts)),
             "rows_floored": int((drawn_parts > drawn_total).sum()),
@@ -1970,9 +2112,69 @@ def recompose_parent_totals(
     receipt = {
         "operation": RECOMPOSE_FROM_REMAINDER_KIND,
         "parents": parents,
-        "uncarried": uncarried_spend(parameters),
+        "published_fuels": published_fuel_spend(parameters),
+        **({} if levelling is None else {"division_levelling": levelling}),
     }
     return result, receipt
+
+
+def division_excess_factors(
+    frame_drawn: Mapping[str, float],
+    donor_drawn_means: Mapping[str, float],
+    *,
+    households: float,
+) -> dict[str, Any]:
+    """Each division's factor bringing its relative over-draw to the shared ratio.
+
+    ``frame_drawn`` is each division's weighted frame spend the chain drew (a
+    recomposed total's remainder, any other division's whole draw), and
+    ``donor_drawn_means`` the donor's mean of the same per household
+    (:func:`lcfs_donor_drawn_means`). A division's ratio is the one over the
+    other; the shared ratio is the divisions' together, measured once. A
+    division above it comes down to it, and every other keeps its draw
+    (``UK_LCFS_LEVEL_DIVISION_EXCESS``).
+    """
+
+    expected = {
+        division: households * float(donor_drawn_means[division])
+        for division in UK_LCFS_COICOP_DIVISION_COLUMNS
+    }
+    ratios = {
+        division: (
+            float(frame_drawn[division]) / expected[division]
+            if expected[division] > 0
+            else None
+        )
+        for division in UK_LCFS_COICOP_DIVISION_COLUMNS
+    }
+    total_expected = sum(expected.values())
+    if not total_expected > 0:
+        raise ValueError("The donor's divisions hold no spend to level against.")
+    shared = sum(float(frame_drawn[division]) for division in expected) / (
+        total_expected
+    )
+    above = {
+        division
+        for division, ratio in ratios.items()
+        if ratio is not None and ratio > shared
+    }
+    divisions = {
+        division: {
+            "ratio": ratios[division],
+            "factor": (
+                shared * expected[division] / float(frame_drawn[division])
+                if division in above
+                else 1.0
+            ),
+        }
+        for division in UK_LCFS_COICOP_DIVISION_COLUMNS
+    }
+    return {
+        "rule": UK_LCFS_LEVEL_DIVISION_EXCESS,
+        "basis": UK_LCFS_LEVEL_DIVISION_BASIS,
+        "shared_ratio": shared,
+        "divisions": divisions,
+    }
 
 
 def lcfs_recompose_from_remainder(
@@ -1983,6 +2185,7 @@ def lcfs_recompose_from_remainder(
     weights: Sequence[float],
     donor_support: Mapping[str, tuple[float, float]],
     uprating_factors: Mapping[str, float] | None = None,
+    donor_division_means: Mapping[str, float] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any] | None]:
     """Apply the declared ``recompose_from_remainder`` step (none if undeclared)."""
 
@@ -1996,7 +2199,33 @@ def lcfs_recompose_from_remainder(
         weights=weights,
         donor_support=donor_support,
         uprating_factors=uprating_factors,
+        donor_division_means=donor_division_means,
     )
+
+
+def lcfs_donor_drawn_means(donor: pd.DataFrame) -> dict[str, float]:
+    """Each division's drawn spend per donor household, at the donor's weights.
+
+    A recomposed total's is the division less the parts the stage levels,
+    floored at zero per household as the frame's remainder is; any other
+    division's is the division. The donor is the one the chain drew from.
+    """
+
+    weight = _numeric(donor["household_weight"]).to_numpy(dtype=float)
+    mass = float(weight.sum())
+    if not mass > 0:
+        raise ValueError("The LCFS donor carries no weight.")
+    means: dict[str, float] = {}
+    for division in UK_LCFS_COICOP_DIVISION_COLUMNS:
+        spend = _numeric(donor[division]).to_numpy(dtype=float)
+        if division in UK_LCFS_RECOMPOSED_PARENTS:
+            subtracted, _ = UK_LCFS_RECOMPOSED_PARENTS[division]
+            parts = sum(
+                _numeric(donor[column]).to_numpy(dtype=float) for column in subtracted
+            )
+            spend = np.maximum(spend - parts, 0.0)
+        means[division] = float(np.dot(weight, spend)) / mass
+    return means
 
 
 @dataclass(frozen=True)
@@ -2702,6 +2931,7 @@ def clean_lcfs_consumption_table(
         "household_gross_income",
         "electricity_consumption",
         "gas_consumption",
+        *UK_LCFS_FUEL_COLUMNS,
     ]
     for column in annualize:
         household[column] = _numeric(household[column]) * WEEKS_IN_YEAR
@@ -2809,6 +3039,15 @@ def donor_energy_split_receipt(household: pd.DataFrame) -> dict[str, Any]:
         "electricity": electricity,
         "gas": gas,
         "other_fuels": other,
+        **{
+            column: total(_numeric(household[column]))
+            for column in UK_LCFS_FUEL_COLUMNS
+        },
+        **(
+            {"bottled_gas": total(_numeric(household[UK_LCFS_BOTTLED_GAS_COLUMN]))}
+            if UK_LCFS_BOTTLED_GAS_COLUMN in household
+            else {}
+        ),
         "fuel_light_and_power": fuel_light_power,
         "parts_over_fuel_light_and_power": over(electricity + gas + other),
         "clipping_over_fuel_light_and_power": over(total(parts - unclipped)),
@@ -3019,6 +3258,11 @@ def derive_energy_from_lcfs(household: pd.DataFrame) -> pd.DataFrame:
     result["gas_consumption"] = gas + unsplit * (1.0 - share)
     result[UK_LCFS_OTHER_FUELS_COLUMN] = sum(
         part(code) for code in UK_LCFS_OTHER_FUEL_PARTS
+    )
+    for column, codes in UK_LCFS_FUEL_PARTS.items():
+        result[column] = sum(part(code) for code in codes)
+    result[UK_LCFS_BOTTLED_GAS_COLUMN] = sum(
+        part(code) for code in UK_LCFS_BOTTLED_GAS_PARTS
     )
     result.attrs[UK_LCFS_ACCOUNT_IDENTITY_RECEIPT] = {
         fuel_name: None if share_holding is None else floored_share(share_holding)

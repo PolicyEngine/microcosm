@@ -55,16 +55,31 @@ def _withhold_summary_rows(data: dict, result, ordered) -> None:
     from .diagnostics import _restate_totals_over_published_rows, uk_withheld_rows
 
     rows = data["tables"]["targets"]
+    metadata_by_row = {
+        target.row_name: metadata
+        for target, metadata in zip(
+            ordered.problem.targets, ordered.target_metadata, strict=True
+        )
+    }
+    # The withholding ties a local family to its parents by contract target
+    # (Vahid's review of #1383, item 1).
     withheld = uk_withheld_rows(
         ordered.problem,
         result.weights,
         result.frame,
-        rows,
+        [
+            {
+                **row,
+                "metadata": {
+                    key: metadata_by_row.get(row["name"], {}).get(key)
+                    for key in ("contract_target_id", "geography_id")
+                },
+            }
+            for row in rows
+        ],
         {
-            target.row_name: metadata.get("geography_level", "")
-            for target, metadata in zip(
-                ordered.problem.targets, ordered.target_metadata, strict=True
-            )
+            name: metadata.get("geography_level", "")
+            for name, metadata in metadata_by_row.items()
         },
     )
     if not withheld:
