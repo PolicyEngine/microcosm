@@ -22,7 +22,7 @@ import argparse
 import json
 import os
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -38,14 +38,17 @@ from microcosm.frame.materialize import put_frame_table
 from microcosm.frame.rules import RulesEngine
 from microcosm.frame.unit_construction import BenefitUnitRule
 from microcosm.graph import (
+    CompiledGraph,
     ContentStore,
     Graph,
     KernelContext,
     Node,
     Owned,
+    Population,
     ResumePolicy,
     RunManifest,
     StoreMissError,
+    StructuralDelta,
     compile_graph,
     explain_html,
     graph_to_json,
@@ -394,13 +397,54 @@ def _evidence(manifest: RunManifest, store: ContentStore, out: Path) -> dict:
 
 def _run(graph: Graph, registry, sources, store, resume) -> RunManifest:
     used = {name for node in graph.nodes for name in node.sources}
+    compiled = compile_graph(graph)
     return run_graph(
-        compile_graph(graph),
+        compiled,
         sources={name: path for name, path in sources.items() if name in used},
         store=store,
         kernels=registry.kernels,
         resume=resume,
+        _population_observer=_mass_log_unchanged(compiled),
+        # The observer keeps only record reprs and changes nothing.
+        _population_observer_detach=False,
     )
+
+
+def _mass_log_unchanged(compiled: CompiledGraph) -> Callable[[str, Population], None]:
+    """Refuse a node that changes the frame mass log it received.
+
+    A node's receipt can append records to the frame mass log
+    (``frame_mass_log_append``), and every later structural node of its
+    lineage, calibration included, receives that log without a ``Slice``. No
+    declaration names it, so the calibration ancestry guard cannot follow it:
+    a stage node could pass an undeclared value to calibration this way. No
+    transport kernel appends, so in a transport run the log is CREATE's. The
+    executor calls this for cold nodes and restored cache hits alike, before
+    it persists either, and the exception refuses the run.
+    """
+
+    logs: dict[str, tuple[str, ...]] = {}
+
+    def observe(node_id: str, population: Population) -> None:
+        node = compiled.graph.node(node_id)
+        log = tuple(map(repr, population.frame.mass_log))
+        if node.structural is StructuralDelta.NONE:
+            version = compiled.versions[node_id]
+            received = logs[version]
+        else:
+            version = node_id
+            received = (
+                log if node.structural is StructuralDelta.CREATE else logs[node.base]
+            )
+        if log != received:
+            raise ValueError(
+                f"Transport node {node_id!r} changed the frame mass log it "
+                "received; later kernels receive that log without a Slice, so "
+                "a transport run takes it from CREATE only."
+            )
+        logs[version] = log
+
+    return observe
 
 
 class _TimestampFreeHDFStore(pd.HDFStore):

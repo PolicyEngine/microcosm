@@ -113,10 +113,14 @@ node. The guard without stages is unchanged.
 In the declaration pass, a node belongs to a stage when its `rules_binding` is
 the stage's binding or any `{"binding": id}` selector in its parameters names
 it. In the composed pass, a node belongs to a stage when its parameters carry
-the binding's prepared engine reference. A node that names a listed and an
-unlisted benefit-unit binding refuses. A parameter carrying the whole prepared
-`engine_refs` inventory is bookkeeping, not a stage invocation, and still
-refuses upstream of calibration.
+the binding's prepared engine reference, as written, JSON-escaped once, or
+after JSON escapes are decoded, layer by layer, up to 32 layers, as for the
+inventory below. Each layer is one linear pass over a string. A parameter
+still escaped after 32 layers refuses, because its stage bindings cannot be
+read. A node that names a listed and an unlisted benefit-unit binding
+refuses. A parameter carrying the whole prepared `engine_refs` inventory is
+bookkeeping, not a stage invocation, and still refuses upstream of
+calibration.
 
 ## Rules
 
@@ -143,12 +147,19 @@ checked.
   REWEIGHT calibration that carries the stage's binding included, naming the
   node, its kind and its stage binding. A stage declares only columns, but a
   structural node also writes what every later kernel of its version receives
-  without a `Slice`: ids, group memberships, weights, strata, the frame
-  metadata and the mass log. No other node writes them, so with this rule they
-  never come from a stage's node. A structural node outside every stage is
-  checked like any other: its inputs are reads, and its parameters, sources
-  and artifact inputs face the same checks. So an EXPAND's cells are never a
-  stage's output either; a stage claim that owns a cell produces it.
+  without a `Slice`: ids, group memberships, weights, strata and the frame
+  metadata. No other node writes them, so with this rule they never come from
+  a stage's node. The frame mass log is the exception. Any node's receipt can
+  append to it (`frame_mass_log_append`), and every later structural node of
+  its lineage, calibration included, receives the log without a `Slice`. No
+  declaration shows it, so the guard cannot follow it. Instead the transport
+  runner refuses any node whose admitted mass log differs from the one it
+  received, whether the node ran or was restored from the store. No transport
+  kernel appends, so a transport run's mass log is CREATE's. A structural
+  node outside every stage is checked like any other: its inputs are reads,
+  and its parameters, sources and artifact inputs face the same checks. So
+  an EXPAND's cells are never a stage's output either; a stage claim that
+  owns a cell produces it.
 - A node outside a listed stage that reads a column whose values one of the
   stage's own nodes wrote upstream of calibration, other than its `outputs`
   and `derived_outputs`, refuses as "undeclared pre-calibration stage output".
@@ -192,8 +203,8 @@ checked.
   layer, but one that writes `\u005c` grows only linearly: 33 layers of the
   quoted key take 344 characters. So the bound is reachable, and text still
   escaped after it refuses whatever it decodes to. Escapes decode one at a
-  time, so a surrogate pair stays two code points; the key is ASCII, so this
-  does not change what is found. Text that only names engine_refs, without
+  time, except that a surrogate pair decodes to one character, as
+  `json.loads` decodes it. Text that only names engine_refs, without
   the quoted key and colon, is not the inventory; prose that quotes the key
   and a colon refuses like the map itself. Each layer is one linear
   pass over the string, so the check takes at most 33 passes. The inventory
@@ -240,7 +251,8 @@ These are tested, as properties and examples, in
   produces, and otherwise the first offending node in declaration order. The
   composed pass runs only after the declaration pass admits: it checks the
   entitlement rows' shapes and reads the compiled EXPAND cells and claims,
-  then applies the same order to the graph's nodes. One message is not
+  refuses the first node with a parameter still escaped after 32 layers, then
+  applies the same order to the graph's nodes. One message is not
   fixed: when several links name undeclared nodes, which of them a refusal
   names follows set iteration order, as in the guard without stages.
 - With stages listed, the checks never read a malformed field so as to admit
@@ -250,10 +262,19 @@ These are tested, as properties and examples, in
   the composed pass, where a malformed one refuses.
 - With stages listed, no node of a listed stage upstream of calibration is
   structural, in either pass, so the values kernels receive without a
-  `Slice` (ids, memberships, weights, strata, frame metadata and the mass
-  log) come upstream of calibration only from nodes outside every stage.
+  `Slice` (ids, memberships, weights, strata and frame metadata) come
+  upstream of calibration only from nodes outside every stage.
+- A transport run refuses a node that changes the frame mass log it
+  received, a stage's node or not, calibration included, cold or restored
+  from a store a plain run wrote. The guard admits such a graph and a plain
+  `run_graph` delivers the appended record to calibration; the runner
+  refuses it before persisting the node.
+- The composed pass's stage membership finds every engine reference that
+  decoding JSON from each quote or brace finds (`_embeds_engine_ref`), a
+  property tested over nested JSON, ASCII and embedded spellings.
 - The composed pass gives every column read the writers the executor's
   static writer lists give it (`microcosm.graph.executor._input_writers`),
   on every generated graph, the writer and EXPAND examples, and the composed
   NZ and entitlement graphs. Those lists cover column reads only, which is
-  why the rule above covers the values kernels receive without one.
+  why the structural rule and the runner's mass-log check cover the values
+  kernels receive without one.

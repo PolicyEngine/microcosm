@@ -689,18 +689,26 @@ def _is_unit_entity(entity: object, unit_entities: tuple[object, ...]) -> bool:
 
 
 _INVENTORY_KEY = re.compile(r'"engine_refs"\s*:')
-_JSON_ESCAPE = re.compile(r'\\(?:u[0-9A-Fa-f]{4}|["\\/bfnrt])')
+_JSON_ESCAPE = re.compile(
+    r"\\u[dD][89abAB][0-9a-fA-F]{2}\\u[dD][c-fC-F][0-9a-fA-F]{2}"
+    r'|\\(?:u[0-9A-Fa-f]{4}|["\\/bfnrt])'
+)
 _JSON_ESCAPES = {"b": "\b", "f": "\f", "n": "\n", "r": "\r", "t": "\t"}
 # Decoding stops after this many layers. A JSON encoder that escapes a
 # backslash as ``\\`` doubles them at each layer, but one that writes
 # ``\u005c`` grows only linearly: 33 layers of the quoted key take 344
 # characters. A string still escaped after the last layer therefore counts as
-# carrying the inventory, whatever it decodes to, so the scan fails closed.
+# carrying the inventory, whatever it decodes to, and leaves a node's stage
+# bindings unread, which refuses: both scans fail closed.
 _INVENTORY_LAYERS = 32
 
 
 def _json_unescape(match: re.Match[str]) -> str:
     escape = match.group()
+    if len(escape) == 12:
+        # A surrogate pair is one character, as ``json.loads`` decodes it.
+        high, low = int(escape[2:6], 16), int(escape[8:], 16)
+        return chr(0x10000 + ((high - 0xD800) << 10) + (low - 0xDC00))
     if escape[1] == "u":
         return chr(int(escape[2:], 16))
     return _JSON_ESCAPES.get(escape[1], escape[1])
@@ -735,6 +743,48 @@ def _carries_engine_ref_inventory(value: object) -> bool:
         if not decoded:
             return False
     return True
+
+
+def _embedded_engine_refs(value: object, references: set[str]) -> set[str] | None:
+    """The engine references a value embeds, in any JSON spelling.
+
+    A string embeds a reference when it, or what its JSON escapes decode to
+    layer by layer, holds the reference or the reference's JSON-escaped text.
+    Every layer is checked, and a JSON string literal decodes to the same text
+    as its span of the enclosing string, so this finds every reference
+    ``_embeds_engine_ref`` finds by decoding JSON from each quote or brace.
+    Each layer is one pass over the string, so a string costs at most
+    ``_INVENTORY_LAYERS`` passes, plus one. A string still escaped after them
+    gives ``None``, so the caller refuses rather than guess.
+    """
+
+    if not references:
+        return set()
+    escaped = {
+        reference: json.dumps(reference, ensure_ascii=False)[1:-1]
+        for reference in references
+    }
+    found: set[str] = set()
+    pending = [value]
+    while pending:
+        item = pending.pop()
+        if isinstance(item, Mapping):
+            pending.extend(part for pair in item.items() for part in pair)
+        elif isinstance(item, list | tuple):
+            pending.extend(item)
+        elif isinstance(item, str):
+            for _ in range(_INVENTORY_LAYERS + 1):
+                found.update(
+                    reference
+                    for reference, text in escaped.items()
+                    if reference in item or text in item
+                )
+                item, decoded = _JSON_ESCAPE.subn(_json_unescape, item)
+                if not decoded:
+                    break
+            else:
+                return None
+    return found
 
 
 def _is_text(value: object) -> bool:
@@ -1320,6 +1370,16 @@ def _validate_precalibration_ancestry(
         }
         for name, row in bindings.items()
     }
+    # The composed pass reads a node's stage bindings from these references.
+    binding_engine_refs = (
+        {}
+        if config is None
+        else {
+            binding: config.engine_refs[binding]
+            for binding in bindings
+            if binding in config.engine_refs
+        }
+    )
     roots = {
         name for name, row in rows.items() if row["kernel"].startswith("calibrate.")
     }
@@ -1361,14 +1421,19 @@ def _validate_precalibration_ancestry(
         node_bindings = {}
         for name, row in rows.items():
             if composed:
+                found = _embedded_engine_refs(
+                    row.get("params", {}), set(binding_engine_refs.values())
+                )
+                if found is None:
+                    raise ValueError(
+                        f"Transport calibration ancestry: node {name!r} has a "
+                        f"parameter still JSON-escaped after {_INVENTORY_LAYERS} "
+                        "layers, so its stage bindings cannot be read."
+                    )
                 node_bindings[name] = {
                     binding
-                    for binding in bindings
-                    if config is not None
-                    and binding in config.engine_refs
-                    and _embeds_engine_ref(
-                        row.get("params", {}), {config.engine_refs[binding]}
-                    )
+                    for binding, reference in binding_engine_refs.items()
+                    if reference in found
                 }
             else:
                 node_bindings[name] = {
@@ -1387,9 +1452,10 @@ def _validate_precalibration_ancestry(
         ancestors = _ancestor_closure(predecessors, roots)
         # A stage declares only columns. A structural node also writes what
         # every later kernel of its version receives without a Slice: ids,
-        # memberships, weights, strata, the frame metadata and the mass log.
-        # So a stage node upstream of calibration changes no population, and
-        # an EXPAND's cells are never a stage's.
+        # memberships, weights, strata and the frame metadata. So a stage node
+        # upstream of calibration changes no population, and an EXPAND's cells
+        # are never a stage's. Any node can append to the mass log, which no
+        # declaration shows; the transport runner refuses that (cli.py).
         for name, row in rows.items():
             own = sorted(node_bindings[name].intersection(stages))
             structural = row.get("structural", StructuralDelta.NONE)

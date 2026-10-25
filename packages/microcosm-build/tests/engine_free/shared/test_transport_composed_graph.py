@@ -45,6 +45,7 @@ import time
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import numpy as np
@@ -4622,14 +4623,20 @@ def _expand_case(shape):
     ``claim_in_stage``, where ``claim`` is one of A's own nodes. In
     ``stage_expand`` the EXPAND is one of A's nodes too.
     ``private_read_first`` declares calibration before ``claim``, so
-    calibration is the first node that receives A's values.
+    calibration is the first node that receives A's values. In ``two_claims``
+    the EXPAND overlays ``other`` too and ``claim`` claims it after ``cell``,
+    so the second claim receives A's private ``other``.
     """
     binding = _synthetic_binding("A", "person", ["cell", "other", "A_public"])
     public = not shape.startswith("private") and shape != "claim_in_stage"
     stage = _synthetic_stage(binding, ["A_public", "cell"] if public else ["A_public"])
     cells = (("person", "cell", "float64"),)
+    claims = ("person.cell",)
+    if shape == "two_claims":
+        cells += (("person", "other", "float64"),)
+        claims += ("person.other",)
     expand_params = {"expand_cells": [list(cell) for cell in cells]}
-    claim_params = {"materialized_expand_outputs": ["person.cell"]}
+    claim_params = {"materialized_expand_outputs": list(claims)}
     if shape == "stage_expand":
         expand_params["engine_ref"] = {"binding": "A", "field": "engine_ref"}
     if shape == "claim_in_stage":
@@ -4695,7 +4702,7 @@ def _expand_case(shape):
             "synthetic.claim@1",
             population="a_expand",
             params={
-                "materialized_expand_outputs": ("person.cell",),
+                "materialized_expand_outputs": claims,
                 **({"engine_ref": "A-ref"} if shape == "claim_in_stage" else {}),
             },
             outputs=(
@@ -4793,6 +4800,15 @@ def _structural_stage_refusal(node, kind):
             {
                 "declaration": _structural_stage_refusal("a_expand", "expand"),
                 "composed": _structural_stage_refusal("a_expand", "expand"),
+            },
+        ),
+        # Every claim counts, not only the first: the second receives A's
+        # private ``other``.
+        (
+            "two_claims",
+            {
+                "declaration": _stage_output_refusal("claim"),
+                "composed": _stage_output_refusal("claim"),
             },
         ),
     ],
@@ -5193,6 +5209,233 @@ def test_precalibration_ancestry_refuses_a_stage_membership_calibration_receives
     assert calibrate.received == [[10, 20]]
 
 
+_MASS_RECORD = {
+    "entity": "household",
+    "old_total": 1.0,
+    "new_total": 1.0,
+    "declared_factor": None,
+    "reason": "7",
+}
+
+
+def _mass_receipt(context):
+    """A conserving household mass record whose reason is 7, when asked for."""
+    if not context.params.get("append"):
+        return {}
+    return {"frame_mass_log_append": [dict(_MASS_RECORD)]}
+
+
+class _MassLogCreate(KernelBase):
+    """Person 1 in household 10, whose ``x`` is 1."""
+
+    ref = "synthetic.mass_log_create@1"
+    capabilities = Capabilities(
+        Determinism.DETERMINISTIC, structural=StructuralDelta.CREATE
+    )
+
+    def run(self, context):
+        import pandas as pd
+
+        from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
+
+        return KernelResult(
+            frame=Frame(
+                {
+                    "person": pd.DataFrame(
+                        {
+                            "person_id": np.array([1], dtype="int64"),
+                            "person_household_id": np.array([10], dtype="int64"),
+                        }
+                    ),
+                    "household": pd.DataFrame(
+                        {
+                            "household_id": np.array([10], dtype="int64"),
+                            "x": np.array([1], dtype="int64"),
+                        }
+                    ),
+                },
+                EntitySchema(group_entities=("household",)),
+                {"household": Weights(np.array([1.0]), WeightKind.DESIGN)},
+                pd.Series(["s"], name="stratum"),
+            )
+        )
+
+
+class _MassLogColumn(KernelBase):
+    """Owns one person column, 7, and appends the mass record when asked."""
+
+    ref = "synthetic.mass_log_column@1"
+    capabilities = Capabilities(Determinism.DETERMINISTIC)
+
+    def run(self, context):
+        import pandas as pd
+
+        (owned,) = context.node.outputs
+        return KernelResult(
+            columns={
+                (owned.entity, owned.column): pd.Series(
+                    [7], index=pd.Index([1], name="person_id"), dtype="int64"
+                )
+            },
+            receipt=_mass_receipt(context),
+        )
+
+
+class _MassLogCalibrate(KernelBase):
+    """Weights the household by the reason of the last mass record it receives."""
+
+    ref = "calibrate.mass_log@1"
+    capabilities = Capabilities(
+        Determinism.DETERMINISTIC, structural=StructuralDelta.REWEIGHT
+    )
+
+    def __init__(self):
+        self.received = []
+
+    def run(self, context):
+        from microcosm.frame import WeightKind, Weights
+
+        log = context.frame_mass_log
+        self.received.append([record.reason for record in log])
+        return KernelResult(
+            weights=Weights(
+                np.array([float(log[-1].reason) if log else 1.0]),
+                WeightKind.IMPORTANCE,
+            ),
+            receipt=_mass_receipt(context),
+        )
+
+
+@pytest.mark.parametrize("restored", [False, True], ids=["cold", "restored"])
+@pytest.mark.parametrize("appender", [None, "a", "b", "cal"])
+def test_transport_run_refuses_a_frame_mass_log_append(tmp_path, appender, restored):
+    """A transport run takes the frame mass log from CREATE only.
+
+    A node's receipt can append to the mass log (``frame_mass_log_append``),
+    and every later structural node of its lineage receives the log without a
+    ``Slice``. Round 5's case: stage A's node ``a`` owns only an unpublished
+    column, yet the record it appends sets calibration's weight. No
+    declaration shows the log, so both guard passes admit the graph, and a
+    plain run delivers the value. The transport runner refuses any node that
+    appends, a stage's (``a``) or not (``b``), calibration included, whether
+    it ran or was restored from a store such a plain run wrote.
+    """
+
+    def params(name, **values):
+        return {**values, **({"append": True} if name == appender else {})}
+
+    nodes = (
+        Node(
+            "create",
+            _MassLogCreate.ref,
+            structural=StructuralDelta.CREATE,
+            sources=("donor",),
+            outputs=(Owned("household", "x", "int64"),),
+        ),
+        Node(
+            "a",
+            _MassLogColumn.ref,
+            population="create",
+            params=params("a", engine_ref="A-ref"),
+            outputs=(Owned("person", "private", "int64"),),
+        ),
+        Node(
+            "b",
+            _MassLogColumn.ref,
+            population="create",
+            params=params("b"),
+            outputs=(Owned("person", "b_out", "int64"),),
+        ),
+        Node(
+            "cal",
+            _MassLogCalibrate.ref,
+            structural=StructuralDelta.REWEIGHT,
+            base="create",
+            params=params("cal"),
+            inputs=(Slice("household", ("x",)),),
+            weights=WeightTransition("household", "importance", mass="free"),
+            mass="free",
+        ),
+    )
+    binding = _synthetic_binding("A", "person", ["public"])
+    rows = [
+        {
+            "id": "a",
+            "kernel": _MassLogColumn.ref,
+            "population": "create",
+            "params": {"engine_ref": {"binding": "A", "field": "engine_ref"}},
+            "outputs": [{"entity": "person", "column": "private"}],
+        },
+        {
+            "id": "b",
+            "kernel": _MassLogColumn.ref,
+            "population": "create",
+            "outputs": [{"entity": "person", "column": "b_out"}],
+        },
+        {
+            "id": "cal",
+            "kernel": _MassLogCalibrate.ref,
+            "structural": "reweight",
+            "base": "create",
+            "inputs": [{"entity": "household", "columns": ["x"]}],
+        },
+    ]
+    spec = _synthetic_stage_spec(
+        [binding], [_synthetic_stage(binding, ["public"])], rows
+    )
+    graph = Graph("synthetic", (SourceRef("donor", "raw-bytes-v1"),), nodes)
+    config = TransportGraphConfig(
+        engine_refs={"A": "A-ref"}, create_outputs=nodes[0].outputs
+    )
+    for candidate in (None, graph):
+        assert (
+            _precalibration_outcome(
+                compose_module.validate_transport_calibration_ancestry,
+                spec,
+                graph=candidate,
+                config=config,
+            )
+            is None
+        )
+    calibrate = _MassLogCalibrate()
+    kernels = KernelRegistry()
+    for kernel in (_MassLogCreate(), _MassLogColumn(), calibrate):
+        kernels.register(kernel)
+    donor = tmp_path / "donor.txt"
+    donor.write_text("synthetic")
+    store = ContentStore(tmp_path / "store")
+    if restored:
+        run_graph(
+            compile_graph(graph), sources={"donor": donor}, store=store, kernels=kernels
+        )
+        assert calibrate.received == [["7"] if appender in {"a", "b"} else []]
+        calibrate.received.clear()
+
+    def run():
+        return cli_module._run(
+            graph,
+            SimpleNamespace(kernels=kernels),
+            {"donor": donor},
+            store,
+            "require" if restored else "auto",
+        )
+
+    if appender is None:
+        manifest = run()
+        assert all(receipt.hit for receipt in manifest.nodes.values()) is restored
+    else:
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                f"Transport node {appender!r} changed the frame mass log it received"
+            ),
+        ):
+            run()
+    # Calibration never runs on an appended log under the runner.
+    ran = not restored and appender in {None, "cal"}
+    assert calibrate.received == ([[]] if ran else [])
+
+
 def _guard_writers(graph, compiled):
     """Each node's reads as the composed pass resolves them, as (entity, column, writer)."""
     return compose_module._precalibration_compiled_reads(
@@ -5219,7 +5462,10 @@ def _executor_writers(graph, compiled):
     [
         *((_writer_case, shape) for shape in ("shadowed", "masked", "deep_masked")),
         (_writer_case, "rewrite_read_first"),
-        *((_expand_case, shape) for shape in ("public", "private", "claim_in_stage")),
+        *(
+            (_expand_case, shape)
+            for shape in ("public", "private", "claim_in_stage", "two_claims")
+        ),
     ],
     ids=lambda value: getattr(value, "__name__", value),
 )
@@ -5748,6 +5994,150 @@ def test_precalibration_ancestry_inventory_scan_is_linear(scope):
     else:
         assert _shape_outcome(guard, spec) is None
     assert time.perf_counter() - started < 1
+
+
+def test_precalibration_ancestry_composed_stage_scan_is_linear(monkeypatch):
+    """The composed pass reads stage bindings in one pass per escape layer.
+
+    Round 5's case: a person stage, a node with a harmless parameter full of
+    escaped quotes, then calibration. Matching each binding's engine
+    reference by decoding JSON from every quote made this composed path
+    quadratic (1.8 s at 16 KB on a loaded host). It now decodes no JSON from
+    an offset of any parameter here, so the count is exact, not timed.
+    """
+
+    class Counted(json.JSONDecoder):
+        offsets = 0
+
+        def raw_decode(self, text, idx=0):
+            type(self).offsets += 1
+            return super().raw_decode(text, idx)
+
+    monkeypatch.setattr(json, "JSONDecoder", Counted)
+    note = "prefix" + r"\"" * 64_000
+    binding = {**_synthetic_binding("p", "person", ["p_out"]), "engine_ref": "p-ref"}
+    rows = [
+        {
+            "id": "probe",
+            "kernel": "synthetic.probe@1",
+            "population": "create",
+            "params": {"engine_ref": {"binding": "p", "field": "engine_ref"}},
+            "outputs": [{"entity": "person", "column": "p_out"}],
+        },
+        {
+            "id": "mid",
+            "kernel": "synthetic.mid@1",
+            "population": "create",
+            "params": {"note": note},
+            "inputs": [{"entity": "person", "columns": ["p_out"]}],
+            "outputs": [{"entity": "person", "column": "mid_out"}],
+        },
+        {
+            "id": "cal",
+            "kernel": "calibrate.synthetic@1",
+            "population": "create",
+            "inputs": [{"entity": "person", "columns": ["mid_out"]}],
+        },
+    ]
+    nodes = [
+        Node(
+            "probe",
+            "synthetic.probe@1",
+            population="create",
+            params={"engine_ref": "p-ref"},
+            outputs=(Owned("person", "p_out", "float64"),),
+        ),
+        Node(
+            "mid",
+            "synthetic.mid@1",
+            population="create",
+            params={"note": note},
+            inputs=(Slice("person", ("p_out",)),),
+            outputs=(Owned("person", "mid_out", "float64"),),
+        ),
+        Node(
+            "cal",
+            "calibrate.synthetic@1",
+            population="create",
+            inputs=(Slice("person", ("mid_out",)),),
+        ),
+    ]
+    spec = _synthetic_stage_spec(
+        [binding], [_synthetic_stage(binding, ["p_out"])], rows
+    )
+    started = time.perf_counter()
+    outcomes = _synthetic_outcomes(spec, nodes, {"p": "p-ref"})
+    elapsed = time.perf_counter() - started
+    assert outcomes == {"declaration": None, "composed": None}
+    assert Counted.offsets == 0
+    assert elapsed < 1
+
+
+def test_precalibration_ancestry_unreadable_composed_bindings_refuse():
+    """A parameter still escaped after 32 layers refuses in the composed pass."""
+    spec, nodes, _ = _structural_stage_case("create", bound=False)
+    deep = _escape_layers('"note"', 33)
+    nodes = [
+        replace(node, params={**node.params, "note": deep})
+        if node.id == "cal"
+        else node
+        for node in nodes
+    ]
+    assert _synthetic_outcomes(spec, nodes, {"A": "A-ref"}) == {
+        "declaration": None,
+        "composed": (
+            ValueError,
+            "Transport calibration ancestry: node 'cal' has a parameter still "
+            "JSON-escaped after 32 layers, so its stage bindings cannot be read.",
+        ),
+    }
+
+
+_SCANNED_REFS = (
+    "p-ref",
+    '{"format":"synthetic","module":"a/b.yaml"}',
+    '{"module":"\U0001f600/\\\\ \\"q\\""}',
+)
+
+
+@st.composite
+def _spelled_engine_ref(draw):
+    """An engine reference behind up to four random JSON spellings."""
+    reference = draw(st.sampled_from(_SCANNED_REFS))
+    value = reference
+    for _ in range(draw(st.integers(min_value=0, max_value=4))):
+        step = draw(st.sampled_from(("dumps", "ascii", "object", "list", "text")))
+        if step == "dumps":
+            value = json.dumps(value, ensure_ascii=False)
+        elif step == "ascii":
+            value = json.dumps(value)
+        elif step == "object":
+            key = draw(st.text(max_size=3))
+            value = json.dumps({key: value}, ensure_ascii=draw(st.booleans()))
+        elif step == "list":
+            value = json.dumps([draw(st.integers()), value])
+        else:
+            value = draw(st.text(max_size=4)) + value + draw(st.text(max_size=4))
+    return reference, value
+
+
+@settings(max_examples=300, deadline=None)
+@given(case=_spelled_engine_ref(), as_key=st.booleans())
+def test_precalibration_stage_scan_finds_what_json_decoding_finds(case, as_key):
+    """The layered scan finds every reference ``_embeds_engine_ref`` finds.
+
+    ``_embeds_engine_ref`` decodes JSON from every quote and brace; the
+    composed pass's membership scan decodes escapes layer by layer instead.
+    Over nested JSON, ASCII-escaped (surrogate pairs included), object, list
+    and embedded-in-text spellings, the layered scan never misses a reference
+    the decoding scan finds.
+    """
+    reference, value = case
+    params = {value: 1} if as_key else {"note": [value]}
+    found = compose_module._embedded_engine_refs(params, {reference})
+    assert found is not None
+    if compose_module._embeds_engine_ref(params, {reference}):
+        assert reference in found
 
 
 def _escape_layers(text, layers):
