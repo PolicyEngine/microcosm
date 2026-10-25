@@ -882,7 +882,12 @@
       "obr.wine_duties": "No incumbent target: uk-data never measured excise duty, which scored zero on its data; microcosm#1359 writes the excise inputs and measures this OBR FY2024-25 line as a held-out diagnostic.",
       "obr.spirits_duties": "No incumbent target: uk-data never measured excise duty, which scored zero on its data; microcosm#1359 writes the excise inputs and measures this OBR FY2024-25 line as a held-out diagnostic.",
       "obr.tobacco_duties": "No incumbent target: uk-data never measured excise duty, which scored zero on its data; microcosm#1359 writes the excise inputs and measures this OBR FY2024-25 line as a held-out diagnostic.",
-      "obr.betting_and_gaming_duties": "No incumbent target: uk-data never measured excise duty, which scored zero on its data; microcosm#1359 writes the excise inputs and measures this OBR FY2024-25 line as a held-out diagnostic."
+      "obr.betting_and_gaming_duties": "No incumbent target: uk-data never measured excise duty, which scored zero on its data; microcosm#1359 writes the excise inputs and measures this OBR FY2024-25 line as a held-out diagnostic.",
+      "hmrc.child_benefit.families_in_payment.children_1": "No incumbent target: uk-data binds Child Benefit spending only; microcosm#1095 binds HMRC's families in payment by number of children (Child Benefit Statistics, August 2025).",
+      "hmrc.child_benefit.families_in_payment.children_2": "No incumbent target: uk-data binds Child Benefit spending only; microcosm#1095 binds HMRC's families in payment by number of children (Child Benefit Statistics, August 2025).",
+      "hmrc.child_benefit.families_in_payment.children_3": "No incumbent target: uk-data binds Child Benefit spending only; microcosm#1095 binds HMRC's families in payment by number of children (Child Benefit Statistics, August 2025).",
+      "hmrc.child_benefit.families_in_payment.children_4": "No incumbent target: uk-data binds Child Benefit spending only; microcosm#1095 binds HMRC's families in payment by number of children (Child Benefit Statistics, August 2025).",
+      "hmrc.child_benefit.families_in_payment.children_5_plus": "No incumbent target: uk-data binds Child Benefit spending only; microcosm#1095 binds HMRC's families in payment by number of children (Child Benefit Statistics, August 2025)."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -1300,7 +1305,12 @@
       "microcosm.high_value_homes.over_1m_by_region",
       "microcosm.high_value_homes.over_1_5m_by_region",
       "microcosm.high_value_homes.over_2m_by_region",
-      "mhclg.council_tax_stock.single_adult_discount"
+      "mhclg.council_tax_stock.single_adult_discount",
+      "hmrc.child_benefit.families_in_payment.children_1",
+      "hmrc.child_benefit.families_in_payment.children_2",
+      "hmrc.child_benefit.families_in_payment.children_3",
+      "hmrc.child_benefit.families_in_payment.children_4",
+      "hmrc.child_benefit.families_in_payment.children_5_plus"
     ]
   },
   "profile_parity": {
@@ -29978,6 +29988,305 @@
       "label": "Single adult discount"
     },
     {
+      "target_id": "hmrc.child_benefit.families_in_payment.children_1",
+      "family": "hmrc_child_benefit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.child_benefit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.child_benefit.children",
+            "operator": "==",
+            "value": 1
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/child_benefit/families_in_payment/children_1",
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "child_benefit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "child_benefit_child_count",
+              "operator": "==",
+              "value": 1
+            }
+          ],
+          "notes": "HMRC Child Benefit families in payment with one child (HMRC's one column; Child Benefit Statistics, Annual Release, August 2025, Table 2, United Kingdom; microcosm#1095): the benefit units whose child_benefit is above zero, counted by their children on policyengine-uk's own definition, a child or qualifying young person who is not the unit's claimant or partner (child_benefit_child_count). child_benefit is zero for a unit that does not claim and for one that stays opted out of payment, so the units are HMRC's families in payment. HMRC counts claimant families, so the model's benefit units differ at the edges: a qualifying young person in their own benefit unit, or a child claimed for from another unit (uk-data#562). The August 2025 count is a stock inside the calibration year (an in-year snapshot hold)."
+        },
+        "axiom": {
+          "metric_name": "hmrc/child_benefit/families_in_payment/children_1",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.child_benefit_families_in_payment",
+        "record_set_spec_id": "hmrc.child_benefit.aug2025.families_in_payment_by_number_of_children.month2025_08.v1",
+        "source_measure_id": "families_in_payment_children_one"
+      },
+      "selector_note": "HMRC Child Benefit Statistics, Annual Release (August 2025), Table 2, United Kingdom row: families in payment by number of children at the August 2025 count, the record set the spec names.",
+      "category_id": "hmrc.child_benefit",
+      "label": "Families in payment, one child"
+    },
+    {
+      "target_id": "hmrc.child_benefit.families_in_payment.children_2",
+      "family": "hmrc_child_benefit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.child_benefit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.child_benefit.children",
+            "operator": "==",
+            "value": 2
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/child_benefit/families_in_payment/children_2",
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "child_benefit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "child_benefit_child_count",
+              "operator": "==",
+              "value": 2
+            }
+          ],
+          "notes": "HMRC Child Benefit families in payment with two children (HMRC's two column; Child Benefit Statistics, Annual Release, August 2025, Table 2, United Kingdom; microcosm#1095): the benefit units whose child_benefit is above zero, counted by their children on policyengine-uk's own definition, a child or qualifying young person who is not the unit's claimant or partner (child_benefit_child_count). child_benefit is zero for a unit that does not claim and for one that stays opted out of payment, so the units are HMRC's families in payment. HMRC counts claimant families, so the model's benefit units differ at the edges: a qualifying young person in their own benefit unit, or a child claimed for from another unit (uk-data#562). The August 2025 count is a stock inside the calibration year (an in-year snapshot hold)."
+        },
+        "axiom": {
+          "metric_name": "hmrc/child_benefit/families_in_payment/children_2",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.child_benefit_families_in_payment",
+        "record_set_spec_id": "hmrc.child_benefit.aug2025.families_in_payment_by_number_of_children.month2025_08.v1",
+        "source_measure_id": "families_in_payment_children_two"
+      },
+      "selector_note": "HMRC Child Benefit Statistics, Annual Release (August 2025), Table 2, United Kingdom row: families in payment by number of children at the August 2025 count, the record set the spec names.",
+      "category_id": "hmrc.child_benefit",
+      "label": "Families in payment, two children"
+    },
+    {
+      "target_id": "hmrc.child_benefit.families_in_payment.children_3",
+      "family": "hmrc_child_benefit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.child_benefit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.child_benefit.children",
+            "operator": "==",
+            "value": 3
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/child_benefit/families_in_payment/children_3",
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "child_benefit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "child_benefit_child_count",
+              "operator": "==",
+              "value": 3
+            }
+          ],
+          "notes": "HMRC Child Benefit families in payment with three children (HMRC's three column; Child Benefit Statistics, Annual Release, August 2025, Table 2, United Kingdom; microcosm#1095): the benefit units whose child_benefit is above zero, counted by their children on policyengine-uk's own definition, a child or qualifying young person who is not the unit's claimant or partner (child_benefit_child_count). child_benefit is zero for a unit that does not claim and for one that stays opted out of payment, so the units are HMRC's families in payment. HMRC counts claimant families, so the model's benefit units differ at the edges: a qualifying young person in their own benefit unit, or a child claimed for from another unit (uk-data#562). The August 2025 count is a stock inside the calibration year (an in-year snapshot hold)."
+        },
+        "axiom": {
+          "metric_name": "hmrc/child_benefit/families_in_payment/children_3",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.child_benefit_families_in_payment",
+        "record_set_spec_id": "hmrc.child_benefit.aug2025.families_in_payment_by_number_of_children.month2025_08.v1",
+        "source_measure_id": "families_in_payment_children_three"
+      },
+      "selector_note": "HMRC Child Benefit Statistics, Annual Release (August 2025), Table 2, United Kingdom row: families in payment by number of children at the August 2025 count, the record set the spec names.",
+      "category_id": "hmrc.child_benefit",
+      "label": "Families in payment, three children"
+    },
+    {
+      "target_id": "hmrc.child_benefit.families_in_payment.children_4",
+      "family": "hmrc_child_benefit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.child_benefit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.child_benefit.children",
+            "operator": "==",
+            "value": 4
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/child_benefit/families_in_payment/children_4",
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "child_benefit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "child_benefit_child_count",
+              "operator": "==",
+              "value": 4
+            }
+          ],
+          "notes": "HMRC Child Benefit families in payment with four children (HMRC's four column; Child Benefit Statistics, Annual Release, August 2025, Table 2, United Kingdom; microcosm#1095): the benefit units whose child_benefit is above zero, counted by their children on policyengine-uk's own definition, a child or qualifying young person who is not the unit's claimant or partner (child_benefit_child_count). child_benefit is zero for a unit that does not claim and for one that stays opted out of payment, so the units are HMRC's families in payment. HMRC counts claimant families, so the model's benefit units differ at the edges: a qualifying young person in their own benefit unit, or a child claimed for from another unit (uk-data#562). The August 2025 count is a stock inside the calibration year (an in-year snapshot hold)."
+        },
+        "axiom": {
+          "metric_name": "hmrc/child_benefit/families_in_payment/children_4",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.child_benefit_families_in_payment",
+        "record_set_spec_id": "hmrc.child_benefit.aug2025.families_in_payment_by_number_of_children.month2025_08.v1",
+        "source_measure_id": "families_in_payment_children_four"
+      },
+      "selector_note": "HMRC Child Benefit Statistics, Annual Release (August 2025), Table 2, United Kingdom row: families in payment by number of children at the August 2025 count, the record set the spec names.",
+      "category_id": "hmrc.child_benefit",
+      "label": "Families in payment, four children"
+    },
+    {
+      "target_id": "hmrc.child_benefit.families_in_payment.children_5_plus",
+      "family": "hmrc_child_benefit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.child_benefit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.child_benefit.children",
+            "operator": ">=",
+            "value": 5
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/child_benefit/families_in_payment/children_5_plus",
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "child_benefit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "child_benefit_child_count",
+              "operator": ">=",
+              "value": 5
+            }
+          ],
+          "notes": "HMRC Child Benefit families in payment with five or more children (HMRC's five to nine and ten or more columns together; Child Benefit Statistics, Annual Release, August 2025, Table 2, United Kingdom; microcosm#1095): the benefit units whose child_benefit is above zero, counted by their children on policyengine-uk's own definition, a child or qualifying young person who is not the unit's claimant or partner (child_benefit_child_count). child_benefit is zero for a unit that does not claim and for one that stays opted out of payment, so the units are HMRC's families in payment. HMRC counts claimant families, so the model's benefit units differ at the edges: a qualifying young person in their own benefit unit, or a child claimed for from another unit (uk-data#562). The August 2025 count is a stock inside the calibration year (an in-year snapshot hold)."
+        },
+        "axiom": {
+          "metric_name": "hmrc/child_benefit/families_in_payment/children_5_plus",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.child_benefit_families_in_payment",
+        "record_set_spec_id": "hmrc.child_benefit.aug2025.families_in_payment_by_number_of_children.month2025_08.v1"
+      },
+      "selector_note": "HMRC Child Benefit Statistics, Annual Release (August 2025), Table 2, United Kingdom row: families in payment by number of children at the August 2025 count, the record set the spec names.",
+      "category_id": "hmrc.child_benefit",
+      "label": "Families in payment, five or more children",
+      "value_operation": "linear_combination",
+      "value_operands": [
+        {
+          "weight": 1,
+          "source_concept": "hmrc.child_benefit_families_in_payment",
+          "source_measure_id": "families_in_payment_children_five_to_nine",
+          "label": "five_to_nine"
+        },
+        {
+          "weight": 1,
+          "source_concept": "hmrc.child_benefit_families_in_payment",
+          "source_measure_id": "families_in_payment_children_ten_or_more",
+          "label": "ten_or_more"
+        }
+      ]
+    },
+    {
       "target_id": "hmrc.self_employment_income.amount",
       "family": "hmrc",
       "geography_levels": [
@@ -34135,6 +34444,10 @@
       "hmrc.tax_free_childcare": {
         "provider_id": "hmrc",
         "label": "Tax-Free Childcare"
+      },
+      "hmrc.child_benefit": {
+        "provider_id": "hmrc",
+        "label": "Child Benefit"
       },
       "dfe.funded_childcare": {
         "provider_id": "dfe",

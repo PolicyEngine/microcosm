@@ -91,6 +91,13 @@ _ENTITY_ID = {
 _UC_CALIBRATION_VARIABLES = frozenset(
     {"uc_calibration_family_type", "uc_calibration_child_count"}
 )
+#: The children each benefit unit claims Child Benefit for (microcosm#1095),
+#: on policyengine-uk's own definition: a child or a qualifying young person
+#: who is not the unit's claimant or partner. HMRC bands its families in
+#: payment by these children; the engine's own child counts are deprecated
+#: age cut-offs.
+UK_CHILD_BENEFIT_CHILD_COUNT = "child_benefit_child_count"
+_CHILD_BENEFIT_CHILD = "is_child_or_qualifying_young_person_for_child_benefit"
 
 # Reserved, transient measurement names: using the model's input name here
 # would let a persisted base-period column bypass requested-year calculation.
@@ -510,6 +517,19 @@ def compute_uk_measure_input(
         return compute_uc_target_measure(
             frame, simulation, variable, year
         ), "uc_claim_statistical_proxy"
+    if variable == UK_CHILD_BENEFIT_CHILD_COUNT:
+        if entity != "benunit":
+            raise KeyError(f"{variable} is benunit-only: {entity}")
+        children = _values(simulation.calculate(_CHILD_BENEFIT_CHILD, year))
+        members = frame.table("person")["person_benunit_id"].to_numpy()
+        ids = frame.table("benunit")["benunit_id"].to_numpy()
+        counts = (
+            pd.Series(children.astype(float))
+            .groupby(members)
+            .sum()
+            .reindex(ids, fill_value=0.0)
+        )
+        return counts.to_numpy(dtype=float), f"engine_members:{_CHILD_BENEFIT_CHILD}"
     if variable == "uc_calibration_child_entitlement":
         if entity != "benunit":
             raise KeyError(f"UC child entitlement is benunit-only: {entity}")
@@ -1085,6 +1105,8 @@ class UKMeasureResolver:
             | UC_PAID_TARGET_VARIABLES
         ):
             return entity == "benunit"
+        if variable == UK_CHILD_BENEFIT_CHILD_COUNT:
+            return entity == "benunit" and self.knows("person", _CHILD_BENEFIT_CHILD)
         if variable in _BUS_BOARDING_MEASURES or variable in _HIGH_VALUE_HOME_MEASURES:
             return entity == "household"
         if variable in DFE_SPRING_TERM_MEASURES:
@@ -1129,6 +1151,8 @@ class UKMeasureResolver:
     def entity_for(self, variable: str) -> str | None:
         if variable in _BUS_BOARDING_MEASURES or variable in _HIGH_VALUE_HOME_MEASURES:
             return "household"
+        if variable == UK_CHILD_BENEFIT_CHILD_COUNT:
+            return "benunit"
         if _cgt_model_measure(variable, self.year) is not None:
             return "person"
         if variable in UK_NAMED_TERMS or variable in DFE_SPRING_TERM_MEASURES:

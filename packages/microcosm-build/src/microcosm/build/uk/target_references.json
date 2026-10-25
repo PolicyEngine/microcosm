@@ -168,6 +168,10 @@
         "provider_id": "hmrc",
         "label": "Tax-Free Childcare"
       },
+      "hmrc.child_benefit": {
+        "provider_id": "hmrc",
+        "label": "Child Benefit"
+      },
       "dfe.funded_childcare": {
         "provider_id": "dfe",
         "label": "Funded childcare"
@@ -397,6 +401,11 @@
       "hmrc.cgt.taxpayers_by_region": "hmrc.capital_gains_tax",
       "hmrc.cgt.taxpayers_by_taxable_income_band": "hmrc.capital_gains_tax",
       "hmrc.cgt.taxpayers_total": "hmrc.capital_gains_tax",
+      "hmrc.child_benefit.families_in_payment.children_1": "hmrc.child_benefit",
+      "hmrc.child_benefit.families_in_payment.children_2": "hmrc.child_benefit",
+      "hmrc.child_benefit.families_in_payment.children_3": "hmrc.child_benefit",
+      "hmrc.child_benefit.families_in_payment.children_4": "hmrc.child_benefit",
+      "hmrc.child_benefit.families_in_payment.children_5_plus": "hmrc.child_benefit",
       "hmrc.itl.additional_rate_taxpayers": "hmrc.income_tax_liabilities_statistics",
       "hmrc.itl.higher_rate_taxpayers": "hmrc.income_tax_liabilities_statistics",
       "hmrc.itl.income_tax_by_total_income_band": "hmrc.income_tax_liabilities_statistics",
@@ -769,6 +778,11 @@
       "hmrc.cgt.taxpayers_by_region": "Capital Gains Tax taxpayers by region",
       "hmrc.cgt.taxpayers_by_taxable_income_band": "Capital Gains Tax taxpayers by taxable income",
       "hmrc.cgt.taxpayers_total": "Capital Gains Tax taxpayers",
+      "hmrc.child_benefit.families_in_payment.children_1": "Families in payment, one child",
+      "hmrc.child_benefit.families_in_payment.children_2": "Families in payment, two children",
+      "hmrc.child_benefit.families_in_payment.children_3": "Families in payment, three children",
+      "hmrc.child_benefit.families_in_payment.children_4": "Families in payment, four children",
+      "hmrc.child_benefit.families_in_payment.children_5_plus": "Families in payment, five or more children",
       "hmrc.itl.additional_rate_taxpayers": "Additional rate Income Tax payers by region and nation",
       "hmrc.itl.higher_rate_taxpayers": "Higher rate Income Tax payers by region and nation",
       "hmrc.itl.income_tax_by_total_income_band": "Income Tax liabilities by total income band",
@@ -47737,6 +47751,125 @@
         "measure_kind": "prepared_column"
       },
       "uprating_from_period": "2025-10",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.child_benefit.families_in_payment.children_1",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.child_benefit_families_in_payment",
+        "record_set_spec_id": "hmrc.child_benefit.aug2025.families_in_payment_by_number_of_children.month2025_08.v1",
+        "source_measure_id": "families_in_payment_children_one",
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "benunit",
+      "measure": "hmrc/child_benefit/families_in_payment/children_1",
+      "family": "hmrc_child_benefit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.child_benefit.families_in_payment.children_1",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2025-08",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.child_benefit.families_in_payment.children_2",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.child_benefit_families_in_payment",
+        "record_set_spec_id": "hmrc.child_benefit.aug2025.families_in_payment_by_number_of_children.month2025_08.v1",
+        "source_measure_id": "families_in_payment_children_two",
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "benunit",
+      "measure": "hmrc/child_benefit/families_in_payment/children_2",
+      "family": "hmrc_child_benefit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.child_benefit.families_in_payment.children_2",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2025-08",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.child_benefit.families_in_payment.children_3",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.child_benefit_families_in_payment",
+        "record_set_spec_id": "hmrc.child_benefit.aug2025.families_in_payment_by_number_of_children.month2025_08.v1",
+        "source_measure_id": "families_in_payment_children_three",
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "benunit",
+      "measure": "hmrc/child_benefit/families_in_payment/children_3",
+      "family": "hmrc_child_benefit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.child_benefit.families_in_payment.children_3",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2025-08",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.child_benefit.families_in_payment.children_4",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.child_benefit_families_in_payment",
+        "record_set_spec_id": "hmrc.child_benefit.aug2025.families_in_payment_by_number_of_children.month2025_08.v1",
+        "source_measure_id": "families_in_payment_children_four",
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "benunit",
+      "measure": "hmrc/child_benefit/families_in_payment/children_4",
+      "family": "hmrc_child_benefit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.child_benefit.families_in_payment.children_4",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2025-08",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.child_benefit.families_in_payment.children_5_plus",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.child_benefit_families_in_payment",
+        "record_set_spec_id": "hmrc.child_benefit.aug2025.families_in_payment_by_number_of_children.month2025_08.v1",
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "benunit",
+      "measure": "hmrc/child_benefit/families_in_payment/children_5_plus",
+      "family": "hmrc_child_benefit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.child_benefit.families_in_payment.children_5_plus",
+        "measure_kind": "prepared_column"
+      },
+      "value_operation": "linear_combination",
+      "value_operands": [
+        {
+          "weight": 1,
+          "source_concept": "hmrc.child_benefit_families_in_payment",
+          "source_measure_id": "families_in_payment_children_five_to_nine",
+          "label": "five_to_nine"
+        },
+        {
+          "weight": 1,
+          "source_concept": "hmrc.child_benefit_families_in_payment",
+          "source_measure_id": "families_in_payment_children_ten_or_more",
+          "label": "ten_or_more"
+        }
+      ],
+      "uprating_from_period": "2025-08",
       "uprating_to_period": 2025
     }
   ]

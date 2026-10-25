@@ -445,6 +445,23 @@
       "approved_on": "2026-10-23",
       "status": "approved",
       "expires_on": "2026-12-11"
+    },
+    {
+      "scope": "national",
+      "kind": "in_year_snapshot",
+      "target_ids": [
+        "hmrc.child_benefit.families_in_payment.children_1",
+        "hmrc.child_benefit.families_in_payment.children_2",
+        "hmrc.child_benefit.families_in_payment.children_3",
+        "hmrc.child_benefit.families_in_payment.children_4",
+        "hmrc.child_benefit.families_in_payment.children_5_plus"
+      ],
+      "reason": "HMRC Child Benefit families in payment by number of children at the August 2025 count (Child Benefit Statistics, Annual Release, Table 2): a stock counted inside the calibration year, as the benefit cap's November count is (microcosm#1095).",
+      "tracking": "microcosm#1095",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-25",
+      "status": "approved",
+      "expires_on": "2026-12-11"
     }
   ]
 }

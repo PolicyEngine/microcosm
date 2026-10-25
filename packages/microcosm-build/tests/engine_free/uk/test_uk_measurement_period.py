@@ -411,6 +411,29 @@ def test_the_named_loss_relief_terms_keep_the_resolvers_floats(year):
     assert route.startswith("engine_components:")
 
 
+def test_the_child_benefit_children_count_each_units_children():
+    # HMRC bands its families in payment by these children (microcosm#1095).
+    frame = PeriodFrameStub(time_period="2024")
+    sim = SimulationStub(
+        {
+            "is_child_or_qualifying_young_person_for_child_benefit": (
+                "person",
+                np.array([True, True, False]),
+            )
+        }
+    )
+    name = measure_simulation.UK_CHILD_BENEFIT_CHILD_COUNT
+
+    values, route = compute_uk_measure_input(frame, sim, "benunit", name, 2025)
+
+    assert values.tolist() == [2.0, 0.0]
+    assert route == (
+        "engine_members:is_child_or_qualifying_young_person_for_child_benefit"
+    )
+    with pytest.raises(KeyError, match="benunit-only"):
+        compute_uk_measure_input(frame, sim, "person", name, 2025)
+
+
 def test_a_frame_without_a_period_label_keeps_the_frame_route():
     frame = PeriodFrameStub()
     frame.metadata = {}
@@ -437,6 +460,10 @@ REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
         "attends_private_school",
         "benefit_cap_reduction",
         "benunit_tenure_type",
+        # Engine-computed at the calibration period: the Child Benefit paid and
+        # the children it is paid for (microcosm#1095).
+        "child_benefit",
+        "child_benefit_child_count",
         "council_tax_band",
         # Engine-computed from the household's adults (pe-uk#1864; microcosm#953).
         "council_tax_discount_rate",

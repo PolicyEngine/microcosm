@@ -75,8 +75,9 @@ _TEST_PATHS = paths_for("microcosm-build")
 # The next policyengine-uk bump retires three rows (microcosm#1095) and binds
 # England's single adult council tax discount (microcosm#953); microcosm#1359
 # adds five OBR excise receipts rows, measured at FY2024-25; the bump after it
-# compiles obr.domestic_rates, pinned to the UK (microcosm#1095).
-ACTIVE_REFERENCE_COUNT = 1342
+# compiles obr.domestic_rates, pinned to the UK, and HMRC's five Child Benefit
+# family rows (microcosm#1095).
+ACTIVE_REFERENCE_COUNT = 1347
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 
 
