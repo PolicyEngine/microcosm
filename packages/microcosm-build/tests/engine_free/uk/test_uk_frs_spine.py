@@ -1299,7 +1299,10 @@ def test_no_frs_field_feeds_two_income_columns(tmp_path: Path) -> None:
     and pension rows, with that field raised by one in its copy, and each
     copy's people are compared with an unchanged copy's. The benefits and
     accounts tabs route one amount column by a row code, and the other tabs
-    carry no person income, so they are not varied.
+    carry no person income, so they are not varied. Nor are the record keys
+    or UPERSON, which place a person in their benefit unit: a child raised to
+    UPERSON 1 would head the unit beside its adult head, which the spine
+    refuses.
     """
 
     tables = _fixture_tables()
@@ -1309,7 +1312,7 @@ def test_no_frs_field_feeds_two_income_columns(tmp_path: Path) -> None:
         for field in dict.fromkeys(
             field for row in tables[table] if row["SERNUM"] == 1 for field in row
         )
-        if field not in {"SERNUM", "BENUNIT", "PERSON"}
+        if field not in {"SERNUM", "BENUNIT", "PERSON", "UPERSON"}
     ]
     copies: dict[str, list[dict[str, object]]] = {table: [] for table in tables}
     for household, varied in enumerate([None, *fields], start=1):
@@ -1826,6 +1829,18 @@ def test_claimant_roles_must_agree_with_the_dependant_count(tmp_path: Path) -> N
     # policyengine-uk derives is_uc_claimant from is_claimant_or_partner.
     tables = _fixture_tables()
     tables["benunit"][1]["DEPCHLDB"] = 0
+    stage = _write_fixture(tmp_path, tables)
+    with pytest.raises(ValueError, match="must be the same roles"):
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
+
+
+def test_a_child_record_at_uperson_1_refuses(tmp_path: Path) -> None:
+    # is_benunit_head reads UPERSON 1 on either tab, so a child record there
+    # would be a second head: the dependant-count rule makes it a UC claimant
+    # while the adult table makes it a dependant. Raw FRS 2020-21 to 2024-25
+    # have exactly one UPERSON 1 adult per unit and no child at UPERSON 1.
+    tables = _fixture_tables()
+    tables["child"][0]["UPERSON"] = 1
     stage = _write_fixture(tmp_path, tables)
     with pytest.raises(ValueError, match="must be the same roles"):
         build_uk_frs_spine_frame(tmp_path, stage=stage)
