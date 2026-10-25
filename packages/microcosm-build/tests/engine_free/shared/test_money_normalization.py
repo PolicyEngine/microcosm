@@ -56,6 +56,7 @@ _FIELDS = (
     "quote",
     "rounding",
     "donor_money_period",
+    "target_period",
     "columns",
     "index_family_factors",
     "factor_profile",
@@ -153,6 +154,28 @@ def test_toy_declaration_validates_and_rosters_partition_every_money_concept():
         "pensions",
         "owner_housing_costs",
     }
+
+
+def test_a_dropped_concept_cannot_be_normalized():
+    declaration = toy_declaration()
+    declaration["columns"]["person"].append("public_pension_income")
+    with pytest.raises(ValueError, match="public_pension_income is dropped in"):
+        validate_money_normalization(declaration)
+    # A pending row may still name a dropped concept.
+    declaration = toy_declaration()
+    declaration["pending"] = {
+        "person": {"public_pension_income": {"awaits": ["test"], "reason": "test"}}
+    }
+    rosters = money_column_rosters(validate_money_normalization(declaration))
+    assert rosters["person", "public_pension_income"] == ("pending", ("test",))
+
+
+@pytest.mark.parametrize("value", ["2027", 2027.0, True, None, 0, 10000])
+def test_the_target_period_is_an_integer_period_label(value):
+    declaration = toy_declaration()
+    declaration["target_period"] = value
+    with pytest.raises(ValueError, match="target_period must be the integer period"):
+        validate_money_normalization(declaration)
 
 
 @pytest.mark.parametrize("field", _FIELDS)
@@ -673,6 +696,28 @@ def test_money_factors_carry_their_purpose_and_cover_the_donor_period(tmp_path):
         check_money_factor(context["factors"][1], other)
 
 
+@pytest.mark.parametrize("target", [2026, 2028])
+def test_every_factor_ages_money_to_the_declared_target_period(tmp_path, target):
+    # Each family's factor is checked against the one declared destination,
+    # so no two families can age to different periods.
+    _, _, identity, facts = write_money_feed(tmp_path / "feed")
+    declaration = validate_money_normalization(toy_declaration())
+    context = money_factor_context(identity, facts)
+    other = copy.deepcopy(declaration)
+    other["target_period"] = target
+    for entry in context["factors"]:
+        assert entry["declaration"]["target_period"] == declaration["target_period"]
+        check_money_factor(entry, declaration)
+        with pytest.raises(
+            ValueError, match=f"not the declared target_period {target}"
+        ):
+            check_money_factor(entry, other)
+        stray = copy.deepcopy(entry)
+        stray["declaration"]["target_period"] = target
+        with pytest.raises(ValueError, match=f"ages money to {target}, not"):
+            check_money_factor(stray, declaration)
+
+
 # ---------------------------------------------------------------------------
 # Properties against the independent oracle
 # ---------------------------------------------------------------------------
@@ -759,9 +804,10 @@ def test_permuting_rows_commutes_with_normalization(values, seed, factor):
     factor=_FACTORS,
     quote=st.sampled_from(["to_per_from", "from_per_to"]),
 )
-def test_two_step_rounding_differs_from_one_step_by_at_most_one_cent(
+def test_two_step_rounding_stays_within_the_factor_bound_of_one_step(
     value, rate, factor, quote
 ):
+    # At most floor(1 + f/2) minor units, so one cent for every factor below 2.
     exact_factor = Fraction(factor, 10**6)
     _, two, one = _oracle(value, Fraction(rate), quote, exact_factor)
     assert abs(two - one) <= math.floor(1 + exact_factor / 2)

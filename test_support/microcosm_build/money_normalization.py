@@ -145,6 +145,7 @@ def toy_declaration(
             "basis": "declared_convention",
             "evidence": ["Synthetic fixture convention; no donor authentication."],
         },
+        "target_period": 2027,
         "columns": deepcopy(NORMALIZED),
         "index_family_factors": families,
         "factor_profile": {

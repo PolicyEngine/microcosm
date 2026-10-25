@@ -1,7 +1,9 @@
 Add exact, declared donor money normalization: a pure module that validates a
 complete money-normalization declaration (cited decimal-text or feed-replayed
-rate, explicit quote, half-even rounding, donor money period, per-family factors
-or explicit identities, and quantile-mapped or pending rosters) and applies it
+rate, explicit quote, half-even rounding, donor money period, the one target
+period every factor must age money to, per-family factors or explicit
+identities, and quantile-mapped or pending rosters; a concept dropped in
+transport can't be normalized) and applies it
 with exact rationals, and a `money.normalize@1` transport kernel that replays
 its factors against the authenticated feed, refuses a donor money period that
 differs from the one CREATE records, and adds an integer cents companion per

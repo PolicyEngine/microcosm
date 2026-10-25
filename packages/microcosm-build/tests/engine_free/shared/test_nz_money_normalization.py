@@ -216,6 +216,28 @@ def test_scenario_knobs_select_their_own_donor_factor():
         assert set(factors.values()) == {f"donor_cy2024_to_ty2027_{expected}"}
 
 
+def test_the_scenarios_default_aging_index_is_the_money_central_profile():
+    # A scenario that leaves the knob unset selects the declaration's central
+    # profile, so the scenarios' default must name the same profile.
+    profile = _declaration()["factor_profile"]
+    scenarios = _load("scenarios.json")
+    dimension = profile["dimension"]
+    assert scenarios["central_knobs"][dimension] == profile["central_profile"]
+    assert set(scenarios["knob_domains"][dimension]) == set(profile["profiles"])
+
+
+def test_money_and_the_reference_profiles_age_to_one_target_period():
+    declaration = _declaration()
+    factors = [
+        entry["declaration"] for entry in _load("reference_aging.json")["factors"]
+    ]
+    donor = {row["id"]: row["target_period"] for row in factors if row["id"] in _DONOR}
+    assert donor == dict.fromkeys(_DONOR, declaration["target_period"])
+    assert {
+        row["target_period"] for row in factors if row["purpose"] == "profile_input"
+    } == {declaration["target_period"]}
+
+
 @pytest.mark.parametrize("profile", ["low", "central", "high"])
 def test_a_missing_declared_profile_factor_refuses(profile):
     declaration = _load("money_normalization.json")

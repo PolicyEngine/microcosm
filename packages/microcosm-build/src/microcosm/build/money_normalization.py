@@ -26,7 +26,8 @@ units, which is one minor unit for every factor below 2.
 
 Every normalized column maps through its concept's index family to one
 declared factor, or to an explicit identity with a reason; nothing falls back
-to a factor of one. Every money concept that survives transport is declared
+to a factor of one. Every applied factor ages money to the one declared
+``target_period``. Every money concept that survives transport is declared
 exactly once: normalized, quantile mapped or pending.
 """
 
@@ -91,6 +92,7 @@ _FIELDS = frozenset(
         "quote",
         "rounding",
         "donor_money_period",
+        "target_period",
         "columns",
         "index_family_factors",
         "factor_profile",
@@ -253,7 +255,14 @@ def _columns(value: object) -> dict[str, list[str]]:
                 "Money normalization columns must be nonempty lists of distinct names."
             )
         for name in names:
-            _money_concept(entity, name, "column")
+            item = _money_concept(entity, name, "column")
+            if item.transport is TransportRule.DROP:
+                # Quantile maps and pending rows may still name a dropped
+                # concept; a normalizer would only fail later, at run time.
+                raise ValueError(
+                    f"Money normalization column {entity}.{name} is dropped in "
+                    "transport, so it cannot be normalized."
+                )
         result[entity] = list(names)
     return result
 
@@ -378,6 +387,11 @@ def validate_money_normalization(document: object) -> dict:
     if rounding["mode"] not in _ROUNDING_MODES:
         raise ValueError("Money normalization rounding mode must be half_even.")
     row["donor_money_period"] = _period(row["donor_money_period"])
+    if type(row["target_period"]) is not int or not 1 <= row["target_period"] <= 9999:
+        raise ValueError(
+            "Money normalization target_period must be the integer period label "
+            "its factors age money to."
+        )
     row["columns"] = _columns(row["columns"])
     if (
         not isinstance(row["cents_suffix"], str)
@@ -513,8 +527,10 @@ def selected_money_factors(
 def check_money_factor(entry: Mapping, declaration: Mapping) -> tuple[int, int]:
     """Return ``(p, k)`` for a factor ``p / 10**k`` fit for this declaration.
 
-    The factor must carry the money-normalization purpose, and its source
-    schedule must cover exactly the declared donor money period.
+    The factor must carry the money-normalization purpose, its source
+    schedule must cover exactly the declared donor money period, and it must
+    age money to the declared ``target_period``, so every family reaches the
+    same destination period.
     """
     factor_declaration = entry["declaration"]
     if factor_declaration["purpose"] != MONEY_FACTOR_PURPOSE:
@@ -522,6 +538,12 @@ def check_money_factor(entry: Mapping, declaration: Mapping) -> tuple[int, int]:
             f"Factor {factor_declaration['id']!r} has purpose "
             f"{factor_declaration['purpose']!r}; money normalization applies only "
             f"{MONEY_FACTOR_PURPOSE} factors."
+        )
+    target = factor_declaration["target_period"]
+    if type(target) is not int or target != declaration["target_period"]:
+        raise ValueError(
+            f"Factor {factor_declaration['id']!r} ages money to {target!r}, not "
+            f"the declared target_period {declaration['target_period']!r}."
         )
     schedule = factor_declaration["source_schedule"]
     coverage = (
