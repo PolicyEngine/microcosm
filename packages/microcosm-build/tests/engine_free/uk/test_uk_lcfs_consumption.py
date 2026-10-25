@@ -1517,12 +1517,14 @@ def _synthetic_lcfs_donor(
     return person, pd.DataFrame(household)
 
 
-def _synthetic_lcfs_stage(household_columns=None, *, excise=True):
+def _synthetic_lcfs_stage(household_columns=None, *, excise=True, gambling=True):
     """The committed lcfs_consumption stage on synthetic inputs, minus the engine.
 
-    The uprating step needs the installed engine and is dropped; the QRF is
-    shrunk to four trees. ``household_columns(n)`` adds frame columns; with
-    ``excise=False`` the excise step is dropped too.
+    The uprating step needs the installed engine and is dropped; the QRF and
+    the gambling top-up's stake forest are shrunk to four trees.
+    ``household_columns(n)`` adds frame columns; with ``excise=False`` the
+    excise step is dropped, and with it the top-up that re-keys it; with
+    ``gambling=False`` the top-up alone.
     """
 
     import dataclasses
@@ -1538,6 +1540,13 @@ def _synthetic_lcfs_stage(household_columns=None, *, excise=True):
             continue
         if not excise and operation.kind == "level_excise_quantities":
             continue
+        if operation.kind == "top_up_gambling_participation":
+            if not (excise and gambling):
+                continue
+            operation = SourceOperationSpec(
+                kind=operation.kind,
+                parameters={**operation.parameters, "n_estimators": 4},
+            )
         if operation.kind == "fit_weighted_qrf_chain":
             operation = SourceOperationSpec(
                 kind=operation.kind,
@@ -1667,9 +1676,10 @@ def test_stage_transform_prices_bus_fares_from_journeys() -> None:
     # The 20 chain targets (the heating fuels after the spend targets,
     # pe-uk#2572) and the five excise shares (microcosm#1359), the road-fuel
     # redraw's total and petrol share, the prepayment-meter flag
-    # (microcosm#1110), then the gas-payer classifier and amount model the
-    # connection walk reads (microcosm#1164).
-    assert len(transform.fit_weight_records) == 30
+    # (microcosm#1110), the gas-payer classifier and amount model the
+    # connection walk reads (microcosm#1164), then each gambling key's
+    # propensity and stake model the participation walk reads (microcosm#1359).
+    assert len(transform.fit_weight_records) == 34
     assert [
         record.fit_name.rsplit(":", 1)[1]
         for record in transform.fit_weight_records[18:25]
@@ -1682,14 +1692,19 @@ def test_stage_transform_prices_bus_fares_from_journeys() -> None:
         "national_lottery_share_of_gambling_stakes",
         "betting_and_gaming_share_of_other_gambling_stakes",
     ]
-    assert transform.fit_weight_records[-4].fit_name.endswith(
-        ":petrol_share_of_road_fuel"
-    )
-    assert transform.fit_weight_records[-3].fit_name.endswith(
-        ":uses_energy_prepayment_meter"
-    )
-    assert transform.fit_weight_records[-2].fit_name.endswith(":gas_payer")
-    assert transform.fit_weight_records[-1].fit_name.endswith(":gas_payer_amount")
+    assert [
+        record.fit_name.rsplit(":", 1)[1]
+        for record in transform.fit_weight_records[-8:]
+    ] == [
+        "petrol_share_of_road_fuel",
+        "uses_energy_prepayment_meter",
+        "gas_payer",
+        "gas_payer_amount",
+        "national_lottery_participation",
+        "national_lottery_participation_stake",
+        "betting_and_gaming_participation",
+        "betting_and_gaming_participation_stake",
+    ]
     assert out["uses_energy_prepayment_meter"].dtype == bool
     from microcosm.build.uk_runtime.lcfs_consumption import (
         UK_LCFS_CONSUMPTION_MASS_CONSERVATION_REASON,
@@ -3967,7 +3982,7 @@ def test_stage_tops_up_the_gambling_keys_when_declared(monkeypatch) -> None:
     )
 
     patch_excise_facts(monkeypatch, excise_declaration())
-    plain = _synthetic_lcfs_stage()
+    plain = _synthetic_lcfs_stage(gambling=False)
     before = plain.transform(plain.frame).table("household")
     patch_gambling_participation_facts(monkeypatch, participation_declaration())
     synthetic = _synthetic_lcfs_stage()

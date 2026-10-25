@@ -680,6 +680,7 @@ class TestE3ManifestLockstep:
             "redraw_zero_road_fuel",
             "level_road_fuel",
             "recompose_from_remainder",
+            "top_up_gambling_participation",
             "level_excise_quantities",
             "record_mass_conservation_receipt",
         ]
@@ -1065,6 +1066,8 @@ class TestE3ManifestLockstep:
             "redraw_zero_road_fuel": 0,
             # The prepayment-meter flag (microcosm#1110).
             "impute_prepayment_meter": 0,
+            # The gambling participation top-up (microcosm#1359).
+            "top_up_gambling_participation": 0,
         }
         assert stages["etb_vat"].operations[3].parameters["seed"] == 0
         assert stages["etb_vat"].operations[3].parameters["salt"] == "etb_vat"
