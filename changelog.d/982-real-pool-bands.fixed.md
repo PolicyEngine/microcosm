@@ -1,0 +1,1 @@
+Corrected the #982 experiment README: its PUF-clone-half ×2 tables are now labeled distribution checks, and a new section scores the real pool at frame weight, which before calibration reaches about half of SOI at $5M+ proxy AGI after #1033.
