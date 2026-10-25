@@ -295,3 +295,19 @@ The national register version moves with the five new references, so the uk-cand
 register is re-frozen before the next national solve. The high-value home stock still names
 `735820c`: its inputs are the same on `200bf6d` (the feed-gated fingerprint check passes), so it
 was not rebuilt.
+
+The `272c987` re-pin (microcosm#1359, PolicyEngine/chronicle#391, on top of `200bf6d`) brought the
+Gambling Commission's Gambling Survey for Great Britain 2025 tables: the share of adults who gambled
+in the past four weeks and the past twelve months by sex, age band, country and English region, by
+activity and channel, and the number of activities, with each table's unweighted bases (1,024
+facts; 1,503,315 rows). The merge commit's tree is the pull request head's (`6269a88`), merged onto
+an unmoved base, so the artifact was built from that head's bundle and carries the merge commit's
+digests.
+
+A new vendored resource, `gambling_participation_facts.json`, carries the 426 Great Britain
+participation rows the LCFS `top_up_gambling_participation` step reads. The other vendored resources
+carry the same rows under the new feed identity. No compiled value moves on either surface: the
+national and local reference files are byte-identical, the membership moves only its feed label,
+and both compile-parity receipts are unchanged. Both surfaces were regenerated from the national
+and local cuts, as for `200bf6d`. No reference moves, so the national register version does not
+either. The high-value home stock still names `735820c`: the addition touches none of its inputs.
