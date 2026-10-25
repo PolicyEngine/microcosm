@@ -952,6 +952,12 @@ def _add_person_income(
     # SPPADJ, "SPP amount": the weekly statutory paternity pay an adult gets
     # for their main job (FRS 2024-25 adult table, beside SSPADJ and SMPADJ).
     # A tab without it refuses, rather than set nobody's (uk-data#575).
+    # Annualised at 52 weeks, as the other statutory payments are, although
+    # SPP lasts at most two weeks: the adults paid at interview stand for
+    # everyone paid during the year, so the yearly total is right on average,
+    # while each recipient's year carries 52 weeks of it. No bound row reads it
+    # directly; it reaches Class 1 NI, the means tests and HBAI income
+    # (María's ruling of 2026-10-25, microcosm#1095; for her signature).
     if "sppadj" not in person.columns:
         raise KeyError(
             "The FRS adult tab has no SPPADJ column, so statutory paternity pay "
