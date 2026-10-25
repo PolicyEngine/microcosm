@@ -189,6 +189,37 @@ _UK_TAKE_UP_EVIDENCE: dict[str, tuple[str, str]] = {
 UK_ENGINE_DEFAULT_TAKE_UP_INPUTS: dict[str, str] = {}
 
 
+_UK_OWNED_COMPANY_STOCKS_AT_DEFAULT = (
+    "The FRS records whether an adult runs their own company (the job record's "
+    "director answers, from which the root stage sets "
+    "stands_as_sole_owner_or_partner_of_company and five more owner-manager "
+    "inputs) but no company balance sheet. So the three regulation 77 stocks, "
+    "owned_company_capital, owned_company_holding_value and "
+    "owned_company_trade_assets, stay at zero, and Universal Credit makes no "
+    "company substitution (UC Regs 2013 reg. 77(2), (3)(a)): an owner-manager's "
+    "capital is the unit's recorded capital alone. It is too high by their own "
+    "company's shares where the recorded capital includes them (the FRS "
+    "stocks-and-shares questions do not exclude them), which the regulation "
+    "replaces by the company's capital, and too low by the company's capital "
+    "beyond the assets used wholly and exclusively in its trade, which the "
+    "regulation counts. Only the capital test moves: tariff income above "
+    "GBP 6,000 and the GBP 16,000 limit (microcosm#1095; for María's signature)."
+)
+_UK_OWNED_COMPANY_INTERMEDIARIES_AT_DEFAULT = (
+    "The FRS does not record whether the intermediaries or managed service "
+    "company rules (ITEPA 2003 Part 2, Chapters 8 to 10) make an owner-manager's "
+    "company income employed earnings, so owned_company_intermediary_earnings_"
+    "chapter stays NONE and owned_company_intermediary_earnings_from_main_"
+    "employment stays False. uc_company_intermediary_exclusion_applies is then "
+    "false for everyone, and Universal Credit's company owner rule applies to "
+    "every owner-manager the root stage flags, including a contractor caught by "
+    "those rules in their main employment, whom UC Regs 2013 reg. 77(5) takes "
+    "out of it. Such a contractor's award is assessed on the company's income "
+    "and capital instead of as an employee's, which can move it either way "
+    "(microcosm#1095; for María's signature)."
+)
+
+
 #: Other engine inputs the build leaves at the engine's default, each signed as
 #: an approximation with the error it can make (microcosm#1095).
 UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
@@ -215,6 +246,41 @@ UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
         "GBP 6,000 instead of GBP 10,000, so Housing Benefit is understated for "
         "such residents alone; eligibility, capital and the upper limit do not "
         "move (Vahid's review of #1383, item 4)."
+    ),
+    "uc_receives_new_claimant_health_element": (
+        "From 6 April 2026 the LCWRA element of a claim made after that date "
+        "is paid at the lower new-claimant rate (UC Regs 2013 reg. 36). Every "
+        "FRS 2024-25 recipient claimed before it, and the survey cannot say who "
+        "would claim after it, so the build supplies no value and "
+        "policyengine-uk draws one: for a simulation built from data it gives "
+        "the new-claimant rate to a share of the benefit units "
+        "(gov.dwp.universal_credit.rebalancing.new_claimant_share, WPI "
+        "Economics' estimates for 2026-27 to 2029-30) on a seeded draw in "
+        "benefit-unit order. The share is zero in 2025, the calibration year. "
+        "From 2026 the share of health-element units paid the lower rate "
+        "follows the parameter on average, but which units are paid it is "
+        "random with respect to everything the file records (microcosm#1095; "
+        "for María's signature)."
+    ),
+    "owned_company_capital": _UK_OWNED_COMPANY_STOCKS_AT_DEFAULT,
+    "owned_company_holding_value": _UK_OWNED_COMPANY_STOCKS_AT_DEFAULT,
+    "owned_company_trade_assets": _UK_OWNED_COMPANY_STOCKS_AT_DEFAULT,
+    "owned_company_intermediary_earnings_chapter": (
+        _UK_OWNED_COMPANY_INTERMEDIARIES_AT_DEFAULT
+    ),
+    "owned_company_intermediary_earnings_from_main_employment": (
+        _UK_OWNED_COMPANY_INTERMEDIARIES_AT_DEFAULT
+    ),
+    "benunit_reported_capital": (
+        "The build records each benefit unit's capital as the complete "
+        "overrides uc_reported_capital and pension_credit_reported_capital "
+        "(uc_capital_coherence), which both means tests read in place of this "
+        "financial-only record. Where a unit's recorded capital is unavailable "
+        "(-1, with no TOTCAPB4), it falls back to the household capital proxy, "
+        "as the engine documents for this input at -1. Setting it from TOTCAPB4 "
+        "as well would change no assessment: where TOTCAPB4 is recorded the "
+        "overrides take precedence, and where it is not the input would also "
+        "be -1 (microcosm#1095; for María's signature)."
     ),
 }
 
