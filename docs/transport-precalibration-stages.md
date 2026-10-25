@@ -2,10 +2,11 @@
 
 A transport graph's calibration may read only what the calibration ancestry
 guard admits (`validate_transport_calibration_ancestry` in
-`microcosm.build.transport.compose`). Without stages, the guard refuses every
-benefit-unit engine semantic upstream of a `calibrate.*` node or the
-calibration endpoint, and every hold-out source, hold-out selection and the
-graph resource's own digest. Person-entity rules bindings are admitted.
+`microcosm.build.transport.compose`). Without stages, the guard refuses
+benefit-unit engine semantics upstream of a `calibrate.*` node or the
+calibration endpoint, hold-out sources, `holdout_references` selections in the
+`transport_graph` rows it reaches, and the graph resource's own digest.
+Person-entity rules bindings are admitted.
 
 The optional `precalibration_stages` resource declares the rules bindings whose
 outputs feed calibration, and exactly which of their outputs flow on:
@@ -66,7 +67,12 @@ pass uses it, on every declared node and rules binding:
   a list of text.
 - **Rules bindings.** Each names a distinct text `id`, a text `entity` and
   `rulespec_path`, and a list of text `variables`.
-- **The calibration endpoint**, when given, is text.
+- **The calibration endpoint**, when present, is text. An explicit null
+  refuses too: it would drop a calibration node whose kernel is not
+  `calibrate.*`.
+- **Entitlement rows**, in the composed pass. Each row the entitlement
+  extension instantiates has a text id that no skeleton row or other
+  entitlement row uses, and its `params` follow the rules above.
 
 A malformed field refuses, naming the node: for example "node 'mid' has
 malformed inputs". Read character by character, a string column, source or
@@ -102,18 +108,35 @@ variant calibration reads is in that variant's ancestry, so it is checked.
 - A node outside a listed stage that reads a column one of the stage's own
   nodes produces upstream of calibration, other than its `outputs` and
   `derived_outputs`, refuses as "undeclared pre-calibration stage output".
-  Reads among a stage's own nodes do not count. The rule follows the producing
-  node, not the column name, so another binding that declares the same variable
-  name is unaffected.
+  Reads among a stage's own nodes do not count.
+- The rule follows each read to its producer, as the compiler resolves it:
+  the owner of the column in the reader's population version or, for an
+  inherited column, the owner in the nearest base version. A structural node
+  reads its base, and a rewrite receives the incumbent from below its version,
+  so both count as reads. Another binding that declares the same variable
+  name, or another node that owns a column of the same name in another
+  version, is therefore unaffected.
+- The composed pass resolves reads exactly. Where a declaration leaves the
+  version unknown, the declaration pass counts every declared producer of the
+  column instead: a reader with no population, a version that is not declared
+  and a cycle of bases all fall back this way. A declared producer with no
+  population counts in every version.
 - Outputs are columns, so a stage's artifacts are never declared. A node
   outside the stage that reads an artifact one of the stage's nodes produces
   upstream of calibration refuses the same way.
 - A parameter that carries the prepared `engine_refs` inventory refuses as
   "prepared engine_refs map", on stage nodes too. The inventory may be a
-  mapping, a JSON string in any spelling, nested in lists or mappings, or JSON
-  embedded in a longer string. It is bookkeeping, not a stage invocation.
+  mapping, a JSON string in any spelling (braces written as escapes
+  included), nested in lists or mappings, JSON embedded in a longer string,
+  or the data a resource selection names. It is bookkeeping, not a stage
+  invocation.
 - The hold-out, selection and digest checks still apply to every upstream node,
-  stage nodes included, so each stage's ancestry is clean.
+  stage nodes included, so each stage's ancestry is clean. They read each
+  node's declared selections: its `transport_graph` row or, in the composed
+  pass, the entitlement row the extension instantiated it from, whose
+  parameters are resolved before the graph exists. A code extension's node has
+  no declaration, so its compiled parameters get the engine-reference and
+  inventory checks but not the selection checks.
 
 Both passes apply these rules; the composed pass covers compiled predecessors
 and extension nodes. No node parameter or hash changes.
@@ -135,11 +158,18 @@ These are tested, as properties and examples, in
   guard without stages, which can admit more: its declaration pass follows
   structural and artifact edges, not column reads, and a resource selection
   leaves no marker in the composed graph.
-- With stages listed, no hold-out source or selection is upstream of
-  calibration, and no stage output or stage module carries a hold-out measure.
-  The guard without stages is unchanged, so it still misses a hold-out
-  selection that calibration reaches only through column reads.
-- With stages listed, a refusal names the first offending node in declaration
-  order.
+- With stages listed, no hold-out source and no declared hold-out selection
+  (in a `transport_graph` or entitlement row) is upstream of calibration, and
+  no stage output or stage module carries a hold-out measure. The guard
+  without stages is unchanged, so it still misses a hold-out selection that
+  calibration reaches only through column reads, and any hold-out selection
+  in an entitlement row.
+- With stages listed, the outcome is deterministic. Shape checks run first,
+  over every declared node and binding, so a malformed declaration refuses
+  naming its first malformed node even when an earlier node would refuse on
+  substance. Otherwise a refusal names the first offending node in
+  declaration order. The composed pass runs only after the declaration pass
+  admits: it checks the entitlement rows' shapes, then names the first
+  offending node in graph order.
 - With stages listed, a malformed declaration never admits. Every field the
   checks read is validated first, and a malformed one refuses naming its node.

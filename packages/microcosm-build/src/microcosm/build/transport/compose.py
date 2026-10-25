@@ -74,6 +74,7 @@ from microcosm.graph import (
     ArtifactInput,
     ArtifactOutput,
     ArtifactType,
+    CompiledGraph,
     Graph,
     Node,
     Owned,
@@ -691,7 +692,8 @@ def _carries_engine_ref_inventory(value: object) -> bool:
         )
     if isinstance(value, list | tuple):
         return any(_carries_engine_ref_inventory(item) for item in value)
-    if not isinstance(value, str) or "{" not in value:
+    # Every string is decoded: a JSON string can spell its braces as escapes.
+    if not isinstance(value, str):
         return False
     try:
         decoded = json.loads(value)
@@ -986,6 +988,144 @@ def _precalibration_selections(value: object) -> Iterator[Mapping]:
             yield from _precalibration_selections(item)
 
 
+def _precalibration_extension_rows(
+    spec: Mapping[str, object], rows: Mapping[str, Mapping]
+) -> dict[str, Mapping]:
+    """The entitlement rows the extension instantiates, by node id.
+
+    Their parameters are resolved before the composed graph exists, so the
+    composed pass reads their selections here, as it reads a skeleton row's.
+    """
+
+    if not (
+        _has_resource(spec, "entitlement_graph") and _has_resource(spec, "scenarios")
+    ):
+        return {}
+    from .entitlement import _rows
+
+    result: dict[str, Mapping] = {}
+    for row, _ in _rows(spec)[0]:
+        name = row.get("id")
+        if not _is_text(name) or name in rows or name in result:
+            raise ValueError(
+                "Transport calibration ancestry: node ids must be distinct text."
+            )
+        if not _precalibration_params(row.get("params", {})):
+            raise ValueError(
+                f"Transport calibration ancestry: node {name!r} has malformed params."
+            )
+        result[name] = row
+    return result
+
+
+def _precalibration_declared_reads(
+    rows: Mapping[str, Mapping],
+) -> dict[str, set[tuple[str, str, str]]]:
+    """Each declared node's column reads, as (entity, column, producer).
+
+    A read resolves in the reader's population version and then down its base
+    chain, as the compiler resolves it: a structural node reads its base, and
+    a rewrite receives the incumbent from below its version. Where the
+    declaration leaves the version unknown (no population, an undeclared
+    version or a cycle), every declared producer of the column counts, and a
+    producer without a population counts in every version.
+    """
+
+    owners: dict[tuple[object, str, str], set[str]] = {}
+    producers: dict[tuple[str, str], set[str]] = {}
+    for name, row in rows.items():
+        version = row.get("population") if row.get("base") is None else None
+        for output in row.get("outputs", ()):
+            key = (output["entity"], output["column"])
+            producers.setdefault(key, set()).add(name)
+            owners.setdefault((version, *key), set()).add(name)
+
+    def resolve(version: object, key: tuple[str, str]) -> set[str]:
+        if not isinstance(version, str):
+            return producers.get(key, set())
+        floating = owners.get((None, *key), set())
+        seen = set()
+        while isinstance(version, str):
+            if version in seen or version not in rows:
+                return producers.get(key, set())
+            seen.add(version)
+            if (version, *key) in owners:
+                return owners[(version, *key)] | floating
+            version = rows[version].get("base")
+        return floating
+
+    reads: dict[str, set[tuple[str, str, str]]] = {}
+    for name, row in rows.items():
+        base = row.get("base")
+        start = row.get("population") if base is None else base
+        holder = rows.get(row.get("population"))
+        # A rewrite's incumbent comes from below its version.
+        incumbent = None if holder is None else holder.get("base")
+        rewritten = {
+            (output["entity"], output["column"])
+            for output in row.get("outputs", ())
+            if output.get("rewrite")
+        }
+        keys = {
+            (item["entity"], column)
+            for item in row.get("inputs", ())
+            for column in item["columns"]
+        }
+        reads[name] = {
+            (*key, producer)
+            for key in keys | rewritten
+            for producer in resolve(incumbent if key in rewritten else start, key)
+            if producer != name
+        }
+    return reads
+
+
+def _precalibration_compiled_reads(
+    graph: Graph, compiled: CompiledGraph
+) -> dict[str, set[tuple[str, str, str]]]:
+    """Each compiled node's column reads, as (entity, column, producer).
+
+    The producer is the owner in the reader's version or, for an inherited
+    column, in the nearest base version that owns it. A structural node reads
+    its base; a rewrite receives the incumbent from below its version.
+    """
+
+    by_id = {node.id: node for node in graph.nodes}
+
+    def resolve(version: str | None, entity: str, column: str) -> str | None:
+        while version is not None:
+            owner = compiled.owners.get((version, entity, column))
+            if owner is not None:
+                return owner
+            version = by_id[version].base
+        return None
+
+    reads: dict[str, set[tuple[str, str, str]]] = {}
+    for node in graph.nodes:
+        version = compiled.versions[node.id]
+        start = version if node.structural is StructuralDelta.NONE else node.base
+        rewritten = {
+            (item.entity, item.column) for item in node.outputs if item.rewrite
+        }
+        keys = {
+            (item.entity, column) for item in node.inputs for column in item.columns
+        }
+        reads[node.id] = {
+            (entity, column, producer)
+            for entity, column in keys | rewritten
+            if (
+                producer := resolve(
+                    by_id[version].base if (entity, column) in rewritten else start,
+                    entity,
+                    column,
+                )
+            )
+            is not None
+            and producer != node.id
+        }
+    return reads
+
+
 def _validate_precalibration_ancestry(
     spec: Mapping[str, object],
     stages: Mapping[str, Mapping],
@@ -1027,22 +1167,17 @@ def _validate_precalibration_ancestry(
     roots = {
         name for name, row in rows.items() if row["kernel"].startswith("calibrate.")
     }
-    endpoint = _mapping(document.get("endpoints"), "transport endpoints").get(
-        "calibration"
-    )
-    if endpoint is not None and not _is_text(endpoint):
-        raise ValueError(
-            "Transport calibration ancestry: the calibration endpoint must name a node."
-        )
-    if endpoint is not None:
-        roots.add(endpoint)
+    endpoints = _mapping(document.get("endpoints"), "transport endpoints")
+    # Present means a node: an explicit null would drop the only root.
+    if "calibration" in endpoints:
+        if not _is_text(endpoints["calibration"]):
+            raise ValueError(
+                "Transport calibration ancestry: the calibration endpoint must "
+                "name a node."
+            )
+        roots.add(endpoints["calibration"])
     predecessors = {name: set() for name in rows}
-    producers = {
-        (row.get("population"), output["entity"], output["column"]): name
-        for name, row in rows.items()
-        if isinstance(row.get("population"), str)
-        for output in row.get("outputs", ())
-    }
+    reads = _precalibration_declared_reads(rows)
     for name, row in rows.items():
         base = row.get("base")
         if isinstance(base, str):
@@ -1055,24 +1190,14 @@ def _validate_precalibration_ancestry(
         predecessors[name].update(
             edge["producer"] for edge in row.get("artifact_inputs", ())
         )
-        predecessors[name].update(
-            producer
-            for item in row.get("inputs", ())
-            for column in item["columns"]
-            if (
-                producer := producers.get(
-                    (row.get("population"), item["entity"], column)
-                )
-            )
-            is not None
-            and producer != name
-        )
+        predecessors[name].update(producer for _, _, producer in reads[name])
 
     declarations = rows
 
     def check(
         rows: Mapping[str, Mapping],
         predecessors: Mapping,
+        reads: Mapping[str, set[tuple[str, str, str]]],
         *,
         composed: bool,
         derived: bool,
@@ -1104,8 +1229,6 @@ def _validate_precalibration_ancestry(
         # stage's ancestry passes the same checks; a stage binding's nodes
         # after calibration (extension checkpoints) are outputs, not inputs.
         ancestors = _ancestor_closure(predecessors, roots)
-        # A stage restricts only what its own upstream nodes produce: a column
-        # of the same name from elsewhere is not the stage's output.
         produced = {
             binding: {
                 (item["entity"], item["column"])
@@ -1125,11 +1248,22 @@ def _validate_precalibration_ancestry(
                         f"{stage['id']!r} is not produced by a stage node upstream "
                         "of calibration."
                     )
-        restricted = {
-            binding: produced[binding]
-            - stage_columns[binding]
-            - derived_columns[binding]
+        # A stage restricts only what its own upstream nodes produce: each read
+        # follows its producer in the reader's version lineage, so a column of
+        # the same name from another node or version is not the stage's output.
+        public = {
+            binding: stage_columns[binding] | derived_columns[binding]
             for binding in stages
+        }
+        consumed = {
+            name: {
+                binding
+                for entity, column, producer in reads[name]
+                if producer in ancestors
+                for binding in node_bindings.get(producer, ())
+                if binding in stages and (entity, column) not in public[binding]
+            }
+            for name in rows
         }
         inputs = {
             name: {
@@ -1223,6 +1357,8 @@ def _validate_precalibration_ancestry(
                                 selected = None
                                 break
                             selected = selected[component]
+                        if _carries_engine_ref_inventory(selected):
+                            reason = "prepared engine_refs map"
                         if _embeds_engine_ref(
                             selected,
                             forbidden_refs,
@@ -1253,12 +1389,8 @@ def _validate_precalibration_ancestry(
                         reason = reason or "not a declared pre-calibration stage"
             elif outputs & encoded:
                 reason = reason or "not a declared pre-calibration stage"
-            for binding in stages:
-                if binding not in own and (
-                    inputs[name] & restricted[binding]
-                    or binding in artifact_stages[name]
-                ):
-                    reason = "undeclared pre-calibration stage output"
+            if (consumed[name] | artifact_stages[name]) - own:
+                reason = "undeclared pre-calibration stage output"
             if _embeds_engine_ref(
                 row.get("params", {}),
                 forbidden_refs,
@@ -1278,9 +1410,10 @@ def _validate_precalibration_ancestry(
 
     # A derived output is checked against the fullest view: the composed graph
     # when there is one, otherwise the declaration.
-    check(rows, predecessors, composed=False, derived=graph is None)
+    check(rows, predecessors, reads, composed=False, derived=graph is None)
     if graph is None:
         return
+    declarations = {**rows, **_precalibration_extension_rows(spec, rows)}
     compiled = compile_graph(graph)
     roots.update(
         node.id for node in graph.nodes if node.kernel.startswith("calibrate.")
@@ -1302,7 +1435,13 @@ def _validate_precalibration_ancestry(
         }
         for node in graph.nodes
     }
-    check(compiled_rows, compiled.predecessors, composed=True, derived=True)
+    check(
+        compiled_rows,
+        compiled.predecessors,
+        _precalibration_compiled_reads(graph, compiled),
+        composed=True,
+        derived=True,
+    )
 
 
 def validate_transport_calibration_ancestry(

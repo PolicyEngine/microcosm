@@ -106,6 +106,9 @@ from test_support.microcosm_build.transport_composed import (
     make_composed_fixture,
     toy_extension,
 )
+from test_support.microcosm_build.transport_entitlement import (
+    make_entitlement_fixture,
+)
 from test_support.microcosm_build.transport_graph import descendants
 from test_support.paths import paths_for
 
@@ -2785,13 +2788,42 @@ def test_cli_main_refuses_unavailable_rules_engine(
 
 _PRECALIBRATION_PROPERTY_DOMAINS = {
     "mixed": {
-        "kinds": ("encode", "unit", "person", "selector", "holdout"),
+        "kinds": ("encode", "unit", "person", "selector", "holdout", "filter"),
         "holdout_sources": True,
     },
     # Without hold-out data most graphs pass the other checks, so the
     # producer attribution of rule 3 is exercised in every run.
-    "rules_only": {"kinds": ("person", "selector"), "holdout_sources": False},
+    "rules_only": {
+        "kinds": ("person", "selector", "filter"),
+        "holdout_sources": False,
+    },
 }
+
+
+def _precalibration_edges(draw, nodes, version, visible):
+    """Dependencies, reads and artifact edges from earlier nodes.
+
+    A read names the producer the column resolves to in ``version``.
+    """
+    dependencies, reads, artifacts = [], [], []
+    for predecessor, earlier in enumerate(nodes):
+        if earlier["kind"] == "filter":
+            continue
+        edge = draw(st.integers(min_value=0, max_value=3))
+        if edge == 1:
+            dependencies.append(predecessor)
+            artifacts.append(predecessor)
+        if edge > 1:
+            columns = [
+                column
+                for column in earlier["outputs"]
+                if visible(version, column) == predecessor
+            ]
+            columns = columns if edge == 3 else columns[:1]
+            if columns:
+                dependencies.append(predecessor)
+            reads.extend((predecessor, column) for column in columns)
+    return dependencies, reads, artifacts
 
 
 @st.composite
@@ -2801,11 +2833,66 @@ def _precalibration_ancestry_dags(draw, kinds, holdout_sources):
     A new binding may also declare another binding's variable name, which only
     that other binding's node produces; selector nodes add a derived column
     that is not a binding variable; any binding node may carry hold-out data.
+    A filter node opens a population version on an earlier one. A binding node
+    may own a ``shared`` column that a node in another version also owns, and
+    each read names the producer it resolves to in the reader's version.
     """
     kinds = draw(st.lists(st.sampled_from(kinds), min_size=1, max_size=7))
     nodes = []
     bindings = {}
+    # Version None is CREATE; a filter's index names its version. A version a
+    # filter branches from takes no new members, so structural edges point back.
+    bases = {None: None}
+    closed = set()
+    owned = {}
+    # Versions a read resolved through: a later owner there would re-route it.
+    frozen = set()
+
+    def visible(version, column):
+        while (version, column) not in owned:
+            if version is None:
+                return None
+            version = bases[version]
+        return owned[version, column]
+
+    def freeze(version, column):
+        while (version, column) not in owned:
+            frozen.add((version, column))
+            version = bases[version]
+
+    def member_version():
+        return draw(st.sampled_from(sorted(set(bases) - closed, key=str)))
+
     for index, kind in enumerate(kinds):
+        if kind == "filter":
+            base = draw(st.sampled_from(sorted(bases, key=str)))
+            bases[index] = base
+            closed.add(base)
+            nodes.append(
+                {
+                    "kind": kind,
+                    "binding": None,
+                    "entity": "person",
+                    "version": None,
+                    "base": base,
+                    "outputs": [],
+                    "reads": [],
+                    # A version depends on its base and every member of it.
+                    "dependencies": [
+                        *([] if base is None else [base]),
+                        *(
+                            member
+                            for member, row in enumerate(nodes)
+                            if row["kind"] != "filter" and row["version"] == base
+                        ),
+                    ],
+                    "artifacts": [],
+                    "holdout_selection": False,
+                    "holdout_source": False,
+                }
+            )
+            continue
+        version = member_version()
         binding = None
         entity = "family" if kind in {"encode", "unit"} else "person"
         if kind in {"unit", "person", "selector"}:
@@ -2827,33 +2914,41 @@ def _precalibration_ancestry_dags(draw, kinds, holdout_sources):
                 bindings[binding] = {"entity": entity, "variables": [], "derived": []}
                 if shared and draw(st.booleans()):
                     bindings[binding]["variables"].append(draw(st.sampled_from(shared)))
+        dependencies, reads, artifacts = _precalibration_edges(
+            draw, nodes, version, visible
+        )
+        for _, column in reads:
+            freeze(version, column)
         outputs = [f"value_{index}"]
         if binding is not None:
             outputs.append(f"private_{index}")
-            bindings[binding]["variables"].extend(outputs)
+            # A node may not own a column it reads, one its version owns, or
+            # one an earlier read in its version resolved below it.
+            common = f"shared_{entity}"
+            if (version, common) not in owned.keys() | frozen and draw(st.booleans()):
+                outputs.append(common)
+            bindings[binding]["variables"].extend(
+                column
+                for column in outputs
+                if column not in bindings[binding]["variables"]
+            )
         if kind == "selector":
             outputs.append(f"derived_{index}")
             bindings[binding]["derived"].append(f"derived_{index}")
-        reads = []
-        dependencies = []
-        artifacts = []
-        for predecessor, earlier in enumerate(nodes):
-            edge = draw(st.integers(min_value=0, max_value=3))
-            if edge:
-                dependencies.append(predecessor)
-            if edge == 1:
-                artifacts.append(predecessor)
-            if edge > 1:
-                columns = earlier["outputs"] if edge == 3 else earlier["outputs"][:1]
-                reads.extend((predecessor, column) for column in columns)
+        for column in outputs:
+            owned[version, column] = index
         nodes.append(
             {
                 "kind": kind,
                 "binding": binding,
                 "entity": entity,
+                "version": version,
                 "outputs": outputs,
                 "reads": reads,
-                "dependencies": dependencies,
+                "dependencies": [
+                    *([] if version is None else [version]),
+                    *dependencies,
+                ],
                 "artifacts": artifacts,
                 "holdout_selection": kind == "holdout" and draw(st.booleans()),
                 "holdout_source": holdout_sources
@@ -2868,26 +2963,19 @@ def _precalibration_ancestry_dags(draw, kinds, holdout_sources):
             declared[binding] = draw(
                 st.sets(st.sampled_from(row["variables"] + row["derived"]), min_size=1)
             )
-    dependencies = []
-    reads = []
-    artifacts = []
-    for predecessor, earlier in enumerate(nodes):
-        edge = draw(st.integers(min_value=0, max_value=3))
-        if edge:
-            dependencies.append(predecessor)
-        if edge == 1:
-            artifacts.append(predecessor)
-        if edge > 1:
-            columns = earlier["outputs"] if edge == 3 else earlier["outputs"][:1]
-            reads.extend((predecessor, column) for column in columns)
+    version = member_version()
+    dependencies, reads, artifacts = _precalibration_edges(
+        draw, nodes, version, visible
+    )
     nodes.append(
         {
             "kind": "calibrate",
             "binding": None,
             "entity": "person",
+            "version": version,
             "outputs": [],
             "reads": reads,
-            "dependencies": dependencies,
+            "dependencies": [*([] if version is None else [version]), *dependencies],
             "artifacts": artifacts,
             "holdout_selection": False,
             "holdout_source": False,
@@ -2984,8 +3072,31 @@ def _precalibration_synthetic_graph(model):
             "outputs": [{"entity": "person", "column": "seed"}],
         }
     ]
+
+    def version_id(version):
+        return "p1.create" if version is None else f"p1.node_{version}"
+
     for index, item in enumerate(nodes):
         name = "p1.calibrate" if item["kind"] == "calibrate" else f"p1.node_{index}"
+        if item["kind"] == "filter":
+            base = version_id(item["base"])
+            graph_nodes.append(
+                Node(
+                    name,
+                    "synthetic.filter@1",
+                    structural=StructuralDelta.FILTER,
+                    base=base,
+                )
+            )
+            rows.append(
+                {
+                    "id": name,
+                    "kernel": "synthetic.filter@1",
+                    "structural": "filter",
+                    "base": base,
+                }
+            )
+            continue
         kernel = {
             "encode": "concepts.encode_groups@1",
             "unit": RULES,
@@ -3021,7 +3132,7 @@ def _precalibration_synthetic_graph(model):
             Node(
                 name,
                 kernel,
-                population="p1.create",
+                population=version_id(item["version"]),
                 inputs=tuple(
                     Slice(entity, tuple(columns)) for entity, columns in inputs.items()
                 ),
@@ -3038,7 +3149,7 @@ def _precalibration_synthetic_graph(model):
         row = {
             "id": name,
             "kernel": kernel,
-            "population": "p1.create",
+            "population": version_id(item["version"]),
             "inputs": [
                 {"entity": entity, "columns": columns}
                 for entity, columns in inputs.items()
@@ -3141,8 +3252,10 @@ def _precalibration_property_outcomes(model):
             "population": "p1.create",
         },
     ]
-    # A selected hold-out resource leaves no marker in compiled params. Keep
-    # those source declarations so this path still checks their provenance.
+    # These compiled nodes stand for a code extension's, which have no
+    # declaration, and a selected hold-out resource leaves no marker in
+    # compiled params. Keep those rows so this path still checks their
+    # provenance. (Entitlement rows are declarations: see the example tests.)
     extension_spec["resources"]["transport_graph"]["nodes"].extend(
         row
         for row, node in zip(
@@ -3610,6 +3723,8 @@ def _precalibration_inventory(engine_refs, encoding):
         "spaced": json.dumps(inventory, indent=2),
         "nested": json.dumps({"receipt": json.dumps(inventory)}),
         "embedded": f"inventory={json.dumps(inventory)};",
+        # A JSON string spelling every brace as an escape: no literal brace.
+        "escaped": json.dumps(canonical).replace("{", "\\u007b"),
     }[encoding]
 
 
@@ -3619,6 +3734,7 @@ _PRECALIBRATION_INVENTORY_ENCODINGS = [
     "spaced",
     "nested",
     "embedded",
+    "escaped",
 ]
 
 
@@ -3648,7 +3764,9 @@ def test_precalibration_ancestry_compiled_prepared_map_still_refuses(
         )
 
 
-@pytest.mark.parametrize("encoding", ["string", "spaced", "nested", "embedded"])
+@pytest.mark.parametrize(
+    "encoding", ["string", "spaced", "nested", "embedded", "escaped"]
+)
 def test_precalibration_ancestry_declared_prepared_map_refuses(
     calibration_ancestry_composed, encoding
 ):
@@ -3834,6 +3952,228 @@ def test_precalibration_ancestry_stage_output_read_by_another_stage_refuses():
         "Transport calibration ancestry: node 'b' carries undeclared "
         "pre-calibration stage output."
     )
+    assert outcomes == {
+        "declaration": (ValueError, message),
+        "composed": (ValueError, message),
+    }
+
+
+def _version_member(name, kernel, version, *, binding=None, inputs=(), outputs=()):
+    """A declaration row and its node in a population version.
+
+    ``outputs`` are ``(column, rewrite)`` pairs on the person entity.
+    """
+    row = {"id": name, "kernel": kernel, "population": version}
+    params = {}
+    if binding is not None:
+        row["rules_binding"] = binding
+        params["engine_ref"] = f"{binding}-ref"
+    if inputs:
+        row["inputs"] = [{"entity": "person", "columns": list(inputs)}]
+    if outputs:
+        row["outputs"] = [
+            {"entity": "person", "column": column, "rewrite": rewrite}
+            for column, rewrite in outputs
+        ]
+    node = Node(
+        name,
+        kernel,
+        population=version,
+        params=params,
+        inputs=(Slice("person", tuple(inputs)),) if inputs else (),
+        outputs=tuple(
+            Owned("person", column, "float64", rewrite=rewrite)
+            for column, rewrite in outputs
+        ),
+    )
+    return row, node
+
+
+def _version_filter(name, base, *, inputs=()):
+    row = {"id": name, "kernel": "synthetic.filter@1", "structural": "filter"}
+    row["base"] = base
+    if inputs:
+        row["inputs"] = [{"entity": "person", "columns": list(inputs)}]
+    node = Node(
+        name,
+        "synthetic.filter@1",
+        structural=StructuralDelta.FILTER,
+        base=base,
+        inputs=(Slice("person", tuple(inputs)),) if inputs else (),
+    )
+    return row, node
+
+
+def _version_case(shape):
+    """Stages A and B each own a person.shared, in different population versions.
+
+    A produces its private ``shared`` in CREATE. A FILTER makes ``v2``, where
+    B's ``b`` reads ``shared`` and publishes only ``B_public`` to calibration.
+    The shape says where the ``shared`` that ``b`` reads comes from.
+    """
+    bindings = [
+        _synthetic_binding(name, "person", ["shared", f"{name}_public"])
+        for name in ("A", "B")
+    ]
+    stages = [_synthetic_stage(row, [f"{row['id']}_public"]) for row in bindings]
+    deep = shape.startswith("deep_")
+    reader = "v3" if deep else "v2"
+    members = [
+        _version_member(
+            "a_source",
+            RULES,
+            "create",
+            binding="A",
+            outputs=(("shared", False), ("A_public", False)),
+        ),
+        _version_filter(
+            "v2",
+            "create",
+            inputs=("shared",) if shape.startswith("structural") else (),
+        ),
+    ]
+    if shape in {"own", "structural", "deep_own"}:
+        # B's own column of the same name, in a version above A's.
+        members.append(
+            _version_member(
+                "b_source", RULES, "v2", binding="B", outputs=(("shared", False),)
+            )
+        )
+    if shape in {"rewrite", "structural_shadowed"}:
+        # A node outside both stages owns v2's shared: as a rewrite, its
+        # incumbent is A's private column; otherwise it shadows A's.
+        members.append(
+            _version_member(
+                "adjust",
+                "synthetic.adjust@1",
+                "v2",
+                outputs=(("shared", shape == "rewrite"),),
+            )
+        )
+    if deep:
+        members.append(_version_filter("v3", "v2"))
+    members.extend(
+        [
+            _version_member(
+                "b",
+                RULES,
+                reader,
+                binding="B",
+                inputs=("shared",),
+                outputs=(("B_public", False),),
+            ),
+            _version_member(
+                "cal", "calibrate.synthetic@1", reader, inputs=("B_public",)
+            ),
+        ]
+    )
+    rows, nodes = zip(*members, strict=True)
+    return _synthetic_stage_spec(bindings, stages, list(rows)), list(nodes)
+
+
+@pytest.mark.parametrize("declared", [True, False], ids=["declared", "compiled_only"])
+@pytest.mark.parametrize(
+    ("shape", "refuses"),
+    [
+        ("own", None),
+        ("deep_own", None),
+        ("inherited", "b"),
+        ("deep_inherited", "b"),
+        ("rewrite", "adjust"),
+        ("structural", "v2"),
+        ("structural_shadowed", "v2"),
+    ],
+)
+def test_precalibration_ancestry_reads_follow_population_versions(
+    shape, refuses, declared
+):
+    """Rule 3 follows each read to its producer in the reader's version lineage.
+
+    B's own ``shared`` in a later version is not A's private column of the same
+    name. A read that resolves to A's column refuses: an inherited read (also
+    two versions up), a rewrite's incumbent and a structural node's input, which
+    comes from its base even when its own version owns a column of that name.
+    ``compiled_only`` declares just calibration, as for extension nodes, so the
+    composed pass decides alone.
+    """
+    spec, nodes = _version_case(shape)
+    if not declared:
+        spec["resources"]["transport_graph"]["nodes"][1:] = [
+            {"id": "cal", "kernel": "calibrate.synthetic@1", "population": "create"}
+        ]
+    outcome = (
+        None
+        if refuses is None
+        else (
+            ValueError,
+            f"Transport calibration ancestry: node {refuses!r} carries undeclared "
+            "pre-calibration stage output.",
+        )
+    )
+    outcomes = _synthetic_outcomes(spec, nodes, {"A": "A-ref", "B": "B-ref"})
+    assert outcomes == {
+        "declaration": outcome if declared else None,
+        "composed": outcome,
+    }
+
+
+@pytest.mark.parametrize("shape", ["inherited", "own"])
+def test_precalibration_ancestry_producer_without_a_version_counts_everywhere(shape):
+    """A declared producer with no population may be in the reader's version.
+
+    It counts beside the reader's own version's owner too (``own``): the
+    declaration alone cannot place it.
+    """
+    spec, nodes = _version_case(shape)
+    rows = {row["id"]: row for row in spec["resources"]["transport_graph"]["nodes"]}
+    del rows["a_source"]["population"]
+    message = (
+        "Transport calibration ancestry: node 'b' carries undeclared "
+        "pre-calibration stage output."
+    )
+    outcomes = _synthetic_outcomes(spec, nodes, {"A": "A-ref", "B": "B-ref"})
+    assert outcomes == {
+        "declaration": (ValueError, message),
+        "composed": (ValueError, message),
+    }
+
+
+def test_precalibration_ancestry_cyclic_versions_count_every_producer():
+    """A declared base cycle never resolves, so every producer counts."""
+    spec, _ = _version_case("inherited")
+    rows = spec["resources"]["transport_graph"]["nodes"]
+    {row["id"]: row for row in rows}["v2"]["base"] = "v3"
+    rows.append(
+        {
+            "id": "v3",
+            "kernel": "synthetic.filter@1",
+            "structural": "filter",
+            "base": "v2",
+        }
+    )
+    assert _precalibration_outcome(
+        compose_module.validate_transport_calibration_ancestry, spec
+    ) == (
+        ValueError,
+        "Transport calibration ancestry: node 'b' carries undeclared "
+        "pre-calibration stage output.",
+    )
+
+
+def test_precalibration_ancestry_unresolved_version_counts_every_producer():
+    """A declared read with no version counts every producer of its column.
+
+    The composed graph still places ``b`` in ``v2``; the declaration alone
+    cannot, so it refuses (and a composed run checks the declaration first).
+    """
+    spec, nodes = _version_case("own")
+    rows = {row["id"]: row for row in spec["resources"]["transport_graph"]["nodes"]}
+    del rows["b"]["population"]
+    message = (
+        "Transport calibration ancestry: node 'b' carries undeclared "
+        "pre-calibration stage output."
+    )
+    outcomes = _synthetic_outcomes(spec, nodes, {"A": "A-ref", "B": "B-ref"})
     assert outcomes == {
         "declaration": (ValueError, message),
         "composed": (ValueError, message),
@@ -4222,12 +4562,161 @@ def test_precalibration_ancestry_repeated_binding_id_refuses():
     ) == (ValueError, "precalibration_stages needs distinct rules binding ids.")
 
 
-def test_precalibration_ancestry_malformed_calibration_endpoint_refuses():
+@pytest.mark.parametrize("endpoint", [["cal"], None, ""])
+def test_precalibration_ancestry_malformed_calibration_endpoint_refuses(endpoint):
+    """A present endpoint names a node: null would drop a non-calibrate root."""
     spec = _shape_case()
-    spec["resources"]["transport_graph"]["endpoints"]["calibration"] = ["cal"]
+    rows = _shape_rows(spec)
+    rows["cal"]["kernel"] = "synthetic.fit@1"
+    rows["mid"]["sources"] = ["synthetic_holdout_facts"]
+    guard = compose_module.validate_transport_calibration_ancestry
+    assert _shape_outcome(guard, spec) == (
+        ValueError,
+        "Transport calibration ancestry: node 'mid' carries hold-out source.",
+    )
+    spec["resources"]["transport_graph"]["endpoints"]["calibration"] = endpoint
+    assert _shape_outcome(guard, spec) == (
+        ValueError,
+        "Transport calibration ancestry: the calibration endpoint must name a node.",
+    )
+
+
+@pytest.mark.parametrize("node", ["probe", "mid"])
+def test_precalibration_ancestry_selected_prepared_map_refuses(node):
+    """Selected resource data carrying the inventory is the inventory."""
+    spec = _shape_case()
+    spec["resources"]["probe_inventory"] = {"engine_refs": {"u": "u-ref"}}
+    _shape_rows(spec)[node].setdefault("params", {})["inventory"] = {
+        "resource": "probe_inventory",
+        "encoding": "json",
+    }
     assert _shape_outcome(
         compose_module.validate_transport_calibration_ancestry, spec
     ) == (
         ValueError,
-        "Transport calibration ancestry: the calibration endpoint must name a node.",
+        f"Transport calibration ancestry: node {node!r} carries prepared "
+        "engine_refs map.",
     )
+
+
+@pytest.fixture(scope="module")
+def precalibration_entitlement(tmp_path_factory):
+    """The entitlement fixture, with real extension rows and variant fits."""
+    from microcosm.build.transport import registry as registry_module
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(registry_module, "register_gate_kernel", lambda *args: None)
+        return make_entitlement_fixture(
+            tmp_path_factory.mktemp("precalibration-entitlement")
+        )
+
+
+def _entitlement_stage_spec(fixture, *, listed=True):
+    """The fixture's spec, listing its person main-benefit binding as a stage."""
+    spec = copy.deepcopy(fixture.spec)
+    resources = spec["resources"]
+    binding = next(
+        row
+        for row in resources["axiom_rules_bindings"]["bindings"]
+        if row["id"] == "main_benefit"
+    )
+    resources["precalibration_stages"] = {
+        "schema_version": 1,
+        "stages": [
+            {
+                "id": "stage.main",
+                "rules_binding": binding["id"],
+                "rulespec_path": binding["rulespec_path"],
+                "outputs": [
+                    {
+                        "entity": binding["entity"],
+                        "column": variable,
+                        "purpose": "calibration_measure",
+                    }
+                    for variable in binding["variables"]
+                ],
+                "citation": "Synthetic test stage.",
+            }
+        ]
+        if listed
+        else [],
+    }
+    return spec
+
+
+def _entitlement_variant_targets(spec):
+    """V1's target compiler: an extension row feeding the V1 variant fit."""
+    scenario = next(
+        row for row in spec["resources"]["scenarios"]["scenarios"] if row["id"] == "V1"
+    )
+    return next(row for row in scenario["nodes"] if row["id"] == "nz.v.V1.targets")
+
+
+def _select_holdout(row, encoding):
+    key = "references" if encoding == "json" else "references_sha256"
+    row["params"][key] = {"resource": "holdout_references", "encoding": encoding}
+    row["inputs"] = [{"entity": "person", "columns": ["receives_main"]}]
+
+
+@pytest.mark.parametrize("encoding", ["json", "sha256"])
+def test_precalibration_ancestry_extension_holdout_selection_refuses(
+    precalibration_entitlement, encoding
+):
+    """An entitlement row's selection is read from its declaration.
+
+    Its parameters are resolved before the composed graph exists, so the
+    resolved node carries no marker of the hold-out resource it selected.
+    """
+    fixture = precalibration_entitlement
+    spec = _entitlement_stage_spec(fixture)
+    compose_transport_graph(spec, fixture.config)
+    _select_holdout(_entitlement_variant_targets(spec), encoding)
+    with pytest.raises(
+        ValueError,
+        match="node 'nz.v.V1.targets' carries holdout_references selection",
+    ):
+        compose_transport_graph(spec, fixture.config)
+
+
+def test_precalibration_ancestry_extension_selection_without_stages_is_todays(
+    precalibration_entitlement,
+):
+    fixture = precalibration_entitlement
+    spec = _entitlement_stage_spec(fixture, listed=False)
+    _select_holdout(_entitlement_variant_targets(spec), "json")
+    graph = compose_transport_graph(spec, fixture.config)
+    assert _precalibration_outcome(
+        compose_module.validate_transport_calibration_ancestry,
+        spec,
+        graph=graph,
+        config=fixture.config,
+    ) == _precalibration_outcome(
+        _precalibration_reference_guard, spec, graph=graph, config=fixture.config
+    )
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        (
+            {"params": {"references": {"resource": ["holdout_references"]}}},
+            "node 'nz.v.V1.targets' has malformed params.",
+        ),
+        ({"id": "nz.targets.compile"}, "node ids must be distinct text."),
+    ],
+    ids=["malformed_params", "repeated_id"],
+)
+def test_precalibration_ancestry_malformed_extension_row_refuses(
+    precalibration_entitlement, change, message
+):
+    """A standalone check refuses an extension row it cannot read."""
+    fixture = precalibration_entitlement
+    spec = _entitlement_stage_spec(fixture)
+    graph = compose_transport_graph(spec, fixture.config)
+    _entitlement_variant_targets(spec).update(change)
+    assert _precalibration_outcome(
+        compose_module.validate_transport_calibration_ancestry,
+        spec,
+        graph=graph,
+        config=fixture.config,
+    ) == (ValueError, f"Transport calibration ancestry: {message}")
