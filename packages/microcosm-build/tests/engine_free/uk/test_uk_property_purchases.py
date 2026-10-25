@@ -53,6 +53,9 @@ def _rows() -> list[dict]:
         rows.append(_row(_HRAD, "hmrc.sdlt.hrad_property_value", band, value * 1e6))
     rows.append(_row(_HRAD, "hmrc.sdlt.hrad_transactions", "all_price_bands", 1_800.0))
     rows.append(_row(_HRAD, "hmrc.sdlt.hrad_property_value", "all_price_bands", 625e6))
+    # Gross HRAD receipts: GBP 6,000 a transaction and 4p a pound in the nil band.
+    rows.append(_row(_HRAD, "hmrc.sdlt.hrad_receipts_gross", "gbp_250k_or_less", 6e6))
+    rows.append(_row(_HRAD, "hmrc.sdlt.hrad_receipts_gross", "all_price_bands", 25e6))
     for record_set, count, value in (
         (_RES_IND, 9_000.0, 3_000e6),
         (_RES_OTHER, 1_000.0, 1_000e6),
@@ -63,6 +66,11 @@ def _rows() -> list[dict]:
         rows.append(
             _row(record_set, "hmrc.sdlt.property_value", "all_price_bands", value)
         )
+    # Other buyers' nil-band receipts, GBP 1.2m, are 200 HRAD transactions and
+    # GBP 30m at the band's gross receipts per transaction and per pound.
+    rows.append(_row(_RES_OTHER, "hmrc.sdlt.transactions", "gbp_250k_or_less", 400.0))
+    rows.append(_row(_RES_OTHER, "hmrc.sdlt.receipts", "gbp_250k_or_less", 1.2e6))
+    rows.append(_row(_RES_OTHER, "hmrc.sdlt.receipts", "all_price_bands", 5e6))
     for band, (count, value) in _NONRES_BANDS.items():
         rows.append(_row(_NONRES_IND, "hmrc.sdlt.transactions", band, count))
         rows.append(_row(_NONRES_IND, "hmrc.sdlt.property_value", band, value * 1e6))
@@ -71,16 +79,39 @@ def _rows() -> list[dict]:
     return rows
 
 
-def test_targets_allocate_hrad_by_individuals_shares_and_combine_top_bands() -> None:
+def test_targets_allocate_the_nil_rate_band_from_receipts_and_combine_top_bands() -> (
+    None
+):
     targets = pp.property_purchase_targets_from_rows(_rows())
     additional = targets.additional_residential
-    # uk-data#573: Table 6b's all-buyer HRAD times individuals' Table 8a shares.
-    assert additional.transactions == pytest.approx(1_800.0 * 9_000 / 10_000)
-    assert additional.value == pytest.approx(625e6 * 3_000 / 4_000)
+    # At or below GBP 250,000 households take Table 6b's band less the 200
+    # transactions and GBP 30m other buyers' receipts imply; above it,
+    # individuals' Table 8a shares of Table 6b (uk-data#573).
+    assert additional.transactions == pytest.approx(
+        (1_800.0 - 1_000.0) * 9_000 / 10_000 + 1_000.0 - 200.0
+    )
+    assert additional.value == pytest.approx(
+        (625e6 - 150e6) * 3_000 / 4_000 + 150e6 - 30e6
+    )
     assert additional.band_ids == pp.PROPERTY_PURCHASE_BAND_IDS
+    assert additional.band_transactions[0] == pytest.approx(800.0)
+    assert additional.band_values[0] == pytest.approx(120e6)
+    assert additional.band_transactions[1] == pytest.approx(500.0 * 0.9)
     # The five bands above GBP 2m become one: 8+4+2+2+1 transactions.
-    assert additional.band_transactions[-1] == 17.0
-    assert additional.band_values[-1] == pytest.approx(72e6)
+    assert additional.band_transactions[-1] == pytest.approx(17.0 * 0.9)
+    assert additional.band_values[-1] == pytest.approx(72e6 * 0.75)
+    assert targets.derivation["nil_band_other_buyers_hrad_transactions"] == (
+        pytest.approx(200.0)
+    )
+    assert targets.derivation["nil_band_other_buyers_hrad_value"] == (
+        pytest.approx(30e6)
+    )
+    assert targets.derivation["nil_band_other_buyers_hrad_transaction_share"] == (
+        pytest.approx(0.5)
+    )
+    assert targets.derivation["nil_band_households_hrad_transaction_share"] == (
+        pytest.approx(0.8)
+    )
     assert additional.minimum_price == pp.HMRC_SDLT_MINIMUM_CONSIDERATION
     non_residential = targets.non_residential
     assert non_residential.transactions == 400.0
@@ -90,6 +121,20 @@ def test_targets_allocate_hrad_by_individuals_shares_and_combine_top_bands() -> 
     )
     assert targets.derivation["residential_individuals_transaction_share"] == 0.9
     assert targets.derivation["residential_individuals_value_share"] == 0.75
+
+
+def test_targets_refuse_nil_band_receipts_beyond_other_buyers_transactions() -> None:
+    rows = [
+        _row(_RES_OTHER, "hmrc.sdlt.receipts", "gbp_250k_or_less", 3e6)
+        if row["layout"]["record_set_id"] == _RES_OTHER
+        and row["concept"] == "hmrc.sdlt.receipts"
+        and row["layout"]["groupby_value_id"] == "gbp_250k_or_less"
+        else row
+        for row in _rows()
+    ]
+    # GBP 3m implies 500 HRAD transactions, more than other buyers' 400.
+    with pytest.raises(ValueError, match="imply HRAD outside"):
+        pp.property_purchase_targets_from_rows(rows)
 
 
 def test_targets_round_trip_through_the_payload() -> None:
@@ -479,12 +524,25 @@ def test_the_stage_fits_one_kind_at_its_stock_beside_one_it_scales() -> None:
     )
 
 
-def test_the_packaged_targets_reproduce_uk_data_573() -> None:
-    # The vendored HMRC Stamp Tax rows give uk-data#573's household figures.
+def test_the_packaged_targets_allocate_the_nil_rate_band_from_receipts() -> None:
+    # The vendored HMRC Stamp Tax rows (2024-25, corrected): Table 6b's
+    # 211,700 HRAD transactions and GBP 77.97bn, 113,500 and GBP 16.635bn of
+    # them at or below GBP 250,000 with GBP 625m gross receipts; Table 8a's
+    # individuals' shares 925,100 / 1,049,600 and GBP 335.515bn / 380.205bn; and
+    # other buyers' GBP 265m of receipts in that band.
     targets = pp.load_property_purchase_targets()
     additional = targets.additional_residential
-    assert additional.transactions == pytest.approx(186_588.8624, rel=1e-9)
-    assert additional.value == pytest.approx(68_805_261_766.68, rel=1e-9)
+    other_count = 265e6 * 113_500 / 625e6
+    other_value = 265e6 * 16.635e9 / 625e6
+    assert additional.transactions == pytest.approx(
+        (211_700 - 113_500) * 925_100 / 1_049_600 + 113_500 - other_count, rel=1e-9
+    )
+    assert additional.value == pytest.approx(
+        (77.97e9 - 16.635e9) * 335.515e9 / 380.205e9 + 16.635e9 - other_value,
+        rel=1e-9,
+    )
+    # Both stay above uk-data#573's household lower bounds.
+    assert additional.transactions > 87_200 and additional.value > 33.28e9
     non_residential = targets.non_residential
     assert non_residential.transactions == pytest.approx(25_000.0)
     assert non_residential.value == pytest.approx(7.64e9)

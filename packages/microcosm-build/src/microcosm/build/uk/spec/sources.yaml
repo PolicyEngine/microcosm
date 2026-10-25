@@ -2968,7 +2968,7 @@ stages:
         event_salt: non_residential_property_purchased
         price_salt: non_residential_property_purchased_price
         seed: 0
-    additional_residential_targets: Table 6b HRAD transactions and value, 2024-25, times individuals' shares of Table 8a residential transactions and value; Table 6b bands with the five above GBP 2m combined
+    additional_residential_targets: 'Table 6b HRAD transactions and value, 2024-25: at or below GBP 250,000, the band less other buyers'' HRAD, their Table 8a receipts over Table 6b''s gross HRAD receipts per transaction and per pound; above it, times individuals'' shares of Table 8a residential transactions and value; Table 6b bands with the five above GBP 2m combined, at the households'' counts and values'
     non_residential_targets: Table 8b individuals' transactions, value and bands, 2024-25
   - kind: record_mass_conservation_receipt
     entity: household
