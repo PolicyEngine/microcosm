@@ -64,6 +64,7 @@ __all__ = [
     "CENTAX_EMPLOYEE_MAIN_SOURCE",
     "CENTAX_EMPLOYEE_SOURCE_INPUTS",
     "CENTAX_FACTS_RESOURCE",
+    "CENTAX_FILTER_CONCEPTS",
     "CENTAX_PARENT_ENGINE_INPUTS",
     "CENTAX_PARENT_MEASURES",
     "CENTAX_PARENT_OF_ELIGIBLE_3_4",
@@ -76,6 +77,7 @@ __all__ = [
     "UKCenTaxChildcareParentFacts",
     "centax_ani_uprating",
     "centax_cell_filters",
+    "centax_cell_measurement_filters",
     "centax_cell_ids",
     "employment_main_income_source",
     "load_uk_centax_childcare_parent_facts",
@@ -295,6 +297,33 @@ def centax_cell_filters(cell_id: str, edges: Sequence[int]) -> list[dict[str, An
         filters.append(dict(_SPLIT_FILTERS[split]))
     elif cell_id not in {band for band, _, _ in CENTAX_ANI_BANDS_2022}:
         raise KeyError(cell_id)
+    return filters
+
+
+#: The contract's measurement concept for each variable a cell filters on.
+CENTAX_FILTER_CONCEPTS: Mapping[str, str] = MappingProxyType(
+    {
+        CENTAX_PARENT_OF_ELIGIBLE_3_4: (
+            "uk.childcare.centax_parent_of_eligible_3_4_year_old"
+        ),
+        CENTAX_ANI_MEASURE: "uk.income.adjusted_net.amount",
+        CENTAX_EMPLOYEE_MAIN_SOURCE: "uk.income.employment.main_source",
+        "gender": "uk.demographics.gender",
+        "region": "uk.geography.region",
+    }
+)
+
+
+def centax_cell_measurement_filters(
+    cell_id: str, edges: Sequence[int]
+) -> list[dict[str, Any]]:
+    """The cell's filters in the contract's measurement (concept) vocabulary."""
+
+    filters = []
+    for predicate in centax_cell_filters(cell_id, edges):
+        concept = dict(predicate)
+        concept = {"concept": CENTAX_FILTER_CONCEPTS[concept.pop("variable")], **concept}
+        filters.append(concept)
     return filters
 
 
