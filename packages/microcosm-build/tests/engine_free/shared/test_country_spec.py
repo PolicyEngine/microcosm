@@ -1023,6 +1023,7 @@ class TestUKCountryPackage:
             "uprating_holds.json",
             "ons_spree_tenure_dwellings.json",
             "desnz_local_energy_facts.json",
+            "desnz_constituency_energy_facts.json",
             "local_small_cell_rule.json",
             "hmrc_spi_table_3_11_uk_rows.json",
         )
@@ -1181,6 +1182,7 @@ class TestExistingPackagesGeneralize:
             "uprating_holds.json",
             "ons_spree_tenure_dwellings.json",
             "desnz_local_energy_facts.json",
+            "desnz_constituency_energy_facts.json",
             "local_small_cell_rule.json",
             "hmrc_spi_table_3_11_uk_rows.json",
         )
