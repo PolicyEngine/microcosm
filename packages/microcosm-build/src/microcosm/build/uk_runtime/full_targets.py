@@ -22,10 +22,11 @@ from microcosm.build.uk_runtime.chronicle_feed import (
     load_uk_chronicle_feed,
     require_committed_uk_chronicle_feed_pin,
 )
-from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
-from microcosm.build.uk_runtime.high_value_homes import (
-    load_uk_high_value_home_stock_facts,
+from microcosm.build.uk_runtime.derived_facts import (
+    uk_derived_fact_provenance,
+    uk_derived_fact_rows,
 )
+from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
 from microcosm.build.uk_runtime.ledger_targets import (
     _uk_contract_targets,
     assert_uk_local_deferrals_in_force,
@@ -216,8 +217,9 @@ def load_uk_full_target_inputs(
     # microcosm#1240: the high-value homes family binds Microcosm-derived facts
     # (HM Land Registry stock counts) beside the Chronicle feed at local grain,
     # and its region rows (microcosm#1301) at national grain.
-    derived = load_uk_high_value_home_stock_facts()
-    facts = (*artifact.facts, *derived.rows)
+    # CenTax's parent cells (microcosm#1399) bind the second derived resource
+    # on the national line.
+    facts = (*artifact.facts, *uk_derived_fact_rows())
     for period in national_periods:
         compilation = compile_uk_target_registry(facts, target_period=period)
         if compilation.unsupported:
@@ -316,14 +318,7 @@ def load_uk_full_target_inputs(
         "national_source_pin": pin.to_dict(),
         "local_source_pin": local_pin,
         "ledger_provenance": _ledger_provenance(artifact),
-        "derived_fact_provenance": {
-            "high_value_home_stock_facts": {
-                "rows": len(derived.rows),
-                "rows_sha256": derived.rows_sha256,
-                "inputs_sha256": derived.inputs_sha256,
-                "generator": dict(derived.generator),
-            }
-        },
+        "derived_fact_provenance": uk_derived_fact_provenance(),
         "register_completeness": {
             "compiled_registry_version": compiled_version,
             "reconciled_registry_version": band_edges.version,
@@ -400,10 +395,10 @@ def load_uk_national_target_inputs(
     # on their Microcosm-derived facts included (microcosm#1301); those rows
     # bind on the local line only, so the national surface drops them before
     # reconciliation, the exclusions and the frozen-register check, and its
-    # registry is the one it was without them.
-    derived = load_uk_high_value_home_stock_facts()
+    # registry is the one it was without them. CenTax's parent cells
+    # (microcosm#1399) compile on the second derived resource and stay.
     compilation = compile_uk_target_registry(
-        chain(artifact.facts, derived.rows), target_period=year
+        chain(artifact.facts, uk_derived_fact_rows()), target_period=year
     )
     if compilation.unsupported:
         raise ValueError(
@@ -462,14 +457,7 @@ def load_uk_national_target_inputs(
         "chronicle_feed_pin": pin.to_dict(),
         "chronicle_provenance": artifact.provenance(),
         "ledger_provenance": _ledger_provenance(artifact),
-        "derived_fact_provenance": {
-            "high_value_home_stock_facts": {
-                "rows": len(derived.rows),
-                "rows_sha256": derived.rows_sha256,
-                "inputs_sha256": derived.inputs_sha256,
-                "generator": dict(derived.generator),
-            }
-        },
+        "derived_fact_provenance": uk_derived_fact_provenance(),
         "register_completeness": {
             "compiled_registry_version": line_registry.version,
             "reconciled_registry_version": reconciled.version,

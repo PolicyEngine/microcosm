@@ -16,6 +16,15 @@ import pandas as pd
 from microcosm.build.uk_runtime.atomic_area_support import (
     without_uk_native_alias_columns,
 )
+from microcosm.build.uk_runtime.centax_childcare_parents import (
+    CENTAX_EMPLOYEE_MAIN_SOURCE,
+    CENTAX_EMPLOYEE_SOURCE_INPUTS,
+    CENTAX_PARENT_ENGINE_INPUTS,
+    CENTAX_PARENT_MEASURES,
+    CENTAX_PARENT_OF_ELIGIBLE_3_4,
+    employment_main_income_source,
+    parent_of_eligible_3_4_year_old,
+)
 from microcosm.build.uk_runtime.cgt_calibration import UK_CGT_DATED_MEASURE
 from microcosm.build.uk_runtime.dfe_spring_term import (
     DFE_SPRING_TERM_ENGINE_INPUTS,
@@ -284,6 +293,8 @@ UK_HOUSEHOLD_ENERGY_MEASURES: Mapping[str, str] = {
 #: tax year: the 12 months before the interview, applied to the engine's
 #: amounts at the calibration year (the stage module says how). Poverty,
 #: benefits and the engine's published tax keep reading current income.
+#: CenTax's tabulations of parents' adjusted net income come from the same
+#: HMRC data, so they band on the year's ANI too.
 UK_ANNUAL_INCOME_MEASURES: Mapping[str, str] = {
     "employment_income_annual": "employment_income",
     "self_employment_income_after_loss_relief_annual": (
@@ -294,6 +305,7 @@ UK_ANNUAL_INCOME_MEASURES: Mapping[str, str] = {
     "total_income_after_loss_relief_annual": UK_TOTAL_INCOME_AFTER_LOSS_RELIEF,
     "income_tax_annual": "income_tax",
     "tax_band_annual": "tax_band",
+    "adjusted_net_income_annual": "adjusted_net_income",
 }
 #: The inputs the annual simulation replaces at the measurement year: the
 #: engine's current amount times its annual share, plus its other spells,
@@ -482,6 +494,30 @@ def compute_uk_measure_input(
             year,
         )
         return status[variable], f"dfe_spring_term:{variable}"
+
+    if variable == CENTAX_PARENT_OF_ELIGIBLE_3_4:
+        if entity != "person":
+            raise KeyError(f"{variable} is person-only: {entity}")
+        inputs = {
+            name: compute_uk_measure_input(frame, simulation, "person", name, year)[0]
+            for name in CENTAX_PARENT_ENGINE_INPUTS
+        }
+        return (
+            parent_of_eligible_3_4_year_old(
+                birth_year=inputs["birth_year"],
+                country=inputs["country"],
+                term_share_before_school=inputs["early_years_term_share_before_school"],
+                dependent_child=inputs["is_hbai_dependent_child"],
+                benunit_id=frame.table("person")[_ENTITY_LINK["benunit"]].to_numpy(),
+                year=year,
+            ),
+            f"engine_terms_and_benunit_roles:{variable}",
+        )
+    if variable == CENTAX_EMPLOYEE_MAIN_SOURCE:
+        raise KeyError(
+            f"{variable} compares the year's income sources; resolve it through "
+            "UKMeasureResolver, which computes the annual measures."
+        )
 
     if variable in _LOSS_RELIEF_MEASURES:
         if entity != "person":
@@ -971,6 +1007,14 @@ class UKMeasureResolver:
                 "DfE spring-term measures must not be persisted as source inputs: "
                 f"{persisted_spring_term}"
             )
+        persisted_centax = sorted(
+            set(CENTAX_PARENT_MEASURES) & set(map(str, frame.table("person")))
+        )
+        if persisted_centax:
+            raise ValueError(
+                "CenTax parent measures must not be persisted as source inputs: "
+                f"{persisted_centax}"
+            )
         self.simulation = factory(dataset=str(source_path))
         validate_uc_claimant_input(self.simulation, frame.table("person"), self.year)
         self.contract_targets = _uk_contract_targets()
@@ -1084,6 +1128,14 @@ class UKMeasureResolver:
             return entity == "person" and all(
                 self.knows("person", name) for name in DFE_SPRING_TERM_ENGINE_INPUTS
             )
+        if variable == CENTAX_PARENT_OF_ELIGIBLE_3_4:
+            return entity == "person" and all(
+                self.knows("person", name) for name in CENTAX_PARENT_ENGINE_INPUTS
+            )
+        if variable == CENTAX_EMPLOYEE_MAIN_SOURCE:
+            return entity == "person" and all(
+                self.knows("person", name) for name in CENTAX_EMPLOYEE_SOURCE_INPUTS
+            )
         cgt_measure = _cgt_model_measure(variable, self.year)
         if cgt_measure is not None:
             return entity == "person" and self.knows(entity, cgt_measure[0])
@@ -1123,7 +1175,11 @@ class UKMeasureResolver:
             return "household"
         if _cgt_model_measure(variable, self.year) is not None:
             return "person"
-        if variable in _LOSS_RELIEF_MEASURES or variable in DFE_SPRING_TERM_MEASURES:
+        if (
+            variable in _LOSS_RELIEF_MEASURES
+            or variable in DFE_SPRING_TERM_MEASURES
+            or variable in CENTAX_PARENT_MEASURES
+        ):
             return "person"
         if variable in UK_HOUSEHOLD_ENERGY_MEASURES:
             return "household"
@@ -1144,6 +1200,8 @@ class UKMeasureResolver:
     def compute(self, entity: str, variable: str) -> tuple[np.ndarray, str]:
         if variable in UK_ANNUAL_INCOME_MEASURES:
             return self._annual_income_measure(entity, variable)
+        if variable == CENTAX_EMPLOYEE_MAIN_SOURCE:
+            return self._employment_main_income_source(entity)
         if variable in UK_HOUSEHOLD_ENERGY_MEASURES:
             return self._household_energy(entity, variable)
         result = compute_uk_measure_input(
@@ -1400,6 +1458,20 @@ class UKMeasureResolver:
                 self.frame, simulation, entity, current, self.year
             )
         return values, f"annual_income_simulation:{route}"
+
+    def _employment_main_income_source(self, entity: str) -> tuple[np.ndarray, str]:
+        """One where employment is the largest of the year's income sources."""
+
+        if entity != "person":
+            raise KeyError(f"{CENTAX_EMPLOYEE_MAIN_SOURCE} is person-only: {entity}")
+        sources = {
+            name: self.compute("person", name)[0]
+            for name in CENTAX_EMPLOYEE_SOURCE_INPUTS
+        }
+        return (
+            employment_main_income_source(sources),
+            "annual_income_sources:" + ",".join(CENTAX_EMPLOYEE_SOURCE_INPUTS),
+        )
 
     def _household_energy(self, entity: str, variable: str) -> tuple[np.ndarray, str]:
         """A household's domestic energy measure from its stored spend."""

@@ -11,9 +11,7 @@ from pathlib import Path
 import numpy as np
 
 from microcosm.build.gates import ledger_compile_parity_signed_differences
-from microcosm.build.uk_runtime.high_value_homes import (
-    load_uk_high_value_home_stock_facts,
-)
+from microcosm.build.uk_runtime.derived_facts import uk_derived_fact_rows
 from microcosm.build.uk_runtime.ledger_targets import (
     LOCAL_REGISTRY_PARITY_FIXTURE_RESOURCE,
     align_uk_local_registry_parity_fixture,
@@ -759,6 +757,21 @@ _HIGH_VALUE_HOMES_REGION_LEDGER_ONLY_RATIONALE = (
     "(calibration_lines; microcosm#1301)."
 )
 
+#: microcosm#1399: CenTax's parent cells bind Microcosm-derived counts, each a
+#: share CenTax published from HMRC's tabulations times the baseline build's
+#: own parents, so the incumbent national register has no row to compare.
+_CENTAX_PARENTS_PREFIX = "microcosm.centax_childcare_parents."
+_CENTAX_PARENTS_LEDGER_ONLY_RATIONALE = (
+    "ledger_only by construction: the row is a Microcosm-derived count of "
+    "parents of age-eligible 3- and 4-year-olds in England in one adjusted net "
+    "income cell: CenTax's share of HMRC's 2021-22 tabulation (Advani, Flew, "
+    "Pepin-Hall and Summers 2026, Figures 3.1, 3.3, 3.6 and 3.7) times the "
+    "baseline build's own parents (uk/centax_childcare_parent_facts.json), "
+    "compiled beside the Chronicle feed. The incumbent registry carries no "
+    "such row, so the difference is the derived target itself. The rows bind "
+    "on the national line only (calibration_lines; microcosm#1399)."
+)
+
 
 def _add_signed_rationale_notes(
     report: dict[str, object],
@@ -781,6 +794,10 @@ def _add_signed_rationale_notes(
             and row.get("kind") == "ledger_only"
         ):
             row["reason"] = _HIGH_VALUE_HOMES_REGION_LEDGER_ONLY_RATIONALE
+        elif name.startswith(_CENTAX_PARENTS_PREFIX) and row.get("kind") == (
+            "ledger_only"
+        ):
+            row["reason"] = _CENTAX_PARENTS_LEDGER_ONLY_RATIONALE
         elif name in _UC_PAID_WINDOW_NAMES:
             inherited_change = (
                 "PR #891 contract with #892 source-window averaging"
@@ -1034,15 +1051,16 @@ def _add_local_signed_rationale_notes(report: dict[str, object]) -> None:
 
 def _compile_for_receipt(spec: ParityReceiptSpec, facts: list[dict]):
     if spec.surface == "national":
-        # The high-value homes region rows (microcosm#1301) select the
-        # derived facts too; the national compile carries every reference.
+        # The high-value homes region rows (microcosm#1301) and CenTax's parent
+        # cells (microcosm#1399) select the derived facts too; the national
+        # compile carries every reference.
         return compile_uk_target_registry(
-            (*facts, *load_uk_high_value_home_stock_facts().rows),
+            (*facts, *uk_derived_fact_rows()),
             target_period=spec.target_period,
         )
     if spec.surface == "local":
         return compile_uk_local_target_registry(
-            (*facts, *load_uk_high_value_home_stock_facts().rows),
+            (*facts, *uk_derived_fact_rows()),
             target_period=spec.target_period,
             crosswalk=_load_crosswalk(),
         )

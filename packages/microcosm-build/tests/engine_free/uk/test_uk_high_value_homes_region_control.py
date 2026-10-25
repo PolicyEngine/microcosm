@@ -33,6 +33,7 @@ from microcosm.build.target_reference_authoring import (
     author_target_references,
 )
 from microcosm.build.uk_runtime import ledger_targets
+from microcosm.build.uk_runtime.derived_facts import uk_derived_fact_rows
 from microcosm.build.uk_runtime.high_value_homes import (
     load_uk_high_value_home_stock_facts,
     uk_high_value_home_thresholds,
@@ -136,10 +137,13 @@ def test_a_malformed_calibration_lines_declaration_is_refused(declared, message)
 
 
 def test_only_the_region_rows_narrow_their_lines_in_the_committed_contract():
+    # CenTax's England parent cells (microcosm#1399) are the one other family
+    # that narrows its lines, to the national line.
     narrowed = {
         target_id: uk_contract_target_calibration_lines(target)
         for target_id, target in _targets().items()
         if "calibration_lines" in target
+        and not target_id.startswith("microcosm.centax_childcare_parents.")
     }
     assert narrowed == {target_id: {"local"} for target_id in REGION_TARGET_IDS}
 
@@ -445,8 +449,7 @@ def test_the_national_parity_compile_merges_the_derived_facts(monkeypatch):
     monkeypatch.setattr(parity_tool, "compile_uk_target_registry", compile_national)
     national = next(spec for spec in parity_tool.RECEIPTS if spec.surface == "national")
     parity_tool._compile_for_receipt(national, [{"feed": True}])
-    derived = load_uk_high_value_home_stock_facts().rows
-    assert seen["facts"] == ({"feed": True}, *derived)
+    assert seen["facts"] == ({"feed": True}, *uk_derived_fact_rows())
 
 
 def test_region_ledger_only_rows_carry_the_derived_stock_rationale():

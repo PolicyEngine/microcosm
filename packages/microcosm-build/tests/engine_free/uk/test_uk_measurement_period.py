@@ -28,6 +28,7 @@ from microcosm.build.target_materialization import (
     resolve_target_measures,
 )
 from microcosm.build.uk_runtime import measure_simulation
+from microcosm.build.uk_runtime.centax_childcare_parents import CENTAX_PARENT_MEASURES
 from microcosm.build.uk_runtime.hmrc_income import (
     LOSS_RELIEF_COLUMN,
     self_employment_income_after_loss_relief,
@@ -425,6 +426,11 @@ REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
         # resolver computes each on its annual simulation at the calibration
         # period.
         *measure_simulation.UK_ANNUAL_INCOME_MEASURES,
+        # The CenTax parent measures: the frame may not store them (the
+        # resolver refuses them as inputs). The resolver computes the parent
+        # flag from the engine's term shares at the calibration period and the
+        # main income source from the annual measures.
+        *CENTAX_PARENT_MEASURES,
     }
 )
 

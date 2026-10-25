@@ -233,6 +233,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "centax_childcare_parent_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "high_value_home_value_knots.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
