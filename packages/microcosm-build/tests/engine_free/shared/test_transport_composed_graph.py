@@ -2788,14 +2788,22 @@ def test_cli_main_refuses_unavailable_rules_engine(
 
 _PRECALIBRATION_PROPERTY_DOMAINS = {
     "mixed": {
-        "kinds": ("encode", "unit", "person", "selector", "holdout", "filter"),
+        "kinds": ("encode", "unit", "person", "selector", "holdout", "filter", "plain"),
         "holdout_sources": True,
     },
     # Without hold-out data most graphs pass the other checks, so the
     # producer attribution of rule 3 is exercised in every run.
     "rules_only": {
-        "kinds": ("person", "selector", "filter"),
+        "kinds": ("person", "selector", "filter", "plain"),
         "holdout_sources": False,
+    },
+    # Population versions with shared names: a column a stage leaves
+    # undeclared is often owned again in another version, read there or
+    # rewritten, so version attribution decides most outcomes.
+    "versions": {
+        "kinds": ("person", "filter", "plain"),
+        "holdout_sources": False,
+        "eager": True,
     },
 }
 
@@ -2819,7 +2827,8 @@ def _precalibration_edges(draw, nodes, version, visible):
                 for column in earlier["outputs"]
                 if visible(version, column) == predecessor
             ]
-            columns = columns if edge == 3 else columns[:1]
+            if columns and edge == 2:
+                columns = [draw(st.sampled_from(columns))]
             if columns:
                 dependencies.append(predecessor)
             reads.extend((predecessor, column) for column in columns)
@@ -2827,17 +2836,23 @@ def _precalibration_edges(draw, nodes, version, visible):
 
 
 @st.composite
-def _precalibration_ancestry_dags(draw, kinds, holdout_sources):
+def _precalibration_ancestry_dags(draw, kinds, holdout_sources, eager=False):
     """Small DAGs with independent binding declarations and column edges.
 
     A new binding may also declare another binding's variable name, which only
     that other binding's node produces; selector nodes add a derived column
     that is not a binding variable; any binding node may carry hold-out data.
-    A filter node opens a population version on an earlier one. A binding node
-    may own a ``shared`` column that a node in another version also owns, and
-    each read names the producer it resolves to in the reader's version.
+    A filter node opens a population version on an earlier one and may read
+    columns from its base. A binding or plain node may own a ``shared`` column
+    that a node in another version also owns, and a person node in a filter
+    version may rewrite a person column it sees from below. Each read and
+    rewrite names the producer it resolves to: in the reader's version, in a
+    filter's base, or below a rewrite's version.
     """
-    kinds = draw(st.lists(st.sampled_from(kinds), min_size=1, max_size=7))
+    kinds = draw(
+        st.lists(st.sampled_from(kinds), min_size=1, max_size=9 if eager else 7)
+    )
+    likely = st.sampled_from((True, True, True, False)) if eager else st.booleans()
     nodes = []
     bindings = {}
     # Version None is CREATE; a filter's index names its version. A version a
@@ -2845,6 +2860,7 @@ def _precalibration_ancestry_dags(draw, kinds, holdout_sources):
     bases = {None: None}
     closed = set()
     owned = {}
+    entities = {}
     # Versions a read resolved through: a later owner there would re-route it.
     frozen = set()
 
@@ -2863,9 +2879,30 @@ def _precalibration_ancestry_dags(draw, kinds, holdout_sources):
     def member_version():
         return draw(st.sampled_from(sorted(set(bases) - closed, key=str)))
 
+    def seen(version):
+        return sorted(
+            {column for _, column in owned if visible(version, column) is not None}
+        )
+
     for index, kind in enumerate(kinds):
         if kind == "filter":
             base = draw(st.sampled_from(sorted(bases, key=str)))
+            # A structural node reads its inputs from its base.
+            columns = seen(base)
+            chosen = (
+                draw(
+                    st.lists(
+                        st.sampled_from(columns),
+                        unique=True,
+                        min_size=1 if eager else 0,
+                        max_size=2,
+                    )
+                )
+                if columns
+                else []
+            )
+            for column in chosen:
+                freeze(base, column)
             bases[index] = base
             closed.add(base)
             nodes.append(
@@ -2876,7 +2913,8 @@ def _precalibration_ancestry_dags(draw, kinds, holdout_sources):
                     "version": None,
                     "base": base,
                     "outputs": [],
-                    "reads": [],
+                    "reads": [(visible(base, column), column) for column in chosen],
+                    "rewrites": [],
                     # A version depends on its base and every member of it.
                     "dependencies": [
                         *([] if base is None else [base]),
@@ -2922,11 +2960,42 @@ def _precalibration_ancestry_dags(draw, kinds, holdout_sources):
         outputs = [f"value_{index}"]
         if binding is not None:
             outputs.append(f"private_{index}")
-            # A node may not own a column it reads, one its version owns, or
-            # one an earlier read in its version resolved below it.
-            common = f"shared_{entity}"
-            if (version, common) not in owned.keys() | frozen and draw(st.booleans()):
-                outputs.append(common)
+        # A node may not own a column it reads, one its version owns, or one an
+        # earlier read in its version resolved below it.
+        taken = owned.keys() | frozen
+        common = f"shared_{entity}"
+        if (
+            (binding is not None or kind == "plain")
+            and (version, common) not in taken
+            and draw(likely)
+        ):
+            outputs.append(common)
+        rewrites = []
+        if version is not None and entity == "person":
+            # The incumbent comes from below the version; CREATE has none. A
+            # rewritten column joins the node's binding variables, which a
+            # derived output may never be.
+            columns = [
+                column
+                for column in seen(bases[version])
+                if entities[column] == "person"
+                and not column.startswith("derived_")
+                and (version, column) not in taken
+                and column not in outputs
+                and column not in {read for _, read in reads}
+            ]
+            if columns and draw(likely):
+                for column in draw(
+                    st.lists(
+                        st.sampled_from(columns),
+                        unique=True,
+                        min_size=1,
+                        max_size=2 if eager else 1,
+                    )
+                ):
+                    rewrites.append((visible(bases[version], column), column))
+                    outputs.append(column)
+        if binding is not None:
             bindings[binding]["variables"].extend(
                 column
                 for column in outputs
@@ -2937,6 +3006,7 @@ def _precalibration_ancestry_dags(draw, kinds, holdout_sources):
             bindings[binding]["derived"].append(f"derived_{index}")
         for column in outputs:
             owned[version, column] = index
+            entities.setdefault(column, entity)
         nodes.append(
             {
                 "kind": kind,
@@ -2945,6 +3015,7 @@ def _precalibration_ancestry_dags(draw, kinds, holdout_sources):
                 "version": version,
                 "outputs": outputs,
                 "reads": reads,
+                "rewrites": rewrites,
                 "dependencies": [
                     *([] if version is None else [version]),
                     *dependencies,
@@ -2958,7 +3029,7 @@ def _precalibration_ancestry_dags(draw, kinds, holdout_sources):
         )
     declared = {}
     for binding, row in bindings.items():
-        if draw(st.booleans()):
+        if draw(likely):
             # Derived columns alone are a complete declaration.
             declared[binding] = draw(
                 st.sets(st.sampled_from(row["variables"] + row["derived"]), min_size=1)
@@ -2975,6 +3046,7 @@ def _precalibration_ancestry_dags(draw, kinds, holdout_sources):
             "version": version,
             "outputs": [],
             "reads": reads,
+            "rewrites": [],
             "dependencies": [*([] if version is None else [version]), *dependencies],
             "artifacts": artifacts,
             "holdout_selection": False,
@@ -3034,7 +3106,8 @@ def _precalibration_reference_accepts(model):
                 for consumer in consumers
             ):
                 return False
-        for producer, column in node["reads"]:
+        # A rewrite receives its incumbent, so it is a read too.
+        for producer, column in node["reads"] + node["rewrites"]:
             source_binding = nodes[producer]["binding"]
             if (
                 source_binding in declared
@@ -3078,6 +3151,9 @@ def _precalibration_synthetic_graph(model):
 
     for index, item in enumerate(nodes):
         name = "p1.calibrate" if item["kind"] == "calibrate" else f"p1.node_{index}"
+        inputs = {}
+        for producer, column in item["reads"]:
+            inputs.setdefault(nodes[producer]["entity"], []).append(column)
         if item["kind"] == "filter":
             base = version_id(item["base"])
             graph_nodes.append(
@@ -3086,6 +3162,10 @@ def _precalibration_synthetic_graph(model):
                     "synthetic.filter@1",
                     structural=StructuralDelta.FILTER,
                     base=base,
+                    inputs=tuple(
+                        Slice(entity, tuple(columns))
+                        for entity, columns in inputs.items()
+                    ),
                 )
             )
             rows.append(
@@ -3094,6 +3174,10 @@ def _precalibration_synthetic_graph(model):
                     "kernel": "synthetic.filter@1",
                     "structural": "filter",
                     "base": base,
+                    "inputs": [
+                        {"entity": entity, "columns": columns}
+                        for entity, columns in inputs.items()
+                    ],
                 }
             )
             continue
@@ -3103,11 +3187,10 @@ def _precalibration_synthetic_graph(model):
             "person": RULES,
             "selector": "simulate.solve_zero@1",
             "holdout": "synthetic.holdout@1",
+            "plain": "synthetic.plain@1",
             "calibrate": "calibrate.synthetic@1",
         }[item["kind"]]
-        inputs = {}
-        for producer, column in item["reads"]:
-            inputs.setdefault(nodes[producer]["entity"], []).append(column)
+        rewritten = {column for _, column in item["rewrites"]}
         binding = item["binding"]
         params = {}
         prepared_params = {}
@@ -3137,7 +3220,9 @@ def _precalibration_synthetic_graph(model):
                     Slice(entity, tuple(columns)) for entity, columns in inputs.items()
                 ),
                 outputs=tuple(
-                    Owned(item["entity"], column, "float64")
+                    Owned(
+                        item["entity"], column, "float64", rewrite=column in rewritten
+                    )
                     for column in item["outputs"]
                 ),
                 params=prepared_params,
@@ -3155,7 +3240,11 @@ def _precalibration_synthetic_graph(model):
                 for entity, columns in inputs.items()
             ],
             "outputs": [
-                {"entity": item["entity"], "column": column}
+                {
+                    "entity": item["entity"],
+                    "column": column,
+                    **({"rewrite": True} if column in rewritten else {}),
+                }
                 for column in item["outputs"]
             ],
             "params": params,
