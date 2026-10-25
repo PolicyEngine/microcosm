@@ -39,6 +39,12 @@ Evidence for microcosm#1359, behind `experiments/1359-excise-quantities-receipts
   Two results are left for review:
   - carrying rises with income, so the betting and gaming base moves towards the top decile;
   - outside London, the regional pattern follows GSGB only weakly.
+- **The union and theta** (`scripts/union_theta_sensitivity.py`, `outputs/union_theta_sensitivity.json`). Vahid's round 4 asked how much the keys rest on two choices: activities independent within their population, and theta. GSGB's own tables check the first, by age band:
+  - B.13, the number of activities each four-week gambler took part in, rules out independence among players. 45% of them took part in one activity, against 26% under independence.
+  - A model in which each adult's activities share a gamma-distributed intensity comes within 2.5 points of B.13's one-activity share in every age band. It moves neither key's union by more than 9% in any age band.
+  - Where B.9 prints a union beside its parts, independence gets the two kinds of lottery draw right (36.7% against 36.5% of adults). It overstates one product from two sellers (scratchcards, online instant win games) by 13 to 15%.
+
+  On the frame's adults at prior weights, the share of households carrying each key is then computed at other thetas, with the model's unions, and at the bounds the published rows allow. Theta matters more than the union: from theta 0 to 1, betting and gaming runs from 28.5% to 41.2% of households (29.8% at the fitted 0.08), and the Lottery from 48.2% to 63.8% (62.7% at 0.9). The model's unions move neither key by more than 0.1 points.
 - **The re-pin to `272c987`** (`scripts/repin_272c987.sh`, with `scripts/quiet_footprint.sh`). The same steps as for `200bf6d`, on cuts of the artifact built from PolicyEngine/chronicle#391's head, whose tree the merge commit keeps. Each heavy step waits until no other process holds a 3 GB memory footprint (resident plus compressed and swapped), since `ps`'s resident size misses a swapped-out process.
 
 ## What is not here
@@ -73,4 +79,8 @@ python scripts/theta_calibration.py <lcfs 2024-25 tab directory> outputs/theta_c
 
 ```bash
 python scripts/stage_run_gsgb.py <tree> <spine.h5> <gsgb rows jsonl> outputs/stage_run_gsgb.json
+```
+
+```bash
+python scripts/union_theta_sensitivity.py <gsgb rows jsonl> <spine.h5> outputs/union_theta_sensitivity.json
 ```
