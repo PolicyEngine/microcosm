@@ -389,10 +389,9 @@ def participation_rates(
                 regular = cell("population", REGULAR, population, sex, band)
                 annual = cell("population", OCCASIONAL, population, sex, band)
                 rates[key][REGULAR][(sex, band)] = regular * union
-                # The cell's own twelve-month to four-week ratio.
-                rates[key][OCCASIONAL][(sex, band)] = (
-                    min(regular * union * annual / regular, 1.0) if regular > 0 else 0.0
-                )
+                # The four-week share scaled by the cell's own twelve-month to
+                # four-week ratio, which is the union of the twelve-month rate.
+                rates[key][OCCASIONAL][(sex, band)] = min(union * annual, 1.0)
     receipt = {
         "resource": resource,
         "concept": concept,

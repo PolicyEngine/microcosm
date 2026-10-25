@@ -2846,6 +2846,48 @@ def lcfs_excise_quantities(
     return quantities, receipt
 
 
+#: The gambling top-up's recreation feature: recreation less its gambling
+#: stakes, which P609 includes.
+UK_LCFS_RECREATION_NET_OF_STAKES = "recreation_net_of_gambling_stakes"
+
+
+def gambling_participation_features(
+    donor_encoded: pd.DataFrame,
+    donor_spending: pd.DataFrame,
+    recipient_encoded: pd.DataFrame,
+    drawn: pd.DataFrame,
+    *,
+    predictors: Sequence[str],
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """The donor's and the frame's features for the gambling top-up's two fits.
+
+    The chain's predictors and the spend targets the shares were drawn on:
+    the donor's diary totals, and the chain's raw draws on the frame. Recreation
+    enters net of its gambling stakes on both sides. P609 sums the stake lines,
+    so a recorded stake would otherwise raise the very feature that predicts it,
+    and the walk would favour high-recreation households for that reason alone
+    (Vahid's review of microcosm#1381, round 4).
+    """
+
+    spend = [
+        c for c in UK_LCFS_CONSUMPTION_TARGET_COLUMNS if c != "recreation_consumption"
+    ]
+    donor_features = donor_encoded[[*predictors, *spend]].reset_index(drop=True)
+    donor_features[UK_LCFS_RECREATION_NET_OF_STAKES] = donor_encoded[
+        "recreation_consumption"
+    ].to_numpy(dtype=float) - donor_spending[UK_LCFS_GAMBLING_SPENDING].to_numpy(
+        dtype=float
+    )
+    recipient_features = recipient_encoded[list(predictors)].reset_index(drop=True)
+    for column in spend:
+        recipient_features[column] = drawn[column].to_numpy(dtype=float)
+    share = np.clip(drawn[UK_LCFS_GAMBLING_SHARE].to_numpy(dtype=float), 0.0, 1.0)
+    recipient_features[UK_LCFS_RECREATION_NET_OF_STAKES] = drawn[
+        "recreation_consumption"
+    ].to_numpy(dtype=float) * (1.0 - share)
+    return donor_features, recipient_features
+
+
 def lcfs_gambling_participation(
     stage: SourceStageSpec,
     household_draws: pd.DataFrame,
@@ -2862,10 +2904,9 @@ def lcfs_gambling_participation(
     """Apply the declared ``top_up_gambling_participation`` step (none if undeclared).
 
     The keys are the drawn National Lottery and betting and gaming stakes,
-    and the donor's own. Both fits read the chain's predictors and the spend
-    targets the shares were drawn on: the donor's diary totals, and the
-    chain's raw draws on the frame. The step only re-keys
-    ``level_excise_quantities``, so it needs that step and the shares.
+    and the donor's own. Both fits read ``gambling_participation_features``.
+    The step only re-keys ``level_excise_quantities``, so it needs that step
+    and the shares.
     """
 
     parameters = gambling_participation_operation(stage)
@@ -2888,10 +2929,13 @@ def lcfs_gambling_participation(
     donor_encoded, recipient_encoded, predictors = _encode_consumption_predictors(
         donor, recipient
     )
-    features = [*predictors, *UK_LCFS_CONSUMPTION_TARGET_COLUMNS]
-    recipient_features = recipient_encoded[list(predictors)].reset_index(drop=True)
-    for column in UK_LCFS_CONSUMPTION_TARGET_COLUMNS:
-        recipient_features[column] = drawn[column].to_numpy(dtype=float)
+    donor_features, recipient_features = gambling_participation_features(
+        donor_encoded,
+        donor_spending,
+        recipient_encoded,
+        drawn,
+        predictors=predictors,
+    )
     return top_up_gambling_participation(
         {
             key: spending[column].to_numpy(dtype=float)
@@ -2901,7 +2945,7 @@ def lcfs_gambling_participation(
         household_ids=household_ids,
         weights=weights,
         sources=sources,
-        donor_features=donor_encoded[features].reset_index(drop=True),
+        donor_features=donor_features,
         donor_keys={
             key: donor_spending[column].to_numpy(dtype=float)
             for key, column in columns.items()

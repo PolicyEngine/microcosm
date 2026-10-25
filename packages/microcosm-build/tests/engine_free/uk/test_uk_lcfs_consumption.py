@@ -4012,7 +4012,11 @@ def test_stage_tops_up_the_gambling_keys_when_declared(monkeypatch) -> None:
     for check, parameters in (
         (
             "gambling_participation",
-            {"maximum_stratum_shortfall": 0.01, "required_support_band": "30+"},
+            {
+                "maximum_stratum_shortfall": 0.01,
+                "amount_scale_bounds": [0.5, 2.0],
+                "required_support_band": "30+",
+            },
         ),
         (
             "excise_quantities",
@@ -4043,6 +4047,61 @@ def test_gambling_participation_needs_the_excise_levelling(monkeypatch) -> None:
     synthetic = _synthetic_lcfs_stage(excise=False)
     with pytest.raises(ValueError, match="re-keys level_excise_quantities"):
         synthetic.transform(synthetic.frame)
+
+
+def test_gambling_features_take_the_stakes_out_of_recreation() -> None:
+    # P609 holds the stakes, so a recorded stake would raise the recreation
+    # that predicts it (Vahid's review of microcosm#1381, round 4).
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_GAMBLING_SHARE,
+        UK_LCFS_GAMBLING_SPENDING,
+        UK_LCFS_RECREATION_NET_OF_STAKES,
+        gambling_participation_features,
+    )
+
+    targets = UK_LCFS_CONSUMPTION_TARGET_COLUMNS
+    donor_encoded = pd.DataFrame(
+        {
+            "age": [30.0, 60.0],
+            "region": [1.0, 2.0],
+            **{c: [10.0 * (i + 1), 20.0 * (i + 1)] for i, c in enumerate(targets)},
+        },
+        index=[7, 9],
+    )
+    donor_spending = pd.DataFrame({UK_LCFS_GAMBLING_SPENDING: [5.0, 0.0]}, index=[7, 9])
+    recipient_encoded = pd.DataFrame(
+        {"age": [40.0, 50.0, 70.0], "region": [3.0, 1.0, 2.0]}
+    )
+    drawn = pd.DataFrame(
+        {
+            **{c: [1.0, 2.0, 3.0] for c in targets},
+            "recreation_consumption": [40.0, 8.0, 12.0],
+            UK_LCFS_GAMBLING_SHARE: [0.25, 0.0, 1.5],
+        }
+    )
+
+    donor, recipient = gambling_participation_features(
+        donor_encoded,
+        donor_spending,
+        recipient_encoded,
+        drawn,
+        predictors=["age", "region"],
+    )
+
+    # The fits read the columns by position, so both sides list them alike.
+    assert list(donor.columns) == list(recipient.columns)
+    assert "recreation_consumption" not in donor.columns
+    np.testing.assert_allclose(
+        donor[UK_LCFS_RECREATION_NET_OF_STAKES],
+        donor_encoded["recreation_consumption"].to_numpy() - [5.0, 0.0],
+    )
+    # The frame's stakes are its drawn share of its drawn recreation, the
+    # share held to [0, 1].
+    np.testing.assert_allclose(
+        recipient[UK_LCFS_RECREATION_NET_OF_STAKES], [30.0, 8.0, 0.0]
+    )
+    np.testing.assert_allclose(recipient[targets[0]], [1.0, 2.0, 3.0])
+    np.testing.assert_allclose(recipient["age"], [40.0, 50.0, 70.0])
 
 
 def test_gambling_bases_are_receipts_over_rates_with_betting_split_by_yield(

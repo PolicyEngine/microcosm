@@ -3060,6 +3060,7 @@ def test_gambling_participation_gate_recomputes_the_rates_and_checks_the_shares(
         "check": "gambling_participation",
         "maximum_relative_deviation": 1e-9,
         "maximum_stratum_shortfall": 0.01,
+        "amount_scale_bounds": [0.5, 2.0],
         "required_support_band": "30+",
     }
 
@@ -3125,6 +3126,9 @@ def test_gambling_participation_gate_recomputes_the_rates_and_checks_the_shares(
         lambda r, e: lottery(r, e)["stake_shares"].update(seen=0.9),
         "do not split",
     )
+    # A stake draw far off the seen households' mean, which the anchoring
+    # would otherwise hide.
+    failing(lambda r, e: lottery(r, e).update(amount_scale=3.0), "amount scale")
     failing(lambda r, e: lottery(r, e).update(added_without_stake="<10"), "no stake")
     failing(
         lambda r, e: lottery(r, e)["propensity"].update(positive_support="10-29"),
@@ -3147,3 +3151,7 @@ def test_gambling_participation_gate_recomputes_the_rates_and_checks_the_shares(
     assert result.details["strata_withheld"] == passed.details["strata_withheld"] + 1
     with pytest.raises(ValueError, match="gambling_participation must be an object"):
         run(None)
+    for bounds in (None, [0.5], [2.0, 0.5], [0.0, 2.0], [True, 2.0]):
+        parameters["amount_scale_bounds"] = bounds
+        with pytest.raises(ValueError, match="amount_scale_bounds"):
+            run(receipt)

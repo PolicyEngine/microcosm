@@ -2237,8 +2237,10 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "maximum_parent_residual_share",
                 "required_support_band",
                 # #1359 gambling_participation check: how far a stratum's
-                # topped-up share may sit from its published target.
+                # topped-up share may sit from its published target, and the
+                # bounds on the scale that anchors the added stakes.
                 "maximum_stratum_shortfall",
+                "amount_scale_bounds",
                 # #1113 road_fuel_incidence check: the ceiling on the chain's
                 # zero share among flagged fuel-car households.
                 "maximum_flagged_zero_share",

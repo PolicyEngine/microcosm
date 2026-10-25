@@ -3685,7 +3685,10 @@ def _gambling_participation_gate(
     from there of its twelve-month target, or add nothing where the diary
     already passed a target; the national shares must reach the targets less
     that shortfall; no added household may lack a stake; the three classes'
-    stake shares must sum to one; the propensity must rest on
+    stake shares must sum to one; the scale that brings the added regular
+    players' mean stake to the seen households' must lie inside
+    ``amount_scale_bounds``, so a broken stake draw that the anchoring would
+    otherwise hide fails; the propensity must rest on
     ``required_support_band`` donors; and the excise levelling must have
     shared the bases by the topped-up keys, so each key is positive on the
     twelve-month share. The receipt withholds a stratum with a cell under ten
@@ -3718,6 +3721,21 @@ def _gambling_participation_gate(
         label=f"{stage}.maximum_stratum_shortfall",
     )
     required_support = parameters.get("required_support_band")
+    scale_bounds = parameters.get("amount_scale_bounds")
+    if not (
+        isinstance(scale_bounds, list | tuple)
+        and len(scale_bounds) == 2
+        and all(
+            isinstance(bound, int | float) and not isinstance(bound, bool)
+            for bound in scale_bounds
+        )
+        and 0.0 < float(scale_bounds[0]) <= float(scale_bounds[1])
+    ):
+        raise ValueError(
+            f"{stage}.amount_scale_bounds must be [low, high] with 0 < low <= high, "
+            f"got {scale_bounds!r}."
+        )
+    low_scale, high_scale = (float(bound) for bound in scale_bounds)
     declared = gambling_participation_operation(
         load_country_spec("uk").sources.stage_map()[stage]
     )
@@ -3861,6 +3879,13 @@ def _gambling_participation_gate(
         ):
             failures.append(
                 f"{stage}: {key}'s stake shares {shares!r} do not split its stakes."
+            )
+        scale = entry.get("amount_scale")
+        if not (_number(scale) and low_scale <= float(scale) <= high_scale):
+            failures.append(
+                f"{stage}: {key}'s amount scale {scale!r} is outside "
+                f"[{low_scale}, {high_scale}]: the donor's stake draws missed the "
+                "seen households' mean by more than the bounds allow."
             )
         excise_key = levelled.get(key)
         positive = (
