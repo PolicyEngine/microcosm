@@ -1977,7 +1977,6 @@ def _spring_term_simulation() -> SimulationStub:
     return SimulationStub(
         {
             "birth_year": ("person", np.array([1990, 2022, 2021])),
-            "country": ("household", np.array(["ENGLAND", "ENGLAND"])),
             "early_years_term_share_before_school": (
                 "person",
                 np.array([1.0, 1.0, 1 / 3], dtype=np.float32),
@@ -1986,7 +1985,12 @@ def _spring_term_simulation() -> SimulationStub:
                 "person",
                 np.array([0.0, 6_000.0, 2_000.0]),
             ),
-            "is_of_compulsory_school_age": ("person", np.array([False] * 3)),
+            # The engine's universal eligibility in the year: the child in
+            # reception is eligible in the summer term, before school starts.
+            "universal_childcare_entitlement_eligible": (
+                "person",
+                np.array([False, True, True]),
+            ),
             "max_free_entitlement_hours_used": (
                 "person",
                 np.array([30.0, 30.0, 30.0]),
