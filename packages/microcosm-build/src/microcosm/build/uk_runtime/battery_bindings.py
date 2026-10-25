@@ -2236,6 +2236,9 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # the support band each excise share must rest on.
                 "maximum_parent_residual_share",
                 "required_support_band",
+                # #1359 gambling_participation check: how far a stratum's
+                # topped-up share may sit from its published target.
+                "maximum_stratum_shortfall",
                 # #1113 road_fuel_incidence check: the ceiling on the chain's
                 # zero share among flagged fuel-car households.
                 "maximum_flagged_zero_share",

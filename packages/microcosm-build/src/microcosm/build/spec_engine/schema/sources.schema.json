@@ -12522,6 +12522,296 @@
      "required": [
       "kind",
       "resource",
+      "concept",
+      "period_type",
+      "period_value",
+      "geography_id",
+      "dimensions",
+      "windows",
+      "sexes",
+      "age_bands",
+      "keys",
+      "occasional_stake_share",
+      "strata",
+      "propensity",
+      "n_estimators",
+      "seed",
+      "salt"
+     ],
+     "properties": {
+      "kind": {
+       "const": "top_up_gambling_participation"
+      },
+      "resource": {
+       "type": "string"
+      },
+      "concept": {
+       "type": "string"
+      },
+      "period_type": {
+       "const": "calendar_year"
+      },
+      "period_value": {
+       "type": "integer"
+      },
+      "geography_id": {
+       "type": "string"
+      },
+      "dimensions": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "window",
+        "scope",
+        "sex",
+        "age_band"
+       ],
+       "properties": {
+        "window": {
+         "type": "string"
+        },
+        "scope": {
+         "type": "string"
+        },
+        "sex": {
+         "type": "string"
+        },
+        "age_band": {
+         "type": "string"
+        }
+       }
+      },
+      "population_dimensions": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "regular": {
+         "type": "object",
+         "additionalProperties": {
+          "type": "string"
+         }
+        },
+        "occasional": {
+         "type": "object",
+         "additionalProperties": {
+          "type": "string"
+         }
+        }
+       }
+      },
+      "activity_dimensions": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "regular": {
+         "type": "object",
+         "additionalProperties": {
+          "type": "string"
+         }
+        },
+        "occasional": {
+         "type": "object",
+         "additionalProperties": {
+          "type": "string"
+         }
+        }
+       }
+      },
+      "windows": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "regular",
+        "occasional"
+       ],
+       "properties": {
+        "regular": {
+         "type": "string"
+        },
+        "occasional": {
+         "type": "string"
+        }
+       }
+      },
+      "sexes": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "MALE",
+        "FEMALE",
+        "all"
+       ],
+       "properties": {
+        "MALE": {
+         "type": "string"
+        },
+        "FEMALE": {
+         "type": "string"
+        },
+        "all": {
+         "type": "string"
+        }
+       }
+      },
+      "age_bands": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "array",
+        "prefixItems": [
+         {
+          "type": "integer",
+          "minimum": 18
+         },
+         {
+          "type": "string"
+         }
+        ],
+        "minItems": 2,
+        "maxItems": 2
+       }
+      },
+      "keys": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "national_lottery",
+        "betting_and_gaming"
+       ],
+       "properties": {
+        "national_lottery": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "population",
+          "activities",
+          "theta"
+         ],
+         "properties": {
+          "population": {
+           "type": "string"
+          },
+          "activities": {
+           "type": "object",
+           "minProperties": 1,
+           "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {
+             "type": "string"
+            }
+           }
+          },
+          "theta": {
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          }
+         }
+        },
+        "betting_and_gaming": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "population",
+          "activities",
+          "theta"
+         ],
+         "properties": {
+          "population": {
+           "type": "string"
+          },
+          "activities": {
+           "type": "object",
+           "minProperties": 1,
+           "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {
+             "type": "string"
+            }
+           }
+          },
+          "theta": {
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          }
+         }
+        }
+       }
+      },
+      "occasional_stake_share": {
+       "type": "number",
+       "exclusiveMinimum": 0,
+       "maximum": 1
+      },
+      "strata": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "adults_cap",
+        "youngest_adult_bounds"
+       ],
+       "properties": {
+        "adults_cap": {
+         "type": "integer",
+         "minimum": 1
+        },
+        "youngest_adult_bounds": {
+         "type": "array",
+         "items": {
+          "type": "integer",
+          "minimum": 19
+         }
+        }
+       }
+      },
+      "propensity": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "max_leaf_nodes",
+        "min_samples_leaf",
+        "l2_regularization",
+        "validation_fraction"
+       ],
+       "properties": {
+        "max_leaf_nodes": {
+         "type": "integer",
+         "minimum": 2
+        },
+        "min_samples_leaf": {
+         "type": "integer",
+         "minimum": 1
+        },
+        "l2_regularization": {
+         "type": "number",
+         "minimum": 0
+        },
+        "validation_fraction": {
+         "type": "number",
+         "exclusiveMinimum": 0,
+         "maximum": 0.5
+        }
+       }
+      },
+      "n_estimators": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "salt": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "resource",
       "period_type",
       "period_value",
       "fiscal_start",

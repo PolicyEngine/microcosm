@@ -213,13 +213,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "c30b12f7115baf419e136e2d39f736740e622f29522f9126979eb73999f72bb4"
+    "c6068c943b0117bc7b411f13202ded872424830d9f7d2db35de120979425bf62"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "dd6da072774d699ef0f2e192f8552be28ed92010c3d5541cbfed2e354cb8408c"
+    "59803077884a89c43c3486c274f661b81b9510ea2fbc723e93362f0c6c918a94"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "e6b6c711d2398413bf26ee75b57866e163245cda36b940c801112a712a2d8afc"
+    "3212fbc34ce4179d213a47573a9689910df9c0203ffe66683635b810345590ae"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "6a179222c6b6058ad9caacfd347f7bdb8cb98a62237b50d1fc1136df09337251"
@@ -268,6 +268,11 @@ UK_GATE_BATTERY_ENTRIES = {
         None,
     ),
     "uk_stage_lcfs_consumption_excise_quantities": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_lcfs_consumption_gambling_participation": (
         "stage_health",
         "transferred",
         None,
@@ -1392,6 +1397,7 @@ def _gate_battery_payload(
         "uk_stage_lcfs_consumption_road_fuel_level": "lcfs_consumption",
         "uk_stage_lcfs_consumption_recomposed_totals": "lcfs_consumption",
         "uk_stage_lcfs_consumption_excise_quantities": "lcfs_consumption",
+        "uk_stage_lcfs_consumption_gambling_participation": "lcfs_consumption",
         "uk_stage_lcfs_consumption_basis": "lcfs_consumption",
         "uk_stage_nts_bus_travel_support": "nts_bus_travel",
         "uk_stage_nts_bus_travel_facts": "nts_bus_travel",

@@ -409,6 +409,22 @@
       "notes": "Stage-time fact check on the lcfs excise_quantities and excise_shares receipts (microcosm#1359): every policyengine-uk excise input the stage declares is recomputed from the vendored rows through the stage's own declaration, never taken from the receipt: each alcohol product's FY2024-25 HMRC clearances over the engine's strength, each tobacco product's clearances, each gambling duty base (HMRC's receipts for the duty or Machine Games Duty's liabilities for the band over the engine's rate, and General Betting Duty's base split by the Gambling Commission's gross gambling yield) and the beer and cider draught shares. The receipt's levels must equal them, the prior-weighted frame total of each input must equal its level and the factor must reproduce it from the household spending it is shared by, and an input is positive exactly where that spending is; the basis must be the declared fiscal year over the engine's 52 weeks, and each draught share written must be the published ratio. The three shares the spending comes from (tobacco of P602's off-trade lines, on-trade alcohol of P611, gambling stakes of P609) must have stayed in [0, 1] on the frame and rest on 30 or more donors each, and at most one percent of the donors, by weight, may carry a published total beside a share's diary lines (a share withheld for resting on under ten donors is under it). The levels are recomputed from the same vendored rows the stage read, so the check catches a step that did not apply the declared levels; it cannot catch an error in the rows themselves or a later stage moving the columns. A population fact check: the synthetic smoke records it without blocking."
     },
     {
+      "id": "uk_stage_lcfs_consumption_gambling_participation",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "lcfs_consumption",
+        "check": "gambling_participation",
+        "maximum_relative_deviation": 1e-09,
+        "maximum_stratum_shortfall": 0.01,
+        "required_support_band": "30+"
+      },
+      "notes": "Stage-time fact check on the lcfs gambling_participation receipt (microcosm#1359): each key's adult participation rates (the National Lottery's products, and the betting and gaming the other gambling duties charge; past four weeks and past twelve months, by sex and age band) are recomputed from the vendored GSGB 2025 rows through the stage's own declaration, never taken from the receipt, and must equal the receipt's, and the receipt's settings (theta per key, the occasional players' stake share, the strata, the propensity classifier, the seed and the salt) must be the declared ones. Per key, each household stratum the receipt gives must sit within maximum_stratum_shortfall of its four-week target and from there of its twelve-month target, or add no household where the diary already passed a target; the national shares must reach the targets less that shortfall; no added household may lack a stake; the three classes' shares of the key's stakes must sum to one; the propensity must rest on 30 or more donors; and the excise levelling must have shared the gambling bases by the topped-up keys, each key positive on its twelve-month share. The receipt withholds a stratum with a cell under ten source households, which the gate counts rather than checks; a key withheld nationally fails. The rates are recomputed from the same vendored rows the stage read, so the check catches a step that did not apply the declared rates or settings; it cannot catch an error in the rows themselves, and the stratum targets, which need the frame's adults, are the step's own (it refuses a stratum it cannot fill). A population fact check: the synthetic smoke records it without blocking."
+    },
+    {
       "id": "uk_stage_lcfs_consumption_basis",
       "gate": "stage_health",
       "phase": "transferred",

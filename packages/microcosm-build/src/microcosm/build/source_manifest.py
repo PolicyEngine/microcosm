@@ -194,6 +194,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "support_clip",
         "sub_aea_remainder",
         "taxable_income_proxy",
+        "top_up_gambling_participation",
         "top_up_to_stock",
         "transfer_clone_mass_to_originals",
         "uprate",
