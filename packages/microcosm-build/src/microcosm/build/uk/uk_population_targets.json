@@ -1989,10 +1989,10 @@
       "bindings": {
         "policyengine": {
           "metric_name": "obr/income_tax",
-          "value_variable": "income_tax_annual",
+          "value_variable": "income_tax_before_winter_fuel_payment_charge_annual",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
+          "notes": "Income tax before the Winter Fuel Payment charge, which policyengine-uk adds to income_tax from 2.157.0 (María's ruling of 2026-10-25, microcosm#1095): HMRC recovers 2025's payments through 2026-27 tax codes and self assessment, so the FY2025-26 receipts in the window hold almost none of the recovery. Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/income_tax",
@@ -3121,7 +3121,7 @@
               "map_to": "household"
             }
           ],
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to England and Wales (microcosm#1095, uk-data#490): DWP reports this benefit for England and Wales only since executive competence moved to the Scottish Government (Winter Fuel Payment from 1 April 2024; DWP benefit expenditure and caseload tables, Spring 2026, Notes), and OBR table 4.9 carries DWP's line. Scotland's Pension Age Winter Heating Payment is Scottish Government spending, so the model column sums English and Welsh households only. Since the abf0921 re-pin the Chronicle fact carries the England and Wales code K04000001 (microcosm#1300)."
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to England and Wales (microcosm#1095, uk-data#490): DWP reports this benefit for England and Wales only since executive competence moved to the Scottish Government (Winter Fuel Payment from 1 April 2024; DWP benefit expenditure and caseload tables, Spring 2026, Notes), and OBR table 4.9 carries DWP's line. Scotland's Pension Age Winter Heating Payment is Scottish Government spending, so the model column sums English and Welsh households only. Since the abf0921 re-pin the Chronicle fact carries the England and Wales code K04000001 (microcosm#1300). From policyengine-uk 2.157.0 the payment goes to every eligible pensioner and the tax system recovers it above GBP 35,000 (winter_fuel_payment_charge, inside income_tax), so the column is the gross payment, like the fact, DWP's gross spending; before, the engine paid only pensioners under the income test."
         },
         "axiom": {
           "metric_name": "obr/winter_fuel_allowance",
@@ -3524,7 +3524,7 @@
           "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20).",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             }
@@ -3583,7 +3583,7 @@
               "value": 0
             },
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             }
@@ -3638,7 +3638,7 @@
           "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20). HMRC counts the profit after losses brought forward, which the spine keeps apart in loss_relief, so the value and the band read it after that relief (microcosm#1095).",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             }
@@ -3697,7 +3697,7 @@
               "value": 0
             },
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             }
@@ -3752,7 +3752,7 @@
           "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20).",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             }
@@ -3811,7 +3811,7 @@
               "value": 0
             },
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             }
@@ -3866,7 +3866,7 @@
           "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20). SPI Table 3.7 net income from property is landlords' profit after allowable expenses and before residential finance costs, the concept property_income holds, so the facts bind unscaled. The incumbent's x1.9 adjustment set HMRC Property Rental Income Statistics receipts, which are before expenses, against this net amount and is retired (microcosm#1106, ruled 2026-10-05); the receipts are constructed on property_rental_income by the property_components stage, and PRIS stays a diagnostic (ruled 2026-10-08). Uprated to 2025 by total_income_growth_by_total_income_band, the index the paired count rows' taxpayer_count_growth_by_total_income_band belongs with (microcosm#1063): the flat obr.per_capita.gdp, which policyengine-uk gives property_income itself, would have implied per-band mean profit moves of about -13% (GBP 100,000 to 150,000) to +11% (GBP 15,000 to 20,000) between 2023 and 2025 against those counts, where the band index keeps the pairing within about 2.5%, the GBP 1,000,000 and over band at +2.51% (ruled 2026-10-11 on the microcosm#1145 review). The dividend amount rows keep the flat index.",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             }
@@ -3925,7 +3925,7 @@
               "value": 0
             },
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             }
@@ -3980,7 +3980,7 @@
           "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20).",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             }
@@ -4039,7 +4039,7 @@
               "value": 0
             },
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             }
@@ -4094,7 +4094,7 @@
           "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20).",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             }
@@ -4153,7 +4153,7 @@
               "value": 0
             },
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             }
@@ -21232,7 +21232,7 @@
           "notes": "Bound at the 2025 calibration period as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections (3/12 and 9/12; value_operation calendar_year_window), from the Income Tax liabilities statistics of 15 July 2026, HMRC's own projection of the 2023-24 SPI base with ONS population projections and OBR March 2026 assumptions. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the calibration binds at calendar 2025 and facts published by tax year use the months to the end of it. Banded by person-level total income on the publisher's eleven bands (30-50k, 50-100k and 200-500k are single bands here; 1m+ splits at 2m); the all-ranges row carries no band and stays out of the fan-out.",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             }
@@ -21313,7 +21313,7 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/itl_income_tax_income_band",
-          "value_variable": "income_tax_annual",
+          "value_variable": "income_tax_before_winter_fuel_payment_charge_annual",
           "from_entity": "person",
           "map_to": "household",
           "groupby_variable": "total_income_after_loss_relief_annual",
@@ -21370,7 +21370,7 @@
           "map_to": "household",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             },
@@ -21434,7 +21434,7 @@
           "map_to": "household",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             },
@@ -21497,7 +21497,7 @@
           "notes": "Taxable interest from banks and building societies of taxpayers by total-income band (SPI Table 3.7; ISA interest excluded), the taxpayer-concept anchor microcosm#866 asked for in place of the ONS D.41 row. Banded by person-level total income; band edges come from the fact dimension.",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             }
@@ -21556,7 +21556,7 @@
               "value": 0
             },
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             }
@@ -21615,7 +21615,7 @@
           "metric_name": "hmrc/spi_region/taxpayers_12570_15000",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             },
@@ -21691,7 +21691,7 @@
           "metric_name": "hmrc/spi_region/taxpayers_15000_20000",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             },
@@ -21767,7 +21767,7 @@
           "metric_name": "hmrc/spi_region/taxpayers_20000_30000",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             },
@@ -21843,7 +21843,7 @@
           "metric_name": "hmrc/spi_region/taxpayers_30000_40000",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             },
@@ -21919,7 +21919,7 @@
           "metric_name": "hmrc/spi_region/taxpayers_40000_50000",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             },
@@ -21995,7 +21995,7 @@
           "metric_name": "hmrc/spi_region/taxpayers_50000_70000",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             },
@@ -22071,7 +22071,7 @@
           "metric_name": "hmrc/spi_region/taxpayers_70000_100000",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             },
@@ -22147,7 +22147,7 @@
           "metric_name": "hmrc/spi_region/taxpayers_100000_150000",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             },
@@ -22223,7 +22223,7 @@
           "metric_name": "hmrc/spi_region/taxpayers_150000_200000",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             },
@@ -22294,7 +22294,7 @@
           "metric_name": "hmrc/spi_region/taxpayers_200000_plus",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             },
@@ -23020,7 +23020,7 @@
               "value": 15000
             }
           ],
-          "value_variable": "income_tax_annual",
+          "value_variable": "income_tax_before_winter_fuel_payment_charge_annual",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 12,570 to 15,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -23086,7 +23086,7 @@
               "value": 20000
             }
           ],
-          "value_variable": "income_tax_annual",
+          "value_variable": "income_tax_before_winter_fuel_payment_charge_annual",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 15,000 to 20,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -23152,7 +23152,7 @@
               "value": 30000
             }
           ],
-          "value_variable": "income_tax_annual",
+          "value_variable": "income_tax_before_winter_fuel_payment_charge_annual",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 20,000 to 30,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -23218,7 +23218,7 @@
               "value": 40000
             }
           ],
-          "value_variable": "income_tax_annual",
+          "value_variable": "income_tax_before_winter_fuel_payment_charge_annual",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 30,000 to 40,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -23284,7 +23284,7 @@
               "value": 50000
             }
           ],
-          "value_variable": "income_tax_annual",
+          "value_variable": "income_tax_before_winter_fuel_payment_charge_annual",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 40,000 to 50,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -23350,7 +23350,7 @@
               "value": 70000
             }
           ],
-          "value_variable": "income_tax_annual",
+          "value_variable": "income_tax_before_winter_fuel_payment_charge_annual",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 50,000 to 70,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -23416,7 +23416,7 @@
               "value": 100000
             }
           ],
-          "value_variable": "income_tax_annual",
+          "value_variable": "income_tax_before_winter_fuel_payment_charge_annual",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 70,000 to 100,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -23482,7 +23482,7 @@
               "value": 150000
             }
           ],
-          "value_variable": "income_tax_annual",
+          "value_variable": "income_tax_before_winter_fuel_payment_charge_annual",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 100,000 to 150,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -23548,7 +23548,7 @@
               "value": 200000
             }
           ],
-          "value_variable": "income_tax_annual",
+          "value_variable": "income_tax_before_winter_fuel_payment_charge_annual",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 150,000 to 200,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -23604,7 +23604,7 @@
               "value": 200000
             }
           ],
-          "value_variable": "income_tax_annual",
+          "value_variable": "income_tax_before_winter_fuel_payment_charge_annual",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 200,000 and over, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -29999,7 +29999,7 @@
           "map_to": "household",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             }
@@ -30064,7 +30064,7 @@
               "value": 0
             },
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             }
@@ -30116,7 +30116,7 @@
           "map_to": "household",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             }
@@ -30181,7 +30181,7 @@
               "value": 0
             },
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             }
@@ -33204,7 +33204,7 @@
           "map_to": "household",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             },

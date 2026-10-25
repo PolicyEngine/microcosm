@@ -224,6 +224,7 @@ def test_uc_child_bands_sum_uc_benefit_units_to_household(
             "loss_relief": [0.0] * people,
             "employment_income": [0.0] * people,
             "income_tax": [0.0] * people,
+            "income_tax_before_winter_fuel_payment_charge": [0.0] * people,
             "tax_band": ["NONE"] * people,
             "age": [35, 10, 40, 3, 6, 9, 45, 19, 18],
             "universal_credit": [100.0, 50.0, 0.0],
@@ -323,7 +324,7 @@ def test_the_local_hmrc_rows_read_each_persons_tax_year() -> None:
                 binding["value_variable"],
                 *(predicate["variable"] for predicate in binding["filters"]),
             ]
-            assert "income_tax_annual" in read, name
+            assert "income_tax_before_winter_fuel_payment_charge_annual" in read, name
             assert all(
                 variable == "person_count" or variable.endswith("_annual")
                 for variable in read

@@ -718,7 +718,9 @@ def test_packaged_exclusions_load():
     # the twelve UC payment bands, which it fits unbound (microcosm#1344), and
     # obr.vat is held again as a diagnostic (Vahid's review of #1383, 10).
     # microcosm#1359 adds the five OBR excise rows, measured at FY2024-25.
-    assert len(names) == len(set(names)) == 39
+    # The policyengine-uk 2.160.0 bump holds obr.domestic_rates once it
+    # compiles (María's ruling of 2026-10-25).
+    assert len(names) == len(set(names)) == 40
     rehold = [entry for entry in exclusions if "_1_000_000_to_inf" in entry["name"]]
     assert {(e["approved_on"], e["expires_on"], e["tracking"]) for e in rehold} == {
         ("2026-10-23", "2027-01-23", "microcosm#1095")
@@ -2143,6 +2145,7 @@ class _AnnualSimulation:
             "scottish_carer_supplement",
             "total_income",
             "income_tax",
+            "income_tax_before_winter_fuel_payment_charge",
         )
         variables = {
             name: SimpleNamespace(
@@ -2193,7 +2196,8 @@ class _AnnualSimulation:
         )
         if variable == "total_income":
             return total
-        if variable == "income_tax":
+        # No stub person passes the Winter Fuel Payment charge's income test.
+        if variable in ("income_tax", "income_tax_before_winter_fuel_payment_charge"):
             return 0.2 * np.maximum(total - 12_570.0, 0.0)
         if variable == "tax_band":
             return np.where(

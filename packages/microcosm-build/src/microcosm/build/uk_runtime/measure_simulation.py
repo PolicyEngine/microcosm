@@ -293,6 +293,14 @@ UK_ANNUAL_INCOME_MEASURES: Mapping[str, str] = {
     "state_pension_annual": "state_pension",
     "total_income_after_loss_relief_annual": UK_TOTAL_INCOME_AFTER_LOSS_RELIEF,
     "income_tax_annual": "income_tax",
+    # The HMRC and OBR income tax rows read the tax before the Winter Fuel
+    # Payment charge, which policyengine-uk adds to income_tax from 2.157.0:
+    # HMRC's statistics predate the charge, and the OBR window's receipts hold
+    # almost none of 2025's recovery (María's ruling of 2026-10-25,
+    # microcosm#1095).
+    "income_tax_before_winter_fuel_payment_charge_annual": (
+        "income_tax_before_winter_fuel_payment_charge"
+    ),
     "tax_band_annual": "tax_band",
 }
 #: The inputs the annual simulation replaces at the measurement year: the

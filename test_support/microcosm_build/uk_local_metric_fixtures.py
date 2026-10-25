@@ -30,6 +30,9 @@ ENGINE_VARIABLES: Mapping[str, tuple[str, type]] = {
     "total_income": ("person", float),
     "employment_income": ("person", float),
     "income_tax": ("person", float),
+    # The HMRC rows' taxpayer test reads the tax before the Winter Fuel
+    # Payment charge (microcosm#1095).
+    "income_tax_before_winter_fuel_payment_charge": ("person", float),
     "tax_band": ("person", str),
     "age": ("person", float),
     "is_child_or_qualifying_young_person_for_universal_credit": ("person", bool),
@@ -194,6 +197,7 @@ def three_household_engine(**values: Sequence[Any]) -> StubUKEngine:
             "loss_relief": [0.0, 0.0, 0.0, 0.0, 0.0],
             "employment_income": [10.0, 20.0, 0.0, 30.0, 0.0],
             "income_tax": [1.0, 0.0, 2.0, 3.0, 0.0],
+            "income_tax_before_winter_fuel_payment_charge": [1.0, 0.0, 2.0, 3.0, 0.0],
             "tax_band": ["HIGHER", "HIGHER", "BASIC", "HIGHER", "NONE"],
             "age": [5, 35, 72, 12, 45],
             "is_child_or_qualifying_young_person_for_universal_credit": [

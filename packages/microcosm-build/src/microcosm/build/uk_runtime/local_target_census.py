@@ -861,8 +861,9 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
         "enforcement": FENCE_ENFORCEMENT_REVIEW,
         "rule": (
             "The declared HMRC area metrics gate frame membership on modeled "
-            "income_tax_annual > 0 (each person's income tax over the 12 "
-            "months before their FRS interview, a proxy for the tax year) — a "
+            "income_tax_before_winter_fuel_payment_charge_annual > 0 (each "
+            "person's income tax over the 12 months before their FRS interview, "
+            "a proxy for the tax year, before the Winter Fuel Payment charge) — a "
             "model-output proxy for 'taxpayer in the SPI frame', not a "
             "source-faithful frame. Binding any HMRC area family requires an "
             "explicit adjudication accepting or replacing that proxy before "
@@ -873,7 +874,8 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
             "hmrc.employment_income.amount, hmrc.employment_income.count, "
             "hmrc.self_employment_income.amount, "
             "hmrc.self_employment_income.count and "
-            "hmrc.higher_rate_taxpayers.count (their income_tax_annual filter); "
+            "hmrc.higher_rate_taxpayers.count (their "
+            "income_tax_before_winter_fuel_payment_charge_annual filter); "
             "microcosm#495 scoping."
         ),
     },
