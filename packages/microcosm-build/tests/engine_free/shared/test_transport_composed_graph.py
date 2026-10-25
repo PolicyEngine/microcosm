@@ -4971,6 +4971,48 @@ def test_precalibration_ancestry_other_structural_nodes_pass(kind, bound, ancest
     assert outcomes == {"declaration": None, "composed": None}
 
 
+@pytest.mark.parametrize("declared", [True, False], ids=["declared", "compiled_only"])
+@pytest.mark.parametrize("bound", [True, False], ids=["bound", "unbound"])
+def test_precalibration_ancestry_checks_the_calibration_node_itself(bound, declared):
+    """Calibration is in its own ancestry, so a stage's structural calibration refuses.
+
+    Calibration here is a REWEIGHT that carries A's engine reference itself
+    when ``bound``; unbound, it is the usual calibration and passes.
+    """
+    spec, nodes, _ = _structural_stage_case("create", bound=False)
+    rows = spec["resources"]["transport_graph"]["nodes"]
+    if declared:
+        rows[-1] = {
+            "id": "cal",
+            "kernel": "calibrate.synthetic@1",
+            "structural": "reweight",
+            "base": "create",
+            "inputs": [{"entity": "person", "columns": ["A_public", "seed"]}],
+        }
+        if bound:
+            rows[-1]["params"] = {"engine_ref": {"binding": "A", "field": "engine_ref"}}
+    else:
+        rows[:] = [
+            {"id": "create", "kernel": "synthetic.create@1"},
+            {"id": "cal", "kernel": "calibrate.synthetic@1", "population": "create"},
+        ]
+    nodes[-1] = Node(
+        "cal",
+        "calibrate.synthetic@1",
+        structural=StructuralDelta.REWEIGHT,
+        base="create",
+        inputs=(Slice("person", ("A_public", "seed")),),
+        params={"engine_ref": "A-ref"} if bound else {},
+        weights=WeightTransition("person", "importance", mass="free"),
+        mass="free",
+    )
+    outcome = _structural_stage_refusal("cal", "reweight") if bound else None
+    assert _synthetic_outcomes(spec, nodes, {"A": "A-ref"}) == {
+        "declaration": outcome if declared else None,
+        "composed": outcome,
+    }
+
+
 class _MembershipCreate(KernelBase):
     """Person 1 in household 10."""
 

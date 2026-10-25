@@ -122,11 +122,14 @@ refuses upstream of calibration.
 
 Only nodes in the ancestry of a calibration node are checked. The calibration
 nodes are every `calibrate.*` node and the calibration endpoint, in the
-declaration and in the composed graph. A node outside the ancestry of every
-calibration node, such as a stage binding's extension checkpoint after the
-fit, is an output, and these rules leave it alone; the shape checks above
-still cover every declared node. A node after the central fit that a variant
-calibration reads is in that variant's ancestry, so it is checked.
+declaration and in the composed graph. Each is in its own ancestry, so
+"upstream of calibration" here includes the calibration nodes: one that
+belongs to a stage is checked as that stage's node. A node outside the
+ancestry of every calibration node, such as a stage binding's extension
+checkpoint after the fit, is an output, and these rules leave it alone; the
+shape checks above still cover every declared node. A node after the central
+fit that a variant calibration reads is in that variant's ancestry, so it is
+checked.
 
 - Absent, or `"stages": []`, is the guard without stages, outcomes and messages
   alike.
@@ -136,16 +139,16 @@ calibration reads is in that variant's ancestry, so it is checked.
   "not a declared pre-calibration stage".
 - A listed person stage admits nothing new; it only adds the rules below.
 - A stage changes columns, not the population. A structural node (CREATE,
-  FILTER, EXPAND or REWEIGHT) that belongs to a listed stage refuses,
-  naming the node, its kind and its stage binding. A stage declares only
-  columns, but a structural node also writes what every later kernel of its
-  version receives without a `Slice`: ids, group memberships, weights,
-  strata, the frame metadata and the mass log. No other node writes them, so
-  with this rule they never come from a stage's node. A structural node
-  outside every stage is checked like any other: its inputs are reads, and
-  its parameters, sources and artifact inputs face the same checks. So an
-  EXPAND's cells are never a stage's output either; a stage claim that owns
-  a cell produces it.
+  FILTER, EXPAND or REWEIGHT) that belongs to a listed stage refuses, a
+  REWEIGHT calibration that carries the stage's binding included, naming the
+  node, its kind and its stage binding. A stage declares only columns, but a
+  structural node also writes what every later kernel of its version receives
+  without a `Slice`: ids, group memberships, weights, strata, the frame
+  metadata and the mass log. No other node writes them, so with this rule they
+  never come from a stage's node. A structural node outside every stage is
+  checked like any other: its inputs are reads, and its parameters, sources
+  and artifact inputs face the same checks. So an EXPAND's cells are never a
+  stage's output either; a stage claim that owns a cell produces it.
 - A node outside a listed stage that reads a column whose values one of the
   stage's own nodes wrote upstream of calibration, other than its `outputs`
   and `derived_outputs`, refuses as "undeclared pre-calibration stage output".
