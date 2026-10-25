@@ -953,6 +953,8 @@ class TestUKCountryPackage:
             "ons_age_tail_band_populations.json",
             "ashe_employer_pension_contribution_rates.json",
             "ons_single_year_age_populations.json",
+            # microcosm#1095: report-only, uk_runtime.single_year_ages.
+            "ons_mid2025_single_year_age_by_sex.json",
             "hmrc_child_benefit_statistics.json",
             "lcfs_consumption_support_bounds.json",
             "etb_vat_support_bounds.json",
@@ -1109,6 +1111,8 @@ class TestExistingPackagesGeneralize:
             "ons_age_tail_band_populations.json",
             "ashe_employer_pension_contribution_rates.json",
             "ons_single_year_age_populations.json",
+            # microcosm#1095: report-only, uk_runtime.single_year_ages.
+            "ons_mid2025_single_year_age_by_sex.json",
             "hmrc_child_benefit_statistics.json",
             "lcfs_consumption_support_bounds.json",
             "etb_vat_support_bounds.json",
