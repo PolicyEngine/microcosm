@@ -246,9 +246,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # nursery age 3; the age-4 cells are signed out, as the bound rows fix
     # them). The next policyengine-uk bump retires the OBR welfare-cap split
     # and the England postgraduate repayments to registry_parity.excluded
-    # (microcosm#1095); microcosm#1359 adds five OBR excise receipts rows,
-    # measured at FY2024-25 and held out of the objective.
-    assert len(resource["targets"]) == 440
+    # (microcosm#1095), and adds England's single adult discount cells by
+    # billing authority (microcosm#1095); microcosm#1359 adds five OBR excise
+    # receipts rows, measured at FY2024-25 and held out of the objective.
+    assert len(resource["targets"]) == 441
 
     providers = resource["hierarchy"]["providers"]
     categories = resource["hierarchy"]["categories"]
@@ -263,7 +264,7 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     registry_scope = resource["registry_parity"]["scope_target_ids"]
     profile_scope = resource["profile_parity"]["scope_target_ids"]
     assert len(registry_scope) == 381
-    assert len(profile_scope) == 59
+    assert len(profile_scope) == 60
     assert target_ids[:381] == registry_scope
     assert target_ids[381:] == profile_scope
 
@@ -310,9 +311,9 @@ def test_uk_population_targets_profile_accounting_and_local_renames() -> None:
     parity = resource["profile_parity"]
     assert parity["source_profile_id"] == "uk_local_geography"
     assert parity["source_target_count"] == 25
-    assert parity["contract_target_count"] == 59
+    assert parity["contract_target_count"] == 60
     assert parity["corrected_rows"] == len(parity["corrected"]) == 25
-    assert parity["activation_added_rows"] == len(parity["activation_additions"]) == 34
+    assert parity["activation_added_rows"] == len(parity["activation_additions"]) == 35
 
     targets = {target["target_id"]: target for target in resource["targets"]}
     corrected_ids = {entry["target_id"] for entry in parity["corrected"]}
@@ -798,7 +799,7 @@ def test_uk_population_targets_have_unique_target_ids() -> None:
     resource = _load()
 
     target_ids = [target["target_id"] for target in resource["targets"]]
-    assert len(target_ids) == 440
+    assert len(target_ids) == 441
     assert len(target_ids) == len(set(target_ids))
 
 
@@ -1092,7 +1093,7 @@ def test_uk_population_targets_preserve_local_metric_ordering_contract() -> None
     )
     assert metric_names_from_target_profile(resource, "la") == metric_names("la")
     assert len(metric_names_from_target_profile(resource, "constituency")) == 22
-    assert len(metric_names_from_target_profile(resource, "la")) == 38
+    assert len(metric_names_from_target_profile(resource, "la")) == 39
 
 
 def test_uk_population_uc_households_target_counts_benunits() -> None:
@@ -1301,7 +1302,7 @@ def test_uc_payment_bands_share_administrative_family_but_keep_source_window() -
 
 def test_paid_joint_diagnostics_do_not_add_active_targets() -> None:
     targets = _load()["targets"]
-    assert len(targets) == 440
+    assert len(targets) == 441
     assert not any(
         f.get("variable") == "uc_calibration_child_entitlement"
         for target in targets

@@ -42,6 +42,9 @@ ENGINE_VARIABLES: Mapping[str, tuple[str, type]] = {
     "equiv_hbai_household_net_income_ahc": ("household", float),
     "tenure_type": ("household", str),
     "council_tax_band": ("household", str),
+    # The single adult discount cells (microcosm#1095).
+    "country": ("household", str),
+    "council_tax_discount_rate": ("household", float),
     "electricity_consumption": ("household", float),
     "gas_consumption": ("household", float),
     "region": ("household", str),
@@ -213,6 +216,10 @@ def three_household_engine(**values: Sequence[Any]) -> StubUKEngine:
             "equiv_hbai_household_net_income_ahc": [80.0, 150.0, 260.0],
             "tenure_type": ["OWNED_OUTRIGHT", "RENT_PRIVATELY", "RENT_FROM_COUNCIL"],
             "council_tax_band": ["A", "H", "D"],
+            # microcosm#1095: each household has one adult, so each takes the
+            # single adult discount; only the first is in England.
+            "country": ["ENGLAND", "WALES", "SCOTLAND"],
+            "council_tax_discount_rate": [0.25, 0.25, 0.25],
             # microcosm#1207: the lcfs stage's stored energy spend; the second
             # household pays for no gas.
             "electricity_consumption": [900.0, 1100.0, 700.0],

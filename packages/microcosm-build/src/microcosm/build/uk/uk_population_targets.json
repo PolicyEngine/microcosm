@@ -1310,7 +1310,7 @@
     "source_schema_version": "policyengine_ledger.target_profile.v1",
     "source_profile_id": "uk_local_geography",
     "source_target_count": 25,
-    "contract_target_count": 59,
+    "contract_target_count": 60,
     "corrected_rows": 25,
     "corrected": [
       {
@@ -1773,7 +1773,7 @@
         "reason": "Narrowed to the private-rent local-area record-set spec; non-English/masked absences are signed by the area compiler."
       }
     ],
-    "activation_added_rows": 34,
+    "activation_added_rows": 35,
     "activation_additions": [
       {
         "target_id": "ons.census.households",
@@ -1910,6 +1910,10 @@
       {
         "target_id": "ons.rent.private_rent_brma",
         "basis": "microcosm#1090, #1262; ONS PIPR's Scottish rents, published for the 18 Broad Rental Market Areas only, bound at their own grain"
+      },
+      {
+        "target_id": "mhclg.council_tax_stock.by_area.single_adult_discount",
+        "basis": "microcosm#1095; pinned MHCLG council taxbase (CTB line 8, the dwellings with the single adult household 25% discount, all bands) by billing authority"
       }
     ],
     "scope_target_ids": [
@@ -1971,7 +1975,8 @@
       "microcosm.high_value_homes.over_2m",
       "desnz.subnational.electricity_kwh",
       "desnz.subnational.gas_kwh",
-      "desnz.subnational.gas_connected_households"
+      "desnz.subnational.gas_connected_households",
+      "mhclg.council_tax_stock.by_area.single_adult_discount"
     ]
   },
   "targets": [
@@ -33535,6 +33540,63 @@
       "label": "Gas-connected households",
       "uprating_index": "desnz.subnational.gas_meter_share",
       "selector_note": "Each authority's census households (the ons.census.households cell) times its DESNZ domestic gas meters over its domestic electricity meters, 2024 (desnz.subnational.gas_meter_share), the share the lcfs stage imposes by region, here by authority. A member of the census household partition (census_gas_connected_share): the household controls set its level, the meters its share. Orkney and Shetland have no mains gas and are signed deferrals; a gas-connected household is one whose stored gas_consumption is positive (microcosm#1207)."
+    },
+    {
+      "target_id": "mhclg.council_tax_stock.by_area.single_adult_discount",
+      "family": "council_tax_stock",
+      "geography_levels": [
+        "local_authority"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.geography.country",
+            "equals": "ENGLAND"
+          },
+          {
+            "concept": "uk.housing.council_tax_discount_rate",
+            "equals": 0.25
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "council_tax/single_adult_discount",
+          "value_variable": "household_count",
+          "filters": [
+            {
+              "variable": "country",
+              "equals": "ENGLAND"
+            },
+            {
+              "variable": "council_tax_discount_rate",
+              "equals": 0.25
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "council_tax/single_adult_discount",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "mhclg",
+        "record_set_spec_id": "uk.local_geography.council_tax.england_ctb.line_08_single_adult_discount_dwellings.v1",
+        "source_measure_id": "total"
+      },
+      "selector_note": "MHCLG Council Taxbase line 8, all bands, per billing authority, from the return the national row takes (the feed labels the count 2025-10): the authority cells of mhclg.council_tax_stock.single_adult_discount (microcosm#953, microcosm#1095). Each cell counts the authority's households at policyengine-uk's council_tax_discount_rate of 0.25 (pe-uk#1864: one adult who is not disregarded), as the national row does; the cells share its measurement, so the England row is their control (an exact signature with no region tier). Absent cells are signed deferrals; the household proxy is the band rows' (voa_dwellings_vs_household_frame).",
+      "category_id": "mhclg.council_tax_stock",
+      "label": "Single adult discount",
+      "area_scope": {
+        "local_authority": {
+          "gss_prefixes": [
+            "E"
+          ]
+        }
+      }
     }
   ],
   "diagnostic_references": {
