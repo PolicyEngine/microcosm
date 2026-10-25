@@ -1497,6 +1497,25 @@
           "Contains public sector information licensed under the Open Government Licence v3.0 (Department for Energy Security and Net Zero, sub-national electricity and gas consumption statistics, Great Britain and Northern Ireland)."
         ]
       }
+    },
+    {
+      "resource": "obr_salary_sacrifice_costing_facts.json",
+      "purpose": "OBR supplementary forecast information on salary sacrifice pension contributions (5 February 2026), Table 1.1: the tax base above the GBP 2,000 annual threshold by sacrifice route (salary and bonus) for 2027-28 to 2030-31. The bonus-sacrifice anchor reads 2027-28's bonus line, which the salary_sacrifice stage's bonus conversion meets through the engine's projection (microcosm#1340).",
+      "consumers": [
+        "uk_runtime.salary_sacrifice"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "salary_sacrifice_costing_tax_base",
+          "selector": {
+            "source_name": "obr",
+            "source_concept": "obr.salary_sacrifice_costing.tax_base",
+            "period_type": "fiscal_year"
+          },
+          "expected_row_count": 8
+        }
+      ]
     }
   ]
 }

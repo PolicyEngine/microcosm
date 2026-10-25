@@ -35,7 +35,6 @@ __all__ = [
     "FRS_SPINE_TABLES",
     "OUTPUT_COLUMNS",
     "REGION_MAP",
-    "STATE_PENSION_WEEKS_IN_YEAR",
     "TIME_PERIOD",
     "UC_CAPITAL_UNAVAILABLE",
     "WEEKS_IN_YEAR",
@@ -70,14 +69,17 @@ FRS_SPINE_TABLES = (
     "pension",
 )
 
-WEEKS_IN_YEAR = 365.25 / 7
-#: The State Pension alone annualises at 52 weeks (María's ruling of 2026-10-20,
-#: an exception to microcosm#1095's weekly amounts). It is paid at weekly rates,
-#: and policyengine-uk reads ``state_pension_reported`` back to a weekly amount
-#: at 52 weeks a year before comparing it with the full rate, so at 365.25 / 7 a
-#: full-rate pensioner would read 0.34% above the full rate and the excess
-#: would become a protected payment.
-STATE_PENSION_WEEKS_IN_YEAR = 52
+#: Weekly FRS amounts annualise at 52 weeks a year (María's ruling of
+#: 2026-10-23, uk-data#531). policyengine-uk reads an annual amount back to a
+#: weekly or monthly one at policyengine-core's 52 weeks before a weekly or
+#: monthly rule tests it (Housing Benefit, Council Tax Reduction, Pension
+#: Credit, the non-dependant deductions, the hours tests), so at 365.25 / 7 a
+#: weekly amount would read 0.34% above itself there, as a full-rate State
+#: Pension read above the full rate before María's ruling of 2026-10-20 made it
+#: the first amount at 52. LCFS spending keeps 365.25 / 7
+#: (``lcfs_consumption``) and NTS trips 52.14 (``nts_bus_travel``): no weekly
+#: rule reads them back.
+WEEKS_IN_YEAR = 52
 TIME_PERIOD = "2024"
 
 # Raw TOTCAPB4 blanks, nonnumeric values, and negative codes mean that the
@@ -240,6 +242,7 @@ OUTPUT_COLUMNS = (
     "property_income",
     "reports_rent_from_other_property",
     "maintenance_income",
+    "spousal_maintenance_income",
     "miscellaneous_income",
     "private_transfer_income",
     "lump_sum_income",
@@ -262,6 +265,7 @@ OUTPUT_COLUMNS = (
     "pension_contributions_via_salary_sacrifice",
     "salary_sacrifice_reported",
     "salary_sacrifice_asked",
+    "frs_bonus_amount",
     "child_benefit_reported",
     "income_support_reported",
     "housing_benefit_reported",
@@ -290,6 +294,7 @@ OUTPUT_COLUMNS = (
     "esa_includes_support_component",
     "bsp_reported",
     "war_widows_pension_reported",
+    "widowed_parents_allowance_reported",
     "benunit_id",
     "frs_benunit_capital",
     "is_married",
@@ -597,6 +602,7 @@ def _assemble_frame(
     owner_managers = frs_owner_manager_inputs(person, frs["job"])
     for column in OWNER_MANAGER_COLUMNS:
         pe_person[column] = owner_managers[column].to_numpy()
+    pe_person[FRS_BONUS_CARRIER_COLUMN] = frs_annual_bonuses(person, frs["job"])
     _add_person_income(pe_person, person, household, frs["oddjob"], evidence=evidence)
     _add_benefits(pe_person, person, frs["benefits"])
     # The engine pays Carer's Allowance on hours or receipt; a dataset keeps it
@@ -738,6 +744,50 @@ FRS_MAIN_JOB_JOBTYPE = 1
 #: on this release, which leaves the engine's company-owner rules off for it.
 PROPERTY_BUSINESS_SIC_DIVISION = 68
 OWNER_MANAGER_JOB_COLUMNS = ("director", "nature", "dirperc", "jobtype", "dividend")
+#: The JOB tab's bonus fields (FRS 2024-25): the amount of each of up to six
+#: occasional bonuses received in the last 12 months (BONAMT1-6, the sum
+#: received, not weekly), whether it was given before or after tax (BONTAX1-6:
+#: 1 before, 2 after) and the weekly tax the FRS imputes on a bonus given
+#: after tax (BONTXAM1-6, a weekly variable).
+FRS_BONUS_JOB_COLUMNS = tuple(
+    f"{stem}{index}"
+    for index in range(1, 7)
+    for stem in ("bonamt", "bontax", "bontxam")
+)
+#: Each adult's gross occasional bonuses over the last 12 months, the carrier
+#: salary_sacrifice's bonus conversion reads (microcosm#1340). It is no engine
+#: input and leaves at the release boundary. The FRS's earnings hold the
+#: bonuses a respondent received (the FRS 2024-25 derived-variable notes, SN
+#: 9563: UGRSPAY's final adjustments add them), but a sacrificed bonus is never
+#: received, so it is in neither; the conversion reads a received bonus as a
+#: sign of a bonus-paying job and its size, and adds the sacrifice beside pay
+#: (María's ruling of 2026-10-24).
+FRS_BONUS_CARRIER_COLUMN = "frs_bonus_amount"
+FRS_BONUS_AFTER_TAX = 2
+
+
+def frs_annual_bonuses(person: pd.DataFrame, job: pd.DataFrame) -> np.ndarray:
+    """Each adult's gross bonuses over the last 12 months, over all their jobs.
+
+    A bonus given after tax adds back the tax the FRS imputes on it, a weekly
+    amount, over the year. A tab without the bonus fields refuses, rather
+    than set nobody's.
+    """
+
+    missing = [column for column in FRS_BONUS_JOB_COLUMNS if column not in job]
+    if missing:
+        raise KeyError(
+            f"The FRS job tab has no {missing} column(s), so bonuses cannot be set."
+        )
+    gross = pd.Series(0.0, index=job.index)
+    for index in range(1, 7):
+        amount = np.maximum(_number(job, f"bonamt{index}"), 0)
+        after_tax = _number(job, f"bontax{index}") == FRS_BONUS_AFTER_TAX
+        tax = np.maximum(_number(job, f"bontxam{index}"), 0) * WEEKS_IN_YEAR
+        gross = gross + amount + tax.where(after_tax, 0.0)
+    return np.asarray(
+        _sum_to_entity(gross, job["person_id"], person["person_id"]), dtype=float
+    )
 
 
 def frs_owner_manager_inputs(person: pd.DataFrame, job: pd.DataFrame) -> pd.DataFrame:
@@ -812,6 +862,40 @@ def _add_person_income(
     pe_person["maintenance_income"] = (
         maintenance_to_self + _positive(person, "mntamt2").to_numpy()
     ) * WEEKS_IN_YEAR
+    # Maintenance a spouse or civil partner, present or former, pays for the
+    # adult's own keep, which Universal Credit (UC Regulations 2013 reg.
+    # 66(1)(d)), Pension Credit and Housing Benefit count, unlike the child
+    # maintenance above (pe-uk#2572; microcosm#1320, María's rulings of
+    # 2026-10-22 and 2026-10-23). ALIAMT is alimony or an allowance from a
+    # previous partner on the adult's own behalf, at its usual amount ALUAMT
+    # where ALIUS says the last was not usual; APAMT is the allowances from a
+    # husband or wife who lives away, which the FRS asks only of married
+    # adults. A tab without the three refuses, rather than set nobody's.
+    # ALIAMT is an approximation (Vahid's review of #1383, item 13): the FRS
+    # 2024-25 asks for payments "from a previous partner" (AliMny), so it also
+    # holds a former cohabitant's, which pe-uk's spousal_maintenance_income
+    # leaves out and Universal Credit and Pension Credit do not count. The
+    # survey does not say whether the previous partner was a spouse or civil
+    # partner, so those payments count as unearned income here.
+    missing_alimony = sorted(
+        column for column in ("aliamt", "aluamt", "alius") if column not in person
+    )
+    if missing_alimony:
+        raise KeyError(
+            f"The FRS adult tab has no {', '.join(missing_alimony).upper()} "
+            "column, so spousal maintenance cannot be set."
+        )
+    alimony = np.maximum(
+        np.where(
+            _number(person, "alius") == 2,
+            _number(person, "aluamt"),
+            _number(person, "aliamt"),
+        ),
+        0,
+    )
+    pe_person["spousal_maintenance_income"] = (
+        alimony + _positive(person, "apamt").to_numpy()
+    ) * WEEKS_IN_YEAR
     # ALLPAY2, "Amount of allowance: organisation", is one amount, so it is
     # miscellaneous income alone and not also a private transfer
     # (microcosm#1320, uk-data#627; María's ruling of 2026-10-20).
@@ -821,10 +905,12 @@ def _add_person_income(
             person, ("allpay2", "royyr2", "royyr3", "royyr4", "chamtern", "chamttst")
         )
     ) * WEEKS_IN_YEAR
+    # APAMT is spousal maintenance (above). APDAMT, the household bills a
+    # husband or wife who lives away pays directly, goes to third parties, not
+    # to the adult, so it stays a private transfer (María's ruling of
+    # 2026-10-23).
     pe_person["private_transfer_income"] = (
-        _sum_positive_fields(
-            person, ("apamt", "apdamt", "pareamt", "allpay3", "allpay4")
-        )
+        _sum_positive_fields(person, ("apdamt", "pareamt", "allpay3", "allpay4"))
         * WEEKS_IN_YEAR
     )
     pe_person["lump_sum_income"] = _number(person, "redamt")
@@ -958,6 +1044,41 @@ def _odd_job_income(person: pd.DataFrame, oddjob: pd.DataFrame) -> np.ndarray:
     )
 
 
+#: Bereavement Support Payment's monthly rates, frozen since the payment began
+#: on 6 April 2017: the higher rate, with a child, and the standard rate (The
+#: Bereavement Support Payment Regulations 2017, SI 2017/410, reg. 3).
+BSP_MONTHLY_RATES = (350.0, 100.0)
+#: The share of a rate's weekly equivalent within which an FRS code-6 weekly
+#: amount is that rate. The equivalents are the monthly rate at 12/52, as a
+#: month, quarter or year converts, and at 1/4, as four weeks converts.
+BSP_RATE_MATCH_TOLERANCE = 0.01
+
+
+#: Widowed Parent's Allowance's weekly rate in 2024-25, the FRS 2024-25 year
+#: (DWP, Benefit and pension rates 2024 to 2025: GBP 148.40, from GBP 139.10
+#: in 2023-24). An award below it is a reduced one (Vahid's review of #1383,
+#: item 12).
+WPA_WEEKLY_RATE = 148.40
+
+
+def wpa_rate_match(weekly: pd.Series) -> pd.Series:
+    """Whether each weekly amount is Widowed Parent's Allowance's rate or below it."""
+
+    return weekly <= WPA_WEEKLY_RATE * (1.0 + BSP_RATE_MATCH_TOLERANCE)
+
+
+def bsp_rate_match(weekly: pd.Series) -> pd.Series:
+    """Whether each weekly amount is one of Bereavement Support Payment's rates."""
+
+    equivalents = [
+        rate * factor for rate in BSP_MONTHLY_RATES for factor in (12 / 52, 1 / 4)
+    ]
+    match = pd.Series(False, index=weekly.index)
+    for equivalent in equivalents:
+        match |= (weekly - equivalent).abs() <= BSP_RATE_MATCH_TOLERANCE * equivalent
+    return match
+
+
 def _add_benefits(
     pe_person: pd.DataFrame, person: pd.DataFrame, benefits: pd.DataFrame
 ) -> None:
@@ -1005,9 +1126,23 @@ def _add_benefits(
     pe_person["esa_includes_support_component"] = _esa_includes_support_component(
         benefits, person_id, person["person_id"]
     )
+    # FRS code 6 is Bereavement Support Payment with its predecessors. A weekly
+    # amount at one of the payment's frozen rates is the payment; one at Widowed
+    # Parent's Allowance's 2024-25 rate, or below it as a reduced award, is the
+    # allowance, the predecessor still in payment, which policyengine-uk 2.149.0
+    # gives its own input (pe-uk#2572; #1222, María's ruling of 2026-10-22).
+    # Any other amount, above the allowance's rate and at no rate (a lump sum,
+    # a part month or a misreport), stays the payment, which is neither taxed
+    # nor means-tested (Vahid's review of #1383, item 12); an allowance with an
+    # inherited additional pension above its rate reads as the payment too.
+    code_6 = benefit == 6
+    wpa = code_6 & ~bsp_rate_match(amount) & wpa_rate_match(amount)
+    bsp = code_6 & ~wpa
     pe_person["bsp_reported"] = (
-        _sum_to_entity(amount * (benefit == 6), person_id, person["person_id"])
-        * WEEKS_IN_YEAR
+        _sum_to_entity(amount * bsp, person_id, person["person_id"]) * WEEKS_IN_YEAR
+    )
+    pe_person["widowed_parents_allowance_reported"] = (
+        _sum_to_entity(amount * wpa, person_id, person["person_id"]) * WEEKS_IN_YEAR
     )
     # FRS code 9 is War Widow's or Widower's Pension, which rises with CPI while
     # Bereavement Support Payment's rates are frozen. policyengine-uk 2.135.7
@@ -1019,14 +1154,14 @@ def _add_benefits(
     pe_person["winter_fuel_allowance_reported"] = (
         pe_person["winter_fuel_allowance_reported"] / WEEKS_IN_YEAR
     )
-    # The State Pension's weekly amounts, re-summed at its own 52 weeks.
+    # The State Pension's weekly amounts, re-summed on their own.
     pe_person["state_pension_reported"] = (
         _sum_to_entity(
             amount * benefit.isin(BENEFIT_CODES["state_pension"]),
             person_id,
             person["person_id"],
         )
-        * STATE_PENSION_WEEKS_IN_YEAR
+        * WEEKS_IN_YEAR
     )
 
 

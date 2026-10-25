@@ -1,7 +1,7 @@
 {
   "version": 1,
   "country": "nz",
-  "policy": "One national New Zealand dataset carries Stats NZ region codes for calibration and filtering. Region is target-assigned on US donor support records, never represented as observed donor geography. In the graph build each household draws one atomic unit (territorial authority intersected with Accommodation Supplement area) from population-weighted support built from Chronicle territorial-authority population facts and as_area_crosswalk.json; region, territorial authority and Accommodation Supplement area derive from that unit. Finer layers remain columns on this same national dataset, not separate files.",
+  "policy": "One national New Zealand dataset carries Stats NZ region codes for calibration and filtering. Region is target-assigned on US donor support records, never represented as observed donor geography. In the graph build each household draws one joint atomic unit (territorial authority intersected with region and Accommodation Supplement area) from atomic_geography_support.json; region, territorial authority and Accommodation Supplement area derive from that unit. Joint SA1 Census population shares split each published territorial-authority ERP anchor across its region and AS cells, conserving TA ERP exactly; regional ERP sums are approximate diagnostics. Finer layers remain columns on this same national dataset, not separate files.",
   "geography_spine": {
     "stage": "assign_nz_regions",
     "method": "clone_assign_uniform",
@@ -16,8 +16,8 @@
     "assignment_source": {
       "survey": "Stats NZ subnational population estimates at 30 June 2025",
       "source": "https://www.stats.govt.nz/information-releases/subnational-population-estimates-at-30-june-2025/",
-      "notes": "Region follows from each household's atomic territorial-authority by Accommodation Supplement area draw, whose support weights come from Stats NZ population facts, and is broadcast to family and person tables; the age-by-region, all sexes cells are calibration targets. The pinned Chronicle feed supplies all-sex age-by-region cells for the 16 ERP regions and all-age ERP for 67 territorial authorities. Region 99 is retained separately under a national-growth proxy; assigning its geography support remains an explicit prerequisite."
+      "notes": "The generated atomic_geography_support.json definition uses the official Meshblock Higher Geographies 2026 SA1-to-TA-and-REGC concordance and the existing as_area_crosswalk.json AU2017 placement rule. The pinned Chronicle feed supplies all-age ERP for 67 real territorial authorities. Largest-remainder apportionment preserves each TA ERP total; the all-sex age-by-region cells remain calibration targets. Region 99 has separate cells from its own SA1s under TA 067. TA 999 has no ERP anchor: its 33 Census residents remain audit-only outside-TA cells in the generator report, without sampling mass or redistribution."
     },
-    "notes": "One clone per record is the compile-safe national starting point. This generation-0 record describes the region layer only; the shared graph geography kernels execute assignment. The exact 16-region ERP roster, pinned feed identity and harvested territorial-authority to Accommodation Supplement area shares are declared. Reviewed assignment support for region 99 remains required; it is not TA 999."
+    "notes": "One clone per record is the compile-safe national starting point. This generation-0 record describes the region layer; the shared graph geography kernels can assign one joint atomic area and look up all layers. The generated support is spec data only: NZ transport graph activation remains G8-w3 work. Whole-SA1 AU2017 allocation retains the existing interior-point/centroid approximation; region is never inferred from TA alone."
   }
 }

@@ -15,6 +15,7 @@ from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.spi_support import support_channel_column
 from microcosm.build.uk_runtime.uc_capital_coherence import (
     PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES,
+    PROPERTY_CAPITAL_SECURED_DEBT,
     UC_CAPITAL_COARSENING,
     UC_CAPITAL_INCOME_BAND_EDGES,
     UC_CAPITAL_MINIMUM_CELL_DONORS,
@@ -123,7 +124,10 @@ def _frame():
     )
     household = pd.DataFrame({"household_id": [row[0] for row in rows]})
     # No household holds property here; the property-share tests add it.
-    for column in PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES:
+    for column in (
+        *PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES,
+        *PROPERTY_CAPITAL_SECURED_DEBT.values(),
+    ):
         household[column] = 0.0
     return uk_national_frame(
         person=person,
