@@ -348,7 +348,13 @@ def test_spi_qrf_stages_use_typed_weights_and_restore_gross_savings(
         allow_in_sample_reference=True,
     )
 
-    assert _FakeQRF.fit_weight_kinds == ["design", "importance", "importance"]
+    # The reference forest is fitted once per cross-fit fold in use (the
+    # transport receipt's ``folds``), all under its one fit record.
+    assert _FakeQRF.fit_weight_kinds == [
+        "design",
+        *["importance"] * result.stage1_transport["folds"],
+        "importance",
+    ]
     assert [
         (record.fit_name, record.weight_kind) for record in result.fit_weight_records
     ] == [
@@ -928,9 +934,15 @@ def test_stage1_queries_only_drawn_recipients_with_the_bridge(
     )
     stage1 = captured["stage1"]
     assert stage1["rows"] == result.spi_prediction_rows == 3
-    assert {"has_pay", "has_trade", "at_or_over_spa", "main_source_pay", "age"} <= set(
-        stage1["columns"]
-    )
+    assert {
+        "has_pay",
+        "has_trade",
+        "at_or_over_spa",
+        "main_source_pay",
+        spi_income.SPI_STAGE1_AGE_BAND_COLUMN,
+    } <= set(stage1["columns"])
+    # The forest reads the band, never the age drawn inside it (uk-data#628).
+    assert "age" not in stage1["columns"]
     # The no-analogue leaf's sign uniform is the identity-keyed one for the
     # drawn recipients, in their order.
     age_domain = (result.person[channel] == "spi") & result.person["age"].ge(16)

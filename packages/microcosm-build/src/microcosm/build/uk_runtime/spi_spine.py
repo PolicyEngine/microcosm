@@ -279,8 +279,8 @@ UK_SPI_INCOME_SPINE_REWRITE_COLUMNS = (
 # applies to every declared parameter: it needs (1) a drift assert and (2) an
 # executed-effect receipt, or an explicit absence statement. Seeded draws use
 # twin-build determinism as their executed-effect receipt.
-#: Age, gender and region, then the four bridge predictors the tape and the
-#: twin derive from their own leaves (microcosm#840).
+#: The SPI age band (uk-data#628), gender and region, then the four bridge
+#: predictors the tape and the twin derive from their own leaves (microcosm#840).
 SPI_SPINE_STAGE1_PREDICTORS = SPI_STAGE1_PREDICTOR_COLUMNS
 SPI_SPINE_STAGE1_CATEGORICAL_PREDICTORS = SPI_STAGE1_CATEGORICAL_PREDICTORS
 #: The stage-1 draw: each drawn recipient's twin is located on the FRS

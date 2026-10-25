@@ -163,8 +163,11 @@ SPI_INDICATOR_CODES = (-1, 0, 1)
 SPI_MAIN_SOURCE_LEVELS = ("pay", "pension", "trade", "other")
 SPI_BRIDGE_PREDICTOR_COLUMNS = ("main_source", "has_pay", "has_trade", "at_or_over_spa")
 SPI_STAGE1_CATEGORICAL_PREDICTORS = ("gender", "region", "main_source")
+#: The stage-1 forests' age predictor: the SPI AGERANGE band, not an age
+#: (uk-data#628). See SPI_STAGE1_AGE_PREDICTOR_RULE.
+SPI_STAGE1_AGE_BAND_COLUMN = "spi_age_band"
 SPI_STAGE1_PREDICTOR_COLUMNS = (
-    "age",
+    SPI_STAGE1_AGE_BAND_COLUMN,
     "gender",
     "region",
     *SPI_BRIDGE_PREDICTOR_COLUMNS,
@@ -406,13 +409,20 @@ SPI_DONOR_AGE_DRAW_METHOD = (
     "Pension age, and the band's below-State-Pension-age population share is "
     "drawn from its non-recipients"
 )
-#: Donors carry a drawn fractional age and frame people a whole-year one, so
-#: the stage-1 forest is queried at the middle of each person's year of age.
-#: At the whole year a person sits on any split the forest places at that
-#: birthday; at State Pension age, below which no donor draws State Pension,
-#: about half of the frame's 66-year-olds drew a 65-year-old donor's zero
-#: State Pension leaf (microcosm#1069, c4 measurement arm).
-SPI_STAGE1_QUERY_AGE_RULE = "whole-year age plus half a year"
+#: The tape gives age only as a band, so a donor's drawn age carries no income
+#: pattern within its band: a forest trained on it learns none, and twins of
+#: one band faced conditionals that differed only by that noise
+#: (uk-data#628). The stage-1 tape and reference forests are trained and
+#: queried on the band code instead: the tape's own AGERANGE code, composite
+#: records (-1) as a band of their own, and the band of a frame person's
+#: whole-year age. The State Pension split inside a band is at_or_over_spa's.
+#: The drawn ages stay on the donor for their other readers (the band pools'
+#: State Pension side).
+SPI_STAGE1_AGE_PREDICTOR_RULE = (
+    "the SPI 2022-23 AGERANGE band code: the tape's own code, composite "
+    "records (-1) as a band of their own, and the band of a frame person's "
+    "whole-year age"
+)
 _SPI_REGION_MAP = {
     1: "NORTH_EAST",
     2: "NORTH_WEST",
@@ -848,7 +858,7 @@ def impute_uk_spi_income_support(
     donor = _prepare_spi_donor(raw_donor, seed=seed, age_model=donor_age_model)
     donor_age_draw = {
         **donor.attrs.get("age_draw", {}),
-        "stage1_query_age": SPI_STAGE1_QUERY_AGE_RULE,
+        "stage1_age_predictor": SPI_STAGE1_AGE_PREDICTOR_RULE,
     }
     donor_full = donor
     donor_fit_weights = donor["FACT"].to_numpy(dtype=np.float64)
@@ -1834,6 +1844,9 @@ def _prepare_spi_donor(
     # The published age band travels with the record so band pools can match
     # a carrier's age band; composites (-1) have none and never age-match.
     donor["agerange"] = age_codes.to_numpy(dtype=np.int64)
+    # The stage-1 forests read the band itself, a composite's -1 included
+    # (uk-data#628).
+    donor[SPI_STAGE1_AGE_BAND_COLUMN] = age_codes.to_numpy(dtype=np.float64)
     # The bridge predictors (microcosm#840): main_source and has_pay from the
     # leaves, as on the twin; has_trade and at_or_over_spa from the published
     # indicator codes, the leaves serving a composite record without codes;
@@ -2200,11 +2213,13 @@ def _stage1_query_predictors(
     *,
     state_pension_age: int,
 ) -> pd.DataFrame:
-    """Stage-1 query predictors: age at the middle of the year of age, and the
+    """Stage-1 query predictors: the SPI band of the whole-year age, and the
     bridge predictors derived from the row's own (the twin's) leaves."""
 
     predictors = _person_predictors(person, household, income_predictors=())
-    predictors["age"] = np.floor(predictors["age"].to_numpy(dtype=np.float64)) + 0.5
+    predictors[SPI_STAGE1_AGE_BAND_COLUMN] = _spi_agerange_codes(
+        np.floor(predictors["age"].to_numpy(dtype=np.float64))
+    ).astype(np.float64)
     bridge = _person_bridge(person, state_pension_age=state_pension_age)
     for column in SPI_BRIDGE_PREDICTOR_COLUMNS:
         predictors[column] = bridge[column].to_numpy()
