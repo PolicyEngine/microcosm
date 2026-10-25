@@ -251,6 +251,10 @@
       "dft.local_bus_journeys": {
         "provider_id": "dft",
         "label": "Local bus passenger journeys"
+      },
+      "microcosm.centax_childcare_parents": {
+        "provider_id": "microcosm",
+        "label": "Parents of 3- and 4-year-olds by income (CenTax)"
       }
     },
     "target_categories": {
@@ -466,6 +470,15 @@
       "mhclg.council_tax_stock.band_h": "mhclg.council_tax_stock",
       "mhclg.council_tax_stock.single_adult_discount": "mhclg.council_tax_stock",
       "mhclg.council_tax_stock.total": "mhclg.council_tax_stock",
+      "microcosm.centax_childcare_parents.ani_0_to_50k": "microcosm.centax_childcare_parents",
+      "microcosm.centax_childcare_parents.ani_120k_to_200k": "microcosm.centax_childcare_parents",
+      "microcosm.centax_childcare_parents.ani_50k_to_80k": "microcosm.centax_childcare_parents",
+      "microcosm.centax_childcare_parents.ani_80k_to_120k": "microcosm.centax_childcare_parents",
+      "microcosm.centax_childcare_parents.female_ani_80k_to_150k": "microcosm.centax_childcare_parents",
+      "microcosm.centax_childcare_parents.london_ani_80k_to_150k": "microcosm.centax_childcare_parents",
+      "microcosm.centax_childcare_parents.non_employee_ani_80k_to_150k": "microcosm.centax_childcare_parents",
+      "microcosm.centax_childcare_parents.north_and_midlands_ani_80k_to_150k": "microcosm.centax_childcare_parents",
+      "microcosm.centax_childcare_parents.south_excl_london_ani_80k_to_150k": "microcosm.centax_childcare_parents",
       "microcosm.high_value_homes.over_1_5m_by_region": "microcosm.high_value_homes",
       "microcosm.high_value_homes.over_1m_by_region": "microcosm.high_value_homes",
       "microcosm.high_value_homes.over_2m_by_region": "microcosm.high_value_homes",
@@ -832,6 +845,15 @@
       "mhclg.council_tax_stock.band_h": "Band h",
       "mhclg.council_tax_stock.single_adult_discount": "Single adult discount",
       "mhclg.council_tax_stock.total": "Total",
+      "microcosm.centax_childcare_parents.ani_0_to_50k": "Parents of age-eligible 3- and 4-year-olds, ANI up to \u00a350,000 (2021-22 pounds)",
+      "microcosm.centax_childcare_parents.ani_120k_to_200k": "Parents of age-eligible 3- and 4-year-olds, ANI over \u00a3120,000 to \u00a3200,000 (2021-22 pounds)",
+      "microcosm.centax_childcare_parents.ani_50k_to_80k": "Parents of age-eligible 3- and 4-year-olds, ANI over \u00a350,000 to \u00a380,000 (2021-22 pounds)",
+      "microcosm.centax_childcare_parents.ani_80k_to_120k": "Parents of age-eligible 3- and 4-year-olds, ANI over \u00a380,000 to \u00a3120,000 (2021-22 pounds)",
+      "microcosm.centax_childcare_parents.female_ani_80k_to_150k": "Parents of age-eligible 3- and 4-year-olds, women, ANI over \u00a380,000 to \u00a3150,000 (2021-22 pounds)",
+      "microcosm.centax_childcare_parents.london_ani_80k_to_150k": "Parents of age-eligible 3- and 4-year-olds, London, ANI over \u00a380,000 to \u00a3150,000 (2021-22 pounds)",
+      "microcosm.centax_childcare_parents.non_employee_ani_80k_to_150k": "Parents of age-eligible 3- and 4-year-olds, main income source other than employment, ANI over \u00a380,000 to \u00a3150,000 (2021-22 pounds)",
+      "microcosm.centax_childcare_parents.north_and_midlands_ani_80k_to_150k": "Parents of age-eligible 3- and 4-year-olds, North and Midlands, ANI over \u00a380,000 to \u00a3150,000 (2021-22 pounds)",
+      "microcosm.centax_childcare_parents.south_excl_london_ani_80k_to_150k": "Parents of age-eligible 3- and 4-year-olds, South excluding London, ANI over \u00a380,000 to \u00a3150,000 (2021-22 pounds)",
       "microcosm.high_value_homes.over_1_5m_by_region": "Owner-occupied homes valued over \u00a31.5 million by region",
       "microcosm.high_value_homes.over_1m_by_region": "Owner-occupied homes valued over \u00a31 million by region",
       "microcosm.high_value_homes.over_2m_by_region": "Owner-occupied homes valued over \u00a32 million by region",
@@ -47556,6 +47578,177 @@
       },
       "uprating_from_period": "2025-10",
       "uprating_to_period": 2025
+    },
+    {
+      "name": "microcosm.centax_childcare_parents.ani_0_to_50k",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "parents_of_eligible_3_4_year_olds",
+        "record_set_spec_id": "uk.centax_childcare_parents.ani_0_to_50k.v1",
+        "geography_level": "country",
+        "geography_id": "E92000001"
+      },
+      "entity": "person",
+      "measure": "microcosm/centax_childcare_parents/ani_0_to_50k",
+      "family": "centax_childcare_parents",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.centax_childcare_parents.ani_0_to_50k",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      }
+    },
+    {
+      "name": "microcosm.centax_childcare_parents.ani_50k_to_80k",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "parents_of_eligible_3_4_year_olds",
+        "record_set_spec_id": "uk.centax_childcare_parents.ani_50k_to_80k.v1",
+        "geography_level": "country",
+        "geography_id": "E92000001"
+      },
+      "entity": "person",
+      "measure": "microcosm/centax_childcare_parents/ani_50k_to_80k",
+      "family": "centax_childcare_parents",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.centax_childcare_parents.ani_50k_to_80k",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      }
+    },
+    {
+      "name": "microcosm.centax_childcare_parents.ani_80k_to_120k",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "parents_of_eligible_3_4_year_olds",
+        "record_set_spec_id": "uk.centax_childcare_parents.ani_80k_to_120k.v1",
+        "geography_level": "country",
+        "geography_id": "E92000001"
+      },
+      "entity": "person",
+      "measure": "microcosm/centax_childcare_parents/ani_80k_to_120k",
+      "family": "centax_childcare_parents",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.centax_childcare_parents.ani_80k_to_120k",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      }
+    },
+    {
+      "name": "microcosm.centax_childcare_parents.ani_120k_to_200k",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "parents_of_eligible_3_4_year_olds",
+        "record_set_spec_id": "uk.centax_childcare_parents.ani_120k_to_200k.v1",
+        "geography_level": "country",
+        "geography_id": "E92000001"
+      },
+      "entity": "person",
+      "measure": "microcosm/centax_childcare_parents/ani_120k_to_200k",
+      "family": "centax_childcare_parents",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.centax_childcare_parents.ani_120k_to_200k",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      }
+    },
+    {
+      "name": "microcosm.centax_childcare_parents.female_ani_80k_to_150k",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "parents_of_eligible_3_4_year_olds",
+        "record_set_spec_id": "uk.centax_childcare_parents.female_ani_80k_to_150k.v1",
+        "geography_level": "country",
+        "geography_id": "E92000001"
+      },
+      "entity": "person",
+      "measure": "microcosm/centax_childcare_parents/female_ani_80k_to_150k",
+      "family": "centax_childcare_parents",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.centax_childcare_parents.female_ani_80k_to_150k",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      }
+    },
+    {
+      "name": "microcosm.centax_childcare_parents.non_employee_ani_80k_to_150k",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "parents_of_eligible_3_4_year_olds",
+        "record_set_spec_id": "uk.centax_childcare_parents.non_employee_ani_80k_to_150k.v1",
+        "geography_level": "country",
+        "geography_id": "E92000001"
+      },
+      "entity": "person",
+      "measure": "microcosm/centax_childcare_parents/non_employee_ani_80k_to_150k",
+      "family": "centax_childcare_parents",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.centax_childcare_parents.non_employee_ani_80k_to_150k",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      }
+    },
+    {
+      "name": "microcosm.centax_childcare_parents.london_ani_80k_to_150k",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "parents_of_eligible_3_4_year_olds",
+        "record_set_spec_id": "uk.centax_childcare_parents.london_ani_80k_to_150k.v1",
+        "geography_level": "country",
+        "geography_id": "E92000001"
+      },
+      "entity": "person",
+      "measure": "microcosm/centax_childcare_parents/london_ani_80k_to_150k",
+      "family": "centax_childcare_parents",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.centax_childcare_parents.london_ani_80k_to_150k",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      }
+    },
+    {
+      "name": "microcosm.centax_childcare_parents.south_excl_london_ani_80k_to_150k",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "parents_of_eligible_3_4_year_olds",
+        "record_set_spec_id": "uk.centax_childcare_parents.south_excl_london_ani_80k_to_150k.v1",
+        "geography_level": "country",
+        "geography_id": "E92000001"
+      },
+      "entity": "person",
+      "measure": "microcosm/centax_childcare_parents/south_excl_london_ani_80k_to_150k",
+      "family": "centax_childcare_parents",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.centax_childcare_parents.south_excl_london_ani_80k_to_150k",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      }
+    },
+    {
+      "name": "microcosm.centax_childcare_parents.north_and_midlands_ani_80k_to_150k",
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "parents_of_eligible_3_4_year_olds",
+        "record_set_spec_id": "uk.centax_childcare_parents.north_and_midlands_ani_80k_to_150k.v1",
+        "geography_level": "country",
+        "geography_id": "E92000001"
+      },
+      "entity": "person",
+      "measure": "microcosm/centax_childcare_parents/north_and_midlands_ani_80k_to_150k",
+      "family": "centax_childcare_parents",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "microcosm.centax_childcare_parents.north_and_midlands_ani_80k_to_150k",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      }
     }
   ]
 }

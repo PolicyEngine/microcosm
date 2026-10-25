@@ -1,11 +1,11 @@
 {
- "compiled_count": 1336,
+ "compiled_count": 1345,
  "counts_by_kind": {
   "calibration_drift": 558,
   "fixture_only": 49,
-  "ledger_only": 748
+  "ledger_only": 757
  },
- "difference_count": 1355,
+ "difference_count": 1364,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -5074,6 +5074,69 @@
    "name": "mhclg.council_tax_stock.single_adult_discount",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1810067.961,
+   "name": "microcosm.centax_childcare_parents.ani_0_to_50k",
+   "period": 2025,
+   "reason": "ledger_only by construction: the row is a Microcosm-derived count of parents of age-eligible 3- and 4-year-olds in England in one adjusted net income cell: CenTax's share of HMRC's 2021-22 tabulation (Advani, Flew, Pepin-Hall and Summers 2026, Figures 3.1, 3.3, 3.6 and 3.7) times the baseline build's own parents (uk/centax_childcare_parent_facts.json), compiled beside the Chronicle feed. The incumbent registry carries no such row, so the difference is the derived target itself. The rows bind on the national line only (calibration_lines; microcosm#1399)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 38502.815,
+   "name": "microcosm.centax_childcare_parents.ani_120k_to_200k",
+   "period": 2025,
+   "reason": "ledger_only by construction: the row is a Microcosm-derived count of parents of age-eligible 3- and 4-year-olds in England in one adjusted net income cell: CenTax's share of HMRC's 2021-22 tabulation (Advani, Flew, Pepin-Hall and Summers 2026, Figures 3.1, 3.3, 3.6 and 3.7) times the baseline build's own parents (uk/centax_childcare_parent_facts.json), compiled beside the Chronicle feed. The incumbent registry carries no such row, so the difference is the derived target itself. The rows bind on the national line only (calibration_lines; microcosm#1399)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 228922.836,
+   "name": "microcosm.centax_childcare_parents.ani_50k_to_80k",
+   "period": 2025,
+   "reason": "ledger_only by construction: the row is a Microcosm-derived count of parents of age-eligible 3- and 4-year-olds in England in one adjusted net income cell: CenTax's share of HMRC's 2021-22 tabulation (Advani, Flew, Pepin-Hall and Summers 2026, Figures 3.1, 3.3, 3.6 and 3.7) times the baseline build's own parents (uk/centax_childcare_parent_facts.json), compiled beside the Chronicle feed. The incumbent registry carries no such row, so the difference is the derived target itself. The rows bind on the national line only (calibration_lines; microcosm#1399)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 87850.082,
+   "name": "microcosm.centax_childcare_parents.ani_80k_to_120k",
+   "period": 2025,
+   "reason": "ledger_only by construction: the row is a Microcosm-derived count of parents of age-eligible 3- and 4-year-olds in England in one adjusted net income cell: CenTax's share of HMRC's 2021-22 tabulation (Advani, Flew, Pepin-Hall and Summers 2026, Figures 3.1, 3.3, 3.6 and 3.7) times the baseline build's own parents (uk/centax_childcare_parent_facts.json), compiled beside the Chronicle feed. The incumbent registry carries no such row, so the difference is the derived target itself. The rows bind on the national line only (calibration_lines; microcosm#1399)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 29065.617,
+   "name": "microcosm.centax_childcare_parents.female_ani_80k_to_150k",
+   "period": 2025,
+   "reason": "ledger_only by construction: the row is a Microcosm-derived count of parents of age-eligible 3- and 4-year-olds in England in one adjusted net income cell: CenTax's share of HMRC's 2021-22 tabulation (Advani, Flew, Pepin-Hall and Summers 2026, Figures 3.1, 3.3, 3.6 and 3.7) times the baseline build's own parents (uk/centax_childcare_parent_facts.json), compiled beside the Chronicle feed. The incumbent registry carries no such row, so the difference is the derived target itself. The rows bind on the national line only (calibration_lines; microcosm#1399)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 31288.539,
+   "name": "microcosm.centax_childcare_parents.london_ani_80k_to_150k",
+   "period": 2025,
+   "reason": "ledger_only by construction: the row is a Microcosm-derived count of parents of age-eligible 3- and 4-year-olds in England in one adjusted net income cell: CenTax's share of HMRC's 2021-22 tabulation (Advani, Flew, Pepin-Hall and Summers 2026, Figures 3.1, 3.3, 3.6 and 3.7) times the baseline build's own parents (uk/centax_childcare_parent_facts.json), compiled beside the Chronicle feed. The incumbent registry carries no such row, so the difference is the derived target itself. The rows bind on the national line only (calibration_lines; microcosm#1399)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 15871.787,
+   "name": "microcosm.centax_childcare_parents.non_employee_ani_80k_to_150k",
+   "period": 2025,
+   "reason": "ledger_only by construction: the row is a Microcosm-derived count of parents of age-eligible 3- and 4-year-olds in England in one adjusted net income cell: CenTax's share of HMRC's 2021-22 tabulation (Advani, Flew, Pepin-Hall and Summers 2026, Figures 3.1, 3.3, 3.6 and 3.7) times the baseline build's own parents (uk/centax_childcare_parent_facts.json), compiled beside the Chronicle feed. The incumbent registry carries no such row, so the difference is the derived target itself. The rows bind on the national line only (calibration_lines; microcosm#1399)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 27356.981,
+   "name": "microcosm.centax_childcare_parents.north_and_midlands_ani_80k_to_150k",
+   "period": 2025,
+   "reason": "ledger_only by construction: the row is a Microcosm-derived count of parents of age-eligible 3- and 4-year-olds in England in one adjusted net income cell: CenTax's share of HMRC's 2021-22 tabulation (Advani, Flew, Pepin-Hall and Summers 2026, Figures 3.1, 3.3, 3.6 and 3.7) times the baseline build's own parents (uk/centax_childcare_parent_facts.json), compiled beside the Chronicle feed. The incumbent registry carries no such row, so the difference is the derived target itself. The rows bind on the national line only (calibration_lines; microcosm#1399)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 50962.956,
+   "name": "microcosm.centax_childcare_parents.south_excl_london_ani_80k_to_150k",
+   "period": 2025,
+   "reason": "ledger_only by construction: the row is a Microcosm-derived count of parents of age-eligible 3- and 4-year-olds in England in one adjusted net income cell: CenTax's share of HMRC's 2021-22 tabulation (Advani, Flew, Pepin-Hall and Summers 2026, Figures 3.1, 3.3, 3.6 and 3.7) times the baseline build's own parents (uk/centax_childcare_parent_facts.json), compiled beside the Chronicle feed. The incumbent registry carries no such row, so the difference is the derived target itself. The rows bind on the national line only (calibration_lines; microcosm#1399)."
   },
   {
    "kind": "ledger_only",

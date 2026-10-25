@@ -1,11 +1,11 @@
 {
   "source_fact_feed": "chronicle-uk-abf0921-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1358,
-  "contract_target_count": 376,
-  "active_reference_count": 1336,
+  "candidate_count": 1367,
+  "contract_target_count": 385,
+  "active_reference_count": 1345,
   "status_counts": {
-    "active": 1336,
+    "active": 1345,
     "no_fact_at_or_before_period": 5,
     "signed_excluded": 17
   },
@@ -4469,6 +4469,42 @@
       ]
     },
     "mhclg.council_tax_stock.single_adult_discount": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "microcosm.centax_childcare_parents.ani_0_to_50k": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "microcosm.centax_childcare_parents.ani_50k_to_80k": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "microcosm.centax_childcare_parents.ani_80k_to_120k": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "microcosm.centax_childcare_parents.ani_120k_to_200k": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "microcosm.centax_childcare_parents.female_ani_80k_to_150k": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "microcosm.centax_childcare_parents.non_employee_ani_80k_to_150k": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "microcosm.centax_childcare_parents.london_ani_80k_to_150k": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "microcosm.centax_childcare_parents.south_excl_london_ani_80k_to_150k": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "microcosm.centax_childcare_parents.north_and_midlands_ani_80k_to_150k": {
       "geography_level": "country",
       "geography_id": "E92000001"
     }
@@ -30517,6 +30553,141 @@
           "resolved_fact_key": "ledger_aggregate_fact_v2_8cb05d2d0434301a7e422afe"
         }
       ]
+    },
+    "microcosm.centax_childcare_parents.ani_0_to_50k": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "microcosm.centax_childcare_parents.ani_0_to_50k",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 1810067.961,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_centax_childcare_parents_v1_f6de8bd8008f7bb3d6775898"
+        }
+      ]
+    },
+    "microcosm.centax_childcare_parents.ani_50k_to_80k": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "microcosm.centax_childcare_parents.ani_50k_to_80k",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 228922.836,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_centax_childcare_parents_v1_ebe2802703d16c038d9b2dc8"
+        }
+      ]
+    },
+    "microcosm.centax_childcare_parents.ani_80k_to_120k": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "microcosm.centax_childcare_parents.ani_80k_to_120k",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 87850.082,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_centax_childcare_parents_v1_1f3c1a77b8caa92f3c454850"
+        }
+      ]
+    },
+    "microcosm.centax_childcare_parents.ani_120k_to_200k": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "microcosm.centax_childcare_parents.ani_120k_to_200k",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 38502.815,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_centax_childcare_parents_v1_d5f3ebdb85aa3510ac086fad"
+        }
+      ]
+    },
+    "microcosm.centax_childcare_parents.female_ani_80k_to_150k": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "microcosm.centax_childcare_parents.female_ani_80k_to_150k",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 29065.617,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_centax_childcare_parents_v1_88c35d50b2aff6d5cf6921b7"
+        }
+      ]
+    },
+    "microcosm.centax_childcare_parents.non_employee_ani_80k_to_150k": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "microcosm.centax_childcare_parents.non_employee_ani_80k_to_150k",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 15871.787,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_centax_childcare_parents_v1_db267cebf5fe33e408a4face"
+        }
+      ]
+    },
+    "microcosm.centax_childcare_parents.london_ani_80k_to_150k": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "microcosm.centax_childcare_parents.london_ani_80k_to_150k",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 31288.539,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_centax_childcare_parents_v1_37d510f8af3e31c921818be8"
+        }
+      ]
+    },
+    "microcosm.centax_childcare_parents.south_excl_london_ani_80k_to_150k": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "microcosm.centax_childcare_parents.south_excl_london_ani_80k_to_150k",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 50962.956,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_centax_childcare_parents_v1_69e109821b6669c67691b5c4"
+        }
+      ]
+    },
+    "microcosm.centax_childcare_parents.north_and_midlands_ani_80k_to_150k": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "microcosm.centax_childcare_parents.north_and_midlands_ani_80k_to_150k",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 27356.981,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_centax_childcare_parents_v1_c5eb9446004e5cb65486f201"
+        }
+      ]
     }
   },
   "fanout_family_outcomes": [
@@ -30653,6 +30824,12 @@
       "rows": 5430,
       "rows_sha256": "5bffb4044cab1c5c9dca4b7103c3b88b1f5390404786698fd050972e8f420450",
       "inputs_sha256": "41c4f1595befe47a299aa03c803f8539e2406750ab8a312e469affdc7d4990fa"
+    },
+    {
+      "resource": "centax_childcare_parent_facts.json",
+      "rows": 9,
+      "rows_sha256": "063834e192da6aea5150925d9336380e1d5859f8397d691b281e552604008e91",
+      "inputs_sha256": "36c260846ae473c642e7b1974bf4f1e7e14ed3867d33e7c69dd63c5ff8e3b9d5"
     }
   ]
 }

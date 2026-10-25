@@ -73,8 +73,9 @@ from tools.generate_uk_target_references import (
 _TEST_PATHS = paths_for("microcosm-build")
 
 # The next policyengine-uk bump retires three rows (microcosm#1095) and binds
-# England's single adult council tax discount (microcosm#953).
-ACTIVE_REFERENCE_COUNT = 1336
+# England's single adult council tax discount (microcosm#953). CenTax's nine
+# parent cells add nine (microcosm#1399).
+ACTIVE_REFERENCE_COUNT = 1345
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 
 
