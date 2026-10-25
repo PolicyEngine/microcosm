@@ -457,9 +457,10 @@ def test_the_national_line_drops_local_only_rows_before_reconciliation(monkeypat
         exclusions_evaluated_on=date(2026, 10, 16),
     )
 
-    # Every reference compiles, on the feed and the derived facts together.
-    derived = runtime.load_uk_high_value_home_stock_facts()
-    assert compiled_facts == [({"feed": True}, *derived.rows)]
+    # Every reference compiles, on the feed and the derived facts together
+    # (the high-value home stock and, from microcosm#1399, CenTax's cells).
+    derived = runtime.uk_derived_fact_rows()
+    assert compiled_facts == [({"feed": True}, *derived)]
     # The region rows leave before reconciliation: the national surface and
     # its version are the ones it had without them.
     (reconciled,) = reconciled_from
@@ -475,9 +476,7 @@ def test_the_national_line_drops_local_only_rows_before_reconciliation(monkeypat
         "dropped_reference_count": 2,
         "dropped_target_ids": [_REGION_ROW],
     }
-    assert result["derived_fact_provenance"]["high_value_home_stock_facts"][
-        "rows_sha256"
-    ] == (derived.rows_sha256)
+    assert result["derived_fact_provenance"] == runtime.uk_derived_fact_provenance()
 
 
 def test_the_full_line_binds_the_region_rows(prepared, monkeypatch):
@@ -502,8 +501,8 @@ def test_the_full_line_binds_the_region_rows(prepared, monkeypatch):
         lambda registry, exclusions, now: (registry, {}),
     )
     result = _load()
-    derived = runtime.load_uk_high_value_home_stock_facts()
-    assert all(facts == (*artifact.facts, *derived.rows) for facts in seen_facts)
+    derived = runtime.uk_derived_fact_rows()
+    assert all(facts == (*artifact.facts, *derived) for facts in seen_facts)
     # The local line binds every row: nothing leaves, the registry is the
     # compiled object itself.
     assert reconciled_from == [compiled]

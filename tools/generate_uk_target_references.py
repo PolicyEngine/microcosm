@@ -2,9 +2,9 @@
 """Generate UK Ledger target references from the national contract.
 
 This is an offline authoring tool. It consumes an already-exported Ledger
-consumer fact JSONL feed and the committed Microcosm-derived facts resource
-(uk/high_value_home_stock_facts.json); it does not fetch data or contact
-Chronicle.
+consumer fact JSONL feed and the committed Microcosm-derived facts resources
+(uk/high_value_home_stock_facts.json and uk/centax_childcare_parent_facts.json);
+it does not fetch data or contact Chronicle.
 """
 
 from __future__ import annotations
@@ -22,6 +22,10 @@ from microcosm.build.target_reference_authoring import (
     TargetReferenceAuthoringConfig,
     author_target_references,
     target_references_resource,
+)
+from microcosm.build.uk_runtime.centax_childcare_parents import (
+    CENTAX_FACTS_RESOURCE,
+    load_uk_centax_childcare_parent_facts,
 )
 from microcosm.build.uk_runtime.high_value_homes import (
     load_uk_high_value_home_stock_facts,
@@ -112,24 +116,30 @@ def main() -> None:
         allowed_levels=NATIONAL_GEOGRAPHY_LEVELS,
     )
     _validate_amount_entity_pins(contract)
-    facts = [
-        json.loads(line)
-        for line in args.ledger_facts.read_text().splitlines()
-        if line.strip()
-    ]
+    # Stream the lines: the feed is several GB, and reading it whole held its
+    # text and every line beside the parsed rows.
+    with args.ledger_facts.open(encoding="utf-8") as handle:
+        facts = [json.loads(line) for line in handle if line.strip()]
     # microcosm#1301: the high-value homes region rows select the
     # Microcosm-derived facts the local cells bind (microcosm#1240), carried in
     # the committed resource rather than the Chronicle feed. Their fan-out
     # refuses a missing cell, so the national surface always merges them.
+    # CenTax's parent cells (microcosm#1399) select the second resource.
     derived = load_uk_high_value_home_stock_facts(args.derived_facts)
+    centax = load_uk_centax_childcare_parent_facts(args.centax_facts)
     facts.extend(dict(row) for row in derived.rows)
+    facts.extend(dict(row) for row in centax.rows)
     derived_resources = [
         {
-            "resource": "high_value_home_stock_facts.json",
-            "rows": len(derived.rows),
-            "rows_sha256": derived.rows_sha256,
-            "inputs_sha256": derived.inputs_sha256,
+            "resource": resource,
+            "rows": len(loaded.rows),
+            "rows_sha256": loaded.rows_sha256,
+            "inputs_sha256": loaded.inputs_sha256,
         }
+        for resource, loaded in (
+            ("high_value_home_stock_facts.json", derived),
+            (CENTAX_FACTS_RESOURCE, centax),
+        )
     ]
     inverse_mapping = _registry_inverse(contract)
     # The facts each family's fan-out leaves unnamed, counted rather than
@@ -199,6 +209,15 @@ def _parser() -> argparse.ArgumentParser:
         help=(
             "Microcosm-derived facts resource merged beside the feed (default: the "
             "committed uk/high_value_home_stock_facts.json)."
+        ),
+    )
+    parser.add_argument(
+        "--centax-facts",
+        type=Path,
+        default=None,
+        help=(
+            "CenTax parent facts resource merged beside the feed (default: the "
+            "committed uk/centax_childcare_parent_facts.json)."
         ),
     )
     parser.add_argument("--output", type=Path, required=True)
@@ -537,6 +556,9 @@ TARGET_PREFIX_GEOGRAPHY_PINS: tuple[tuple[str, str], ...] = (
     # Heating Payment from winter 2024-25, so DWP publishes the 2024-25 and
     # 2025-26 statistics for England and Wales (K04000001) only (microcosm#1069).
     ("dwp.winter_fuel_payment.", "england_and_wales"),
+    # CenTax tabulates parents in England only, and the derived facts are
+    # stamped E92000001 (microcosm#1399); the substring rule sees no nation.
+    ("microcosm.centax_childcare_parents.", "england"),
 )
 # DfT BUS05i rows name their area in the selector; the geography follows the
 # declared area, never a prefix, so a London or UK row can never be stamped

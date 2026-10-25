@@ -2133,6 +2133,7 @@ class _AnnualSimulation:
             "carer_support_payment",
             "scottish_carer_supplement",
             "total_income",
+            "adjusted_net_income",
             "income_tax",
         )
         variables = {
@@ -2183,6 +2184,9 @@ class _AnnualSimulation:
             )
         )
         if variable == "total_income":
+            return total
+        if variable == "adjusted_net_income":
+            # No pension contributions or Gift Aid in the stub: ANI is total.
             return total
         if variable == "income_tax":
             return 0.2 * np.maximum(total - 12_570.0, 0.0)
@@ -2239,6 +2243,9 @@ def test_annual_measures_read_each_persons_year(monkeypatch, tmp_path):
     np.testing.assert_allclose(total, annual_total)
     tax, _ = resolver.compute("person", "income_tax_annual")
     np.testing.assert_allclose(tax, 0.2 * np.maximum(annual_total - 12_570.0, 0.0))
+    # CenTax's parent cells read the year's ANI (microcosm#1399).
+    ani, _ = resolver.compute("person", "adjusted_net_income_annual")
+    np.testing.assert_allclose(ani, annual_total)
     band, _ = resolver.compute("person", "tax_band_annual")
     assert list(band) == ["BASIC", "BASIC", "BASIC"]
     # The current measures are untouched, and one annual simulation serves all.
@@ -2314,3 +2321,129 @@ def test_other_spells_follow_one_engine_factor(monkeypatch, tmp_path):
         "employment_income_before_lsr": pytest.approx(1.05),
         "self_employment_income": pytest.approx(1.03),
     }
+
+
+# CenTax's parent cells (microcosm#1399): the parent of an age-eligible 3- or
+# 4-year-old, and employment as the year's main income source.
+
+
+def _centax_parent_simulation() -> SimulationStub:
+    # Person 1 is an adult in unit 10 with person 2, a DfE-age-3 child before
+    # school all year; person 3 is a DfE-age-4 child in reception for two
+    # terms, alone in unit 20, so it has no adult to mark.
+    simulation = _spring_term_simulation()
+    simulation.values["is_hbai_dependent_child"] = (
+        "person",
+        np.array([False, True, True]),
+    )
+    simulation.values[("country", "person")] = (
+        "person",
+        np.array(["ENGLAND"] * 3),
+    )
+    return SimulationStub(simulation.values)
+
+
+def test_the_centax_parent_measure_marks_the_adults_of_eligible_units():
+    from microcosm.build.uk_runtime.centax_childcare_parents import (
+        CENTAX_EMPLOYEE_MAIN_SOURCE,
+        CENTAX_PARENT_OF_ELIGIBLE_3_4,
+    )
+
+    frame, simulation = FrameStub(), _centax_parent_simulation()
+    values, route = compute_uk_measure_input(
+        frame, simulation, "person", CENTAX_PARENT_OF_ELIGIBLE_3_4, 2025
+    )
+    assert values.tolist() == [1.0, 0.0, 0.0]
+    assert route == f"engine_terms_and_benunit_roles:{CENTAX_PARENT_OF_ELIGIBLE_3_4}"
+    with pytest.raises(KeyError, match="person-only"):
+        compute_uk_measure_input(
+            frame, simulation, "household", CENTAX_PARENT_OF_ELIGIBLE_3_4, 2025
+        )
+    # The main-source measure needs the annual measures, so only the resolver
+    # computes it.
+    with pytest.raises(KeyError, match="UKMeasureResolver"):
+        compute_uk_measure_input(
+            frame, simulation, "person", CENTAX_EMPLOYEE_MAIN_SOURCE, 2025
+        )
+
+
+def test_the_resolver_routes_the_centax_parent_measure_to_people(
+    monkeypatch, tmp_path: Path
+):
+    from microcosm.build.uk_runtime.centax_childcare_parents import (
+        CENTAX_PARENT_OF_ELIGIBLE_3_4,
+    )
+
+    resolver = _resolver_over(_centax_parent_simulation(), monkeypatch, tmp_path)
+    assert resolver.entity_for(CENTAX_PARENT_OF_ELIGIBLE_3_4) == "person"
+    assert resolver.knows("person", CENTAX_PARENT_OF_ELIGIBLE_3_4)
+    assert not resolver.knows("household", CENTAX_PARENT_OF_ELIGIBLE_3_4)
+    partial = _centax_parent_simulation()
+    del partial.tax_benefit_system.variables["is_hbai_dependent_child"]
+    resolver = _resolver_over(partial, monkeypatch, tmp_path)
+    assert not resolver.knows("person", CENTAX_PARENT_OF_ELIGIBLE_3_4)
+
+
+@pytest.mark.parametrize(
+    "column",
+    ["centax_parent_of_eligible_3_4_year_old", "centax_employment_main_income_source"],
+)
+def test_a_persisted_centax_column_is_refused(monkeypatch, tmp_path: Path, column):
+    frame = FrameStub()
+    frame._tables["person"][column] = [1.0, 0.0, 0.0]
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_uk",
+        SimpleNamespace(__version__="9.9.9", Microsimulation=lambda *, dataset: None),
+    )
+    with pytest.raises(ValueError, match="must not be persisted"):
+        UKMeasureResolver(
+            simulation_source=tmp_path / "input.h5",
+            scratch_dir=tmp_path,
+            year=2025,
+            frame=frame,
+        )
+
+
+class _CenTaxAnnualSimulation(_AnnualSimulation):
+    """The annual stub with the year's property, dividend and savings income."""
+
+    unearned = {
+        "property_income": np.array([0.0, 0.0, 20_000.0]),
+        "dividend_income": np.array([1_000.0, 12_000.0, 0.0]),
+        "savings_interest_income": np.array([0.0, 0.0, 0.0]),
+    }
+
+    def __init__(self, *, dataset):
+        super().__init__(dataset=dataset)
+        for name, values in self.unearned.items():
+            self.stored[(name, 2025)] = values
+            self.tax_benefit_system.variables[name] = SimpleNamespace(
+                entity=SimpleNamespace(key="person"), value_type=float
+            )
+
+
+def test_the_main_source_measure_compares_the_years_sources(monkeypatch, tmp_path):
+    from microcosm.build.uk_runtime.centax_childcare_parents import (
+        CENTAX_EMPLOYEE_MAIN_SOURCE,
+    )
+
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_uk",
+        SimpleNamespace(__version__="9.9.9", Microsimulation=_CenTaxAnnualSimulation),
+    )
+    resolver = UKMeasureResolver(
+        simulation_source=tmp_path / "input.h5",
+        scratch_dir=tmp_path,
+        year=2025,
+        frame=_AnnualFrameStub(),
+    )
+    assert resolver.entity_for(CENTAX_EMPLOYEE_MAIN_SOURCE) == "person"
+    assert resolver.knows("person", CENTAX_EMPLOYEE_MAIN_SOURCE)
+    assert not resolver.knows("household", CENTAX_EMPLOYEE_MAIN_SOURCE)
+    employee, route = resolver.compute("person", CENTAX_EMPLOYEE_MAIN_SOURCE)
+    # Person 1's pay is the largest source; person 2's year's pay (9,450) is
+    # below its dividends, and person 3's (10,500) below its rents.
+    assert employee.tolist() == [1.0, 0.0, 0.0]
+    assert route.startswith("annual_income_sources:employment_income_annual,")
