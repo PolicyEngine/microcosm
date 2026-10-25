@@ -115,12 +115,13 @@ the stage's binding or any `{"binding": id}` selector in its parameters names
 it. In the composed pass, a node belongs to a stage when its parameters carry
 the binding's prepared engine reference, as written, JSON-escaped once, or
 after JSON escapes are decoded, layer by layer, up to 32 layers, as for the
-inventory below. Each layer is one linear pass over a string. A parameter
-still escaped after 32 layers refuses, because its stage bindings cannot be
-read. A node that names a listed and an unlisted benefit-unit binding
-refuses. A parameter carrying the whole prepared `engine_refs` inventory is
-bookkeeping, not a stage invocation, and still refuses upstream of
-calibration.
+inventory below. Each layer is one linear pass over a string. Upstream of
+calibration, a parameter still escaped after 32 layers refuses, because its
+node's stage bindings cannot be read; after calibration no binding is read,
+so such a node faces only the shape checks. A node that names a listed and an
+unlisted benefit-unit binding refuses. A parameter carrying the whole prepared
+`engine_refs` inventory is bookkeeping, not a stage invocation, and still
+refuses upstream of calibration.
 
 ## Rules
 
@@ -251,10 +252,11 @@ These are tested, as properties and examples, in
   produces, and otherwise the first offending node in declaration order. The
   composed pass runs only after the declaration pass admits: it checks the
   entitlement rows' shapes and reads the compiled EXPAND cells and claims,
-  refuses the first node with a parameter still escaped after 32 layers, then
-  applies the same order to the graph's nodes. One message is not
-  fixed: when several links name undeclared nodes, which of them a refusal
-  names follows set iteration order, as in the guard without stages.
+  refuses the first node upstream of calibration with a parameter still
+  escaped after 32 layers, then applies the same order to the graph's nodes.
+  One message is not fixed: when several links name undeclared nodes, which of
+  them a refusal names follows set iteration order, as in the guard without
+  stages.
 - With stages listed, the checks never read a malformed field so as to admit
   more than composition would. Every field they read is validated first,
   refusing naming its node, or read exactly as composition reads it. The two
@@ -271,7 +273,10 @@ These are tested, as properties and examples, in
   refuses it before persisting the node.
 - The composed pass's stage membership finds every engine reference that
   decoding JSON from each quote or brace finds (`_embeds_engine_ref`), a
-  property tested over nested JSON, ASCII and embedded spellings.
+  property tested over fixed and random references in nested JSON, ASCII,
+  quoteless and embedded spellings. A reference's JSON-escaped text counts
+  wherever it appears, even after a stray backslash that decoding pairs with
+  the text's first escape.
 - The composed pass gives every column read the writers the executor's
   static writer lists give it (`microcosm.graph.executor._input_writers`),
   on every generated graph, the writer and EXPAND examples, and the composed

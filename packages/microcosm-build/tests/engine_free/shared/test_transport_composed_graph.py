@@ -50,7 +50,7 @@ from unittest.mock import Mock
 
 import numpy as np
 import pytest
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
 
 from microcosm.build.transport import cli as cli_module
@@ -6073,23 +6073,164 @@ def test_precalibration_ancestry_composed_stage_scan_is_linear(monkeypatch):
     assert elapsed < 1
 
 
-def test_precalibration_ancestry_unreadable_composed_bindings_refuse():
-    """A parameter still escaped after 32 layers refuses in the composed pass."""
-    spec, nodes, _ = _structural_stage_case("create", bound=False)
+@pytest.mark.parametrize(
+    ("carrier", "refused"), [("a_source", True), ("cal", True), ("post", False)]
+)
+def test_precalibration_ancestry_unreadable_composed_bindings_refuse_upstream(
+    carrier, refused
+):
+    """A parameter still escaped after 32 layers refuses upstream of calibration.
+
+    Its node's stage bindings cannot be read, so on stage A's node or on the
+    calibration node the composed pass refuses. ``post`` reads calibration's
+    output, so none of its bindings is read and it faces only the shape
+    checks; round 6 found it refused before the ancestry was known.
+    """
+    binding = _synthetic_binding("A", "person", ["A_public"])
+    rows = [
+        {
+            "id": "a_source",
+            "kernel": RULES,
+            "population": "create",
+            "rules_binding": "A",
+            "outputs": [{"entity": "person", "column": "A_public"}],
+        },
+        {
+            "id": "cal",
+            "kernel": "calibrate.synthetic@1",
+            "population": "create",
+            "inputs": [{"entity": "person", "columns": ["A_public", "seed"]}],
+            "outputs": [{"entity": "person", "column": "cal_out"}],
+        },
+        {
+            "id": "post",
+            "kernel": "synthetic.post@1",
+            "population": "create",
+            "inputs": [{"entity": "person", "columns": ["cal_out"]}],
+        },
+    ]
+    nodes = [
+        Node(
+            "a_source",
+            RULES,
+            population="create",
+            params={"engine_ref": "A-ref"},
+            outputs=(Owned("person", "A_public", "float64"),),
+        ),
+        Node(
+            "cal",
+            "calibrate.synthetic@1",
+            population="create",
+            inputs=(Slice("person", ("A_public", "seed")),),
+            outputs=(Owned("person", "cal_out", "float64"),),
+        ),
+        Node(
+            "post",
+            "synthetic.post@1",
+            population="create",
+            inputs=(Slice("person", ("cal_out",)),),
+        ),
+    ]
     deep = _escape_layers('"note"', 33)
     nodes = [
         replace(node, params={**node.params, "note": deep})
-        if node.id == "cal"
+        if node.id == carrier
         else node
         for node in nodes
     ]
+    spec = _synthetic_stage_spec(
+        [binding], [_synthetic_stage(binding, ["A_public"])], rows
+    )
+    refusal = (
+        ValueError,
+        f"Transport calibration ancestry: node {carrier!r} has a parameter "
+        "still JSON-escaped after 32 layers, so its stage bindings cannot be "
+        "read.",
+    )
     assert _synthetic_outcomes(spec, nodes, {"A": "A-ref"}) == {
         "declaration": None,
-        "composed": (
-            ValueError,
-            "Transport calibration ancestry: node 'cal' has a parameter still "
-            "JSON-escaped after 32 layers, so its stage bindings cannot be read.",
+        "composed": refusal if refused else None,
+    }
+
+
+def test_precalibration_ancestry_composed_stage_reads_escaped_reference_text():
+    """A node carrying its reference's escaped text after a backslash is a member.
+
+    Round 6: the reference is a newline, a backslash and ``n``, and ``mid``'s
+    note is a backslash, then the reference's JSON-escaped text. Decoding
+    pairs the note's backslash with the text's first, so no decoded layer
+    holds the reference. ``_embeds_engine_ref`` matches the escaped text as
+    written, and so must the composed pass, or ``mid`` leaves stage p and its
+    derived output refuses as unproduced.
+    """
+    reference = "\n\\n"
+    note = "\\" + json.dumps(reference, ensure_ascii=False)[1:-1]
+    assert compose_module._embeds_engine_ref(note, {reference})
+    assert compose_module._embedded_engine_refs(note, {reference}) == {reference}
+    binding = {
+        **_synthetic_binding("p", "person", ["p_out", "p_priv"]),
+        "engine_ref": reference,
+    }
+    rows = [
+        {
+            "id": "probe",
+            "kernel": "synthetic.probe@1",
+            "population": "create",
+            "params": {"engine_ref": {"binding": "p", "field": "engine_ref"}},
+            "outputs": [
+                {"entity": "person", "column": "p_out"},
+                {"entity": "person", "column": "p_priv"},
+            ],
+        },
+        {
+            "id": "mid",
+            "kernel": "synthetic.mid@1",
+            "population": "create",
+            "params": {"period": {"binding": "p", "field": "period"}, "note": note},
+            "inputs": [{"entity": "person", "columns": ["p_priv"]}],
+            "outputs": [{"entity": "person", "column": "mid_out"}],
+        },
+        {
+            "id": "cal",
+            "kernel": "calibrate.synthetic@1",
+            "population": "create",
+            "inputs": [{"entity": "person", "columns": ["mid_out"]}],
+        },
+    ]
+    nodes = [
+        Node(
+            "probe",
+            "synthetic.probe@1",
+            population="create",
+            params={"engine_ref": reference},
+            outputs=(
+                Owned("person", "p_out", "float64"),
+                Owned("person", "p_priv", "float64"),
+            ),
         ),
+        Node(
+            "mid",
+            "synthetic.mid@1",
+            population="create",
+            params={"period": "2026", "note": note},
+            inputs=(Slice("person", ("p_priv",)),),
+            outputs=(Owned("person", "mid_out", "float64"),),
+        ),
+        Node(
+            "cal",
+            "calibrate.synthetic@1",
+            population="create",
+            inputs=(Slice("person", ("mid_out",)),),
+        ),
+    ]
+    spec = _synthetic_stage_spec(
+        [binding],
+        [_synthetic_stage(binding, ["p_out"], [("person", "mid_out")])],
+        rows,
+    )
+    assert _synthetic_outcomes(spec, nodes, {"p": reference}) == {
+        "declaration": None,
+        "composed": None,
     }
 
 
@@ -6097,16 +6238,25 @@ _SCANNED_REFS = (
     "p-ref",
     '{"format":"synthetic","module":"a/b.yaml"}',
     '{"module":"\U0001f600/\\\\ \\"q\\""}',
+    # Round 6: decoding after a stray backslash loses it (see below).
+    "\n\\n",
 )
+# Characters whose escapes start with a backslash, and some that don't.
+_ESCAPE_CHARACTERS = '\\"\nn{\u00e9'
 
 
 @st.composite
 def _spelled_engine_ref(draw):
     """An engine reference behind up to four random JSON spellings."""
-    reference = draw(st.sampled_from(_SCANNED_REFS))
+    reference = draw(
+        st.sampled_from(_SCANNED_REFS)
+        | st.text(alphabet=_ESCAPE_CHARACTERS, min_size=1, max_size=6)
+    )
     value = reference
     for _ in range(draw(st.integers(min_value=0, max_value=4))):
-        step = draw(st.sampled_from(("dumps", "ascii", "object", "list", "text")))
+        step = draw(
+            st.sampled_from(("dumps", "ascii", "object", "list", "content", "text"))
+        )
         if step == "dumps":
             value = json.dumps(value, ensure_ascii=False)
         elif step == "ascii":
@@ -6116,8 +6266,16 @@ def _spelled_engine_ref(draw):
             value = json.dumps({key: value}, ensure_ascii=draw(st.booleans()))
         elif step == "list":
             value = json.dumps([draw(st.integers()), value])
+        elif step == "content":
+            # A string's content as JSON writes it, without its quotes.
+            value = json.dumps(value, ensure_ascii=draw(st.booleans()))[1:-1]
         else:
-            value = draw(st.text(max_size=4)) + value + draw(st.text(max_size=4))
+            text = st.text(max_size=4) | st.text(
+                alphabet=_ESCAPE_CHARACTERS, max_size=4
+            )
+            # A stray backslash pairs with the value's first escape.
+            stray = draw(st.sampled_from(("", "\\")))
+            value = draw(text) + stray + value + draw(text)
     return reference, value
 
 
@@ -6128,9 +6286,10 @@ def test_precalibration_stage_scan_finds_what_json_decoding_finds(case, as_key):
 
     ``_embeds_engine_ref`` decodes JSON from every quote and brace; the
     composed pass's membership scan decodes escapes layer by layer instead.
-    Over nested JSON, ASCII-escaped (surrogate pairs included), object, list
-    and embedded-in-text spellings, the layered scan never misses a reference
-    the decoding scan finds.
+    Over fixed and random references, and nested JSON, ASCII-escaped
+    (surrogate pairs included), object, list, quoteless and embedded-in-text
+    spellings, the layered scan never misses a reference the decoding scan
+    finds.
     """
     reference, value = case
     params = {value: 1} if as_key else {"note": [value]}
@@ -6138,6 +6297,33 @@ def test_precalibration_stage_scan_finds_what_json_decoding_finds(case, as_key):
     assert found is not None
     if compose_module._embeds_engine_ref(params, {reference}):
         assert reference in found
+
+
+@settings(max_examples=300, deadline=None)
+@given(
+    reference=st.text(alphabet=_ESCAPE_CHARACTERS, min_size=1, max_size=4),
+    prefix=st.text(alphabet=_ESCAPE_CHARACTERS, max_size=3),
+    suffix=st.text(alphabet=_ESCAPE_CHARACTERS, max_size=3),
+)
+@example(reference="\n\\n", prefix="\\", suffix="")
+@example(reference="\n\\n\u00e9", prefix="\\", suffix="")
+def test_precalibration_stage_scan_counts_escaped_text_anywhere(
+    reference, prefix, suffix
+):
+    """A reference's JSON-escaped text counts in any surrounding text.
+
+    Decoding alone can miss it: after a stray backslash the text's first
+    escape pairs with that backslash, so no decoded layer holds the reference
+    (round 6's example, a newline, a backslash and ``n``). ``_embeds_engine_ref``
+    matches the text as written, and so does the layered scan, in the text
+    ``json.dumps`` writes without ASCII escapes, as ``_embeds_engine_ref``
+    matches it.
+    """
+    value = prefix + json.dumps(reference, ensure_ascii=False)[1:-1] + suffix
+    assert compose_module._embeds_engine_ref(value, {reference})
+    found = compose_module._embedded_engine_refs({"note": value}, {reference})
+    assert found is not None
+    assert reference in found
 
 
 def _escape_layers(text, layers):

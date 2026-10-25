@@ -699,7 +699,8 @@ _JSON_ESCAPES = {"b": "\b", "f": "\f", "n": "\n", "r": "\r", "t": "\t"}
 # ``\u005c`` grows only linearly: 33 layers of the quoted key take 344
 # characters. A string still escaped after the last layer therefore counts as
 # carrying the inventory, whatever it decodes to, and leaves a node's stage
-# bindings unread, which refuses: both scans fail closed.
+# bindings unread. Upstream of calibration, where both are read, either
+# refuses: both scans fail closed.
 _INVENTORY_LAYERS = 32
 
 
@@ -755,7 +756,8 @@ def _embedded_engine_refs(value: object, references: set[str]) -> set[str] | Non
     ``_embeds_engine_ref`` finds by decoding JSON from each quote or brace.
     Each layer is one pass over the string, so a string costs at most
     ``_INVENTORY_LAYERS`` passes, plus one. A string still escaped after them
-    gives ``None``, so the caller refuses rather than guess.
+    gives ``None``, and upstream of calibration the caller refuses rather than
+    guess.
     """
 
     if not references:
@@ -1418,6 +1420,11 @@ def _validate_precalibration_ancestry(
         composed: bool,
         derived: bool,
     ) -> None:
+        # Only nodes upstream of calibration are pre-calibration. A stage node
+        # there brings its own ancestors into this closure, so each listed
+        # stage's ancestry passes the same checks; a stage binding's nodes
+        # after calibration (extension checkpoints) are outputs, not inputs.
+        ancestors = _ancestor_closure(predecessors, roots)
         node_bindings = {}
         for name, row in rows.items():
             if composed:
@@ -1425,11 +1432,15 @@ def _validate_precalibration_ancestry(
                     row.get("params", {}), set(binding_engine_refs.values())
                 )
                 if found is None:
-                    raise ValueError(
-                        f"Transport calibration ancestry: node {name!r} has a "
-                        f"parameter still JSON-escaped after {_INVENTORY_LAYERS} "
-                        "layers, so its stage bindings cannot be read."
-                    )
+                    if name in ancestors:
+                        raise ValueError(
+                            f"Transport calibration ancestry: node {name!r} has a "
+                            "parameter still JSON-escaped after "
+                            f"{_INVENTORY_LAYERS} layers, so its stage bindings "
+                            "cannot be read."
+                        )
+                    # The checks below read only an ancestor's bindings.
+                    found = set()
                 node_bindings[name] = {
                     binding
                     for binding, reference in binding_engine_refs.items()
@@ -1445,11 +1456,6 @@ def _validate_precalibration_ancestry(
                 }
                 if row.get("rules_binding") in bindings:
                     node_bindings[name].add(row["rules_binding"])
-        # Only nodes upstream of calibration are pre-calibration. A stage node
-        # there brings its own ancestors into this closure, so each listed
-        # stage's ancestry passes the same checks; a stage binding's nodes
-        # after calibration (extension checkpoints) are outputs, not inputs.
-        ancestors = _ancestor_closure(predecessors, roots)
         # A stage declares only columns. A structural node also writes what
         # every later kernel of its version receives without a Slice: ids,
         # memberships, weights, strata and the frame metadata. So a stage node
