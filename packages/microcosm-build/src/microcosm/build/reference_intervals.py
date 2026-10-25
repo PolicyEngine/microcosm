@@ -338,11 +338,6 @@ def interval_table(value: object) -> IntervalTable:
         )
     if first < 0:
         raise ValueError("The first lower cut must be nonnegative.")
-    if nil_present and closure == "left" and first == 0:
-        raise ValueError(
-            "A left-closed table with a nil band requires a positive first lower "
-            "cut; zero cannot belong to both nil and a positive band."
-        )
     band_ids, indicators, cuts, positive = [], [], [first], []
     nil_index, open_tail = None, False
     companions = set()

@@ -139,7 +139,7 @@ def _classify(table, amounts, universe=None, **kwargs):
     ],
 )
 def test_each_exact_cut_and_one_cent_either_side(closure, expected):
-    table = _table(closure=closure, first=1 if closure == "left" else 0)
+    table = _table(closure=closure)
     amounts = [-1, 0, 1, 9_999, 10_000, 10_001, 99_999, 100_000, 100_001]
     assert _classify(table, amounts) == expected
 
@@ -204,13 +204,57 @@ def test_nil_and_loss_records_follow_the_declared_negative_policy():
 
 
 @pytest.mark.parametrize("scaled", [False, True])
-def test_left_closed_nil_table_refuses_a_zero_first_cut(scaled):
-    table = _scale(_table(first=1)) if scaled else _table()
-    table["positive_band_closure"] = "left"
-    table["diagnostics"]["alternative_positive_band_closure"] = "right"
-    table["first_lower_cut_cents"] = {"numerator": 0, "denominator": 1} if scaled else 0
-    with pytest.raises(ValueError, match="left-closed table with a nil band"):
-        interval_table(table)
+def test_left_closed_nil_table_with_a_zero_first_cut_puts_zero_in_nil_only(scaled):
+    # Zero is nil under either closure, so the first positive band is
+    # 0 < z < upper. Scaling keeps the zero cut: one cent stays in b0 rather
+    # than falling below a nonzero stand-in cut.
+    table = _table((100, 1_000), closure="left")
+    amounts = [-1, 0, 1, 99, 100, 999, 1_000, 1_001]
+    if scaled:
+        table = _scale(table, {"numerator": 2, "denominator": 1})
+        assert table["first_lower_cut_cents"] == {"numerator": 0, "denominator": 1}
+        amounts = [-1, 0, 1, 199, 200, 1_999, 2_000, 2_001]
+    assert _classify(table, amounts) == [
+        "nil",
+        "nil",
+        "b0",
+        "b0",
+        "b1",
+        "b1",
+        "b2",
+        "b2",
+    ]
+
+
+def test_left_closed_nil_zero_first_cut_diagnostics_keep_zero_in_nil():
+    table = interval_table(_table((100, 1_000), closure="left"))
+    report = boundary_diagnostics(
+        table,
+        [0, 1, 2, 3],
+        [-5, 0, 1, 100],
+        ["included"] * 4,
+        [2.0, 3.0, 5.0, 7.0],
+        weight_record_ids=[0, 1, 2, 3],
+        weight_kind="design",
+    )
+    bands = {band["band"]: band for band in report["bands"]}
+    assert bands["nil"]["declared"]["records"] == 2
+    assert Fraction(**bands["nil"]["declared"]["weighted_count"]) == 5
+    assert "alternative" not in bands["nil"]
+    # Declared left: 1 is b0 and 100 is b1. The right-closed alternative puts
+    # both in b0; zero stays nil and nothing is below the first cut.
+    assert [bands[band]["declared"]["records"] for band in ("b0", "b1", "b2")] == [
+        1,
+        1,
+        0,
+    ]
+    assert [bands[band]["alternative"]["records"] for band in ("b0", "b1", "b2")] == [
+        2,
+        0,
+        0,
+    ]
+    assert report["below_first_cut"]["declared"]["records"] == 0
+    assert report["below_first_cut"]["alternative"]["records"] == 0
 
 
 def test_left_closed_nil_table_keeps_a_positive_fractional_first_cut_after_scaling():
@@ -454,7 +498,7 @@ def test_invalid_declared_semantics_refuse(field, value):
 
 
 def test_the_diagnostic_alternative_is_the_other_closure():
-    table = _table(closure="left", first=1)
+    table = _table(closure="left")
     assert table["diagnostics"]["alternative_positive_band_closure"] == "right"
     interval_table(table)
     table["diagnostics"]["alternative_positive_band_closure"] = "left"
@@ -841,7 +885,7 @@ def _tables(draw, big=False):
     step = st.integers(min_value=1, max_value=10**30 if big else 50_000)
     closure = draw(st.sampled_from(["left", "right"]))
     nil = draw(st.booleans())
-    first = draw(step if nil and closure == "left" else st.one_of(st.just(0), step))
+    first = draw(st.one_of(st.just(0), step))
     cuts, previous = [], first
     for _ in range(count):
         previous += draw(step)

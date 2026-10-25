@@ -1148,7 +1148,7 @@ def _interval_prepare_spec():
 
 
 _INTERVAL_CONFIG = TransportGraphConfig(
-    engine_refs={}, create_outputs=(Owned("person", "age"),)
+    engine_refs={}, create_outputs=(Owned("person", "age", "int64"),)
 )
 
 
