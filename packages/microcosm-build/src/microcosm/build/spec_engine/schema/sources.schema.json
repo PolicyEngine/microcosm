@@ -9794,6 +9794,7 @@
       "rows",
       "pay_basis",
       "reason",
+      "annual_income",
       "receipt"
      ],
      "properties": {
@@ -9830,6 +9831,9 @@
        "type": "string"
       },
       "reason": {
+       "type": "string"
+      },
+      "annual_income": {
        "type": "string"
       },
       "receipt": {

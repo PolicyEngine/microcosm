@@ -101,6 +101,8 @@ def uk_stage_health_gate(
         return _property_components_gate(stage, evidence, parameters)
     if check == "property_purchases":
         return _property_purchases_gate(stage, evidence, parameters)
+    if check == "spi_hourly_pay":
+        return _spi_hourly_pay_gate(stage, evidence, parameters)
     if check == "regional_home_values":
         return _regional_home_values_gate(stage, evidence, parameters)
     if check == "legacy_closure_take_up":
@@ -1418,6 +1420,80 @@ def _spi_income_spine_gate(
         if failures
         else _pass(stage, check, details)
     )
+
+
+def _spi_hourly_pay_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """Drawn SPI employees are paid at least their floor (uk-data#629).
+
+    The employment pay floor lifts each eligible drawn employee's pay to its
+    twin's hours at the lower of the minimum wage for its age and the twin's
+    own hourly pay, so none may stay below its floor; and after the floor the
+    drawn employees' weighted share below the minimum wage for their age may
+    exceed the FRS employees' own share by at most the declared margin. A
+    share the receipt withholds (fewer than ten source households on a side)
+    is not judged, and the details give only the verdicts, not the shares.
+    """
+
+    check = "spi_hourly_pay"
+    floor = evidence.get("employment_pay_floor")
+    if not isinstance(floor, Mapping):
+        return _fail(
+            stage, check, [f"{stage}: the receipt carries no employment pay floor."], {}
+        )
+    hourly = _mapping(
+        floor.get("hourly_pay_check"),
+        label=f"{stage}.employment_pay_floor.hourly_pay_check",
+    )
+    margin = _finite_number(
+        parameters["maximum_share_above_frs"], label=f"{stage}.maximum_share_above_frs"
+    )
+    failures: list[str] = []
+    below_floor = hourly.get("eligible_rows_below_their_floor_after")
+    if below_floor != 0:
+        failures.append(
+            f"{stage}: eligible drawn employees remain below their pay floor "
+            f"({below_floor})."
+        )
+    drawn = _mapping(
+        hourly.get("spi_drawn_employees"),
+        label=f"{stage}.hourly_pay_check.spi_drawn_employees",
+    )
+    reference = _mapping(
+        hourly.get("frs_employees"), label=f"{stage}.hourly_pay_check.frs_employees"
+    )
+    after = drawn.get("below_minimum_wage_share_after")
+    frs_share = reference.get("below_minimum_wage_share")
+    judged = all(
+        isinstance(value, (int, float)) and not isinstance(value, bool)
+        for value in (after, frs_share)
+    )
+    within = None
+    if judged:
+        after_share = _finite_number(
+            after, label=f"{stage}.below_minimum_wage_share_after"
+        )
+        reference_share = _finite_number(
+            frs_share, label=f"{stage}.frs_employees.below_minimum_wage_share"
+        )
+        # A share at exactly the margin passes, whatever the float rounding.
+        within = after_share - reference_share <= margin + 1e-12
+        if not within:
+            failures.append(
+                f"{stage}: after the floor, drawn employees sit below the minimum "
+                f"wage more often than FRS employees, beyond the margin {margin}."
+            )
+    details = {
+        "eligible_rows_below_their_floor_after": below_floor,
+        "share_judged": judged,
+        "share_within_margin": within,
+    }
+    if failures:
+        return _fail(stage, check, failures, details)
+    return _pass(stage, check, details)
 
 
 def _source_signal_gate(

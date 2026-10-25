@@ -62,6 +62,7 @@ from microcosm.build.uk_runtime.spi_income import (
     SPI_DONOR_AGE_POPULATION_PERIOD,
     SPI_DONOR_AGE_POPULATION_RESOURCE,
     SPI_DONOR_INCOME_YEAR,
+    SPI_EMPLOYMENT_PAY_FLOOR_ANNUAL_RULE,
     SPI_EMPLOYMENT_PAY_FLOOR_EMPLOYEE_STATUSES,
     SPI_EMPLOYMENT_PAY_FLOOR_PARAMETER,
     SPI_EMPLOYMENT_PAY_FLOOR_WEEKS,
@@ -173,12 +174,14 @@ SPI_SPINE_EMPLOYMENT_PAY_FLOOR: Mapping[str, object] = {
     "hours_column": "hours_worked",
     "hours_basis": (
         "annual usual hours: the FRS adult's usual weekly hours in all jobs "
-        "(TOTHOURS) times 365.25/7, read back to weekly hours"
+        "(TOTHOURS) times 52, read back to weekly hours"
     ),
     "weeks_in_year": SPI_EMPLOYMENT_PAY_FLOOR_WEEKS,
     "hourly_rate": (
-        f"policyengine-uk {SPI_EMPLOYMENT_PAY_FLOOR_PARAMETER} by the twin's age, "
-        "read as the engine reads the build year (30 April)"
+        f"the lower of policyengine-uk {SPI_EMPLOYMENT_PAY_FLOOR_PARAMETER} by the "
+        "twin's age, read as the engine reads the build year (30 April), and the "
+        "twin's own hourly pay (its employment income before the draw over its "
+        "annual hours)"
     ),
     "employee_statuses": list(SPI_EMPLOYMENT_PAY_FLOOR_EMPLOYEE_STATUSES),
     "rows": (
@@ -197,14 +200,20 @@ SPI_SPINE_EMPLOYMENT_PAY_FLOOR: Mapping[str, object] = {
     "reason": (
         "stage 1 draws annual tape pay without hours and the tape holds "
         "part-year workers, so a twin reporting usual employee hours could "
-        "draw a year's pay below what those hours earn at the minimum wage"
+        "draw a year's pay below what those hours earn at the minimum wage "
+        "(uk-data#629)"
     ),
+    "annual_income": SPI_EMPLOYMENT_PAY_FLOOR_ANNUAL_RULE,
     "receipt": (
         "eligible and floored source households (rounded), weighted people, "
         "the weighted share floored, the weighted mean uplift and the amount "
         "added; figures on one to nine source households are <10, and the "
         "floored weight, share and amount are given only where neither the "
-        "floored nor the unfloored side rests on one to nine"
+        "floored nor the unfloored side rests on one to nine; the hourly-pay "
+        "check gives the weighted shares of the drawn employees below the "
+        "minimum wage for their age before and after the floor, beside the FRS "
+        "employees' share, each withheld beside a side on one to nine, and the "
+        "eligible rows still below their floor (banded, zero exact)"
     ),
 }
 

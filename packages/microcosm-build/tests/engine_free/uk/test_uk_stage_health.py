@@ -2779,6 +2779,50 @@ def test_property_purchases_gate_flags_a_kind_on_fewer_than_ten_buyers() -> None
     assert clean.details["kinds_unchecked_small_cells"] == []
 
 
+def _hourly_pay_receipt(after=0.10, frs=0.15, below_floor=0) -> dict:
+    return {
+        "stage": "hmrc_spi_income_spine",
+        "employment_pay_floor": {
+            "hourly_pay_check": {
+                "spi_drawn_employees": {
+                    "source_households": "30+",
+                    "below_minimum_wage_share_before": 0.37,
+                    "below_minimum_wage_share_after": after,
+                },
+                "frs_employees": {
+                    "source_households": "30+",
+                    "below_minimum_wage_share": frs,
+                },
+                "eligible_rows_below_their_floor_after": below_floor,
+            }
+        },
+    }
+
+
+def test_spi_hourly_pay_gate_holds_drawn_employees_to_their_floor() -> None:
+    gate_id = "uk_stage_hmrc_spi_income_spine_hourly_pay"
+    passed = _gate(gate_id, _hourly_pay_receipt())
+    assert _passed(passed)
+    # The details give the verdicts, never the shares.
+    assert passed.details == {
+        "stage": "hmrc_spi_income_spine",
+        "check": "spi_hourly_pay",
+        "eligible_rows_below_their_floor_after": 0,
+        "share_judged": True,
+        "share_within_margin": True,
+    }
+    assert _passed(_gate(gate_id, _hourly_pay_receipt(after=0.17, frs=0.15)))
+    above = _gate(gate_id, _hourly_pay_receipt(after=0.18, frs=0.15))
+    assert "more often than FRS employees" in above.failures[0]
+    below_floor = _gate(gate_id, _hourly_pay_receipt(below_floor="<10"))
+    assert "below their pay floor" in below_floor.failures[0]
+    # A withheld share is not judged; the floor invariant still is.
+    withheld = _gate(gate_id, _hourly_pay_receipt(after="<10"))
+    assert _passed(withheld) and withheld.details["share_judged"] is False
+    missing = _gate(gate_id, {"stage": "hmrc_spi_income_spine"})
+    assert "no employment pay floor" in missing.failures[0]
+
+
 def _home_values_receipt() -> dict:
     regions = [f"E1200000{index}" for index in range(1, 10)] + ["W92000004"]
     return {

@@ -1036,19 +1036,27 @@ def test_spi_pay_floor_lifts_drawn_pay_before_employment_income_and_stage2(
 ) -> None:
     """The floor moves only drawn PAY, before employment_income is derived.
 
-    FRS rows and every other leaf keep their values, and the transport
-    receipt is the unfloored draw's.
+    FRS rows and every other leaf keep their values, the transport receipt is
+    the unfloored draw's, and a floored row's year of pay stays the tape's.
     """
 
     support = _dead_support()
     person = support.person.copy()
-    weeks = 365.25 / 7
-    person["hours_worked"] = 35 * weeks
+    # The spine annualises usual weekly hours at frs_spine.WEEKS_IN_YEAR (52).
+    hours = 35 * 52
+    person["hours_worked"] = hours
     # A twin without a trade, so its hours are all employee hours.
     person["self_employment_income"] = 0.0
-    channel = support_channel_column("person")
-    spi_rows = person.index[person[channel].eq("spi")]
-    person.loc[spi_rows[0], "age"] = 19
+    # A copy carries its twin's age and pay. The floor is the hours at the
+    # lower of the minimum wage and the twin's own hourly pay (uk-data#629):
+    # these twins earn £20 an hour, above every age's rate, but lineage 104's
+    # earns £5, which caps its copy's floor.
+    lineage = person["person_source_id"]
+    person.loc[lineage.eq(101), "age"] = 19
+    person["employment_income"] = hours * 20.0
+    person.loc[lineage.eq(104), "employment_income"] = hours * 5.0
+    for column in spi_income.FRS_ANNUAL_INCOME_OUTPUT_COLUMNS:
+        person[column] = 1.0 if column in spi_income.ANNUAL_SHARE_COLUMNS else 0.0
     support = replace(support, person=person)
     donor_path = tmp_path / SPI_DONOR_FILENAME
     _write_donor(donor_path)
@@ -1070,13 +1078,26 @@ def test_spi_pay_floor_lifts_drawn_pay_before_employment_income_and_stage2(
     drawn = floored.person[spi_income.SPI_INCOME_RECIPIENT_COLUMN].to_numpy(bool)
     assert drawn.any()
     ages = floored.person.loc[drawn, "age"].to_numpy(dtype=float)
-    expected = 35 * 52 * floor.hourly_rate(ages)
+    twin_rate = (
+        support.person.loc[floored.person.index[drawn], "employment_income"].to_numpy(
+            dtype=float
+        )
+        / hours
+    )
+    expected = hours * np.minimum(floor.hourly_rate(ages), twin_rate)
+    assert (twin_rate < floor.hourly_rate(ages)).any()
     np.testing.assert_allclose(
         floored.person.loc[drawn, SPI_HMRC_PAY_COLUMN].to_numpy(), expected
     )
     assert (
         unfloored.person.loc[drawn, SPI_HMRC_PAY_COLUMN].to_numpy() < expected
     ).all()
+    # The annual share puts the year's pay back at the tape's draw.
+    np.testing.assert_allclose(
+        floored.person.loc[drawn, "employment_income"].to_numpy()
+        * floored.person.loc[drawn, spi_income.EMPLOYMENT_INCOME_ANNUAL_SHARE],
+        unfloored.person.loc[drawn, "employment_income"].to_numpy(),
+    )
     np.testing.assert_allclose(
         floored.person.loc[drawn, "employment_income"].to_numpy(),
         floored.person.loc[
@@ -1097,6 +1118,10 @@ def test_spi_pay_floor_lifts_drawn_pay_before_employment_income_and_stage2(
         not in {
             SPI_HMRC_PAY_COLUMN,
             "employment_income",
+            # Pension coherence prices a row's employer contribution at its
+            # twin's rate on the row's own pay.
+            "employer_pension_contributions",
+            spi_income.EMPLOYMENT_INCOME_ANNUAL_SHARE,
             SPI_HMRC_EMPLOYED_INCOME_COLUMN,
             SPI_HMRC_TOTAL_EARNED_INCOME_COLUMN,
             HMRC_SPI_ASSESSABLE_INCOME_COLUMN,

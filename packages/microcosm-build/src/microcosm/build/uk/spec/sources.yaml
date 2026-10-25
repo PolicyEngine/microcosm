@@ -1862,16 +1862,17 @@ stages:
   - kind: floor_spi_employment_pay_at_minimum_wage
     column: hmrc_spi_pay
     hours_column: hours_worked
-    hours_basis: "annual usual hours: the FRS adult's usual weekly hours in all jobs (TOTHOURS) times 365.25/7, read back to weekly hours"
+    hours_basis: "annual usual hours: the FRS adult's usual weekly hours in all jobs (TOTHOURS) times 52, read back to weekly hours"
     weeks_in_year: 52
-    hourly_rate: "policyengine-uk gov.hmrc.minimum_wage.non_apprentice by the twin's age, read as the engine reads the build year (30 April)"
+    hourly_rate: "the lower of policyengine-uk gov.hmrc.minimum_wage.non_apprentice by the twin's age, read as the engine reads the build year (30 April), and the twin's own hourly pay (its employment income before the draw over its annual hours)"
     employee_statuses:
     - FT_EMPLOYED
     - PT_EMPLOYED
     rows: "drawn recipients other than reserved band carriers, whose twin has no trade (has_trade 0), an employee main job and usual hours above zero, and whose drawn PAY is positive; FRS rows, undrawn copies and every other leaf keep their values"
     pay_basis: "tape PAY is taxable pay, net of net-pay pension contributions and salary sacrifice; the minimum wage binds gross pay, and the engine reads employment_income (PAY + EPB + TAXTERM) as gross pay, so PAY alone is compared with the gross minimum and a twin at the minimum wage who pays net-pay contributions can be lifted by up to them"
-    reason: "stage 1 draws annual tape pay without hours and the tape holds part-year workers, so a twin reporting usual employee hours could draw a year's pay below what those hours earn at the minimum wage"
-    receipt: "eligible and floored source households (rounded), weighted people, the weighted share floored, the weighted mean uplift and the amount added; figures on one to nine source households are <10, and the floored weight, share and amount are given only where neither the floored nor the unfloored side rests on one to nine"
+    reason: "stage 1 draws annual tape pay without hours and the tape holds part-year workers, so a twin reporting usual employee hours could draw a year's pay below what those hours earn at the minimum wage (uk-data#629)"
+    annual_income: "the floored pay is the row's current pay; its employment_income_annual_share becomes its unfloored over its floored employment income, so the annual measures read the tape's year of pay"
+    receipt: "eligible and floored source households (rounded), weighted people, the weighted share floored, the weighted mean uplift and the amount added; figures on one to nine source households are <10, and the floored weight, share and amount are given only where neither the floored nor the unfloored side rests on one to nine; the hourly-pay check gives the weighted shares of the drawn employees below the minimum wage for their age before and after the floor, beside the FRS employees' share, each withheld beside a side on one to nine, and the eligible rows still below their floor (banded, zero exact)"
   - kind: fit_weighted_qrf_stage2
     training_population: uk_frs_raw_spine_base_support_channel
     target_population: spi_synthetic_support_channel claimants and partners (is_uc_claimant) aged 16 and over
