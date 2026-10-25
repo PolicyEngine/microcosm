@@ -17297,7 +17297,7 @@
               "value": "NORTHERN_IRELAND"
             }
           ],
-          "notes": "ORR table 7270 total government support to the rail industry, Great Britain, so Northern Ireland households are excluded from the measure; latest published fiscal year held to the calibration year. The engine recomputes rail_subsidy_spending as rail_usage x gov.dft.rail.fare_index (#890 G; 7270 broad total versus 7271 operational is the open ruling)."
+          "notes": "ORR table 7271 net operational government support to the rail industry from all sources, Great Britain, so Northern Ireland households are excluded from the measure; latest published fiscal year held to the calibration year. Table 7271 leaves out the enhancements and miscellaneous support that table 7270's broad total adds, which no household's rail use carries (María's basis ruling of 2026-10-25, #890 G). Held as a measured diagnostic: bound, it fails the weight-ratio gate (calibration_measure_exclusions.json). The engine recomputes rail_subsidy_spending as rail_usage x gov.dft.rail.fare_index."
         },
         "axiom": {
           "metric_name": "orr/rail_government_support",
@@ -17307,12 +17307,20 @@
       },
       "ledger_selector": {
         "source_name": "orr",
-        "source_concept": "orr.rail.total_government_support",
+        "source_concept": "orr.rail.government_support_by_source",
+        "source_measure_id": "support",
+        "groupby_dimension": "orr.funding_source",
+        "dimensions": [
+          "funding_source"
+        ],
+        "dimension_values": {
+          "funding_source": "all_sources"
+        },
         "entity_name": "government",
         "period_type": "fiscal_year"
       },
       "category_id": "orr.rail_industry_finance",
-      "label": "Total government support (Great Britain)"
+      "label": "Net operational government support, all sources (Great Britain)"
     },
     {
       "target_id": "ons.household_energy_expenditure",
