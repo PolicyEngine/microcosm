@@ -413,8 +413,8 @@
   }
  ],
  "engine": "policyengine-uk",
- "engine_version": "2.151.0",
- "input_count": 335,
+ "engine_version": "2.160.0",
+ "input_count": 339,
  "schema_sha256": "5a55669d0447a686692911a6327ae298f19741dde29559f2654a75807878a141",
  "structural_inputs": [
   {
@@ -900,6 +900,14 @@
    "name": "housing_benefit_board_and_attendance_determination"
   },
   {
+   "entity": "benunit",
+   "name": "housing_benefit_family_premium_category"
+  },
+  {
+   "entity": "benunit",
+   "name": "housing_benefit_has_main_phase_esa"
+  },
+  {
    "entity": "person",
    "name": "housing_benefit_reported"
   },
@@ -1372,6 +1380,10 @@
    "name": "self_employment_gross_receipts"
   },
   {
+   "entity": "benunit",
+   "name": "severe_disability_premium_joint_occupier_exclusion_applies"
+  },
+  {
    "entity": "person",
    "name": "sic_industry_division"
   },
@@ -1586,6 +1598,10 @@
   {
    "entity": "benunit",
    "name": "working_tax_credit_run_on"
+  },
+  {
+   "entity": "benunit",
+   "name": "would_claim_wales_childcare_offer"
   },
   {
    "entity": "household",

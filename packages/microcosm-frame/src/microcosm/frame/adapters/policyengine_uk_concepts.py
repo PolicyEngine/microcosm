@@ -36,7 +36,7 @@ __all__ = [
 # ---------------------------------------------------------------------------
 #
 # Which PolicyEngine-UK inputs each engine-neutral concept feeds
-# (microcosm.frame.concepts), reviewed against policyengine-uk 2.151.0. Every
+# (microcosm.frame.concepts), reviewed against policyengine-uk 2.160.0. Every
 # target is a pure input (in ``PolicyEngineUKEngine.variables``). The UK
 # loader also accepts some formula-owned variables as overrides
 # (``employment_income``, ``state_pension_reported``, ``is_household_head``);
@@ -183,10 +183,22 @@ _UK_TAKE_UP_EVIDENCE: dict[str, tuple[str, str]] = {
 
 
 #: Take-up inputs of the engine the build leaves at the engine's default,
-#: with why. None today: ``would_claim_uc_at_legacy_closure``
-#: (policyengine-uk 2.128.0, pe-uk#2119), the last of them, is drawn at DWP's
-#: Move to UC claim rates since they became a Chronicle fact (microcosm#1095).
-UK_ENGINE_DEFAULT_TAKE_UP_INPUTS: dict[str, str] = {}
+#: with why. ``would_claim_uc_at_legacy_closure`` (policyengine-uk 2.128.0,
+#: pe-uk#2119) left this register once DWP's Move to UC claim rates became a
+#: Chronicle fact (microcosm#1095).
+UK_ENGINE_DEFAULT_TAKE_UP_INPUTS: dict[str, str] = {
+    "would_claim_wales_childcare_offer": (
+        "Whether a family would claim the Childcare Offer for Wales if eligible "
+        "(policyengine-uk 2.155.0, pe-uk#2535); the engine's default is true, so "
+        "every eligible family in Wales claims it. The Welsh Government publishes "
+        "the Offer's take-up, but the pinned Chronicle feed carries no fact for "
+        "it, so the build leaves the default: the Offer's cost, and the "
+        "childcare support of Welsh families, are overstated by the eligible "
+        "families who do not claim. A Chronicle request is drafted, and the flag "
+        "is drawn at the published rate once the fact lands (María's ruling of "
+        "2026-10-25, microcosm#1095)."
+    ),
+}
 
 
 _UK_OWNED_COMPANY_STOCKS_AT_DEFAULT = (
@@ -282,6 +294,35 @@ UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
         "overrides take precedence, and where it is not the input would also "
         "be -1 (microcosm#1095; for María's signature)."
     ),
+    "housing_benefit_has_main_phase_esa": (
+        "Whether the Housing Benefit claimant is personally entitled to "
+        "main-phase ESA (policyengine-uk 2.152.0), which gives a working-age "
+        "claimant the higher personal allowance (HB Regs 2006 Sch 3 para 1A; NI "
+        "Sch 4 para 1A). The build does not set it, so it stays false and the "
+        "engine keeps its age-based allowance: Housing Benefit is understated "
+        "for a claimant under 25 on main-phase ESA. The FRS records ESA receipt "
+        "and its group, from which a mapping could follow after this lock "
+        "(microcosm#1095; for María's signature)."
+    ),
+    "severe_disability_premium_joint_occupier_exclusion_applies": (
+        "A caller's assertion that every other rent-liable claimant or partner "
+        "in the household is a joint occupier, or has a separate liability, "
+        "that the legacy severe disability premium's non-dependant test "
+        "excludes (policyengine-uk 2.159.0). The FRS records the conditions "
+        "only in part, so the input stays false, as the engine asks when the "
+        "facts are unknown: the premium can be denied to a severely disabled "
+        "claimant who shares a liability on those terms (microcosm#1095; for "
+        "María's signature)."
+    ),
+    "housing_benefit_family_premium_category": (
+        "Housing Benefit's protected family premium (policyengine-uk 2.160.0): "
+        "a working-age claim that kept it from before its closure to new "
+        "claims (1 May 2016 in Great Britain, 5 September 2016 in Northern "
+        "Ireland), or the pre-April 1998 lone-parent rate. The FRS records no "
+        "claim history, so every unit takes the default, NONE: Housing Benefit "
+        "is understated for any such protected claim still in payment "
+        "(microcosm#1095; for María's signature)."
+    ),
 }
 
 
@@ -306,7 +347,7 @@ def _uk_take_up(program: str, entity: str) -> InputBinding:
 
 POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
     engine="policyengine-uk",
-    engine_version="2.151.0",
+    engine_version="2.160.0",
     entity_correspondence={"person": "person", "household": "household"},
     input_declaration=InputDeclaration.ENGINE_TYPED,
     bindings=(
