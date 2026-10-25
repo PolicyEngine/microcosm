@@ -478,6 +478,7 @@
       "obr.carers_allowance": "obr.efo_expenditure",
       "obr.child_benefit": "obr.efo_expenditure",
       "obr.council_tax": "obr.efo_expenditure",
+      "obr.domestic_rates": "obr.efo_expenditure",
       "obr.esa": "obr.efo_expenditure",
       "obr.fuel_duties_cars": "obr.efo_receipts",
       "obr.housing_benefit": "obr.efo_expenditure",
@@ -849,6 +850,7 @@
       "obr.carers_allowance": "Carers allowance",
       "obr.child_benefit": "Child benefit",
       "obr.council_tax": "Council tax",
+      "obr.domestic_rates": "Domestic rates",
       "obr.esa": "Employment and Support Allowance",
       "obr.fuel_duties_cars": "Fuel duties from cars",
       "obr.housing_benefit": "Housing benefit",
@@ -955,7 +957,7 @@
       "ons.population.uk_total": "UK population",
       "ons.public_sector_employment": "Public sector employment",
       "ons.savings_interest_income": "Savings interest income",
-      "orr.rail_government_support": "Total government support (Great Britain)",
+      "orr.rail_government_support": "Net operational government support, all sources (Great Britain)",
       "scotgov.bus.government_support": "Government support",
       "scotgov.bus.passenger_revenue": "Passenger revenue",
       "scotgov.council_tax_stock.band_a": "Band a",
@@ -1263,6 +1265,26 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "obr.council_tax",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "obr.domestic_rates",
+      "ledger_selector": {
+        "source_name": "obr",
+        "source_concept": "obr.domestic_rates",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "household",
+      "measure": "obr/domestic_rates",
+      "family": "obr",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "obr.domestic_rates",
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection",
@@ -24709,7 +24731,15 @@
       "name": "orr.rail_government_support",
       "ledger_selector": {
         "source_name": "orr",
-        "source_concept": "orr.rail.total_government_support",
+        "source_concept": "orr.rail.government_support_by_source",
+        "source_measure_id": "support",
+        "groupby_dimension": "orr.funding_source",
+        "dimensions": [
+          "funding_source"
+        ],
+        "dimension_values": {
+          "funding_source": "all_sources"
+        },
         "entity_name": "government",
         "period_type": "fiscal_year",
         "geography_level": "country",

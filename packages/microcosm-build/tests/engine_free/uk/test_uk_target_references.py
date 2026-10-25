@@ -74,8 +74,9 @@ _TEST_PATHS = paths_for("microcosm-build")
 
 # The next policyengine-uk bump retires three rows (microcosm#1095) and binds
 # England's single adult council tax discount (microcosm#953); microcosm#1359
-# adds five OBR excise receipts rows, measured at FY2024-25.
-ACTIVE_REFERENCE_COUNT = 1341
+# adds five OBR excise receipts rows, measured at FY2024-25; the bump after it
+# compiles obr.domestic_rates, pinned to the UK (microcosm#1095).
+ACTIVE_REFERENCE_COUNT = 1342
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 
 
@@ -1009,9 +1010,10 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
 
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
+    # obr.domestic_rates compiles once pinned to the UK (microcosm#1095).
     assert membership["status_counts"] == {
         "active": ACTIVE_REFERENCE_COUNT,
-        "no_fact_at_or_before_period": 5,
+        "no_fact_at_or_before_period": 4,
         "signed_excluded": 17,
     }
     assert membership["genuine_sum_residue"]
