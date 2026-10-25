@@ -41,6 +41,7 @@ __all__ = [
     "UKFRSSpineStageTransform",
     "artifact_by_table",
     "build_uk_frs_spine_frame",
+    "frs_claimant_or_partner",
     "map_codes",
     "normalize_ids",
     "number",
@@ -618,7 +619,40 @@ def _assemble_frame(
     # Preserve the FRS claimant/partner roles as a country-model input. Age
     # does not promote a dependent child to a partner, and legal marriage
     # alone does not establish that a partner lives in this benefit unit.
+    # Adult-table membership is checked first and directly: the dependant-count
+    # rule below reads DEPCHLDB, so it lets a unit with no adult record through
+    # wherever DEPCHLDB is 0 beside child records.
+    adult_record = frs_claimant_or_partner(
+        pe_person["person_id"], pe_person["person_benunit_id"], list(adult_ids)
+    )
     pe_person["is_uc_claimant"] = frs_uc_claimant_mask(pe_person, pe_benunit)
+    # policyengine-uk derives is_uc_claimant from is_claimant_or_partner
+    # (2.107.0 on), so the two supplied roles must name the same people. The
+    # refusal counts the two ways they part, never naming a record: a
+    # DEPCHLDB other than the unit's child records, or a child record at
+    # UPERSON 1, which is_benunit_head reads as a second head.
+    disagree = int((pe_person["is_uc_claimant"].to_numpy() != adult_record).sum())
+    if disagree:
+        child_records = (
+            pd.Series(~adult_record).groupby(pe_person["person_benunit_id"]).sum()
+        )
+        miscounted = int(
+            (
+                child_records.reindex(pe_benunit["benunit_id"]).fillna(0).to_numpy()
+                != pe_benunit["dependent_children"].to_numpy()
+            ).sum()
+        )
+        child_heads = int(
+            (pe_person["is_benunit_head"].to_numpy() & ~adult_record).sum()
+        )
+        raise ValueError(
+            "FRS adult-table membership and the UC claimant rule (head, adult "
+            "with dependants, or member of a unit without them) disagree for "
+            f"{disagree} person(s): is_claimant_or_partner and is_uc_claimant "
+            f"must be the same roles. {miscounted} benefit unit(s) have a "
+            "DEPCHLDB other than their child-record count, and "
+            f"{child_heads} child record(s) are at UPERSON 1."
+        )
     pe_benunit["liable_for_share_of_household_rent"] = (
         frs_liable_for_share_of_household_rent(
             benunit_raw, person, household, frs["benefits"]
@@ -631,10 +665,8 @@ def _assemble_frame(
     # adult table or the child table: the adult table holds each benefit
     # unit's head and any partner (uk-data#524), the child table its HBAI
     # dependent children (uk-data#486). Supplying both stops the engine
-    # inferring them from ages.
-    # The claimant mask above already refuses a benefit unit without one or
-    # two adult records, so membership is a well-formed role.
-    adult_record = pe_person["person_id"].isin(adult_ids).to_numpy()
+    # inferring them from ages. ``adult_record`` above refused any benefit
+    # unit without one or two adult records.
     pe_person["is_claimant_or_partner"] = adult_record
     pe_person["is_hbai_dependent_child"] = ~adult_record
     pe_person["uc_is_in_startup_period"] = frs_uc_start_up_period(
@@ -1433,6 +1465,34 @@ def frs_care_hours(person: pd.DataFrame) -> pd.Series:
     if unknown:
         raise ValueError(f"FRS hourtot carries unknown band code(s) {unknown}.")
     return codes.astype(int).map(FRS_CARE_HOURS_BY_BAND).astype("float64")
+
+
+def frs_claimant_or_partner(
+    person_ids: Any, person_benunit_ids: Any, adult_person_ids: Any
+) -> np.ndarray:
+    """Each FRS benefit unit's single adult or couple, in person-row order.
+
+    An FRS benefit unit is one adult or a couple plus any dependent children.
+    The adult table holds the head (UPERSON 1) and any partner (UPERSON 2);
+    the child table holds the dependent children. Any other adult in the
+    household, such as a grown-up son or daughter, forms and heads their own
+    benefit unit. Adult-table membership is therefore policyengine-uk's
+    ``is_claimant_or_partner``, which the model otherwise infers from ages.
+    UPERSON alone is not enough: a dependent child can be UPERSON 2 under a
+    single head. A benefit unit with no adult record, or with three or more,
+    is refused. Mirrors policyengine-uk-data's
+    ``derive_is_claimant_or_partner_from_frs_microdata`` (uk-data#524).
+    """
+
+    in_adult_table = np.isin(np.asarray(person_ids), np.asarray(adult_person_ids))
+    counts = pd.Series(in_adult_table).groupby(np.asarray(person_benunit_ids)).sum()
+    bad = int((~counts.between(1, 2)).sum())
+    if bad:
+        raise ValueError(
+            "Every FRS benefit unit needs one or two adult-table records; "
+            f"{bad} benefit unit(s) do not."
+        )
+    return in_adult_table
 
 
 def _esa_includes_support_component(
