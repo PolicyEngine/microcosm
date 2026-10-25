@@ -195,10 +195,12 @@ def test_exactly_51_regional_type_leaves_and_no_family_or_national_totals_enter_
     for filename in ("target_references.json", "precal_references.json"):
         for row in _document(filename)["target_references"]:
             selector = row["ledger_selector"]
-            if selector["record_set_id"].endswith(".family_type"):
+            # Some selectors name no record set (precal's MBIE bond rents).
+            record_set = selector.get("record_set_id", "")
+            if record_set.endswith(".family_type"):
                 assert selector["geography_id"] in _REGIONS
                 assert selector["dimensions"] == [_DIMENSION]
-            assert not selector["record_set_id"].endswith(".families")
+            assert not record_set.endswith(".families")
 
 
 @pytest.mark.parametrize("profile", _PROFILES)
@@ -575,9 +577,11 @@ def test_national_type_facts_and_regional_differences_remain_independent_diagnos
     ]
     assert [fact["value"] for fact in national] == [537486, 543483, 213534]
     assert all(fact["geography"]["id"] == "NZ" for fact in national)
+    # Roll-forward selectors (the tenure rows) name no aggregate fact key.
     selected_keys = {
         row["ledger_selector"]["aggregate_fact_key"]
         for row in _document("target_references.json")["target_references"]
+        if "aggregate_fact_key" in row["ledger_selector"]
     }
     assert not selected_keys & {fact["aggregate_fact_key"] for fact in national}
     assert (

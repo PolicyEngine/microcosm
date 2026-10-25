@@ -467,11 +467,11 @@ def build_reference_documents(artifact, *, package_dir=SPEC):
     from microcosm.build.ledger_artifact import validate_chronicle_feed_pin
 
     package_dir = Path(package_dir)
+    feed_pin = json.loads((package_dir / "chronicle_feed.json").read_text())
+    validate_chronicle_feed_pin(artifact, feed_pin)
     family_declaration = json.loads(
         (package_dir / "family_reconciliation.json").read_text()
     )
-    feed_pin = json.loads((package_dir / "chronicle_feed.json").read_text())
-    validate_chronicle_feed_pin(artifact, feed_pin)
     inventory = Inventory(artifact.facts)
     erp = {
         region: {
