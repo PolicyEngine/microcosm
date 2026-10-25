@@ -57,7 +57,8 @@ upstream of calibration. The composed graph is checked when there is one,
 otherwise the declaration.
 
 With stages listed, every field the checks read is validated before either
-pass uses it, on every declared node and rules binding:
+pass uses it, on every declared node and rules binding, except the three
+values below that the checks read as composition does:
 
 - **Nodes.** `id` and `kernel` are text, and ids are distinct. `population`,
   `base` and `rules_binding` are text or null. `params` is an object. Each
@@ -75,6 +76,14 @@ pass uses it, on every declared node and rules binding:
 - **Entitlement rows**, in the composed pass. Each row the entitlement
   extension instantiates has a text id that no skeleton row or other
   entitlement row uses, and its `params` follow the rules above.
+
+Three values get no shape check of their own, because the checks read them
+exactly as composition does. An output's `rewrite` flag is read by
+truthiness, as the compiler reads it. A selection `path` is followed through
+mappings only, as composition follows it: a path that leaves the resource's
+mappings selects nothing for the checks, and composition refuses it. A
+`prepared` value counts only when it is `"engine_refs"`, the one prepared
+parameter composition admits.
 
 A malformed field refuses, naming the node: for example "node 'mid' has
 malformed inputs", "node 'mid' is declared twice" or "node id None is not
@@ -175,4 +184,5 @@ These are tested, as properties and examples, in
   admits: it checks the entitlement rows' shapes, then names the first
   offending node in graph order.
 - With stages listed, a malformed declaration never admits. Every field the
-  checks read is validated first, and a malformed one refuses naming its node.
+  checks read is validated first or read exactly as composition reads it,
+  and a malformed one refuses naming its node.
