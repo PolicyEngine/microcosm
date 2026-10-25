@@ -4,8 +4,10 @@ A transport graph's calibration may read only what the calibration ancestry
 guard admits (`validate_transport_calibration_ancestry` in
 `microcosm.build.transport.compose`). Without stages, the guard refuses
 benefit-unit engine semantics upstream of a `calibrate.*` node or the
-calibration endpoint, hold-out sources, `holdout_references` selections in the
-`transport_graph` rows it reaches, and the graph resource's own digest.
+calibration endpoint, hold-out sources, and `holdout_references` selections
+and the graph resource's own digest in the `transport_graph` rows its
+declaration pass reaches through population, base and artifact links. It does
+not follow column reads, and its composed pass checks no selections.
 Person-entity rules bindings are admitted.
 
 The optional `precalibration_stages` resource declares the rules bindings whose
@@ -61,10 +63,10 @@ pass uses it, on every declared node and rules binding:
   `base` and `rules_binding` are text or null. `params` is an object. Each
   resource selection in it names a text resource, a list `path` and a known
   encoding, as activation requires. Each binding selection (an object with
-  `binding` and `field`) names both as text. `inputs`, `outputs` and
-  `artifact_inputs` are lists of objects with a text `entity`, a list of text
-  `columns`, a text `column` and a text `producer` respectively. `sources` is
-  a list of text.
+  `binding` and `field`) names both as text. `inputs` is a list of objects
+  with a text `entity` and a list of text `columns`; `outputs` is a list of
+  objects with a text `entity` and a text `column`; `artifact_inputs` is a
+  list of objects with a text `producer`. `sources` is a list of text.
 - **Rules bindings.** Each names a distinct text `id`, a text `entity` and
   `rulespec_path`, and a list of text `variables`.
 - **The calibration endpoint**, when present, is text. An explicit null
@@ -75,7 +77,8 @@ pass uses it, on every declared node and rules binding:
   entitlement row uses, and its `params` follow the rules above.
 
 A malformed field refuses, naming the node: for example "node 'mid' has
-malformed inputs". Read character by character, a string column, source or
+malformed inputs", "node 'mid' is declared twice" or "node id None is not
+text". Read character by character, a string column, source or
 path list would otherwise drop a read, a hold-out source or a selection, and
 a repeated id would hide a node. The guard without stages is unchanged.
 

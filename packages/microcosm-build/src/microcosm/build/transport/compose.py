@@ -779,8 +779,15 @@ def _precalibration_bindings(spec: Mapping[str, object]) -> dict[str, Mapping]:
     ):
         row = _mapping(item, "rules binding")
         name = row.get("id")
-        if not _is_text(name) or name in bindings:
-            raise ValueError("precalibration_stages needs distinct rules binding ids.")
+        if not _is_text(name):
+            raise ValueError(
+                f"precalibration_stages needs text rules binding ids, not {name!r}."
+            )
+        if name in bindings:
+            raise ValueError(
+                f"precalibration_stages needs distinct rules binding ids; {name!r} "
+                "repeats."
+            )
         if not (
             _is_text(row.get("entity"))
             and _is_text(row.get("rulespec_path"))
@@ -806,9 +813,13 @@ def _precalibration_rows(document: Mapping) -> dict[str, Mapping]:
     for item in _sequence(document.get("nodes"), "transport nodes"):
         row = _mapping(item, "transport node")
         name = row.get("id")
-        if not _is_text(name) or name in rows:
+        if not _is_text(name):
             raise ValueError(
-                "Transport calibration ancestry: node ids must be distinct text."
+                f"Transport calibration ancestry: node id {name!r} is not text."
+            )
+        if name in rows:
+            raise ValueError(
+                f"Transport calibration ancestry: node {name!r} is declared twice."
             )
         checks = {
             "kernel": _is_text(row.get("kernel")),
@@ -1006,9 +1017,13 @@ def _precalibration_extension_rows(
     result: dict[str, Mapping] = {}
     for row, _ in _rows(spec)[0]:
         name = row.get("id")
-        if not _is_text(name) or name in rows or name in result:
+        if not _is_text(name):
             raise ValueError(
-                "Transport calibration ancestry: node ids must be distinct text."
+                f"Transport calibration ancestry: node id {name!r} is not text."
+            )
+        if name in rows or name in result:
+            raise ValueError(
+                f"Transport calibration ancestry: node {name!r} is declared twice."
             )
         if not _precalibration_params(row.get("params", {})):
             raise ValueError(
@@ -1461,7 +1476,10 @@ def validate_transport_calibration_ancestry(
     Benefit-unit attributes remain allowed; excluded columns are the unit
     rules bindings' outputs and the group encoder's declared outputs.
     Declared pre-calibration stages admit their own unit semantics, restrict
-    outputs flowing onward and recursively check each stage's ancestry.
+    outputs flowing onward and recursively check each stage's ancestry. With
+    stages and a graph, each derived output must be produced in the composed
+    graph; without a graph, in the declaration. Composition always runs the
+    graph-less check first.
     """
     stages = _precalibration_stages(spec)
     if not _has_resource(spec, GRAPH_RESOURCE):

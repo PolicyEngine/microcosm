@@ -4527,7 +4527,19 @@ def test_precalibration_ancestry_repeated_node_id_refuses():
         compose_module.validate_transport_calibration_ancestry, spec
     ) == (
         ValueError,
-        "Transport calibration ancestry: node ids must be distinct text.",
+        "Transport calibration ancestry: node 'mid' is declared twice.",
+    )
+
+
+@pytest.mark.parametrize("name", [None, ["mid"], 3])
+def test_precalibration_ancestry_non_text_node_id_refuses(name):
+    spec = _shape_case()
+    _shape_rows(spec)["mid"]["id"] = name
+    assert _shape_outcome(
+        compose_module.validate_transport_calibration_ancestry, spec
+    ) == (
+        ValueError,
+        f"Transport calibration ancestry: node id {name!r} is not text.",
     )
 
 
@@ -4553,13 +4565,21 @@ def test_precalibration_ancestry_malformed_binding_refuses(case, change):
     )
 
 
-def test_precalibration_ancestry_repeated_binding_id_refuses():
+@pytest.mark.parametrize(
+    ("name", "message"),
+    [
+        ("u", "needs distinct rules binding ids; 'u' repeats."),
+        (None, "needs text rules binding ids, not None."),
+    ],
+    ids=["repeated", "non_text"],
+)
+def test_precalibration_ancestry_binding_id_refuses(name, message):
     spec = _shape_case()
     bindings = spec["resources"]["axiom_rules_bindings"]["bindings"]
-    bindings.append(_synthetic_binding("u", "person", ["other"]))
+    bindings.append({**_synthetic_binding("u", "person", ["other"]), "id": name})
     assert _shape_outcome(
         compose_module.validate_transport_calibration_ancestry, spec
-    ) == (ValueError, "precalibration_stages needs distinct rules binding ids.")
+    ) == (ValueError, f"precalibration_stages {message}")
 
 
 @pytest.mark.parametrize("endpoint", [["cal"], None, ""])
@@ -4702,7 +4722,7 @@ def test_precalibration_ancestry_extension_selection_without_stages_is_todays(
             {"params": {"references": {"resource": ["holdout_references"]}}},
             "node 'nz.v.V1.targets' has malformed params.",
         ),
-        ({"id": "nz.targets.compile"}, "node ids must be distinct text."),
+        ({"id": "nz.targets.compile"}, "node 'nz.targets.compile' is declared twice."),
     ],
     ids=["malformed_params", "repeated_id"],
 )
