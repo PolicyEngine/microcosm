@@ -1930,9 +1930,11 @@ def test_claimant_or_partner_agrees_with_the_dependant_count_rule(
     frame: pd.DataFrame,
 ) -> None:
     # Differential: where each unit's dependant count is its number of child
-    # records (every unit of the pinned FRS 2024-25), the UC rule (head, or
-    # adult with dependants, or any member of a childless unit) and
-    # adult-table membership name the same people.
+    # records and no child record is at UPERSON 1 (every unit of the pinned
+    # FRS 2024-25), the UC rule (head, or adult with dependants, or any member
+    # of a childless unit) and adult-table membership name the same people.
+    # The generator draws no child head; test_a_child_record_at_uperson_1_refuses
+    # covers that case.
     adult = frame["adult"].to_numpy()
     children = pd.Series(~adult).groupby(frame["benunit_id"].to_numpy()).sum()
     benunit_ids = np.sort(frame["benunit_id"].unique())
