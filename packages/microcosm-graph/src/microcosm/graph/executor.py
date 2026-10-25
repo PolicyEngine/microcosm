@@ -41,7 +41,7 @@ from .decl import (
     Ownership,
     StructuralDelta,
 )
-from .errors import NodeRejectedError
+from .errors import KernelIdentityChangedError, NodeRejectedError
 from .expansion import materialized_expand_coordinates
 from .kernel import (
     ArtifactValue,
@@ -2900,6 +2900,13 @@ def _execute_graph(
             before = _context_digest(context)
             try:
                 result = kernel.run(context)
+            except KernelIdentityChangedError:
+                # The kernel reports that it is no longer the computation its
+                # key names. A verdict filed under that key would be served to
+                # every later run of the unchanged kernel, so it is never one:
+                # the run refuses and nothing for this node is stored
+                # (amendment 29), whatever the kernel's role.
+                raise
             except Exception as error:
                 if kernel.capabilities.role is KernelRole.GATE:
                     result = _failed_gate_result(node, incumbent, error)

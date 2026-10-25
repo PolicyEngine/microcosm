@@ -44,6 +44,7 @@ from .decl import (
 )
 from .errors import (
     GraphRuntimeError,
+    KernelIdentityChangedError,
     NodeRejectedError,
     StoreCorruptError,
     StoreMissError,
@@ -77,6 +78,7 @@ __all__ = [
     "Kernel",
     "KernelBase",
     "KernelContext",
+    "KernelIdentityChangedError",
     "KernelRegistry",
     "KernelResult",
     "KernelRole",
