@@ -102,6 +102,7 @@ from microcosm.graph.canonical import canonical_json
 from .artifact_types import KERNEL_OUTPUTS
 from .column_kernels import validate_receipt_contract
 from .money_kernels import MONEY_NORMALIZE_REF
+from .reference_selection import selection_resources, validate_exemptions
 from .target_kernels import TARGET_COMPILATION_KERNELS
 
 __all__ = [
@@ -573,14 +574,160 @@ def _null_paths(value: object, path: str = "") -> Iterator[str]:
             yield from _null_paths(item, f"{path}[{index}]")
 
 
-def _reference_activation_gaps(document: Mapping, resource: str) -> Iterator[str]:
+def _reference_activation_gaps(
+    document: Mapping,
+    resource: str,
+    exempt: Mapping | None = None,
+    selected: Mapping[str, Sequence[str]] | None = None,
+) -> Iterator[str]:
+    # The absent-resource path preserves the legacy activation walk and messages.
+    exemptions = (
+        set()
+        if exempt is None
+        else {
+            row["name"]
+            for row in validate_exemptions(
+                document, exempt, resource=resource, selected=selected
+            )
+        }
+    )
     for row in _sequence(
         document.get("target_references"), f"{resource}.target_references"
     ):
         reference = _mapping(row, f"{resource} reference")
         metadata = _mapping(reference.get("metadata", {}), f"{resource}.metadata")
-        if metadata.get("activation_status", "active") != "active":
+        if (
+            reference.get("name") not in exemptions
+            and metadata.get("activation_status", "active") != "active"
+        ):
             yield f"placeholder reference {resource}.{reference.get('name', '?')}"
+
+
+def _reference_selections(spec: Mapping[str, object]) -> dict[str, dict]:
+    if not _has_resource(spec, "reference_selection"):
+        return {}
+    return selection_resources(transport_resource(spec, "reference_selection"))
+
+
+def _instantiated_rows(
+    spec: Mapping[str, object],
+) -> list[tuple[Mapping, Mapping | None]]:
+    """Common, scenario and variant rows actually used by the factories."""
+    rows = []
+    if _has_resource(spec, GRAPH_RESOURCE):
+        rows.extend(
+            (row, None)
+            for row in transport_resource(spec, GRAPH_RESOURCE).get("nodes", ())
+            if isinstance(row, Mapping)
+        )
+    if _has_resource(spec, "entitlement_graph") and _has_resource(spec, "scenarios"):
+        from .entitlement import _rows
+
+        rows.extend(_rows(spec)[0])
+    return rows
+
+
+def _preflight_parameter(spec, value, scenario):
+    """Resolve only data selectors; preparation-dependent bindings stay literal."""
+    if isinstance(value, Mapping) and "resource" in value:
+        selected = _resource_param(
+            spec,
+            value,
+            allow_json_sequences=True,
+            profile_selection=None if scenario is None else scenario.get("knobs", {}),
+        )
+        return json.loads(selected) if value.get("encoding") == "json" else selected
+    if isinstance(value, Mapping) and "scenario" in value and scenario is not None:
+        selected = (
+            scenario if value["scenario"] == "row" else scenario[value["scenario"]]
+        )
+        for component in value.get("path", ()):
+            selected = selected[component]
+        return selected
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return value
+    return value
+
+
+def _named_reference_values(value: object) -> Iterator[str]:
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            if key in {"reference", "target"} and isinstance(item, str):
+                yield item
+            else:
+                yield from _named_reference_values(item)
+    elif isinstance(value, list | tuple):
+        for item in value:
+            yield from _named_reference_values(item)
+
+
+def _reference_selection_closure(spec: Mapping[str, object]) -> dict[str, dict]:
+    """Map resource/row to selecting node ids, before exemption filtering.
+
+    Reading a complete ``references`` document in a target compiler is not a
+    row selection. A comparison selects every row it requests. Explicit target
+    and reference keys, receipt strata, mass rows and annualisation-factor keys
+    select rows. Artifact edges associate these names with their source
+    reference resource; unbound names are checked against every matching row.
+    """
+    rows = _instantiated_rows(spec)
+    by_id = {row.get("id"): row for row, _ in rows}
+    resources = {
+        _stem(name): document
+        for name, document in _resources(spec).items()
+        if isinstance(document, Mapping) and "target_references" in document
+    }
+    closure: dict[str, dict[str, list[str]]] = {name: {} for name in resources}
+
+    def origins(row):
+        result = set()
+        for name in ("references", "mass_reference"):
+            value = row.get("params", {}).get(name)
+            if isinstance(value, Mapping) and isinstance(value.get("resource"), str):
+                result.add(_stem(value["resource"]))
+        for edge in row.get("artifact_inputs", ()):
+            producer = by_id.get(edge.get("producer"), {})
+            value = producer.get("params", {}).get("references")
+            if isinstance(value, Mapping) and isinstance(value.get("resource"), str):
+                result.add(_stem(value["resource"]))
+        return result
+
+    for row, scenario in rows:
+        params = row.get("params", {})
+        names = set()
+        for key, value in params.items():
+            data = _preflight_parameter(spec, value, scenario)
+            if key in {"reference", "target"} and isinstance(data, str):
+                names.add(data)
+            elif key == "annualisation_factors" and isinstance(data, Mapping):
+                names.update(data)
+            elif key == "mass_reference" or (
+                key == "references" and row.get("kernel") == "takeup.compare@1"
+            ):
+                if isinstance(data, Mapping):
+                    names.update(
+                        item["name"] for item in data.get("target_references", ())
+                    )
+            elif key not in {"references", "reference_resolution"}:
+                names.update(_named_reference_values(data))
+        candidates = origins(row) or set(resources)
+        for resource in candidates:
+            if resource not in closure:
+                continue
+            known = {
+                item.get("name") for item in resources[resource]["target_references"]
+            }
+            for name in names & known:
+                closure[resource].setdefault(name, []).append(str(row.get("id", "?")))
+    # Every mass row is a required population denominator, even if a malformed
+    # graph omitted its CREATE consumer. Give that requirement a concrete label.
+    if "mass_references" in resources:
+        for item in resources["mass_references"]["target_references"]:
+            closure["mass_references"].setdefault(item["name"], ["mass_references"])
+    return closure
 
 
 def _declared_rows(spec: Mapping[str, object]) -> list[Mapping]:
@@ -862,6 +1009,12 @@ def validate_transport_activation(spec: Mapping[str, object]) -> None:
     missing = []
     # Resolve first so activation never inspects an executable profile's raw rows.
     reference_profile_views(spec)
+    reference_selections = _reference_selections(spec)
+    selection_closure = (
+        _reference_selection_closure(spec)
+        if _has_resource(spec, "reference_selection")
+        else {}
+    )
     selections = (
         tuple(_declared_resource_selections(transport_resource(spec, GRAPH_RESOURCE)))
         if _has_resource(spec, GRAPH_RESOURCE)
@@ -927,6 +1080,7 @@ def validate_transport_activation(spec: Mapping[str, object]) -> None:
         if _has_resource(spec, name)
         and "target_references" in transport_resource(spec, name)
     )
+    reference_resources.update(reference_selections)
     checked_reference_views = set()
     for resource in sorted(reference_resources):
         if not _has_resource(spec, resource):
@@ -935,10 +1089,24 @@ def validate_transport_activation(spec: Mapping[str, object]) -> None:
         document = transport_resource(spec, resource)
         identity = hashlib.sha256(canonical_json(document)).hexdigest()
         checked_reference_views.add((resource, identity))
-        missing.extend(_reference_activation_gaps(document, resource))
+        missing.extend(
+            _reference_activation_gaps(
+                document,
+                resource,
+                reference_selections.get(resource),
+                selection_closure.get(resource),
+            )
+        )
     for (resource, identity), document in selected_reference_views.items():
         if (resource, identity) not in checked_reference_views:
-            missing.extend(_reference_activation_gaps(document, resource))
+            missing.extend(
+                _reference_activation_gaps(
+                    document,
+                    resource,
+                    reference_selections.get(resource),
+                    selection_closure.get(resource),
+                )
+            )
     receipt = (
         transport_resource(spec, "receipt_contract")
         if _has_resource(spec, "receipt_contract")
@@ -954,6 +1122,38 @@ def validate_transport_activation(spec: Mapping[str, object]) -> None:
     else:
         try:
             validate_receipt_contract(contracts)
+            if contracts.get("contract_version") == 2:
+                scenarios = transport_resource(spec, "scenarios")
+                central = _mapping(scenarios.get("central_knobs", {}), "central_knobs")
+                knob = contracts["assignment_knob"]
+                if central.get(knob) != contracts["default_assignment_profile"]:
+                    raise ValueError(
+                        "default_assignment_profile must equal "
+                        f"central_knobs[{knob!r}]."
+                    )
+                strata_declared = any(
+                    program.get("strata") for program in contracts["programs"]
+                )
+                bindings = (
+                    transport_resource(spec, "calibration_bindings")
+                    if strata_declared
+                    else {}
+                )
+                filters = {
+                    (entry.get("entity"), entry.get("name"))
+                    for entry in bindings.get("columns", ())
+                    if isinstance(entry, Mapping) and "predicates" in entry
+                }
+                for program in contracts["programs"]:
+                    for stratum in program.get("strata", ()):
+                        if (
+                            program.get("projection", "person"),
+                            stratum["filter"],
+                        ) not in filters:
+                            raise ValueError(
+                                f"Receipt stratum {stratum['filter']!r} must name "
+                                "calibration_bindings predicates."
+                            )
         except (ValueError, TypeError) as error:
             missing.append(f"receipt_contract.json path ['receipts']: {error}")
     if _has_resource(spec, "axiom_rules_bindings"):
@@ -1520,6 +1720,30 @@ def _node(
         }
     )
     params = _target_feed_params(spec, kernel, params)
+    raw_params = _mapping(row.get("params", {}), "node params")
+    raw_references = raw_params.get("references")
+    if (
+        kernel in TARGET_COMPILATION_KERNELS
+        and isinstance(raw_references, Mapping)
+        and isinstance(raw_references.get("resource"), str)
+    ):
+        selection = _reference_selections(spec).get(_stem(raw_references["resource"]))
+        if selection is not None and selection["exempt"]:
+            params["reference_selection"] = canonical_json(selection).decode("utf-8")
+    if kernel == "takeup.assign@1" and "receipt_contract" in params:
+        receipt_contract = json.loads(params["receipt_contract"])
+        if receipt_contract.get("contract_version") == 2:
+            if _has_resource(spec, "calibration_bindings"):
+                params["calibration_bindings"] = canonical_json(
+                    transport_resource(spec, "calibration_bindings")
+                ).decode("utf-8")
+                params["calibration_bindings_sha256"] = _resource_digest(
+                    spec, "calibration_bindings"
+                )
+            central = transport_resource(spec, "scenarios").get("central_knobs", {})
+            params["profile_selection"] = canonical_json(
+                {**central, **(profile_selection or {})}
+            ).decode("utf-8")
     if (
         kernel in TARGET_COMPILATION_KERNELS | {"calibration.prepare@1"}
         and "references" in params
