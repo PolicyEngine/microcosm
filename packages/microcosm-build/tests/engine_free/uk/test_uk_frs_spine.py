@@ -1302,7 +1302,8 @@ def test_no_frs_field_feeds_two_income_columns(tmp_path: Path) -> None:
     carry no person income, so they are not varied. Nor are the record keys
     or UPERSON, which place a person in their benefit unit: a child raised to
     UPERSON 1 would head the unit beside its adult head, which the spine
-    refuses.
+    refuses. Nor are the household codes mapped through their data
+    dictionary, which refuse a raised code outside it (uk-data#636).
     """
 
     tables = _fixture_tables()
@@ -1312,7 +1313,16 @@ def test_no_frs_field_feeds_two_income_columns(tmp_path: Path) -> None:
         for field in dict.fromkeys(
             field for row in tables[table] if row["SERNUM"] == 1 for field in row
         )
-        if field not in {"SERNUM", "BENUNIT", "PERSON", "UPERSON"}
+        if field
+        not in {
+            "SERNUM",
+            "BENUNIT",
+            "PERSON",
+            "UPERSON",
+            "GVTREGNO",
+            "PTENTYP2",
+            "TYPEACC",
+        }
     ]
     copies: dict[str, list[dict[str, object]]] = {table: [] for table in tables}
     for household, varied in enumerate([None, *fields], start=1):
@@ -2431,6 +2441,36 @@ def test_household_and_benunit_mapping_values_are_ported(tmp_path: Path) -> None
     assert benunit.loc[101, "dependent_children"] == 1
     assert benunit.loc[101, "frs_benunit_capital"] == 111.0
     assert benunit.loc[201, "frs_benunit_capital"] == 222.0
+
+
+@pytest.mark.parametrize(
+    ("column", "code"), [("GVTREGNO", 3), ("PTENTYP2", 7), ("TYPEACC", 8)]
+)
+def test_frs_spine_refuses_a_household_code_outside_the_data_dictionary(
+    tmp_path: Path, column: str, code: int
+) -> None:
+    """An unknown region, tenure or accommodation code stops the build and
+    names the FRS variable, where it used to take a default (uk-data#636)."""
+
+    tables = _fixture_tables()
+    tables["househol"][0][column] = code
+    stage = _write_fixture(tmp_path, tables)
+
+    with pytest.raises(ValueError, match=f"FRS {column} carries code"):
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
+
+
+def test_a_blank_accommodation_code_keeps_the_detached_house_default(
+    tmp_path: Path,
+) -> None:
+    tables = _fixture_tables()
+    household_1 = next(row for row in tables["househol"] if row["SERNUM"] == 1)
+    household_1["TYPEACC"] = ""
+
+    frame = build_uk_frs_spine_frame(tmp_path, stage=_write_fixture(tmp_path, tables))
+
+    household = frame.table("household").set_index("household_id")
+    assert household.loc[1, "accommodation_type"] == "HOUSE_DETACHED"
 
 
 def test_region_code_map_covers_all_twelve_regions() -> None:
