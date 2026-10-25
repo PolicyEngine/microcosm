@@ -44,9 +44,7 @@ from pathlib import Path
 from typing import Any
 
 from microcosm.build.uk_runtime.chronicle_feed import load_uk_chronicle_feed
-from microcosm.build.uk_runtime.high_value_homes import (
-    load_uk_high_value_home_stock_facts,
-)
+from microcosm.build.uk_runtime.derived_facts import uk_derived_fact_resource_pins
 from microcosm.build.uk_runtime.hmrc_income import HMRC_SPI_TARGET_RECORD_COUNT
 from microcosm.build.uk_runtime.hmrc_replay import FULL_FRS_TI_BAND_FENCE_ID
 from microcosm.build.uk_runtime.local_targets import AREA_TYPES, metric_names
@@ -107,16 +105,19 @@ def _ledger_fact_feed_pin() -> dict[str, str | int]:
 _LEDGER_FACT_FEED_PIN: dict[str, str | int] = _ledger_fact_feed_pin()
 
 
-def _derived_resource_pin() -> dict[str, str | int]:
-    """Identity of the committed high-value home stock resource (microcosm#1240)."""
+#: The committed derived-facts resource each derived source's targets come
+#: from: the high-value home stock (microcosm#1240) and DESNZ's energy split
+#: onto constituencies (microcosm#1095).
+_DERIVED_RESOURCE_BY_SOURCE = {
+    "hmlr_price_paid_derived_stock": "high_value_home_stock_facts.json",
+    "desnz_small_area_constituency_split": "desnz_constituency_energy_facts.json",
+}
 
-    derived = load_uk_high_value_home_stock_facts()
-    return {
-        "resource": "high_value_home_stock_facts.json",
-        "rows": len(derived.rows),
-        "rows_sha256": derived.rows_sha256,
-        "inputs_sha256": derived.inputs_sha256,
-    }
+
+def _derived_resource_pin(source_id: str) -> dict[str, str | int]:
+    """Identity of the committed derived resource a source's targets come from."""
+
+    return uk_derived_fact_resource_pins()[_DERIVED_RESOURCE_BY_SOURCE[source_id]]
 
 
 _SPI_FRAME_PROXY_FENCE_ID = "hmrc_spi_frame_model_proxy"
@@ -272,12 +273,15 @@ _FAMILIES: tuple[dict[str, Any], ...] = (
             "electricity meters, a member of the census household partition. "
             "The frame reads each household's stored spend at the dataset "
             "period and turns it back into kWh at the stage's declared prices. "
-            "DESNZ publishes no constituency cut, so the family is "
-            "local-authority only."
+            "DESNZ publishes no constituency cut, so the constituency cells "
+            "bind Microcosm's split of each authority's totals by DESNZ's LSOA "
+            "and data zone figures, which keeps every authority's total "
+            "(microcosm#1095)."
         ),
         "sources": [
             "desnz_subnational_electricity_la",
             "desnz_subnational_gas_la",
+            "desnz_small_area_constituency_split",
             "desnz_subnational_electricity_ni",
             "desnz_subnational_gas_ni",
             "ons_census2021_ts041_households",
@@ -783,6 +787,45 @@ _SOURCES: tuple[dict[str, Any], ...] = (
         ),
     },
     {
+        "source_id": "desnz_small_area_constituency_split",
+        "publisher": (
+            "Department for Energy Security and Net Zero (LSOA and data zone "
+            "statistics), ONS and NRS (output area lookups); Microcosm derivation"
+        ),
+        "product": (
+            "Domestic electricity and gas consumption (kWh) and meter counts by "
+            "July 2024 constituency, Great Britain, 2024: each authority's "
+            "sub-national total split over its constituencies by DESNZ's 2021 "
+            "LSOA and 2022 data zone figures for the same year, through the "
+            "committed atomic supports (microcosm#1095)."
+        ),
+        "url": (
+            "https://assets.publishing.service.gov.uk/media/"
+            "69427b7bd8156a816c419351/LSOA_domestic_elec_2010-2024.xlsx"
+        ),
+        "geographies": ["constituency"],
+        "latest_vintage": "2024",
+        "status": SOURCE_STATUS_PINNED_IN_DERIVED_RESOURCE,
+        "ledger_fact_pin": _LEDGER_FACT_FEED_PIN,
+        "derived_resource_pin": None,  # filled by build_uk_local_target_census
+        "verified_on": "2026-10-25",
+        "notes": (
+            "The pinned feed record sets desnz.lsoa.electricity.cy2024 and "
+            "desnz.lsoa.gas.gy2024 (LSOA_domestic_elec_2010-2024.xlsx and "
+            "LSOA_domestic_gas_2010-2024.xlsx, December 2025) carry DESNZ's "
+            "domestic consumption and meter counts for every England and Wales "
+            "LSOA and Scottish data zone it publishes, on the same periods and "
+            "temperature bases as the authority rows. "
+            "tools/build_uk_desnz_constituency_energy_facts.py shares each "
+            "authority's total among its constituency pieces in proportion to "
+            "them, an LSOA in two seats by its output areas' census households, "
+            "so every authority keeps its total and DESNZ's unallocated meters "
+            "follow the split. The seat cells take the authority cells' factor "
+            "per fuel and read their meter share off the split. Northern "
+            "Ireland publishes no small areas and is outside the family."
+        ),
+    },
+    {
         "source_id": "desnz_subnational_electricity_ni",
         "publisher": "Department for Energy Security and Net Zero",
         "product": (
@@ -1141,11 +1184,11 @@ _STATUS_DEFINITIONS: dict[str, str] = {
         "Ledger consumer fact feed recorded on the source row."
     ),
     SOURCE_STATUS_PINNED_IN_DERIVED_RESOURCE: (
-        "The official product is registered raw-only in Chronicle (its bytes "
-        "are pinned by sha256 but parsed into no fact) and Microcosm's committed "
-        "derived-facts resource, built by the recorded tool from those pins, "
-        "carries the target values; derived_resource_pin records the resource "
-        "and its row digest."
+        "The official product is pinned in Chronicle, registered raw-only (its "
+        "bytes pinned by sha256 but parsed into no fact) or parsed into the "
+        "sha-pinned feed, and Microcosm's committed derived-facts resource, "
+        "built by the recorded tool from those pins, carries the target values; "
+        "derived_resource_pin records the resource and its row digest."
     ),
     SOURCE_STATUS_SIGNED_DEFERRED: (
         "The official product is present or documented, but this target "
@@ -1283,7 +1326,7 @@ def build_uk_local_target_census() -> dict[str, Any]:
         # The derived resource is read when the census is built, never at
         # import, so loading the UK runtime does not depend on the file.
         if row.get("status") == SOURCE_STATUS_PINNED_IN_DERIVED_RESOURCE:
-            row["derived_resource_pin"] = _derived_resource_pin()
+            row["derived_resource_pin"] = _derived_resource_pin(row["source_id"])
     _require_unique_ids(sources, key="source_id", label="source")
     fences = [dict(row) for row in _BINDING_FENCES]
     _require_unique_ids(fences, key="fence_id", label="binding fence")

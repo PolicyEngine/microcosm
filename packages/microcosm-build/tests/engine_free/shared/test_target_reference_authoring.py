@@ -1220,3 +1220,25 @@ def test_an_area_index_without_an_applier_is_refused() -> None:
 
     with pytest.raises(ValueError, match="supplies no applier"):
         author_area_target_references(contract, facts, _area_config(areas=("A1", "A2")))
+
+
+def test_a_list_source_name_prefilters_to_its_sources_in_feed_order() -> None:
+    # A family whose published and derived facts sit under two sources
+    # (microcosm#1095) scans both, in the feed's order, and nothing else.
+    from microcosm.build import target_reference_authoring as authoring
+
+    facts = (
+        {"source": {"source_name": "desnz"}, "id": 1},
+        {"source": {"source_name": "ons"}, "id": 2},
+        {"source": {"source_name": "microcosm"}, "id": 3},
+        {"observed_measure": {"source_name": "desnz"}, "id": 4},
+    )
+    buckets = authoring._facts_by_source(facts)
+    listed = {"ledger_selector": {"source_name": ["microcosm", "desnz"]}}
+    assert [
+        fact["id"] for fact in authoring._source_prefilter(facts, buckets, listed)
+    ] == [1, 3, 4]
+    single = {"ledger_selector": {"source_name": "desnz"}}
+    assert [
+        fact["id"] for fact in authoring._source_prefilter(facts, buckets, single)
+    ] == [1, 4]

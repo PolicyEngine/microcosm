@@ -648,7 +648,8 @@ def test_committed_resource_splits_the_vendored_authority_meters_exactly() -> No
             seat_total = sum(
                 value for code, value in seats.items() if code[0] == nation
             )
-            assert seat_total == pytest.approx(vendored[(nation, fuel)], rel=1e-9)
+            # Seat values carry three decimals, so their roundings add up.
+            assert seat_total == pytest.approx(vendored[(nation, fuel)], rel=1e-7)
 
 
 def test_committed_resource_covers_great_britain_and_the_gas_network() -> None:
@@ -674,3 +675,107 @@ def test_committed_resource_covers_great_britain_and_the_gas_network() -> None:
     assert all(0.0 < share <= 1.0 for share in shares)
     for receipt in facts.receipts["series"].values():
         assert receipt["seat_total"] == pytest.approx(receipt["authority_total"])
+
+
+def _crosswalk_regions(level: str) -> tuple[dict[str, str], dict[str, str]]:
+    crosswalk = json.loads(
+        importlib_resources.files("microcosm.build.uk")
+        .joinpath("local_area_crosswalk.json")
+        .read_text(encoding="utf-8")
+    )
+    entry = crosswalk["levels"][level]
+    aliases = {
+        str(code): str(area)
+        for area, alias in (entry.get("code_aliases") or {}).items()
+        for code in alias.get("alias_codes", ())
+    }
+    return dict(entry["region_code_by_area"]), aliases
+
+
+def test_committed_resource_keeps_every_region_s_authority_meters() -> None:
+    # The split keeps each authority's total and no seat crosses a region, so
+    # seats and authorities sum alike in every region: the single-winner rule
+    # then rescales the authority cells by one.
+    facts = energy.load_uk_desnz_constituency_energy_facts()
+    seat_region, _ = _crosswalk_regions("constituency")
+    authority_region, aliases = _crosswalk_regions("local_authority")
+    payload = json.loads(
+        importlib_resources.files("microcosm.build.uk")
+        .joinpath("desnz_local_energy_facts.json")
+        .read_text(encoding="utf-8")
+    )
+    for fuel in energy.FUELS:
+        by_region: dict[str, float] = {}
+        for row in payload["rows"]:
+            if row["geography"]["level"] != "local_authority":
+                continue
+            if row["dimensions"] != {
+                **row["dimensions"],
+                "fuel": fuel,
+                "metric": "meter_count",
+            }:
+                continue
+            code = aliases.get(row["geography"]["id"], row["geography"]["id"])
+            region = authority_region[code]
+            by_region[region] = by_region.get(region, 0.0) + float(row["value"])
+        seats: dict[str, float] = {}
+        for code, value in facts.values(
+            fuel=fuel, metric="meter_count", period_value=2024
+        ).items():
+            region = seat_region[code]
+            seats[region] = seats.get(region, 0.0) + value
+        assert seats.keys() == by_region.keys()
+        for region, total in by_region.items():
+            assert seats[region] == pytest.approx(total, rel=1e-7), (fuel, region)
+
+
+def test_the_committed_surface_binds_every_great_britain_seat() -> None:
+    from microcosm.build.uk_runtime.ledger_targets import (
+        load_uk_local_target_reference_membership,
+    )
+
+    targets = load_uk_local_target_reference_membership()["targets"]
+    statuses = {}
+    for target_id in (
+        "desnz.subnational.electricity_kwh",
+        "desnz.subnational.gas_kwh",
+        "desnz.subnational.gas_connected_households",
+    ):
+        candidates = targets[target_id]["geography_levels"]["constituency"][
+            "candidates"
+        ]
+        assert {candidate["geography_id"][0] for candidate in candidates} == {
+            "E",
+            "W",
+            "S",
+        }
+        assert len(candidates) == 632
+        statuses[target_id] = {
+            candidate["geography_id"]: candidate["status"]
+            for candidate in candidates
+            if candidate["status"] != "active"
+        }
+    # Orkney and Shetland has no mains gas, as the two councils have none.
+    assert statuses == {
+        "desnz.subnational.electricity_kwh": {},
+        "desnz.subnational.gas_kwh": {"S14000051": "no_fact_for_area"},
+        "desnz.subnational.gas_connected_households": {"S14000051": "signed_deferred"},
+    }
+
+
+def test_the_withholding_families_of_the_energy_rows() -> None:
+    # The kWh rows have no higher-grain parent, so they are checked in their
+    # regions' blocks, where seats and authorities meet; the gas-connected
+    # rows join the census household family and its nation controls.
+    from microcosm.build.uk_runtime.diagnostics import uk_local_family_parents
+
+    families = {
+        member: (members, parents)
+        for members, parents in uk_local_family_parents()
+        for member in members
+    }
+    for target_id in ("desnz.subnational.electricity_kwh", "desnz.subnational.gas_kwh"):
+        assert families[target_id] == (frozenset({target_id}), frozenset())
+    members, parents = families["desnz.subnational.gas_connected_households"]
+    assert "ons.census.households" in members
+    assert parents

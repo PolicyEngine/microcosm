@@ -1255,6 +1255,11 @@ def _source_prefilter(
     source_name = target["ledger_selector"].get("source_name")
     if isinstance(source_name, str) and source_name:
         return facts_by_source.get(source_name, ())
+    # A list matches by membership (a family whose published and derived facts
+    # sit under two sources, microcosm#1095): its sources' facts, in feed order.
+    if isinstance(source_name, list) and source_name:
+        names = {str(item) for item in source_name}
+        return tuple(fact for fact in facts if _source_name(fact) in names)
     return facts
 
 
