@@ -47,6 +47,7 @@ from microcosm.build.gates import FitWeightRecord
 from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
 from microcosm.build.uk_runtime.calibration_run import (
     UK_CALIBRATION_GATE_SCOPE,
+    UK_LOCAL_DIAGNOSTIC_GATE_SCOPE,
     UK_LOCAL_GATE_SCOPE,
     UK_NATIONAL_GATE_SCOPE,
     UK_SHARED_GATE_IDS,
@@ -77,7 +78,9 @@ __all__ = [
 UK_RELEASE_CERTIFICATION_SCHEMA_VERSION = 1
 UK_RELEASE_CERTIFICATION_KIND = "uk_release_certification"
 UK_RELEASE_CUT_POSTURE = "release_cut"
-UK_CERTIFICATION_EXCLUDED_GATE_IDS = frozenset(UK_LOCAL_GATE_SCOPE)
+UK_CERTIFICATION_EXCLUDED_GATE_IDS = frozenset(UK_LOCAL_GATE_SCOPE) | frozenset(
+    UK_LOCAL_DIAGNOSTIC_GATE_SCOPE
+)
 
 #: Each certification part's declared scope, phases, and manifest policy
 #: suffix. The suffixes are load-bearing: they are what the producers bake
@@ -235,6 +238,7 @@ def uk_release_parity_evidence(
     """
 
     target_relative_errors: dict[str, float] = {}
+    withheld: set[str] = set()
     for row in diagnostics_targets:
         name = str(row["name"])
         if "@" not in name:
@@ -243,6 +247,13 @@ def uk_release_parity_evidence(
                 "grain; the reference side is keyed name@period, so a "
                 "bare-name row would silently fall out of the comparison."
             )
+        metadata = row.get("metadata")
+        if isinstance(metadata, Mapping) and metadata.get("model_figures_withheld"):
+            # Fewer than ten source households carry it (María's rule of
+            # 2026-10-21): bound, published without its figures, and outside
+            # the fit gate's verdict.
+            withheld.add(name)
+            continue
         target_relative_errors[name] = float(row["relative_error"])
     return SimpleNamespace(
         candidate_columns=uk_export_candidate_columns(frame),
@@ -250,12 +261,36 @@ def uk_release_parity_evidence(
             f"{entity}.{name}"
             for name, entity in parity_reference.input_entities.items()
         },
-        candidate_targets=set(target_relative_errors),
+        candidate_targets=set(target_relative_errors) | withheld,
         reference_targets={
             f"{spec.name}@{spec.period}" for spec in reference_registry.specs
         },
         target_relative_errors=target_relative_errors,
+        withheld_targets=frozenset(withheld),
     )
+
+
+def _unsupported_by_period(
+    unsupported: Mapping[object, Sequence[Mapping[str, object]]],
+    registries: Mapping[object, Any],
+    scope: str,
+) -> dict[object, tuple[Mapping[str, object], ...]]:
+    """One entry for each compiled period, or refuse.
+
+    The caller keeps the compile's report for every period it compiled. A
+    period with a registry and no report means the report was dropped, which
+    would let the parity gate read an unresolved reference as a plain fixture
+    row.
+    """
+
+    missing = sorted(str(period) for period in registries if period not in unsupported)
+    if missing:
+        raise ValueError(
+            f"UK release-cut {scope} compile reported no unsupported-reference "
+            f"list for period(s) {missing}; pass an empty list where every "
+            "reference resolved."
+        )
+    return {period: tuple(unsupported[period]) for period in registries}
 
 
 def run_uk_release_cut_battery(
@@ -268,6 +303,8 @@ def run_uk_release_cut_battery(
     build_stage_names: Sequence[str],
     ledger_registries: Mapping[object, Any],
     local_ledger_registries: Mapping[object, Any],
+    ledger_unsupported: Mapping[object, Sequence[Mapping[str, object]]],
+    local_ledger_unsupported: Mapping[object, Sequence[Mapping[str, object]]],
     parity_evidence: Any,
     fit_weight_records: tuple[FitWeightRecord, ...] | None,
     input_mass_reference: Mapping[str, Any],
@@ -287,9 +324,19 @@ def run_uk_release_cut_battery(
     blocked phase persists its report and raises before any composition.
     The local-surface compile gates run here too: the certification is the
     declared owner of the whole national scope, so the caller supplies both
-    the national and the local compiled registries.
+    the national and the local compiled registries. Beside each it supplies
+    the compile's unsupported references by period (empty where every
+    reference resolved): the compile-parity gates need them to tell a
+    reference that did not resolve from a fixture row with no counterpart.
+    The battery refuses to run on a policyengine-uk other than the pinned one
+    (microcosm#1095), since its coverage engine is the installed one.
     """
 
+    from microcosm.build.uk_runtime.hmrc_uprating import (
+        assert_installed_engine_is_pinned,
+    )
+
+    assert_installed_engine_is_pinned()
     battery = GateBatteryRun(
         uk_national_gate_manifest(),
         release_id=release_id,
@@ -303,6 +350,12 @@ def run_uk_release_cut_battery(
         "build_stage_names": tuple(str(name) for name in build_stage_names),
         "uk_ledger_compiled_registries": dict(ledger_registries),
         "uk_ledger_compiled_local_registries": dict(local_ledger_registries),
+        "uk_ledger_compile_unsupported": _unsupported_by_period(
+            ledger_unsupported, ledger_registries, "national"
+        ),
+        "uk_ledger_compile_local_unsupported": _unsupported_by_period(
+            local_ledger_unsupported, local_ledger_registries, "local"
+        ),
     }
     battery.run_phase("preflight", EvidenceContext(artifacts=preflight_artifacts))
     battery.enforce("preflight", mode=BlockingMode.BLOCKS_ARTIFACT)
@@ -318,6 +371,7 @@ def run_uk_release_cut_battery(
         "parity_evidence": parity_evidence,
         "aggregate_admin": admin_totals,
         "input_mass_reference": input_mass_reference,
+        "release_line": "national",
     }
     if fit_weight_records is not None:
         terminal_artifacts["fit_weight_records"] = fit_weight_records
@@ -325,6 +379,16 @@ def run_uk_release_cut_battery(
         terminal_artifacts["spine_frame"] = spine_frame
     battery.run_phase(
         "terminal", EvidenceContext(frame=frame, artifacts=terminal_artifacts)
+    )
+    from microcosm.build.uk_runtime.diagnostics import uk_refuse_named_withheld_rows
+
+    # The gates decide on the published rows and count the withheld ones
+    # (María's rule of 2026-10-21 binds a thin national row); a report that
+    # names one stops before the certification uses it.
+    uk_refuse_named_withheld_rows(
+        battery.report_payload(),
+        names=frozenset(parity_evidence.withheld_targets),
+        keys=frozenset(),
     )
     battery.enforce("terminal", mode=BlockingMode.BLOCKS_ARTIFACT)
     payload = battery.report_payload()

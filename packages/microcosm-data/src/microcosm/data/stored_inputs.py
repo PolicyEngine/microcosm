@@ -68,6 +68,21 @@ against, because the same process records it as
   (``tools/build_us_acs_local_release.py``), on the calibrated H5, through
   :func:`require_h5_stored_inputs`, before the release directory exists.
 
+The publisher contract (:mod:`microcosm.data.contract`) imports no engine, so
+it does not re-run the rule for the fiscal-refresh and ACS local-area lanes. It
+requires each lane's verdict as release evidence instead (microcosm#1034): the
+fiscal-refresh tool's ``stored_inputs.json`` and the manifests'
+``stored_inputs`` block, and the ACS package stage's ``stored_inputs`` gate.
+Each must name the built-with engine and the release's bytes, so a release
+packaged by a tool without the check cannot validate.
+
+Every seam grades one engine: the installed, built-with version. A
+source-enrichment publisher claim widens the policyengine-us range consumers
+accept, but no seam grades the other versions the range admits, later or
+earlier; the certified report records the one measured version as
+``compatibility.claim_measurement``
+(:func:`microcosm.data.source_enrichment.claim_measurement_record`).
+
 **Naming convention, measured rather than assumed.** policyengine-us 2.2.1
 defines 6,167 variables. 6,114 match ``[a-z][a-z0-9_]*``. The other 53 are the
 postal codes of the 50 states, DC, PR and VI:
@@ -294,12 +309,23 @@ _US_ENTITIES = ("person", "household", "tax_unit", "spm_unit", "family", "marita
 #:   build, and the rehearsal export no longer stores it, so the remedy is to
 #:   stop storing it.
 #:
+#: The ACS local-area chain inherits both from its donor and applies these
+#: remedies to its consumer artifact
+#: (``microcosm.build.us_runtime.retired_stored_inputs``, microcosm#1263).
+#:
 #: An entry must never be a variable of the certified engine. The engine reads
 #: such a column as an input, so the entry would be dead, and its reason (that
 #: the engine ignores the column) would be false. Tests hold the register to
 #: that rule against the installed engine.
 US_STORED_NON_VARIABLE_COLUMNS: Mapping[str, str] = MappingProxyType(
     {
+        "county_fips_2023": (
+            "The household's five-digit 2023 county-equivalent FIPS, produced "
+            "by microcosm.build.us_runtime.county_vintage and the block/PUMA "
+            "ladder assignments for county calibration. Connecticut uses its "
+            "nine planning regions. The separate county_fips input retains "
+            "2020 counties for policyengine-us 2.2.1 county-based rules."
+        ),
         **{
             f"{entity}_source_id": _SUPPORT_SOURCE_ID.format(entity=entity)
             for entity in _US_ENTITIES

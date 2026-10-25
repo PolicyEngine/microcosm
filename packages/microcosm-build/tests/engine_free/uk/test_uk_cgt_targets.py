@@ -6,7 +6,9 @@ enter a person-level calibration by accident.
 """
 
 import json
+import os
 from copy import deepcopy
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -701,10 +703,21 @@ def test_signed_out_rows_are_recorded_not_dropped():
 
 
 def _pinned_feed_rows():
-    feed = _TEST_PATHS.repository / ".codex-work/consumer_facts_uk.jsonl"
+    configured = os.environ.get("CHRONICLE_UK_FACTS")
+    feed = (
+        Path(configured)
+        if configured
+        else _TEST_PATHS.repository / ".codex-work/consumer_facts_uk.jsonl"
+    )
+    if feed.is_dir():
+        feed = feed / "consumer_facts.jsonl"
     if not feed.exists():
         pytest.skip("pinned UK Chronicle consumer feed is not present")
-    return [json.loads(line) for line in feed.read_text().splitlines() if line.strip()]
+    # Stream the feed and parse only the CGT rows: every selector and ratio
+    # operand the test compiles pins an hmrc.cgt_* source concept, so no other
+    # row can match, and the whole feed parses to tens of GB.
+    with feed.open(encoding="utf-8") as handle:
+        return [json.loads(line) for line in handle if "hmrc.cgt_" in line]
 
 
 def test_banded_rows_partition_the_national_observations_on_the_pinned_feed():

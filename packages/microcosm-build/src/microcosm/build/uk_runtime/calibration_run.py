@@ -80,6 +80,7 @@ UK_CALIBRATION_GATE_SCOPE = (
 
 UK_LOCAL_GATE_SCOPE = (
     "uk_local_geography_ladder_post_calibration",
+    "uk_local_brma_enum_domain",
     "uk_local_area_support",
     "uk_local_target_fit",
     "uk_local_per_family_fit",
@@ -87,23 +88,38 @@ UK_LOCAL_GATE_SCOPE = (
     "uk_local_weight_ess",
 )
 
+#: Report-only gates the dense battery evaluates on the calibrated pool beside
+#: the local battery; they are excluded from certification like the local scope.
+UK_LOCAL_DIAGNOSTIC_GATE_SCOPE = (
+    "uk_high_value_homes_benchmarks",
+    "uk_high_value_homes_support",
+)
+
 UK_SPINE_GATE_SCOPE = (
     "uk_stage_was_wealth_support",
     "uk_stage_was_wealth_coherence",
     "uk_stage_was_lisa_support",
+    "uk_stage_high_value_home_support_mass",
+    "uk_stage_property_components",
     "uk_stage_nts_bus_travel_support",
     "uk_stage_nts_bus_travel_facts",
     "uk_stage_uc_deduction_attributes",
     "uk_stage_lcfs_consumption_support",
     "uk_stage_lcfs_consumption_energy_rake",
     "uk_stage_lcfs_consumption_bus_pricing",
+    "uk_stage_lcfs_consumption_road_fuel_incidence",
+    "uk_stage_lcfs_consumption_road_fuel_level",
+    "uk_stage_lcfs_consumption_recomposed_totals",
+    "uk_stage_lcfs_consumption_basis",
     "uk_stage_etb_vat_support",
     "uk_stage_etb_services_support",
     "uk_stage_etb_services_support_pricing",
     "uk_stage_frs_hmrc_spine_leaves_signal",
+    "uk_stage_frs_annual_income_spells",
     "uk_stage_spi_support_channel_mass",
     "uk_stage_hmrc_spi_income_spine_identity",
     "uk_stage_spi_benefit_coherence",
+    "uk_stage_uc_take_up",
     "uk_stage_pension_credit_take_up",
     "uk_stage_child_benefit_take_up",
     "uk_stage_cgt_incidence_clone_mass",
@@ -117,6 +133,9 @@ UK_SPINE_GATE_SCOPE = (
     "uk_stage_student_loans_realization",
     "uk_stage_age_tail_targets",
     "uk_stage_frs_relationships_composition",
+    "uk_stage_regional_home_values_ranking",
+    "uk_stage_property_purchases_fit",
+    "uk_stage_uc_legacy_closure_take_up_contract",
     # Weight-independent like the BRMA enum below, and its column exists from
     # frs_relationships onward (#791).
     "uk_ons_household_type_enum_domain",
@@ -124,6 +143,10 @@ UK_SPINE_GATE_SCOPE = (
     # onward, so it is checked at the transferred boundary, and its domain is
     # declared by the stage module (microcosm#725).
     "uk_capital_gains_asset_type_enum_domain",
+    # Weight-independent; spi_housing_shell is the last spine stage that writes
+    # the band, so the transferred boundary checks every row's nation
+    # (microcosm#1278).
+    "uk_council_tax_band_domain",
     # Weight-independent, and its column exists from frs_brma onward, so the
     # spine checks it at the assembled boundary instead of the release end.
     "uk_brma_enum_domain",
@@ -132,10 +155,9 @@ UK_SPINE_GATE_SCOPE = (
 UK_NATIONAL_GATE_SCOPE = (
     "uk_release_input_coverage_manifest_current",
     "uk_release_family_build_stages",
-    "uk_ledger_compile_parity_production_2023",
     "uk_ledger_compile_parity_incumbent_2025",
     # The local-surface compile gates live with the same owner as the national
-    # parity pair: the release-cut certification producer
+    # parity gate: the release-cut certification producer
     # (tools/certify_uk_release_cut.py) compiles and supplies both registry
     # artifacts — never the seam.
     "uk_ledger_compile_parity_local_incumbent_2025",
@@ -150,9 +172,12 @@ UK_NATIONAL_GATE_SCOPE = (
     "uk_export_surface",
     "uk_take_up_signal",
     "uk_student_loan_plan_enum_domain",
+    # The spine checks council_tax_band at the transferred boundary; this
+    # instance checks the release frame, after any later step that writes the
+    # band (microcosm#1278).
+    "uk_council_tax_band_domain_terminal",
     "uk_target_surface",
     "uk_input_mass_parity",
-    "uk_qrf_tail_concentration",
     "uk_weights_audit",
 )
 
@@ -212,6 +237,11 @@ def _scope_exclusions() -> dict[str, str]:
                 "scoped battery and excluded from national certification "
                 "until microcosm#146."
             )
+        elif gate_id in UK_LOCAL_DIAGNOSTIC_GATE_SCOPE:
+            reason = (
+                "local diagnostic gate; report-only on the dense battery's "
+                "calibrated pool and excluded from certification (microcosm#1240)."
+            )
         elif "parity" in gate_id or gate_id in _SWAP_ACCEPTANCE_GATE_IDS:
             reason = "swap-acceptance evidence; produced by the swap lane, not the calibration seam."
         else:
@@ -238,6 +268,11 @@ def uk_local_gate_scope_exclusions() -> dict[str, str]:
             reason = "national calibration-seam gate; outside the local candidate."
         elif gate_id in UK_NATIONAL_GATE_SCOPE:
             reason = "national release-cut gate; outside the local candidate."
+        elif gate_id in UK_LOCAL_DIAGNOSTIC_GATE_SCOPE:
+            reason = (
+                "local diagnostic gate; evaluated by the dense battery but outside "
+                "the seven-gate local release contract (microcosm#1240, #1262)."
+            )
         else:  # pragma: no cover - _scope_exclusions enforces closed-world ownership
             raise RuntimeError(f"UK gate {gate_id!r} belongs to no declared scope.")
         exclusions[gate_id] = reason
@@ -312,6 +347,29 @@ def load_bound_spine_sidecar(path: Path, frame: Frame) -> dict[str, object]:
     return sidecar
 
 
+def _assert_spine_engine_is_pinned(sidecar: Mapping[str, object]) -> None:
+    """Refuse a spine built on a policyengine-uk other than the pinned one.
+
+    The engine freeze holds the build's own engine (microcosm#1095); this
+    holds the spine it binds. A sidecar that records no engine version, or
+    "unavailable" as a synthetic one does, is left to the preflight's stage
+    roster, which already refuses a spine built before the freeze.
+    """
+
+    from microcosm.build.uk_runtime.hmrc_uprating import pinned_engine_version
+
+    recorded = sidecar.get("rules_engine")
+    version = recorded.get("version") if isinstance(recorded, Mapping) else None
+    if version in (None, "", "unavailable"):
+        return
+    pinned = pinned_engine_version()
+    if str(version) != pinned:
+        raise ValueError(
+            f"Spine checkpoint was built on policyengine-uk {version}, but the UK "
+            f"build is pinned to {pinned}: rebuild the spine on the pinned engine."
+        )
+
+
 def load_bound_spine_checkpoint(
     path: Path,
     frame: Frame,
@@ -338,6 +396,7 @@ def load_bound_spine_checkpoint(
     if not isinstance(sidecar, dict):
         raise ValueError(f"input H5 build sidecar must be a JSON object: {path}")
     _assert_spine_sidecar_binds_frame(sidecar, frame)
+    _assert_spine_engine_is_pinned(sidecar)
     recorded = sidecar.get("output")
     if (
         input_sha256 is not None
@@ -557,6 +616,9 @@ def spine_provenance_from_sidecar(
         "rules_engine": dict(sidecar.get("rules_engine", {})),
         "source_vintages": dict(sidecar.get("source_vintages", {})),
         "stochastic_contract_sha256": sidecar.get("stochastic_contract_sha256"),
+        # Empty for a spine built before the marker; the release assemblers
+        # rederive it from the stages either way (microcosm#1095).
+        "spi_public_use_tape": dict(sidecar.get("spi_public_use_tape") or {}),
     }
 
 

@@ -156,6 +156,85 @@ class TestRegistryIdentity:
         assert len(soi) == 1 and next(iter(soi)).name == "irs_soi/agi"
 
 
+def _geography_spec(
+    name: str, geography_id: str, label: str, *, level: str = "state"
+) -> TargetSpec:
+    return _spec(
+        name=name,
+        hierarchy=CalibrationHierarchy(
+            provider=HierarchyNode(id="census", label="US Census Bureau"),
+            category=HierarchyCategory(
+                id="population", label="Population", provider_id="census"
+            ),
+            geography=HierarchyGeography(id=geography_id, label=label, level=level),
+            dimensions=(),
+            target=HierarchyNode(id=name, label=f"{label} population"),
+        ),
+    )
+
+
+class TestGeographyLabels:
+    """One geography id has one label across a registry (microcosm#1335)."""
+
+    def test_a_us_registry_refuses_one_geography_id_with_two_labels(self) -> None:
+        specs = [
+            _geography_spec("usda_snap.me.households", "0400000US23", "Maine"),
+            _geography_spec("pop_state_23", "0400000US23", "ME"),
+        ]
+
+        with pytest.raises(
+            ValueError,
+            match=(
+                r"'0400000US23' is 'Maine' \(first on target "
+                r"'usda_snap\.me\.households'\) and 'ME' \(first on target "
+                r"'pop_state_23'\)"
+            ),
+        ):
+            TargetRegistry(specs, country="us")
+
+    def test_a_us_registry_accepts_one_label_per_geography_id(self) -> None:
+        specs = [
+            _geography_spec("usda_snap.me.households", "0400000US23", "Maine"),
+            _geography_spec("pop_state_23", "0400000US23", "Maine"),
+            _geography_spec("pop_state_33", "0400000US33", "New Hampshire"),
+            _spec(name="census/unlabelled"),
+        ]
+
+        registry = TargetRegistry(specs, country="us")
+
+        assert len(registry) == 4
+        assert len(registry.select(family="census")) == 4
+
+    def test_other_countries_report_two_labels_without_refusing(self) -> None:
+        # UK publishers name some regions and authorities differently; the
+        # UK registries report the variant until one name per code is chosen.
+        specs = [
+            _geography_spec(
+                "ons.yorkshire.population",
+                "E12000003",
+                "Yorkshire and The Humber",
+                level="region",
+            ),
+            _geography_spec(
+                "hmrc.yorkshire.income",
+                "E12000003",
+                "Yorkshire and the Humber",
+                level="region",
+            ),
+        ]
+
+        with pytest.warns(
+            UserWarning,
+            match=(
+                r"'E12000003' is 'Yorkshire and The Humber' \(first on target "
+                r"'ons\.yorkshire\.population'\) and 'Yorkshire and the Humber'"
+            ),
+        ):
+            registry = TargetRegistry(specs, country="uk")
+
+        assert len(registry) == 2
+
+
 class TestSpecDictCodec:
     def test_to_dict_from_dict_round_trip_with_and_without_hierarchy(self) -> None:
         with_hierarchy = _spec(se=12.5, metadata={"kind": "x"}, hierarchy=_hierarchy())

@@ -8,9 +8,11 @@ fails with each violation named.
 """
 
 import base64
+import copy
 import hashlib
 import hmac
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -28,6 +30,14 @@ from microcosm.data import (
     validate_evidence_release_dir,
     validate_release_dir,
 )
+from microcosm.data.contract import (
+    US_FISCAL_STORED_INPUTS_STAGE,
+    US_STORED_INPUTS_EVIDENCE_FILE,
+    US_STORED_INPUTS_EVIDENCE_KEY,
+    US_STORED_INPUTS_EVIDENCE_SCHEMA_VERSION,
+    stored_input_evidence_manifest_block,
+)
+from microcosm.data.stored_inputs import register_sha256
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-data")
@@ -71,7 +81,6 @@ UK_EVIDENCE_GATE_NAMES = {
     "hmrc_spi_income": ("weights_audit",),
     "release_parity": ("export_surface", "target_surface", "target_fit"),
     "input_mass_parity": ("input_mass_parity",),
-    "qrf_tail_concentration": ("qrf_tail_concentration",),
 }
 UK_INPUT_MASS_REFERENCE_IDENTITY = {
     "filename": "enhanced_frs_2024_25.h5",
@@ -99,12 +108,89 @@ UK_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, dict[str, str]] = {
         "approved_on": "2026-10-02",
         "expires_on": "2027-04-02",
     },
+    "property_wealth": {
+        "reason": "The candidate no longer ships household.property_wealth: policyengine-uk derives it as the sum of main_residence_value, other_residential_property_value and non_residential_property_value, and a persisted copy overrides that sum and has no uprating index (microcosm#1106, the uk-data#543 defect). The enhanced-FRS reference stores its own WAS total, so the column is present in the reference and absent from the candidate, which this gate otherwise fails whatever the tolerance. The gate compares the release surface (the export frame, reviewed exclusions dropped) on both paths, the national seam and the release cut; the three components stay compared.",
+        "approved_by": "juaristi22",
+        "adjudication": "microcosm#1106 (#1145): part B measured on the A9 candidate at 2025 and on the final-head arm c7 of 2026-10-11; ruling 2026-10-11 in session",
+        "approved_on": "2026-10-11",
+        "expires_on": "2027-04-11",
+    },
 }
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
 DATASET_SHA = "d" * 64
 CALIBRATION_SHA = "a" * 64
 DIAGNOSTICS_SHA = "c" * 64
 SOURCE_COVERAGE_SHA = "9" * 64
+#: The fixture's built-with policyengine-us, and the label the stored-input
+#: verdict names it by.
+US_MODEL_VERSION = "1.729.0"
+US_ENGINE_LABEL = f"policyengine-us {US_MODEL_VERSION}"
+
+
+def _stored_inputs_payload(
+    *,
+    engine: str = US_ENGINE_LABEL,
+    refused: tuple[str, ...] = (),
+    registered: tuple[str, ...] = ("person_source_id", "person_support_channel"),
+    stored_columns: int = 377,
+) -> dict:
+    """``stored_inputs.json`` as the fiscal-refresh tool writes it: one failure
+    line per refused column, each in the gate's words, ``passed`` exactly when
+    there are none."""
+    failures = [
+        f"Stored model inputs failed ({US_FISCAL_STORED_INPUTS_STAGE}): stored "
+        f"column '{column}' (person table) looks like a model input but is not "
+        f"a variable in {engine}, so the engine ignores it."
+        for column in refused
+    ]
+    return {
+        "schema_version": US_STORED_INPUTS_EVIDENCE_SCHEMA_VERSION,
+        "enforced": True,
+        "checked_at_stage": US_FISCAL_STORED_INPUTS_STAGE,
+        US_STORED_INPUTS_EVIDENCE_KEY: {
+            "passed": not failures,
+            "failures": failures,
+            "details": {
+                "evaluated": True,
+                "engine": engine,
+                "stored_columns": stored_columns,
+                "registered_non_variables": list(registered),
+                "refused": list(refused),
+                "register_sha256": register_sha256(),
+            },
+        },
+    }
+
+
+def _stored_inputs_bytes(payload: dict) -> bytes:
+    return (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode()
+
+
+STORED_INPUTS_PAYLOAD = _stored_inputs_payload()
+STORED_INPUTS_SHA = hashlib.sha256(
+    _stored_inputs_bytes(STORED_INPUTS_PAYLOAD)
+).hexdigest()
+
+
+def _stored_input_evidence_blocks(payload: dict = STORED_INPUTS_PAYLOAD) -> dict:
+    """What the tool adds to ``build_manifest.json`` and to
+    ``release_manifest.json``'s ``build`` for a bound stored-input verdict."""
+    return {
+        "gate_evidence": {US_STORED_INPUTS_EVIDENCE_KEY: "bound"},
+        US_STORED_INPUTS_EVIDENCE_KEY: stored_input_evidence_manifest_block(
+            payload, dataset_sha256=DATASET_SHA
+        ),
+    }
+
+
+def _write_stored_inputs_evidence(
+    directory: Path, payload: dict = STORED_INPUTS_PAYLOAD
+) -> None:
+    (directory / US_STORED_INPUTS_EVIDENCE_FILE).write_bytes(
+        _stored_inputs_bytes(payload)
+    )
+
+
 TARGET_SURFACE_SHA = "e" * 64
 REGISTRY_VERSION = "registryabc123"
 TARGET_COUNT = 20
@@ -127,21 +213,25 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "6be9d4f71cc00815c9ad2c93f0d58f42d7c3ba6417cb8a2ab31ad9bf4c8f73ea"
+    "ebf48e9a2b64a1518923e7795f771da069ec2c0cc1608c764013e1ff9c83dec0"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "8e635a5f341d304b87f277a68c15e1069972836c8858ed69115b972bf6d70b67"
+    "2437ef6c1e3ee2cd6a844c7d8dbca72c8ec7163199e03979295fc6ce0f486623"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "fea3ba9ad91bd163cd08542872e1bb7627716cb6e4579f6f87de5c8cf83b5eea"
+    "9b478f778c03838adc2aa2b769d8a3fbf21e6f8d776d318ff37d8db10c759e24"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
-    "6f0243bcda09dad26945376230c44ec3cf55d4e417c3a25e29bae8c59bc1a69d"
+    "6a179222c6b6058ad9caacfd347f7bdb8cb98a62237b50d1fc1136df09337251"
 )
 UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "d28a1fd613d61a21b06c6fccc3e3c95c0dd0173b0957c85bc4618170cac0907f"
+    "82a5fa0c7dec5ac5c169f0b8b2f4acc6b302e80637dc698d3247e75a6d133933"
 )
 #: Spec entry id -> (neutral gate name, phase, legacy detail-schema name).
+#: microcosm#1240: the two report-only high-value homes gates.
+UK_DIAGNOSTIC_ENTRY_IDS = frozenset(
+    {"uk_high_value_homes_benchmarks", "uk_high_value_homes_support"}
+)
 UK_GATE_BATTERY_ENTRIES = {
     "uk_release_input_coverage_manifest_current": (
         "release_input_coverage",
@@ -149,11 +239,6 @@ UK_GATE_BATTERY_ENTRIES = {
         None,
     ),
     "uk_release_family_build_stages": ("source_coverage", "preflight", None),
-    "uk_ledger_compile_parity_production_2023": (
-        "ledger_compile_parity",
-        "preflight",
-        None,
-    ),
     "uk_ledger_compile_parity_incumbent_2025": (
         "ledger_compile_parity",
         "preflight",
@@ -161,6 +246,7 @@ UK_GATE_BATTERY_ENTRIES = {
     ),
     "uk_stage_was_wealth_support": ("stage_health", "transferred", None),
     "uk_stage_was_lisa_support": ("stage_health", "transferred", None),
+    "uk_stage_property_components": ("stage_health", "transferred", None),
     "uk_stage_was_wealth_coherence": ("stage_health", "transferred", None),
     "uk_stage_uc_deduction_attributes": (
         "stage_health",
@@ -170,6 +256,18 @@ UK_GATE_BATTERY_ENTRIES = {
     "uk_stage_lcfs_consumption_support": ("stage_health", "transferred", None),
     "uk_stage_lcfs_consumption_energy_rake": ("stage_health", "transferred", None),
     "uk_stage_lcfs_consumption_bus_pricing": ("stage_health", "transferred", None),
+    "uk_stage_lcfs_consumption_road_fuel_incidence": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_lcfs_consumption_road_fuel_level": ("stage_health", "transferred", None),
+    "uk_stage_lcfs_consumption_recomposed_totals": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_lcfs_consumption_basis": ("stage_health", "transferred", None),
     "uk_stage_nts_bus_travel_support": ("stage_health", "transferred", None),
     "uk_stage_nts_bus_travel_facts": ("stage_health", "transferred", None),
     "uk_stage_etb_vat_support": ("stage_health", "transferred", None),
@@ -180,6 +278,7 @@ UK_GATE_BATTERY_ENTRIES = {
         "transferred",
         None,
     ),
+    "uk_stage_frs_annual_income_spells": ("stage_health", "transferred", None),
     "uk_stage_spi_support_channel_mass": (
         "stage_health",
         "transferred",
@@ -191,8 +290,10 @@ UK_GATE_BATTERY_ENTRIES = {
         None,
     ),
     "uk_stage_spi_benefit_coherence": ("stage_health", "transferred", None),
+    "uk_stage_uc_take_up": ("stage_health", "transferred", None),
     "uk_stage_pension_credit_take_up": ("stage_health", "transferred", None),
     "uk_stage_child_benefit_take_up": ("stage_health", "transferred", None),
+    "uk_stage_high_value_home_support_mass": ("stage_health", "transferred", None),
     "uk_stage_cgt_support_split_mass": (
         "stage_health",
         "transferred",
@@ -224,6 +325,21 @@ UK_GATE_BATTERY_ENTRIES = {
         None,
     ),
     "uk_stage_student_loans_realization": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_regional_home_values_ranking": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_property_purchases_fit": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_uc_legacy_closure_take_up_contract": (
         "stage_health",
         "transferred",
         None,
@@ -285,12 +401,18 @@ UK_GATE_BATTERY_ENTRIES = {
         "transferred",
         "enum_domain",
     ),
+    "uk_council_tax_band_domain": ("enum_domain", "transferred", "enum_domain"),
     "uk_uc_deduction_combination_enum_domain": (
         "enum_domain",
         "terminal",
         "enum_domain",
     ),
     "uk_student_loan_plan_enum_domain": (
+        "enum_domain",
+        "terminal",
+        "enum_domain",
+    ),
+    "uk_council_tax_band_domain_terminal": (
         "enum_domain",
         "terminal",
         "enum_domain",
@@ -304,21 +426,19 @@ UK_GATE_BATTERY_ENTRIES = {
     "uk_target_fit": ("target_fit", "terminal", "target_fit"),
     "uk_cgt_projection_entrants": ("cgt_projection_entrants", "terminal", None),
     "uk_input_mass_parity": ("input_mass_parity", "terminal", "input_mass_parity"),
-    "uk_qrf_tail_concentration": (
-        "tail_concentration",
-        "terminal",
-        "qrf_tail_concentration",
-    ),
     "uk_local_geography_ladder_post_calibration": (
         "spine_agreement",
         "terminal",
         None,
     ),
+    "uk_local_brma_enum_domain": ("enum_domain", "terminal", "enum_domain"),
     "uk_local_area_support": ("area_support", "terminal", None),
     "uk_local_target_fit": ("target_fit", "terminal", None),
     "uk_local_per_family_fit": ("per_family_fit", "terminal", None),
     "uk_local_weight_ratio": ("weight_ratio", "terminal", None),
     "uk_local_weight_ess": ("weight_ess", "terminal", None),
+    "uk_high_value_homes_benchmarks": ("high_value_home_benchmarks", "terminal", None),
+    "uk_high_value_homes_support": ("high_value_home_support", "terminal", None),
 }
 
 
@@ -369,7 +489,7 @@ DEDUCTION_CRITICAL_TARGETS = (
 def _model_package(release_id: str) -> tuple[str, str]:
     if release_id.startswith("populace-uk-") or release_id == UK_NATIONAL_RELEASE_ID:
         return ("policyengine-uk", "2.89.0")
-    return ("policyengine-us", "1.729.0")
+    return ("policyengine-us", US_MODEL_VERSION)
 
 
 def _build_manifest(release_id: str = RELEASE_ID) -> dict:
@@ -399,6 +519,8 @@ def _build_manifest(release_id: str = RELEASE_ID) -> dict:
     }
     if "-k" in release_id and release_id.startswith("populace-uk-"):
         manifest.update(country="uk", year=2023, n_records=UK_RECORD_COUNT)
+    if release_id.startswith("populace-us-"):
+        manifest.update(_stored_input_evidence_blocks())
     return manifest
 
 
@@ -463,6 +585,14 @@ def _release_manifest(
             "revision": release_id,
             "sha256": source_coverage_sha,
         }
+        manifest["artifacts"][US_STORED_INPUTS_EVIDENCE_KEY] = {
+            "kind": "diagnostics",
+            "path": US_STORED_INPUTS_EVIDENCE_FILE,
+            "repo_id": "policyengine/populace-us",
+            "revision": release_id,
+            "sha256": STORED_INPUTS_SHA,
+        }
+        manifest["build"].update(_stored_input_evidence_blocks())
     if terminal_gate_sha is not None:
         manifest["artifacts"]["terminal_gates"] = {
             "kind": "diagnostics",
@@ -819,8 +949,13 @@ def _source_coverage_diagnostics() -> dict:
 @pytest.fixture
 def release_dir(tmp_path: Path) -> Path:
     """A complete, contract-valid release directory."""
-    directory = tmp_path / "releases" / RELEASE_ID
+    return _write_release_dir(tmp_path)
+
+
+def _write_release_dir(root: Path) -> Path:
+    directory = root / "releases" / RELEASE_ID
     directory.mkdir(parents=True)
+    _write_stored_inputs_evidence(directory)
     (directory / "build_manifest.json").write_text(json.dumps(_build_manifest()))
     (directory / "calibration_diagnostics.json").write_text(
         json.dumps(_calibration_diagnostics())
@@ -998,33 +1133,10 @@ def _terminal_gate_details(name: str) -> dict:
             "reference_scope_note": UK_INPUT_MASS_REFERENCE_SCOPE_NOTE,
             "reference_identity": dict(UK_INPUT_MASS_REFERENCE_IDENTITY),
         }
-    if name == "qrf_tail_concentration":
-        return {
-            "columns_checked": 1,
-            "top_k": 100,
-            "max_top_share": 0.9994670564654868,
-            "min_nonzero_records": 104,
-            "top_share": {"self_employment_income": 0.5},
-            "carrier_counts": {"self_employment_income": 274},
-            "thin_columns": {},
-            "reviewed_exclusions": {},
-            "stale_exclusions": [],
-            "dormant_exclusions": [],
-            "expired_exclusions": [],
-            "premature_exclusions": [],
-            "exclusions_evaluated_on": "2026-08-11",
-            "surface": {
-                "declared_qrf_outputs": 1,
-                "checked_columns": ["self_employment_income"],
-                "absent_columns": [],
-                "non_numeric_columns": [],
-                "density_filter": "none: every declared output is checked (#609)",
-            },
-        }
     if name == "take_up_signal":
         # Mirrors uk_take_up_signal_gate's per-column detail block.
         return {
-            "benunit.would_claim_uc": {
+            "benunit.would_claim_tfc": {
                 "weighted_share": 0.55,
                 "target": 0.55,
                 "absolute_deviation": 0.0,
@@ -1250,6 +1362,7 @@ def _gate_battery_payload(
         "hmrc_spi_income_spine",
         "spi_benefit_coherence",
         "uc_capital_coherence",
+        "uc_take_up",
         "pension_credit_take_up",
         "child_benefit_take_up",
         "uc_deduction_attributes",
@@ -1264,22 +1377,30 @@ def _gate_battery_payload(
     stage_health_stages = {
         "uk_stage_was_wealth_support": "was_wealth",
         "uk_stage_was_lisa_support": "was_lisa",
+        "uk_stage_property_components": "property_components",
         "uk_stage_was_wealth_coherence": "was_wealth",
         "uk_stage_uc_deduction_attributes": "uc_deduction_attributes",
         "uk_stage_lcfs_consumption_support": "lcfs_consumption",
         "uk_stage_lcfs_consumption_energy_rake": "lcfs_consumption",
         "uk_stage_lcfs_consumption_bus_pricing": "lcfs_consumption",
+        "uk_stage_lcfs_consumption_road_fuel_incidence": "lcfs_consumption",
+        "uk_stage_lcfs_consumption_road_fuel_level": "lcfs_consumption",
+        "uk_stage_lcfs_consumption_recomposed_totals": "lcfs_consumption",
+        "uk_stage_lcfs_consumption_basis": "lcfs_consumption",
         "uk_stage_nts_bus_travel_support": "nts_bus_travel",
         "uk_stage_nts_bus_travel_facts": "nts_bus_travel",
         "uk_stage_etb_vat_support": "etb_vat",
         "uk_stage_etb_services_support": "etb_services",
         "uk_stage_etb_services_support_pricing": "etb_services",
         "uk_stage_frs_hmrc_spine_leaves_signal": "frs_hmrc_spine_leaves",
+        "uk_stage_frs_annual_income_spells": "frs_annual_income_spells",
         "uk_stage_spi_support_channel_mass": "spi_support_channel",
         "uk_stage_hmrc_spi_income_spine_identity": "hmrc_spi_income_spine",
         "uk_stage_spi_benefit_coherence": "spi_benefit_coherence",
+        "uk_stage_uc_take_up": "uc_take_up",
         "uk_stage_pension_credit_take_up": "pension_credit_take_up",
         "uk_stage_child_benefit_take_up": "child_benefit_take_up",
+        "uk_stage_high_value_home_support_mass": "high_value_home_support",
         "uk_stage_cgt_support_split_mass": "cgt_support_split",
         "uk_stage_cgt_residential_split_mass": "cgt_residential_split",
         "uk_stage_cgt_incidence_clone_mass": "cgt_incidence_clone",
@@ -1289,6 +1410,9 @@ def _gate_battery_payload(
         "uk_stage_cgt_incidence_anchor_composition": "cgt_incidence_anchor",
         "uk_stage_salary_sacrifice_realization": "salary_sacrifice",
         "uk_stage_student_loans_realization": "student_loans",
+        "uk_stage_regional_home_values_ranking": "regional_home_values",
+        "uk_stage_property_purchases_fit": "property_purchases",
+        "uk_stage_uc_legacy_closure_take_up_contract": "uc_legacy_closure_take_up",
         "uk_stage_age_tail_targets": "age_tail",
         "uk_stage_frs_relationships_composition": "frs_relationships",
     }
@@ -1298,13 +1422,6 @@ def _gate_battery_payload(
             details: dict = {"check": "manifest_current"}
         elif entry_id == "uk_release_family_build_stages":
             details = {"stage_names": list(stage_names)}
-        elif entry_id == "uk_ledger_compile_parity_production_2023":
-            details = {
-                "fixture": "production_2023",
-                "expected_count": 149,
-                "actual_count": 149,
-                "signed_difference_count": 0,
-            }
         elif entry_id == "uk_ledger_compile_parity_incumbent_2025":
             details = {
                 "fixture": "incumbent_2025",
@@ -1338,9 +1455,10 @@ def _gate_battery_payload(
                 "worst_year": 2030,
                 "bound": 73_000.0,
             }
-        elif entry_id.startswith("uk_local_"):
+        elif entry_id.startswith("uk_local_") or entry_id in UK_DIAGNOSTIC_ENTRY_IDS:
             # Local candidate gates are explicitly excluded from national
-            # certification; this full-report fixture needs only their
+            # certification, and the microcosm#1240 high-value homes gates are
+            # report-only; this full-report fixture needs only their
             # authenticated envelope, not candidate-only evidence details.
             details = {}
         elif gate == "stage_health":
@@ -1354,8 +1472,13 @@ def _gate_battery_payload(
             "gate": gate,
             "phase": phase,
             # PR #870 review: every entry is release-blocking, the local fit and
-            # weight gates included.
-            "criticality": "release_blocking",
+            # weight gates included; the two microcosm#1240 diagnostics are the
+            # only report-only entries.
+            "criticality": (
+                "diagnostic"
+                if entry_id in UK_DIAGNOSTIC_ENTRY_IDS
+                else "release_blocking"
+            ),
             "status": "passed",
             "failures": [],
             "details": details,
@@ -1365,20 +1488,13 @@ def _gate_battery_payload(
         "uk_release_family_build_stages": _canonical_sha256(
             {"stage_names": list(stage_names)}
         ),
-        "uk_ledger_compile_parity_production_2023": _canonical_sha256(
-            {
-                "fixture_resource": "parity_fixture_production_2023.json",
-                "registry_count": 149,
-                "registry_version": "fixture",
-                "signed_differences": [],
-            }
-        ),
         "uk_ledger_compile_parity_incumbent_2025": _canonical_sha256(
             {
                 "fixture_resource": "registry_parity_fixture_2025.json",
                 "registry_count": 636,
                 "registry_version": "fixture",
                 "signed_differences": [],
+                "unsupported_references": [],
             }
         ),
         "uk_ledger_compile_parity_local_incumbent_2025": _canonical_sha256(
@@ -1389,6 +1505,7 @@ def _gate_battery_payload(
                 "registry_version": "fixture",
                 "signed_differences": [],
                 "target_period": 2025,
+                "unsupported_references": [],
             }
         ),
         "uk_target_surface_local_default_2025": _canonical_sha256(
@@ -2808,13 +2925,10 @@ def test_exact_k_uk_release_rejects_rehashed_weight_observable_mutation(
         ("release_parity",),
         ("hmrc_spi_income", "release_parity"),
         ("input_mass_parity",),
-        ("qrf_tail_concentration",),
-        ("input_mass_parity", "qrf_tail_concentration"),
         (
             "hmrc_spi_income",
             "release_parity",
             "input_mass_parity",
-            "qrf_tail_concentration",
         ),
     ],
 )
@@ -2914,74 +3028,6 @@ def test_exact_k_uk_terminal_rejects_substituted_input_mass_totals(
 
     failures = "\n".join(excinfo.value.failures)
     assert "must bind the reviewed enhanced-FRS incumbent totals" in failures
-
-
-def test_exact_k_uk_terminal_rejects_vacuous_qrf_surface(
-    tmp_path: Path,
-) -> None:
-    directory = _write_uk_release_dir(
-        tmp_path,
-        UK_EXACT_K_RELEASE_ID,
-        tier="frs",
-    )
-    payload, evidence = _terminal_gate_payload(
-        release_id=UK_EXACT_K_RELEASE_ID,
-        calibration_diagnostics_sha256=_sha256(
-            directory / "calibration_diagnostics.json"
-        ),
-        evidence_stages=("qrf_tail_concentration",),
-    )
-    details = payload["gates"]["qrf_tail_concentration"]["details"]
-    details["columns_checked"] = 0
-    details["top_share"] = {}
-    details["carrier_counts"] = {}
-    details["surface"]["checked_columns"] = []
-    details["surface"]["absent_columns"] = ["declared_but_absent"]
-    _refresh_terminal_gate_attestation(payload)
-    build_path = directory / "build_manifest.json"
-    build = json.loads(build_path.read_text())
-    build["terminal_gate_evidence"] = evidence
-    build_path.write_text(json.dumps(build))
-    _write_terminal_and_refresh_manifest_hashes(directory, payload)
-
-    with pytest.raises(ReleaseContractError) as excinfo:
-        validate_release_dir(directory)
-
-    failures = "\n".join(excinfo.value.failures)
-    assert "requires details.columns_checked to be positive" in failures
-    assert "requires details.surface.absent_columns to be empty" in failures
-
-
-def test_exact_k_uk_terminal_rejects_partially_omitted_qrf_surface(
-    tmp_path: Path,
-) -> None:
-    directory = _write_uk_release_dir(
-        tmp_path,
-        UK_EXACT_K_RELEASE_ID,
-        tier="frs",
-    )
-    payload, _evidence = _terminal_gate_payload(
-        release_id=UK_EXACT_K_RELEASE_ID,
-        calibration_diagnostics_sha256=_sha256(
-            directory / "calibration_diagnostics.json"
-        ),
-        evidence_stages=("qrf_tail_concentration",),
-    )
-    payload["gates"]["qrf_tail_concentration"]["details"]["surface"][
-        "declared_qrf_outputs"
-    ] = 2
-    _refresh_terminal_gate_attestation(payload)
-    build_path = directory / "build_manifest.json"
-    build = json.loads(build_path.read_text())
-    build["terminal_gate_evidence"] = dict(payload["attestation"]["evidence_sha256"])
-    build_path.write_text(json.dumps(build))
-    _write_terminal_and_refresh_manifest_hashes(directory, payload)
-
-    with pytest.raises(ReleaseContractError) as excinfo:
-        validate_release_dir(directory)
-
-    failures = "\n".join(excinfo.value.failures)
-    assert "must reconcile declared, checked, absent, nonnumeric" in failures
 
 
 def test_exact_k_uk_terminal_rejects_evidence_gate_without_its_stage(
@@ -3636,6 +3682,7 @@ US_GATE_EVIDENCE_FILES = {
     "input_mass_parity": "input_mass_parity.json",
     "qrf_tail_concentration": "qrf_tail_concentration.json",
     "reform_coverage_smoke": "reform_coverage_smoke.json",
+    US_STORED_INPUTS_EVIDENCE_KEY: US_STORED_INPUTS_EVIDENCE_FILE,
 }
 
 
@@ -3678,6 +3725,7 @@ def _gate_evidence_payloads() -> dict[str, dict]:
             "enforced": True,
             "reform_coverage_smoke": {"passed": True, "failures": [], "details": {}},
         },
+        US_STORED_INPUTS_EVIDENCE_KEY: STORED_INPUTS_PAYLOAD,
     }
 
 
@@ -4511,7 +4559,7 @@ def test_us_release_table_1_4_returns_rows_are_outside_the_dollar_blanket(
     validate_release_dir(release_dir)
 
 
-def _resignable_qrf_release(tmp_path: Path) -> tuple[Path, dict]:
+def _resignable_release(tmp_path: Path) -> tuple[Path, dict]:
     directory = _write_uk_release_dir(
         tmp_path,
         UK_EXACT_K_RELEASE_ID,
@@ -4522,7 +4570,7 @@ def _resignable_qrf_release(tmp_path: Path) -> tuple[Path, dict]:
         calibration_diagnostics_sha256=_sha256(
             directory / "calibration_diagnostics.json"
         ),
-        evidence_stages=("qrf_tail_concentration",),
+        evidence_stages=("input_mass_parity",),
     )
     build_path = directory / "build_manifest.json"
     build = json.loads(build_path.read_text())
@@ -4531,89 +4579,9 @@ def _resignable_qrf_release(tmp_path: Path) -> tuple[Path, dict]:
     return directory, payload
 
 
-def _write_resigned_qrf_release(directory: Path, payload: dict) -> None:
+def _write_resigned_release(directory: Path, payload: dict) -> None:
     _refresh_terminal_gate_attestation(payload)
     _write_terminal_and_refresh_manifest_hashes(directory, payload)
-
-
-def test_exact_k_uk_terminal_rejects_unexcluded_high_qrf_share(
-    tmp_path: Path,
-) -> None:
-    directory, payload = _resignable_qrf_release(tmp_path)
-    details = payload["gates"]["qrf_tail_concentration"]["details"]
-    details["top_share"]["self_employment_income"] = 1.0
-    _write_resigned_qrf_release(directory, payload)
-
-    with pytest.raises(ReleaseContractError) as excinfo:
-        validate_release_dir(directory)
-
-    failures = "\n".join(excinfo.value.failures)
-    assert "columns above details.max_top_share" in failures
-    assert "attestation.signature does not authenticate" not in failures
-
-
-def test_exact_k_uk_terminal_rejects_qrf_thin_count_at_minimum(
-    tmp_path: Path,
-) -> None:
-    directory, payload = _resignable_qrf_release(tmp_path)
-    details = payload["gates"]["qrf_tail_concentration"]["details"]
-    details["thin_columns"]["invented_thin_output"] = details["min_nonzero_records"]
-    details["surface"]["declared_qrf_outputs"] = 2
-    details["surface"]["checked_columns"].append("invented_thin_output")
-    _write_resigned_qrf_release(directory, payload)
-
-    with pytest.raises(ReleaseContractError) as excinfo:
-        validate_release_dir(directory)
-
-    failures = "\n".join(excinfo.value.failures)
-    assert "details.thin_columns values" in failures
-    assert "must reconcile declared, checked, absent, nonnumeric" not in failures
-    assert "attestation.signature does not authenticate" not in failures
-
-
-@pytest.mark.parametrize(
-    ("field", "value", "match"),
-    [
-        ("top_k", True, "details.top_k"),
-        ("top_k", 0, "details.top_k"),
-        ("max_top_share", True, "details.max_top_share"),
-        ("max_top_share", 1.0, "details.max_top_share"),
-        ("min_nonzero_records", True, "details.min_nonzero_records"),
-        ("min_nonzero_records", 1, "details.min_nonzero_records"),
-    ],
-)
-def test_exact_k_uk_terminal_rejects_invalid_qrf_thresholds(
-    tmp_path: Path,
-    field: str,
-    value: object,
-    match: str,
-) -> None:
-    directory, payload = _resignable_qrf_release(tmp_path)
-    payload["gates"]["qrf_tail_concentration"]["details"][field] = value
-    _write_resigned_qrf_release(directory, payload)
-
-    with pytest.raises(ReleaseContractError) as excinfo:
-        validate_release_dir(directory)
-
-    failures = "\n".join(excinfo.value.failures)
-    assert match in failures
-    assert "attestation.signature does not authenticate" not in failures
-
-
-def test_exact_k_uk_terminal_rejects_boolean_qrf_carrier_count(
-    tmp_path: Path,
-) -> None:
-    directory, payload = _resignable_qrf_release(tmp_path)
-    details = payload["gates"]["qrf_tail_concentration"]["details"]
-    details["carrier_counts"]["self_employment_income"] = True
-    _write_resigned_qrf_release(directory, payload)
-
-    with pytest.raises(ReleaseContractError) as excinfo:
-        validate_release_dir(directory)
-
-    failures = "\n".join(excinfo.value.failures)
-    assert "details.carrier_counts values" in failures
-    assert "attestation.signature does not authenticate" not in failures
 
 
 def test_exact_k_uk_terminal_rejects_mixed_exclusion_evaluation_dates(
@@ -4624,10 +4592,10 @@ def test_exact_k_uk_terminal_rejects_mixed_exclusion_evaluation_dates(
     (adversarial-review finding: expiry enforcement was otherwise
     invisible to the contract)."""
 
-    directory, payload = _resignable_qrf_release(tmp_path)
+    directory, payload = _resignable_release(tmp_path)
     degenerate = payload["gates"]["degenerate_release_surface"]["details"]
     degenerate["exclusions_evaluated_on"] = "2020-01-01"
-    _write_resigned_qrf_release(directory, payload)
+    _write_resigned_release(directory, payload)
 
     with pytest.raises(ReleaseContractError) as excinfo:
         validate_release_dir(directory)
@@ -4643,64 +4611,16 @@ def test_exact_k_uk_terminal_requires_the_exclusion_receipt_fields(
     schema (adversarial-review finding — the checks previously defaulted
     absent fields to empty)."""
 
-    directory, payload = _resignable_qrf_release(tmp_path)
+    directory, payload = _resignable_release(tmp_path)
     degenerate = payload["gates"]["degenerate_release_surface"]["details"]
     del degenerate["expired_exclusions"]
-    _write_resigned_qrf_release(directory, payload)
+    _write_resigned_release(directory, payload)
 
     with pytest.raises(ReleaseContractError) as excinfo:
         validate_release_dir(directory)
     failures = "\n".join(excinfo.value.failures)
     assert "honest aggregator detail schema" in failures
     assert "expired_exclusions" in failures
-
-
-def test_exact_k_uk_terminal_accepts_high_qrf_share_with_live_exclusion(
-    tmp_path: Path,
-) -> None:
-    directory, payload = _resignable_qrf_release(tmp_path)
-    details = payload["gates"]["qrf_tail_concentration"]["details"]
-    details["top_share"]["self_employment_income"] = 1.0
-    details["reviewed_exclusions"] = {
-        "self_employment_income": "Reviewed concentrated QRF instrument."
-    }
-    _write_resigned_qrf_release(directory, payload)
-
-    validate_release_dir(directory)
-
-
-@pytest.mark.parametrize(
-    ("observable", "value", "match"),
-    [
-        ("top_share", True, "details.top_share values"),
-        ("top_share", -0.1, "details.top_share values"),
-        ("carrier_counts", 1, "details.carrier_counts values"),
-        ("thin_columns", True, "details.thin_columns values"),
-        ("thin_columns", -1, "details.thin_columns values"),
-    ],
-)
-def test_exact_k_uk_terminal_rejects_invalid_qrf_observable_values(
-    tmp_path: Path,
-    observable: str,
-    value: object,
-    match: str,
-) -> None:
-    directory, payload = _resignable_qrf_release(tmp_path)
-    details = payload["gates"]["qrf_tail_concentration"]["details"]
-    column = "self_employment_income"
-    if observable == "thin_columns":
-        column = "invented_thin_output"
-        details["surface"]["declared_qrf_outputs"] = 2
-        details["surface"]["checked_columns"].append(column)
-    details[observable][column] = value
-    _write_resigned_qrf_release(directory, payload)
-
-    with pytest.raises(ReleaseContractError) as excinfo:
-        validate_release_dir(directory)
-
-    failures = "\n".join(excinfo.value.failures)
-    assert match in failures
-    assert "attestation.signature does not authenticate" not in failures
 
 
 # ---------------------------------------------------------------------------
@@ -4793,33 +4713,6 @@ def test_exact_k_uk_gate_battery_rejects_loosened_input_mass_tolerance(
     assert "relative_tolerance must equal the committed spec value" in (
         _battery_failures(directory)
     )
-
-
-def test_exact_k_uk_gate_battery_rejects_loosened_qrf_thresholds(
-    tmp_path: Path,
-) -> None:
-    directory, payload = _write_battery_release(tmp_path)
-    details = payload["gates"]["uk_qrf_tail_concentration"]["details"]
-    details["max_top_share"] = 0.999999
-    _rewrite_battery_report(directory, payload)
-
-    assert "max_top_share to equal the committed spec value" in (
-        _battery_failures(directory)
-    )
-
-
-def test_exact_k_uk_gate_battery_rejects_shrunken_qrf_tail(
-    tmp_path: Path,
-) -> None:
-    directory, payload = _write_battery_release(tmp_path)
-    details = payload["gates"]["uk_qrf_tail_concentration"]["details"]
-    details["top_k"] = 5
-    details["min_nonzero_records"] = 6
-    _rewrite_battery_report(directory, payload)
-
-    failures = _battery_failures(directory)
-    assert "top_k to equal the committed spec value" in failures
-    assert "min_nonzero_records to equal the committed spec value" in failures
 
 
 def test_exact_k_uk_gate_battery_rejects_a_blocked_report(tmp_path: Path) -> None:
@@ -5120,7 +5013,7 @@ def test_exact_k_uk_gate_battery_rejects_a_not_applicable_excuse(
     # No entry in this spec vintage declares an excuse, so not_applicable
     # cannot skip a gate's observables or drop its evidence requirement.
     directory, payload = _write_battery_release(tmp_path)
-    entry = payload["gates"]["uk_qrf_tail_concentration"]
+    entry = payload["gates"]["uk_input_mass_parity"]
     entry["status"] = "not_applicable"
     entry["details"] = {}
     entry["reason"] = "declared excused"
@@ -5255,8 +5148,13 @@ def _evidence_calibration_diagnostics() -> dict:
 @pytest.fixture
 def evidence_release_dir(tmp_path: Path) -> Path:
     """A complete, evidence-contract-valid release directory."""
-    directory = tmp_path / "releases" / EVIDENCE_RELEASE_ID
+    return _write_evidence_release_dir(tmp_path)
+
+
+def _write_evidence_release_dir(root: Path) -> Path:
+    directory = root / "releases" / EVIDENCE_RELEASE_ID
     directory.mkdir(parents=True)
+    _write_stored_inputs_evidence(directory)
     (directory / "build_manifest.json").write_text(
         json.dumps(_evidence_build_manifest())
     )
@@ -5334,6 +5232,7 @@ def test_evidence_release_requires_the_id_segment(tmp_path: Path) -> None:
     tier must be visible in the release id itself."""
     directory = tmp_path / "releases" / RELEASE_ID
     directory.mkdir(parents=True)
+    _write_stored_inputs_evidence(directory)
     (directory / "build_manifest.json").write_text(json.dumps(_build_manifest()))
     (directory / "calibration_diagnostics.json").write_text(
         json.dumps(_calibration_diagnostics())
@@ -6031,3 +5930,700 @@ def test_a_release_built_from_a_denied_pool_cannot_be_published(monkeypatch) -> 
     failures = []
     contract_module._check_build_manifest(manifest, RELEASE_ID, failures)
     assert not any("denied" in f for f in failures)
+
+
+# ---------------------------------------------------------------------------
+# The stored-input verdict as US release evidence (microcosm#1026, #1034)
+#
+# Examples, then Hypothesis properties. The wheels job installs no test
+# extras, so the properties skip there.
+# ---------------------------------------------------------------------------
+
+
+def _contract_failures(directory: Path, *, evidence: bool = False) -> list[str]:
+    """The failure lines a validator reports for ``directory``; empty if valid."""
+    validate = validate_evidence_release_dir if evidence else validate_release_dir
+    try:
+        validate(directory)
+    except ReleaseContractError as error:
+        return list(error.failures)
+    return []
+
+
+def _stored_input_lines(failures: list[str]) -> list[str]:
+    return [
+        failure
+        for failure in failures
+        if US_STORED_INPUTS_EVIDENCE_KEY in failure
+        or "gate_evidence" in failure
+        or "built_with_model_package" in failure
+        or "runtime policyengine-us" in failure
+    ]
+
+
+def _rewrite_json(directory: Path, name: str, mutate) -> None:
+    path = directory / name
+    payload = json.loads(path.read_text())
+    mutate(payload)
+    path.write_text(json.dumps(payload))
+
+
+def _rebind_stored_inputs(directory: Path, payload: object) -> None:
+    """Write ``payload`` as the verdict and bind it as the tool would: the
+    artifact sha256 and, when the payload has the shape, both manifests'
+    block. Everything else stays valid, so only the verdict is under test."""
+    path = directory / US_STORED_INPUTS_EVIDENCE_FILE
+    path.write_bytes((json.dumps(payload, indent=2, sort_keys=True) + "\n").encode())
+    sha = _sha256(path)
+    try:
+        block = stored_input_evidence_manifest_block(
+            payload, dataset_sha256=DATASET_SHA
+        )
+    except (KeyError, TypeError):
+        block = None
+
+    def release(manifest):
+        manifest["artifacts"][US_STORED_INPUTS_EVIDENCE_KEY]["sha256"] = sha
+        if block is not None:
+            manifest["build"][US_STORED_INPUTS_EVIDENCE_KEY] = block
+
+    def build(manifest):
+        if block is not None:
+            manifest[US_STORED_INPUTS_EVIDENCE_KEY] = block
+
+    _rewrite_json(directory, "release_manifest.json", release)
+    _rewrite_json(directory, "build_manifest.json", build)
+
+
+def test_a_us_release_binds_its_stored_input_verdict(release_dir: Path) -> None:
+    """The fixture is the fiscal-refresh tool's shape: the verdict file is a
+    bound diagnostics artifact and both manifests carry its projection."""
+    release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    block = stored_input_evidence_manifest_block(
+        STORED_INPUTS_PAYLOAD, dataset_sha256=DATASET_SHA
+    )
+
+    assert release_manifest["artifacts"][US_STORED_INPUTS_EVIDENCE_KEY]["path"] == (
+        US_STORED_INPUTS_EVIDENCE_FILE
+    )
+    assert release_manifest["build"][US_STORED_INPUTS_EVIDENCE_KEY] == block
+    assert build_manifest[US_STORED_INPUTS_EVIDENCE_KEY] == block
+    assert block["engine"] == US_ENGINE_LABEL
+    assert block["dataset_sha256"] == DATASET_SHA
+    validate_release_dir(release_dir)
+
+
+def _drop_file(directory: Path) -> None:
+    (directory / US_STORED_INPUTS_EVIDENCE_FILE).unlink()
+
+
+def _release(mutate):
+    return lambda directory: _rewrite_json(directory, "release_manifest.json", mutate)
+
+
+def _build(mutate):
+    return lambda directory: _rewrite_json(directory, "build_manifest.json", mutate)
+
+
+#: One way to break each binding requirement, and a phrase its failure uses.
+BINDING_MUTATIONS = {
+    "file missing": (_drop_file, "stored_inputs.json is missing"),
+    "artifact missing": (
+        _release(lambda m: m["artifacts"].pop(US_STORED_INPUTS_EVIDENCE_KEY)),
+        "must declare the 'stored_inputs' artifact",
+    ),
+    "artifact path": (
+        _release(
+            lambda m: m["artifacts"][US_STORED_INPUTS_EVIDENCE_KEY].update(
+                path="gate_verdict.json"
+            )
+        ),
+        "must declare the 'stored_inputs' artifact",
+    ),
+    "artifact kind": (
+        _release(
+            lambda m: m["artifacts"][US_STORED_INPUTS_EVIDENCE_KEY].update(
+                kind="calibration"
+            )
+        ),
+        "must declare the 'stored_inputs' artifact",
+    ),
+    "build status": (
+        _build(lambda m: m["gate_evidence"].update(stored_inputs="not_evaluated")),
+        "build_manifest.json gate_evidence must record 'stored_inputs'",
+    ),
+    "release status missing": (
+        _release(lambda m: m["build"].pop("gate_evidence")),
+        "release_manifest.json build gate_evidence must record 'stored_inputs'",
+    ),
+    "gate_evidence blocks differ": (
+        _build(lambda m: m["gate_evidence"].update(input_coverage="bound")),
+        "different gate_evidence blocks",
+    ),
+    "build block missing": (
+        _build(lambda m: m.pop(US_STORED_INPUTS_EVIDENCE_KEY)),
+        "build_manifest.json 'stored_inputs' block must equal",
+    ),
+    "release block altered": (
+        _release(
+            lambda m: m["build"][US_STORED_INPUTS_EVIDENCE_KEY].update(
+                registered_non_variables=[]
+            )
+        ),
+        "release_manifest.json build 'stored_inputs' block must equal",
+    ),
+    "block for other bytes": (
+        _build(
+            lambda m: m[US_STORED_INPUTS_EVIDENCE_KEY].update(dataset_sha256="e" * 64)
+        ),
+        "build_manifest.json 'stored_inputs' block must equal",
+    ),
+    "runtime engine": (
+        _build(lambda m: m["runtime"].update({"policyengine-us": "2.2.1"})),
+        "runtime policyengine-us '2.2.1' is not the built-with engine",
+    ),
+}
+
+
+@pytest.mark.parametrize("mutation", sorted(BINDING_MUTATIONS))
+def test_each_stored_input_binding_is_required(
+    release_dir: Path, evidence_release_dir: Path, mutation: str
+) -> None:
+    """Every binding the publisher requires is checked on both tiers: breaking
+    one refuses the release, naming it."""
+    mutate, phrase = BINDING_MUTATIONS[mutation]
+    for directory, evidence in ((release_dir, False), (evidence_release_dir, True)):
+        mutate(directory)
+
+        failures = _contract_failures(directory, evidence=evidence)
+
+        assert any(phrase in failure for failure in failures), failures
+
+
+def _payload_with(**changes) -> dict:
+    payload = copy.deepcopy(STORED_INPUTS_PAYLOAD)
+    gate = payload[US_STORED_INPUTS_EVIDENCE_KEY]
+    for key, value in changes.items():
+        if key in {"schema_version", "enforced", "checked_at_stage"}:
+            payload[key] = value
+        elif key in {"passed", "failures"}:
+            gate[key] = value
+        else:
+            gate["details"][key] = value
+    return payload
+
+
+#: Verdicts neither tier accepts, and a phrase the refusal uses.
+MALFORMED_VERDICTS = {
+    "other engine": (
+        _payload_with(engine="policyengine-us 2.2.1"),
+        "not its built-with engine 'policyengine-us 1.729.0'",
+    ),
+    "register digest": (_payload_with(register_sha256="abc"), "'register_sha256'"),
+    "registered unsorted": (
+        _payload_with(registered_non_variables=["person_support_channel", "a_x"]),
+        "'registered_non_variables'",
+    ),
+    "registered not model-named": (
+        _payload_with(registered_non_variables=["A_AGE"]),
+        "'registered_non_variables'",
+    ),
+    "refused unsorted": (
+        _payload_with(refused=["z_x", "a_x"]),
+        "'refused' must be a sorted list",
+    ),
+    "refused and registered": (
+        _payload_with(
+            refused=["person_source_id"],
+            passed=False,
+            failures=["stored column 'person_source_id' (person table) ..."],
+        ),
+        "as both refused and registered",
+    ),
+    "too few stored columns": (_payload_with(stored_columns=1), "'stored_columns'"),
+    "stored columns a bool": (
+        # No registered columns, so only the type check can refuse True (1).
+        _payload_with(stored_columns=True, registered_non_variables=[]),
+        "'stored_columns'",
+    ),
+    "a line per column": (
+        _payload_with(refused=["would_claim_wic"], passed=True, failures=[]),
+        "one failure line per refused column",
+    ),
+    "lines that quote no column": (
+        _payload_with(
+            refused=["would_claim_wic"],
+            passed=False,
+            failures=["Stored model inputs failed (export frame): something"],
+        ),
+        "one failure line per refused column",
+    ),
+    "passed disagrees": (_payload_with(passed=False), "'passed' must be true"),
+    "schema": (_payload_with(schema_version=2), "schema_version must be 1"),
+    "schema a string": (_payload_with(schema_version="1"), "schema_version must be 1"),
+    "schema a bool": (_payload_with(schema_version=True), "schema_version must be 1"),
+    "waived": (_payload_with(enforced=False), "enforced: true"),
+    "enforced truthy": (_payload_with(enforced=1), "enforced: true"),
+    "stage": (_payload_with(checked_at_stage="package"), "checked_at_stage"),
+    "evaluated not a bool": (_payload_with(evaluated="yes"), "'evaluated'"),
+    "evaluated one": (_payload_with(evaluated=1), "'evaluated'"),
+}
+
+
+@pytest.mark.parametrize("verdict", sorted(MALFORMED_VERDICTS))
+def test_a_malformed_stored_input_verdict_is_refused_on_both_tiers(
+    release_dir: Path, evidence_release_dir: Path, verdict: str
+) -> None:
+    payload, phrase = MALFORMED_VERDICTS[verdict]
+    for directory, evidence in ((release_dir, False), (evidence_release_dir, True)):
+        _rebind_stored_inputs(directory, payload)
+        if evidence:
+            # Acknowledge every line, so only the malformation can refuse.
+            _rewrite_json(
+                directory,
+                "release_manifest.json",
+                lambda manifest: manifest["known_failures"].extend(
+                    {"failure": line, "owner": "PolicyEngine/microcosm#1026"}
+                    for line in payload[US_STORED_INPUTS_EVIDENCE_KEY]["failures"]
+                ),
+            )
+
+        failures = _contract_failures(directory, evidence=evidence)
+
+        assert any(phrase in failure for failure in failures), failures
+
+
+def _refusing_payload() -> dict:
+    return _stored_inputs_payload(
+        refused=("medicare_part_b_premiums", "would_claim_wic")
+    )
+
+
+def _not_evaluated_payload() -> dict:
+    payload = copy.deepcopy(STORED_INPUTS_PAYLOAD)
+    payload[US_STORED_INPUTS_EVIDENCE_KEY] = {
+        "passed": False,
+        "failures": [
+            "Stored model inputs failed (export frame): the installed "
+            "policyengine-us cannot be imported, so the export cannot be checked "
+            "against the engine it is certified against: No module named x"
+        ],
+        "details": {"evaluated": False, "error": "No module named x"},
+    }
+    return payload
+
+
+@pytest.mark.parametrize(
+    ("payload", "phrase"),
+    [
+        (_refusing_payload(), "a certified release stores no model-named column"),
+        (_not_evaluated_payload(), "never evaluated"),
+    ],
+    ids=["refused", "not-evaluated"],
+)
+def test_the_certified_tier_accepts_only_a_clean_verdict(
+    release_dir: Path, payload: dict, phrase: str
+) -> None:
+    """A certified release refused nothing and was graded: the #1026 releases
+    (would_claim_wic, medicare_part_b_premiums) cannot certify, and neither
+    can a run whose gate never reached the engine."""
+    _rebind_stored_inputs(release_dir, payload)
+
+    failures = _contract_failures(release_dir)
+
+    assert _stored_input_lines(failures) == failures
+    assert any(phrase in failure for failure in failures), failures
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [_refusing_payload(), _not_evaluated_payload()],
+    ids=["refused", "not-evaluated"],
+)
+def test_the_evidence_tier_ships_a_refusal_only_when_known_failures_carry_it(
+    evidence_release_dir: Path, payload: dict
+) -> None:
+    """An evidence release may carry a refused or ungraded verdict, but each of
+    its failure lines must ride verbatim in known_failures: dropping one from
+    the manifest by hand refuses the release."""
+    _rebind_stored_inputs(evidence_release_dir, payload)
+    lines = payload[US_STORED_INPUTS_EVIDENCE_KEY]["failures"]
+
+    failures = _contract_failures(evidence_release_dir, evidence=True)
+    assert len(failures) == 1
+    assert "stored_inputs.json stored_inputs.failures entry verbatim" in failures[0]
+
+    _rewrite_json(
+        evidence_release_dir,
+        "release_manifest.json",
+        lambda manifest: manifest["known_failures"].extend(
+            {"failure": line, "owner": "PolicyEngine/microcosm#1026"} for line in lines
+        ),
+    )
+    validate_evidence_release_dir(evidence_release_dir)
+
+
+def test_a_tampered_verdict_file_is_one_hash_failure(release_dir: Path) -> None:
+    """Editing the bound file after the manifests were written is named once,
+    by the artifact hash check; the verdict is not also graded, so the repair
+    list stays one line."""
+    path = release_dir / US_STORED_INPUTS_EVIDENCE_FILE
+    path.write_text(path.read_text().replace('"passed": true', '"passed": false'))
+
+    failures = _contract_failures(release_dir)
+
+    assert len(failures) == 1
+    assert "artifact 'stored_inputs' declares sha256" in failures[0]
+
+
+def test_uk_releases_never_reach_the_us_stored_input_check(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The requirement is keyed to US ids: UK national, exact-k and the
+    grandfathered June release validate without any stored-input evidence
+    and never call the check."""
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("a UK release reached the US stored-input check")
+
+    monkeypatch.setattr(contract, "_check_us_stored_input_evidence", refuse)
+    validate_release_dir(_write_uk_national_release_dir(tmp_path / "national"))
+    validate_release_dir(_copy_real_uk_june_release(tmp_path / "june"))
+
+
+def _hypothesis():
+    pytest.importorskip("hypothesis")
+    import hypothesis
+    from hypothesis import strategies as st
+
+    return hypothesis, st
+
+
+_ORACLE_MODEL_NAMED = re.compile(r"[a-z][a-z0-9_]*")
+_ORACLE_SHA256 = re.compile(r"[0-9a-f]{64}")
+_OMIT = "<omitted>"
+_COLUMN_POOL = (
+    "person_source_id",
+    "person_support_channel",
+    "would_claim_wic",
+    "medicare_part_b_premiums",
+    "A_AGE",
+    "_x",
+)
+
+
+def _oracle_sorted_model_named(value: object) -> bool:
+    return (
+        isinstance(value, list)
+        and all(
+            isinstance(column, str) and _ORACLE_MODEL_NAMED.fullmatch(column)
+            for column in value
+        )
+        and value == sorted(set(value))
+    )
+
+
+def _oracle_verdict_ok(payload: object, *, evidence: bool, known: list[str]) -> bool:
+    """The spec, restated independently of the contract's code."""
+    if not isinstance(payload, dict):
+        return False
+    gate = payload.get(US_STORED_INPUTS_EVIDENCE_KEY)
+    if not (
+        type(payload.get("schema_version")) is int
+        and payload["schema_version"] == 1
+        and payload.get("enforced") is True
+        and payload.get("checked_at_stage") == "export frame"
+        and isinstance(gate, dict)
+        and isinstance(gate.get("details"), dict)
+        and isinstance(gate.get("failures"), list)
+        and all(isinstance(line, str) and line for line in gate["failures"])
+        and isinstance(gate.get("passed"), bool)
+        and gate["passed"] == (gate["failures"] == [])
+    ):
+        return False
+    details, lines = gate["details"], gate["failures"]
+    if evidence and not all(line in known for line in lines):
+        return False
+    if details.get("evaluated") is False:
+        error = details.get("error")
+        return evidence and len(lines) == 1 and isinstance(error, str) and bool(error)
+    if details.get("evaluated") is not True:
+        return False
+    refused = details.get("refused")
+    registered = details.get("registered_non_variables")
+    stored = details.get("stored_columns")
+    return (
+        details.get("engine") == US_ENGINE_LABEL
+        and isinstance(details.get("register_sha256"), str)
+        and _ORACLE_SHA256.fullmatch(details["register_sha256"]) is not None
+        and _oracle_sorted_model_named(registered)
+        and _oracle_sorted_model_named(refused)
+        and not set(refused) & set(registered)
+        and type(stored) is int
+        and stored >= len(refused) + len(registered)
+        and len(lines) == len(refused)
+        and all(
+            f"stored column '{column}'" in line
+            for column, line in zip(refused, lines, strict=True)
+        )
+        and (evidence or refused == [])
+    )
+
+
+def _verdict_strategy(st):
+    """Verdicts near the tool's: each part valid, wrong, or missing, with the
+    failure lines usually (not always) one per refused column."""
+    columns = st.sampled_from(_COLUMN_POOL)
+    column_lists = st.one_of(
+        st.lists(columns, max_size=3).map(lambda names: sorted(set(names))),
+        st.lists(columns, max_size=3),
+    )
+
+    @st.composite
+    def verdict(draw):
+        refused = draw(
+            st.one_of(st.just([]), st.just([]), column_lists), label="refused"
+        )
+        registered = draw(
+            st.one_of(
+                st.just(["person_source_id", "person_support_channel"]),
+                column_lists,
+            ),
+            label="registered",
+        )
+        lines_mode = draw(
+            st.sampled_from(["per-column", "per-column", "none", "extra"])
+        )
+        lines = {
+            "per-column": [
+                f"Stored model inputs failed (export frame): stored column "
+                f"'{column}' (person table) looks like a model input"
+                for column in (refused if isinstance(refused, list) else [])
+                if isinstance(column, str)
+            ],
+            "none": [],
+            "extra": ["Stored model inputs failed (export frame): something"],
+        }[lines_mode]
+        evaluated = draw(st.sampled_from([True, True, True, False, "yes"]))
+        details = (
+            {
+                "evaluated": True if evaluated is True else evaluated,
+                "engine": draw(
+                    st.sampled_from(
+                        [US_ENGINE_LABEL, US_ENGINE_LABEL, "policyengine-us 2.2.1"]
+                    )
+                ),
+                "stored_columns": draw(st.sampled_from([377, 377, 0, True, "377"])),
+                "registered_non_variables": registered,
+                "refused": refused,
+                "register_sha256": draw(
+                    st.sampled_from([register_sha256(), "f" * 64, "F" * 64, "abc"])
+                ),
+            }
+            if evaluated is not False
+            else {"evaluated": False, "error": draw(st.sampled_from(["boom", ""]))}
+        )
+        passed = draw(
+            st.sampled_from(["consistent", "consistent", "consistent", "flipped"])
+        )
+        gate = {
+            "passed": (lines == []) if passed == "consistent" else (lines != []),
+            "failures": lines,
+            "details": details,
+        }
+        payload = {
+            "schema_version": draw(st.sampled_from([1, 1, 1, 2, "1", True])),
+            "enforced": draw(st.sampled_from([True, True, True, False])),
+            "checked_at_stage": draw(
+                st.sampled_from(["export frame", "export frame", "package"])
+            ),
+            US_STORED_INPUTS_EVIDENCE_KEY: draw(
+                st.sampled_from(["gate", "gate", "gate", "gate", _OMIT])
+            ),
+        }
+        if payload[US_STORED_INPUTS_EVIDENCE_KEY] == _OMIT:
+            del payload[US_STORED_INPUTS_EVIDENCE_KEY]
+        else:
+            payload[US_STORED_INPUTS_EVIDENCE_KEY] = gate
+        return payload
+
+    return verdict()
+
+
+def test_property_the_certified_tier_accepts_a_verdict_iff_it_is_clean(
+    tmp_path_factory,
+) -> None:
+    """For all verdicts near the tool's, a certified US release bound to the
+    verdict validates if and only if the verdict is well-formed (schema 1,
+    enforced, from the export frame, passed exactly when it has no failure
+    line), was evaluated against the built-with engine with a sha256
+    register digest, refused nothing, and records sorted, distinct,
+    model-named registered columns no more numerous than its stored columns
+    (an independent oracle); and every refusal it adds is a stored-input
+    line."""
+    hypothesis, st = _hypothesis()
+
+    @hypothesis.settings(max_examples=150, deadline=None)
+    @hypothesis.given(payload=_verdict_strategy(st))
+    def check(payload):
+        directory = _write_release_dir(tmp_path_factory.mktemp("certified"))
+        _rebind_stored_inputs(directory, payload)
+
+        failures = _contract_failures(directory)
+
+        assert (failures == []) == _oracle_verdict_ok(payload, evidence=False, known=[])
+        assert _stored_input_lines(failures) == failures
+
+    check()
+
+
+def test_property_the_evidence_tier_accepts_a_verdict_iff_it_is_disclosed(
+    tmp_path_factory,
+) -> None:
+    """For all verdicts near the tool's, and whether or not the manifest's
+    known_failures carry its lines, an evidence-tier US release bound to the
+    verdict validates if and only if the verdict is well-formed (refusals
+    and an ungraded gate allowed, one line per refused column in order, or one
+    line and a reason when ungraded) and every line it records rides verbatim
+    in known_failures: the tier may carry a refusal, never hide one."""
+    hypothesis, st = _hypothesis()
+
+    @hypothesis.settings(max_examples=150, deadline=None)
+    @hypothesis.given(payload=_verdict_strategy(st), disclose=st.booleans())
+    def check(payload, disclose):
+        directory = _write_evidence_release_dir(tmp_path_factory.mktemp("evidence"))
+        _rebind_stored_inputs(directory, payload)
+        gate = payload.get(US_STORED_INPUTS_EVIDENCE_KEY) or {}
+        lines = [line for line in gate.get("failures", []) if isinstance(line, str)]
+        if disclose:
+            _rewrite_json(
+                directory,
+                "release_manifest.json",
+                lambda manifest: manifest["known_failures"].extend(
+                    {"failure": line, "owner": "PolicyEngine/microcosm#1026"}
+                    for line in lines
+                    if line
+                ),
+            )
+        known = [entry["failure"] for entry in _known_failures()] + (
+            lines if disclose else []
+        )
+
+        failures = _contract_failures(directory, evidence=True)
+
+        assert (failures == []) == _oracle_verdict_ok(
+            payload, evidence=True, known=known
+        )
+
+    check()
+
+
+def test_property_breaking_any_bindings_is_refused(tmp_path_factory) -> None:
+    """For all non-empty sets of binding mutations (file, artifact, statuses,
+    manifest blocks, dataset sha256, runtime engine), a certified US release
+    that was valid is refused, and the refusal includes a stored-input
+    line."""
+    hypothesis, st = _hypothesis()
+
+    @hypothesis.settings(max_examples=80, deadline=None)
+    @hypothesis.given(
+        mutations=st.lists(
+            st.sampled_from(sorted(BINDING_MUTATIONS)),
+            min_size=1,
+            max_size=4,
+            unique=True,
+        )
+    )
+    def check(mutations):
+        directory = _write_release_dir(tmp_path_factory.mktemp("bound"))
+        for name in mutations:
+            try:
+                BINDING_MUTATIONS[name][0](directory)
+            except (FileNotFoundError, KeyError):
+                pass  # an earlier mutation already removed what this one edits
+
+        failures = _contract_failures(directory)
+
+        assert failures
+        assert _stored_input_lines(failures)
+
+    check()
+
+
+def test_property_the_requirement_only_adds_failures(tmp_path_factory) -> None:
+    """For all verdicts and binding mutations, the failures the certified
+    contract reports with the stored-input requirement are a superset of
+    those it reports without it: the change tightens and relaxes nothing."""
+    hypothesis, st = _hypothesis()
+
+    @hypothesis.settings(max_examples=80, deadline=None)
+    @hypothesis.given(
+        payload=_verdict_strategy(st),
+        mutations=st.lists(
+            st.sampled_from(sorted(BINDING_MUTATIONS)), max_size=2, unique=True
+        ),
+    )
+    def check(payload, mutations):
+        directory = _write_release_dir(tmp_path_factory.mktemp("tighten"))
+        _rebind_stored_inputs(directory, payload)
+        for name in mutations:
+            try:
+                BINDING_MUTATIONS[name][0](directory)
+            except (FileNotFoundError, KeyError):
+                pass
+        with_requirement = set(_contract_failures(directory))
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(
+                contract, "_check_us_stored_input_evidence", lambda *a, **k: None
+            )
+            without_requirement = set(_contract_failures(directory))
+
+        assert without_requirement <= with_requirement
+
+    check()
+
+
+def test_property_the_manifest_block_is_the_verdict_for_the_pinned_bytes() -> None:
+    """For all gate details and dataset digests, the manifests' block is the
+    details plus the evidence file, stage, verdict and dataset sha256, those
+    four always the block's own (no detail can stand in for them), and the
+    projection is deterministic."""
+    hypothesis, st = _hypothesis()
+    reserved = {"evidence", "checked_at_stage", "passed", "dataset_sha256"}
+    values = st.one_of(st.integers(), st.text(max_size=5), st.booleans(), st.none())
+
+    @hypothesis.settings(max_examples=200, deadline=None)
+    @hypothesis.given(
+        details=st.dictionaries(
+            st.one_of(st.sampled_from(sorted(reserved)), st.text(max_size=8)),
+            values,
+            max_size=6,
+        ),
+        passed=st.booleans(),
+        stage=st.text(max_size=12),
+        dataset_sha256=st.text(max_size=64),
+    )
+    def check(details, passed, stage, dataset_sha256):
+        payload = {
+            "checked_at_stage": stage,
+            US_STORED_INPUTS_EVIDENCE_KEY: {"passed": passed, "details": details},
+        }
+
+        block = stored_input_evidence_manifest_block(
+            payload, dataset_sha256=dataset_sha256
+        )
+
+        assert block == stored_input_evidence_manifest_block(
+            copy.deepcopy(payload), dataset_sha256=dataset_sha256
+        )
+        assert set(block) == set(details) | reserved
+        assert {key: block[key] for key in set(details) - reserved} == {
+            key: value for key, value in details.items() if key not in reserved
+        }
+        assert block["evidence"] == US_STORED_INPUTS_EVIDENCE_FILE
+        assert block["checked_at_stage"] == stage
+        assert block["passed"] is passed
+        assert block["dataset_sha256"] == dataset_sha256
+
+    check()

@@ -28,7 +28,9 @@ from microcosm.build.uk_runtime.nts_bus_travel import (
     SERIES_TRIP_COLUMNS,
     UK_NTS_BUS_TRAVEL_OUTPUT_COLUMNS,
     UK_NTS_PERSON_OUTPUT_COLUMNS,
+    UK_NTS_RECEIPT_SUPPRESSED,
     WEEKS_IN_YEAR,
+    FareCapRegime,
     NTSBusTravelError,
     NTSColumns,
     UKNTSBusTravelStageTransform,
@@ -78,7 +80,9 @@ def _synthetic_nts_with_tickets(
     household = pd.DataFrame(
         {
             "HouseholdID": 1000 + rows,
-            "SurveyYear": 2022 + rows % 3,
+            # Every region in every survey year, so the cap years hold
+            # London and rest-of-England donors alike.
+            "SurveyYear": 2022 + (rows // 9) % 3,
             "HHoldGOR_B02ID": 1 + rows % 9,
             "HHIncome2002_B02ID": 1 + rows % 3,
             "NumCarVan": rows % 4,
@@ -210,6 +214,21 @@ def test_declared_columns_and_codes_parse_from_the_committed_stage() -> None:
     bad["codes"] = {**bad["codes"], "main_mode": {"bus_in_london": 7}}
     with pytest.raises(NTSBusTravelError, match="main_mode"):
         NTSColumns.from_parameters(bad)
+    # England's £2 cap covers 2023 and 2024 whole; 2022 is before it.
+    derive = _operation(_committed_stage(), "clean_nts_travel_tables")
+    regime = FareCapRegime.from_parameters(derive, survey_years=columns.survey_years)
+    assert regime.cap_fare == 2.0 and regime.cap_tolerance == 0.01
+    assert regime.cap_years == (2023, 2024) and regime.pre_cap_years == (2022,)
+    stray = {**derive["fare_cap_regime"], "cap_years": [2023, 2025]}
+    with pytest.raises(NTSBusTravelError, match="cap_years"):
+        FareCapRegime.from_parameters(
+            {"fare_cap_regime": stray}, survey_years=columns.survey_years
+        )
+    overlap = {**derive["fare_cap_regime"], "pre_cap_years": [2022, 2023]}
+    with pytest.raises(NTSBusTravelError, match="pre_cap_years"):
+        FareCapRegime.from_parameters(
+            {"fare_cap_regime": overlap}, survey_years=columns.survey_years
+        )
 
 
 def test_cleaning_annualises_diary_trips_per_series_and_maps_the_codebook() -> None:
@@ -313,6 +332,177 @@ def test_stage_and_ticket_tables_class_boardings_and_give_the_single_fare_share(
         NTSColumns.from_parameters(bad)
 
 
+def test_ticket_receipt_weights_boardings_by_the_full_trip_weight() -> None:
+    """W5 carries the household weight W2: the receipt must not divide it out."""
+
+    household, individual, trip, stage, ticket = _synthetic_nts_with_tickets()
+    # Season-ticket households stand for five times as many households.
+    season = set(ticket.loc[ticket["SpecialTicket_B01ID"] == 1, "IndividualID"])
+    heavy = set(individual.loc[individual["IndividualID"].isin(season), "HouseholdID"])
+    household.loc[household["HouseholdID"].isin(heavy), "W2"] *= 5.0
+    trip.loc[trip["HouseholdID"].isin(heavy), "W5"] *= 5.0
+    donor = clean_nts_travel_tables(
+        household, individual, trip, stage, ticket, columns=_columns()
+    )
+    by_series = donor.receipt["boarding_classes"]["by_series"]
+    trip_weight = stage["TripID"].map(trip.set_index("TripID")["W5"])
+    weight = trip_weight * stage["NumBoardings"]
+    special = stage["IndTicketID"].map(
+        ticket.set_index("IndTicketID")["SpecialTicket_B01ID"]
+    )
+    paid = stage["IndTicketID"].isna() & (stage["StageFareCost"] > 0)
+    passes = special.notna() & ~special.isin([7, 8, 9, 10, 11])
+    for series, mode in ((BUS_IN_LONDON, 7), (OTHER_LOCAL_BUS, 8)):
+        cell = stage["StageMode_B04ID"] == mode
+        single = weight[cell & paid].sum()
+        assert by_series[series][
+            "single_share_of_fare_paying_boardings"
+        ] == pytest.approx(single / (single + weight[cell & passes].sum()))
+        # One boarding stage per synthetic trip.
+        assert by_series[series]["boardings_per_bus_trip"] == pytest.approx(
+            weight[cell].sum() / trip_weight[cell].sum()
+        )
+
+
+def _single_fare_donor() -> pd.DataFrame:
+    """One band-3 person per survey year and group, with chosen boardings."""
+
+    rows = []
+    for year, group, paid, passes in (
+        (2022, REST_OF_ENGLAND_GROUP, 0.0, 10.0),
+        (2023, REST_OF_ENGLAND_GROUP, 8.0, 2.0),
+        (2024, REST_OF_ENGLAND_GROUP, 6.0, 4.0),
+        (2022, LONDON_GROUP, 1.0, 9.0),
+        (2023, LONDON_GROUP, 5.0, 5.0),
+        (2024, LONDON_GROUP, 3.0, 7.0),
+    ):
+        own = BUS_IN_LONDON if group == LONDON_GROUP else OTHER_LOCAL_BUS
+        row = {
+            "survey_year": year,
+            "residence_group": group,
+            "weight": 1.0,
+            "local_bus_use_band": 3,
+        }
+        for series in (BUS_IN_LONDON, OTHER_LOCAL_BUS):
+            row[boarding_class_column(series, BOARDING_FARE_PAID)] = (
+                paid if series == own else 0.0
+            )
+            row[boarding_class_column(series, BOARDING_PASS)] = (
+                passes if series == own else 0.0
+            )
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def test_single_fare_share_reads_the_cap_years_only() -> None:
+    """2022, before the cap, would pull the pooled share down (microcosm#1331)."""
+
+    donor = _single_fare_donor()
+    pooled, pooled_receipt = single_fare_shares_from_donor(donor)
+    capped, capped_receipt = single_fare_shares_from_donor(donor, years=(2023, 2024))
+    assert pooled[OTHER_LOCAL_BUS][REST_OF_ENGLAND_GROUP][3] == pytest.approx(14 / 30)
+    assert capped[OTHER_LOCAL_BUS][REST_OF_ENGLAND_GROUP][3] == pytest.approx(14 / 20)
+    assert pooled[BUS_IN_LONDON][LONDON_GROUP][3] == pytest.approx(9 / 30)
+    assert capped[BUS_IN_LONDON][LONDON_GROUP][3] == pytest.approx(8 / 20)
+    assert pooled_receipt["survey_years"] == [2022, 2023, 2024]
+    assert capped_receipt["survey_years"] == [2023, 2024]
+    with pytest.raises(NTSBusTravelError, match="survey years"):
+        single_fare_shares_from_donor(donor, years=(2021,))
+
+
+def _fare_mix(
+    stage: pd.DataFrame,
+    household: pd.DataFrame,
+    individual: pd.DataFrame,
+    trip: pd.DataFrame,
+    ticket: pd.DataFrame,
+) -> dict:
+    regime = FareCapRegime.from_parameters(
+        _operation(_committed_stage(), "clean_nts_travel_tables"),
+        survey_years=_columns().survey_years,
+    )
+    donor = clean_nts_travel_tables(
+        household, individual, trip, stage, ticket, columns=_columns(), fare_cap=regime
+    )
+    return donor.receipt["boarding_classes"]["fare_mix"]
+
+
+def test_fare_mix_lines_report_aggregates_and_withhold_thin_cells() -> None:
+    """Before the cap: share above it and their mean fare; under it: share at it."""
+
+    household, individual, trip, stage, ticket = _synthetic_nts_with_tickets(180)
+    year = stage["HouseholdID"].map(household.set_index("HouseholdID")["SurveyYear"])
+    region = stage["HouseholdID"].map(
+        household.set_index("HouseholdID")["HHoldGOR_B02ID"]
+    )
+    rest = (region != 7).to_numpy()
+    point_of_use = (
+        stage["IndTicketID"].isna() & (stage["StageFareCost"] > 0)
+    ).to_numpy()
+    # Before the cap, the full single fares sit above £2.
+    raised = stage.copy()
+    full = (
+        rest
+        & point_of_use
+        & (year == 2022).to_numpy()
+        & (stage["StageFareCost"] == 2.0).to_numpy()
+    )
+    raised.loc[full, "StageFareCost"] = 2.75
+    lines = _fare_mix(raised, household, individual, trip, ticket)
+    # The expected values, on the full trip weight (W5 x JJXSC, which carries
+    # the household weight W2) times the boardings, and the fare per boarding.
+    weight = (
+        raised["TripID"].map(trip.set_index("TripID")["W5"]) * raised["NumBoardings"]
+    ).to_numpy()
+    fare = (raised["StageFareCost"] / raised["NumBoardings"]).to_numpy()
+    base = rest & point_of_use & (year == 2022).to_numpy()
+    above = base & (fare > 2.01)
+    assert lines["before_cap"]["2022"]["share_above_cap"] == round(
+        weight[above].sum() / weight[base].sum(), 2
+    )
+    assert lines["before_cap"]["2022"]["mean_fare_above_cap"] == round(
+        float(np.average(fare[above], weights=weight[above])), 2
+    )
+    for y in (2023, 2024):
+        base = rest & point_of_use & (year == y).to_numpy()
+        at = base & (np.abs(fare - 2.0) <= 0.01)
+        assert lines["under_cap"][str(y)]["share_at_cap"] == round(
+            weight[at].sum() / weight[base].sum(), 2
+        )
+    assert set(lines["before_cap"]["2022"]) == {
+        "share_above_cap",
+        "mean_fare_above_cap",
+    }
+    assert set(lines["under_cap"]["2023"]) == {"share_at_cap"}
+    assert lines["minimum_cell"] == {"boardings": 10, "households": 10}
+    # Above the cap on three households only: both 2022 lines are withheld,
+    # however many boardings those households make.
+    thin = stage.copy()
+    few = (
+        stage["HouseholdID"]
+        .isin(sorted(set(stage.loc[full, "HouseholdID"]))[:3])
+        .to_numpy()
+    )
+    thin.loc[full & few, "StageFareCost"] = 2.75
+    lines = _fare_mix(thin, household, individual, trip, ticket)
+    assert lines["before_cap"]["2022"] == {
+        "share_above_cap": UK_NTS_RECEIPT_SUPPRESSED,
+        "mean_fare_above_cap": UK_NTS_RECEIPT_SUPPRESSED,
+    }
+    # Under the cap, a share whose complement rests on two households is
+    # withheld too: one minus it would give that thin cell back.
+    capped = stage.copy()
+    in_2023 = rest & point_of_use & (year == 2023).to_numpy()
+    capped.loc[in_2023, "StageFareCost"] = 2.0 * capped.loc[in_2023, "NumBoardings"]
+    off_cap = sorted(set(stage.loc[in_2023, "HouseholdID"]))[:2]
+    capped.loc[
+        in_2023 & stage["HouseholdID"].isin(off_cap).to_numpy(), "StageFareCost"
+    ] = 1.5
+    lines = _fare_mix(capped, household, individual, trip, ticket)
+    assert lines["under_cap"]["2023"]["share_at_cap"] == UK_NTS_RECEIPT_SUPPRESSED
+    assert lines["under_cap"]["2024"]["share_at_cap"] != UK_NTS_RECEIPT_SUPPRESSED
+
+
 def test_cleaning_handles_the_nts_sentinels_and_the_diary_sample() -> None:
     """-9 is a declared non-user, -8 and unknown age codes drop, W2 = 0 leaves."""
 
@@ -403,9 +593,14 @@ class _Engine:
         return SimpleNamespace(entity="household")
 
     def materialize(self, frame, variables, period):
+        # The band reads HBAI net income plus the HBAI deductions (#1164).
         rows = len(frame.table("household"))
-        values = {"household_gross_income": self.rng.uniform(5e3, 9e4, rows)}
-        return {name: values[name] for name in variables}
+        values = {
+            "hbai_household_net_income_before_reset_to_zero": self.rng.uniform(
+                5e3, 9e4, rows
+            )
+        }
+        return {name: values.get(name, np.zeros(rows)) for name in variables}
 
 
 def test_band_draw_is_identity_keyed_rounded_and_within_the_donor_range() -> None:
@@ -437,6 +632,46 @@ def test_band_draw_is_identity_keyed_rounded_and_within_the_donor_range() -> Non
         n_estimators=4,
     )
     assert (second.band == first.band[order]).all()
+
+
+def test_recipient_income_band_is_hbai_gross_income() -> None:
+    # microcosm#1164: the NTS band is gross cash income, so the recipient adds
+    # the engine's HBAI deductions back to its HBAI net income; the engine's
+    # household_gross_income (capital gains, imputed NHS and education) is not
+    # asked for.
+    from microcosm.build.uk_runtime.household_income import (
+        UK_HBAI_GROSS_INCOME_DEDUCTIONS,
+    )
+
+    frame, _ = _recipient_frame()
+    rows = len(frame.table("household"))
+    net = np.full(rows, 20_000.0)
+    net[: rows // 2] = 40_000.0
+    requested: list[str] = []
+
+    class _GrossEngine(_Engine):
+        def materialize(self, frame, variables, period):
+            requested.extend(variables)
+            values = {
+                "hbai_household_net_income_before_reset_to_zero": net,
+                "income_tax": np.full(rows, 6_000.0),
+            }
+            return {name: values.get(name, np.zeros(rows)) for name in variables}
+
+    band_parameters = _operation(_committed_stage(), IMPUTE_BUS_USE_BAND_KIND)
+    recipient = recipient_predictors(
+        _recipient_frame()[0],
+        _GrossEngine(np.random.default_rng(0)),
+        columns=_columns(),
+        income_band_edges=band_parameters["income_band_edges"],
+        region_remap=band_parameters.get("region_remap", {}),
+    )
+
+    assert "household_gross_income" not in requested
+    assert set(UK_HBAI_GROSS_INCOME_DEDUCTIONS) <= set(requested)
+    # 20,000 + 6,000 and 40,000 + 6,000 both fall in band 2 (25,000 to
+    # 50,000); on the net income alone the first would be band 1.
+    assert set(recipient["income_band"]) == {2}
 
 
 def test_band_means_and_trip_assignment_split_the_series_by_residence_group() -> None:
@@ -618,6 +853,11 @@ def test_stage_transform_end_to_end_on_synthetic_inputs() -> None:
         evidence["eligibility"]["donor_eligible_trip_share"][OTHER_LOCAL_BUS]
         is not None
     )
+    shares = evidence["band_means"]["single_fare_shares"]
+    assert shares["survey_years"] == [2023, 2024]
+    fare_mix = evidence["donor"]["boarding_classes"]["fare_mix"]
+    assert set(fare_mix["before_cap"]) == {"2022"}
+    assert set(fare_mix["under_cap"]) == {"2023", "2024"}
     clip = evidence["support_clip"]["columns"]
     assert clip["local_bus_use_band"]["clipped_high_rows"] == 0
     assert clip["local_bus_trips"]["clipped_low_rows"] == 0
