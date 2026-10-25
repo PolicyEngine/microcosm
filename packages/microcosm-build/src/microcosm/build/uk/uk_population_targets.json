@@ -2128,8 +2128,8 @@
       "bindings": {
         "policyengine": {
           "metric_name": "obr/vat",
-          "value_variable": "vat",
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Bound again with the next policyengine-uk bump (María's ruling D3 of 2026-10-08, microcosm#1113 and #1278): policyengine-uk#2187, released in 2.135.7, replaced the constant survey-coverage factor, and on #1333's policyengine-uk 2.145.0 arm the row reads about 6 percent above OBR at design weights and about 11 percent above at the calibrated weights while held out. OBR's receipts include VAT on private school fees, charged from 1 January 2025, which policyengine-uk's current-law vat leaves out (private_school_vat is a reform variable until policyengine-uk#2319); the row binds vat alone, so that residual stays in its error."
+          "value_expression": "vat + private_school_vat",
+          "notes": "Measured at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). OBR's receipts include VAT on private school fees, charged from 1 January 2025, which policyengine-uk charges from 2.157.1 (policyengine-uk#2319) as private_school_vat beside its general vat, so the row measures both, as the obr.esa and obr.pip rows sum their parts (microcosm#1095). Held as a measured diagnostic (calibration_measure_exclusions.json, María's ruling of 2026-10-24): the engine's survey coverage factor (policyengine-uk#2187) was derived on a certified Microcosm release, so binding the row would pull the consumption weights back toward that release."
         },
         "axiom": {
           "metric_name": "obr/vat",
