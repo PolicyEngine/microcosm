@@ -1,0 +1,111 @@
+{
+  "purpose": "Post-run aggregate correction of the national AGI-band diagnostic; no calibration changes.",
+  "feed": {
+    "path": "/Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/chronicle_us_b571381/artifact/consumer_facts.jsonl",
+    "sha256": "4d1dba8c1b6274877bf184fa6de5d99b13fc61f34709ccab1487db2b5c64a79f",
+    "sha256_verified": true
+  },
+  "original_reported_agi_band_names": [
+    "irs_soi.ty2022.historic_table_2.us.all.adjusted_gross_income",
+    "irs_soi.ty2023.congressional_district_2022.all_returns.us.adjusted_gross_income",
+    "irs_soi.ty2023.table_1_1.all.adjusted_gross_income",
+    "irs_soi.ty2023.table_1_2.all_returns.all.adjusted_gross_income",
+    "irs_soi.ty2023.table_2_1.itemized_all_returns.all.adjusted_gross_income",
+    "irs_soi.ty2023.table_2_5.eitc_all_returns.total.adjusted_gross_income",
+    "irs_soi.ty2023.table_4_3.all_returns_excluding_dependents.all.adjusted_gross_income"
+  ],
+  "original_reported_count": 7,
+  "observations": [
+    {
+      "source_record_id": "irs_soi.ty2022.historic_table_2.us.all.adjusted_gross_income",
+      "feed_line": 37752,
+      "feed_citation": "/Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/chronicle_us_b571381/artifact/consumer_facts.jsonl:37752",
+      "adjusted_gross_income_constraints": [],
+      "maintained_agi_lower_bound": "-inf",
+      "maintained_agi_upper_bound": "inf",
+      "is_nontrivial_agi_band": false,
+      "in_headline_subset": false
+    },
+    {
+      "source_record_id": "irs_soi.ty2023.congressional_district_2022.all_returns.us.adjusted_gross_income",
+      "feed_line": 9898,
+      "feed_citation": "/Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/chronicle_us_b571381/artifact/consumer_facts.jsonl:9898",
+      "adjusted_gross_income_constraints": [],
+      "maintained_agi_lower_bound": "-inf",
+      "maintained_agi_upper_bound": "inf",
+      "is_nontrivial_agi_band": false,
+      "in_headline_subset": false
+    },
+    {
+      "source_record_id": "irs_soi.ty2023.table_1_1.all.adjusted_gross_income",
+      "feed_line": 8430,
+      "feed_citation": "/Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/chronicle_us_b571381/artifact/consumer_facts.jsonl:8430",
+      "adjusted_gross_income_constraints": [],
+      "maintained_agi_lower_bound": "-inf",
+      "maintained_agi_upper_bound": "inf",
+      "is_nontrivial_agi_band": false,
+      "in_headline_subset": true
+    },
+    {
+      "source_record_id": "irs_soi.ty2023.table_1_2.all_returns.all.adjusted_gross_income",
+      "feed_line": 26936,
+      "feed_citation": "/Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/chronicle_us_b571381/artifact/consumer_facts.jsonl:26936",
+      "adjusted_gross_income_constraints": [],
+      "maintained_agi_lower_bound": "-inf",
+      "maintained_agi_upper_bound": "inf",
+      "is_nontrivial_agi_band": false,
+      "in_headline_subset": false
+    },
+    {
+      "source_record_id": "irs_soi.ty2023.table_2_1.itemized_all_returns.all.adjusted_gross_income",
+      "feed_line": 25091,
+      "feed_citation": "/Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/chronicle_us_b571381/artifact/consumer_facts.jsonl:25091",
+      "adjusted_gross_income_constraints": [],
+      "maintained_agi_lower_bound": "-inf",
+      "maintained_agi_upper_bound": "inf",
+      "is_nontrivial_agi_band": false,
+      "in_headline_subset": false
+    },
+    {
+      "source_record_id": "irs_soi.ty2023.table_2_5.eitc_all_returns.total.adjusted_gross_income",
+      "feed_line": 3127,
+      "feed_citation": "/Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/chronicle_us_b571381/artifact/consumer_facts.jsonl:3127",
+      "adjusted_gross_income_constraints": [],
+      "maintained_agi_lower_bound": "-inf",
+      "maintained_agi_upper_bound": "inf",
+      "is_nontrivial_agi_band": false,
+      "in_headline_subset": false
+    },
+    {
+      "source_record_id": "irs_soi.ty2023.table_4_3.all_returns_excluding_dependents.all.adjusted_gross_income",
+      "feed_line": 33525,
+      "feed_citation": "/Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/chronicle_us_b571381/artifact/consumer_facts.jsonl:33525",
+      "adjusted_gross_income_constraints": [],
+      "maintained_agi_lower_bound": "-inf",
+      "maintained_agi_upper_bound": "inf",
+      "is_nontrivial_agi_band": false,
+      "in_headline_subset": false
+    }
+  ],
+  "corrected_national_agi_band_names": [],
+  "corrected_national_agi_band_count": 0,
+  "headline_target_count": 32,
+  "headline_specification_changed": false,
+  "calibration_targets_changed": false,
+  "source_code_evidence": [
+    {
+      "citation": "experiments/policybench-exact-k-100-vs-sampled-20260922/compare_designs.py:724",
+      "finding": "The run-time diagnostic counted any AGI bound metadata, including unbounded defaults; its seven named rows were not actual AGI bands."
+    },
+    {
+      "citation": "packages/microcosm-build/src/microcosm/build/us_runtime/fiscal_targets.py:3179",
+      "finding": "The maintained AGI-bound helper initializes negative and positive infinity and changes them only for explicit AGI constraints."
+    },
+    {
+      "citation": "packages/microcosm-build/src/microcosm/build/us_runtime/fiscal_targets.py:3308",
+      "finding": "The maintained constraint helper reads top-level constraints when present, otherwise universe constraints."
+    }
+  ],
+  "verification_method": "Executed the unmodified _at, _constraint_rows, and _agi_bounds function definitions extracted by AST from the maintained source on the seven exact feed observations. No registry compilation, materialization, or calibration was run.",
+  "explanation": "Each of the seven reported candidates has no AGI-range constraints and the maintained helper returns (-inf, inf). The correct count of nontrivial AGI bands among these exhaustive reported candidates is zero. The diagnostic is corrected to an empty list; the existing headline subset remains unchanged because no available AGI-band control was omitted on this evidence."
+}
