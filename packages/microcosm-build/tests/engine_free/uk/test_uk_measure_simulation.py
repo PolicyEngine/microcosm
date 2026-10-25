@@ -2406,12 +2406,16 @@ def test_a_persisted_centax_column_is_refused(monkeypatch, tmp_path: Path, colum
 
 
 class _CenTaxAnnualSimulation(_AnnualSimulation):
-    """The annual stub with the year's property, dividend and savings income."""
+    """The annual stub with the year's unearned income and remaining benefits."""
 
     unearned = {
         "property_income": np.array([0.0, 0.0, 20_000.0]),
         "dividend_income": np.array([1_000.0, 12_000.0, 0.0]),
         "savings_interest_income": np.array([0.0, 0.0, 0.0]),
+        "other_investment_income": np.array([0.0, 0.0, 0.0]),
+        "taxable_miscellaneous_income": np.array([0.0, 0.0, 0.0]),
+        "incapacity_benefit": np.array([0.0, 0.0, 0.0]),
+        "widowed_parents_allowance": np.array([0.0, 0.0, 0.0]),
     }
 
     def __init__(self, *, dataset):
@@ -2447,3 +2451,35 @@ def test_the_main_source_measure_compares_the_years_sources(monkeypatch, tmp_pat
     # below its dividends, and person 3's (10,500) below its rents.
     assert employee.tolist() == [1.0, 0.0, 0.0]
     assert route.startswith("annual_income_sources:employment_income_annual,")
+
+
+class _CenTaxInvestorSimulation(_CenTaxAnnualSimulation):
+    """Person 1's other investment income (SPI ``OTHERINV``) outranks its pay."""
+
+    unearned = {
+        **_CenTaxAnnualSimulation.unearned,
+        "other_investment_income": np.array([100_000.0, 0.0, 0.0]),
+    }
+
+
+def test_the_main_source_measure_reads_other_investment_income(monkeypatch, tmp_path):
+    from microcosm.build.uk_runtime.centax_childcare_parents import (
+        CENTAX_EMPLOYEE_MAIN_SOURCE,
+    )
+
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_uk",
+        SimpleNamespace(__version__="9.9.9", Microsimulation=_CenTaxInvestorSimulation),
+    )
+    resolver = UKMeasureResolver(
+        simulation_source=tmp_path / "input.h5",
+        scratch_dir=tmp_path,
+        year=2025,
+        frame=_AnnualFrameStub(),
+    )
+    employee, route = resolver.compute("person", CENTAX_EMPLOYEE_MAIN_SOURCE)
+    # Person 1's year's pay (31,500) is below its 100,000 of other investment
+    # income, so it is not an employee.
+    assert employee.tolist() == [0.0, 0.0, 0.0]
+    assert "other_investment_income" in route.split(":", 1)[1].split(",")

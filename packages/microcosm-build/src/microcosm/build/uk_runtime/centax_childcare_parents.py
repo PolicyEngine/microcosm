@@ -62,6 +62,7 @@ __all__ = [
     "CENTAX_DERIVED_FACT_KEY_PREFIX",
     "CENTAX_ELIGIBLE_DFE_AGES",
     "CENTAX_EMPLOYEE_MAIN_SOURCE",
+    "CENTAX_EMPLOYEE_SOURCE_ENGINE_NAMES",
     "CENTAX_EMPLOYEE_SOURCE_INPUTS",
     "CENTAX_FACTS_RESOURCE",
     "CENTAX_FILTER_CONCEPTS",
@@ -164,8 +165,11 @@ CENTAX_PARENT_ENGINE_INPUTS = (
     "is_hbai_dependent_child",
 )
 #: The year's income sources the main-source measure compares, employment
-#: first. The first four are the annual measures; the investment and property
-#: incomes are annual amounts already.
+#: first: every component of the engine's ``total_income`` (ITA 2007 s. 23),
+#: with ``social_security_income`` taken benefit by benefit. The first four
+#: are the annual measures. The investment, property and miscellaneous incomes
+#: are annual amounts already. The taxable benefits other than the State
+#: Pension are read as the engine computes them for the year.
 CENTAX_EMPLOYEE_SOURCE_INPUTS = (
     "employment_income_annual",
     "self_employment_income_after_loss_relief_annual",
@@ -174,6 +178,25 @@ CENTAX_EMPLOYEE_SOURCE_INPUTS = (
     "property_income",
     "dividend_income",
     "savings_interest_income",
+    "other_investment_income",
+    "taxable_miscellaneous_income",
+    "incapacity_benefit",
+    "jsa_contrib_reported",
+    "esa_contrib_reported",
+    "carers_allowance",
+    "carer_support_payment",
+    "scottish_carer_supplement",
+    "widowed_parents_allowance",
+)
+#: The engine variable each compared source stands for, where the name
+#: differs: the annual measures and the loss-relieved self-employment income.
+CENTAX_EMPLOYEE_SOURCE_ENGINE_NAMES: Mapping[str, str] = MappingProxyType(
+    {
+        "employment_income_annual": "employment_income",
+        "self_employment_income_after_loss_relief_annual": "self_employment_income",
+        "private_pension_income_annual": "private_pension_income",
+        "state_pension_annual": "state_pension",
+    }
 )
 #: DfE ages (``Y - birth_year``, the age on 31 December of model year Y) of a
 #: child age-eligible for the universal hours in at least one of the year's
@@ -322,7 +345,10 @@ def centax_cell_measurement_filters(
     filters = []
     for predicate in centax_cell_filters(cell_id, edges):
         concept = dict(predicate)
-        concept = {"concept": CENTAX_FILTER_CONCEPTS[concept.pop("variable")], **concept}
+        concept = {
+            "concept": CENTAX_FILTER_CONCEPTS[concept.pop("variable")],
+            **concept,
+        }
         filters.append(concept)
     return filters
 

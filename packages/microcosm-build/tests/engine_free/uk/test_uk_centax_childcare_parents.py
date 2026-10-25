@@ -336,7 +336,9 @@ def test_the_parent_measure_reads_the_dfe_age_and_term_share() -> None:
 
 
 _sources = st.lists(
-    st.floats(-5_000.0, 300_000.0, allow_nan=False), min_size=7, max_size=7
+    st.floats(-5_000.0, 300_000.0, allow_nan=False),
+    min_size=len(CENTAX_EMPLOYEE_SOURCE_INPUTS),
+    max_size=len(CENTAX_EMPLOYEE_SOURCE_INPUTS),
 )
 
 
@@ -361,6 +363,19 @@ def test_the_main_source_measure_is_monotone_in_pay(rows, raise_pay) -> None:
         {name: values * 3.0 for name, values in sources.items()}
     )
     np.testing.assert_array_equal(scaled, employee)
+
+
+@pytest.mark.parametrize("source", CENTAX_EMPLOYEE_SOURCE_INPUTS[1:])
+def test_every_other_source_can_outrank_employment(source) -> None:
+    # Pay of 30,000 against 100,000 from one other source: that source is the
+    # main one, whichever it is; at 100,000 each, the tie goes to employment.
+    zeros = {name: np.zeros(2) for name in CENTAX_EMPLOYEE_SOURCE_INPUTS}
+    sources = {
+        **zeros,
+        CENTAX_EMPLOYEE_SOURCE_INPUTS[0]: np.array([30_000.0, 100_000.0]),
+        source: np.array([100_000.0, 100_000.0]),
+    }
+    assert employment_main_income_source(sources).tolist() == [0.0, 1.0]
 
 
 def test_the_main_source_measure_refuses_a_missing_source() -> None:
