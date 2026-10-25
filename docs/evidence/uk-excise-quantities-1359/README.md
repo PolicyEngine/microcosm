@@ -26,6 +26,21 @@ Evidence for microcosm#1359, behind `experiments/1359-excise-quantities-receipts
 - **The pub lean of the spending rule** (`scripts/alcohol_channel_weights.py`, `outputs/alcohol_channel_weights.json`). Measured on the LCFS 2024-25 donor at survey weights: how far allocating alcohol volume by spending moves it, against channel weights for published on-trade volume shares of 20 to 35 percent, overall and by equivalised income decile.
 - **The re-pin** (`scripts/repin_200bf6d.sh`). The commands that regenerated the vendored resources, the national and local references and membership, the local census, both compile-parity receipts and the coverage manifest. They ran on the national and local cuts of the pinned artifact that the runbook entry describes.
 
+## The gambling participation top-up
+
+- **Theta** (`scripts/theta_calibration.py`, `outputs/theta_calibration.json`). How a household's adults combine, fitted on the LCFS 2024-25 donor. The script reads the committed declaration and the vendored GSGB rows, and sets theta so that the step's adult rates, applied to the donors' own adults, give the diary's ratio of the two-adult to the one-adult household rate. The results are 0.897 for the National Lottery and 0.081 for betting and gaming; the declaration rounds them to 0.9 and 0.08. The ratio for three or more adults is the check, and it fits less well. Each household-size class rests on 30 or more donors with a stake, which the script checks.
+- **Stage-only runs with and without the top-up** (`scripts/stage_run_gsgb.py`, `outputs/stage_run_gsgb.json`). The branch head `348d1209b` ran on the same spine, on the `272c987` feed, twice in one process: as declared, and with `top_up_gambling_participation` removed. The difference is therefore the step's alone. The output records:
+  - every LCFS gate on the declared run (all nine pass) and the participation receipt;
+  - for the Lottery Duty base and one betting and gaming input, the share of households carrying it and each equivalised-income decile's share of households and of the base, in both runs;
+  - by region, the share carrying each key, beside GSGB's regional adult rates (tables B.2 and B.4). This is the out-of-sample check, since region is not a target.
+
+  Every stratum lands on its share. 62.7% of households carry Lottery Duty and 29.8% the other gambling duties, against 10.7% and 2.0% without the step. The added regular players' mean stake equals the seen households', and the occasional players' is about a tenth of it.
+
+  Two results are left for review:
+  - carrying rises with income, so the betting and gaming base moves towards the top decile;
+  - outside London, the regional pattern follows GSGB only weakly.
+- **The re-pin to `272c987`** (`scripts/repin_272c987.sh`, with `scripts/quiet_footprint.sh`). The same steps as for `200bf6d`, on cuts of the artifact built from PolicyEngine/chronicle#391's head, whose tree the merge commit keeps. Each heavy step waits until no other process holds a 3 GB memory footprint (resident plus compressed and swapped), since `ps`'s resident size misses a swapped-out process.
+
 ## What is not here
 
 - **Unit records.** Household dumps, the spine and the LCFS tabs stay out of the repository.
@@ -48,4 +63,14 @@ python scripts/national_reconciliation.py outputs/national_reconciliation.json
 
 ```bash
 python scripts/excise_incidence.py outputs/stage_dev_run.head-main-rebase.json outputs/national_reconciliation.json <lcfs dvhh tab> outputs/excise_incidence.json
+```
+
+The top-up's runs need the LCFS tabs, the spine and the GSGB rows taken from the pinned artifact (`grep '"gambling_commission.gsgb' consumer_facts.jsonl`):
+
+```bash
+python scripts/theta_calibration.py <lcfs 2024-25 tab directory> outputs/theta_calibration.json
+```
+
+```bash
+python scripts/stage_run_gsgb.py <tree> <spine.h5> <gsgb rows jsonl> outputs/stage_run_gsgb.json
 ```

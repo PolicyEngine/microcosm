@@ -1,0 +1,654 @@
+{
+ "tree": "/Users/mariajuaristi/Desktop/PolicyEngine/repos/populace-1359",
+ "spine": "/Users/mariajuaristi/Desktop/microcosm-1333-arm-spine/spine-b145-treat.h5",
+ "households": 78440,
+ "gates": {
+  "uk_stage_lcfs_consumption_support": {
+   "passed": true,
+   "failures": []
+  },
+  "uk_stage_lcfs_consumption_energy_rake": {
+   "passed": true,
+   "failures": []
+  },
+  "uk_stage_lcfs_consumption_bus_pricing": {
+   "passed": true,
+   "failures": []
+  },
+  "uk_stage_lcfs_consumption_road_fuel_incidence": {
+   "passed": true,
+   "failures": []
+  },
+  "uk_stage_lcfs_consumption_road_fuel_level": {
+   "passed": true,
+   "failures": []
+  },
+  "uk_stage_lcfs_consumption_recomposed_totals": {
+   "passed": true,
+   "failures": []
+  },
+  "uk_stage_lcfs_consumption_excise_quantities": {
+   "passed": true,
+   "failures": []
+  },
+  "uk_stage_lcfs_consumption_gambling_participation": {
+   "passed": true,
+   "failures": []
+  },
+  "uk_stage_lcfs_consumption_basis": {
+   "passed": true,
+   "failures": []
+  }
+ },
+ "gambling_participation": {
+  "operation": "top_up_gambling_participation",
+  "facts": {
+   "resource": "gambling_participation_facts.json",
+   "concept": "gambling_commission.gsgb.participation",
+   "period_type": "calendar_year",
+   "period_value": 2025,
+   "geography_id": "K03000001",
+   "rows_read": 140,
+   "rates": {
+    "national_lottery": {
+     "regular": {
+      "MALE:18": 0.2276379369586273,
+      "FEMALE:18": 0.17156585514271147,
+      "MALE:25": 0.3468267544917498,
+      "FEMALE:25": 0.2762752413060818,
+      "MALE:35": 0.4379301754112619,
+      "FEMALE:35": 0.3596900418828377,
+      "MALE:45": 0.4449983366913182,
+      "FEMALE:45": 0.4336073710871508,
+      "MALE:55": 0.45913786370430215,
+      "FEMALE:55": 0.4307111600847057,
+      "MALE:65": 0.40847169986086657,
+      "FEMALE:65": 0.36949762605520514,
+      "MALE:75": 0.3278480958217576,
+      "FEMALE:75": 0.2931659719405684
+     },
+     "occasional": {
+      "MALE:18": 0.29865421878075693,
+      "FEMALE:18": 0.283555465959738,
+      "MALE:25": 0.437860080533022,
+      "FEMALE:25": 0.3909637272613961,
+      "MALE:35": 0.5305644555170597,
+      "FEMALE:35": 0.48049440174007824,
+      "MALE:45": 0.538862320613383,
+      "FEMALE:45": 0.5147173547574002,
+      "MALE:55": 0.5221849630738421,
+      "FEMALE:55": 0.5134695346101585,
+      "MALE:65": 0.467178840785845,
+      "FEMALE:65": 0.45048573414651666,
+      "MALE:75": 0.3964857141249057,
+      "FEMALE:75": 0.3738283466649111
+     }
+    },
+    "betting_and_gaming": {
+     "regular": {
+      "MALE:18": 0.2972031707660167,
+      "FEMALE:18": 0.20921784212120279,
+      "MALE:25": 0.29912440023683773,
+      "FEMALE:25": 0.21961035136964746,
+      "MALE:35": 0.2633228881689372,
+      "FEMALE:35": 0.20595380653124054,
+      "MALE:45": 0.214559430475166,
+      "FEMALE:45": 0.1800648681019471,
+      "MALE:55": 0.15744997309136124,
+      "FEMALE:55": 0.13454535674594514,
+      "MALE:65": 0.132413090654694,
+      "FEMALE:65": 0.1045156995893065,
+      "MALE:75": 0.08467217950247256,
+      "FEMALE:75": 0.0739432989323785
+     },
+     "occasional": {
+      "MALE:18": 0.3992652608336028,
+      "FEMALE:18": 0.3766771154233753,
+      "MALE:25": 0.4196588675235299,
+      "FEMALE:25": 0.35997055362302516,
+      "MALE:35": 0.354353091604664,
+      "FEMALE:35": 0.32057267555738694,
+      "MALE:45": 0.3030401328743662,
+      "FEMALE:45": 0.267566586574268,
+      "MALE:55": 0.22791575892395002,
+      "FEMALE:55": 0.21630770804825572,
+      "MALE:65": 0.1887409299765713,
+      "FEMALE:65": 0.16723246407149936,
+      "MALE:75": 0.13034111169173102,
+      "FEMALE:75": 0.1179504580458265
+     }
+    }
+   }
+  },
+  "settings": {
+   "theta": {
+    "national_lottery": 0.9,
+    "betting_and_gaming": 0.08
+   },
+   "occasional_stake_share": 0.1,
+   "strata": {
+    "adults_cap": 3,
+    "youngest_adult_bounds": [
+     35,
+     55
+    ]
+   },
+   "propensity": {
+    "max_leaf_nodes": 15,
+    "min_samples_leaf": 40,
+    "l2_regularization": 1.0,
+    "validation_fraction": 0.1
+   },
+   "n_estimators": 100,
+   "seed": 0,
+   "salt": "lcfs_gambling_participation"
+  },
+  "keys": {
+   "national_lottery": {
+    "regular_target": 0.5324260756016976,
+    "annual_target": 0.6269044905388952,
+    "before": 0.10681009830639804,
+    "after_regular": 0.5324260762746968,
+    "after_annual": 0.6269044679096775,
+    "stake_shares": {
+     "seen": 0.19743226154704896,
+     "added_regular": 0.7867264089560965,
+     "added_occasional": 0.01584132949685446
+    },
+    "amount_scale": 1.8186560478777856,
+    "added_without_stake": 0,
+    "propensity": {
+     "donor_rate": 0.11424026447367312,
+     "donor_mean_probability": 0.11412908648579359,
+     "iterations": 28,
+     "positive_support": "30+"
+    },
+    "stake_training_rows": 610,
+    "strata": {
+     "adults_1:youngest_18_to_34": {
+      "regular_target": 0.28592662966329463,
+      "annual_target": 0.38864017723404326,
+      "before": 0.057591625152198164,
+      "after_regular": 0.2859266266810872,
+      "after_annual": 0.38864017823667596
+     },
+     "adults_1:youngest_35_to_54": {
+      "regular_target": 0.41360518920848105,
+      "annual_target": 0.5125335330270709,
+      "before": 0.059841563527926404,
+      "after_regular": 0.4136051968844743,
+      "after_annual": 0.5125335370564583
+     },
+     "adults_1:youngest_55_plus": {
+      "regular_target": 0.3732687647391913,
+      "annual_target": 0.44750813809116147,
+      "before": 0.08805047059510678,
+      "after_regular": 0.3732687647074158,
+      "after_annual": 0.44750813853478705
+     },
+     "adults_2:youngest_18_to_34": {
+      "regular_target": 0.5271933122029748,
+      "annual_target": 0.6506560199168051,
+      "before": 0.10109129487801494,
+      "after_regular": 0.5271933110582522,
+      "after_annual": 0.6506560189802276
+     },
+     "adults_2:youngest_35_to_54": {
+      "regular_target": 0.6419237903643299,
+      "annual_target": 0.7453190679162713,
+      "before": 0.1033007295903695,
+      "after_regular": 0.6419237901016351,
+      "after_annual": 0.7453190675634653
+     },
+     "adults_2:youngest_55_plus": {
+      "regular_target": 0.6011815088571403,
+      "annual_target": 0.6849545468691948,
+      "before": 0.15129631226058027,
+      "after_regular": 0.6011815095850048,
+      "after_annual": 0.6849545455789267
+     },
+     "adults_3_plus:youngest_18_to_34": {
+      "regular_target": 0.7429984158710821,
+      "annual_target": 0.8360325324613296,
+      "before": 0.1348125801954003,
+      "after_regular": 0.7429984158560335,
+      "after_annual": 0.8360325307446991
+     },
+     "adults_3_plus:youngest_35_to_54": {
+      "regular_target": 0.7704892022889025,
+      "annual_target": 0.8522056192747512,
+      "before": 0.19205861969059654,
+      "after_regular": 0.770489201990282,
+      "after_annual": 0.8522056074166029
+     },
+     "adults_3_plus:youngest_55_plus": {
+      "withheld": true
+     }
+    }
+   },
+   "betting_and_gaming": {
+    "regular_target": 0.20552935083797402,
+    "annual_target": 0.2980580814998756,
+    "before": 0.019563867703070097,
+    "after_regular": 0.20552934899037914,
+    "after_annual": 0.2980580806218185,
+    "stake_shares": {
+     "seen": 0.09106525670336994,
+     "added_regular": 0.8656260893001735,
+     "added_occasional": 0.04330865399645676
+    },
+    "amount_scale": 0.6301622342596962,
+    "added_without_stake": 0,
+    "propensity": {
+     "donor_rate": 0.03583843997552801,
+     "donor_mean_probability": 0.03687052032777128,
+     "iterations": 22,
+     "positive_support": "30+"
+    },
+    "stake_training_rows": 190,
+    "strata": {
+     "adults_1:youngest_18_to_34": {
+      "regular_target": 0.25208587797962595,
+      "annual_target": 0.38506779821860126,
+      "before": 0.010528565245079056,
+      "after_regular": 0.2520858693588115,
+      "after_annual": 0.38506779965921367
+     },
+     "adults_1:youngest_35_to_54": {
+      "regular_target": 0.21174480683860378,
+      "annual_target": 0.3087597138779508,
+      "before": 0.013030476668822448,
+      "after_regular": 0.21174480039616342,
+      "after_annual": 0.3087597140127525
+     },
+     "adults_1:youngest_55_plus": {
+      "regular_target": 0.11059910603878026,
+      "annual_target": 0.17000219696002414,
+      "before": 0.018267834642623083,
+      "after_regular": 0.11059910488053787,
+      "after_annual": 0.17000219653548335
+     },
+     "adults_2:youngest_18_to_34": {
+      "regular_target": 0.29418022662331883,
+      "annual_target": 0.4186105655768753,
+      "before": 0.017100283171992327,
+      "after_regular": 0.2941802286834047,
+      "after_annual": 0.4186105644076403
+     },
+     "adults_2:youngest_35_to_54": {
+      "regular_target": 0.24518118038239656,
+      "annual_target": 0.34282505559323806,
+      "before": 0.01906454096131864,
+      "after_regular": 0.24518118031338504,
+      "after_annual": 0.3428250547184021
+     },
+     "adults_2:youngest_55_plus": {
+      "regular_target": 0.13423279348952227,
+      "annual_target": 0.19969384466817494,
+      "before": 0.027364128485159817,
+      "after_regular": 0.13423279413063716,
+      "after_annual": 0.19969384472125049
+     },
+     "adults_3_plus:youngest_18_to_34": {
+      "regular_target": 0.30457970213928226,
+      "annual_target": 0.43722659834536576,
+      "before": 0.022180511927451088,
+      "after_regular": 0.30457970176064114,
+      "after_annual": 0.4372265981204438
+     },
+     "adults_3_plus:youngest_35_to_54": {
+      "regular_target": 0.25603866000115,
+      "annual_target": 0.35711030614167355,
+      "before": 0.02210001037342241,
+      "after_regular": 0.2560386626291682,
+      "after_annual": 0.3571103111729529
+     },
+     "adults_3_plus:youngest_55_plus": {
+      "withheld": true
+     }
+    }
+   }
+  }
+ },
+ "fit_weight_records": [
+  "uk_lcfs_2024_25_consumption:national_lottery_participation",
+  "uk_lcfs_2024_25_consumption:national_lottery_participation_stake",
+  "uk_lcfs_2024_25_consumption:betting_and_gaming_participation",
+  "uk_lcfs_2024_25_consumption:betting_and_gaming_participation_stake"
+ ],
+ "keys": {
+  "national_lottery": {
+   "column": "national_lottery_ticket_spending",
+   "before": {
+    "households_carrying": 0.10681009830639804,
+    "frame_total": 7765724999.999998,
+    "by_decile": {
+     "1": {
+      "households_carrying": 0.07226262627677904,
+      "share_of_base": 0.044682247219209895
+     },
+     "2": {
+      "households_carrying": 0.08747681597488957,
+      "share_of_base": 0.05902438992303077
+     },
+     "3": {
+      "households_carrying": 0.09489579248652377,
+      "share_of_base": 0.08703264619945393
+     },
+     "4": {
+      "households_carrying": 0.10448642664276057,
+      "share_of_base": 0.06439388367585552
+     },
+     "5": {
+      "households_carrying": 0.1139445280213663,
+      "share_of_base": 0.08087413963238688
+     },
+     "6": {
+      "households_carrying": 0.10805213725930247,
+      "share_of_base": 0.07690572119601158
+     },
+     "7": {
+      "households_carrying": 0.12208033109796561,
+      "share_of_base": 0.11456085774679402
+     },
+     "8": {
+      "households_carrying": 0.12778123246300868,
+      "share_of_base": 0.0987172419222419
+     },
+     "9": {
+      "households_carrying": 0.12645230875305283,
+      "share_of_base": 0.1580036719836065
+     },
+     "10": {
+      "households_carrying": 0.1106632545566349,
+      "share_of_base": 0.21580520050140906
+     }
+    },
+    "by_region": {
+     "EAST_MIDLANDS": 0.1039813283529216,
+     "EAST_OF_ENGLAND": 0.1301274114977801,
+     "LONDON": 0.07998764262863826,
+     "NORTHERN_IRELAND": 0.14623088641643117,
+     "NORTH_EAST": 0.11885431267325838,
+     "NORTH_WEST": 0.11022234558934367,
+     "SCOTLAND": 0.10773666351071431,
+     "SOUTH_EAST": 0.10306279635335609,
+     "SOUTH_WEST": 0.1152709481770239,
+     "WALES": 0.10549560309911821,
+     "WEST_MIDLANDS": 0.10115873470540374,
+     "YORKSHIRE": 0.1040505168795844
+    }
+   },
+   "after": {
+    "households_carrying": 0.6269044679096775,
+    "frame_total": 7765725000.0,
+    "by_decile": {
+     "1": {
+      "households_carrying": 0.5161254588364416,
+      "share_of_base": 0.06244806332957172
+     },
+     "2": {
+      "households_carrying": 0.5643778430778591,
+      "share_of_base": 0.07630622471379954
+     },
+     "3": {
+      "households_carrying": 0.5835371009255103,
+      "share_of_base": 0.07524134504364532
+     },
+     "4": {
+      "households_carrying": 0.6069846757218581,
+      "share_of_base": 0.0831736571650849
+     },
+     "5": {
+      "households_carrying": 0.6108532941659445,
+      "share_of_base": 0.0870185563945921
+     },
+     "6": {
+      "households_carrying": 0.6351750909282434,
+      "share_of_base": 0.09236602804604623
+     },
+     "7": {
+      "households_carrying": 0.6766549128635164,
+      "share_of_base": 0.10785891369346508
+     },
+     "8": {
+      "households_carrying": 0.673148592669358,
+      "share_of_base": 0.11279989972950485
+     },
+     "9": {
+      "households_carrying": 0.6990289208548108,
+      "share_of_base": 0.13637572309425827
+     },
+     "10": {
+      "households_carrying": 0.7031367260144917,
+      "share_of_base": 0.16641158879003198
+     }
+    },
+    "by_region": {
+     "EAST_MIDLANDS": 0.6213601761174543,
+     "EAST_OF_ENGLAND": 0.6726878001083357,
+     "LONDON": 0.5878487068424929,
+     "NORTHERN_IRELAND": 0.6826091796468179,
+     "NORTH_EAST": 0.6296590024039851,
+     "NORTH_WEST": 0.609981995361519,
+     "SCOTLAND": 0.6120130302975263,
+     "SOUTH_EAST": 0.626273298888999,
+     "SOUTH_WEST": 0.6571555086689279,
+     "WALES": 0.6278347397161229,
+     "WEST_MIDLANDS": 0.6142265410332949,
+     "YORKSHIRE": 0.6420383404118143
+    }
+   }
+  },
+  "betting_and_gaming": {
+   "column": "remote_gaming_net_losses",
+   "before": {
+    "households_carrying": 0.019563867703070097,
+    "frame_total": 5535900000.0,
+    "by_decile": {
+     "1": {
+      "households_carrying": 0.018866974509507275,
+      "share_of_base": 0.1127928670064495
+     },
+     "2": {
+      "households_carrying": 0.01861180084112823,
+      "share_of_base": 0.059036164942125546
+     },
+     "3": {
+      "households_carrying": 0.014605843365736474,
+      "share_of_base": 0.03982452542773016
+     },
+     "4": {
+      "households_carrying": 0.015568042467578924,
+      "share_of_base": 0.033708276673907744
+     },
+     "5": {
+      "households_carrying": 0.017549141649566127,
+      "share_of_base": 0.10978133177920946
+     },
+     "6": {
+      "households_carrying": 0.0188946307671968,
+      "share_of_base": 0.1545342062917306
+     },
+     "7": {
+      "households_carrying": 0.02302095259056779,
+      "share_of_base": 0.057089271009848
+     },
+     "8": {
+      "households_carrying": 0.023520834848773504,
+      "share_of_base": 0.0674551900822328
+     },
+     "9": {
+      "households_carrying": 0.02381008310095185,
+      "share_of_base": 0.1769739710512846
+     },
+     "10": {
+      "households_carrying": 0.021190790382678838,
+      "share_of_base": 0.1888041957354816
+     }
+    },
+    "by_region": {
+     "EAST_MIDLANDS": 0.018063767175721494,
+     "EAST_OF_ENGLAND": 0.023673558242840915,
+     "LONDON": 0.007383372283152696,
+     "NORTHERN_IRELAND": 0.022073077190275812,
+     "NORTH_EAST": 0.026461144181907773,
+     "NORTH_WEST": 0.01761845504711714,
+     "SCOTLAND": 0.020277909387009057,
+     "SOUTH_EAST": 0.021636288068356723,
+     "SOUTH_WEST": 0.02345944250919221,
+     "WALES": 0.023662650176389664,
+     "WEST_MIDLANDS": 0.02114510588446124,
+     "YORKSHIRE": 0.020991868137865428
+    }
+   },
+   "after": {
+    "households_carrying": 0.2980580806218185,
+    "frame_total": 5535900000.000002,
+    "by_decile": {
+     "1": {
+      "households_carrying": 0.24451441417658698,
+      "share_of_base": 0.06334897514893209
+     },
+     "2": {
+      "households_carrying": 0.2501823228864361,
+      "share_of_base": 0.048661400632892024
+     },
+     "3": {
+      "households_carrying": 0.25273631253329015,
+      "share_of_base": 0.058007287063154694
+     },
+     "4": {
+      "households_carrying": 0.26562660715036523,
+      "share_of_base": 0.055620740109431466
+     },
+     "5": {
+      "households_carrying": 0.28690159760324185,
+      "share_of_base": 0.07222024385383034
+     },
+     "6": {
+      "households_carrying": 0.31108734804887234,
+      "share_of_base": 0.09749400769512762
+     },
+     "7": {
+      "households_carrying": 0.31554068432119886,
+      "share_of_base": 0.07940461757124212
+     },
+     "8": {
+      "households_carrying": 0.33035297505066114,
+      "share_of_base": 0.11574489043929266
+     },
+     "9": {
+      "households_carrying": 0.361294054323848,
+      "share_of_base": 0.1484442379703036
+     },
+     "10": {
+      "households_carrying": 0.3623258876617982,
+      "share_of_base": 0.26105359951579327
+     }
+    },
+    "by_region": {
+     "EAST_MIDLANDS": 0.31201271486366494,
+     "EAST_OF_ENGLAND": 0.3443950551891897,
+     "LONDON": 0.26535491975743736,
+     "NORTHERN_IRELAND": 0.32391069817805057,
+     "NORTH_EAST": 0.30138095266604403,
+     "NORTH_WEST": 0.25116037318005036,
+     "SCOTLAND": 0.2695318802358105,
+     "SOUTH_EAST": 0.31977671815449576,
+     "SOUTH_WEST": 0.321012543247456,
+     "WALES": 0.3046404878363779,
+     "WEST_MIDLANDS": 0.28590499891469245,
+     "YORKSHIRE": 0.3172563397347798
+    }
+   }
+  }
+ },
+ "gsgb_regions": {
+  "E92000001": {
+   "name": "England",
+   "any_gambling:past_12_months": 0.5867387789293214,
+   "excluding_lottery_draw_only:past_12_months": 0.4000683740648598,
+   "any_gambling:past_4_weeks": 0.4693162052419202,
+   "excluding_lottery_draw_only:past_4_weeks": 0.26748991697593166
+  },
+  "E12000004": {
+   "name": "East Midlands",
+   "any_gambling:past_12_months": 0.6061477422830256,
+   "excluding_lottery_draw_only:past_12_months": 0.4181531845429491,
+   "any_gambling:past_4_weeks": 0.5114671494031701,
+   "excluding_lottery_draw_only:past_4_weeks": 0.29459970822997245
+  },
+  "E12000006": {
+   "name": "East of England",
+   "any_gambling:past_12_months": 0.623524483523034,
+   "excluding_lottery_draw_only:past_12_months": 0.4272136456648121,
+   "any_gambling:past_4_weeks": 0.4915049439267949,
+   "excluding_lottery_draw_only:past_4_weeks": 0.28099023252516747
+  },
+  "E12000007": {
+   "name": "London",
+   "any_gambling:past_12_months": 0.48452248047984187,
+   "excluding_lottery_draw_only:past_12_months": 0.33885890449059053,
+   "any_gambling:past_4_weeks": 0.3533872707862041,
+   "excluding_lottery_draw_only:past_4_weeks": 0.21154405889892378
+  },
+  "E12000001": {
+   "name": "North East",
+   "any_gambling:past_12_months": 0.6404265941303118,
+   "excluding_lottery_draw_only:past_12_months": 0.42907883653834356,
+   "any_gambling:past_4_weeks": 0.5235280881269218,
+   "excluding_lottery_draw_only:past_4_weeks": 0.31175103979417373
+  },
+  "E12000002": {
+   "name": "North West",
+   "any_gambling:past_12_months": 0.6223941248104442,
+   "excluding_lottery_draw_only:past_12_months": 0.43367067476931764,
+   "any_gambling:past_4_weeks": 0.5121054112612049,
+   "excluding_lottery_draw_only:past_4_weeks": 0.29574417885962373
+  },
+  "E12000008": {
+   "name": "South East",
+   "any_gambling:past_12_months": 0.581316854160285,
+   "excluding_lottery_draw_only:past_12_months": 0.3985725437204206,
+   "any_gambling:past_4_weeks": 0.45984715055414205,
+   "excluding_lottery_draw_only:past_4_weeks": 0.2578743493206166
+  },
+  "E12000009": {
+   "name": "South West",
+   "any_gambling:past_12_months": 0.5661704946197468,
+   "excluding_lottery_draw_only:past_12_months": 0.3654853658656612,
+   "any_gambling:past_4_weeks": 0.4429881607348466,
+   "excluding_lottery_draw_only:past_4_weeks": 0.2325991225054801
+  },
+  "E12000005": {
+   "name": "West Midlands",
+   "any_gambling:past_12_months": 0.6201158589320629,
+   "excluding_lottery_draw_only:past_12_months": 0.42051887072281596,
+   "any_gambling:past_4_weeks": 0.5171816991281729,
+   "excluding_lottery_draw_only:past_4_weeks": 0.2962127473009485
+  },
+  "E12000003": {
+   "name": "Yorkshire and The Humber",
+   "any_gambling:past_12_months": 0.6102265442921296,
+   "excluding_lottery_draw_only:past_12_months": 0.4076672557175066,
+   "any_gambling:past_4_weeks": 0.49877697705575164,
+   "excluding_lottery_draw_only:past_4_weeks": 0.27939749086164417
+  },
+  "S92000003": {
+   "name": "Scotland",
+   "any_gambling:past_12_months": 0.6033311476257376,
+   "excluding_lottery_draw_only:past_12_months": 0.40842055545913575,
+   "any_gambling:past_4_weeks": 0.4983093431168061,
+   "excluding_lottery_draw_only:past_4_weeks": 0.28768100171699995
+  },
+  "W92000004": {
+   "name": "Wales",
+   "any_gambling:past_12_months": 0.6316123722366833,
+   "excluding_lottery_draw_only:past_12_months": 0.42984238897624044,
+   "any_gambling:past_4_weeks": 0.5199527370340137,
+   "excluding_lottery_draw_only:past_4_weeks": 0.28862742665735963
+  }
+ },
+ "seconds": 196.9
+}
