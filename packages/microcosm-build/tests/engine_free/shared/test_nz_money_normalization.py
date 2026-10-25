@@ -7,6 +7,7 @@ schema, its single-source exchange rate, and the generated donor factors.
 
 from __future__ import annotations
 
+import ast
 import json
 from fractions import Fraction
 
@@ -133,15 +134,75 @@ def test_every_family_uses_the_donor_factor_for_its_profile_with_a_disclosure():
 def test_donor_money_basis_cites_model_lineage_as_a_declared_convention():
     declaration = _declaration()
     evidence = " ".join(declaration["donor_money_period"]["evidence"])
-    assert "tools/build_us_fiscal_refresh_release.py:410" in evidence
-    assert "4320-4328" in evidence and "time_period" in evidence
-    assert "frame/adapters/policyengine_us.py:1230-1234" in evidence
+    assert "tools/build_us_fiscal_refresh_release.py" in evidence
+    assert "PERIOD = 2024" in evidence and "_dataset_from_frame" in evidence
+    assert "time_period to USSingleYearDataset" in evidence
+    assert (
+        "microcosm.frame.adapters.policyengine_us.PolicyEngineUSEngine"
+        "._write_and_verify" in evidence
+    )
     assert "_time_period" in evidence
     assert "not authentication" in evidence
     disclosure = declaration["notes"]
     assert "declared convention covering flows and asset stocks" in disclosure
     assert "consistency check, not authentication" in disclosure
     assert "No donor file is opened" in disclosure
+
+
+def test_donor_money_basis_evidence_matches_the_code_it_cites():
+    # The evidence names symbols, not lines (test_nz_spec_package refuses local
+    # line citations), so each cited fact is checked against the code itself.
+    repository = paths_for("microcosm-build").repository
+    tool = ast.parse(
+        (repository / "tools/build_us_fiscal_refresh_release.py").read_text()
+    )
+    periods = [
+        node.value.value
+        for node in tool.body
+        if isinstance(node, ast.Assign)
+        and [getattr(target, "id", None) for target in node.targets] == ["PERIOD"]
+    ]
+    assert periods == [_declaration()["donor_money_period"]["value"]]
+    (builder,) = (
+        node
+        for node in tool.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_dataset_from_frame"
+    )
+    passed = [
+        ast.unparse(keyword.value)
+        for node in ast.walk(builder)
+        if isinstance(node, ast.Call)
+        and getattr(node.func, "id", None) == "USSingleYearDataset"
+        for keyword in node.keywords
+        if keyword.arg == "time_period"
+    ]
+    assert passed == ["PERIOD"]
+    adapter = ast.parse(
+        (
+            paths_for("microcosm-frame").package
+            / "src/microcosm/frame/adapters/policyengine_us.py"
+        ).read_text()
+    )
+    (engine,) = (
+        node
+        for node in adapter.body
+        if isinstance(node, ast.ClassDef) and node.name == "PolicyEngineUSEngine"
+    )
+    (writer,) = (
+        node
+        for node in engine.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_write_and_verify"
+    )
+    stored = [
+        ast.unparse(node.args[1])
+        for node in ast.walk(writer)
+        if isinstance(node, ast.Call)
+        and getattr(node.func, "attr", None) == "put"
+        and len(node.args) >= 2
+        and isinstance(node.args[0], ast.Constant)
+        and node.args[0].value == "_time_period"
+    ]
+    assert stored == ["pd.Series([int(period)])"]
 
 
 def test_scenario_knobs_select_their_own_donor_factor():

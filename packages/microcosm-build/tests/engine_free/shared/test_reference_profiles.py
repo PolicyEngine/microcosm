@@ -918,27 +918,29 @@ def test_legacy_receipt_remains_version_one_without_factor_fields():
 @pytest.mark.parametrize(
     ("selection", "digest"),
     [
-        ({}, "e0e36d480868e0d45cb1862e21b00753ba55f5d8500d8fa4c1b1fdcf442395e0"),
+        ({}, "09fb37b862d2daaa24f62ad2a1660f794885f201f25157bcf7db885fbd521d38"),
         (
             {"aging_index": "low"},
-            "406d07423c76eddbbc08601b5bd43e9f84b6b60831d5b18fb22edf3121de03c6",
+            "50e9554eef9624e5e0d6ae3f3e8e28c1c01925150010db0e58df7f8a2def8254",
         ),
         (
             {"aging_index": "high"},
-            "bcf613d7d3ea17c063cfd944bf6df132c9526700d3da2679d5e943113a3e83c8",
+            "ebb6f0955d8865f6e8b445db74bd0f8143853852d25bd88374495d1d923c126e",
         ),
     ],
 )
 def test_nz_factor_receipts_are_byte_identical_after_additive_factors(
     selection, digest
 ):
-    # Canonical v2 receipts produced at d28817ff, before the donor factors and
-    # the money_normalization_input purpose were added to the factor document.
+    # Canonical v2 receipts, with the interval document, produced at #1394's
+    # 75c27688, before the donor factors and the money_normalization_input
+    # purpose were added to the factor document.
     spec = paths_for("microcosm-build").package / "src/microcosm/build/nz"
     _, _, receipt = resolve_reference_profiles(
         json.loads((spec / "target_references.json").read_text()),
         json.loads((spec / "reference_profiles.json").read_text()),
         selection,
+        json.loads((spec / "reference_intervals.json").read_text()),
         factor_context=json.loads((spec / "reference_aging.json").read_text()),
     )
     assert receipt["resolver_version"] == "reference-profiles-v2"

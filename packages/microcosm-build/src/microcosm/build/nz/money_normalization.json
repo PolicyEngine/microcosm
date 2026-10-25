@@ -31,8 +31,8 @@
     "value": 2024,
     "basis": "declared_convention",
     "evidence": [
-      "tools/build_us_fiscal_refresh_release.py:410 declares PERIOD = 2024; lines 4320-4328 pass PERIOD as time_period to USSingleYearDataset.",
-      "packages/microcosm-frame/src/microcosm/frame/adapters/policyengine_us.py:1230-1234 writes the supplied model period as a one-row integer _time_period table. This is model-period lineage evidence, not authentication of the monetary basis of donor amounts."
+      "tools/build_us_fiscal_refresh_release.py declares the module constant PERIOD = 2024, and its _dataset_from_frame passes PERIOD as time_period to USSingleYearDataset.",
+      "microcosm.frame.adapters.policyengine_us.PolicyEngineUSEngine._write_and_verify writes the supplied model period as a one-row integer _time_period table. This is model-period lineage evidence, not authentication of the monetary basis of donor amounts."
     ]
   },
   "columns": {

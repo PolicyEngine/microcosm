@@ -1620,7 +1620,8 @@ class TestRulespecPin:
         surface["notes"] = surface["notes"].replace(
             "git diff 6fe181fc 8dc2507", "git diff 6fe181fc c0ffee1"
         )
-        payloads["currency_bridge.json"]["source"]["rules"] = {
+        # The IRS rate's source record lives in money_normalization.json (w2a).
+        payloads["money_normalization.json"]["rate"]["citation"]["rules"] = {
             "repository": "TheAxiomFoundation/rulespec-nz.git",
             "revision": "facade9876543",
         }
