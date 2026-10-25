@@ -13,6 +13,10 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from microcosm.build.target_materialization import (
+    evaluate_named_term,
+    named_term_leaves,
+)
 from microcosm.build.uk_runtime.atomic_area_support import (
     without_uk_native_alias_columns,
 )
@@ -40,10 +44,7 @@ from microcosm.build.uk_runtime.high_value_homes import (
     high_value_home_mask,
     uk_high_value_home_thresholds,
 )
-from microcosm.build.uk_runtime.hmrc_income import (
-    LOSS_RELIEF_COLUMN,
-    self_employment_income_after_loss_relief,
-)
+from microcosm.build.uk_runtime.hmrc_income import UK_LOSS_RELIEF_TERMS
 from microcosm.build.uk_runtime.income_tax_rate_classes import (
     UK_RATE_CLASS_ALLOCATION,
     UK_RATE_CLASS_ENGINE_FLOAT32_STEPS,
@@ -242,23 +243,17 @@ def household_high_value_home(frame: Any, variable: str) -> np.ndarray:
     ).astype(float)
 
 
-#: HMRC's statistics count the year's profit after losses brought forward,
-#: which policyengine-uk keeps apart in loss_relief: the self-employment rows
-#: read that profit, and every row on HMRC's total income (its bands, its
-#: amounts, its regional filters) reads total income with that profit
-#: (microcosm#1095). The engine's total_income adds the profit before the
-#: relief, so the total-income measure swaps the one for the other.
+#: The named terms the resolver computes: measures declared once as
+#: expressions of the binding interpreter's grammar, evaluated from their
+#: leaves wherever a binding names them (a value, a band or a filter, on the
+#: national and the local line). Each is person-grain. HMRC's statistics
+#: count the year's profit after losses brought forward, which policyengine-uk
+#: keeps apart in loss_relief: the self-employment rows read that profit, and
+#: every row on HMRC's total income (its bands, its amounts, its regional
+#: filters) reads total income with that profit (microcosm#1095).
+UK_NAMED_TERMS: Mapping[str, str] = UK_LOSS_RELIEF_TERMS
 UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF = "self_employment_income_after_loss_relief"
 UK_TOTAL_INCOME_AFTER_LOSS_RELIEF = "total_income_after_loss_relief"
-_LOSS_RELIEF_MEASURES = (
-    UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF,
-    UK_TOTAL_INCOME_AFTER_LOSS_RELIEF,
-)
-_LOSS_RELIEF_MEASURE_COMPONENTS = (
-    "self_employment_income",
-    LOSS_RELIEF_COLUMN,
-    "total_income",
-)
 
 
 #: DESNZ's sub-national domestic energy (microcosm#1207): each household's
@@ -438,9 +433,20 @@ def _measured_at_frame_period(frame: Any, year: int | str) -> bool:
 
 
 def compute_uk_measure_input(
-    frame: Any, simulation: Any, entity: str, variable: str, year: int
+    frame: Any,
+    simulation: Any,
+    entity: str,
+    variable: str,
+    year: int,
+    *,
+    frame_columns: bool = True,
 ) -> tuple[np.ndarray, str]:
-    """Compute one policyengine-uk variable at the requested entity grain."""
+    """Compute one policyengine-uk variable at the requested entity grain.
+
+    ``frame_columns`` is false for a simulation whose inputs are not the
+    frame's stored columns (the annual income simulation), so a named term
+    never reads those columns as its values.
+    """
 
     cgt_measure = _cgt_model_measure(variable, year)
     if cgt_measure is not None:
@@ -491,32 +497,12 @@ def compute_uk_measure_input(
         )
         return status[variable], f"dfe_spring_term:{variable}"
 
-    if variable in _LOSS_RELIEF_MEASURES:
+    if variable in UK_NAMED_TERMS:
         if entity != "person":
             raise KeyError(f"{variable} is person-only: {entity}")
-        person = frame.table("person")
-        if (
-            variable == UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF
-            and "self_employment_income" in person
-            and _measured_at_frame_period(frame, year)
-        ):
-            # At the frame's own period the stored columns are the values:
-            # the profit after the relief is read from them (microcosm#1095).
-            # At any other period the engine computes both components there,
-            # as it does every other stored value (microcosm#1324).
-            stored_relief = (
-                person[LOSS_RELIEF_COLUMN].to_numpy(dtype=float)
-                if LOSS_RELIEF_COLUMN in person
-                else np.zeros(len(person))
-            )
-            return (
-                self_employment_income_after_loss_relief(
-                    person["self_employment_income"].to_numpy(dtype=float),
-                    stored_relief,
-                ),
-                "frame_columns:self_employment_income_less_loss_relief",
-            )
-        return _loss_relief_measure_from_engine(frame, simulation, variable, year)
+        return _named_term(
+            frame, simulation, variable, year, frame_columns=frame_columns
+        )
 
     if variable in UC_TARGET_VARIABLES:
         if entity != "benunit":
@@ -593,27 +579,40 @@ def compute_uk_measure_input(
     return values, route
 
 
-def _loss_relief_measure_from_engine(
-    frame: Any, simulation: Any, variable: str, year: int
+def _named_term(
+    frame: Any, simulation: Any, variable: str, year: int, *, frame_columns: bool
 ) -> tuple[np.ndarray, str]:
-    """A loss-relief measure from the engine's components at ``year``."""
+    """A named term from its leaves, all read from one source (microcosm#1095).
 
-    profit = compute_uk_measure_input(
-        frame, simulation, "person", "self_employment_income", year
-    )[0]
-    relief = compute_uk_measure_input(
-        frame, simulation, "person", LOSS_RELIEF_COLUMN, year
-    )[0]
-    after = self_employment_income_after_loss_relief(profit, relief)
-    if variable == UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF:
-        return after, "engine_components:self_employment_income_less_loss_relief"
-    total, _ = compute_uk_measure_input(
-        frame, simulation, "person", "total_income", year
+    At the frame's own period the stored columns are the values, so a term
+    whose every leaf the frame stores reads them there (the profit after the
+    relief). Otherwise the engine computes every leaf at ``year``, as it does
+    every other stored value (microcosm#1324): a term never mixes the frame's
+    columns with the engine's, so total income after the relief takes the
+    profit from the engine, as it takes the total.
+    """
+
+    leaves = named_term_leaves(variable, UK_NAMED_TERMS)
+    person = frame.table("person")
+    if (
+        frame_columns
+        and _measured_at_frame_period(frame, year)
+        and all(leaf in person for leaf in leaves)
+    ):
+        values = evaluate_named_term(
+            variable,
+            UK_NAMED_TERMS,
+            lambda leaf: person[leaf].to_numpy(dtype=float),
+        )
+        return values, f"frame_columns:{variable}"
+    values = evaluate_named_term(
+        variable,
+        UK_NAMED_TERMS,
+        lambda leaf: compute_uk_measure_input(frame, simulation, "person", leaf, year)[
+            0
+        ],
     )
-    return (
-        np.asarray(total, dtype=float) - np.asarray(profit, dtype=float) + after,
-        "engine_components:total_income_with_profit_after_loss_relief",
-    )
+    return values, f"engine_components:{variable}"
 
 
 def compute_uc_paid_diagnostic_masks(
@@ -1099,9 +1098,10 @@ class UKMeasureResolver:
             return entity == "person" and all(
                 self.knows("person", name) for name in _CGT_TAXABLE_INCOME_COMPONENTS
             )
-        if variable in _LOSS_RELIEF_MEASURES:
+        if variable in UK_NAMED_TERMS:
             return entity == "person" and all(
-                self.knows("person", name) for name in _LOSS_RELIEF_MEASURE_COMPONENTS
+                self.knows("person", name)
+                for name in named_term_leaves(variable, UK_NAMED_TERMS)
             )
         if variable in UK_HOUSEHOLD_ENERGY_MEASURES:
             return entity == "household"
@@ -1131,7 +1131,7 @@ class UKMeasureResolver:
             return "household"
         if _cgt_model_measure(variable, self.year) is not None:
             return "person"
-        if variable in _LOSS_RELIEF_MEASURES or variable in DFE_SPRING_TERM_MEASURES:
+        if variable in UK_NAMED_TERMS or variable in DFE_SPRING_TERM_MEASURES:
             return "person"
         if variable in UK_HOUSEHOLD_ENERGY_MEASURES:
             return "household"
@@ -1395,18 +1395,12 @@ class UKMeasureResolver:
             return values, f"current_values_without_annual_income_descriptors:{route}"
         simulation = self._annual_income_simulation()
         self._annual_income_measures_used.add(variable)
-        if current in _LOSS_RELIEF_MEASURES:
-            if entity != "person":
-                raise KeyError(f"{variable} is person-only: {entity}")
-            # Always the engine's components: the frame's stored columns are
-            # the current year's, never the annual one.
-            values, route = _loss_relief_measure_from_engine(
-                self.frame, simulation, current, self.year
-            )
-        else:
-            values, route = compute_uk_measure_input(
-                self.frame, simulation, entity, current, self.year
-            )
+        # The annual simulation's inputs are each person's year: the frame's
+        # stored columns hold the current one, so a named term reads the
+        # engine's leaves there.
+        values, route = compute_uk_measure_input(
+            self.frame, simulation, entity, current, self.year, frame_columns=False
+        )
         return values, f"annual_income_simulation:{route}"
 
     def _household_energy(self, entity: str, variable: str) -> tuple[np.ndarray, str]:

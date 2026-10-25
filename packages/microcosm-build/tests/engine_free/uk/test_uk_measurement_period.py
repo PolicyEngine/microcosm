@@ -35,6 +35,7 @@ from microcosm.build.uk_runtime.hmrc_income import (
 from microcosm.build.uk_runtime.ledger_targets import UKFrameTargetAdapter
 from microcosm.build.uk_runtime.measure_simulation import (
     UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF,
+    UK_TOTAL_INCOME_AFTER_LOSS_RELIEF,
     UKMeasureResolver,
     compute_uk_measure_input,
 )
@@ -339,6 +340,75 @@ def test_the_profit_after_loss_relief_reads_the_frame_only_at_its_period(
         else self_employment_income_after_loss_relief(profit, relief)
     )
     np.testing.assert_allclose(values, expected)
+
+
+@pytest.mark.parametrize("year", [2024, 2025])
+def test_the_named_loss_relief_terms_keep_the_resolvers_floats(year):
+    """The terms give the floats the resolver gave by name (microcosm#1095).
+
+    Before the terms were declared, the profit after the relief read the
+    stored columns at the frame's period and the engine's components at any
+    other, and total income after the relief always read the engine's.
+    """
+
+    frame = PeriodFrameStub(time_period="2024")
+    person = frame.table("person")
+    # Amounts no float32 holds exactly, so a read from the wrong source shows.
+    person["self_employment_income"] = [10_700.37, 2_140.11, 5_350.93]
+    person[LOSS_RELIEF_COLUMN] = [3_000.29, 5_000.0, 0.0]
+    profit = np.array([11_235.389, 2_247.1155, 5_618.4765])
+    relief = np.array([3_000.29, 5_000.0, 0.0])
+    total = np.array([31_235.389, 9_247.1155, 5_618.4765])
+    sim = SimulationStub(
+        {
+            "self_employment_income": ("person", profit),
+            LOSS_RELIEF_COLUMN: ("person", relief),
+            "total_income": ("person", total),
+        }
+    )
+
+    after, after_route = compute_uk_measure_input(
+        frame, sim, "person", UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF, year
+    )
+    banded, banded_route = compute_uk_measure_input(
+        frame, sim, "person", UK_TOTAL_INCOME_AFTER_LOSS_RELIEF, year
+    )
+
+    def former_after(stored_profit, stored_relief):
+        return np.maximum(
+            np.asarray(stored_profit, dtype=float)
+            - np.asarray(stored_relief, dtype=float),
+            0.0,
+        )
+
+    if year == 2024:
+        expected_after = former_after(
+            person["self_employment_income"].to_numpy(dtype=float),
+            person[LOSS_RELIEF_COLUMN].to_numpy(dtype=float),
+        )
+        assert after_route == "frame_columns:self_employment_income_after_loss_relief"
+    else:
+        expected_after = former_after(profit, relief)
+        assert after_route == (
+            "engine_components:self_employment_income_after_loss_relief"
+        )
+    assert banded_route == "engine_components:total_income_after_loss_relief"
+    assert np.array_equal(after, expected_after)
+    assert np.array_equal(
+        banded,
+        total.astype(float) - profit.astype(float) + former_after(profit, relief),
+    )
+    # The annual simulation's inputs are not the frame's columns, so the
+    # terms read the engine there at every period.
+    _, route = compute_uk_measure_input(
+        frame,
+        sim,
+        "person",
+        UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF,
+        year,
+        frame_columns=False,
+    )
+    assert route.startswith("engine_components:")
 
 
 def test_a_frame_without_a_period_label_keeps_the_frame_route():

@@ -9,7 +9,10 @@ from microcosm.build.target_materialization import (
     MeasureResolutionError,
     assert_calibration_input_finite,
     counterfactual_column,
+    evaluate_named_term,
+    expression_names,
     materialize_target_bindings,
+    named_term_leaves,
     resolve_target_measures,
 )
 from microcosm.calibrate import TargetRegistry, TargetSpec
@@ -563,6 +566,68 @@ def test_a_value_expression_subtracts_as_well_as_adds():
         period=2025,
     )
     assert "unsupported value_expression" in result.skipped[0].reason
+
+
+def test_a_value_expression_floors_a_sum_at_zero():
+    # The one function the grammar admits (microcosm#1095).
+    binding = {"value_expression": "max(baseline_tax - income + 15, 0)"}
+    adapter = StubAdapter()
+    result = materialize_target_bindings(
+        adapter,
+        _single_spec_registry(),
+        {"row": {"bindings": {"policyengine": binding}}},
+        period=2025,
+    )
+    assert "unsupported value_expression" in result.skipped[0].reason
+    floored = {"value_expression": "income + max(baseline_tax - income, 0)"}
+    assert _materialized(floored) == [10.0, 20.0, 30.0]
+    assert _materialized({"value_expression": "max(income - age, 0)"}) == [
+        0.0,
+        0.0,
+        0.0,
+    ]
+    for unsupported in (
+        "max(income, 1)",
+        "max(income - age)",
+        "max + income",
+        "-income",
+        "income -",
+        "min(income, 0)",
+    ):
+        adapter = StubAdapter()
+        result = materialize_target_bindings(
+            adapter,
+            _single_spec_registry(),
+            {"row": {"bindings": {"policyengine": {"value_expression": unsupported}}}},
+            period=2025,
+        )
+        assert "unsupported value_expression" in result.skipped[0].reason, unsupported
+    assert expression_names("income - max(age - income, 0) + income") == (
+        "income",
+        "age",
+    )
+
+
+def test_a_named_term_reads_its_leaves_and_its_nested_terms():
+    terms = {
+        "profit_after": "max(profit - relief, 0)",
+        "total_after": "total - profit + profit_after",
+    }
+    columns = {
+        "profit": np.array([10_700.37, 2_140.11, 0.0]),
+        "relief": np.array([3_000.29, 5_000.0, 0.0]),
+        "total": np.array([31_235.39, 9_247.12, 400.0]),
+    }
+    after = evaluate_named_term("profit_after", terms, columns.__getitem__)
+    total = evaluate_named_term("total_after", terms, columns.__getitem__)
+
+    # The same floats as the sums written out.
+    former = np.maximum(columns["profit"] - columns["relief"], 0.0)
+    assert np.array_equal(after, former)
+    assert np.array_equal(total, columns["total"] - columns["profit"] + former)
+    assert named_term_leaves("total_after", terms) == ("total", "profit", "relief")
+    with pytest.raises(ValueError, match="refers to itself"):
+        named_term_leaves("loop", {"loop": "income + loop"})
 
 
 def test_a_predicate_with_a_period_or_price_basis_it_cannot_honour_refuses():

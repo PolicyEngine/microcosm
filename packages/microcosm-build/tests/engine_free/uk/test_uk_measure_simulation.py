@@ -2278,6 +2278,45 @@ def test_annual_measures_read_each_persons_year(monkeypatch, tmp_path):
         assert resolver.entity_for(name) == "person"
 
 
+def test_the_annual_loss_relief_terms_are_the_terms_on_the_annual_simulation(
+    monkeypatch, tmp_path
+):
+    # Each _annual form is its named term evaluated on the engine's leaves on
+    # the annual simulation: the floats the resolver gave by name before the
+    # terms were declared (microcosm#1095).
+    resolver = _annual_resolver(monkeypatch, tmp_path)
+    after, after_route = resolver.compute(
+        "person", "self_employment_income_after_loss_relief_annual"
+    )
+    banded, banded_route = resolver.compute(
+        "person", "total_income_after_loss_relief_annual"
+    )
+
+    annual = resolver._annual_income_simulation()
+    leaf = {
+        name: measure_simulation.compute_uk_measure_input(
+            resolver.frame, annual, "person", name, 2025
+        )[0]
+        for name in ("self_employment_income", "loss_relief", "total_income")
+    }
+    former = np.maximum(leaf["self_employment_income"] - leaf["loss_relief"], 0.0)
+    assert np.array_equal(after, former)
+    assert np.array_equal(
+        banded, leaf["total_income"] - leaf["self_employment_income"] + former
+    )
+    assert after_route == (
+        "annual_income_simulation:engine_components:"
+        "self_employment_income_after_loss_relief"
+    )
+    assert banded_route == (
+        "annual_income_simulation:engine_components:total_income_after_loss_relief"
+    )
+    for name in measure_simulation.UK_NAMED_TERMS:
+        assert resolver.knows("person", name)
+        assert not resolver.knows("household", name)
+        assert resolver.entity_for(name) == "person"
+
+
 def test_annual_measures_refuse_a_frame_without_descriptors(monkeypatch, tmp_path):
     frame = _AnnualFrameStub(descriptors={})
     resolver = _annual_resolver(monkeypatch, tmp_path, frame=frame)
