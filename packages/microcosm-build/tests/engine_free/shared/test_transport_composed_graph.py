@@ -84,6 +84,7 @@ from microcosm.graph import (
     GraphError,
     KernelBase,
     KernelRegistry,
+    KernelResult,
     Node,
     NodeRejectedError,
     Owned,
@@ -91,6 +92,7 @@ from microcosm.graph import (
     SourceRef,
     StoreMissError,
     StructuralDelta,
+    WeightTransition,
     compile_graph,
     graph_to_json,
     run_graph,
@@ -2806,7 +2808,7 @@ _PRECALIBRATION_PROPERTY_DOMAINS = {
         "eager": True,
     },
     # Writer chains: masked owners keep the values below them, and an EXPAND
-    # writes a cell that a claim owns, so a read often has several writers.
+    # overlays a cell that a claim owns, so a read often has several writers.
     "writers": {
         "kinds": ("person", "filter", "plain", "expand"),
         "holdout_sources": False,
@@ -2865,12 +2867,15 @@ def _precalibration_ancestry_dags(
     columns from its base. A binding or plain node may own a ``shared`` column
     that a node in another version also owns, and a person node in a filter
     version may rewrite a person column it sees from below or, with
-    ``masks``, own it again on masked rows. An EXPAND opens a version too: its
-    own binding's stage node, it writes a derived cell that the next node
-    claims. Each read, rewrite and claim names every writer whose values it
-    receives, as the executor tracks them: the owner in the reader's version
-    (a filter's base, or below a rewrite's or claim's own version), and the
-    writers below it while it keeps earlier values, with an EXPAND's cell.
+    ``masks``, own it again on masked rows. An EXPAND opens a version too and
+    overlays a cell that the next node claims: a new cell, the derived output
+    of the claim's binding when it has one, or else possibly a person column
+    the EXPAND sees. A structural node is now and then a person binding's
+    node, which makes it a stage node when that binding is listed. Each read,
+    rewrite and claim names every writer whose values it receives, as the
+    executor tracks them: the owner in the reader's version (a filter's base,
+    or below a rewrite's or claim's own version), and the writers below it
+    while it keeps earlier values, with an EXPAND's cell.
     With ``focused``, a listed stage withholds at most one of its columns and
     stage nodes pass no artifacts, so a refusal usually has one cause.
     """
@@ -2980,35 +2985,41 @@ def _precalibration_ancestry_dags(
             bases[index] = base
             closed.add(base)
             nodes.append(node)
-            if kind == "filter":
-                continue
-            # The EXPAND is a person stage's node, of a new binding or one that
-            # earlier nodes use, and its cell is a derived output of that
-            # binding. The claim follows it.
-            cell, claim = f"cell_{index}", index + 1
             available = [
                 name for name, row in bindings.items() if row["entity"] == "person"
             ]
-            if available and draw(likely if focused else st.booleans()):
+            if available and draw(st.integers(min_value=0, max_value=7)) == 0:
                 node["binding"] = draw(st.sampled_from(available))
+            if kind == "filter":
+                continue
+            # The claim follows the EXPAND, often as a person binding's node.
+            claim, binding = index + 1, None
+            if draw(st.booleans()):
+                if available and draw(st.booleans()):
+                    binding = draw(st.sampled_from(available))
+                else:
+                    binding = f"binding_{claim}"
+                    bindings[binding] = {
+                        "entity": "person",
+                        "variables": [],
+                        "derived": [],
+                    }
+            overlaid = [column for column in seen(base) if entities[column] == "person"]
+            if binding is None and overlaid and draw(likely):
+                cell = draw(st.sampled_from(overlaid))
             else:
-                node["binding"] = f"binding_{index}"
-                bindings[node["binding"]] = {
-                    "entity": "person",
-                    "variables": [],
-                    "derived": [],
-                }
-            bindings[node["binding"]]["derived"].append(cell)
+                cell = f"cell_{index}"
+                entities[cell] = "person"
+                if binding is not None:
+                    bindings[binding]["derived"].append(cell)
             node["cells"] = [cell]
             expanded[index] = {cell}
             owned[index, cell] = claim
             keeps.add((index, cell))
-            entities[cell] = "person"
             nodes.append(
                 {
                     "kind": "claim",
-                    # A claim may be one of the EXPAND's stage nodes.
-                    "binding": node["binding"] if draw(st.booleans()) else None,
+                    "binding": binding,
                     "entity": "person",
                     "version": index,
                     "outputs": [cell],
@@ -3177,7 +3188,7 @@ def _precalibration_ancestry_dags(
             column
             for index in relevant
             if nodes[index]["binding"] == binding
-            for column in nodes[index]["outputs"] + nodes[index]["cells"]
+            for column in nodes[index]["outputs"]
         }
         columns = [
             column
@@ -3208,12 +3219,12 @@ def _precalibration_reference_missing_derived(model, binding):
     """Declared derived columns that no node of the stage upstream produces."""
     nodes, bindings, declared = model
     relevant = _precalibration_reference_relevant(nodes)
-    # A node produces what it owns and, for an EXPAND, its cells.
+    # A node produces what it owns.
     produced = {
         column
         for index in relevant
         if nodes[index]["binding"] == binding
-        for column in nodes[index]["outputs"] + nodes[index]["cells"]
+        for column in nodes[index]["outputs"]
     }
     return declared[binding] & set(bindings[binding]["derived"]) - produced
 
@@ -3228,6 +3239,9 @@ def _precalibration_reference_accepts(model):
         node = nodes[index]
         binding = node["binding"]
         if node["kind"] == "holdout" or node["holdout_source"]:
+            return False
+        # A stage changes columns, not the population.
+        if node["kind"] in _PRECALIBRATION_STRUCTURAL_KINDS and binding in declared:
             return False
         if (
             binding is not None
@@ -3246,7 +3260,7 @@ def _precalibration_reference_accepts(model):
                 for consumer in consumers
             ):
                 return False
-        # A rewrite receives its incumbent and a claim its EXPAND's cell, so
+        # A rewrite receives its incumbent and a claim its cell's writers, so
         # both are reads too.
         for producer, column in node["reads"] + node["rewrites"] + node["claims"]:
             source_binding = nodes[producer]["binding"]
@@ -3313,16 +3327,16 @@ def _precalibration_synthetic_graph(model):
             kernel = f"synthetic.{item['kind']}@1"
             params = {}
             prepared_params = {}
+            if item["binding"] is not None:
+                params["engine_ref"] = {
+                    "binding": item["binding"],
+                    "field": "engine_ref",
+                }
+                prepared_params["engine_ref"] = references[item["binding"]]
             if item["cells"]:
                 cells = tuple(("person", cell, "float64") for cell in item["cells"])
-                params = {
-                    "engine_ref": {"binding": item["binding"], "field": "engine_ref"},
-                    "expand_cells": [list(cell) for cell in cells],
-                }
-                prepared_params = {
-                    "engine_ref": references[item["binding"]],
-                    "expand_cells": cells,
-                }
+                params["expand_cells"] = [list(cell) for cell in cells]
+                prepared_params["expand_cells"] = cells
             graph_nodes.append(
                 Node(
                     name,
@@ -4124,7 +4138,7 @@ def _synthetic_stage(binding, outputs, derived=None):
     return stage
 
 
-def _synthetic_graph(nodes):
+def _synthetic_graph(nodes, create_params=None):
     """A synthetic graph: CREATE, then the given nodes."""
     return Graph(
         "synthetic",
@@ -4139,15 +4153,16 @@ def _synthetic_graph(nodes):
                 structural=StructuralDelta.CREATE,
                 sources=("donor",),
                 outputs=(_SYNTHETIC_SEED,),
+                params=create_params or {},
             ),
             *nodes,
         ),
     )
 
 
-def _synthetic_outcomes(spec, nodes, engine_refs):
+def _synthetic_outcomes(spec, nodes, engine_refs, create_params=None):
     """The guard's outcome in the declaration pass and the composed pass."""
-    graph = _synthetic_graph(nodes)
+    graph = _synthetic_graph(nodes, create_params)
     config = TransportGraphConfig(
         engine_refs=engine_refs, create_outputs=(_SYNTHETIC_SEED,)
     )
@@ -4568,7 +4583,7 @@ def _writer_case(shape):
     ],
 )
 def test_precalibration_ancestry_reads_follow_every_writer(shape, refuses, declared):
-    """A read counts every writer whose values it receives, as the executor tracks them.
+    """A column read counts every writer whose values it receives, as the executor does.
 
     The writers continue below an owner that keeps earlier values: a masked
     owner leaves A's values outside its mask, and a rewrite receives them. A
@@ -4596,22 +4611,27 @@ def test_precalibration_ancestry_reads_follow_every_writer(shape, refuses, decla
 
 
 def _expand_case(shape):
-    """Stage A's EXPAND installs ``cell``; ``claim`` owns it and calibration reads it.
+    """A's ``cell`` reaches calibration through an EXPAND that overlays it.
 
-    ``claim`` names ``cell`` in ``materialized_expand_outputs``, so it receives
-    the EXPAND's values without a ``Slice``. It also owns ``other`` outright,
-    which replaces A's private ``other`` from CREATE. Calibration reads
-    ``cell``, ``other`` and CREATE's ``seed``. Stage A declares ``cell`` as a
-    derived output except in ``private`` and ``claim_in_stage``, where
-    ``claim`` is one of A's own nodes.
+    ``a_source`` owns A's ``cell`` and ``other`` in CREATE. The EXPAND, no
+    stage's node, overlays ``cell`` on its entrants, and ``claim`` names
+    ``cell`` in ``materialized_expand_outputs``, so it receives the values of
+    both without a ``Slice``. ``claim`` also owns ``other`` outright, which
+    replaces A's ``other``. Calibration reads ``cell``, ``other`` and CREATE's
+    ``seed``. Stage A lists ``cell`` except in the ``private`` shapes and
+    ``claim_in_stage``, where ``claim`` is one of A's own nodes. In
+    ``stage_expand`` the EXPAND is one of A's nodes too.
+    ``private_read_first`` declares calibration before ``claim``, so
+    calibration is the first node that receives A's values.
     """
-    binding = _synthetic_binding("A", "person", ["other", "A_public"])
-    public = shape not in {"private", "claim_in_stage"}
-    stage = _synthetic_stage(
-        binding, ["A_public"], [("person", "cell")] if public else None
-    )
+    binding = _synthetic_binding("A", "person", ["cell", "other", "A_public"])
+    public = not shape.startswith("private") and shape != "claim_in_stage"
+    stage = _synthetic_stage(binding, ["A_public", "cell"] if public else ["A_public"])
     cells = (("person", "cell", "float64"),)
+    expand_params = {"expand_cells": [list(cell) for cell in cells]}
     claim_params = {"materialized_expand_outputs": ["person.cell"]}
+    if shape == "stage_expand":
+        expand_params["engine_ref"] = {"binding": "A", "field": "engine_ref"}
     if shape == "claim_in_stage":
         claim_params["engine_ref"] = {"binding": "A", "field": "engine_ref"}
     rows = [
@@ -4621,8 +4641,8 @@ def _expand_case(shape):
             "population": "create",
             "rules_binding": "A",
             "outputs": [
-                {"entity": "person", "column": "other"},
-                {"entity": "person", "column": "A_public"},
+                {"entity": "person", "column": column}
+                for column in ("cell", "other", "A_public")
             ],
         },
         {
@@ -4630,10 +4650,7 @@ def _expand_case(shape):
             "kernel": "synthetic.expand@1",
             "structural": "expand",
             "base": "create",
-            "params": {
-                "engine_ref": {"binding": "A", "field": "engine_ref"},
-                "expand_cells": [list(cell) for cell in cells],
-            },
+            "params": expand_params,
         },
         {
             "id": "claim",
@@ -4658,9 +4675,9 @@ def _expand_case(shape):
             RULES,
             population="create",
             params={"engine_ref": "A-ref"},
-            outputs=(
-                Owned("person", "other", "float64"),
-                Owned("person", "A_public", "float64"),
+            outputs=tuple(
+                Owned("person", column, "float64")
+                for column in ("cell", "other", "A_public")
             ),
         ),
         Node(
@@ -4668,7 +4685,10 @@ def _expand_case(shape):
             "synthetic.expand@1",
             structural=StructuralDelta.EXPAND,
             base="create",
-            params={"engine_ref": "A-ref", "expand_cells": cells},
+            params={
+                "expand_cells": cells,
+                **({"engine_ref": "A-ref"} if shape == "stage_expand" else {}),
+            },
         ),
         Node(
             "claim",
@@ -4697,7 +4717,7 @@ def _expand_case(shape):
         "claims": ["person.cell"],
     }
     if shape == "selected_cells":
-        rows[1]["params"]["expand_cells"] = {
+        expand_params["expand_cells"] = {
             "resource": "synthetic_expand",
             "path": ["cells"],
         }
@@ -4706,6 +4726,10 @@ def _expand_case(shape):
             "resource": "synthetic_expand",
             "path": ["claims"],
         }
+    if shape == "private_read_first":
+        declared = spec["resources"]["transport_graph"]["nodes"]
+        declared[3:] = declared[:2:-1]
+        nodes[2:] = nodes[:1:-1]
     return spec, nodes
 
 
@@ -4714,6 +4738,15 @@ def _stage_output_refusal(node):
         ValueError,
         f"Transport calibration ancestry: node {node!r} carries undeclared "
         "pre-calibration stage output.",
+    )
+
+
+def _structural_stage_refusal(node, kind):
+    return (
+        ValueError,
+        f"Transport calibration ancestry: node {node!r} of pre-calibration stage "
+        f"binding 'A' is structural ({kind}); a stage changes columns, not the "
+        "population.",
     )
 
 
@@ -4728,6 +4761,14 @@ def _stage_output_refusal(node):
                 "composed": _stage_output_refusal("claim"),
             },
         ),
+        # The claim keeps the values below it, so calibration receives them.
+        (
+            "private_read_first",
+            {
+                "declaration": _stage_output_refusal("cal"),
+                "composed": _stage_output_refusal("cal"),
+            },
+        ),
         (
             "claim_in_stage",
             {
@@ -4735,20 +4776,9 @@ def _stage_output_refusal(node):
                 "composed": _stage_output_refusal("cal"),
             },
         ),
-        # Cells only composition can tell: the EXPAND writes every column the
-        # declaration reads through it, and produces none of them.
-        (
-            "selected_cells",
-            {
-                "declaration": (
-                    ValueError,
-                    "precalibration_stages derived output person.cell of "
-                    "'stage.A' is not produced by a stage node upstream of "
-                    "calibration.",
-                ),
-                "composed": _stage_output_refusal("cal"),
-            },
-        ),
+        # Cells only composition can tell: the declaration counts the EXPAND
+        # as a writer of every column read through it.
+        ("selected_cells", {"declaration": None, "composed": None}),
         # Claims only composition can tell: every output is claimed, so the
         # claim receives A's private ``other`` from below.
         (
@@ -4758,13 +4788,21 @@ def _stage_output_refusal(node):
                 "composed": _stage_output_refusal("claim"),
             },
         ),
+        (
+            "stage_expand",
+            {
+                "declaration": _structural_stage_refusal("a_expand", "expand"),
+                "composed": _structural_stage_refusal("a_expand", "expand"),
+            },
+        ),
     ],
 )
 def test_precalibration_ancestry_expand_claims_read_their_cells(shape, outcomes):
-    """An EXPAND writes its cells, and a claim receives them without a ``Slice``.
+    """An EXPAND overlays its cells, and a claim receives them without a ``Slice``.
 
-    An EXPAND produces its cells for its stage's derived outputs, and each
-    later reader of a cell counts the EXPAND among its writers.
+    The overlay keeps the values below it, so a claim and each later reader of
+    a cell count the EXPAND and every writer below it. An EXPAND that is a
+    stage's own node refuses.
     """
     spec, nodes = _expand_case(shape)
     assert _synthetic_outcomes(spec, nodes, {"A": "A-ref"}) == outcomes
@@ -4773,7 +4811,7 @@ def test_precalibration_ancestry_expand_claims_read_their_cells(shape, outcomes)
 @pytest.mark.parametrize(
     ("node", "params", "message"),
     [
-        ("a_expand", {"engine_ref": "A-ref"}, "EXPAND node 'a_expand' needs tuple "),
+        ("a_expand", {}, "EXPAND node 'a_expand' needs tuple "),
         (
             "claim",
             {"materialized_expand_outputs": ("cell",)},
@@ -4796,6 +4834,321 @@ def test_precalibration_ancestry_malformed_compiled_expand_params_refuse(
     assert outcome["composed"][1].startswith(
         f"Transport calibration ancestry: {message}"
     )
+
+
+_STRUCTURAL_KINDS = ("create", "filter", "expand", "reweight")
+
+
+def _structural_stage_case(kind, *, bound=True, ancestor=True):
+    """Stage A publishes ``A_public``; a ``kind`` node may be one of A's nodes.
+
+    ``change`` (CREATE itself for ``create``) carries A's engine reference
+    when ``bound``. As an ancestor it opens the version calibration reads;
+    otherwise calibration stays in CREATE. The EXPAND would overlay the unit
+    membership ``person_family_id``, which calibration receives without a
+    ``Slice``. Returns the spec, the nodes and CREATE's params.
+    """
+    binding = _synthetic_binding("A", "person", ["A_public"])
+    version = "change" if ancestor and kind != "create" else "create"
+    rows = [
+        {
+            "id": "a_source",
+            "kernel": RULES,
+            "population": "create",
+            "rules_binding": "A",
+            "outputs": [{"entity": "person", "column": "A_public"}],
+        },
+        {
+            "id": "cal",
+            "kernel": "calibrate.synthetic@1",
+            "population": version,
+            "inputs": [{"entity": "person", "columns": ["A_public", "seed"]}],
+        },
+    ]
+    nodes = [
+        Node(
+            "a_source",
+            RULES,
+            population="create",
+            params={"engine_ref": "A-ref"},
+            outputs=(Owned("person", "A_public", "float64"),),
+        ),
+        Node(
+            "cal",
+            "calibrate.synthetic@1",
+            population=version,
+            inputs=(Slice("person", ("A_public", "seed")),),
+        ),
+    ]
+    params, prepared, transition = {}, {}, {}
+    if bound:
+        params["engine_ref"] = {"binding": "A", "field": "engine_ref"}
+        prepared["engine_ref"] = "A-ref"
+    if kind != "create":
+        if kind == "expand":
+            cells = (("person", "person_family_id", "int64"),)
+            params["expand_cells"] = [list(cell) for cell in cells]
+            prepared["expand_cells"] = cells
+        if kind == "reweight":
+            transition = {
+                "weights": WeightTransition("person", "importance", mass="free"),
+                "mass": "free",
+            }
+        rows.insert(
+            1,
+            {
+                "id": "change",
+                "kernel": f"synthetic.{kind}@1",
+                "structural": kind,
+                "base": "create",
+                **({"params": params} if params else {}),
+            },
+        )
+        nodes.insert(
+            1,
+            Node(
+                "change",
+                f"synthetic.{kind}@1",
+                structural=StructuralDelta(kind),
+                base="create",
+                params=prepared,
+                **transition,
+            ),
+        )
+    spec = _synthetic_stage_spec(
+        [binding], [_synthetic_stage(binding, ["A_public"])], rows
+    )
+    if kind != "create":
+        return spec, nodes, None
+    create = spec["resources"]["transport_graph"]["nodes"][0]
+    create["structural"] = "create"
+    if bound:
+        create["rules_binding"] = "A"
+    return spec, nodes, prepared
+
+
+@pytest.mark.parametrize("declared", [True, False], ids=["declared", "compiled_only"])
+@pytest.mark.parametrize("kind", _STRUCTURAL_KINDS)
+def test_precalibration_ancestry_stage_nodes_change_no_population(kind, declared):
+    """A stage node upstream of calibration is never structural.
+
+    A stage declares only columns, but a structural node also writes what
+    every later kernel of its version receives without a ``Slice``: ids,
+    memberships, weights, strata, the frame metadata and the mass log.
+    ``compiled_only`` declares just calibration, so the composed pass decides
+    alone.
+    """
+    spec, nodes, create_params = _structural_stage_case(kind)
+    if not declared:
+        spec["resources"]["transport_graph"]["nodes"][:] = [
+            {"id": "create", "kernel": "synthetic.create@1"},
+            {"id": "cal", "kernel": "calibrate.synthetic@1", "population": "create"},
+        ]
+    outcome = _structural_stage_refusal(
+        "create" if kind == "create" else "change", kind
+    )
+    outcomes = _synthetic_outcomes(spec, nodes, {"A": "A-ref"}, create_params)
+    assert outcomes == {
+        "declaration": outcome if declared else None,
+        "composed": outcome,
+    }
+
+
+@pytest.mark.parametrize(
+    ("kind", "bound", "ancestor"),
+    [
+        *((kind, False, True) for kind in _STRUCTURAL_KINDS),
+        *((kind, True, False) for kind in _STRUCTURAL_KINDS[1:]),
+    ],
+    ids=lambda value: value if isinstance(value, str) else None,
+)
+def test_precalibration_ancestry_other_structural_nodes_pass(kind, bound, ancestor):
+    """A structural node outside every stage, or no ancestor of calibration, passes."""
+    spec, nodes, create_params = _structural_stage_case(
+        kind, bound=bound, ancestor=ancestor
+    )
+    outcomes = _synthetic_outcomes(spec, nodes, {"A": "A-ref"}, create_params)
+    assert outcomes == {"declaration": None, "composed": None}
+
+
+class _MembershipCreate(KernelBase):
+    """Person 1 in household 10."""
+
+    ref = "synthetic.membership_create@1"
+    capabilities = Capabilities(
+        Determinism.DETERMINISTIC, structural=StructuralDelta.CREATE
+    )
+
+    def run(self, context):
+        import pandas as pd
+
+        from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
+
+        person = {
+            "person_id": np.array([1], dtype="int64"),
+            "person_household_id": np.array([10], dtype="int64"),
+            "mask": np.array([True]),
+        }
+        return KernelResult(
+            frame=Frame(
+                {
+                    "person": pd.DataFrame(person),
+                    "household": pd.DataFrame(
+                        {"household_id": np.array([10], dtype="int64")}
+                    ),
+                },
+                EntitySchema(group_entities=("household",)),
+                {"household": Weights(np.array([1.0]), WeightKind.DESIGN)},
+                pd.Series(["s"], name="stratum"),
+            )
+        )
+
+
+class _MembershipExpand(KernelBase):
+    """Clones person 1 into person 2 of a new household 20, halving the weights."""
+
+    ref = "synthetic.membership_expand@1"
+    capabilities = Capabilities(
+        Determinism.DETERMINISTIC, structural=StructuralDelta.EXPAND
+    )
+
+    def run(self, context):
+        import pandas as pd
+
+        from microcosm.frame import WeightKind, Weights
+
+        return KernelResult(
+            expand={
+                "person": pd.Series(
+                    [1], index=pd.Index([2], name="person_id"), dtype="int64"
+                ),
+                "household": pd.Series(
+                    [10], index=pd.Index([20], name="household_id"), dtype="int64"
+                ),
+            },
+            columns={
+                ("person", "person_household_id"): pd.Series(
+                    [10, 20], index=pd.Index([1, 2], name="person_id"), dtype="int64"
+                )
+            },
+            weights=Weights(np.array([0.5, 0.5]), WeightKind.DESIGN),
+        )
+
+
+class _MembershipCalibrate(KernelBase):
+    """Records the household membership it receives without a ``Slice``."""
+
+    ref = "calibrate.membership@1"
+    capabilities = Capabilities(Determinism.DETERMINISTIC)
+
+    def __init__(self):
+        self.received = []
+
+    def run(self, context):
+        import pandas as pd
+
+        person = context.tables["person"]
+        self.received.append(person["person_household_id"].tolist())
+        return KernelResult(
+            columns={
+                ("person", "result"): pd.Series(
+                    person["person_household_id"].to_numpy(),
+                    index=pd.Index(person["person_id"], name="person_id"),
+                    dtype="int64",
+                )
+            }
+        )
+
+
+def test_precalibration_ancestry_refuses_a_stage_membership_calibration_receives(
+    tmp_path,
+):
+    """Round 4's case: a stage's EXPAND writes a membership calibration receives.
+
+    Stage A's EXPAND clones person 1 into a new household and overlays
+    ``person_household_id``, and calibration declares no ``Slice``. Run, the
+    graph hands calibration the stage's membership while the executor's
+    writer lists hold no read of it, so only the structural rule can refuse
+    it. Both passes do, at the EXPAND.
+    """
+    cells = (("person", "person_household_id", "int64"),)
+    weights = {"expand_weight_entity": "household", "expand_weight_kind": "design"}
+    nodes = (
+        Node(
+            "create",
+            _MembershipCreate.ref,
+            structural=StructuralDelta.CREATE,
+            sources=("donor",),
+            outputs=(Owned("person", "mask", "bool"),),
+        ),
+        Node(
+            "stage_expand",
+            _MembershipExpand.ref,
+            structural=StructuralDelta.EXPAND,
+            base="create",
+            params={"engine_ref": "A-ref", "expand_cells": cells, **weights},
+        ),
+        Node(
+            "cal",
+            _MembershipCalibrate.ref,
+            population="stage_expand",
+            outputs=(Owned("person", "result", "int64"),),
+        ),
+    )
+    binding = _synthetic_binding("A", "person", ["public"])
+    rows = [
+        {
+            "id": "stage_expand",
+            "kernel": _MembershipExpand.ref,
+            "structural": "expand",
+            "base": "create",
+            "params": {
+                "engine_ref": {"binding": "A", "field": "engine_ref"},
+                "expand_cells": [list(cell) for cell in cells],
+                **weights,
+            },
+        },
+        {
+            "id": "cal",
+            "kernel": _MembershipCalibrate.ref,
+            "population": "stage_expand",
+            "outputs": [{"entity": "person", "column": "result"}],
+        },
+    ]
+    spec = _synthetic_stage_spec(
+        [binding], [_synthetic_stage(binding, ["public"])], rows
+    )
+    spec["resources"]["benefit_unit_rule"] = {"entity": "household"}
+    graph = Graph("synthetic", (SourceRef("donor", "raw-bytes-v1"),), nodes)
+    compiled = compile_graph(graph)
+    config = TransportGraphConfig(
+        engine_refs={"A": "A-ref"}, create_outputs=nodes[0].outputs
+    )
+    for candidate in (None, graph):
+        assert _precalibration_outcome(
+            compose_module.validate_transport_calibration_ancestry,
+            spec,
+            graph=candidate,
+            config=config,
+        ) == _structural_stage_refusal("stage_expand", "expand")
+    assert _executor_writers(graph, compiled) == {
+        "create": set(),
+        "stage_expand": set(),
+        "cal": set(),
+    }
+    calibrate = _MembershipCalibrate()
+    kernels = KernelRegistry()
+    for kernel in (_MembershipCreate(), _MembershipExpand(), calibrate):
+        kernels.register(kernel)
+    donor = tmp_path / "donor.txt"
+    donor.write_text("synthetic")
+    run_graph(
+        compiled,
+        sources={"donor": donor},
+        store=ContentStore(tmp_path / "store"),
+        kernels=kernels,
+    )
+    assert calibrate.received == [[10, 20]]
 
 
 def _guard_writers(graph, compiled):

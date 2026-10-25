@@ -53,9 +53,8 @@ the same closed shape and purposes as an `outputs` row. It names any entity,
 may not repeat a binding variable on the binding's entity (that belongs in
 `outputs`), and may not repeat any other output of the stage or a hold-out
 measure. Each derived output must be produced by one of the stage's nodes
-upstream of calibration: a node produces the columns it owns and, for an
-EXPAND, the cells it installs. The composed graph is checked when there is
-one, otherwise the declaration.
+upstream of calibration, which produces the columns it owns. The composed
+graph is checked when there is one, otherwise the declaration.
 
 With stages listed, every field the checks read is validated before either
 pass uses it, on every declared node and rules binding, except three values
@@ -95,17 +94,19 @@ declaration spells them out, and otherwise conservatively. An EXPAND's
 `expand_cells` names its cells when it is a list of `[entity, column, dtype]`
 texts; any other value, such as a resource selection, leaves the cells to
 composition, so the declaration pass counts that EXPAND as a writer of every
-column read through its version, and as producing no cell.
+column read through its version.
 A node's `materialized_expand_outputs` claims the cells it lists when it is a
 list of `entity.column` texts; any other value claims every output that is not
 a rewrite. The composed pass reads both from the compiled parameters exactly
 as the executor does, and a malformed one refuses there.
 
-A malformed field refuses, naming the node: for example "node 'mid' has
+A malformed node field refuses, naming the node: for example "node 'mid' has
 malformed inputs", "node 'mid' is declared twice" or "node id None is not
-text". Read character by character, a string column, source or
-path list would otherwise drop a read, a hold-out source or a selection, and
-a repeated id would hide a node. The guard without stages is unchanged.
+text". A malformed rules binding refuses naming the binding, as in "needs
+rules binding 'A' to name its entity, rulespec_path and variables". Read
+character by character, a string column, source or path list would otherwise
+drop a read, a hold-out source or a selection, and a repeated id would hide a
+node. The guard without stages is unchanged.
 
 ## Which nodes belong to a stage
 
@@ -123,8 +124,9 @@ Only nodes in the ancestry of a calibration node are checked. The calibration
 nodes are every `calibrate.*` node and the calibration endpoint, in the
 declaration and in the composed graph. A node outside the ancestry of every
 calibration node, such as a stage binding's extension checkpoint after the
-fit, is an output and is unaffected. A node after the central fit that a
-variant calibration reads is in that variant's ancestry, so it is checked.
+fit, is an output, and these rules leave it alone; the shape checks above
+still cover every declared node. A node after the central fit that a variant
+calibration reads is in that variant's ancestry, so it is checked.
 
 - Absent, or `"stages": []`, is the guard without stages, outcomes and messages
   alike.
@@ -132,21 +134,33 @@ variant calibration reads is in that variant's ancestry, so it is checked.
   outputs, and group-encoder outputs read upstream only by listed benefit-unit
   stage nodes. Any other benefit-unit semantic upstream refuses as
   "not a declared pre-calibration stage".
-- A listed person stage admits nothing new; it only adds the next rule.
+- A listed person stage admits nothing new; it only adds the rules below.
+- A stage changes columns, not the population. A structural node (CREATE,
+  FILTER, EXPAND or REWEIGHT) that belongs to a listed stage refuses,
+  naming the node, its kind and its stage binding. A stage declares only
+  columns, but a structural node also writes what every later kernel of its
+  version receives without a `Slice`: ids, group memberships, weights,
+  strata, the frame metadata and the mass log. No other node writes them, so
+  with this rule they never come from a stage's node. A structural node
+  outside every stage is checked like any other: its inputs are reads, and
+  its parameters, sources and artifact inputs face the same checks. So an
+  EXPAND's cells are never a stage's output either; a stage claim that owns
+  a cell produces it.
 - A node outside a listed stage that reads a column whose values one of the
   stage's own nodes wrote upstream of calibration, other than its `outputs`
   and `derived_outputs`, refuses as "undeclared pre-calibration stage output".
   Reads among a stage's own nodes do not count.
-- The rule follows each read to every writer whose values it receives, as the
-  executor tracks them. In the reader's population version that is the owner
-  of the column. An owner that keeps earlier values passes on the writers
-  below it too: a rewrite receives the incumbent, a masked owner (an output
-  with a `rows` mask) leaves the incumbent's values on the rows outside its
-  mask, and an EXPAND claim receives the EXPAND's values. While the version
-  owns the column nowhere, or its owner keeps earlier values, the version's
-  EXPAND counts when it installs the column as a cell, and the walk goes on to
-  the base version, down to CREATE. A full owner that is not a rewrite or
-  claim stops it.
+- The rule follows each column read, explicit or through a rewrite or claim,
+  to every writer whose values it receives, as the executor tracks them. In
+  the reader's population version that is the owner of the column. An owner
+  that keeps earlier values passes on the writers below it too: a rewrite
+  receives the incumbent, a masked owner (an output with a `rows` mask)
+  leaves the incumbent's values on the rows outside its mask, and an EXPAND
+  claim receives the EXPAND's values. While the version owns the column
+  nowhere, or its owner keeps earlier values, the version's EXPAND counts
+  when it installs the column as a cell, and the walk goes on to the base
+  version, down to CREATE. A full owner that is not a rewrite or claim stops
+  it.
 - A structural node reads its inputs from its base. A rewrite reads the
   column it rewrites, and a claim, a node that names an EXPAND cell in its
   `materialized_expand_outputs`, reads that cell, both without a `Slice`.
@@ -170,12 +184,17 @@ variant calibration reads is in that variant's ancestry, so it is checked.
   decoded, layer by layer, up to 32 layers; a string still escaped after 32
   layers counts as carrying it. So the inventory may be a JSON string in any
   spelling (braces or the key written as escapes included), nested in
-  strings (each layer of JSON encoding doubles the backslashes, so encoding
-  never comes near 32 layers), JSON embedded in a longer string, or the data
-  a resource selection names. Text that only names engine_refs, without the
-  quoted key and colon, is not the inventory. Each layer is one linear pass
-  over the string, so the check takes at most 33 passes. The inventory is
-  bookkeeping, not a stage invocation.
+  strings, JSON embedded in a longer string, or the data a resource selection
+  names. An encoder that escapes a backslash as `\\` doubles them at each
+  layer, but one that writes `\u005c` grows only linearly: 33 layers of the
+  quoted key take 344 characters. So the bound is reachable, and text still
+  escaped after it refuses whatever it decodes to. Escapes decode one at a
+  time, so a surrogate pair stays two code points; the key is ASCII, so this
+  does not change what is found. Text that only names engine_refs, without
+  the quoted key and colon, is not the inventory; prose that quotes the key
+  and a colon refuses like the map itself. Each layer is one linear
+  pass over the string, so the check takes at most 33 passes. The inventory
+  is bookkeeping, not a stage invocation.
 - The hold-out, selection and digest checks still apply to every upstream node,
   stage nodes included, so each stage's ancestry is clean. They read each
   node's declared selections: its `transport_graph` row or, in the composed
@@ -213,19 +232,25 @@ These are tested, as properties and examples, in
 - With stages listed, the outcome is deterministic. Shape checks run first,
   over every declared node and binding, so a malformed declaration refuses
   naming its first malformed node even when an earlier node would refuse on
-  substance. Otherwise a refusal names the first offending node in
-  declaration order. The composed pass runs only after the declaration pass
-  admits: it checks the entitlement rows' shapes and reads the compiled
-  EXPAND cells and claims, then names the first offending node in graph
-  order. One message is not fixed: when several links name undeclared
-  nodes, which of them a refusal names follows set iteration order, as in
-  the guard without stages.
+  substance. Then, in each pass, the first structural stage node upstream of
+  calibration refuses, then the first derived output no upstream stage node
+  produces, and otherwise the first offending node in declaration order. The
+  composed pass runs only after the declaration pass admits: it checks the
+  entitlement rows' shapes and reads the compiled EXPAND cells and claims,
+  then applies the same order to the graph's nodes. One message is not
+  fixed: when several links name undeclared nodes, which of them a refusal
+  names follows set iteration order, as in the guard without stages.
 - With stages listed, the checks never read a malformed field so as to admit
   more than composition would. Every field they read is validated first,
   refusing naming its node, or read exactly as composition reads it. The two
   EXPAND parameters are read conservatively in the declaration and exactly in
   the composed pass, where a malformed one refuses.
-- The composed pass gives every read the writers the executor's static
-  writer lists give it (`microcosm.graph.executor._input_writers`), on every
-  generated graph, the writer and EXPAND examples, and the composed NZ and
-  entitlement graphs.
+- With stages listed, no node of a listed stage upstream of calibration is
+  structural, in either pass, so the values kernels receive without a
+  `Slice` (ids, memberships, weights, strata, frame metadata and the mass
+  log) come upstream of calibration only from nodes outside every stage.
+- The composed pass gives every column read the writers the executor's
+  static writer lists give it (`microcosm.graph.executor._input_writers`),
+  on every generated graph, the writer and EXPAND examples, and the composed
+  NZ and entitlement graphs. Those lists cover column reads only, which is
+  why the rule above covers the values kernels receive without one.

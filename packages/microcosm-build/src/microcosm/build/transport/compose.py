@@ -691,10 +691,11 @@ def _is_unit_entity(entity: object, unit_entities: tuple[object, ...]) -> bool:
 _INVENTORY_KEY = re.compile(r'"engine_refs"\s*:')
 _JSON_ESCAPE = re.compile(r'\\(?:u[0-9A-Fa-f]{4}|["\\/bfnrt])')
 _JSON_ESCAPES = {"b": "\b", "f": "\f", "n": "\n", "r": "\r", "t": "\t"}
-# Decoding stops after this many layers. Each layer of JSON string encoding
-# doubles a string's backslashes, so no encoded spelling comes near; only a
-# crafted chain of escaped backslashes goes deeper, and it counts as carrying
-# the inventory.
+# Decoding stops after this many layers. A JSON encoder that escapes a
+# backslash as ``\\`` doubles them at each layer, but one that writes
+# ``\u005c`` grows only linearly: 33 layers of the quoted key take 344
+# characters. A string still escaped after the last layer therefore counts as
+# carrying the inventory, whatever it decodes to, so the scan fails closed.
 _INVENTORY_LAYERS = 32
 
 
@@ -1333,13 +1334,6 @@ def _validate_precalibration_ancestry(
         roots.add(endpoints["calibration"])
     predecessors = {name: set() for name in rows}
     reads = _precalibration_declared_reads(rows)
-    writes = {
-        name: {
-            (output["entity"], output["column"]) for output in row.get("outputs", ())
-        }
-        | (_precalibration_cells(row) or set())
-        for name, row in rows.items()
-    }
     for name, row in rows.items():
         base = row.get("base")
         if isinstance(base, str):
@@ -1360,7 +1354,6 @@ def _validate_precalibration_ancestry(
         rows: Mapping[str, Mapping],
         predecessors: Mapping,
         reads: Mapping[str, set[tuple[str, str, str]]],
-        writes: Mapping[str, set[tuple[str, str]]],
         *,
         composed: bool,
         derived: bool,
@@ -1392,13 +1385,28 @@ def _validate_precalibration_ancestry(
         # stage's ancestry passes the same checks; a stage binding's nodes
         # after calibration (extension checkpoints) are outputs, not inputs.
         ancestors = _ancestor_closure(predecessors, roots)
-        # A node produces what it owns and, for an EXPAND, its cells.
+        # A stage declares only columns. A structural node also writes what
+        # every later kernel of its version receives without a Slice: ids,
+        # memberships, weights, strata, the frame metadata and the mass log.
+        # So a stage node upstream of calibration changes no population, and
+        # an EXPAND's cells are never a stage's.
+        for name, row in rows.items():
+            own = sorted(node_bindings[name].intersection(stages))
+            structural = row.get("structural", StructuralDelta.NONE)
+            if name in ancestors and own and structural != StructuralDelta.NONE:
+                raise ValueError(
+                    f"Transport calibration ancestry: node {name!r} of "
+                    f"pre-calibration stage binding{'s' * (len(own) > 1)} "
+                    f"{', '.join(map(repr, own))} is structural ({structural}); a "
+                    "stage changes columns, not the population."
+                )
+        # A node produces what it owns.
         produced = {
             binding: {
-                column
-                for name in rows
+                (output["entity"], output["column"])
+                for name, row in rows.items()
                 if name in ancestors and binding in node_bindings[name]
-                for column in writes[name]
+                for output in row.get("outputs", ())
             }
             for binding in stages
         }
@@ -1574,7 +1582,7 @@ def _validate_precalibration_ancestry(
 
     # A derived output is checked against the fullest view: the composed graph
     # when there is one, otherwise the declaration.
-    check(rows, predecessors, reads, writes, composed=False, derived=graph is None)
+    check(rows, predecessors, reads, composed=False, derived=graph is None)
     if graph is None:
         return
     declarations = {**rows, **_precalibration_extension_rows(spec, rows)}
@@ -1586,6 +1594,7 @@ def _validate_precalibration_ancestry(
     compiled_rows = {
         node.id: {
             "kernel": node.kernel,
+            "structural": node.structural.value,
             "inputs": [
                 {"entity": item.entity, "columns": item.columns} for item in node.inputs
             ],
@@ -1604,11 +1613,6 @@ def _validate_precalibration_ancestry(
         compiled_rows,
         compiled.predecessors,
         _precalibration_compiled_reads(graph, compiled, claims, cells),
-        {
-            node.id: {(item.entity, item.column) for item in node.outputs}
-            | cells[node.id]
-            for node in graph.nodes
-        },
         composed=True,
         derived=True,
     )
@@ -1631,7 +1635,8 @@ def validate_transport_calibration_ancestry(
     Benefit-unit attributes remain allowed; excluded columns are the unit
     rules bindings' outputs and the group encoder's declared outputs.
     Declared pre-calibration stages admit their own unit semantics, restrict
-    outputs flowing onward and recursively check each stage's ancestry. With
+    outputs flowing onward and recursively check each stage's ancestry; a
+    stage node upstream of calibration is never structural. With
     stages and a graph, each derived output must be produced in the composed
     graph; without a graph, in the declaration. Composition always runs the
     graph-less check first.
