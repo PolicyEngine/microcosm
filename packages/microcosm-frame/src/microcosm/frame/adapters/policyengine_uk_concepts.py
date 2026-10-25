@@ -36,7 +36,7 @@ __all__ = [
 # ---------------------------------------------------------------------------
 #
 # Which PolicyEngine-UK inputs each engine-neutral concept feeds
-# (microcosm.frame.concepts), reviewed against policyengine-uk 2.160.0. Every
+# (microcosm.frame.concepts), reviewed against policyengine-uk 2.161.0. Every
 # target is a pure input (in ``PolicyEngineUKEngine.variables``). The UK
 # loader also accepts some formula-owned variables as overrides
 # (``employment_income``, ``state_pension_reported``, ``is_household_head``);
@@ -230,6 +230,18 @@ _UK_OWNED_COMPANY_INTERMEDIARIES_AT_DEFAULT = (
     "and capital instead of as an employee's, which can move it either way "
     "(microcosm#1095; for María's signature)."
 )
+_UK_CHILD_LIMIT_EXCEPTIONS_AT_DEFAULT = (
+    "The exceptions to the Universal Credit and Child Tax Credit two-child limit "
+    "(UC Regs 2013 Sch 12; CTC Regs 2002 regs 9 to 14; policyengine-uk 2.161.0): "
+    "multiple births, adoption, non-parental caring arrangements, non-consensual "
+    "conception and the continuation of an earlier exception. The FRS records "
+    "none of them as such, so each stays false, and a third or later child who "
+    "qualifies for one gets no child element: Universal Credit is understated "
+    "for those families until the limit ends on 6 April 2026. Multiple births "
+    "(siblings of the same age) and non-parental care (a child whose benefit "
+    "unit holds no parent) could be read from the FRS household grid after this "
+    "lock (microcosm#1095; for María's signature)."
+)
 
 
 #: Other engine inputs the build leaves at the engine's default, each signed as
@@ -323,6 +335,16 @@ UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
         "is understated for any such protected claim still in payment "
         "(microcosm#1095; for María's signature)."
     ),
+    **dict.fromkeys(
+        (
+            "child_limit_adoption_exception",
+            "child_limit_continuation_exception",
+            "child_limit_multiple_birth_exception",
+            "child_limit_non_consensual_conception_exception",
+            "child_limit_non_parental_caring_exception",
+        ),
+        _UK_CHILD_LIMIT_EXCEPTIONS_AT_DEFAULT,
+    ),
 }
 
 
@@ -347,7 +369,7 @@ def _uk_take_up(program: str, entity: str) -> InputBinding:
 
 POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
     engine="policyengine-uk",
-    engine_version="2.160.0",
+    engine_version="2.161.0",
     entity_correspondence={"person": "person", "household": "household"},
     input_declaration=InputDeclaration.ENGINE_TYPED,
     bindings=(

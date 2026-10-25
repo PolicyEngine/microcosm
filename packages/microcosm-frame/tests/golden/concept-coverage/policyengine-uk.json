@@ -413,8 +413,8 @@
   }
  ],
  "engine": "policyengine-uk",
- "engine_version": "2.160.0",
- "input_count": 339,
+ "engine_version": "2.161.0",
+ "input_count": 344,
  "schema_sha256": "5a55669d0447a686692911a6327ae298f19741dde29559f2654a75807878a141",
  "structural_inputs": [
   {
@@ -658,6 +658,26 @@
   {
    "entity": "person",
    "name": "child_ema"
+  },
+  {
+   "entity": "person",
+   "name": "child_limit_adoption_exception"
+  },
+  {
+   "entity": "person",
+   "name": "child_limit_continuation_exception"
+  },
+  {
+   "entity": "person",
+   "name": "child_limit_multiple_birth_exception"
+  },
+  {
+   "entity": "person",
+   "name": "child_limit_non_consensual_conception_exception"
+  },
+  {
+   "entity": "person",
+   "name": "child_limit_non_parental_caring_exception"
   },
   {
    "entity": "person",

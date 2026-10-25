@@ -718,7 +718,7 @@ def test_packaged_exclusions_load():
     # the twelve UC payment bands, which it fits unbound (microcosm#1344), and
     # obr.vat is held again as a diagnostic (Vahid's review of #1383, 10).
     # microcosm#1359 adds the five OBR excise rows, measured at FY2024-25.
-    # The policyengine-uk 2.160.0 bump holds obr.domestic_rates once it
+    # The next policyengine-uk bump (2.161.0) holds obr.domestic_rates once it
     # compiles (María's ruling of 2026-10-25).
     assert len(names) == len(set(names)) == 40
     rehold = [entry for entry in exclusions if "_1_000_000_to_inf" in entry["name"]]

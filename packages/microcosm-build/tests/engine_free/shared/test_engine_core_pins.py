@@ -33,7 +33,7 @@ US_ENGINE = {
 #: policyengine-core its own floor brings.
 UK_ENGINE = {
     "policyengine-core": "3.33.3",
-    "policyengine-uk": "2.160.0",
+    "policyengine-uk": "2.161.0",
 }
 ENGINE_PACKAGES = ("microcosm-build", "microcosm-data", "microcosm-frame")
 
