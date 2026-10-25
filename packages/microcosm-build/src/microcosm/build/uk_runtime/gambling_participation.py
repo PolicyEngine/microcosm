@@ -29,7 +29,8 @@ from the diary:
   the diary's gradient by income, tenure, region and spending. Households the
   diary saw keep their stakes.
 - **Stakes.** An added household's stake is a draw from the donor's positive
-  stakes at a quantile keyed on its id, scaled to the frame's drawn stakes.
+  stakes at a quantile keyed on its id, scaled so the added regular players'
+  mean is the mean of the households the diary saw.
   An occasional player's is the declared share of that.
 
 ``level_excise_quantities`` then shares each national base by the topped-up
@@ -698,14 +699,6 @@ def top_up_gambling_participation(
             n_estimators=settings["n_estimators"],
         )
         seen = drawn > 0
-        donor_mean = float(
-            np.average(donor_stakes[played], weights=donor_weight[played])
-        )
-        scale = (
-            float(np.average(drawn[seen], weights=weight[seen])) / donor_mean
-            if seen.any()
-            else 1.0
-        )
         ordering = propensity * chance[OCCASIONAL]
         uniforms = stable_identity_uniforms(ids, seed=seed, salt=f"{salt}:{key}:order")
         with np.errstate(divide="ignore"):
@@ -738,6 +731,20 @@ def top_up_gambling_participation(
             if window == REGULAR:
                 regular = taken & ~seen
         occasional = taken & ~seen & ~regular
+        # The added regular players' mean stake is the seen households' (the
+        # donor's positive mean where the frame drew none): the walk picks
+        # households whose predictors draw larger stakes, so scaling to the
+        # donor's mean would put them above the players the diary saw.
+        anchor = (
+            np.average(drawn[seen], weights=weight[seen])
+            if seen.any()
+            else np.average(donor_stakes[played], weights=donor_weight[played])
+        )
+        scale = (
+            float(anchor / np.average(draws[regular], weights=weight[regular]))
+            if regular.any()
+            else 1.0
+        )
         topped = drawn.copy()
         topped[regular] = scale * draws[regular]
         topped[occasional] = share * scale * draws[occasional]

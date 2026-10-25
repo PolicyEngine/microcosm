@@ -323,12 +323,14 @@ def test_top_up_keeps_the_diarys_stakes_and_stakes_every_added_household() -> No
 
 
 def test_occasional_players_take_the_declared_share_of_a_drawn_stake() -> None:
-    low = top_up_gambling_participation(**participation_inputs())
+    inputs = participation_inputs()
+    low = top_up_gambling_participation(**inputs)
     high = top_up_gambling_participation(
         **participation_inputs(
             declaration=participation_declaration(occasional_stake_share=0.2)
         )
     )
+    weight = inputs["weights"]
     for key in UK_GAMBLING_PARTICIPATION_KEYS:
         moved = low.keys[key] != high.keys[key]
         assert moved.sum() > 0
@@ -336,6 +338,13 @@ def test_occasional_players_take_the_declared_share_of_a_drawn_stake() -> None:
         np.testing.assert_allclose(high.keys[key][moved] / low.keys[key][moved], 2.0)
         share = low.receipt["keys"][key]["stake_shares"]["added_occasional"]
         assert 0 < share < low.receipt["keys"][key]["stake_shares"]["added_regular"]
+        # The added regular players' mean stake is the seen households'.
+        drawn, topped = inputs["keys"][key], low.keys[key]
+        seen = drawn > 0
+        regular = (topped > 0) & ~seen & ~moved
+        assert np.average(topped[regular], weights=weight[regular]) == pytest.approx(
+            np.average(drawn[seen], weights=weight[seen])
+        )
 
 
 def test_top_up_is_keyed_on_household_identity() -> None:
