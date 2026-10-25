@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "country": "nz",
+  "policy": {
+    "kind": "signed_proportional_reconciliation",
+    "max_abs": 3,
+    "max_relative": "0.001",
+    "combine": "either",
+    "ruling": "d1932",
+    "disclosure": "Census family-type counts in each region are scaled to that region's published family total. The published type counts and family totals are independently rounded to base 3, so they can differ by up to 3 families; the scaling is a modelling adjustment for that rounding noise, not an observed category (Max ruling d1932). Region 99 has +3 families (2.0% of its published family total; 2.04% of its stated type leaves), admitted through the absolute bound."
+  },
+  "type_labels": {
+    "1": "Couple Without Children",
+    "2": "Couple With Child(ren)",
+    "3": "One Parent With Child(ren)"
+  },
+  "profile_dimension": "family_discrepancy",
+  "profiles": {
+    "central": {
+      "positive_recipient_codes": [1, 2, 3]
+    },
+    "family_discrepancy_positive_to_type3": {
+      "positive_recipient_codes": [3]
+    }
+  },
+  "default_profile": "central",
+  "geography_vintage": "unstated",
+  "basis": "2023-03-07 Census family counts, reconciled before one 2025-06-30 / 2023-06-30 ERP bridge; no further projection to TY2026-27",
+  "region_99_proxy": "Region 99 remains separate; no regional ERP series exists, so its bridge uses the national ERP pair 5,324,700 / 5,200,000 exactly once.",
+  "activation": "Parked and exempt until the Census family multiplicity classifier exists (G8-r3b). Reconciliation and sensitivity do not activate references.",
+  "numerical_check": {
+    "absolute_tolerance": "0.000001",
+    "type_order": [1, 2, 3],
+    "central": ["549923.187358", "556879.098527", "218615.140900"],
+    "family_discrepancy_positive_to_type3": ["549916.657264", "556873.115175", "218627.654345"],
+    "total": "1325417.426784"
+  }
+}

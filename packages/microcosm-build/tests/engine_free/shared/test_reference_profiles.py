@@ -1371,3 +1371,106 @@ def test_factor_companion_record_and_transformed_rows_cover_each_other(mutation)
     receipt["receipt_sha256"] = reference_document_sha256(receipt)
     with pytest.raises(ValueError, match="roster|missing factor companion"):
         validate_reference_resolution(effective, receipt)
+
+
+def _independent_family_profile_inputs():
+    references, declarations = _inputs()
+    family = copy.deepcopy(references["target_references"][0])
+    family.update(name="family", ledger_selector=_selector("family-atom-1", 1))
+    family["metadata"] = {
+        "activation_status": "requires_census_family_nucleus_standard",
+        "required_reference_profile": "family_discrepancy",
+        "parking_reason": "G8-r3b Census family classifier is required.",
+    }
+    references["target_references"].append(family)
+    central = copy.deepcopy(
+        declarations["dimensions"]["residual"]["profiles"]["proportional"][
+            "transformations"
+        ][0]
+    )
+    central["reference_names"] = ["family"]
+    central["value_operands"][2].update(
+        member_selectors=[_selector(f"family-atom-{i}", i) for i in (1, 2, 3)],
+        allocation_member_keys=[f"family-atom-{i}" for i in (1, 2, 3)],
+        discrepancy_policy={
+            "kind": "signed_proportional_reconciliation",
+            "max_abs": 3,
+            "max_relative": "0.001",
+            "combine": "either",
+            "ruling": "d1932",
+            "disclosure": "A declared modelling adjustment for independent rounding.",
+        },
+    )
+    central["metadata"] = {
+        "allocation_ruling": "d1932",
+        "family_discrepancy": "central",
+    }
+    sensitivity = copy.deepcopy(central)
+    sensitivity["value_operands"][2]["positive_allocation_member_keys"] = [
+        "family-atom-3"
+    ]
+    sensitivity["metadata"]["family_discrepancy"] = (
+        "family_discrepancy_positive_to_type3"
+    )
+    declarations["dimensions"]["family_discrepancy"] = {
+        "default": "central",
+        "profiles": {
+            "central": {"transformations": [central]},
+            "family_discrepancy_positive_to_type3": {"transformations": [sensitivity]},
+        },
+    }
+    return references, declarations
+
+
+def test_family_discrepancy_selection_is_independent_and_rows_remain_parked():
+    references, declarations = _independent_family_profile_inputs()
+    base_family = copy.deepcopy(references["target_references"][-1])
+    first, _, central_receipt = resolve_reference_profiles(references, declarations, {})
+    selected, _, receipt = resolve_reference_profiles(
+        references,
+        declarations,
+        {
+            "residual": "alternative",
+            "family_discrepancy": "family_discrepancy_positive_to_type3",
+        },
+    )
+    central = first["target_references"][-1]
+    sensitivity = selected["target_references"][-1]
+    assert central_receipt["selection"]["family_discrepancy"] == "central"
+    assert (
+        receipt["selection"]["family_discrepancy"]
+        == "family_discrepancy_positive_to_type3"
+    )
+    assert receipt["selection"]["residual"] == "alternative"
+    assert selected["target_references"][0] == references["target_references"][0]
+    assert first["target_references"][0]["metadata"]["activation_status"] == "active"
+    assert "positive_allocation_member_keys" not in central["value_operands"][2]
+    assert sensitivity["value_operands"][2]["positive_allocation_member_keys"] == [
+        "family-atom-3"
+    ]
+    for row in (central, sensitivity):
+        assert (
+            row["metadata"]["activation_status"]
+            == "requires_census_family_nucleus_standard"
+        )
+        assert (
+            row["metadata"]["parking_reason"]
+            == base_family["metadata"]["parking_reason"]
+        )
+        assert row["ledger_selector"] == base_family["ledger_selector"]
+        assert row["value_operation"] == "allocated_residual_by_ratio"
+    assert (
+        central["value_operands"][2]["discrepancy_policy"]
+        == sensitivity["value_operands"][2]["discrepancy_policy"]
+    )
+    assert validate_reference_resolution(selected, receipt) == receipt
+
+
+def test_family_profile_policy_cannot_hide_unknown_fields():
+    references, declarations = _independent_family_profile_inputs()
+    declaration = declarations["dimensions"]["family_discrepancy"]["profiles"][
+        "central"
+    ]["transformations"][0]
+    declaration["value_operands"][2]["discrepancy_policy"]["unknown"] = "refuse"
+    with pytest.raises(ValueError, match="exactly its declared keys"):
+        resolve_reference_profiles(references, declarations, {})

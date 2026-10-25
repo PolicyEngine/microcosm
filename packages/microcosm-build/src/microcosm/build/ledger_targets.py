@@ -15,6 +15,7 @@ import math
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass, field, replace
+from fractions import Fraction
 from itertools import product
 from pathlib import Path
 from types import MappingProxyType
@@ -873,7 +874,13 @@ def target_spec_from_ledger_reference(
             _validate_window_ratio_operand_fact(member, reference)
         else:
             _validate_resolved_reference_fact(member, reference)
-        numeric_values.append(_numeric_fact_value(member, reference))
+        if (
+            reference.value_operation == ALLOCATED_RESIDUAL_BY_RATIO
+            and "discrepancy_policy" in reference.value_operands[2]
+        ):
+            numeric_values.append(_exact_count_fact_value(member, reference))
+        else:
+            numeric_values.append(_numeric_fact_value(member, reference))
         _validate_fact_aggregation(member, reference)
 
     value_metadata: dict[str, str] = {}
@@ -1126,7 +1133,9 @@ def _validated_growth_ratio(
     base: object,
     numerator_fact: object,
     denominator_fact: object,
-) -> float:
+    *,
+    exact: bool = False,
+) -> float | Fraction:
     """Validate one series at the source and target periods, then its growth."""
 
     prefix = f"Ledger target reference {reference.name!r}: {reference.value_operation}"
@@ -1140,9 +1149,10 @@ def _validated_growth_ratio(
         raise ValueError(f"{prefix} denominator does not resolve at the base's period.")
     if _period_key(numerator_fact) != _period_key_from_value(reference.period):
         raise ValueError(f"{prefix} numerator does not resolve at the target period.")
-    numerator = _numeric_fact_value(numerator_fact, reference)
-    denominator = _numeric_fact_value(denominator_fact, reference)
-    if not math.isfinite(denominator) or denominator <= 0:
+    read_value = _exact_count_fact_value if exact else _numeric_fact_value
+    numerator = read_value(numerator_fact, reference)
+    denominator = read_value(denominator_fact, reference)
+    if denominator <= 0 or (not exact and not math.isfinite(denominator)):
         raise ValueError(
             f"Ledger target reference {reference.name!r}: "
             f"{reference.value_operation} denominator {denominator!r} must be a "
@@ -1150,7 +1160,9 @@ def _validated_growth_ratio(
         )
     ratio = numerator / denominator
     low, high = ROLLED_FORWARD_RATIO_BOUNDS
-    if not math.isfinite(ratio) or not low < ratio <= high:
+    if exact:
+        low, high = Fraction(str(low)), Fraction(str(high))
+    if (not exact and not math.isfinite(ratio)) or not low < ratio <= high:
         raise ValueError(
             f"Ledger target reference {reference.name!r}: "
             f"{reference.value_operation} produced ratio {ratio!r} from numerator "
@@ -1192,6 +1204,24 @@ def _numeric_fact_value(fact: object, reference: LedgerTargetReference) -> float
             f"Ledger fact for {reference.name!r} has invalid value {value!r}."
         )
     return numeric_value
+
+
+def _exact_count_fact_value(fact: object, reference: LedgerTargetReference) -> Fraction:
+    """Read an integer count without introducing binary floating point arithmetic."""
+    raw = _at(fact, "value")
+    try:
+        if isinstance(raw, bool) or raw is None:
+            raise ValueError("not a count")
+        value = Fraction(
+            raw.lexical_token if isinstance(raw, LexicalFloat) else str(raw)
+        )
+        if value.denominator != 1 or value < 0:
+            raise ValueError("not a nonnegative integer")
+    except (TypeError, ValueError, ZeroDivisionError) as error:
+        raise ValueError(
+            f"Ledger fact for {reference.name!r} requires an exact nonnegative integer count; got {raw!r}."
+        ) from error
+    return value
 
 
 def _validate_fact_aggregation(
@@ -2499,6 +2529,111 @@ def _allocation_operand_selector(operand: Mapping[str, object]) -> dict[str, obj
     return {str(key): value for key, value in operand.items() if key != "role"}
 
 
+def validate_signed_discrepancy_policy(policy: object) -> dict[str, object]:
+    """Validate the explicit, closed declaration permitting signed discrepancies."""
+    keys = {"kind", "max_abs", "max_relative", "combine", "ruling", "disclosure"}
+    if not isinstance(policy, Mapping) or set(policy) != keys:
+        raise ValueError(
+            "Signed discrepancy policy requires exactly its declared keys."
+        )
+    if policy["kind"] != "signed_proportional_reconciliation":
+        raise ValueError("Unknown signed discrepancy policy kind.")
+    if type(policy["max_abs"]) is not int or policy["max_abs"] < 0:
+        raise ValueError("Signed discrepancy max_abs must be a nonnegative integer.")
+    decimal = policy["max_relative"]
+    if (
+        not isinstance(decimal, str)
+        or re.fullmatch(r"(?:0|[1-9][0-9]*)(?:\.[0-9]+)?", decimal) is None
+    ):
+        raise ValueError(
+            "Signed discrepancy max_relative must be an exact decimal string."
+        )
+    if policy["combine"] != "either":
+        raise ValueError("Signed discrepancy bounds must combine as 'either'.")
+    if any(
+        not isinstance(policy[key], str) or not policy[key].strip()
+        for key in ("ruling", "disclosure")
+    ):
+        raise ValueError("Signed discrepancy policy needs its ruling and disclosure.")
+    return dict(policy)
+
+
+def reconcile_signed_partition(
+    partition: Mapping[str, Fraction],
+    total: Fraction,
+    policy: Mapping[str, object],
+    *,
+    region: str,
+    positive_recipient_keys: tuple[str, ...] | None = None,
+) -> tuple[dict[str, Fraction], dict[str, Fraction], tuple[str, ...]]:
+    """Reconcile exact counts, optionally assigning a positive gap to one atom.
+
+    The central allocation preserves every share, including for negative gaps.
+    A positive-only recipient changes only the positive-gap allocation; zero
+    and negative gaps continue to use central proportional reconciliation.
+    """
+    checked = validate_signed_discrepancy_policy(policy)
+    if (
+        not partition
+        or any(not isinstance(key, str) or not key for key in partition)
+        or not isinstance(total, Fraction)
+        or any(not isinstance(value, Fraction) for value in partition.values())
+        or total < 0
+        or any(value < 0 for value in partition.values())
+    ):
+        raise ValueError(
+            "Signed reconciliation requires nonnegative exact Fraction counts."
+        )
+    if positive_recipient_keys is not None and (
+        len(positive_recipient_keys) != 1 or positive_recipient_keys[0] not in partition
+    ):
+        raise ValueError(
+            "Positive discrepancy needs exactly one declared partition recipient."
+        )
+    leaves = sum(partition.values(), Fraction())
+    residual = total - leaves
+    if not leaves and total:
+        raise ValueError(
+            f"Signed reconciliation region {region}: R={residual}, L={leaves}; "
+            "L=0 with a nonzero published total is refused."
+        )
+    bounds = tuple(
+        name
+        for name, passed in (
+            ("absolute", abs(residual) <= checked["max_abs"]),
+            (
+                "relative",
+                bool(leaves)
+                and abs(residual) / leaves <= Fraction(checked["max_relative"]),
+            ),
+        )
+        if passed
+    )
+    if not bounds:
+        raise ValueError(
+            f"Signed reconciliation region {region}: R={residual}, L={leaves} "
+            f"exceeds either bound: max_abs={checked['max_abs']}, "
+            f"max_relative={checked['max_relative']}."
+        )
+    if residual > 0 and positive_recipient_keys is not None:
+        increments = {
+            key: residual if key in positive_recipient_keys else Fraction()
+            for key in sorted(partition)
+        }
+    else:
+        increments = {
+            key: value * residual / leaves if leaves else Fraction()
+            for key, value in sorted(partition.items())
+        }
+    reconciled = {key: partition[key] + increments[key] for key in increments}
+    if (
+        any(value < 0 for value in reconciled.values())
+        or sum(reconciled.values(), Fraction()) != total
+    ):
+        raise ValueError(f"Signed reconciliation region {region} failed exact closure.")
+    return reconciled, increments, bounds
+
+
 def _validate_allocation_reference(reference: LedgerTargetReference) -> None:
     prefix = f"LedgerTargetReference {reference.name!r}: {ALLOCATED_RESIDUAL_BY_RATIO}"
     operands = reference.value_operands
@@ -2530,8 +2665,15 @@ def _validate_allocation_reference(reference: LedgerTargetReference) -> None:
     )
     members = operands[2].get("member_selectors")
     recipients = operands[2].get("allocation_member_keys")
+    partition_keys = {"role", "member_selectors", "allocation_member_keys"}
+    signed = "discrepancy_policy" in operands[2]
+    if signed:
+        partition_keys.add("discrepancy_policy")
+        validate_signed_discrepancy_policy(operands[2]["discrepancy_policy"])
+        if "positive_allocation_member_keys" in operands[2]:
+            partition_keys.add("positive_allocation_member_keys")
     if (
-        set(operands[2]) != {"role", "member_selectors", "allocation_member_keys"}
+        set(operands[2]) != partition_keys
         or not isinstance(members, (list, tuple))
         or not members
     ):
@@ -2565,6 +2707,21 @@ def _validate_allocation_reference(reference: LedgerTargetReference) -> None:
         raise ValueError(
             f"{prefix} allocation_member_keys must be a nonempty unique subset of the partition."
         )
+    if signed:
+        if set(recipients) != set(keys):
+            raise ValueError(
+                f"{prefix} signed central recipients must be the full partition."
+            )
+        positive = operands[2].get("positive_allocation_member_keys")
+        if positive is not None and (
+            not isinstance(positive, (list, tuple))
+            or len(positive) != 1
+            or not isinstance(positive[0], str)
+            or positive[0] not in keys
+        ):
+            raise ValueError(
+                f"{prefix} positive discrepancy needs exactly one partition recipient."
+            )
     # Scalar dimensions identify the atoms independently of their fact keys.
     atomic_cells = [
         json.dumps(selector.get("dimension_values", {}), sort_keys=True)
@@ -2755,13 +2912,23 @@ def _resolve_allocation_reference_facts(
             raise ValueError(
                 f"{prefix} cross-geography growth requires a declared growth_geography_proxy."
             )
-        _validated_growth_ratio(reference, total, *growth)
+        _validated_growth_ratio(
+            reference,
+            total,
+            *growth,
+            exact="discrepancy_policy" in reference.value_operands[2],
+        )
     for index, fact in enumerate(selected):
         if index <= len(atoms):
             _validate_resolved_reference_fact(fact, reference)
         else:
             _validate_window_ratio_operand_fact(fact, reference)
-        if _numeric_fact_value(fact, reference) < 0:
+        read_value = (
+            _exact_count_fact_value
+            if "discrepancy_policy" in reference.value_operands[2]
+            else _numeric_fact_value
+        )
+        if read_value(fact, reference) < 0:
             raise ValueError(f"{prefix} requires finite nonnegative counts.")
         _validate_fact_aggregation(fact, reference)
     labelled_facts = (
@@ -2785,10 +2952,129 @@ def _resolve_allocation_reference_facts(
     return tuple(by_key.values())
 
 
+def _signed_allocated_residual_value(
+    reference: LedgerTargetReference, facts: tuple[object, ...]
+) -> tuple[float, dict[str, str]]:
+    """Compute signed allocation and its exact receipt before the float API boundary."""
+    partition = reference.value_operands[2]
+    facts_by_key = {_fact_key(fact): fact for fact in facts}
+    atom_keys = sorted(
+        selector["aggregate_fact_key"] for selector in partition["member_selectors"]
+    )
+    atoms = {key: facts_by_key[key] for key in atom_keys}
+    total = facts_by_key[reference.value_operands[1]["aggregate_fact_key"]]
+    region = _str_at(total, "geography", "id")
+    counts = {
+        key: _exact_count_fact_value(fact, reference) for key, fact in atoms.items()
+    }
+    total_value = _exact_count_fact_value(total, reference)
+    positive_keys = partition.get("positive_allocation_member_keys")
+    adjusted, increments, bounds = reconcile_signed_partition(
+        counts,
+        total_value,
+        partition["discrepancy_policy"],
+        region=region,
+        positive_recipient_keys=None if positive_keys is None else tuple(positive_keys),
+    )
+    stated = sum(counts.values(), Fraction())
+    residual = total_value - stated
+    recipients = sorted(
+        positive_keys
+        if residual > 0 and positive_keys is not None
+        else partition["allocation_member_keys"]
+    )
+    base_keys = sorted(
+        key
+        for key, fact in atoms.items()
+        if _fact_matches_selector(fact, reference.ledger_selector)
+    )
+    growth = tuple(
+        next(
+            fact
+            for fact in facts
+            if _fact_matches_selector(fact, _allocation_operand_selector(operand))
+        )
+        for operand in reference.value_operands[3:]
+    )
+    ratio = (
+        _validated_growth_ratio(reference, total, *growth, exact=True)
+        if growth
+        else Fraction(1)
+    )
+    final_targets = {key: value * ratio for key, value in adjusted.items()}
+    value = sum((final_targets[key] for key in base_keys), Fraction())
+
+    def rational(number: Fraction) -> dict[str, int]:
+        return {"numerator": number.numerator, "denominator": number.denominator}
+
+    labelled_keys = {
+        "base": base_keys,
+        "partition": atom_keys,
+        "recipients": recipients,
+        "total": _fact_key(total),
+        **(
+            {"numerator": _fact_key(growth[0]), "denominator": _fact_key(growth[1])}
+            if growth
+            else {}
+        ),
+    }
+    policy = dict(partition["discrepancy_policy"])
+    receipt = {
+        "operation": ALLOCATED_RESIDUAL_BY_RATIO,
+        "version": 2,
+        "ruling": policy["ruling"],
+        "policy": policy,
+        "region": region,
+        "selected_profile": reference.metadata.get(
+            "family_discrepancy",
+            reference.metadata.get("residual_allocation_profile", ""),
+        ),
+        "bounds_passed": list(bounds),
+        "fact_keys": labelled_keys,
+        "source_snapshot": {
+            "source_release_key": _str_at(total, "source_release_key"),
+            "source_sha256": _str_at(total, "source", "source_sha256"),
+            "source_vintage": _str_at(total, "source", "vintage"),
+        },
+        "growth_geography_proxy": reference.metadata.get("growth_geography_proxy", ""),
+        "x": {key: rational(number) for key, number in counts.items()},
+        "F": rational(total_value),
+        "L": rational(stated),
+        "R": rational(residual),
+        "increments": {key: rational(number) for key, number in increments.items()},
+        "reconciled": {key: rational(number) for key, number in adjusted.items()},
+        "growth_operands": {
+            role: {
+                "fact_key": _fact_key(fact),
+                "value": rational(_exact_count_fact_value(fact, reference)),
+            }
+            for role, fact in zip(
+                ("numerator", "denominator"), growth, strict=bool(growth)
+            )
+        },
+        "Q": rational(ratio),
+        "final_targets": {
+            key: rational(number) for key, number in final_targets.items()
+        },
+        "source_period": _comparable_period_value(total),
+        "target_period": reference.period,
+        "final_target": rational(value),
+    }
+    return float(value), {
+        "ledger_allocation_receipt": json.dumps(
+            receipt, sort_keys=True, separators=(",", ":"), allow_nan=False
+        ),
+        "ledger_value_base": str(sum((counts[key] for key in base_keys), Fraction())),
+        "ledger_value_ratio": str(ratio),
+    }
+
+
 def _allocated_residual_value(
     reference: LedgerTargetReference, facts: tuple[object, ...]
 ) -> tuple[float, dict[str, str]]:
     partition = reference.value_operands[2]
+    if "discrepancy_policy" in partition:
+        return _signed_allocated_residual_value(reference, facts)
     facts_by_key = {_fact_key(fact): fact for fact in facts}
     atoms = tuple(
         facts_by_key[key]

@@ -209,6 +209,15 @@ def test_residual_profiles_have_exact_recipient_rosters_and_preserve_other_targe
                     after["metadata"]["activation_status"] == "requires_prerequisites"
                 )
                 continue
+            if "families_by_type" in before["name"]:
+                assert after["ledger_selector"] == before["ledger_selector"]
+                assert after["value_operation"] == "allocated_residual_by_ratio"
+                assert (
+                    after["metadata"]["activation_status"]
+                    == "requires_census_family_nucleus_standard"
+                )
+                assert "G8-r3b" in after["metadata"]["parking_reason"]
+                continue
             if (
                 before["metadata"]["activation_status"]
                 != "requires_reference_profile_resolution"
