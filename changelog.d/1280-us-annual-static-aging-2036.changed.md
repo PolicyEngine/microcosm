@@ -1,0 +1,1 @@
+Raise the default end year of the US annual static-aging candidate builder (`build_annual_static_aging` and `--end-year`) from 2035 to 2036, so a default build covers CBO's February 2026 budget window through 2036 (#1280).
