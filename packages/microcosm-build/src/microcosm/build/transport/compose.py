@@ -56,6 +56,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from importlib.resources import files
@@ -71,11 +72,13 @@ from microcosm.build.graph_atomic_geography import (
 from microcosm.build.ledger_artifact import CHRONICLE_FEED_RESOURCE
 from microcosm.calibrate.ordered_kernels import OUTPUT_TYPES
 from microcosm.graph import (
+    ROWS_ALL,
     ArtifactInput,
     ArtifactOutput,
     ArtifactType,
     CompiledGraph,
     Graph,
+    GraphError,
     Node,
     Owned,
     Ownership,
@@ -86,6 +89,10 @@ from microcosm.graph import (
     compile_graph,
 )
 from microcosm.graph.canonical import canonical_json
+from microcosm.graph.expansion import (
+    declared_expand_cells,
+    materialized_expand_coordinates,
+)
 
 from .artifact_types import KERNEL_OUTPUTS
 from .column_kernels import validate_receipt_contract
@@ -681,8 +688,34 @@ def _is_unit_entity(entity: object, unit_entities: tuple[object, ...]) -> bool:
     return any(entity == unit for unit in unit_entities)
 
 
+_INVENTORY_KEY = re.compile(r'"engine_refs"\s*:')
+_JSON_ESCAPE = re.compile(r'\\(?:u[0-9A-Fa-f]{4}|["\\/bfnrt])')
+_JSON_ESCAPES = {"b": "\b", "f": "\f", "n": "\n", "r": "\r", "t": "\t"}
+# Decoding stops after this many layers. Each layer of JSON string encoding
+# doubles a string's backslashes, so no encoded spelling comes near; only a
+# crafted chain of escaped backslashes goes deeper, and it counts as carrying
+# the inventory.
+_INVENTORY_LAYERS = 32
+
+
+def _json_unescape(match: re.Match[str]) -> str:
+    escape = match.group()
+    if escape[1] == "u":
+        return chr(int(escape[2:], 16))
+    return _JSON_ESCAPES.get(escape[1], escape[1])
+
+
 def _carries_engine_ref_inventory(value: object) -> bool:
-    """Whether a value carries a prepared ``engine_refs`` map, in any JSON spelling."""
+    """Whether a value carries a prepared ``engine_refs`` map, in any JSON spelling.
+
+    A string carries it when, with its JSON escapes decoded layer by layer, it
+    holds the quoted key and a colon. Decoding a JSON string literal gives the
+    same text as decoding its span of the enclosing string, and a key once
+    spelled out survives every later layer, so every spelling of the map, at
+    any depth of string encoding, is found. Each layer is one pass over the
+    string. A string still escaped after ``_INVENTORY_LAYERS`` layers counts
+    as carrying the map, so a string costs at most that many passes, plus one.
+    """
 
     if isinstance(value, Mapping):
         return "engine_refs" in value or any(
@@ -692,24 +725,15 @@ def _carries_engine_ref_inventory(value: object) -> bool:
         )
     if isinstance(value, list | tuple):
         return any(_carries_engine_ref_inventory(item) for item in value)
-    # Every string is decoded: a JSON string can spell its braces as escapes.
     if not isinstance(value, str):
         return False
-    try:
-        decoded = json.loads(value)
-    except (ValueError, TypeError):
-        decoder = json.JSONDecoder()
-        for index, character in enumerate(value):
-            if character not in {"{", '"'}:
-                continue
-            try:
-                embedded, _ = decoder.raw_decode(value, index)
-            except ValueError:
-                continue
-            if _carries_engine_ref_inventory(embedded):
-                return True
-        return False
-    return decoded != value and _carries_engine_ref_inventory(decoded)
+    for _ in range(_INVENTORY_LAYERS + 1):
+        if _INVENTORY_KEY.search(value):
+            return True
+        value, decoded = _JSON_ESCAPE.subn(_json_unescape, value)
+        if not decoded:
+            return False
+    return True
 
 
 def _is_text(value: object) -> bool:
@@ -828,14 +852,21 @@ def _precalibration_rows(document: Mapping) -> dict[str, Mapping]:
                 field: row.get(field) is None or _is_text(row[field])
                 for field in ("population", "base", "rules_binding")
             },
+            "structural": row.get("structural", StructuralDelta.NONE)
+            in tuple(StructuralDelta),
             "params": _precalibration_params(row.get("params", {})),
             "inputs": _is_rows(
                 row.get("inputs", ()),
                 entity=_is_text,
                 columns=lambda columns: _is_list(columns, _is_text),
             ),
+            # An absent mask is every row.
             "outputs": _is_rows(
                 row.get("outputs", ()), entity=_is_text, column=_is_text
+            )
+            and all(
+                _is_text(output.get("rows", ROWS_ALL))
+                for output in row.get("outputs", ())
             ),
             "artifact_inputs": _is_rows(
                 row.get("artifact_inputs", ()), producer=_is_text
@@ -1033,110 +1064,219 @@ def _precalibration_extension_rows(
     return result
 
 
+def _precalibration_claims(row: Mapping) -> set[tuple[str, str]]:
+    """The EXPAND cells a declared node claims, whose values it receives.
+
+    A literal list of ``entity.column`` names is read as the executor reads
+    it. Any other value, such as a resource selection, claims every
+    non-rewrite output: only composition can tell.
+    """
+
+    params = row.get("params", {})
+    if "materialized_expand_outputs" not in params:
+        return set()
+    claimed = params["materialized_expand_outputs"]
+    if _is_list(claimed, lambda name: isinstance(name, str) and "." in name):
+        return {
+            (entity, column)
+            for entity, column in (name.split(".", 1) for name in claimed)
+        }
+    return {
+        (output["entity"], output["column"])
+        for output in row.get("outputs", ())
+        if not output.get("rewrite")
+    }
+
+
+def _precalibration_cells(row: Mapping) -> set[tuple[str, str]] | None:
+    """The cells a declared EXPAND may write; None when only composition can tell.
+
+    A literal list of ``[entity, column, dtype]`` texts names them. Any other
+    value, such as a resource selection, is unknown.
+    """
+
+    if row.get("structural") != StructuralDelta.EXPAND:
+        return set()
+    cells = row.get("params", {}).get("expand_cells")
+    if _is_list(cells, lambda cell: _is_list(cell, _is_text) and len(cell) == 3):
+        return {(entity, column) for entity, column, _ in cells}
+    return None
+
+
 def _precalibration_declared_reads(
     rows: Mapping[str, Mapping],
 ) -> dict[str, set[tuple[str, str, str]]]:
-    """Each declared node's column reads, as (entity, column, producer).
+    """Each declared node's column reads, as (entity, column, writer).
 
-    A read resolves in the reader's population version and then down its base
-    chain, as the compiler resolves it: a structural node reads its base, and
-    a rewrite receives the incumbent from below its version. Where the
-    declaration leaves the version unknown (no population, an undeclared
-    version or a cycle), every declared producer of the column counts, and a
-    producer without a population counts in every version.
+    A read's writers are those the executor tracks, over declarations: the
+    owner in the reader's population version and, while that owner keeps
+    earlier values (a rewrite, a masked owner or an EXPAND claim) or the
+    version owns none, the version's EXPAND when it may write the cell, then
+    the writers in the base version. A structural node reads its base; a
+    rewrite and an EXPAND claim read their own cells. Where the declaration
+    leaves the version unknown (no population, an undeclared version or a
+    cycle), every declared writer of the column counts. A writer without a
+    population counts in every version, and an EXPAND whose cells only
+    composition can tell writes every column.
     """
 
     owners: dict[tuple[object, str, str], set[str]] = {}
-    producers: dict[tuple[str, str], set[str]] = {}
+    writers: dict[tuple[str, str], set[str]] = {}
+    keeps: set[tuple[str, str, str]] = set()
+    cells = {name: _precalibration_cells(row) for name, row in rows.items()}
+    unknown = {name for name, written in cells.items() if written is None}
     for name, row in rows.items():
         version = row.get("population") if row.get("base") is None else None
+        claimed = _precalibration_claims(row)
         for output in row.get("outputs", ()):
             key = (output["entity"], output["column"])
-            producers.setdefault(key, set()).add(name)
+            writers.setdefault(key, set()).add(name)
             owners.setdefault((version, *key), set()).add(name)
+            # Rows outside a mask keep the incumbent's values, and a rewrite
+            # or claim receives them.
+            if (
+                output.get("rewrite")
+                or output.get("rows", ROWS_ALL) != ROWS_ALL
+                or key in claimed
+            ):
+                keeps.add((name, *key))
+        for key in cells[name] or ():
+            writers.setdefault(key, set()).add(name)
 
     def resolve(version: object, key: tuple[str, str]) -> set[str]:
+        everyone = writers.get(key, set()) | unknown
         if not isinstance(version, str):
-            return producers.get(key, set())
-        floating = owners.get((None, *key), set())
+            return everyone
+        found = set(owners.get((None, *key), set()))
         seen = set()
         while isinstance(version, str):
             if version in seen or version not in rows:
-                return producers.get(key, set())
+                return everyone
             seen.add(version)
-            if (version, *key) in owners:
-                return owners[(version, *key)] | floating
+            owned = owners.get((version, *key), set())
+            found |= owned
+            if owned and not any((owner, *key) in keeps for owner in owned):
+                return found
+            if cells[version] is None or key in cells[version]:
+                found.add(version)
             version = rows[version].get("base")
-        return floating
+        return found
 
     reads: dict[str, set[tuple[str, str, str]]] = {}
     for name, row in rows.items():
         base = row.get("base")
         start = row.get("population") if base is None else base
-        holder = rows.get(row.get("population"))
-        # A rewrite's incumbent comes from below its version.
-        incumbent = None if holder is None else holder.get("base")
-        rewritten = {
-            (output["entity"], output["column"])
-            for output in row.get("outputs", ())
-            if output.get("rewrite")
-        }
-        keys = {
-            (item["entity"], column)
-            for item in row.get("inputs", ())
-            for column in item["columns"]
-        }
+        keys = (
+            {
+                (item["entity"], column)
+                for item in row.get("inputs", ())
+                for column in item["columns"]
+            }
+            | {
+                (output["entity"], output["column"])
+                for output in row.get("outputs", ())
+                if output.get("rewrite")
+            }
+            | _precalibration_claims(row)
+        )
         reads[name] = {
-            (*key, producer)
-            for key in keys | rewritten
-            for producer in resolve(incumbent if key in rewritten else start, key)
-            if producer != name
+            (*key, writer)
+            for key in keys
+            for writer in resolve(start, key)
+            if writer != name
         }
     return reads
 
 
-def _precalibration_compiled_reads(
-    graph: Graph, compiled: CompiledGraph
-) -> dict[str, set[tuple[str, str, str]]]:
-    """Each compiled node's column reads, as (entity, column, producer).
+def _precalibration_expansions(
+    graph: Graph,
+) -> tuple[
+    dict[str, frozenset[tuple[str, str]]], dict[str, frozenset[tuple[str, str]]]
+]:
+    """Each compiled node's EXPAND claims, and the cells each EXPAND may write.
 
-    The producer is the owner in the reader's version or, for an inherited
-    column, in the nearest base version that owns it. A structural node reads
-    its base; a rewrite receives the incumbent from below its version.
+    Both are read as the executor reads them, so a malformed one refuses.
+    """
+
+    try:
+        claims = {
+            node.id: materialized_expand_coordinates(node) for node in graph.nodes
+        }
+        cells = {
+            node.id: frozenset(
+                (entity, column) for entity, column, _ in declared_expand_cells(node)
+            )
+            if node.structural is StructuralDelta.EXPAND
+            else frozenset()
+            for node in graph.nodes
+        }
+    except GraphError as error:
+        raise ValueError(f"Transport calibration ancestry: {error}") from error
+    return claims, cells
+
+
+def _precalibration_compiled_reads(
+    graph: Graph,
+    compiled: CompiledGraph,
+    claims: Mapping[str, frozenset[tuple[str, str]]],
+    cells: Mapping[str, frozenset[tuple[str, str]]],
+) -> dict[str, set[tuple[str, str, str]]]:
+    """Each compiled node's column reads, as (entity, column, writer).
+
+    A read's writers are those the executor tracks: the owner in the reader's
+    version and, while that owner keeps earlier values (a rewrite, a masked
+    owner or an EXPAND claim) or the version owns none, the version's EXPAND
+    when it may write the cell, then the writers in the base version. A
+    structural node reads its base; a rewrite and an EXPAND claim read their
+    own cells.
     """
 
     by_id = {node.id: node for node in graph.nodes}
 
-    def resolve(version: str | None, entity: str, column: str) -> str | None:
-        while version is not None:
-            owner = compiled.owners.get((version, entity, column))
+    def resolve(version: str, coordinate: tuple[str, str]) -> set[str]:
+        found = set()
+        while True:
+            holder = by_id[version]
+            owner = compiled.owners.get((version, *coordinate))
             if owner is not None:
-                return owner
-            version = by_id[version].base
-        return None
+                found.add(owner)
+                output = next(
+                    item
+                    for item in by_id[owner].outputs
+                    if (item.entity, item.column) == coordinate
+                )
+                if not (
+                    output.rewrite
+                    or output.rows != ROWS_ALL
+                    or coordinate in claims[owner]
+                ):
+                    return found
+            if coordinate in cells[version]:
+                found.add(version)
+            if holder.structural is StructuralDelta.CREATE or holder.base is None:
+                return found
+            version = holder.base
 
     reads: dict[str, set[tuple[str, str, str]]] = {}
     for node in graph.nodes:
-        version = compiled.versions[node.id]
-        start = version if node.structural is StructuralDelta.NONE else node.base
-        rewritten = {
-            (item.entity, item.column) for item in node.outputs if item.rewrite
-        }
-        keys = {
-            (item.entity, column) for item in node.inputs for column in item.columns
-        }
+        if node.structural is StructuralDelta.CREATE:
+            reads[node.id] = set()
+            continue
+        start = (
+            compiled.versions[node.id]
+            if node.structural is StructuralDelta.NONE
+            else node.base
+        )
+        coordinates = (
+            {(item.entity, column) for item in node.inputs for column in item.columns}
+            | {(item.entity, item.column) for item in node.outputs if item.rewrite}
+            | claims[node.id]
+        )
         reads[node.id] = {
-            (entity, column, producer)
-            for entity, column in keys | rewritten
-            if (
-                producer := resolve(
-                    by_id[version].base if (entity, column) in rewritten else start,
-                    entity,
-                    column,
-                )
-            )
-            is not None
-            and producer != node.id
+            (*coordinate, writer)
+            for coordinate in coordinates
+            for writer in resolve(start, coordinate)
+            if writer != node.id
         }
     return reads
 
@@ -1193,6 +1333,13 @@ def _validate_precalibration_ancestry(
         roots.add(endpoints["calibration"])
     predecessors = {name: set() for name in rows}
     reads = _precalibration_declared_reads(rows)
+    writes = {
+        name: {
+            (output["entity"], output["column"]) for output in row.get("outputs", ())
+        }
+        | (_precalibration_cells(row) or set())
+        for name, row in rows.items()
+    }
     for name, row in rows.items():
         base = row.get("base")
         if isinstance(base, str):
@@ -1213,6 +1360,7 @@ def _validate_precalibration_ancestry(
         rows: Mapping[str, Mapping],
         predecessors: Mapping,
         reads: Mapping[str, set[tuple[str, str, str]]],
+        writes: Mapping[str, set[tuple[str, str]]],
         *,
         composed: bool,
         derived: bool,
@@ -1244,12 +1392,13 @@ def _validate_precalibration_ancestry(
         # stage's ancestry passes the same checks; a stage binding's nodes
         # after calibration (extension checkpoints) are outputs, not inputs.
         ancestors = _ancestor_closure(predecessors, roots)
+        # A node produces what it owns and, for an EXPAND, its cells.
         produced = {
             binding: {
-                (item["entity"], item["column"])
-                for name, row in rows.items()
+                column
+                for name in rows
                 if name in ancestors and binding in node_bindings[name]
-                for item in row.get("outputs", ())
+                for column in writes[name]
             }
             for binding in stages
         }
@@ -1425,11 +1574,12 @@ def _validate_precalibration_ancestry(
 
     # A derived output is checked against the fullest view: the composed graph
     # when there is one, otherwise the declaration.
-    check(rows, predecessors, reads, composed=False, derived=graph is None)
+    check(rows, predecessors, reads, writes, composed=False, derived=graph is None)
     if graph is None:
         return
     declarations = {**rows, **_precalibration_extension_rows(spec, rows)}
     compiled = compile_graph(graph)
+    claims, cells = _precalibration_expansions(graph)
     roots.update(
         node.id for node in graph.nodes if node.kernel.startswith("calibrate.")
     )
@@ -1453,7 +1603,12 @@ def _validate_precalibration_ancestry(
     check(
         compiled_rows,
         compiled.predecessors,
-        _precalibration_compiled_reads(graph, compiled),
+        _precalibration_compiled_reads(graph, compiled, claims, cells),
+        {
+            node.id: {(item.entity, item.column) for item in node.outputs}
+            | cells[node.id]
+            for node in graph.nodes
+        },
         composed=True,
         derived=True,
     )

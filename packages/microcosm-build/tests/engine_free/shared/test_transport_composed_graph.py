@@ -2805,38 +2805,57 @@ _PRECALIBRATION_PROPERTY_DOMAINS = {
         "holdout_sources": False,
         "eager": True,
     },
+    # Writer chains: masked owners keep the values below them, and an EXPAND
+    # writes a cell that a claim owns, so a read often has several writers.
+    "writers": {
+        "kinds": ("person", "filter", "plain", "expand"),
+        "holdout_sources": False,
+        "eager": True,
+        "masks": True,
+        "focused": True,
+    },
 }
 
+_PRECALIBRATION_STRUCTURAL_KINDS = {"filter", "expand"}
 
-def _precalibration_edges(draw, nodes, version, visible):
+
+def _precalibration_edges(draw, nodes, version, writers, focused=False):
     """Dependencies, reads and artifact edges from earlier nodes.
 
-    A read names the producer the column resolves to in ``version``.
+    A read is chosen from the node its column resolves to first in
+    ``version``, and names every writer whose values it receives. When
+    ``focused``, only nodes outside every binding pass artifacts.
     """
     dependencies, reads, artifacts = [], [], []
     for predecessor, earlier in enumerate(nodes):
-        if earlier["kind"] == "filter":
+        if earlier["kind"] in _PRECALIBRATION_STRUCTURAL_KINDS:
             continue
         edge = draw(st.integers(min_value=0, max_value=3))
-        if edge == 1:
+        if edge == 1 and not (focused and earlier["binding"] is not None):
             dependencies.append(predecessor)
             artifacts.append(predecessor)
         if edge > 1:
             columns = [
                 column
                 for column in earlier["outputs"]
-                if visible(version, column) == predecessor
+                if writers(version, column)[:1] == [predecessor]
             ]
             if columns and edge == 2:
                 columns = [draw(st.sampled_from(columns))]
             if columns:
                 dependencies.append(predecessor)
-            reads.extend((predecessor, column) for column in columns)
+            reads.extend(
+                (writer, column)
+                for column in columns
+                for writer in writers(version, column)
+            )
     return dependencies, reads, artifacts
 
 
 @st.composite
-def _precalibration_ancestry_dags(draw, kinds, holdout_sources, eager=False):
+def _precalibration_ancestry_dags(
+    draw, kinds, holdout_sources, eager=False, masks=False, focused=False
+):
     """Small DAGs with independent binding declarations and column edges.
 
     A new binding may also declare another binding's variable name, which only
@@ -2845,9 +2864,15 @@ def _precalibration_ancestry_dags(draw, kinds, holdout_sources, eager=False):
     A filter node opens a population version on an earlier one and may read
     columns from its base. A binding or plain node may own a ``shared`` column
     that a node in another version also owns, and a person node in a filter
-    version may rewrite a person column it sees from below. Each read and
-    rewrite names the producer it resolves to: in the reader's version, in a
-    filter's base, or below a rewrite's version.
+    version may rewrite a person column it sees from below or, with
+    ``masks``, own it again on masked rows. An EXPAND opens a version too: its
+    own binding's stage node, it writes a derived cell that the next node
+    claims. Each read, rewrite and claim names every writer whose values it
+    receives, as the executor tracks them: the owner in the reader's version
+    (a filter's base, or below a rewrite's or claim's own version), and the
+    writers below it while it keeps earlier values, with an EXPAND's cell.
+    With ``focused``, a listed stage withholds at most one of its columns and
+    stage nodes pass no artifacts, so a refusal usually has one cause.
     """
     kinds = draw(
         st.lists(st.sampled_from(kinds), min_size=1, max_size=9 if eager else 7)
@@ -2855,21 +2880,32 @@ def _precalibration_ancestry_dags(draw, kinds, holdout_sources, eager=False):
     likely = st.sampled_from((True, True, True, False)) if eager else st.booleans()
     nodes = []
     bindings = {}
-    # Version None is CREATE; a filter's index names its version. A version a
-    # filter branches from takes no new members, so structural edges point back.
+    # Version None is CREATE; a structural node's index names its version. A
+    # version a structural node branches from takes no new members, so
+    # structural edges point back.
     bases = {None: None}
     closed = set()
     owned = {}
     entities = {}
+    # Owners that keep earlier values: rewrites, masked owners and claims.
+    keeps = set()
+    # The cell each EXPAND writes, by its version.
+    expanded = {}
     # Versions a read resolved through: a later owner there would re-route it.
     frozen = set()
 
-    def visible(version, column):
-        while (version, column) not in owned:
+    def writers(version, column):
+        found = []
+        while True:
+            if (version, column) in owned:
+                found.append(owned[version, column])
+                if (version, column) not in keeps:
+                    return found
+            if column in expanded.get(version, ()):
+                found.append(version)
             if version is None:
-                return None
+                return found
             version = bases[version]
-        return owned[version, column]
 
     def freeze(version, column):
         while (version, column) not in owned:
@@ -2880,50 +2916,112 @@ def _precalibration_ancestry_dags(draw, kinds, holdout_sources, eager=False):
         return draw(st.sampled_from(sorted(set(bases) - closed, key=str)))
 
     def seen(version):
-        return sorted(
-            {column for _, column in owned if visible(version, column) is not None}
-        )
+        return sorted({column for _, column in owned if writers(version, column)})
 
-    for index, kind in enumerate(kinds):
-        if kind == "filter":
-            base = draw(st.sampled_from(sorted(bases, key=str)))
-            # A structural node reads its inputs from its base.
-            columns = seen(base)
-            chosen = (
-                draw(
-                    st.lists(
-                        st.sampled_from(columns),
-                        unique=True,
-                        min_size=1 if eager else 0,
-                        max_size=2,
-                    )
+    def structural_node(kind, base):
+        # A structural node reads its inputs from its base; a focused one only
+        # columns that no binding's node writes.
+        columns = [
+            column
+            for column in seen(base)
+            if not focused
+            or all(nodes[writer]["binding"] is None for writer in writers(base, column))
+        ]
+        chosen = (
+            draw(
+                st.lists(
+                    st.sampled_from(columns),
+                    unique=True,
+                    min_size=1 if eager else 0,
+                    max_size=2,
                 )
-                if columns
-                else []
             )
-            for column in chosen:
-                freeze(base, column)
+            if columns
+            else []
+        )
+        for column in chosen:
+            freeze(base, column)
+        return {
+            "kind": kind,
+            "binding": None,
+            "entity": "person",
+            "version": None,
+            "base": base,
+            "outputs": [],
+            "cells": [],
+            "reads": [
+                (writer, column)
+                for column in chosen
+                for writer in writers(base, column)
+            ],
+            "rewrites": [],
+            "claims": [],
+            "masks": [],
+            # A version depends on its base and every member of it.
+            "dependencies": [
+                *([] if base is None else [base]),
+                *(
+                    member
+                    for member, row in enumerate(nodes)
+                    if row["kind"] not in _PRECALIBRATION_STRUCTURAL_KINDS
+                    and row["version"] == base
+                ),
+            ],
+            "artifacts": [],
+            "holdout_selection": False,
+            "holdout_source": False,
+        }
+
+    for kind in kinds:
+        index = len(nodes)
+        if kind in _PRECALIBRATION_STRUCTURAL_KINDS:
+            base = draw(st.sampled_from(sorted(bases, key=str)))
+            node = structural_node(kind, base)
             bases[index] = base
             closed.add(base)
+            nodes.append(node)
+            if kind == "filter":
+                continue
+            # The EXPAND is a person stage's node, of a new binding or one that
+            # earlier nodes use, and its cell is a derived output of that
+            # binding. The claim follows it.
+            cell, claim = f"cell_{index}", index + 1
+            available = [
+                name for name, row in bindings.items() if row["entity"] == "person"
+            ]
+            if available and draw(likely if focused else st.booleans()):
+                node["binding"] = draw(st.sampled_from(available))
+            else:
+                node["binding"] = f"binding_{index}"
+                bindings[node["binding"]] = {
+                    "entity": "person",
+                    "variables": [],
+                    "derived": [],
+                }
+            bindings[node["binding"]]["derived"].append(cell)
+            node["cells"] = [cell]
+            expanded[index] = {cell}
+            owned[index, cell] = claim
+            keeps.add((index, cell))
+            entities[cell] = "person"
             nodes.append(
                 {
-                    "kind": kind,
-                    "binding": None,
+                    "kind": "claim",
+                    # A claim may be one of the EXPAND's stage nodes.
+                    "binding": node["binding"] if draw(st.booleans()) else None,
                     "entity": "person",
-                    "version": None,
-                    "base": base,
-                    "outputs": [],
-                    "reads": [(visible(base, column), column) for column in chosen],
+                    "version": index,
+                    "outputs": [cell],
+                    "cells": [],
+                    "reads": [],
                     "rewrites": [],
-                    # A version depends on its base and every member of it.
-                    "dependencies": [
-                        *([] if base is None else [base]),
-                        *(
-                            member
-                            for member, row in enumerate(nodes)
-                            if row["kind"] != "filter" and row["version"] == base
-                        ),
+                    "claims": [
+                        (writer, cell)
+                        for writer in writers(index, cell)
+                        if writer != claim
                     ],
+                    "masks": [],
+                    "dependencies": [index],
                     "artifacts": [],
                     "holdout_selection": False,
                     "holdout_source": False,
@@ -2953,7 +3051,7 @@ def _precalibration_ancestry_dags(draw, kinds, holdout_sources, eager=False):
                 if shared and draw(st.booleans()):
                     bindings[binding]["variables"].append(draw(st.sampled_from(shared)))
         dependencies, reads, artifacts = _precalibration_edges(
-            draw, nodes, version, visible
+            draw, nodes, version, writers, focused
         )
         for _, column in reads:
             freeze(version, column)
@@ -2970,16 +3068,16 @@ def _precalibration_ancestry_dags(draw, kinds, holdout_sources, eager=False):
             and draw(likely)
         ):
             outputs.append(common)
-        rewrites = []
+        rewrites, masked = [], []
         if version is not None and entity == "person":
             # The incumbent comes from below the version; CREATE has none. A
-            # rewritten column joins the node's binding variables, which a
-            # derived output may never be.
+            # rewritten or masked column joins the node's binding variables,
+            # which a derived output or an EXPAND cell may never be.
             columns = [
                 column
                 for column in seen(bases[version])
                 if entities[column] == "person"
-                and not column.startswith("derived_")
+                and not column.startswith(("derived_", "cell_"))
                 and (version, column) not in taken
                 and column not in outputs
                 and column not in {read for _, read in reads}
@@ -2993,7 +3091,16 @@ def _precalibration_ancestry_dags(draw, kinds, holdout_sources, eager=False):
                         max_size=2 if eager else 1,
                     )
                 ):
-                    rewrites.append((visible(bases[version], column), column))
+                    # A masked owner leaves the incumbent's values outside its
+                    # mask, and a rewrite receives them, so both keep them.
+                    if masks and draw(likely):
+                        masked.append(column)
+                    else:
+                        rewrites.extend(
+                            (writer, column)
+                            for writer in writers(bases[version], column)
+                        )
+                    keeps.add((version, column))
                     outputs.append(column)
         if binding is not None:
             bindings[binding]["variables"].extend(
@@ -3014,8 +3121,11 @@ def _precalibration_ancestry_dags(draw, kinds, holdout_sources, eager=False):
                 "entity": entity,
                 "version": version,
                 "outputs": outputs,
+                "cells": [],
                 "reads": reads,
                 "rewrites": rewrites,
+                "claims": [],
+                "masks": masked,
                 "dependencies": [
                     *([] if version is None else [version]),
                     *dependencies,
@@ -3027,16 +3137,9 @@ def _precalibration_ancestry_dags(draw, kinds, holdout_sources, eager=False):
                 and draw(st.sampled_from((False, False, False, True))),
             }
         )
-    declared = {}
-    for binding, row in bindings.items():
-        if draw(likely):
-            # Derived columns alone are a complete declaration.
-            declared[binding] = draw(
-                st.sets(st.sampled_from(row["variables"] + row["derived"]), min_size=1)
-            )
     version = member_version()
     dependencies, reads, artifacts = _precalibration_edges(
-        draw, nodes, version, visible
+        draw, nodes, version, writers, focused
     )
     nodes.append(
         {
@@ -3045,14 +3148,50 @@ def _precalibration_ancestry_dags(draw, kinds, holdout_sources, eager=False):
             "entity": "person",
             "version": version,
             "outputs": [],
+            "cells": [],
             "reads": reads,
             "rewrites": [],
+            "claims": [],
+            "masks": [],
             "dependencies": [*([] if version is None else [version]), *dependencies],
             "artifacts": artifacts,
             "holdout_selection": False,
             "holdout_source": False,
         }
     )
+    relevant = _precalibration_reference_relevant(nodes)
+    # Columns whose values a later writer passes on: under a mask, or as a cell.
+    passed = {column for node in nodes for column in node["masks"] + node["cells"]}
+    declared = {}
+    for binding, row in bindings.items():
+        if not draw(likely):
+            continue
+        # Derived columns alone are a complete declaration.
+        columns = row["variables"] + row["derived"]
+        if not focused:
+            declared[binding] = draw(st.sets(st.sampled_from(columns), min_size=1))
+            continue
+        # A focused stage declares no derived output that its nodes upstream do
+        # not produce, and withholds at most one column, often one passed on.
+        produced = {
+            column
+            for index in relevant
+            if nodes[index]["binding"] == binding
+            for column in nodes[index]["outputs"] + nodes[index]["cells"]
+        }
+        columns = [
+            column
+            for column in columns
+            if column in row["variables"] or column in produced
+        ]
+        if not columns:
+            continue
+        declared[binding] = set(columns)
+        if len(columns) > 1 and draw(likely):
+            candidates = [column for column in columns if column in passed]
+            if not candidates or not draw(likely):
+                candidates = columns
+            declared[binding].remove(draw(st.sampled_from(candidates)))
     return nodes, bindings, declared
 
 
@@ -3069,11 +3208,12 @@ def _precalibration_reference_missing_derived(model, binding):
     """Declared derived columns that no node of the stage upstream produces."""
     nodes, bindings, declared = model
     relevant = _precalibration_reference_relevant(nodes)
+    # A node produces what it owns and, for an EXPAND, its cells.
     produced = {
         column
         for index in relevant
         if nodes[index]["binding"] == binding
-        for column in nodes[index]["outputs"]
+        for column in nodes[index]["outputs"] + nodes[index]["cells"]
     }
     return declared[binding] & set(bindings[binding]["derived"]) - produced
 
@@ -3106,8 +3246,9 @@ def _precalibration_reference_accepts(model):
                 for consumer in consumers
             ):
                 return False
-        # A rewrite receives its incumbent, so it is a read too.
-        for producer, column in node["reads"] + node["rewrites"]:
+        # A rewrite receives its incumbent and a claim its EXPAND's cell, so
+        # both are reads too.
+        for producer, column in node["reads"] + node["rewrites"] + node["claims"]:
             source_binding = nodes[producer]["binding"]
             if (
                 source_binding in declared
@@ -3128,13 +3269,19 @@ def _precalibration_synthetic_graph(model):
     nodes, bindings, declared = model
     references = {name: f"synthetic-engine:{name}:end" for name in bindings}
     seed = Owned("person", "seed", "float64")
+    # CREATE also loads the boolean mask that masked owners read.
+    created = (
+        (seed, Owned("person", "keep", "bool"))
+        if any(item["masks"] for item in nodes)
+        else (seed,)
+    )
     trace = ArtifactType("synthetic.precalibration.trace", 1)
     graph_nodes = [
         Node(
             "p1.create",
             "synthetic.create@1",
             structural=StructuralDelta.CREATE,
-            outputs=(seed,),
+            outputs=created,
             sources=("synthetic_donor",),
         )
     ]
@@ -3142,7 +3289,9 @@ def _precalibration_synthetic_graph(model):
         {
             "id": "p1.create",
             "kernel": "synthetic.create@1",
-            "outputs": [{"entity": "person", "column": "seed"}],
+            "outputs": [
+                {"entity": output.entity, "column": output.column} for output in created
+            ],
         }
     ]
 
@@ -3152,32 +3301,52 @@ def _precalibration_synthetic_graph(model):
     for index, item in enumerate(nodes):
         name = "p1.calibrate" if item["kind"] == "calibrate" else f"p1.node_{index}"
         inputs = {}
+        # A read names each of its writers; the node reads the column once.
         for producer, column in item["reads"]:
-            inputs.setdefault(nodes[producer]["entity"], []).append(column)
-        if item["kind"] == "filter":
+            columns = inputs.setdefault(nodes[producer]["entity"], [])
+            if column not in columns:
+                columns.append(column)
+        if item["masks"]:
+            inputs.setdefault("person", []).append("keep")
+        if item["kind"] in _PRECALIBRATION_STRUCTURAL_KINDS:
             base = version_id(item["base"])
+            kernel = f"synthetic.{item['kind']}@1"
+            params = {}
+            prepared_params = {}
+            if item["cells"]:
+                cells = tuple(("person", cell, "float64") for cell in item["cells"])
+                params = {
+                    "engine_ref": {"binding": item["binding"], "field": "engine_ref"},
+                    "expand_cells": [list(cell) for cell in cells],
+                }
+                prepared_params = {
+                    "engine_ref": references[item["binding"]],
+                    "expand_cells": cells,
+                }
             graph_nodes.append(
                 Node(
                     name,
-                    "synthetic.filter@1",
-                    structural=StructuralDelta.FILTER,
+                    kernel,
+                    structural=StructuralDelta(item["kind"]),
                     base=base,
                     inputs=tuple(
                         Slice(entity, tuple(columns))
                         for entity, columns in inputs.items()
                     ),
+                    params=prepared_params,
                 )
             )
             rows.append(
                 {
                     "id": name,
-                    "kernel": "synthetic.filter@1",
-                    "structural": "filter",
+                    "kernel": kernel,
+                    "structural": item["kind"],
                     "base": base,
                     "inputs": [
                         {"entity": entity, "columns": columns}
                         for entity, columns in inputs.items()
                     ],
+                    **({"params": params} if params else {}),
                 }
             )
             continue
@@ -3188,6 +3357,7 @@ def _precalibration_synthetic_graph(model):
             "selector": "simulate.solve_zero@1",
             "holdout": "synthetic.holdout@1",
             "plain": "synthetic.plain@1",
+            "claim": "synthetic.claim@1",
             "calibrate": "calibrate.synthetic@1",
         }[item["kind"]]
         rewritten = {column for _, column in item["rewrites"]}
@@ -3198,6 +3368,12 @@ def _precalibration_synthetic_graph(model):
             prepared_params["engine_ref"] = references[binding]
             if item["kind"] == "selector":
                 params["engine_ref"] = {"binding": binding, "field": "engine_ref"}
+        if item["claims"]:
+            claimed = list(
+                dict.fromkeys(f"person.{cell}" for _, cell in item["claims"])
+            )
+            params["materialized_expand_outputs"] = claimed
+            prepared_params["materialized_expand_outputs"] = tuple(claimed)
         sources = ("synthetic_holdout_facts",) if item["holdout_source"] else ()
         if item["kind"] == "holdout":
             if item["holdout_selection"]:
@@ -3221,7 +3397,11 @@ def _precalibration_synthetic_graph(model):
                 ),
                 outputs=tuple(
                     Owned(
-                        item["entity"], column, "float64", rewrite=column in rewritten
+                        item["entity"],
+                        column,
+                        "float64",
+                        rewrite=column in rewritten,
+                        **({"rows": "keep"} if column in item["masks"] else {}),
                     )
                     for column in item["outputs"]
                 ),
@@ -3244,6 +3424,7 @@ def _precalibration_synthetic_graph(model):
                     "entity": item["entity"],
                     "column": column,
                     **({"rewrite": True} if column in rewritten else {}),
+                    **({"rows": "keep"} if column in item["masks"] else {}),
                 }
                 for column in item["outputs"]
             ],
@@ -3324,14 +3505,16 @@ def _precalibration_synthetic_graph(model):
         ),
         tuple(graph_nodes),
     )
-    config = TransportGraphConfig(engine_refs=references, create_outputs=(seed,))
+    config = TransportGraphConfig(engine_refs=references, create_outputs=created)
     return spec, graph, config
 
 
 def _precalibration_property_outcomes(model):
     """Acceptance by the guard and by today's guard, in both passes."""
     spec, graph, config = _precalibration_synthetic_graph(model)
-    compile_graph(graph)
+    compiled = compile_graph(graph)
+    # The composed pass gives each read the executor's writers.
+    assert _guard_writers(graph, compiled) == _executor_writers(graph, compiled)
     extension_spec = copy.deepcopy(spec)
     extension_spec["resources"]["transport_graph"]["nodes"] = [
         spec["resources"]["transport_graph"]["nodes"][0],
@@ -3806,6 +3989,9 @@ def _precalibration_inventory(engine_refs, encoding):
     """The prepared engine_refs map, spelled the ways a parameter can carry it."""
     inventory = {"engine_refs": dict(sorted(engine_refs.items()))}
     canonical = canonical_json(inventory).decode()
+    deep = canonical
+    for _ in range(6):
+        deep = json.dumps(deep)
     return {
         "string": canonical,
         "tuple": (canonical,),
@@ -3814,6 +4000,10 @@ def _precalibration_inventory(engine_refs, encoding):
         "embedded": f"inventory={json.dumps(inventory)};",
         # A JSON string spelling every brace as an escape: no literal brace.
         "escaped": json.dumps(canonical).replace("{", "\\u007b"),
+        # The key itself spelled with an escape.
+        "escaped_key": canonical.replace('"engine_refs"', '"\\u0065ngine_refs"'),
+        # Six layers of string encoding.
+        "deep": deep,
     }[encoding]
 
 
@@ -3824,6 +4014,8 @@ _PRECALIBRATION_INVENTORY_ENCODINGS = [
     "nested",
     "embedded",
     "escaped",
+    "escaped_key",
+    "deep",
 ]
 
 
@@ -3854,7 +4046,8 @@ def test_precalibration_ancestry_compiled_prepared_map_still_refuses(
 
 
 @pytest.mark.parametrize(
-    "encoding", ["string", "spaced", "nested", "embedded", "escaped"]
+    "encoding",
+    ["string", "spaced", "nested", "embedded", "escaped", "escaped_key", "deep"],
 )
 def test_precalibration_ancestry_declared_prepared_map_refuses(
     calibration_ancestry_composed, encoding
@@ -3931,9 +4124,9 @@ def _synthetic_stage(binding, outputs, derived=None):
     return stage
 
 
-def _synthetic_outcomes(spec, nodes, engine_refs):
-    """The guard's outcome in the declaration pass and the composed pass."""
-    graph = Graph(
+def _synthetic_graph(nodes):
+    """A synthetic graph: CREATE, then the given nodes."""
+    return Graph(
         "synthetic",
         (
             SourceRef("donor", "synthetic@1"),
@@ -3950,6 +4143,11 @@ def _synthetic_outcomes(spec, nodes, engine_refs):
             *nodes,
         ),
     )
+
+
+def _synthetic_outcomes(spec, nodes, engine_refs):
+    """The guard's outcome in the declaration pass and the composed pass."""
+    graph = _synthetic_graph(nodes)
     config = TransportGraphConfig(
         engine_refs=engine_refs, create_outputs=(_SYNTHETIC_SEED,)
     )
@@ -4269,6 +4467,394 @@ def test_precalibration_ancestry_unresolved_version_counts_every_producer():
     }
 
 
+def _writer_case(shape):
+    """A's private ``shared`` reaches B's ``b`` in ``v2`` only through ``adjust``.
+
+    A produces ``shared`` in CREATE and a FILTER makes ``v2``, where ``adjust``,
+    outside both stages, owns ``shared`` again. A full owner replaces A's
+    values (``shadowed``). A masked owner keeps them on the rows outside its
+    mask (``masked``, and two versions up in ``deep_masked``), and a rewrite
+    passes them on: ``rewrite_read_first`` declares ``b`` before ``adjust``,
+    so ``b`` is the first node that receives them.
+    """
+    bindings = [
+        _synthetic_binding(name, "person", ["shared", f"{name}_public"])
+        for name in ("A", "B")
+    ]
+    stages = [_synthetic_stage(row, [f"{row['id']}_public"]) for row in bindings]
+    reader = "v3" if shape == "deep_masked" else "v2"
+    masked = shape.endswith("masked")
+    adjust_row = {
+        "id": "adjust",
+        "kernel": "synthetic.adjust@1",
+        "population": "v2",
+        "outputs": [{"entity": "person", "column": "shared"}],
+    }
+    adjust = Node(
+        "adjust",
+        "synthetic.adjust@1",
+        population="v2",
+        outputs=(Owned("person", "shared", "float64"),),
+    )
+    if masked:
+        adjust_row["inputs"] = [{"entity": "person", "columns": ["keep"]}]
+        adjust_row["outputs"][0]["rows"] = "keep"
+        adjust = replace(
+            adjust,
+            inputs=(Slice("person", ("keep",)),),
+            outputs=(Owned("person", "shared", "float64", rows="keep"),),
+        )
+    if shape == "rewrite_read_first":
+        adjust_row["outputs"][0]["rewrite"] = True
+        adjust = replace(
+            adjust, outputs=(Owned("person", "shared", "float64", rewrite=True),)
+        )
+    members = [
+        _version_member(
+            "a_source",
+            RULES,
+            "create",
+            binding="A",
+            outputs=(("shared", False), ("A_public", False)),
+        ),
+        (
+            {
+                "id": "flags",
+                "kernel": "synthetic.flags@1",
+                "population": "create",
+                "outputs": [{"entity": "person", "column": "keep"}],
+            },
+            Node(
+                "flags",
+                "synthetic.flags@1",
+                population="create",
+                outputs=(Owned("person", "keep", "bool"),),
+            ),
+        ),
+        _version_filter("v2", "create"),
+        (adjust_row, adjust),
+    ]
+    if shape == "deep_masked":
+        members.append(_version_filter("v3", "v2"))
+    members.extend(
+        [
+            _version_member(
+                "b",
+                RULES,
+                reader,
+                binding="B",
+                inputs=("shared",),
+                outputs=(("B_public", False),),
+            ),
+            _version_member(
+                "cal", "calibrate.synthetic@1", reader, inputs=("B_public",)
+            ),
+        ]
+    )
+    if shape == "rewrite_read_first":
+        members.insert(3, members.pop(4))
+    rows, nodes = zip(*members, strict=True)
+    return _synthetic_stage_spec(bindings, stages, list(rows)), list(nodes)
+
+
+@pytest.mark.parametrize("declared", [True, False], ids=["declared", "compiled_only"])
+@pytest.mark.parametrize(
+    ("shape", "refuses"),
+    [
+        ("shadowed", None),
+        ("masked", "b"),
+        ("deep_masked", "b"),
+        ("rewrite_read_first", "b"),
+    ],
+)
+def test_precalibration_ancestry_reads_follow_every_writer(shape, refuses, declared):
+    """A read counts every writer whose values it receives, as the executor tracks them.
+
+    The writers continue below an owner that keeps earlier values: a masked
+    owner leaves A's values outside its mask, and a rewrite receives them. A
+    full owner that is not a rewrite stops the chain.
+    """
+    spec, nodes = _writer_case(shape)
+    if not declared:
+        spec["resources"]["transport_graph"]["nodes"][1:] = [
+            {"id": "cal", "kernel": "calibrate.synthetic@1", "population": "create"}
+        ]
+    outcome = (
+        None
+        if refuses is None
+        else (
+            ValueError,
+            f"Transport calibration ancestry: node {refuses!r} carries undeclared "
+            "pre-calibration stage output.",
+        )
+    )
+    outcomes = _synthetic_outcomes(spec, nodes, {"A": "A-ref", "B": "B-ref"})
+    assert outcomes == {
+        "declaration": outcome if declared else None,
+        "composed": outcome,
+    }
+
+
+def _expand_case(shape):
+    """Stage A's EXPAND installs ``cell``; ``claim`` owns it and calibration reads it.
+
+    ``claim`` names ``cell`` in ``materialized_expand_outputs``, so it receives
+    the EXPAND's values without a ``Slice``. It also owns ``other`` outright,
+    which replaces A's private ``other`` from CREATE. Calibration reads
+    ``cell``, ``other`` and CREATE's ``seed``. Stage A declares ``cell`` as a
+    derived output except in ``private`` and ``claim_in_stage``, where
+    ``claim`` is one of A's own nodes.
+    """
+    binding = _synthetic_binding("A", "person", ["other", "A_public"])
+    public = shape not in {"private", "claim_in_stage"}
+    stage = _synthetic_stage(
+        binding, ["A_public"], [("person", "cell")] if public else None
+    )
+    cells = (("person", "cell", "float64"),)
+    claim_params = {"materialized_expand_outputs": ["person.cell"]}
+    if shape == "claim_in_stage":
+        claim_params["engine_ref"] = {"binding": "A", "field": "engine_ref"}
+    rows = [
+        {
+            "id": "a_source",
+            "kernel": RULES,
+            "population": "create",
+            "rules_binding": "A",
+            "outputs": [
+                {"entity": "person", "column": "other"},
+                {"entity": "person", "column": "A_public"},
+            ],
+        },
+        {
+            "id": "a_expand",
+            "kernel": "synthetic.expand@1",
+            "structural": "expand",
+            "base": "create",
+            "params": {
+                "engine_ref": {"binding": "A", "field": "engine_ref"},
+                "expand_cells": [list(cell) for cell in cells],
+            },
+        },
+        {
+            "id": "claim",
+            "kernel": "synthetic.claim@1",
+            "population": "a_expand",
+            "params": claim_params,
+            "outputs": [
+                {"entity": "person", "column": "cell"},
+                {"entity": "person", "column": "other"},
+            ],
+        },
+        {
+            "id": "cal",
+            "kernel": "calibrate.synthetic@1",
+            "population": "a_expand",
+            "inputs": [{"entity": "person", "columns": ["cell", "other", "seed"]}],
+        },
+    ]
+    nodes = [
+        Node(
+            "a_source",
+            RULES,
+            population="create",
+            params={"engine_ref": "A-ref"},
+            outputs=(
+                Owned("person", "other", "float64"),
+                Owned("person", "A_public", "float64"),
+            ),
+        ),
+        Node(
+            "a_expand",
+            "synthetic.expand@1",
+            structural=StructuralDelta.EXPAND,
+            base="create",
+            params={"engine_ref": "A-ref", "expand_cells": cells},
+        ),
+        Node(
+            "claim",
+            "synthetic.claim@1",
+            population="a_expand",
+            params={
+                "materialized_expand_outputs": ("person.cell",),
+                **({"engine_ref": "A-ref"} if shape == "claim_in_stage" else {}),
+            },
+            outputs=(
+                Owned("person", "cell", "float64"),
+                Owned("person", "other", "float64"),
+            ),
+        ),
+        Node(
+            "cal",
+            "calibrate.synthetic@1",
+            population="a_expand",
+            inputs=(Slice("person", ("cell", "other", "seed")),),
+        ),
+    ]
+    spec = _synthetic_stage_spec([binding], [stage], rows)
+    # Values only composition resolves: the declaration cannot read them.
+    spec["resources"]["synthetic_expand"] = {
+        "cells": [list(cell) for cell in cells],
+        "claims": ["person.cell"],
+    }
+    if shape == "selected_cells":
+        rows[1]["params"]["expand_cells"] = {
+            "resource": "synthetic_expand",
+            "path": ["cells"],
+        }
+    if shape == "selected_claims":
+        claim_params["materialized_expand_outputs"] = {
+            "resource": "synthetic_expand",
+            "path": ["claims"],
+        }
+    return spec, nodes
+
+
+def _stage_output_refusal(node):
+    return (
+        ValueError,
+        f"Transport calibration ancestry: node {node!r} carries undeclared "
+        "pre-calibration stage output.",
+    )
+
+
+@pytest.mark.parametrize(
+    ("shape", "outcomes"),
+    [
+        ("public", {"declaration": None, "composed": None}),
+        (
+            "private",
+            {
+                "declaration": _stage_output_refusal("claim"),
+                "composed": _stage_output_refusal("claim"),
+            },
+        ),
+        (
+            "claim_in_stage",
+            {
+                "declaration": _stage_output_refusal("cal"),
+                "composed": _stage_output_refusal("cal"),
+            },
+        ),
+        # Cells only composition can tell: the EXPAND writes every column the
+        # declaration reads through it, and produces none of them.
+        (
+            "selected_cells",
+            {
+                "declaration": (
+                    ValueError,
+                    "precalibration_stages derived output person.cell of "
+                    "'stage.A' is not produced by a stage node upstream of "
+                    "calibration.",
+                ),
+                "composed": _stage_output_refusal("cal"),
+            },
+        ),
+        # Claims only composition can tell: every output is claimed, so the
+        # claim receives A's private ``other`` from below.
+        (
+            "selected_claims",
+            {
+                "declaration": _stage_output_refusal("claim"),
+                "composed": _stage_output_refusal("claim"),
+            },
+        ),
+    ],
+)
+def test_precalibration_ancestry_expand_claims_read_their_cells(shape, outcomes):
+    """An EXPAND writes its cells, and a claim receives them without a ``Slice``.
+
+    An EXPAND produces its cells for its stage's derived outputs, and each
+    later reader of a cell counts the EXPAND among its writers.
+    """
+    spec, nodes = _expand_case(shape)
+    assert _synthetic_outcomes(spec, nodes, {"A": "A-ref"}) == outcomes
+
+
+@pytest.mark.parametrize(
+    ("node", "params", "message"),
+    [
+        ("a_expand", {"engine_ref": "A-ref"}, "EXPAND node 'a_expand' needs tuple "),
+        (
+            "claim",
+            {"materialized_expand_outputs": ("cell",)},
+            "Node 'claim' params['materialized_expand_outputs'] must be a tuple ",
+        ),
+    ],
+    ids=["expand_cells", "materialized_expand_outputs"],
+)
+def test_precalibration_ancestry_malformed_compiled_expand_params_refuse(
+    node, params, message
+):
+    """The composed pass reads EXPAND cells and claims as the executor does."""
+    spec, nodes = _expand_case("public")
+    nodes = [
+        replace(item, params=params) if item.id == node else item for item in nodes
+    ]
+    outcome = _synthetic_outcomes(spec, nodes, {"A": "A-ref"})
+    assert outcome["declaration"] is None
+    assert outcome["composed"][0] is ValueError
+    assert outcome["composed"][1].startswith(
+        f"Transport calibration ancestry: {message}"
+    )
+
+
+def _guard_writers(graph, compiled):
+    """Each node's reads as the composed pass resolves them, as (entity, column, writer)."""
+    return compose_module._precalibration_compiled_reads(
+        graph, compiled, *compose_module._precalibration_expansions(graph)
+    )
+
+
+def _executor_writers(graph, compiled):
+    """Each node's reads from the executor's own static writer lists."""
+    from microcosm.graph.executor import _input_writers
+
+    return {
+        node.id: {
+            (*coordinate, writer)
+            for coordinate, writers in _input_writers(compiled, node.id).items()
+            for writer in writers
+        }
+        for node in graph.nodes
+    }
+
+
+@pytest.mark.parametrize(
+    ("case", "shape"),
+    [
+        *((_writer_case, shape) for shape in ("shadowed", "masked", "deep_masked")),
+        (_writer_case, "rewrite_read_first"),
+        *((_expand_case, shape) for shape in ("public", "private", "claim_in_stage")),
+    ],
+    ids=lambda value: getattr(value, "__name__", value),
+)
+def test_precalibration_compiled_writers_match_the_executor(case, shape):
+    """The composed pass and the executor give every read the same writers.
+
+    The pass reimplements the executor's writer chain (``_writers_of``)
+    because the guard runs before execution; this differential holds them
+    together on the writer and EXPAND examples.
+    """
+    _, nodes = case(shape)
+    graph = _synthetic_graph(nodes)
+    compiled = compile_graph(graph)
+    assert _guard_writers(graph, compiled) == _executor_writers(graph, compiled)
+
+
+@pytest.mark.parametrize("source", ["skeleton", "extended", "entitlement"])
+def test_precalibration_compiled_writers_match_the_executor_on_composed_graphs(
+    request, source
+):
+    """The same differential on the composed NZ graphs and the entitlement graph."""
+    if source == "entitlement":
+        fixture = request.getfixturevalue("precalibration_entitlement")
+        graph = compose_transport_graph(fixture.spec, fixture.config)
+    else:
+        graph = request.getfixturevalue("composed").graph(extended=source == "extended")
+    compiled = compile_graph(graph)
+    assert _guard_writers(graph, compiled) == _executor_writers(graph, compiled)
+
+
 def _derived_case(*, derived, outputs=(), producer_upstream=True):
     """A person-binding gross-up solve whose output is not a binding variable.
 
@@ -4516,6 +5102,18 @@ _MALFORMED_NODE_FIELDS = {
     "missing_columns": ("mid", "inputs", [{"entity": "family"}]),
     "string_inputs": ("mid", "inputs", "u_out"),
     "output_without_entity": ("mid", "outputs", [{"column": "mid_out"}]),
+    "list_output_rows": (
+        "mid",
+        "outputs",
+        [{"entity": "person", "column": "mid_out", "rows": ["keep"]}],
+    ),
+    "null_output_rows": (
+        "mid",
+        "outputs",
+        [{"entity": "person", "column": "mid_out", "rows": None}],
+    ),
+    "unknown_structural": ("mid", "structural", "explode"),
+    "list_structural": ("mid", "structural", ["expand"]),
     "edge_without_producer": ("cal", "artifact_inputs", [{"name": "trace"}]),
     "string_edges": ("cal", "artifact_inputs", "probe"),
     "missing_kernel": ("probe", "kernel", None),
@@ -4690,6 +5288,91 @@ def test_precalibration_ancestry_malformed_calibration_endpoint_refuses(endpoint
     )
 
 
+@pytest.mark.parametrize(
+    "note",
+    [
+        "the engine_refs map",
+        '{"note": "engine_refs"}',
+        '["engine_refs"]',
+        '"\\u0065ngine_refs"',
+    ],
+)
+def test_precalibration_ancestry_engine_refs_text_is_not_the_map(note):
+    """Only the map's key, followed by a colon, marks the inventory."""
+    spec = _shape_case()
+    _shape_rows(spec)["mid"]["params"] = {"note": note}
+    assert (
+        _shape_outcome(compose_module.validate_transport_calibration_ancestry, spec)
+        is None
+    )
+
+
+def test_precalibration_ancestry_inventory_scan_is_linear():
+    """A harmless parameter full of escaped quotes costs one pass per layer.
+
+    Decoding JSON from every quote made this quadratic: 8 KB took 0.6 s and
+    32 KB took 24 s. Decoding layer by layer takes milliseconds.
+    """
+    spec = _shape_case()
+    _shape_rows(spec)["mid"]["params"] = {"note": "prefix" + r"\"" * 16_000}
+    started = time.perf_counter()
+    assert (
+        _shape_outcome(compose_module.validate_transport_calibration_ancestry, spec)
+        is None
+    )
+    assert time.perf_counter() - started < 1
+
+
+def _escape_layers(text, layers):
+    """``text`` behind ``layers`` layers of JSON escapes, one decode each.
+
+    Each quote becomes ``\\u0022``, then each backslash ``\\u005c`` once per
+    further layer, so the length grows by five characters a layer, not twofold
+    as with ``json.dumps``.
+    """
+    text = text.replace('"', "\\u0022")
+    for _ in range(layers - 1):
+        text = text.replace("\\", "\\u005c")
+    return text
+
+
+@pytest.mark.parametrize(
+    ("note", "outcome"),
+    [
+        # The inventory at the deepest layer the scan decodes, and one deeper.
+        (_escape_layers('{"engine_refs":{}}', 32), "inventory"),
+        (_escape_layers('{"engine_refs":{}}', 33), "inventory"),
+        # Harmless text: decoded through 32 layers, or refused one deeper.
+        (_escape_layers('{"note":"x"}', 32), None),
+        (_escape_layers('{"note":"x"}', 33), "inventory"),
+        # A chain of escaped backslashes 40,000 layers deep, refused quickly.
+        ("\\u005c" + "u005c" * 40_000 + "u0022x", "inventory"),
+    ],
+    ids=["key_32", "key_33", "harmless_32", "harmless_33", "chain_40000"],
+)
+def test_precalibration_ancestry_inventory_scan_stops_at_32_layers(note, outcome):
+    """The scan decodes at most 32 layers; a string escaped deeper refuses.
+
+    Each layer is a pass over the string, so a crafted chain one layer per
+    escaped backslash cost a pass per layer before the bound: quadratic.
+    """
+    spec = _shape_case()
+    _shape_rows(spec)["mid"]["params"] = {"note": note}
+    started = time.perf_counter()
+    assert _shape_outcome(
+        compose_module.validate_transport_calibration_ancestry, spec
+    ) == (
+        None
+        if outcome is None
+        else (
+            ValueError,
+            "Transport calibration ancestry: node 'mid' carries prepared "
+            "engine_refs map.",
+        )
+    )
+    assert time.perf_counter() - started < 1
+
+
 @pytest.mark.parametrize("node", ["probe", "mid"])
 def test_precalibration_ancestry_selected_prepared_map_refuses(node):
     """Selected resource data carrying the inventory is the inventory."""
@@ -4812,8 +5495,9 @@ def test_precalibration_ancestry_extension_selection_without_stages_is_todays(
             "node 'nz.v.V1.targets' has malformed params.",
         ),
         ({"id": "nz.targets.compile"}, "node 'nz.targets.compile' is declared twice."),
+        ({"id": None}, "node id None is not text."),
     ],
-    ids=["malformed_params", "repeated_id"],
+    ids=["malformed_params", "repeated_id", "non_text_id"],
 )
 def test_precalibration_ancestry_malformed_extension_row_refuses(
     precalibration_entitlement, change, message
