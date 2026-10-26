@@ -155,7 +155,7 @@ from typing import Any
 from urllib.parse import unquote, urlsplit
 
 import pytest
-from hypothesis import assume, given, settings
+from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
 
 from microcosm.build.chronicle_epoch import (
@@ -1377,7 +1377,13 @@ class TestReferenceSets:
         )
         assert HELD_OUT_FAMILIES.isdisjoint(reference.family for reference in upstream)
 
-    @settings(max_examples=300, deadline=None)
+    # A stalled shared host once made one draw take 36.9 s (load1 ~300), which
+    # Hypothesis reports as too_slow; the strategy itself is cheap.
+    @settings(
+        max_examples=300,
+        deadline=None,
+        suppress_health_check=[HealthCheck.too_slow],
+    )
     @given(
         data=st.data(),
         kind=st.sampled_from(HOLDOUT_LEAK_KINDS),
