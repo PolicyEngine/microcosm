@@ -806,8 +806,10 @@ def _is_rows(value: object, **fields: object) -> bool:
     """A list of objects whose named fields each pass their check."""
     return _is_list(
         value,
-        lambda row: isinstance(row, Mapping)
-        and all(check(row.get(key)) for key, check in fields.items()),
+        lambda row: (
+            isinstance(row, Mapping)
+            and all(check(row.get(key)) for key, check in fields.items())
+        ),
     )
 
 
