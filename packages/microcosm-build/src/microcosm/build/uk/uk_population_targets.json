@@ -3136,7 +3136,7 @@
               "map_to": "household"
             }
           ],
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to England and Wales (microcosm#1095, uk-data#490): DWP reports this benefit for England and Wales only since executive competence moved to the Scottish Government (Winter Fuel Payment from 1 April 2024; DWP benefit expenditure and caseload tables, Spring 2026, Notes), and OBR table 4.9 carries DWP's line. Scotland's Pension Age Winter Heating Payment is Scottish Government spending, so the model column sums English and Welsh households only. Since the abf0921 re-pin the Chronicle fact carries the England and Wales code K04000001 (microcosm#1300). From policyengine-uk 2.157.0 the payment goes to every eligible pensioner and the tax system recovers it above GBP 35,000 (winter_fuel_payment_charge, inside income_tax), so the column is the gross payment, like the fact, DWP's gross spending; before, the engine paid only pensioners under the income test."
+          "notes": "Bound at FY2025-26's fact alone, María's ruling of 2026-10-26 (microcosm#1095), an exception to her rule of 2026-09-22 that fiscal-year facts take a calendar-2025 window of three twelfths of FY2024-25 and nine twelfths of FY2025-26. The payment falls in November and December, so calendar 2025 holds the 2025-26 winter's payments; the window would mix in a quarter of FY2024-25, when the payment went only to pensioners on Pension Credit or another means-tested benefit, a rule the engine does not apply to 2025. Scoped to England and Wales (microcosm#1095, uk-data#490): DWP reports this benefit for England and Wales only since executive competence moved to the Scottish Government (Winter Fuel Payment from 1 April 2024; DWP benefit expenditure and caseload tables, Spring 2026, Notes), and OBR table 4.9 carries DWP's line. Scotland's Pension Age Winter Heating Payment is Scottish Government spending, so the model column sums English and Welsh households only. Since the abf0921 re-pin the Chronicle fact carries the England and Wales code K04000001 (microcosm#1300). From policyengine-uk 2.157.0 the payment goes to every eligible pensioner and the tax system recovers it above GBP 35,000 (winter_fuel_payment_charge, inside income_tax), so the column is the gross payment, like the fact, DWP's gross spending; before, the engine paid only pensioners under the income test."
         },
         "axiom": {
           "metric_name": "obr/winter_fuel_allowance",
@@ -3148,11 +3148,13 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.winter_fuel_payment",
-        "entity_name": "person"
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "period_value": 2025
       },
       "category_id": "obr.efo_expenditure",
       "label": "Winter fuel allowance",
-      "value_operation": "calendar_year_window"
+      "selector_note": "OBR EFO March 2026, table 4.9, winter fuel payments: period_value 2025 is the OBR April-start label for FY2025-26, the winter whose payments fall in calendar 2025 (no window)."
     },
     {
       "target_id": "isc.private_school_students",

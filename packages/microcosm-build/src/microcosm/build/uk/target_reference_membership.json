@@ -11280,10 +11280,10 @@
         {
           "name": "obr.winter_fuel_allowance",
           "status": "active",
-          "matched_fact_count_overall": 7,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 1508660934.2839375,
+          "resolved_value": 1911040880.4619167,
           "resolved_fact_period": "2025",
           "resolved_fact_key": "ledger_aggregate_fact_v2_86dba41b4681fa0d9c11b3a6"
         }

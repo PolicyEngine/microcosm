@@ -1450,6 +1450,8 @@
         "source_name": "obr",
         "source_concept": "obr.winter_fuel_payment",
         "entity_name": "person",
+        "period_type": "fiscal_year",
+        "period_value": 2025,
         "geography_level": "country",
         "geography_id": "K04000001"
       },
@@ -1461,8 +1463,7 @@
         "contract_target_id": "obr.winter_fuel_allowance",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection",
-      "value_operation": "calendar_year_window"
+      "assertion_policy": "allow_source_projection"
     },
     {
       "name": "isc.private_school_students",
