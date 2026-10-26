@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import ast
 import base64
 import json
+from pathlib import Path
 
 import pytest
 
@@ -66,6 +68,26 @@ def _use_key(monkeypatch, key: bytes) -> None:
 def test_every_layer_reads_one_variable():
     assert gate_battery.gate_signing_key_env("uk") == UK_GATE_SIGNING_KEY_ENV
     assert contract._UK_GATE_BATTERY_SIGNING_KEY_ENV == UK_GATE_SIGNING_KEY_ENV
+
+
+@pytest.mark.parametrize(
+    "tool",
+    [
+        "run_uk_cut.py",
+        "modal_uk_cut.py",
+        "preflight_uk_local_release_candidate.py",
+    ],
+)
+def test_the_uk_cut_tools_import_the_variable_name(tool):
+    """They import it from the registry, never copy it (docs/shared-constants.md)."""
+
+    source = (Path(__file__).resolve().parents[5] / "tools" / tool).read_text()
+    literals = {
+        node.value
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Constant)
+    }
+    assert UK_GATE_SIGNING_KEY_ENV not in literals
 
 
 def test_a_registry_refusal_is_a_signing_error_not_a_crash():
@@ -145,7 +167,9 @@ def test_the_local_preflight_names_an_unregistered_key(
         spine_h5=tmp_path / "spine.h5",
         ladder_npz=tmp_path / "ladder.npz",
         ledger_dir=tmp_path,
-        environ={module.SIGNING_KEY_ENV: base64.b64encode(UNREGISTERED).decode()},
+        environ={
+            module.UK_GATE_SIGNING_KEY_ENV: base64.b64encode(UNREGISTERED).decode()
+        },
         verify_digests=False,
     )
     assert any("not registered" in failure for failure in failures)
@@ -154,10 +178,10 @@ def test_the_local_preflight_names_an_unregistered_key(
         spine_h5=tmp_path / "spine.h5",
         ladder_npz=tmp_path / "ladder.npz",
         ledger_dir=tmp_path,
-        environ={module.SIGNING_KEY_ENV: base64.b64encode(ACTIVE).decode()},
+        environ={module.UK_GATE_SIGNING_KEY_ENV: base64.b64encode(ACTIVE).decode()},
         verify_digests=False,
     )
-    assert not any(module.SIGNING_KEY_ENV in failure for failure in failures)
+    assert not any(module.UK_GATE_SIGNING_KEY_ENV in failure for failure in failures)
 
 
 def test_a_signed_report_verifies_until_its_key_is_revoked(

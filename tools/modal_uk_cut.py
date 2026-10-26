@@ -28,10 +28,13 @@ Read a finished run's receipt::
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import re
 import subprocess
+import sys
 from pathlib import Path
+from types import ModuleType
 
 import modal
 
@@ -42,8 +45,38 @@ REPO_URL = "https://github.com/PolicyEngine/microcosm.git"
 CHECKOUT = "/microcosm"
 PYTHON_VERSION = "3.13"  # the version PR CI tests the lock with
 UV_VERSION = "0.11.7"
-SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 SHA = re.compile(r"^[0-9a-f]{40}$")
+#: The signing-key registry's source, and where the image carries a copy
+#: (beside this module, which Modal places in /root).
+REGISTRY_SOURCE = Path(__file__).resolve().parents[1] / (
+    "packages/microcosm-data/src/microcosm/data/gate_signing_keys.py"
+)
+REGISTRY_REMOTE = "/root/gate_signing_keys.py"
+
+
+def load_gate_signing_keys(path: Path | None = None) -> ModuleType:
+    """``microcosm.data.gate_signing_keys``, loaded from its source file.
+
+    The launcher runs under the Modal CLI's own interpreter, and the container
+    imports this module before it clones microcosm, so neither can import
+    microcosm.data. The registry module needs only the standard library:
+    locally it is read from this checkout, in the container from the image's
+    copy.
+    """
+
+    if path is None:
+        path = REGISTRY_SOURCE if modal.is_local() else Path(REGISTRY_REMOTE)
+    spec = importlib.util.spec_from_file_location("uk_cut_gate_signing_keys", path)
+    if spec is None or spec.loader is None:
+        raise SystemExit(f"cannot load the signing-key registry from {path}.")
+    module = importlib.util.module_from_spec(spec)
+    # dataclasses resolve string annotations through sys.modules.
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+registry = load_gate_signing_keys()
 
 
 def _secrets() -> list[modal.Secret]:
@@ -51,18 +84,26 @@ def _secrets() -> list[modal.Secret]:
     # two values the launcher passed, so the dependency lists agree.
     values = {
         name: os.environ[name]
-        for name in ("HF_TOKEN", SIGNING_KEY_ENV)
+        for name in ("HF_TOKEN", registry.UK_GATE_SIGNING_KEY_ENV)
         if os.environ.get(name)
     }
     return [modal.Secret.from_dict(values)] if values else []
 
 
-image = (
-    modal.Image.debian_slim(python_version=PYTHON_VERSION)
-    .apt_install("git", "build-essential", "libhdf5-dev")
-    .pip_install(f"uv=={UV_VERSION}")
-    .env({"UV_LINK_MODE": "copy", "PYTHONDONTWRITEBYTECODE": "1"})
-)
+def _image() -> modal.Image:
+    image = (
+        modal.Image.debian_slim(python_version=PYTHON_VERSION)
+        .apt_install("git", "build-essential", "libhdf5-dev")
+        .pip_install(f"uv=={UV_VERSION}")
+        .env({"UV_LINK_MODE": "copy", "PYTHONDONTWRITEBYTECODE": "1"})
+    )
+    if modal.is_local():
+        # Last, because Modal refuses build steps after a local file.
+        image = image.add_local_file(str(REGISTRY_SOURCE), REGISTRY_REMOTE)
+    return image
+
+
+image = _image()
 app = modal.App(APP_NAME)
 volume = modal.Volume.from_name(VOLUME_NAME, create_if_missing=True)
 
@@ -138,7 +179,11 @@ def main(
             f"{commit} is not on origin/main here (git fetch first); Modal cuts "
             "build only from main."
         )
-    missing = [n for n in ("HF_TOKEN", SIGNING_KEY_ENV) if not os.environ.get(n)]
+    missing = [
+        name
+        for name in ("HF_TOKEN", registry.UK_GATE_SIGNING_KEY_ENV)
+        if not os.environ.get(name)
+    ]
     print(
         f"cut {label} at {commit[:9]} on Modal; publish={publish}; "
         f"work dir {VOLUME_NAME}:{WORK}; missing credentials: {missing or 'none'}"

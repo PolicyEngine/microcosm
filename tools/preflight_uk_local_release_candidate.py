@@ -36,9 +36,11 @@ import sys
 from datetime import date
 from pathlib import Path
 
-from microcosm.data.gate_signing_keys import unregistered_gate_signing_key_problem
+from microcosm.data.gate_signing_keys import (
+    UK_GATE_SIGNING_KEY_ENV,
+    unregistered_gate_signing_key_problem,
+)
 
-SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 PIN_NAMES = ("spine", "ladder", "facts", "manifest")
 RELEASE_BLOCKING = "release_blocking"
 
@@ -62,17 +64,17 @@ def check_env(
 ) -> list[str]:
     env = os.environ if environ is None else environ
     failures: list[str] = []
-    key = env.get(SIGNING_KEY_ENV, "")
+    key = env.get(UK_GATE_SIGNING_KEY_ENV, "")
     if not key.strip():
         failures.append(
-            f"{SIGNING_KEY_ENV} is not set: the gate report cannot be signed."
+            f"{UK_GATE_SIGNING_KEY_ENV} is not set: the gate report cannot be signed."
         )
     else:
         try:
             raw = base64.b64decode(key.strip(), validate=True)
             if len(raw) != 32:
                 failures.append(
-                    f"{SIGNING_KEY_ENV} decodes to {len(raw)} bytes; the gate "
+                    f"{UK_GATE_SIGNING_KEY_ENV} decodes to {len(raw)} bytes; the gate "
                     "battery signs only with exactly 32."
                 )
             else:
@@ -80,9 +82,9 @@ def check_env(
                     "uk", raw, purpose="sign"
                 )
                 if problem is not None:
-                    failures.append(f"{SIGNING_KEY_ENV}: {problem}")
+                    failures.append(f"{UK_GATE_SIGNING_KEY_ENV}: {problem}")
         except Exception:
-            failures.append(f"{SIGNING_KEY_ENV} is not valid base64.")
+            failures.append(f"{UK_GATE_SIGNING_KEY_ENV} is not valid base64.")
     if not pins_path.exists():
         failures.append(f"pins file missing: {pins_path}")
         return failures

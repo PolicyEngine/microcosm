@@ -56,7 +56,6 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 UK_DIR = REPO_ROOT / "packages/microcosm-build/src/microcosm/build/uk"
 CUT_INPUTS = REPO_ROOT / "tools/uk_cut_inputs.json"
 DEFAULT_WORK_DIR = Path("~/microcosm-uk-work").expanduser()
-SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 RELEASE_ID = "microcosm-uk-2024-25-national"
 CANDIDATE_NAME = "microcosm_uk_2024_25"
 SPINE_NAME = "uk_frs_spine_2024_25.h5"
@@ -964,6 +963,7 @@ def environment_checks() -> list[Check]:
 
 def signing_key_check() -> Check:
     from microcosm.data.gate_signing_keys import (
+        UK_GATE_SIGNING_KEY_ENV,
         GateSigningKeyError,
         decode_gate_signing_key,
         gate_signing_key_fingerprint,
@@ -972,7 +972,7 @@ def signing_key_check() -> Check:
 
     try:
         key = decode_gate_signing_key(
-            os.environ.get(SIGNING_KEY_ENV), env=SIGNING_KEY_ENV
+            os.environ.get(UK_GATE_SIGNING_KEY_ENV), env=UK_GATE_SIGNING_KEY_ENV
         )
         require_registered_gate_signing_key("uk", key, purpose="sign")
     except GateSigningKeyError as error:
@@ -1513,10 +1513,13 @@ def run_publish(runner: Runner, tag: str, *, publish: bool) -> None:
 
 
 def write_receipt(runner: Runner, extra: Mapping[str, Any]) -> None:
-    from microcosm.data.gate_signing_keys import gate_signing_key_fingerprint
+    from microcosm.data.gate_signing_keys import (
+        UK_GATE_SIGNING_KEY_ENV,
+        gate_signing_key_fingerprint,
+    )
 
     paths = runner.paths
-    key = os.environ.get(SIGNING_KEY_ENV)
+    key = os.environ.get(UK_GATE_SIGNING_KEY_ENV)
     import base64
 
     receipt = {
