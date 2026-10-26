@@ -447,6 +447,21 @@ def test_copies_of_one_source_household_count_once() -> None:
     assert support["top10_source_share"] == pytest.approx(1.0)
 
 
+def test_the_top_ten_share_counts_sources_not_households() -> None:
+    # Twelve equal households, the first two copies of one source: the ten
+    # heaviest households hold 10/12 of the cell, the ten heaviest of the 11
+    # sources (the doubled one and nine others) hold 11/12 (review r3).
+    support = _diagnostic._support(
+        np.ones(12, dtype=bool),
+        np.full(12, 50.0),
+        np.arange(12),
+        np.array([0, 0, *range(1, 11)]),
+    )
+    assert support["source_households"] == 11
+    assert support["top10_household_share"] == pytest.approx(10 / 12)
+    assert support["top10_source_share"] == pytest.approx(11 / 12)
+
+
 # The contract and the compile.
 
 
