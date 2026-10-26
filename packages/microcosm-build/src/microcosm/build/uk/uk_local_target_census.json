@@ -487,7 +487,6 @@
     },
     {
       "area_types": [
-        "constituency",
         "la"
       ],
       "family": "council_tax",
@@ -496,6 +495,7 @@
     },
     {
       "area_types": [
+        "constituency",
         "la"
       ],
       "family": "domestic_energy",
