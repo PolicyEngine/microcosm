@@ -322,13 +322,13 @@ def test_manifest_entry_and_bound_are_the_reviewed_ones() -> None:
         # The OBR per-capita path as the engine carries it; 2030 is its last
         # published year and later years repeat the 2030 rate.
         "expected_yoy_growth_by_year": {
-            "2023": 0.0532,
-            "2024": 0.0372,
-            "2025": 0.0438,
-            "2026": 0.0292,
-            "2027": 0.0323,
-            "2028": 0.031,
-            "2029": 0.0296,
+            "2023": 0.0524,
+            "2024": 0.0389,
+            "2025": 0.0474,
+            "2026": 0.0294,
+            "2027": 0.0326,
+            "2028": 0.0317,
+            "2029": 0.0306,
             "2030": 0.0315,
         },
         # 6,000 in 2023-24, 3,000 from 2024-25: a 2023-period frame's base
@@ -366,7 +366,7 @@ def test_projection_from_pins_is_the_engine_free_statement_of_the_path() -> None
     assert pinned.engine == UK_CGT_PROJECTION_PINS_ENGINE
     assert pinned.exempt_amount_by_year["2023"] == 6_000.0
     assert pinned.exempt_amount_by_year["2024"] == 3_000.0
-    assert pinned.yoy_growth_by_year["2024"] == pytest.approx(0.0372)
+    assert pinned.yoy_growth_by_year["2024"] == pytest.approx(0.0389)
     with pytest.raises(ValueError, match="no .* value for 2031"):
         uk_cgt_projection_from_pins(
             2024,

@@ -1,4 +1,4 @@
-"""The DfE spring-term measures on hand-built households (policyengine-uk 2.147.2)."""
+"""The DfE spring-term measures on hand-built households (policyengine-uk 2.162.3)."""
 
 from __future__ import annotations
 
@@ -129,12 +129,16 @@ def test_universal_hours_follow_dfe_age_and_school_start() -> None:
     assert in_reception[DFE_SPRING_UNIVERSAL] == 0
     assert in_reception["early_years_term_share_before_school"] == pytest.approx(1 / 3)
     assert in_nursery[DFE_SPRING_UNIVERSAL] == 1
-    # Three on 31 December whether born on 6 or 7 October 2022, though the
-    # engine pays the second no universal hours (two on 6 October).
+    # Three on 31 December whether born on 6 or 7 October 2022. Since
+    # policyengine-uk 2.156.1 the engine pays both from the term after the
+    # third birthday, the spring term, where it used to pay the second nothing
+    # (two on 6 October).
     sixth, seventh = _children(20221006, 20221007)
     assert sixth[DFE_SPRING_UNIVERSAL] == seventh[DFE_SPRING_UNIVERSAL] == 1
     assert sixth["universal_childcare_entitlement"] > 0
-    assert seventh["universal_childcare_entitlement"] == 0
+    assert seventh["universal_childcare_entitlement"] == pytest.approx(
+        sixth["universal_childcare_entitlement"]
+    )
     # 31 December 2022 is three on 31 December 2025; 1 January 2023 is two.
     older, younger = _children(20221231, 20230101)
     assert (older[DFE_AGE_AT_31_DECEMBER], younger[DFE_AGE_AT_31_DECEMBER]) == (3, 2)

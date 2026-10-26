@@ -63,8 +63,10 @@ from microcosm.frame import EntitySchema, Frame, MassChange, WeightKind, Weights
 # the next policyengine-uk bump retires the OBR welfare-cap split and the
 # England postgraduate repayments (microcosm#1095), and England's single adult
 # council tax discount binds (microcosm#953); microcosm#1359 adds five OBR
-# excise receipts rows, measured at FY2024-25.
-ACTIVE_REFERENCE_COUNT = 1341
+# excise receipts rows, measured at FY2024-25; the bump after it compiles
+# obr.domestic_rates, pinned to the UK, and HMRC's five Child Benefit family
+# rows (microcosm#1095).
+ACTIVE_REFERENCE_COUNT = 1347
 
 
 def _uc_reference(**overrides) -> LedgerTargetReference:

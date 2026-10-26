@@ -203,6 +203,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "ons_mid2025_single_year_age_by_sex.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "hmrc_child_benefit_statistics.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"

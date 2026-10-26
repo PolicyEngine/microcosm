@@ -882,7 +882,12 @@
       "obr.wine_duties": "No incumbent target: uk-data never measured excise duty, which scored zero on its data; microcosm#1359 writes the excise inputs and measures this OBR FY2024-25 line as a held-out diagnostic.",
       "obr.spirits_duties": "No incumbent target: uk-data never measured excise duty, which scored zero on its data; microcosm#1359 writes the excise inputs and measures this OBR FY2024-25 line as a held-out diagnostic.",
       "obr.tobacco_duties": "No incumbent target: uk-data never measured excise duty, which scored zero on its data; microcosm#1359 writes the excise inputs and measures this OBR FY2024-25 line as a held-out diagnostic.",
-      "obr.betting_and_gaming_duties": "No incumbent target: uk-data never measured excise duty, which scored zero on its data; microcosm#1359 writes the excise inputs and measures this OBR FY2024-25 line as a held-out diagnostic."
+      "obr.betting_and_gaming_duties": "No incumbent target: uk-data never measured excise duty, which scored zero on its data; microcosm#1359 writes the excise inputs and measures this OBR FY2024-25 line as a held-out diagnostic.",
+      "hmrc.child_benefit.families_in_payment.children_1": "No incumbent target: uk-data binds Child Benefit spending only; microcosm#1095 binds HMRC's families in payment by number of children (Child Benefit Statistics, August 2025).",
+      "hmrc.child_benefit.families_in_payment.children_2": "No incumbent target: uk-data binds Child Benefit spending only; microcosm#1095 binds HMRC's families in payment by number of children (Child Benefit Statistics, August 2025).",
+      "hmrc.child_benefit.families_in_payment.children_3": "No incumbent target: uk-data binds Child Benefit spending only; microcosm#1095 binds HMRC's families in payment by number of children (Child Benefit Statistics, August 2025).",
+      "hmrc.child_benefit.families_in_payment.children_4": "No incumbent target: uk-data binds Child Benefit spending only; microcosm#1095 binds HMRC's families in payment by number of children (Child Benefit Statistics, August 2025).",
+      "hmrc.child_benefit.families_in_payment.children_5_plus": "No incumbent target: uk-data binds Child Benefit spending only; microcosm#1095 binds HMRC's families in payment by number of children (Child Benefit Statistics, August 2025)."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -1300,7 +1305,12 @@
       "microcosm.high_value_homes.over_1m_by_region",
       "microcosm.high_value_homes.over_1_5m_by_region",
       "microcosm.high_value_homes.over_2m_by_region",
-      "mhclg.council_tax_stock.single_adult_discount"
+      "mhclg.council_tax_stock.single_adult_discount",
+      "hmrc.child_benefit.families_in_payment.children_1",
+      "hmrc.child_benefit.families_in_payment.children_2",
+      "hmrc.child_benefit.families_in_payment.children_3",
+      "hmrc.child_benefit.families_in_payment.children_4",
+      "hmrc.child_benefit.families_in_payment.children_5_plus"
     ]
   },
   "profile_parity": {
@@ -1310,7 +1320,7 @@
     "source_schema_version": "policyengine_ledger.target_profile.v1",
     "source_profile_id": "uk_local_geography",
     "source_target_count": 25,
-    "contract_target_count": 59,
+    "contract_target_count": 60,
     "corrected_rows": 25,
     "corrected": [
       {
@@ -1773,7 +1783,7 @@
         "reason": "Narrowed to the private-rent local-area record-set spec; non-English/masked absences are signed by the area compiler."
       }
     ],
-    "activation_added_rows": 34,
+    "activation_added_rows": 35,
     "activation_additions": [
       {
         "target_id": "ons.census.households",
@@ -1910,6 +1920,10 @@
       {
         "target_id": "ons.rent.private_rent_brma",
         "basis": "microcosm#1090, #1262; ONS PIPR's Scottish rents, published for the 18 Broad Rental Market Areas only, bound at their own grain"
+      },
+      {
+        "target_id": "mhclg.council_tax_stock.by_area.single_adult_discount",
+        "basis": "microcosm#1095; pinned MHCLG council taxbase (CTB line 8, the dwellings with the single adult household 25% discount, all bands) by billing authority"
       }
     ],
     "scope_target_ids": [
@@ -1971,7 +1985,8 @@
       "microcosm.high_value_homes.over_2m",
       "desnz.subnational.electricity_kwh",
       "desnz.subnational.gas_kwh",
-      "desnz.subnational.gas_connected_households"
+      "desnz.subnational.gas_connected_households",
+      "mhclg.council_tax_stock.by_area.single_adult_discount"
     ]
   },
   "targets": [
@@ -1989,10 +2004,10 @@
       "bindings": {
         "policyengine": {
           "metric_name": "obr/income_tax",
-          "value_variable": "income_tax_annual",
+          "value_variable": "income_tax_before_winter_fuel_payment_charge_annual",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
+          "notes": "Income tax before the Winter Fuel Payment charge, which policyengine-uk adds to income_tax from 2.157.0 (María's ruling of 2026-10-25, microcosm#1095): HMRC recovers 2025's payments through 2026-27 tax codes and self assessment, so the FY2025-26 receipts in the window hold almost none of the recovery. Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/income_tax",
@@ -2128,8 +2143,8 @@
       "bindings": {
         "policyengine": {
           "metric_name": "obr/vat",
-          "value_variable": "vat",
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Bound again with the next policyengine-uk bump (María's ruling D3 of 2026-10-08, microcosm#1113 and #1278): policyengine-uk#2187, released in 2.135.7, replaced the constant survey-coverage factor, and on #1333's policyengine-uk 2.145.0 arm the row reads about 6 percent above OBR at design weights and about 11 percent above at the calibrated weights while held out. OBR's receipts include VAT on private school fees, charged from 1 January 2025, which policyengine-uk's current-law vat leaves out (private_school_vat is a reform variable until policyengine-uk#2319); the row binds vat alone, so that residual stays in its error."
+          "value_expression": "vat + private_school_vat",
+          "notes": "Measured at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). OBR's receipts include VAT on private school fees, charged from 1 January 2025, which policyengine-uk charges from 2.157.1 (policyengine-uk#2319) as private_school_vat beside its general vat, so the row measures both, as the obr.esa and obr.pip rows sum their parts (microcosm#1095). Held as a measured diagnostic (calibration_measure_exclusions.json, María's ruling of 2026-10-24): the engine's survey coverage factor (policyengine-uk#2187) was derived on a certified Microcosm release, so binding the row would pull the consumption weights back toward that release."
         },
         "axiom": {
           "metric_name": "obr/vat",
@@ -2638,7 +2653,7 @@
         "policyengine": {
           "metric_name": "obr/domestic_rates",
           "value_variable": "domestic_rates",
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
+          "notes": "Chronicle stamps the row K02000001, as OBR's table 4.1 is UK-wide, and the selector pins it there; domestic_rates is zero outside Northern Ireland, so the UK total is Northern Ireland's. Held as a diagnostic: the row looks like the district rate only, and domestic_rates is the whole bill (calibration_measure_exclusions.json, microcosm#1095). Measured at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/domestic_rates",
@@ -3121,7 +3136,7 @@
               "map_to": "household"
             }
           ],
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to England and Wales (microcosm#1095, uk-data#490): DWP reports this benefit for England and Wales only since executive competence moved to the Scottish Government (Winter Fuel Payment from 1 April 2024; DWP benefit expenditure and caseload tables, Spring 2026, Notes), and OBR table 4.9 carries DWP's line. Scotland's Pension Age Winter Heating Payment is Scottish Government spending, so the model column sums English and Welsh households only. Since the abf0921 re-pin the Chronicle fact carries the England and Wales code K04000001 (microcosm#1300)."
+          "notes": "Bound at FY2025-26's fact alone, María's ruling of 2026-10-26 (microcosm#1095), an exception to her rule of 2026-09-22 that fiscal-year facts take a calendar-2025 window of three twelfths of FY2024-25 and nine twelfths of FY2025-26. The payment falls in November and December, so calendar 2025 holds the 2025-26 winter's payments; the window would mix in a quarter of FY2024-25, when the payment went only to pensioners on Pension Credit or another means-tested benefit, a rule the engine does not apply to 2025. Scoped to England and Wales (microcosm#1095, uk-data#490): DWP reports this benefit for England and Wales only since executive competence moved to the Scottish Government (Winter Fuel Payment from 1 April 2024; DWP benefit expenditure and caseload tables, Spring 2026, Notes), and OBR table 4.9 carries DWP's line. Scotland's Pension Age Winter Heating Payment is Scottish Government spending, so the model column sums English and Welsh households only. Since the abf0921 re-pin the Chronicle fact carries the England and Wales code K04000001 (microcosm#1300). From policyengine-uk 2.157.0 the payment goes to every eligible pensioner and the tax system recovers it above GBP 35,000 (winter_fuel_payment_charge, inside income_tax), so the column is the gross payment, like the fact, DWP's gross spending; before, the engine paid only pensioners under the income test."
         },
         "axiom": {
           "metric_name": "obr/winter_fuel_allowance",
@@ -3133,11 +3148,13 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.winter_fuel_payment",
-        "entity_name": "person"
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "period_value": 2025
       },
       "category_id": "obr.efo_expenditure",
       "label": "Winter fuel allowance",
-      "value_operation": "calendar_year_window"
+      "selector_note": "OBR EFO March 2026, table 4.9, winter fuel payments: period_value 2025 is the OBR April-start label for FY2025-26, the winter whose payments fall in calendar 2025 (no window)."
     },
     {
       "target_id": "isc.private_school_students",
@@ -3524,7 +3541,7 @@
           "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20).",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             }
@@ -3583,7 +3600,7 @@
               "value": 0
             },
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             }
@@ -3638,7 +3655,7 @@
           "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20). HMRC counts the profit after losses brought forward, which the spine keeps apart in loss_relief, so the value and the band read it after that relief (microcosm#1095).",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             }
@@ -3697,7 +3714,7 @@
               "value": 0
             },
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             }
@@ -3752,7 +3769,7 @@
           "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20).",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             }
@@ -3811,7 +3828,7 @@
               "value": 0
             },
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             }
@@ -3866,7 +3883,7 @@
           "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20). SPI Table 3.7 net income from property is landlords' profit after allowable expenses and before residential finance costs, the concept property_income holds, so the facts bind unscaled. The incumbent's x1.9 adjustment set HMRC Property Rental Income Statistics receipts, which are before expenses, against this net amount and is retired (microcosm#1106, ruled 2026-10-05); the receipts are constructed on property_rental_income by the property_components stage, and PRIS stays a diagnostic (ruled 2026-10-08). Uprated to 2025 by total_income_growth_by_total_income_band, the index the paired count rows' taxpayer_count_growth_by_total_income_band belongs with (microcosm#1063): the flat obr.per_capita.gdp, which policyengine-uk gives property_income itself, would have implied per-band mean profit moves of about -13% (GBP 100,000 to 150,000) to +11% (GBP 15,000 to 20,000) between 2023 and 2025 against those counts, where the band index keeps the pairing within about 2.5%, the GBP 1,000,000 and over band at +2.51% (ruled 2026-10-11 on the microcosm#1145 review). The dividend amount rows keep the flat index.",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             }
@@ -3925,7 +3942,7 @@
               "value": 0
             },
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             }
@@ -3980,7 +3997,7 @@
           "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20).",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             }
@@ -4039,7 +4056,7 @@
               "value": 0
             },
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             }
@@ -4094,7 +4111,7 @@
           "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20).",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             }
@@ -4153,7 +4170,7 @@
               "value": 0
             },
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             }
@@ -14691,10 +14708,10 @@
       "bindings": {
         "policyengine": {
           "metric_name": "ons/savings_interest_income",
-          "value_variable": "savings_interest_income",
+          "value_expression": "savings_interest_income + tax_free_savings_income",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "uk-data holds the last actual flat for later years - a populace-side declaration (sources/ons_savings.py:39-44)."
+          "notes": "uk-data holds the last actual flat for later years - a populace-side declaration (sources/ons_savings.py:39-44). The row measures cash interest in and outside tax-free accounts. From policyengine-uk 2.162.2 savings_interest_income is the interest outside them: the engine takes the frame's tax_free_savings_income out of the frame's gross interest when it loads the frame. The ISA part, tax_free_savings_income, is added back (microcosm#1095)."
         },
         "axiom": {
           "metric_name": "ons/savings_interest_income",
@@ -17297,7 +17314,7 @@
               "value": "NORTHERN_IRELAND"
             }
           ],
-          "notes": "ORR table 7270 total government support to the rail industry, Great Britain, so Northern Ireland households are excluded from the measure; latest published fiscal year held to the calibration year. The engine recomputes rail_subsidy_spending as rail_usage x gov.dft.rail.fare_index (#890 G; 7270 broad total versus 7271 operational is the open ruling)."
+          "notes": "ORR table 7271 net operational government support to the rail industry from all sources, Great Britain, so Northern Ireland households are excluded from the measure; latest published fiscal year held to the calibration year. Table 7271 leaves out the enhancements and miscellaneous support that table 7270's broad total adds, which no household's rail use carries (María's basis ruling of 2026-10-25, #890 G). Held as a measured diagnostic: bound, it fails the weight-ratio gate (calibration_measure_exclusions.json). The engine recomputes rail_subsidy_spending as rail_usage x gov.dft.rail.fare_index."
         },
         "axiom": {
           "metric_name": "orr/rail_government_support",
@@ -17307,12 +17324,20 @@
       },
       "ledger_selector": {
         "source_name": "orr",
-        "source_concept": "orr.rail.total_government_support",
+        "source_concept": "orr.rail.government_support_by_source",
+        "source_measure_id": "support",
+        "groupby_dimension": "orr.funding_source",
+        "dimensions": [
+          "funding_source"
+        ],
+        "dimension_values": {
+          "funding_source": "all_sources"
+        },
         "entity_name": "government",
         "period_type": "fiscal_year"
       },
       "category_id": "orr.rail_industry_finance",
-      "label": "Total government support (Great Britain)"
+      "label": "Net operational government support, all sources (Great Britain)"
     },
     {
       "target_id": "ons.household_energy_expenditure",
@@ -21224,7 +21249,7 @@
           "notes": "Bound at the 2025 calibration period as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections (3/12 and 9/12; value_operation calendar_year_window), from the Income Tax liabilities statistics of 15 July 2026, HMRC's own projection of the 2023-24 SPI base with ONS population projections and OBR March 2026 assumptions. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the calibration binds at calendar 2025 and facts published by tax year use the months to the end of it. Banded by person-level total income on the publisher's eleven bands (30-50k, 50-100k and 200-500k are single bands here; 1m+ splits at 2m); the all-ranges row carries no band and stays out of the fan-out.",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             }
@@ -21305,7 +21330,7 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/itl_income_tax_income_band",
-          "value_variable": "income_tax_annual",
+          "value_variable": "income_tax_before_winter_fuel_payment_charge_annual",
           "from_entity": "person",
           "map_to": "household",
           "groupby_variable": "total_income_after_loss_relief_annual",
@@ -21362,7 +21387,7 @@
           "map_to": "household",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             },
@@ -21426,7 +21451,7 @@
           "map_to": "household",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             },
@@ -21486,10 +21511,10 @@
           "map_to": "household",
           "groupby_variable": "total_income_after_loss_relief_annual",
           "band_filter_dimension": "total_income",
-          "notes": "Taxable interest from banks and building societies of taxpayers by total-income band (SPI Table 3.7; ISA interest excluded), the taxpayer-concept anchor microcosm#866 asked for in place of the ONS D.41 row. Banded by person-level total income; band edges come from the fact dimension.",
+          "notes": "Taxable interest from banks and building societies of taxpayers by total-income band (SPI Table 3.7; ISA interest excluded), the taxpayer-concept anchor microcosm#866 asked for in place of the ONS D.41 row. Banded by person-level total income; band edges come from the fact dimension. From policyengine-uk 2.162.2 the engine's savings_interest_income leaves ISA interest out, as Table 3.7 does: the engine takes the frame's tax_free_savings_income out of the frame's gross interest when it loads the frame. Through 2.161.0 the measure was gross of ISA interest (microcosm#1095). The frame declares the legacy-gross contract, so the engine grows the gross interest to the calibration year and takes off the stored ISA part unchanged; the measure then overstates the interest outside ISAs a little, by about the ISA share times the year's interest growth. Writing ordinary interest under the additive contract would remove that (microcosm#1095).",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             }
@@ -21543,19 +21568,20 @@
           "band_filter_dimension": "total_income",
           "filters": [
             {
-              "variable": "savings_interest_income",
+              "variable": "savings_interest_income_outside_isas",
               "operator": ">",
               "value": 0
             },
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             }
           ],
           "value_variable": "person_count",
           "from_entity": "person",
-          "map_to": "household"
+          "map_to": "household",
+          "notes": "Counts the recipients of interest outside ISAs, as SPI Table 3.7 counts the recipients of taxable interest: the filter reads savings_interest_income_outside_isas, the frame's stored gross savings_interest_income less its tax_free_savings_income, so a person whose only interest is ISA interest is not counted (Vahid's review of #1400, round 2)."
         },
         "axiom": {
           "metric_name": "hmrc/savings_interest_income_count_income_band",
@@ -21607,7 +21633,7 @@
           "metric_name": "hmrc/spi_region/taxpayers_12570_15000",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             },
@@ -21683,7 +21709,7 @@
           "metric_name": "hmrc/spi_region/taxpayers_15000_20000",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             },
@@ -21759,7 +21785,7 @@
           "metric_name": "hmrc/spi_region/taxpayers_20000_30000",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             },
@@ -21835,7 +21861,7 @@
           "metric_name": "hmrc/spi_region/taxpayers_30000_40000",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             },
@@ -21911,7 +21937,7 @@
           "metric_name": "hmrc/spi_region/taxpayers_40000_50000",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             },
@@ -21987,7 +22013,7 @@
           "metric_name": "hmrc/spi_region/taxpayers_50000_70000",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             },
@@ -22063,7 +22089,7 @@
           "metric_name": "hmrc/spi_region/taxpayers_70000_100000",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             },
@@ -22139,7 +22165,7 @@
           "metric_name": "hmrc/spi_region/taxpayers_100000_150000",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             },
@@ -22215,7 +22241,7 @@
           "metric_name": "hmrc/spi_region/taxpayers_150000_200000",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             },
@@ -22286,7 +22312,7 @@
           "metric_name": "hmrc/spi_region/taxpayers_200000_plus",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             },
@@ -23012,7 +23038,7 @@
               "value": 15000
             }
           ],
-          "value_variable": "income_tax_annual",
+          "value_variable": "income_tax_before_winter_fuel_payment_charge_annual",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 12,570 to 15,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -23078,7 +23104,7 @@
               "value": 20000
             }
           ],
-          "value_variable": "income_tax_annual",
+          "value_variable": "income_tax_before_winter_fuel_payment_charge_annual",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 15,000 to 20,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -23144,7 +23170,7 @@
               "value": 30000
             }
           ],
-          "value_variable": "income_tax_annual",
+          "value_variable": "income_tax_before_winter_fuel_payment_charge_annual",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 20,000 to 30,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -23210,7 +23236,7 @@
               "value": 40000
             }
           ],
-          "value_variable": "income_tax_annual",
+          "value_variable": "income_tax_before_winter_fuel_payment_charge_annual",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 30,000 to 40,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -23276,7 +23302,7 @@
               "value": 50000
             }
           ],
-          "value_variable": "income_tax_annual",
+          "value_variable": "income_tax_before_winter_fuel_payment_charge_annual",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 40,000 to 50,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -23342,7 +23368,7 @@
               "value": 70000
             }
           ],
-          "value_variable": "income_tax_annual",
+          "value_variable": "income_tax_before_winter_fuel_payment_charge_annual",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 50,000 to 70,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -23408,7 +23434,7 @@
               "value": 100000
             }
           ],
-          "value_variable": "income_tax_annual",
+          "value_variable": "income_tax_before_winter_fuel_payment_charge_annual",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 70,000 to 100,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -23474,7 +23500,7 @@
               "value": 150000
             }
           ],
-          "value_variable": "income_tax_annual",
+          "value_variable": "income_tax_before_winter_fuel_payment_charge_annual",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 100,000 to 150,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -23540,7 +23566,7 @@
               "value": 200000
             }
           ],
-          "value_variable": "income_tax_annual",
+          "value_variable": "income_tax_before_winter_fuel_payment_charge_annual",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 150,000 to 200,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -23596,7 +23622,7 @@
               "value": 200000
             }
           ],
-          "value_variable": "income_tax_annual",
+          "value_variable": "income_tax_before_winter_fuel_payment_charge_annual",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 200,000 and over, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the year's total income (total_income_after_loss_relief_annual) by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -29965,6 +29991,305 @@
       "label": "Single adult discount"
     },
     {
+      "target_id": "hmrc.child_benefit.families_in_payment.children_1",
+      "family": "hmrc_child_benefit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.child_benefit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.child_benefit.children",
+            "operator": "==",
+            "value": 1
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/child_benefit/families_in_payment/children_1",
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "child_benefit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "child_benefit_child_count",
+              "operator": "==",
+              "value": 1
+            }
+          ],
+          "notes": "HMRC Child Benefit families in payment with one child (HMRC's one column; Child Benefit Statistics, Annual Release, August 2025, Table 2, United Kingdom; microcosm#1095): the benefit units whose child_benefit is above zero, counted by their children on policyengine-uk's own definition, a child or qualifying young person who is not the unit's claimant or partner (child_benefit_child_count). child_benefit is zero for a unit that does not claim and for one that stays opted out of payment, so the units are HMRC's families in payment. HMRC counts claimant families, so the model's benefit units differ at the edges: a qualifying young person in their own benefit unit, or a child claimed for from another unit (uk-data#562). The August 2025 count is a stock inside the calibration year (an in-year snapshot hold). HMRC's August 2025 counts, 6.87m families with about 11.73m children in payment, imply about £13.61bn at the calendar-2025 window (a quarter at 2024-25's £25.60 and £16.95 a week, three quarters at 2025-26's £26.05 and £17.25), about 1.8 percent more than obr.child_benefit's £13.37bn. Both rows bind, so the solve splits the gap (Vahid's review of microcosm#1400)."
+        },
+        "axiom": {
+          "metric_name": "hmrc/child_benefit/families_in_payment/children_1",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.child_benefit_families_in_payment",
+        "record_set_spec_id": "hmrc.child_benefit.aug2025.families_in_payment_by_number_of_children.month2025_08.v1",
+        "source_measure_id": "families_in_payment_children_one"
+      },
+      "selector_note": "HMRC Child Benefit Statistics, Annual Release (August 2025), Table 2, United Kingdom row: families in payment by number of children at the August 2025 count, the record set the spec names.",
+      "category_id": "hmrc.child_benefit",
+      "label": "Families in payment, one child"
+    },
+    {
+      "target_id": "hmrc.child_benefit.families_in_payment.children_2",
+      "family": "hmrc_child_benefit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.child_benefit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.child_benefit.children",
+            "operator": "==",
+            "value": 2
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/child_benefit/families_in_payment/children_2",
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "child_benefit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "child_benefit_child_count",
+              "operator": "==",
+              "value": 2
+            }
+          ],
+          "notes": "HMRC Child Benefit families in payment with two children (HMRC's two column; Child Benefit Statistics, Annual Release, August 2025, Table 2, United Kingdom; microcosm#1095): the benefit units whose child_benefit is above zero, counted by their children on policyengine-uk's own definition, a child or qualifying young person who is not the unit's claimant or partner (child_benefit_child_count). child_benefit is zero for a unit that does not claim and for one that stays opted out of payment, so the units are HMRC's families in payment. HMRC counts claimant families, so the model's benefit units differ at the edges: a qualifying young person in their own benefit unit, or a child claimed for from another unit (uk-data#562). The August 2025 count is a stock inside the calibration year (an in-year snapshot hold). HMRC's August 2025 counts, 6.87m families with about 11.73m children in payment, imply about £13.61bn at the calendar-2025 window (a quarter at 2024-25's £25.60 and £16.95 a week, three quarters at 2025-26's £26.05 and £17.25), about 1.8 percent more than obr.child_benefit's £13.37bn. Both rows bind, so the solve splits the gap (Vahid's review of microcosm#1400)."
+        },
+        "axiom": {
+          "metric_name": "hmrc/child_benefit/families_in_payment/children_2",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.child_benefit_families_in_payment",
+        "record_set_spec_id": "hmrc.child_benefit.aug2025.families_in_payment_by_number_of_children.month2025_08.v1",
+        "source_measure_id": "families_in_payment_children_two"
+      },
+      "selector_note": "HMRC Child Benefit Statistics, Annual Release (August 2025), Table 2, United Kingdom row: families in payment by number of children at the August 2025 count, the record set the spec names.",
+      "category_id": "hmrc.child_benefit",
+      "label": "Families in payment, two children"
+    },
+    {
+      "target_id": "hmrc.child_benefit.families_in_payment.children_3",
+      "family": "hmrc_child_benefit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.child_benefit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.child_benefit.children",
+            "operator": "==",
+            "value": 3
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/child_benefit/families_in_payment/children_3",
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "child_benefit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "child_benefit_child_count",
+              "operator": "==",
+              "value": 3
+            }
+          ],
+          "notes": "HMRC Child Benefit families in payment with three children (HMRC's three column; Child Benefit Statistics, Annual Release, August 2025, Table 2, United Kingdom; microcosm#1095): the benefit units whose child_benefit is above zero, counted by their children on policyengine-uk's own definition, a child or qualifying young person who is not the unit's claimant or partner (child_benefit_child_count). child_benefit is zero for a unit that does not claim and for one that stays opted out of payment, so the units are HMRC's families in payment. HMRC counts claimant families, so the model's benefit units differ at the edges: a qualifying young person in their own benefit unit, or a child claimed for from another unit (uk-data#562). The August 2025 count is a stock inside the calibration year (an in-year snapshot hold). HMRC's August 2025 counts, 6.87m families with about 11.73m children in payment, imply about £13.61bn at the calendar-2025 window (a quarter at 2024-25's £25.60 and £16.95 a week, three quarters at 2025-26's £26.05 and £17.25), about 1.8 percent more than obr.child_benefit's £13.37bn. Both rows bind, so the solve splits the gap (Vahid's review of microcosm#1400)."
+        },
+        "axiom": {
+          "metric_name": "hmrc/child_benefit/families_in_payment/children_3",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.child_benefit_families_in_payment",
+        "record_set_spec_id": "hmrc.child_benefit.aug2025.families_in_payment_by_number_of_children.month2025_08.v1",
+        "source_measure_id": "families_in_payment_children_three"
+      },
+      "selector_note": "HMRC Child Benefit Statistics, Annual Release (August 2025), Table 2, United Kingdom row: families in payment by number of children at the August 2025 count, the record set the spec names.",
+      "category_id": "hmrc.child_benefit",
+      "label": "Families in payment, three children"
+    },
+    {
+      "target_id": "hmrc.child_benefit.families_in_payment.children_4",
+      "family": "hmrc_child_benefit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.child_benefit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.child_benefit.children",
+            "operator": "==",
+            "value": 4
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/child_benefit/families_in_payment/children_4",
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "child_benefit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "child_benefit_child_count",
+              "operator": "==",
+              "value": 4
+            }
+          ],
+          "notes": "HMRC Child Benefit families in payment with four children (HMRC's four column; Child Benefit Statistics, Annual Release, August 2025, Table 2, United Kingdom; microcosm#1095): the benefit units whose child_benefit is above zero, counted by their children on policyengine-uk's own definition, a child or qualifying young person who is not the unit's claimant or partner (child_benefit_child_count). child_benefit is zero for a unit that does not claim and for one that stays opted out of payment, so the units are HMRC's families in payment. HMRC counts claimant families, so the model's benefit units differ at the edges: a qualifying young person in their own benefit unit, or a child claimed for from another unit (uk-data#562). The August 2025 count is a stock inside the calibration year (an in-year snapshot hold). HMRC's August 2025 counts, 6.87m families with about 11.73m children in payment, imply about £13.61bn at the calendar-2025 window (a quarter at 2024-25's £25.60 and £16.95 a week, three quarters at 2025-26's £26.05 and £17.25), about 1.8 percent more than obr.child_benefit's £13.37bn. Both rows bind, so the solve splits the gap (Vahid's review of microcosm#1400)."
+        },
+        "axiom": {
+          "metric_name": "hmrc/child_benefit/families_in_payment/children_4",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.child_benefit_families_in_payment",
+        "record_set_spec_id": "hmrc.child_benefit.aug2025.families_in_payment_by_number_of_children.month2025_08.v1",
+        "source_measure_id": "families_in_payment_children_four"
+      },
+      "selector_note": "HMRC Child Benefit Statistics, Annual Release (August 2025), Table 2, United Kingdom row: families in payment by number of children at the August 2025 count, the record set the spec names.",
+      "category_id": "hmrc.child_benefit",
+      "label": "Families in payment, four children"
+    },
+    {
+      "target_id": "hmrc.child_benefit.families_in_payment.children_5_plus",
+      "family": "hmrc_child_benefit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.child_benefit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.child_benefit.children",
+            "operator": ">=",
+            "value": 5
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/child_benefit/families_in_payment/children_5_plus",
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "child_benefit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "child_benefit_child_count",
+              "operator": ">=",
+              "value": 5
+            }
+          ],
+          "notes": "HMRC Child Benefit families in payment with five or more children (HMRC's five to nine and ten or more columns together; Child Benefit Statistics, Annual Release, August 2025, Table 2, United Kingdom; microcosm#1095): the benefit units whose child_benefit is above zero, counted by their children on policyengine-uk's own definition, a child or qualifying young person who is not the unit's claimant or partner (child_benefit_child_count). child_benefit is zero for a unit that does not claim and for one that stays opted out of payment, so the units are HMRC's families in payment. HMRC counts claimant families, so the model's benefit units differ at the edges: a qualifying young person in their own benefit unit, or a child claimed for from another unit (uk-data#562). The August 2025 count is a stock inside the calibration year (an in-year snapshot hold). HMRC's August 2025 counts, 6.87m families with about 11.73m children in payment, imply about £13.61bn at the calendar-2025 window (a quarter at 2024-25's £25.60 and £16.95 a week, three quarters at 2025-26's £26.05 and £17.25), about 1.8 percent more than obr.child_benefit's £13.37bn. Both rows bind, so the solve splits the gap (Vahid's review of microcosm#1400)."
+        },
+        "axiom": {
+          "metric_name": "hmrc/child_benefit/families_in_payment/children_5_plus",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.child_benefit_families_in_payment",
+        "record_set_spec_id": "hmrc.child_benefit.aug2025.families_in_payment_by_number_of_children.month2025_08.v1"
+      },
+      "selector_note": "HMRC Child Benefit Statistics, Annual Release (August 2025), Table 2, United Kingdom row: families in payment by number of children at the August 2025 count, the record set the spec names.",
+      "category_id": "hmrc.child_benefit",
+      "label": "Families in payment, five or more children",
+      "value_operation": "linear_combination",
+      "value_operands": [
+        {
+          "weight": 1,
+          "source_concept": "hmrc.child_benefit_families_in_payment",
+          "source_measure_id": "families_in_payment_children_five_to_nine",
+          "label": "five_to_nine"
+        },
+        {
+          "weight": 1,
+          "source_concept": "hmrc.child_benefit_families_in_payment",
+          "source_measure_id": "families_in_payment_children_ten_or_more",
+          "label": "ten_or_more"
+        }
+      ]
+    },
+    {
       "target_id": "hmrc.self_employment_income.amount",
       "family": "hmrc",
       "geography_levels": [
@@ -29991,7 +30316,7 @@
           "map_to": "household",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             }
@@ -30056,7 +30381,7 @@
               "value": 0
             },
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             }
@@ -30108,7 +30433,7 @@
           "map_to": "household",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             }
@@ -30173,7 +30498,7 @@
               "value": 0
             },
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             }
@@ -33196,7 +33521,7 @@
           "map_to": "household",
           "filters": [
             {
-              "variable": "income_tax_annual",
+              "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
             },
@@ -33527,6 +33852,72 @@
       "label": "Gas-connected households",
       "uprating_index": "desnz.subnational.gas_meter_share",
       "selector_note": "Each authority's census households (the ons.census.households cell) times its DESNZ domestic gas meters over its domestic electricity meters, 2024 (desnz.subnational.gas_meter_share), the share the lcfs stage imposes by region, here by authority. A member of the census household partition (census_gas_connected_share): the household controls set its level, the meters its share. Orkney and Shetland have no mains gas and are signed deferrals; a gas-connected household is one whose stored gas_consumption is positive (microcosm#1207)."
+    },
+    {
+      "target_id": "mhclg.council_tax_stock.by_area.single_adult_discount",
+      "family": "council_tax_stock",
+      "geography_levels": [
+        "local_authority"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.geography.country",
+            "equals": "ENGLAND"
+          },
+          {
+            "concept": "uk.housing.council_tax_discount_rate",
+            "equals": 0.25
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "council_tax/single_adult_discount",
+          "value_variable": "household_count",
+          "filters": [
+            {
+              "variable": "country",
+              "equals": "ENGLAND"
+            },
+            {
+              "variable": "council_tax_discount_rate",
+              "equals": 0.25
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "council_tax/single_adult_discount",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "mhclg",
+        "record_set_spec_id": "uk.local_geography.council_tax.england_ctb.line_08_single_adult_discount_dwellings.v1",
+        "source_measure_id": "total"
+      },
+      "selector_note": "MHCLG Council Taxbase line 8, all bands, per billing authority, from the return the national row takes (the feed labels the count 2025-10): the authority cells of mhclg.council_tax_stock.single_adult_discount (microcosm#953, microcosm#1095). Each cell counts the authority's households at policyengine-uk's council_tax_discount_rate of 0.25 (pe-uk#1864: one adult who is not disregarded), as the national row does; the cells share its measurement, so the England row is their control (an exact signature with no region tier). Line 8's total is the cells' one operand, so each cell takes the latest return across its authority's codes, as the band cells do: Barnsley and Sheffield carry their earlier returns under their former codes (E08000016, E08000019). Absent cells are signed deferrals; the household proxy is the band rows' (voa_dwellings_vs_household_frame).",
+      "category_id": "mhclg.council_tax_stock",
+      "label": "Single adult discount",
+      "value_operation": "linear_combination",
+      "value_operands": [
+        {
+          "weight": 1,
+          "source_concept": "mhclg.council_taxbase.single_adult_discount_dwellings",
+          "source_measure_id": "total",
+          "label": "line_08[total]"
+        }
+      ],
+      "area_scope": {
+        "local_authority": {
+          "gss_prefixes": [
+            "E"
+          ]
+        }
+      }
     }
   ],
   "diagnostic_references": {
@@ -34065,6 +34456,10 @@
       "hmrc.tax_free_childcare": {
         "provider_id": "hmrc",
         "label": "Tax-Free Childcare"
+      },
+      "hmrc.child_benefit": {
+        "provider_id": "hmrc",
+        "label": "Child Benefit"
       },
       "dfe.funded_childcare": {
         "provider_id": "dfe",

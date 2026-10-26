@@ -68,6 +68,11 @@ LA_ENERGY_METRICS = (
     "energy/gas_kwh",
     "energy/gas_connected_households",
 )
+#: England's dwellings with the single adult council tax discount by billing
+#: authority (MHCLG Council Taxbase line 8; microcosm#1095), the cells of the
+#: national single adult row. The return is England's and by billing
+#: authority, so the family is local-authority only.
+LA_COUNCIL_TAX_DISCOUNT_METRICS = ("council_tax/single_adult_discount",)
 COUNTRY_TO_REGION = {
     "England": "SOUTH_EAST",
     "Scotland": "SCOTLAND",
@@ -167,6 +172,10 @@ def metric_names(
     # only, appended after every earlier family under the same rule.
     if area_type == "la":
         names.extend(LA_ENERGY_METRICS)
+    # microcosm#1095: England's single adult council tax discount by billing
+    # authority, local authorities only, appended under the same rule.
+    if area_type == "la":
+        names.extend(LA_COUNCIL_TAX_DISCOUNT_METRICS)
     return tuple(names)
 
 

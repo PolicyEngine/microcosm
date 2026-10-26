@@ -226,8 +226,18 @@ HDF_WRITE_EXCLUSIONS = (
             "_write_energy_price_basis",
         ),
         reason=(
-            "Adds the energy spending's price-period root attribute only "
-            "(pe-uk#2571)."
+            "Adds the energy spending's price-period root attribute only (pe-uk#2571)."
+        ),
+    ),
+    HdfWriteExclusion(
+        exclusion_id="uk_isa_income_contract_root_attr",
+        writer=HdfWriteSite(
+            "packages/microcosm-build/src/microcosm/build/uk_runtime/national_frame.py",
+            "_write_isa_income_contract",
+        ),
+        reason=(
+            "Adds the ISA income contract root attribute only "
+            "(policyengine-uk 2.162.2; microcosm#1095)."
         ),
     ),
     HdfWriteExclusion(

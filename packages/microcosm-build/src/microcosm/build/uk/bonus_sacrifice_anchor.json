@@ -2,7 +2,7 @@
   "schema_version": 1,
   "engine": {
     "package": "policyengine-uk",
-    "version": "2.151.0"
+    "version": "2.162.3"
   },
   "written_by": "tools/pin_uk_bonus_sacrifice_anchor.py",
   "source": {
@@ -36,11 +36,11 @@
       2027
     ],
     "rates": [
-      0.0072,
-      0.0038,
-      0.0037
+      0.003,
+      0.0035,
+      0.0029
     ],
-    "factor": 1.014768161232
+    "factor": 1.0094293804499999
   },
   "upper_earnings_limit": {
     "parameter": "gov.hmrc.national_insurance.class_1.thresholds.upper_earnings_limit",

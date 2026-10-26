@@ -739,11 +739,12 @@ def top_up_gambling_participation(
             if seen.any()
             else np.average(donor_stakes[played], weights=donor_weight[played])
         )
-        scale = (
-            float(anchor / np.average(draws[regular], weights=weight[regular]))
+        added_mean = (
+            float(np.average(draws[regular], weights=weight[regular]))
             if regular.any()
-            else 1.0
+            else None
         )
+        scale = float(anchor / added_mean) if added_mean is not None else 1.0
         topped = drawn.copy()
         topped[regular] = scale * draws[regular]
         topped[occasional] = share * scale * draws[occasional]
@@ -783,6 +784,21 @@ def top_up_gambling_participation(
                     / stakes,
                 },
                 "amount_scale": scale,
+                # The scale's terms, so a moved scale shows which side moved
+                # (Vahid's review of #1400, round 3): the anchor, the added
+                # regular players' drawn mean, and the stake model's drawn
+                # mean for the households the diary saw, which separates a
+                # level gap between the two draws from the walk's selection.
+                "amount_scale_terms": {
+                    "anchor": "seen_households" if seen.any() else "donor_players",
+                    "anchor_mean_stake": float(anchor),
+                    "added_regular_drawn_mean_stake": added_mean,
+                    "seen_drawn_mean_stake": (
+                        float(np.average(draws[seen], weights=weight[seen]))
+                        if seen.any()
+                        else None
+                    ),
+                },
             }
         receipt["keys"][key] = {
             **entry,
