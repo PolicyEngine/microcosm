@@ -476,6 +476,7 @@ def test_qrf_columns_check_every_declared_output_regardless_of_density() -> None
         "afcs_reported",
         "bsp_reported",
         "war_widows_pension_reported",
+        "widowed_parents_allowance_reported",
         "jsa_contrib_reported",
         "jsa_income_reported",
         "esa_income_reported",

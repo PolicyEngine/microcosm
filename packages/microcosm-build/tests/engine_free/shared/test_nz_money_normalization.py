@@ -151,7 +151,8 @@ def test_donor_money_basis_cites_model_lineage_as_a_declared_convention():
 
 def test_donor_money_basis_evidence_matches_the_code_it_cites():
     # The evidence names symbols, not lines (test_nz_spec_package refuses local
-    # line citations), so each cited fact is checked against the code itself.
+    # line citations), so the test checks the cited constant and call
+    # expressions against the code itself.
     repository = paths_for("microcosm-build").repository
     tool = ast.parse(
         (repository / "tools/build_us_fiscal_refresh_release.py").read_text()

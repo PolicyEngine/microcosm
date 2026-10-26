@@ -402,6 +402,27 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     # pe-uk#2382). The enhanced FRS still adds FRS benefit code 9 into
     # bsp_reported, so its surface has no such input.
     "person.war_widows_pension_reported",
+    # Widowed Parent's Allowance, split out of FRS code 6 by rate (#1222,
+    # pe-uk#2572). The enhanced FRS keeps the whole code in bsp_reported.
+    "person.widowed_parents_allowance_reported",
+    # Spousal maintenance (ALIAMT or ALUAMT, and APAMT; #1320, pe-uk#2572).
+    # The enhanced FRS reads no alimony and keeps APAMT a private transfer.
+    "person.spousal_maintenance_income",
+    # Bonus sacrifice (#1340, pe-uk#2572 section 1): the enhanced FRS carries
+    # salary sacrifice only.
+    "person.pension_contributions_via_bonus_sacrifice",
+    # Liquid and solid heating fuels (#1278, pe-uk#2572): the enhanced FRS
+    # draws no fuel beside electricity and gas.
+    "household.liquid_fuel_consumption",
+    "household.solid_fuel_consumption",
+    # The share split inside corporate_wealth (pe-uk#1974) and the debt
+    # secured on other property (UC Regs 2013 reg 49(1)(b)), from the WAS
+    # property draw (microcosm#1095): the enhanced FRS carries corporate_wealth
+    # alone and no secured debt.
+    "household.directly_held_shares",
+    "household.unit_and_investment_trusts",
+    "household.other_residential_property_secured_debt",
+    "household.non_residential_property_secured_debt",
 )
 
 UK_KNOWN_MISSING_REFERENCE_EXPORT_COLUMNS: tuple[str, ...] = (

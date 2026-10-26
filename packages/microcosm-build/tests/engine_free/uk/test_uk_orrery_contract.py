@@ -296,6 +296,7 @@ def _brma_problem(n: int = 12, level: str = "brma"):
                 {
                     "household_id": np.arange(n, dtype=np.int64),
                     "source_household_id": np.arange(n, dtype=np.int64),
+                    "region": ["SCOTLAND"] * n,
                 }
             ),
         },

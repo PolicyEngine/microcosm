@@ -72,7 +72,9 @@ from tools.generate_uk_target_references import (
 
 _TEST_PATHS = paths_for("microcosm-build")
 
-ACTIVE_REFERENCE_COUNT = 1338
+# The next policyengine-uk bump retires three rows (microcosm#1095) and binds
+# England's single adult council tax discount (microcosm#953).
+ACTIVE_REFERENCE_COUNT = 1336
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 
 
@@ -1007,7 +1009,7 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
     assert membership["status_counts"] == {
-        "active": 1338,
+        "active": ACTIVE_REFERENCE_COUNT,
         "no_fact_at_or_before_period": 5,
         "signed_excluded": 17,
     }
@@ -1106,7 +1108,7 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
         {
             "family": "council_tax_stock",
             "status": "active_declared_rows",
-            "active_reference_count": 100,
+            "active_reference_count": 101,
             "signed_rationale": (
                 "MHCLG council taxbase (England), Welsh Government CT1 "
                 "(Wales) and Scottish Government CTAXBASE (Scotland) "
@@ -1117,7 +1119,9 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
                 "nine English regions of the region tier (microcosm#905), each "
                 "cell composed as the linear combination of the billing-"
                 "authority facts the crosswalk places in that region "
-                "(microcosm#929)."
+                "(microcosm#929). England's single adult discount is one "
+                "national row, MHCLG Council Taxbase line 8 for all bands "
+                "(microcosm#953)."
             ),
         },
         {

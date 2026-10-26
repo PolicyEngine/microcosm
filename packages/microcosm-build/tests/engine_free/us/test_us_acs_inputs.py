@@ -84,6 +84,33 @@ def _hours_frame(**columns) -> Frame:
     )
 
 
+def test_acs_native_work_experience_preserves_source_rows_and_records_provenance():
+    before = _hours_frame(
+        OCCP=[1010, np.nan], INDP=[7380, np.nan], WKWN=[13, np.nan], ESR=[1, np.nan]
+    )
+    result = map_acs_native_inputs(before)
+    person = result.frame.person
+
+    assert person["detailed_occupation_recode"].tolist() == [8, 0]
+    assert person["detailed_industry_recode"].tolist() == [13, 0]
+    assert person["major_industry_recode"].tolist() == [9, 0]
+    assert person["worked_last_year"].tolist() == [True, False]
+    assert person["worked_last_year"].dtype == bool
+    for column in ("OCCP", "INDP", "WKWN", "ESR"):
+        pd.testing.assert_series_equal(person[column], before.person[column])
+    assert result.native_inputs["detailed_industry_recode"]["source_columns"] == [
+        "INDP",
+        "AGEP",
+        "ESR",
+    ]
+    assert result.native_inputs["worked_last_year"]["missing_rows"] == 0
+
+
+def test_acs_partial_work_experience_surface_fails_closed():
+    with pytest.raises(ValueError, match="needs.*INDP.*WKWN"):
+        map_acs_native_inputs(_hours_frame(OCCP=[1010, np.nan], ESR=[1, np.nan]))
+
+
 def test_acs_usual_hours_preserve_forty_and_allocation_despite_current_unemployment():
     before = _hours_frame(WKHP=[40, np.nan], WKL=[1, np.nan], FWKHP=[1, 0], ESR=[3, 0])
     result = map_acs_native_inputs(before)

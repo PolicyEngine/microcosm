@@ -26,9 +26,12 @@ units, which is one minor unit for every factor below 2.
 
 Every normalized column maps through its concept's index family to one
 declared factor, or to an explicit identity with a reason; nothing falls back
-to a factor of one. Every applied factor ages money to the one declared
-``target_period``. Every money concept that survives transport is declared
-exactly once: normalized, quantile mapped or pending.
+to a factor of one. Every factor ``money.normalize@1`` applies ages money to
+the one declared ``target_period``: the kernel checks each selected factor
+through ``money_factor_inputs``, while a direct caller of
+``normalize_money_tables`` supplies its factors unchecked. Every money concept
+that survives transport is declared exactly once: normalized, quantile mapped
+or pending.
 """
 
 from __future__ import annotations

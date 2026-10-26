@@ -22,6 +22,11 @@ from microcosm.build.uk_runtime.dfe_spring_term import (
     DFE_SPRING_TERM_MEASURES,
     dfe_spring_term_status,
 )
+from microcosm.build.uk_runtime.domestic_energy_targets import (
+    household_energy_kwh,
+    household_energy_prices,
+)
+from microcosm.build.uk_runtime.energy_pricing import ELECTRICITY_KWH, GAS_KWH
 from microcosm.build.uk_runtime.frs_annual_income import (
     CONTRIBUTORY_BENEFITS_ANNUAL_SHARE,
     EMPLOYMENT_INCOME_ANNUAL_SHARE,
@@ -254,6 +259,19 @@ _LOSS_RELIEF_MEASURE_COMPONENTS = (
     LOSS_RELIEF_COLUMN,
     "total_income",
 )
+
+
+#: DESNZ's sub-national domestic energy (microcosm#1207): each household's
+#: electricity and gas kWh, and whether it is gas-connected. The lcfs stage
+#: stores each household's calendar-2024 spend; read at the dataset's period
+#: the engine does not uprate it, the stage's own prices turn it back into
+#: the kWh it raked, and a household that pays for gas is gas-connected.
+_GAS_CONNECTED = "gas_connected"
+UK_HOUSEHOLD_ENERGY_MEASURES: Mapping[str, str] = {
+    "domestic_electricity_kwh": ELECTRICITY_KWH,
+    "domestic_gas_kwh": GAS_KWH,
+    "domestic_gas_connected": _GAS_CONNECTED,
+}
 
 
 #: HMRC's income statistics count the income each taxpayer received over a
@@ -917,6 +935,8 @@ class UKMeasureResolver:
         self._source_path = source_path
         self._counterfactuals: dict[tuple[str, str | None], Any] = {}
         self._counterfactual_measures: dict[str, dict[str, Any]] = {}
+        # The domestic energy measures, computed together on first read.
+        self._household_energy_cache: dict[str, np.ndarray] | None = None
         reserved = {
             str(name)
             for name in frame.table("person")
@@ -1075,6 +1095,8 @@ class UKMeasureResolver:
             return entity == "person" and all(
                 self.knows("person", name) for name in _LOSS_RELIEF_MEASURE_COMPONENTS
             )
+        if variable in UK_HOUSEHOLD_ENERGY_MEASURES:
+            return entity == "household"
         if variable in UK_ANNUAL_INCOME_MEASURES:
             readable = (
                 self._carries_annual_income_descriptors()
@@ -1103,6 +1125,8 @@ class UKMeasureResolver:
             return "person"
         if variable in _LOSS_RELIEF_MEASURES or variable in DFE_SPRING_TERM_MEASURES:
             return "person"
+        if variable in UK_HOUSEHOLD_ENERGY_MEASURES:
+            return "household"
         if variable in UK_ANNUAL_INCOME_MEASURES:
             return self.entity_for(UK_ANNUAL_INCOME_MEASURES[variable])
         if (
@@ -1120,6 +1144,8 @@ class UKMeasureResolver:
     def compute(self, entity: str, variable: str) -> tuple[np.ndarray, str]:
         if variable in UK_ANNUAL_INCOME_MEASURES:
             return self._annual_income_measure(entity, variable)
+        if variable in UK_HOUSEHOLD_ENERGY_MEASURES:
+            return self._household_energy(entity, variable)
         result = compute_uk_measure_input(
             self.frame, self.simulation, entity, variable, self.year
         )
@@ -1374,6 +1400,35 @@ class UKMeasureResolver:
                 self.frame, simulation, entity, current, self.year
             )
         return values, f"annual_income_simulation:{route}"
+
+    def _household_energy(self, entity: str, variable: str) -> tuple[np.ndarray, str]:
+        """A household's domestic energy measure from its stored spend."""
+
+        if entity != "household":
+            raise KeyError(f"{variable} is household-only: {entity}")
+        cached = self._household_energy_cache
+        if cached is None:
+            year = self._dataset_year()
+            electricity = _values(
+                self.simulation.calculate("electricity_consumption", year)
+            ).astype(float)
+            gas = _values(self.simulation.calculate("gas_consumption", year)).astype(
+                float
+            )
+            raw_region = self.simulation.calculate("region", year)
+            region = (
+                np.asarray(raw_region.decode_to_str())
+                if hasattr(raw_region, "decode_to_str")
+                else _values(raw_region)
+            )
+            cached = self._household_energy_cache = {
+                **household_energy_kwh(
+                    electricity, gas, region=region, prices=household_energy_prices()
+                ),
+                _GAS_CONNECTED: (gas > 0).astype(float),
+            }
+        values = np.asarray(cached[UK_HOUSEHOLD_ENERGY_MEASURES[variable]], dtype=float)
+        return values, "stored_spend_at_dataset_period:household_energy"
 
     def _dataset_year(self) -> int:
         metadata = getattr(self.frame, "metadata", None) or {}
@@ -1646,18 +1701,20 @@ def load_uk_calibration_measure_exclusions(
     else:
         text = Path(path).read_text(encoding="utf-8")
     payload = json.loads(text)
-    # Schema 3 adds the signed sparse-band support floor (microcosm#1095 U3),
-    # which ``support_floor.load_uk_support_floor_declaration`` reads.
+    # Schema 4 carries the signed zero-support floor (microcosm#1095 U3) in
+    # scopes of one unit each, which
+    # ``support_floor.load_uk_support_floor_declaration`` reads; schema 3's
+    # single-scope floor is retired with it.
     schema_version = payload.get("schema_version")
     allowed_top = {"schema_version", "exclusions"}
-    if schema_version == 3:
+    if schema_version == 4:
         allowed_top.add("support_floor")
     unknown = sorted(set(payload) - allowed_top)
     if unknown:
         raise ValueError(f"unknown top-level exclusion key(s): {unknown}")
-    if schema_version not in (2, 3):
+    if schema_version not in (2, 4):
         raise ValueError(
-            "UK calibration measure exclusions schema_version must be 2 or 3."
+            "UK calibration measure exclusions schema_version must be 2 or 4."
         )
     exclusions = payload.get("exclusions")
     if not isinstance(exclusions, list):
