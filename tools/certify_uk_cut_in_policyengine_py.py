@@ -32,8 +32,12 @@ Regional routes (pick one):
                               lacks constituency and local-authority runs)
 
 A regional release built on another policyengine-uk is refused by
-certification unless policyengine.py accepts a recorded mismatch; pass
-``--accept-regional-model-mismatch REASON`` only where that option exists
+certification unless policyengine.py accepts a recorded mismatch:
+``--accept-regional-model-mismatch REASON`` with ``--audited-by WHO`` and at
+least one ``--regional-limitation TEXT``. The regional microdata is downloaded
+at its manifest pin, policyengine.py's own ``scripts/audit_regional_input_surface.py``
+(policyengine.py#699) audits its stored columns against the build and target
+models, and ``certify-data`` takes that evidence; any dropped column refuses
 (see ``docs/uk-cut-anyone.md``).
 
 Needs ``HF_TOKEN`` (read ``policyengine/populace-uk-private``), PyPI, and
@@ -416,6 +420,17 @@ def run_logged(argv: list[str], *, cwd: Path, env: dict[str, str], handle):
     return subprocess.CompletedProcess(argv, returncode, "".join(output), "")
 
 
+#: The caller's environment selectors that must not reach policyengine.py's
+#: commands: uv would sync, install into or run another project's venv.
+CALLER_ENVIRONMENT = frozenset({"UV_PROJECT_ENVIRONMENT", "VIRTUAL_ENV"})
+
+
+def policyengine_py_environment() -> dict[str, str]:
+    """This process's environment without the caller's environment selectors."""
+
+    return {k: v for k, v in os.environ.items() if k not in CALLER_ENVIRONMENT}
+
+
 class Shell:
     """Runs commands in the policyengine.py worktree and records each one."""
 
@@ -464,7 +479,7 @@ class Shell:
                 result = run_logged(
                     argv,
                     cwd=self.cwd,
-                    env={**os.environ, **(env or {})},
+                    env={**policyengine_py_environment(), **(env or {})},
                     handle=handle,
                 )
             timing["returncode"] = result.returncode
@@ -555,143 +570,53 @@ def rewrite_regional_constants(
     return changed
 
 
-_SURFACE_SCRIPT = (
-    "import json; from policyengine_uk import variables; "
-    "print(json.dumps({'all': sorted(variables), 'inputs': sorted("
-    "n for n, v in variables.items() if v.is_input_variable())}))"
-)
+#: policyengine.py's audit of a regional file's stored columns (policyengine.py#699).
+#: An accepted model mismatch certifies only with the evidence it writes.
+AUDIT_SCRIPT = "scripts/audit_regional_input_surface.py"
+#: The evidence version that measures drops against the regional build model.
+REGIONAL_EVIDENCE_SCHEMA = 2
 
 
-def model_surface(
-    version: str,
-    core_version: str | None = None,
-    *,
-    timings: Path | None = None,
-    resource_root: Path | None = None,
-    max_load1: float | None = None,
-    min_free_bytes: int = DEFAULT_MIN_FREE_BYTES,
-) -> dict[str, list[str]]:
-    """Read the country's existing variable registry at the requested model/core."""
+def regional_audit_support(repo: Path, base_commit: str) -> str | None:
+    """Why the base cannot certify an accepted mismatch, or ``None`` if it can.
 
-    packages = ["--with", f"policyengine-uk=={version}"]
-    if core_version:
-        packages += ["--with", f"policyengine-core=={core_version}"]
-    started = time.monotonic()
-    timing = {
-        "step": f"model_surface:{version}",
-        "model_version": version,
-        "core_version": core_version,
-        "started_at": datetime.now(UTC).isoformat(),
-        "returncode": None,
-    }
-    print(f"[start] model_surface:{version}", flush=True)
-    try:
-        timing.update(
-            resource_guard(
-                resource_root or Path.cwd(),
-                max_load1=max_load1,
-                min_free_bytes=min_free_bytes,
-            )
-        )
-        result = subprocess.run(
-        [
-            "uv", "run", "--no-project", "--python", PEPY_PYTHON,
-            *packages, "python", "-c", _SURFACE_SCRIPT,
-        ],
+    The base needs the audit script and a ``bundle.py`` that forwards its
+    evidence (``--regional-input-surface-evidence``).
+    """
+
+    script = subprocess.run(
+        ["git", "cat-file", "-e", f"{base_commit}:{AUDIT_SCRIPT}"],
+        cwd=repo,
         capture_output=True,
-        text=True,
-        check=True,
-        env={k: v for k, v in os.environ.items() if k not in {"UV_FROZEN", "VIRTUAL_ENV"}},
-        )  # fmt: skip
-        timing["returncode"] = result.returncode
-    except Exception as error:
-        timing["returncode"] = getattr(error, "returncode", None)
-        timing["error"] = str(error)
-        raise
-    finally:
-        timing["elapsed_seconds"] = time.monotonic() - started
-        if timings:
-            record_timing(timings, timing)
-        print(
-            f"[done] model_surface:{version}: {timing['elapsed_seconds']:.3f}s "
-            f"(exit {timing.get('returncode')})",
-            flush=True,
-        )
-    return json.loads(result.stdout.strip().splitlines()[-1])
+        check=False,
+    )
+    if script.returncode != 0:
+        return f"it has no {AUDIT_SCRIPT}"
+    flag = subprocess.run(
+        ["git", "grep", "-q", "-e", "--regional-input-surface-evidence", base_commit,
+         "--", "scripts/bundle.py"],
+        cwd=repo,
+        capture_output=True,
+        check=False,
+    )  # fmt: skip
+    if flag.returncode != 0:
+        return "its scripts/bundle.py does not take --regional-input-surface-evidence"
+    return None
 
 
-def input_surface_change(
-    built: dict[str, list[str]],
-    certified: dict[str, list[str]],
-    stored: set[str],
-) -> dict[str, list[str]]:
-    """What area runs lose when a file built on one model runs under another.
+def fetch_regional_microdata(
+    tag: str, release: str, *, timings: Path
+) -> dict[str, Path]:
+    """Every microdata H5 of a regional cut, by manifest name, checked by sha256.
 
-    ``stored`` is the regional file's own column inventory
-    (:func:`h5_stored_columns`), not a model's input list: Microcosm stores
-    some formula variables too, and those load as values.
-
-    ``dropped``: stored columns the build model defined and the certified
-    model does not; they are skipped on load. ``defaulted``: inputs of the
-    certified model the file does not store and that were not inputs of the
-    build model (new variables, or variables that were formulas), so they
-    take defaults in area runs where the build model computed them. Columns
-    neither model defines, and inputs absent under both, are not changes.
+    These are the files policyengine.py's audit reads; it re-checks each
+    digest against the manifest itself.
     """
-
-    built_all, built_inputs = set(built["all"]), set(built["inputs"])
-    certified_all, certified_inputs = set(certified["all"]), set(certified["inputs"])
-    return {
-        "dropped": sorted((stored & built_all) - certified_all),
-        "defaulted": sorted((certified_inputs - stored) - built_inputs),
-    }
-
-
-def h5_stored_columns(path: Path) -> set[str]:
-    """Column names of a PolicyEngine dataset H5, reading no values.
-
-    Microcosm writes pandas table-format files: one group per entity whose
-    ``table`` dataset is a compound array, its field names the columns. The
-    older flat layout keeps one top-level dataset or group per variable.
-    Anything else is refused rather than guessed at.
-    """
-
-    import h5py
-
-    with h5py.File(path, "r") as store:
-        names = sorted(store.keys())
-        groups = [store[name] for name in names]
-        if names and all(
-            isinstance(group, h5py.Group)
-            and isinstance(group.get("table"), h5py.Dataset)
-            for group in groups
-        ):
-            columns: set[str] = set()
-            for group in groups:
-                fields = set(group["table"].dtype.names or ())
-                fields.discard("index")
-                if any(field.startswith("values_block_") for field in fields):
-                    raise CertifyError(
-                        f"{path.name}: entity {group.name} is a fixed-format "
-                        "table whose column names are not stored per field."
-                    )
-                columns |= fields
-            return columns
-        if names and not any(
-            isinstance(item, h5py.Group) and isinstance(item.get("table"), h5py.Dataset)
-            for item in groups
-        ):
-            return set(names)
-    raise CertifyError(f"{path.name}: not a recognised dataset H5 layout.")
-
-
-def regional_stored_columns(tag: str, release: str, *, timings: Path) -> set[str]:
-    """Download the regional cut's microdata at its pin and list its columns."""
 
     from huggingface_hub import hf_hub_download
 
     token = os.environ.get("HUGGING_FACE_TOKEN") or os.environ.get("HF_TOKEN")
-    with timed_step("regional-schema", timings) as record:
+    with timed_step("regional-microdata", timings) as record:
         manifest = json.loads(
             Path(
                 hf_hub_download(
@@ -703,38 +628,103 @@ def regional_stored_columns(tag: str, release: str, *, timings: Path) -> set[str
                 )
             ).read_text()
         )
-        microdata = [
-            artifact
-            for artifact in manifest.get("artifacts", {}).values()
+        microdata = {
+            name: artifact
+            for name, artifact in (manifest.get("artifacts") or {}).items()
             if artifact.get("kind") == "microdata"
-        ]
-        if len(microdata) != 1 or not microdata[0].get("sha256"):
-            raise CertifyError(
-                f"{tag}: expected one sha-pinned microdata artifact, found "
-                f"{len(microdata)}."
+            and str(artifact.get("path", "")).lower().endswith(".h5")
+        }
+        if not microdata:
+            raise CertifyError(f"{tag}: the manifest lists no microdata H5.")
+        paths: dict[str, Path] = {}
+        for name, artifact in sorted(microdata.items()):
+            if not artifact.get("sha256") or not artifact.get("revision"):
+                raise CertifyError(
+                    f"{tag}: {name} is not pinned by revision and sha256."
+                )
+            path = Path(
+                hf_hub_download(
+                    artifact.get("repo_id") or CUT_REPO,
+                    artifact["path"],
+                    repo_type="dataset",
+                    revision=artifact["revision"],
+                    token=token,
+                )
             )
-        artifact = microdata[0]
-        path = Path(
-            hf_hub_download(
-                artifact.get("repo_id") or CUT_REPO,
-                artifact["path"],
-                repo_type="dataset",
-                revision=artifact["revision"],
-                token=token,
-            )
+            digest = hashlib.sha256()
+            with path.open("rb") as handle:
+                for chunk in iter(lambda: handle.read(1 << 22), b""):
+                    digest.update(chunk)
+            if digest.hexdigest() != artifact["sha256"]:
+                raise CertifyError(
+                    f"{artifact['path']} at {artifact['revision']} hashes to "
+                    f"{digest.hexdigest()}, not the manifest's {artifact['sha256']}."
+                )
+            paths[name] = path
+        record.update(artifacts=sorted(paths))
+    return paths
+
+
+def regional_audit_argv(
+    python: str,
+    *,
+    manifest_uri: str,
+    artifacts: dict[str, Path],
+    model: str,
+    audited_by: str,
+    limitations: Sequence[str],
+    output: Path,
+) -> list[str]:
+    """The audit command for these regional files under the target model."""
+
+    argv = [python, AUDIT_SCRIPT, "--regional-manifest-uri", manifest_uri]
+    for name, path in sorted(artifacts.items()):
+        argv += ["--artifact", f"{name}={path}"]
+    argv += ["--model-version", model, "--audited-by", audited_by]
+    for limitation in limitations:
+        argv += ["--limitation", limitation]
+    return [*argv, "--output", str(output)]
+
+
+def undeclared_flags(help_text: str, argv: Sequence[str]) -> list[str]:
+    """The ``--flags`` of ``argv`` that a tool's ``--help`` does not declare."""
+
+    declared = set(re.findall(r"(--[a-z][a-z0-9-]*)", help_text))
+    return sorted({a for a in argv if a.startswith("--") and a not in declared})
+
+
+def read_regional_evidence(path: Path, *, model: str, build_model: str) -> dict:
+    """The audit's evidence, refused unless it is build-relative and drop-free."""
+
+    try:
+        evidence = json.loads(path.read_text())
+    except (FileNotFoundError, json.JSONDecodeError) as error:
+        raise CertifyError(f"the regional audit wrote no readable {path}.") from error
+    if not isinstance(evidence, dict):
+        raise CertifyError(f"{path} is not an evidence object.")
+    if evidence.get("schema_version") != REGIONAL_EVIDENCE_SCHEMA:
+        raise CertifyError(
+            f"{path} is evidence schema {evidence.get('schema_version')!r}, not "
+            f"{REGIONAL_EVIDENCE_SCHEMA}: this policyengine.py measures drops "
+            "against the target model only, so it refuses Microcosm's own "
+            "columns. Certify from a base with policyengine.py#699's "
+            "build-model baseline."
         )
-        digest = hashlib.sha256()
-        with path.open("rb") as handle:
-            for chunk in iter(lambda: handle.read(1 << 22), b""):
-                digest.update(chunk)
-        if digest.hexdigest() != artifact["sha256"]:
+    for field, expected in (
+        ("model_version", model),
+        ("build_model_version", build_model),
+    ):
+        if evidence.get(field) != expected:
             raise CertifyError(
-                f"{artifact['path']} at {artifact['revision']} hashes to "
-                f"{digest.hexdigest()}, not the manifest's {artifact['sha256']}."
+                f"{path} audits {field} {evidence.get(field)!r}, not {expected!r}."
             )
-        columns = h5_stored_columns(path)
-        record.update(sha256=artifact["sha256"], columns=len(columns))
-    return columns
+    if evidence.get("dropped_columns"):
+        raise CertifyError(
+            f"policyengine-uk {model} no longer defines these stored columns of "
+            f"the {build_model} local-area file, so area runs would lose them: "
+            f"{', '.join(evidence['dropped_columns'])}. Build a dense cut on {model}."
+        )
+    return evidence
 
 
 def overlay_diff(old_bundle: dict, new_bundle: dict) -> list[str]:
@@ -839,14 +829,17 @@ def pr_body(context: dict[str, Any]) -> str:
             f"{', '.join(context['dropped_overlays'])}. Re-add any that must stay "
             "loadable from the previous bundle (as #685 did)."
         )
-    surface = context.get("input_surface")
-    if surface is not None:
+    evidence = context.get("regional_evidence")
+    if evidence is not None:
         lines.append(
             "- [ ] **Area runs on the older local-area file** (accepted mismatch, "
-            f"built on {context.get('regional_model')}): columns ignored on load: "
-            f"{', '.join(surface['dropped']) or 'none'}; inputs that take defaults: "
-            f"{', '.join(surface['defaulted']) or 'none'}. Confirm none matters "
-            "for a reform the Budget dashboard shows by area."
+            f"built on {evidence['build_model_version']}, audited by "
+            f"{evidence['audited_by']}): no stored column is dropped; inputs that "
+            f"take defaults: {', '.join(evidence['defaulted_inputs']) or 'none'}; "
+            f"{len(evidence.get('never_modelled_columns') or [])} stored columns "
+            "neither model defines are recorded only. Limitations recorded: "
+            f"{'; '.join(evidence['limitations'])}. Confirm none matters for a "
+            "reform the Budget dashboard shows by area."
         )
     if context.get("warnings"):
         lines.append(
@@ -889,15 +882,26 @@ def parse(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--accept-regional-model-mismatch",
         metavar="REASON",
-        help="forwarded to certify-data where policyengine.py supports it",
+        help=(
+            "route regions to a regional cut built on another policyengine-uk, "
+            "recording who accepted it and why; certifies only with "
+            "policyengine.py's audited input-surface evidence (#699)"
+        ),
     )
     parser.add_argument(
-        "--allow-dropped-columns",
-        metavar="REASON",
+        "--audited-by",
+        metavar="WHO",
         help=(
-            "with an accepted mismatch, proceed although the newer model no "
-            "longer defines some of the regional file's input columns"
+            "with an accepted mismatch: who ran the audit, as it should appear "
+            "in policyengine.py's public bundle"
         ),
+    )
+    parser.add_argument(
+        "--regional-limitation",
+        action="append",
+        default=[],
+        metavar="TEXT",
+        help="with an accepted mismatch: a limitation to record (repeatable)",
     )
     parser.add_argument("--model-version", help="default: the cut's build-time model")
     parser.add_argument("--core-version", help="default: the cut's build-time core")
@@ -958,6 +962,21 @@ def parse(argv: list[str] | None) -> argparse.Namespace:
     for author in args.co_author:
         if not CO_AUTHOR_PATTERN.match(author):
             parser.error(f"--co-author must be one line, 'Name <email>': {author!r}")
+    if args.accept_regional_model_mismatch is not None:
+        if not args.accept_regional_model_mismatch.strip():
+            parser.error("--accept-regional-model-mismatch needs a reason.")
+        if not (args.audited_by or "").strip():
+            parser.error("--accept-regional-model-mismatch needs --audited-by.")
+        if not [text for text in args.regional_limitation if text.strip()]:
+            parser.error(
+                "--accept-regional-model-mismatch needs at least one "
+                "--regional-limitation."
+            )
+    elif args.audited_by or args.regional_limitation:
+        parser.error(
+            "--audited-by and --regional-limitation go with "
+            "--accept-regional-model-mismatch."
+        )
     if not 1 <= args.test_workers <= 4:
         parser.error("--test-workers must be between 1 and 4.")
     check_tag(args.national_tag, "national")
@@ -1062,7 +1081,7 @@ def certify(args: argparse.Namespace) -> int:
     flags = regional_flags(args, record)
     new_regional = regional_tag(flags)
     regional_summary = shlex.join(flags)
-    dense, surface = None, None
+    dense, mismatch, regional_artifacts = None, False, {}
     if new_regional is not None:
         with timed_step("regional-manifest", timings):
             dense = read_cut(new_regional, DENSE_RELEASE)
@@ -1075,34 +1094,21 @@ def certify(args: argparse.Namespace) -> int:
                     "(--dense-tag), --drop-regional-release, an enhanced-FRS release "
                     "that claims the version (--area-coded-national-uri), or an "
                     "accepted, recorded mismatch (--accept-regional-model-mismatch) "
-                    "where policyengine.py supports one."
+                    "with policyengine.py's audited evidence."
                 )
-            surface = input_surface_change(
-                model_surface(
-                    dense.model,
-                    dense.core,
-                    timings=timings,
-                    resource_root=repo,
-                    **limits,
-                ),
-                model_surface(
-                    model, core, timings=timings, resource_root=repo, **limits
-                ),
-                regional_stored_columns(new_regional, DENSE_RELEASE, timings=timings),
-            )
-            if surface["dropped"] and not args.allow_dropped_columns:
+            problem = regional_audit_support(repo, base_commit)
+            if problem is not None:
                 raise CertifyError(
-                    f"policyengine-uk {model} no longer defines these stored columns "
-                    f"of the {dense.model} local-area file, so area runs would lose "
-                    f"them: {', '.join(surface['dropped'])}. Build a dense cut on "
-                    f"{model}, or pass --allow-dropped-columns with a reason."
+                    f"policyengine.py at {base_ref} ({base_commit[:9]}) cannot "
+                    f"certify an accepted mismatch: {problem} (policyengine.py#699). "
+                    "Use a --base-ref that has it, or another regional route."
                 )
-            print(json.dumps({"input_surface_change": surface}, indent=2))
-            flags += [
-                "--accept-regional-model-mismatch",
-                args.accept_regional_model_mismatch,
-            ]
+            mismatch = True
             regional_summary += f" (regional built on {dense.model}; mismatch accepted)"
+            if not args.dry_run:
+                regional_artifacts = fetch_regional_microdata(
+                    new_regional, DENSE_RELEASE, timings=timings
+                )
     old_regional = regional_tag(
         ["--regional-manifest-uri", record.get("regional_source_manifest_uri") or ""]
     )
@@ -1143,6 +1149,45 @@ def certify(args: argparse.Namespace) -> int:
     sync = ["uv", "sync", "--frozen", "--extra", "uk", "--extra", "dev",
             "--python", PEPY_PYTHON]  # fmt: skip
     run(sync, step="initial-sync")
+    evidence = None
+    if mismatch:
+        # The audit reads the target model in process, so the worktree's
+        # environment gets the target pair now; the certified sync below
+        # restores it to the new lock exactly.
+        run(
+            ["uv", "pip", "install", "--no-config", "--default-index",
+             "https://pypi.org/simple", "--python", python,
+             f"policyengine-uk=={model}", f"policyengine-core=={core}"],
+            step="audit-model-install",
+        )  # fmt: skip
+        evidence_path = worktree.parent / f"{worktree.name}.regional-input-surface.json"
+        # An earlier attempt's evidence must not stand in for this audit.
+        evidence_path.unlink(missing_ok=True)
+        audit = regional_audit_argv(
+            python,
+            manifest_uri=flags[flags.index("--regional-manifest-uri") + 1],
+            artifacts=regional_artifacts,
+            model=model,
+            audited_by=args.audited_by,
+            limitations=args.regional_limitation,
+            output=evidence_path,
+        )
+        missing = undeclared_flags(
+            run([python, AUDIT_SCRIPT, "--help"], step="audit-help").stdout, audit
+        )
+        if missing:
+            raise CertifyError(
+                f"{AUDIT_SCRIPT} at {base_commit[:9]} does not declare "
+                f"{', '.join(missing)}; update this tool to its interface."
+            )
+        run(audit, step="regional-input-audit")
+        evidence = read_regional_evidence(
+            evidence_path, model=model, build_model=dense.model
+        )
+        flags += [
+            "--accept-regional-model-mismatch", args.accept_regional_model_mismatch,
+            "--regional-input-surface-evidence", str(evidence_path),
+        ]  # fmt: skip
     certify_result = run(
         [
             python, "scripts/bundle.py", "certify-data", "--country", "uk",
@@ -1257,8 +1302,7 @@ def certify(args: argparse.Namespace) -> int:
         "dropped_overlays": overlay_diff(old_bundle, new_bundle),
         "warnings": warnings,
         "footer": args.pr_body_footer,
-        "input_surface": surface,
-        "regional_model": dense.model if dense is not None else None,
+        "regional_evidence": evidence,
     }
     body = worktree.parent / f"{worktree.name}.pr-body.md"
     body.write_text(pr_body(context))

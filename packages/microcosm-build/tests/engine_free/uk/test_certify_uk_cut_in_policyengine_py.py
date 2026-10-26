@@ -160,28 +160,33 @@ def test_the_pr_body_leaves_every_judgment_to_a_person():
         assert needed in body
 
 
-def test_a_dry_run_refuses_an_uncovered_dense_cut_before_writing(monkeypatch, tmp_path):
+MISMATCH = [
+    "--accept-regional-model-mismatch",
+    "area receipts are uncertified (#685)",
+    "--audited-by",
+    "A Reviewer",
+    "--regional-limitation",
+    "VAT predates the factor fix",
+]
+
+
+def _dense_route(monkeypatch, tmp_path, *, audit_support=None):
+    """A national cut on 2.134.4 and a regional cut on 2.132.6, offline."""
+
     cuts = {
         NATIONAL: handoff.CutVersions(NATIONAL, "2.134.4", "3.33.3", ("==2.134.4",)),
         DENSE: handoff.CutVersions(DENSE, "2.132.6", "3.33.3", ("==2.132.6",)),
     }
     monkeypatch.setattr(handoff, "read_cut", lambda tag, release: cuts[tag])
     monkeypatch.setattr(handoff, "writer_check", lambda tag, repo: [])
-    surfaces = {
-        "2.132.6": {"all": ["a", "b", "f"], "inputs": ["a", "b"]},
-        "2.134.4": {"all": ["a", "b", "f", "n"], "inputs": ["a", "b", "f", "n"]},
-    }
-
-    def model_surface(version, core_version=None, **kwargs):
-        assert core_version == "3.33.3"
-        assert kwargs["resource_root"] == tmp_path
-        assert kwargs["timings"].suffix == ".jsonl"
-        return surfaces[version]
-
-    monkeypatch.setattr(handoff, "model_surface", model_surface)
-    stored = {"a", "b", "f", "x"}  # x: a support column neither model defines
     monkeypatch.setattr(
-        handoff, "regional_stored_columns", lambda tag, release, **kw: stored
+        handoff, "regional_audit_support", lambda repo, base: audit_support
+    )
+    downloads = []
+    monkeypatch.setattr(
+        handoff,
+        "fetch_regional_microdata",
+        lambda tag, release, **kw: downloads.append(tag) or {},
     )
     monkeypatch.setattr(
         handoff.subprocess,
@@ -192,37 +197,29 @@ def test_a_dry_run_refuses_an_uncovered_dense_cut_before_writing(monkeypatch, tm
         '{"data_releases": {"uk": {"regional_source_manifest_uri": '
         f'"{handoff.manifest_uri(DENSE, handoff.DENSE_RELEASE)}"}}}}}}'
     )
-    base_commit = "b" * 40
 
     def check_output(argv, **kwargs):
         if argv[:2] == ["git", "show"]:
-            assert (
-                argv[2] == f"{base_commit}:src/policyengine/data/bundle/manifest.json"
-            )
             return bundle
         if argv == ["git", "rev-parse", "HEAD"]:
             return "a" * 40
-        assert argv == ["git", "rev-parse", "--verify", "origin/main^{commit}"]
-        return base_commit
+        return "b" * 40
 
     monkeypatch.setattr(handoff.subprocess, "check_output", check_output)
-    args = handoff.parse(
-        ["--national-tag", NATIONAL, "--keep-regional-release", "--dry-run",
-         "--pepy-repo", str(tmp_path)]
-    )  # fmt: skip
+    return downloads
+
+
+def test_a_dry_run_refuses_an_uncovered_dense_cut_before_writing(monkeypatch, tmp_path):
+    downloads = _dense_route(monkeypatch, tmp_path)
+    base = ["--national-tag", NATIONAL, "--keep-regional-release", "--dry-run",
+            "--pepy-repo", str(tmp_path)]  # fmt: skip
     with pytest.raises(
         handoff.CertifyError, match="built with policyengine-uk 2.132.6"
     ):
-        handoff.certify(args)
-    args.accept_regional_model_mismatch = "area receipts are uncertified (#685)"
-    assert handoff.certify(args) == 0
-    # A stored column the newer model no longer defines would be lost in area
-    # runs, even one the build model computed (f is a formula there).
-    surfaces["2.134.4"] = {"all": ["b", "n"], "inputs": ["b", "n"]}
-    with pytest.raises(handoff.CertifyError, match="area runs would lose them: a, f"):
-        handoff.certify(args)
-    args.allow_dropped_columns = "a is retired upstream; reviewed"
-    assert handoff.certify(args) == 0
+        handoff.certify(handoff.parse(base))
+    # An accepted mismatch plans the audit; a dry run downloads nothing.
+    assert handoff.certify(handoff.parse([*base, *MISMATCH])) == 0
+    assert downloads == []
     another = handoff.parse(
         ["--national-tag", NATIONAL, "--dense-tag", DENSE, "--dry-run",
          "--pepy-repo", str(tmp_path)]
@@ -232,138 +229,190 @@ def test_a_dry_run_refuses_an_uncovered_dense_cut_before_writing(monkeypatch, tm
         handoff.certify(another)
 
 
-names = st.sets(st.from_regex(r"[a-z]{1,6}", fullmatch=True), max_size=12)
-
-
-@given(
-    built_all=names,
-    built_inputs=names,
-    cert_all=names,
-    cert_inputs=names,
-    stored=names,
-)
-def test_the_input_surface_change_is_exact(
-    built_all, built_inputs, cert_all, cert_inputs, stored
-):
-    """Measured on the file's own columns: dropped are stored columns the
-    build model defined and the certified model does not; defaulted are the
-    certified model's inputs the file does not store that the build model did
-    not take as inputs. Columns neither model knows, inputs absent under both
-    models, and stored formula variables that still exist are no change."""
-
-    built_all |= built_inputs
-    cert_all |= cert_inputs
-    built = {"all": sorted(built_all), "inputs": sorted(built_inputs)}
-    certified = {"all": sorted(cert_all), "inputs": sorted(cert_inputs)}
-    change = handoff.input_surface_change(built, certified, stored)
-    dropped, defaulted = set(change["dropped"]), set(change["defaulted"])
-    assert dropped == (stored & built_all) - cert_all
-    assert defaulted == (cert_inputs - stored) - built_inputs
-    assert dropped <= stored and not dropped & cert_all
-    assert not defaulted & stored and not defaulted & built_inputs
-    assert not (stored - built_all - cert_all) & (dropped | defaulted)
-    assert not (stored & cert_all) & dropped
-    assert change == handoff.input_surface_change(built, certified, set(stored))
-
-
-def test_an_unchanged_model_changes_nothing():
-    surface = {"all": ["a", "b"], "inputs": ["a"]}
-    for stored in (set(), {"a"}, {"a", "b", "support"}):
-        assert handoff.input_surface_change(surface, surface, stored) == {
-            "dropped": [],
-            "defaulted": [],
-        }
-
-
-def test_a_stored_formula_variable_the_new_model_removes_is_dropped():
-    """The reviewer's case: Microcosm stores formula variables too."""
-
-    built = {"all": ["is_uc_claimant", "age"], "inputs": ["age"]}
-    certified = {"all": ["age"], "inputs": ["age"]}
-    change = handoff.input_surface_change(built, certified, {"is_uc_claimant", "age"})
-    assert change == {"dropped": ["is_uc_claimant"], "defaulted": []}
-
-
-def test_a_stored_variable_that_became_an_input_is_not_defaulted():
-    built = {"all": ["fare"], "inputs": []}
-    certified = {"all": ["fare"], "inputs": ["fare"]}
-    assert handoff.input_surface_change(built, certified, {"fare"})["defaulted"] == []
-    assert handoff.input_surface_change(built, certified, set())["defaulted"] == [
-        "fare"
-    ]
-
-
-def _table_h5(path, entities):
-    import h5py
-    import numpy as np
-
-    with h5py.File(path, "w") as store:
-        for entity, columns in entities.items():
-            dtype = np.dtype([("index", "i8"), *((c, "f8") for c in columns)])
-            group = store.create_group(entity)
-            group.create_dataset("table", data=np.zeros(2, dtype=dtype))
-            index = group.create_group("_i_table")
-            for column in columns:
-                index.create_group(column)
-
-
-def test_the_column_inventory_reads_microcosm_table_files(tmp_path):
-    path = tmp_path / "dense.h5"
-    _table_h5(
-        path,
-        {
-            "person": ["age", "is_uc_claimant"],
-            "benunit": ["benunit_id"],
-            "household": ["household_weight", "constituency_code_oa"],
-        },
+def test_a_base_without_the_audit_refuses_before_any_download(monkeypatch, tmp_path):
+    downloads = _dense_route(
+        monkeypatch, tmp_path, audit_support=f"it has no {handoff.AUDIT_SCRIPT}"
     )
-    assert handoff.h5_stored_columns(path) == {
-        "age",
-        "is_uc_claimant",
-        "benunit_id",
-        "household_weight",
-        "constituency_code_oa",
+    args = handoff.parse(
+        ["--national-tag", NATIONAL, "--keep-regional-release",
+         "--pepy-repo", str(tmp_path), "--skip-tests", *MISMATCH]
+    )  # fmt: skip
+    with pytest.raises(handoff.CertifyError, match="policyengine.py#699"):
+        handoff.certify(args)
+    assert downloads == []
+
+
+@pytest.mark.parametrize(
+    "drop",
+    [
+        ["--audited-by", "A Reviewer"],
+        ["--regional-limitation", "VAT predates the factor fix"],
+    ],
+)
+def test_an_accepted_mismatch_needs_an_auditor_and_a_limitation(drop):
+    flags = list(MISMATCH)
+    index = flags.index(drop[0])
+    del flags[index : index + 2]
+    with pytest.raises(SystemExit):
+        handoff.parse(
+            ["--national-tag", NATIONAL, "--keep-regional-release",
+             "--pepy-repo", "p", *flags]
+        )  # fmt: skip
+    with pytest.raises(SystemExit):
+        handoff.parse(
+            ["--national-tag", NATIONAL, "--keep-regional-release",
+             "--pepy-repo", "p", *drop]
+        )  # fmt: skip
+
+
+def test_the_audit_support_check_reads_the_base(monkeypatch, tmp_path):
+    answers = {"cat-file": 0, "grep": 0}
+
+    def run(argv, **kwargs):
+        assert argv[0] == "git" and kwargs["cwd"] == tmp_path
+        return handoff.subprocess.CompletedProcess(argv, answers[argv[1]], b"", b"")
+
+    monkeypatch.setattr(handoff.subprocess, "run", run)
+    assert handoff.regional_audit_support(tmp_path, "c" * 40) is None
+    answers["grep"] = 1
+    assert "--regional-input-surface-evidence" in handoff.regional_audit_support(
+        tmp_path, "c" * 40
+    )
+    answers["cat-file"] = 128
+    assert handoff.AUDIT_SCRIPT in handoff.regional_audit_support(tmp_path, "c" * 40)
+
+
+def test_every_regional_microdata_file_is_fetched_and_checked(monkeypatch, tmp_path):
+    import hashlib
+    import sys
+    import types
+
+    files = {"dense.h5": b"dense", "other.H5": b"other", "notes.csv": b"csv"}
+    for name, data in files.items():
+        (tmp_path / name).write_bytes(data)
+    manifest = {
+        "artifacts": {
+            "microcosm_uk_2024_25_dense": {
+                "kind": "microdata", "path": "dense.h5", "revision": "r1",
+                "sha256": hashlib.sha256(b"dense").hexdigest(),
+            },
+            "second": {
+                "kind": "microdata", "path": "other.H5", "revision": "r2",
+                "sha256": hashlib.sha256(b"other").hexdigest(),
+            },
+            "table": {"kind": "microdata", "path": "notes.csv", "revision": "r3",
+                      "sha256": "0" * 64},
+            "receipt": {"kind": "evidence", "path": "dense.h5", "revision": "r4",
+                        "sha256": "0" * 64},
+        }
+    }  # fmt: skip
+    (tmp_path / "release_manifest.json").write_text(json.dumps(manifest))
+
+    def download(repo, path, **kwargs):
+        name = path.rsplit("/", 1)[-1]
+        return str(
+            tmp_path / ("release_manifest.json" if name.endswith(".json") else name)
+        )
+
+    monkeypatch.setitem(
+        sys.modules, "huggingface_hub", types.SimpleNamespace(hf_hub_download=download)
+    )
+    found = handoff.fetch_regional_microdata(
+        DENSE, handoff.DENSE_RELEASE, timings=tmp_path / "t.jsonl"
+    )
+    assert found == {
+        "microcosm_uk_2024_25_dense": tmp_path / "dense.h5",
+        "second": tmp_path / "other.H5",
     }
+    (tmp_path / "other.H5").write_bytes(b"changed")
+    with pytest.raises(handoff.CertifyError, match="not the manifest's"):
+        handoff.fetch_regional_microdata(
+            DENSE, handoff.DENSE_RELEASE, timings=tmp_path / "t.jsonl"
+        )
 
 
-def test_the_column_inventory_reads_flat_files_and_refuses_others(tmp_path):
-    import h5py
-
-    flat = tmp_path / "flat.h5"
-    with h5py.File(flat, "w") as store:
-        store.create_dataset("age", data=[1, 2])
-        store.create_group("employment_income").create_dataset("2024", data=[0.0])
-    assert handoff.h5_stored_columns(flat) == {"age", "employment_income"}
-    mixed = tmp_path / "mixed.h5"
-    _table_h5(mixed, {"person": ["age"]})
-    with h5py.File(mixed, "a") as store:
-        store.create_dataset("stray", data=[1])
-    with pytest.raises(handoff.CertifyError, match="not a recognised"):
-        handoff.h5_stored_columns(mixed)
-    fixed = tmp_path / "fixed.h5"
-    _table_h5(fixed, {"person": ["values_block_0"]})
-    with pytest.raises(handoff.CertifyError, match="fixed-format"):
-        handoff.h5_stored_columns(fixed)
+def test_the_audit_argv_passes_every_file_and_limitation(tmp_path):
+    argv = handoff.regional_audit_argv(
+        "py",
+        manifest_uri="hf://x",
+        artifacts={"b": tmp_path / "b.h5", "a": tmp_path / "a.h5"},
+        model="2.147.2",
+        audited_by="A Reviewer",
+        limitations=["one", "two"],
+        output=tmp_path / "evidence.json",
+    )
+    assert argv[:4] == ["py", handoff.AUDIT_SCRIPT, "--regional-manifest-uri", "hf://x"]
+    assert argv.count("--artifact") == 2 and argv.count("--limitation") == 2
+    assert argv[argv.index("--artifact") + 1] == f"a={tmp_path / 'a.h5'}"
+    assert argv[-2:] == ["--output", str(tmp_path / "evidence.json")]
+    help_text = "usage: --regional-manifest-uri --artifact --model-version --output"
+    assert handoff.undeclared_flags(help_text, argv) == ["--audited-by", "--limitation"]
 
 
-def test_the_pr_body_lists_the_area_input_surface():
+GOOD_EVIDENCE = {
+    "schema_version": 2,
+    "model_version": "2.147.2",
+    "build_model_version": "2.132.6",
+    "dropped_columns": [],
+    "defaulted_inputs": ["local_bus_uncapped_single_fare"],
+    "never_modelled_columns": ["constituency_code_oa"],
+    "audited_by": "A Reviewer",
+    "limitations": ["VAT predates the factor fix"],
+}
+
+
+@pytest.mark.parametrize(
+    "changes, message",
+    [
+        ({"schema_version": 1}, "target model only"),
+        ({"model_version": "2.151.0"}, "model_version"),
+        ({"build_model_version": "2.144.0"}, "build_model_version"),
+        ({"dropped_columns": ["age"]}, "would lose them: age"),
+    ],
+)
+def test_only_build_relative_drop_free_evidence_is_used(tmp_path, changes, message):
+    path = tmp_path / "evidence.json"
+    path.write_text(json.dumps({**GOOD_EVIDENCE, **changes}))
+    with pytest.raises(handoff.CertifyError, match=message):
+        handoff.read_regional_evidence(path, model="2.147.2", build_model="2.132.6")
+
+
+def test_build_relative_evidence_is_read(tmp_path):
+    path = tmp_path / "evidence.json"
+    path.write_text(json.dumps(GOOD_EVIDENCE))
+    evidence = handoff.read_regional_evidence(
+        path, model="2.147.2", build_model="2.132.6"
+    )
+    assert evidence["defaulted_inputs"] == ["local_bus_uncapped_single_fare"]
+    with pytest.raises(handoff.CertifyError, match="no readable"):
+        handoff.read_regional_evidence(
+            tmp_path / "missing.json", model="2.147.2", build_model="2.132.6"
+        )
+
+
+def test_the_pr_body_lists_the_audited_area_input_surface():
     body = handoff.pr_body(
         {
             "national_tag": NATIONAL,
-            "model": "2.146.4",
+            "model": "2.147.2",
             "core": "3.33.3",
             "regional_summary": "`--keep-regional-release`",
             "microcosm_commit": "a" * 40,
             "commands": [],
-            "input_surface": {
-                "dropped": [],
-                "defaulted": ["local_bus_uncapped_single_fare"],
+            "regional_evidence": {
+                "build_model_version": "2.132.6",
+                "audited_by": "A Reviewer",
+                "dropped_columns": [],
+                "defaulted_inputs": ["local_bus_uncapped_single_fare"],
+                "never_modelled_columns": ["constituency_code_oa", "la_code_oa"],
+                "limitations": ["VAT predates the factor fix"],
             },
-            "regional_model": "2.132.6",
         }
     )
-    assert "built on 2.132.6" in body
+    assert "built on 2.132.6, audited by A Reviewer" in body
     assert "local_bus_uncapped_single_fare" in body
+    assert "2 stored columns neither model defines" in body
+    assert "VAT predates the factor fix" in body
 
 
 def test_the_resource_limits_are_the_operators_to_set(monkeypatch, tmp_path):

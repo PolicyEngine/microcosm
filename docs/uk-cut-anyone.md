@@ -268,6 +268,15 @@ Each heavy step first checks the host. The disk floor defaults to 55 GB
 (`--min-free-gb`). There is no load limit unless you set one with
 `--max-load1`, because a sensible limit depends on the machine.
 
+For an accepted mismatch (see [Regions](#regions-the-dense-cut)), add
+`--accept-regional-model-mismatch "<who accepted it and why>"`,
+`--audited-by "<who ran the audit>"` (it appears in policyengine.py's public
+bundle) and at least one `--regional-limitation "<text>"`. The base needs
+policyengine.py#699's audit, and a base without it refuses before anything
+is downloaded. Until #699 merges, test the route with `--base-ref
+origin/accept-regional-model-mismatch --pr-base accept-regional-model-mismatch`.
+The audit also needs `uv` and PyPI.
+
 The certification commit and the pull request body credit nobody but the
 git identity that commits. An agent session adds its own credit:
 `--co-author "Claude Opus 5.5 <noreply@anthropic.com>"` (repeatable) for the
@@ -315,14 +324,13 @@ routes:
    but slow, and it needs the atomic-support files that only María holds.
    The policyengine-uk 2.151.0 pair (national `a6299504`, dense `c9df4b86`)
    went this way.
-2. **Accept the older dense cut, recorded as a mismatch.** This needs a
-   reviewed policyengine.py change (the `--accept-regional-model-mismatch`
-   draft).
+2. **Accept the older dense cut, recorded as a mismatch.** policyengine.py
+   accepts this only with audited evidence (policyengine.py#699).
    - Area receipts are already uncertified: the certificate covers the
      national dataset only (policyengine.py#685).
-   - policyengine-core loads an older file under a newer model. It drops
-     columns the model no longer defines and warns. So inputs added since
-     2.132.6 default in area runs, and the mismatch record must list them.
+   - policyengine-uk loads an older file under a newer model, skipping
+     stored columns the model no longer defines. Inputs added since the
+     build model default in area runs, and the mismatch record lists them.
 3. **Drop routing.** sim-api then cannot serve the UK default's constituency
    and local-authority runs.
 4. **An enhanced-FRS release that claims the version.** This needs a new
@@ -351,14 +359,19 @@ rehearsal probe agrees.
 - National figures are unaffected. An area breakdown of a reform that works
   through any of these inputs would be wrong.
 - `tools/certify_uk_cut_in_policyengine_py.py` measures this whenever a
-  mismatch is accepted:
-  - it downloads the regional microdata at its manifest pin and checks its
-    sha256;
-  - it reads only column names;
-  - it compares them with both models.
+  mismatch is accepted, with policyengine.py's own audit:
+  - it downloads every regional microdata H5 at its manifest pin and checks
+    its sha256;
+  - in the certification worktree it installs the target policyengine-uk
+    and core, and runs `scripts/audit_regional_input_surface.py`, which reads
+    only column names and measures them against the regional cut's build
+    model (from its manifest) and the target model;
+  - it refuses evidence that is not build-relative (schema 2) or that drops
+    a stored column, and passes the evidence to `certify-data`.
 
-  It lists the result in the pull request, and refuses if a stored column
-  would be dropped (unless `--allow-dropped-columns`).
+  The pull request lists the defaulted inputs, the count of stored columns
+  neither model defines (recorded only, such as the area codes) and the
+  recorded limitations. There is no override for a dropped column.
 
 Routes 3 and 4 are not recommended. Which route a cut takes is María's
 call.

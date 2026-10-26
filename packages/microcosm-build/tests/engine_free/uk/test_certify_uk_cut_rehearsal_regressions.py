@@ -9,13 +9,23 @@ import sys
 import tempfile
 import types
 import unittest
-from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 from tools import certify_uk_cut_in_policyengine_py as runner
 
 TAG = "microcosm-uk-2024-25-national-20261023T075039Z-a133f37a"
+DENSE_TAG = "microcosm-uk-2024-25-dense-20261019T000432Z-ee5c2dbe"
+EVIDENCE = {
+    "schema_version": 2,
+    "model_version": "2.147.2",
+    "build_model_version": "2.132.6",
+    "dropped_columns": [],
+    "defaulted_inputs": ["local_bus_uncapped_single_fare"],
+    "never_modelled_columns": ["constituency_code_oa"],
+    "audited_by": "A Reviewer",
+    "limitations": ["VAT predates the factor fix"],
+}
 
 
 class RunnerTests(unittest.TestCase):
@@ -169,19 +179,6 @@ class RunnerTests(unittest.TestCase):
                 with self.assertRaises(runner.CertifyError):
                     runner.resource_guard(Path.cwd(), max_load1=110)
 
-    def test_model_surface_is_guarded(self):
-        with (
-            patch.object(
-                runner,
-                "resource_guard",
-                side_effect=runner.CertifyError("resource guard"),
-            ),
-            patch.object(runner.subprocess, "run") as spawn,
-        ):
-            with self.assertRaises(runner.CertifyError):
-                runner.model_surface("2.147.2")
-            spawn.assert_not_called()
-
     def test_temp_preflight_rejects_git_directory_or_worktree_file(self):
         for marker_is_directory in (True, False):
             with self.subTest(marker_is_directory=marker_is_directory):
@@ -242,103 +239,14 @@ class RunnerTests(unittest.TestCase):
                     side_effect=runner.CertifyError("temporary directory inside Git"),
                 ),
                 patch.object(runner, "read_cut") as manifest,
-                patch.object(runner, "model_surface") as surface,
+                patch.object(runner, "fetch_regional_microdata") as microdata,
                 patch.object(runner.subprocess, "run") as spawn,
             ):
                 with self.assertRaisesRegex(runner.CertifyError, "inside Git"):
                     runner.certify(args)
             manifest.assert_not_called()
-            surface.assert_not_called()
+            microdata.assert_not_called()
             spawn.assert_not_called()
-
-    def test_model_surface_pins_core_and_records_intended_pair(self):
-        surface = {"all": ["x"], "inputs": ["x"]}
-        with tempfile.TemporaryDirectory() as tmp:
-            timings = Path(tmp) / "timings.jsonl"
-            with (
-                patch.object(runner, "resource_guard", return_value={}),
-                patch.object(
-                    runner.subprocess,
-                    "run",
-                    return_value=subprocess.CompletedProcess(
-                        [], 0, json.dumps(surface), ""
-                    ),
-                ) as spawn,
-            ):
-                self.assertEqual(
-                    runner.model_surface("2.147.2", "3.33.3", timings=timings), surface
-                )
-            argv = spawn.call_args.args[0]
-            self.assertIn("policyengine-uk==2.147.2", argv)
-            self.assertIn("policyengine-core==3.33.3", argv)
-            record = json.loads(timings.read_text())
-            self.assertEqual(record["model_version"], "2.147.2")
-            self.assertEqual(record["core_version"], "3.33.3")
-
-    def test_surface_script_reuses_country_registry_without_construction(self):
-        constructor = Mock(side_effect=AssertionError("duplicate system construction"))
-        country = types.SimpleNamespace(
-            variables={
-                "input": types.SimpleNamespace(is_input_variable=lambda: True),
-                "formula": types.SimpleNamespace(is_input_variable=lambda: False),
-            },
-            CountryTaxBenefitSystem=constructor,
-        )
-        output = io.StringIO()
-        with (
-            patch.dict(sys.modules, {"policyengine_uk": country}),
-            redirect_stdout(output),
-        ):
-            exec(runner._SURFACE_SCRIPT, {})
-        constructor.assert_not_called()
-        self.assertEqual(
-            json.loads(output.getvalue()),
-            {"all": ["formula", "input"], "inputs": ["input"]},
-        )
-
-    def test_regional_surface_comparison_uses_both_cut_core_versions(self):
-        dense_tag = "microcosm-uk-2024-25-dense-20261019T000432Z-ee5c2dbe"
-        national = runner.CutVersions(TAG, "2.147.2", "3.33.3", ())
-        dense = runner.CutVersions(dense_tag, "2.132.6", "3.29.0", ())
-        with tempfile.TemporaryDirectory() as tmp:
-            args = runner.parse(
-                [
-                    "--national-tag",
-                    TAG,
-                    "--dense-tag",
-                    dense_tag,
-                    "--dry-run",
-                    "--base-ref",
-                    "local",
-                    "--pepy-repo",
-                    tmp,
-                    "--skip-writer-check",
-                    "offline regression",
-                    "--accept-regional-model-mismatch",
-                    "recorded rehearsal mismatch",
-                ]
-            )
-            with (
-                patch.object(
-                    runner.subprocess,
-                    "check_output",
-                    side_effect=[
-                        "microcosm",
-                        "immutable-sha",
-                        json.dumps({"data_releases": {"uk": {}}}),
-                    ],
-                ),
-                patch.object(runner, "read_cut", side_effect=[national, dense]),
-                patch.object(
-                    runner, "model_surface", return_value={"all": [], "inputs": []}
-                ) as probe,
-                patch.object(runner, "regional_stored_columns", return_value=set()),
-            ):
-                self.assertEqual(runner.certify(args), 0)
-            self.assertEqual(probe.call_args_list[0].args, (dense.model, dense.core))
-            self.assertEqual(
-                probe.call_args_list[1].args, (national.model, national.core)
-            )
 
     def test_workers_are_limited(self):
         for workers in (0, 5):
@@ -549,7 +457,14 @@ class RunnerTests(unittest.TestCase):
                 self.assertEqual(path.read_bytes(), original)
 
     def run_mock_pipeline(
-        self, *, pytest_code=0, uc_code=0, receipt=None, call_details=None, resume=False
+        self,
+        *,
+        pytest_code=0,
+        uc_code=0,
+        receipt=None,
+        call_details=None,
+        resume=False,
+        evidence=None,
     ):
         if receipt is None and uc_code == 0:
             receipt = {
@@ -569,11 +484,23 @@ class RunnerTests(unittest.TestCase):
             path = worktree / "src/policyengine/data/bundle/manifest.json"
             path.parent.mkdir(parents=True)
             path.write_text(json.dumps(bundle))
+        route = ["--drop-regional-release"]
+        if evidence is not None:
+            route = [
+                "--dense-tag",
+                DENSE_TAG,
+                "--accept-regional-model-mismatch",
+                "recorded rehearsal mismatch",
+                "--audited-by",
+                "A Reviewer",
+                "--regional-limitation",
+                "VAT predates the factor fix",
+            ]
         args = runner.parse(
             [
                 "--national-tag",
                 TAG,
-                "--drop-regional-release",
+                *route,
                 "--base-ref",
                 "local",
                 "--pepy-repo",
@@ -586,6 +513,10 @@ class RunnerTests(unittest.TestCase):
             ]
         )
         calls = []
+        cuts = {
+            TAG: runner.CutVersions(TAG, "2.147.2", "3.0", ()),
+            DENSE_TAG: runner.CutVersions(DENSE_TAG, "2.132.6", "3.0", ()),
+        }
 
         def command(argv, **kwargs):
             calls.append(argv)
@@ -601,6 +532,16 @@ class RunnerTests(unittest.TestCase):
                 call_details.append((argv, kwargs))
             if "constant-rewrite" == kwargs.get("step"):
                 return subprocess.CompletedProcess(argv, 0, "[]", "")
+            if "audit-help" == kwargs.get("step"):
+                flags = (
+                    "--regional-manifest-uri --artifact --model-version "
+                    "--audited-by --limitation --output"
+                )
+                return subprocess.CompletedProcess(argv, 0, f"usage: {flags}", "")
+            if "regional-input-audit" == kwargs.get("step"):
+                output = Path(argv[argv.index("--output") + 1])
+                output.write_text(json.dumps(evidence))
+                return subprocess.CompletedProcess(argv, 0, "", "")
             if "UC-floor" == kwargs.get("step"):
                 if receipt is not None:
                     (root / "certification.uc_floor.json").write_text(
@@ -620,10 +561,12 @@ class RunnerTests(unittest.TestCase):
                 side_effect=["microcosm", "immutable-sha", json.dumps(bundle)],
             ),
             patch.object(runner.subprocess, "run", side_effect=command),
+            patch.object(runner, "read_cut", side_effect=lambda tag, _: cuts[tag]),
+            patch.object(runner, "regional_audit_support", return_value=None),
             patch.object(
                 runner,
-                "read_cut",
-                return_value=runner.CutVersions(TAG, "2.147.2", "3.0", ()),
+                "fetch_regional_microdata",
+                return_value={"microcosm_uk_2024_25_dense": root / "dense.h5"},
             ),
             patch.object(runner.Shell, "__call__", side_effect=shell),
             patch.object(
@@ -640,6 +583,76 @@ class RunnerTests(unittest.TestCase):
         ):
             result = runner.certify(args)
         return result, calls, root
+
+    def test_an_accepted_mismatch_audits_then_certifies_with_its_evidence(self):
+        details = []
+        result, calls, root = self.run_mock_pipeline(
+            evidence=EVIDENCE, call_details=details
+        )
+        self.assertEqual(result, 0)
+        steps = [kwargs.get("step") for _, kwargs in details]
+        order = [
+            "initial-sync",
+            "audit-model-install",
+            "audit-help",
+            "regional-input-audit",
+            "certify-data",
+            "lock",
+            "certified-sync",
+        ]
+        self.assertEqual([s for s in steps if s in order], order)
+        by_step = {kwargs.get("step"): argv for argv, kwargs in details}
+        install = by_step["audit-model-install"]
+        self.assertIn("policyengine-uk==2.147.2", install)
+        self.assertIn("policyengine-core==3.0", install)
+        audit, certify = by_step["regional-input-audit"], by_step["certify-data"]
+        evidence = audit[audit.index("--output") + 1]
+        self.assertEqual(
+            certify[certify.index("--regional-input-surface-evidence") + 1], evidence
+        )
+        self.assertEqual(
+            certify[certify.index("--regional-manifest-uri") + 1],
+            audit[audit.index("--regional-manifest-uri") + 1],
+        )
+        self.assertIn(
+            f"microcosm_uk_2024_25_dense={root / 'dense.h5'}",
+            audit,
+        )
+        body = (root / "certification.pr-body.md").read_text()
+        self.assertIn("local_bus_uncapped_single_fare", body)
+        self.assertIn("audited by A Reviewer", body)
+
+    def test_an_audit_reporting_drops_refuses_before_certify_data(self):
+        details = []
+        with self.assertRaisesRegex(runner.CertifyError, "would lose them: age"):
+            self.run_mock_pipeline(
+                evidence={**EVIDENCE, "dropped_columns": ["age"]},
+                call_details=details,
+            )
+        self.assertNotIn("certify-data", [k.get("step") for _, k in details])
+
+    def test_policyengine_py_commands_never_see_the_callers_venv(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            shell = runner.Shell(Path(tmp), Path(tmp) / "run.log")
+            caller = {
+                "UV_PROJECT_ENVIRONMENT": "/microcosm/.venv",
+                "VIRTUAL_ENV": "/microcosm/.venv",
+                "KEEP_ME": "1",
+            }
+            with (
+                patch.dict(os.environ, caller),
+                patch.object(runner, "resource_guard", return_value={}),
+                patch.object(
+                    runner,
+                    "run_logged",
+                    return_value=subprocess.CompletedProcess(["uv"], 0, "", ""),
+                ) as spawn,
+            ):
+                shell(["uv", "sync"], env={"EXTRA": "2"})
+            env = spawn.call_args.kwargs["env"]
+            self.assertNotIn("UV_PROJECT_ENVIRONMENT", env)
+            self.assertNotIn("VIRTUAL_ENV", env)
+            self.assertEqual((env["KEEP_ME"], env["EXTRA"]), ("1", "2"))
 
     def test_pytest_configuration_error_is_failure_without_failed_lines(self):
         result, calls, root = self.run_mock_pipeline(pytest_code=4)
