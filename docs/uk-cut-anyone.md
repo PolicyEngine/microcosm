@@ -140,7 +140,9 @@ ever left at an input's path.
 | Input-mass reference | `policyengine/microcosm-uk-build-inputs` (private) `input-mass-reference/fd41cb5f…/` | fetched, matches |
 | Chronicle UK consumer artifact (about 7.4 GB) | `policyengine/microcosm-uk-build-inputs` `chronicle-uk/<the feed's source commit>/`, read at main | the path follows `chronicle_feed.json`, so a re-pin needs its artifact hosted (below); abf0921's was rebuilt on Modal and both digests reproduced the pin byte for byte |
 | NTS 2002-2024 (5 tabs) | `policyengine-uk-data-private` `nts_2002_24.zip` @ `559b69e9` | fetched, every member matches its pin |
-| LCFS 2024-25 (2 tabs) | `policyengine-uk-data-private` `lcfs_2024_25.zip` @ `1105105### NTS and LCFS
+| LCFS 2024-25 (2 tabs) | `policyengine-uk-data-private` `lcfs_2024_25.zip` @ `11051052` (a repack of the extracted files) | fetched, every member matches its pin |
+
+### NTS and LCFS
 
 Both were uploaded once by a UKDS licence holder (2026-10-25) and are pinned
 by revision and archive sha256 in `tools/uk_cut_inputs.json`:
@@ -163,9 +165,6 @@ A tab that differs from its pin is refused by name: that upload is a
 different edition from the one the build was reviewed against. A
 re-upload needs its new revision and archive sha256 pinned in
 `tools/uk_cut_inputs.json`.
-
-ion and archive sha256 in
-`tools/uk_cut_inputs.json`, in a small follow-up PR.
 
 ### Rebuilding the Chronicle artifact
 
