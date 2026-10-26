@@ -1,0 +1,1356 @@
+{
+ "excise_quantities": {
+  "alcohol_volume_weights": {
+   "rule": "spending"
+  },
+  "components": {
+   "betting_and_gaming_stakes": {
+    "positive_share": 0.019563867703070097,
+    "weighted_total": 423079695.45229775
+   },
+   "gambling_stakes": {
+    "positive_share": 0.14629307418887494,
+    "weighted_total": 2272999752.204708
+   },
+   "national_lottery_stakes": {
+    "positive_share": 0.10681009830639804,
+    "weighted_total": 1665022021.5211823
+   },
+   "off_trade_alcohol_spending": {
+    "positive_share": 0.4643342302308529,
+    "weighted_total": 16278625074.816578
+   },
+   "on_trade_alcohol_spending": {
+    "positive_share": 0.3036569993531277,
+    "weighted_total": 15688240726.766373
+   },
+   "other_gambling_stakes": {
+    "positive_share": 0.041947824699496886,
+    "weighted_total": 607977730.6835256
+   },
+   "tobacco_spending": {
+    "positive_share": 0.08163306670501938,
+    "weighted_total": 3680730909.276504
+   }
+  },
+  "draught_shares": {
+   "beer_draught_share": {
+    "denominator": [
+     {
+      "concept": "hmrc.alcohol_clearances",
+      "dimensions": {
+       "abv_band": "all",
+       "alcohol_product": "beer",
+       "duty_point": "all",
+       "duty_relief": "all"
+      },
+      "geography_id": "K02000001",
+      "published": 185277635.28381,
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.beer.clearances.fy2024.beer.total_clearances"
+     }
+    ],
+    "numerator": [
+     {
+      "concept": "hmrc.alcohol_clearances",
+      "dimensions": {
+       "abv_band": "all",
+       "alcohol_product": "beer",
+       "duty_point": "all",
+       "duty_relief": "draught_relief_only"
+      },
+      "geography_id": "K02000001",
+      "published": 64367298.8324578,
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.beer.clearances.fy2024.beer.clearances_draught_relief_only"
+     },
+     {
+      "concept": "hmrc.alcohol_clearances",
+      "dimensions": {
+       "abv_band": "all",
+       "alcohol_product": "beer",
+       "duty_point": "all",
+       "duty_relief": "draught_and_small_producer_relief"
+      },
+      "geography_id": "K02000001",
+      "published": 9234320.30598535,
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.beer.clearances.fy2024.beer.clearances_draught_and_small_producer_relief"
+     }
+    ],
+    "share": 0.3972504238069507
+   },
+   "cider_draught_share": {
+    "denominator": [
+     {
+      "concept": "hmrc.alcohol_clearances",
+      "dimensions": {
+       "abv_band": "all",
+       "alcohol_product": "cider",
+       "duty_point": "all",
+       "duty_relief": "all"
+      },
+      "geography_id": "K02000001",
+      "published": 30347471.2870859,
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.cider.clearances.fy2024.cider.total_clearances"
+     }
+    ],
+    "numerator": [
+     {
+      "concept": "hmrc.alcohol_clearances",
+      "dimensions": {
+       "abv_band": "all",
+       "alcohol_product": "cider",
+       "duty_point": "all",
+       "duty_relief": "draught_relief_only"
+      },
+      "geography_id": "K02000001",
+      "published": 6706864.9848297,
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.cider.clearances.fy2024.cider.clearances_draught_relief_only"
+     },
+     {
+      "concept": "hmrc.alcohol_clearances",
+      "dimensions": {
+       "abv_band": "all",
+       "alcohol_product": "cider",
+       "duty_point": "all",
+       "duty_relief": "draught_and_small_producer_relief"
+      },
+      "geography_id": "K02000001",
+      "published": 351226.826478132,
+      "source_record_id": "hmrc.alcohol_bulletin_2026_08.cider.clearances.fy2024.cider.clearances_draught_and_small_producer_relief"
+     }
+    ],
+    "share": 0.23257594494574382
+   }
+  },
+  "fiscal_start": "2024-04-01",
+  "geography_id": "K02000001",
+  "keys": {
+   "alcohol": {
+    "positive_share": 0.576136105053031
+   },
+   "betting_and_gaming": {
+    "positive_share": 0.019563867703070097
+   },
+   "national_lottery": {
+    "positive_share": 0.10681009830639804
+   },
+   "tobacco": {
+    "positive_share": 0.08163306670501938
+   }
+  },
+  "operation": "level_excise_quantities",
+  "outputs": {
+   "beer_litres": {
+    "annual_level": 4631940882.095249,
+    "concept": "hmrc.alcohol_clearances",
+    "dimensions": {
+     "abv_band": "all",
+     "alcohol_product": "beer",
+     "duty_point": "all",
+     "duty_relief": "all"
+    },
+    "factor": 0.14489818647988575,
+    "frame_annual_total": 4631940882.095249,
+    "geography_id": "K02000001",
+    "key": "alcohol",
+    "key_total": 31966865801.58295,
+    "positive_share": 0.576136105053031,
+    "published": 185277635.28381,
+    "share": 1.0,
+    "source_record_id": "hmrc.alcohol_bulletin_2026_08.beer.clearances.fy2024.beer.total_clearances",
+    "stored_per": "year",
+    "strength": {
+     "parameter_path": "household.consumption.alcohol.beer_abv",
+     "value": 0.04
+    },
+    "unit": "litre_of_pure_alcohol"
+   },
+   "betting_exchange_commission": {
+    "annual_level": 123949909.1922428,
+    "concept": "hmrc.betting_and_gaming_duty_receipts",
+    "dimensions": {
+     "accounting_basis": "cash",
+     "gambling_duty": "general_betting_duty"
+    },
+    "factor": 0.2929705928329481,
+    "frame_annual_total": 123949909.1922428,
+    "geography_id": "K02000001",
+    "key": "betting_and_gaming",
+    "key_total": 423079695.45229775,
+    "positive_share": 0.019563867703070097,
+    "published": 713858000.0,
+    "rate": {
+     "parameter_path": "gov.hmrc.gambling_duty.general_betting.rates.fixed_odds",
+     "value": 0.15
+    },
+    "remote_horse_racing_share": 0.29097725571746264,
+    "share": 0.026045076722312304,
+    "source_record_id": "hmrc.betting_gaming_2026_09.receipts.fy2024.united_kingdom.general_betting_duty_receipts",
+    "split_by": {
+     "exchange": {
+      "concept": "gambling_commission.gross_gambling_yield",
+      "dimensions": {
+       "betting_event": "all",
+       "gambling_activity": "betting_exchange",
+       "gambling_sector": "betting_remote"
+      },
+      "geography_id": "K03000001",
+      "published": 101354147.86830999,
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_type.fy2024.great_britain.ggy_betting_remote_betting_exchange"
+     },
+     "over_the_counter": {
+      "concept": "gambling_commission.gross_gambling_yield",
+      "dimensions": {
+       "betting_event": "all",
+       "gambling_activity": "off_course_over_the_counter",
+       "gambling_sector": "betting_non_remote"
+      },
+      "geography_id": "K03000001",
+      "published": 1249307207.97355,
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_6.fy2024.great_britain.ggy_betting_non_remote_off_course_over_the_counter"
+     },
+     "pools_non_remote": {
+      "concept": "gambling_commission.gross_gambling_yield",
+      "dimensions": {
+       "betting_event": "all",
+       "gambling_activity": "pool_betting",
+       "gambling_sector": "betting_non_remote"
+      },
+      "geography_id": "K03000001",
+      "published": 21233797.52638,
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_6.fy2024.great_britain.ggy_betting_non_remote_pool_betting"
+     },
+     "pools_remote": {
+      "concept": "gambling_commission.gross_gambling_yield",
+      "dimensions": {
+       "betting_event": "all",
+       "gambling_activity": "pool_betting",
+       "gambling_sector": "betting_remote"
+      },
+      "geography_id": "K03000001",
+      "published": 23919023.715339996,
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_type.fy2024.great_britain.ggy_betting_remote_pool_betting"
+     },
+     "remote_all_events": {
+      "concept": "gambling_commission.gross_gambling_yield",
+      "dimensions": {
+       "betting_event": "all",
+       "gambling_activity": "all",
+       "gambling_sector": "betting_remote"
+      },
+      "geography_id": "K03000001",
+      "published": 2620948697.1002502,
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_1.fy2024.great_britain.ggy_betting_remote"
+     },
+     "remote_fixed_odds": {
+      "concept": "gambling_commission.gross_gambling_yield",
+      "dimensions": {
+       "betting_event": "all",
+       "gambling_activity": "betting",
+       "gambling_sector": "betting_remote"
+      },
+      "geography_id": "K03000001",
+      "published": 2495675525.5166,
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_type.fy2024.great_britain.ggy_betting_remote_betting"
+     },
+     "remote_horses": {
+      "concept": "gambling_commission.gross_gambling_yield",
+      "dimensions": {
+       "betting_event": "horses",
+       "gambling_activity": "all",
+       "gambling_sector": "betting_remote"
+      },
+      "geography_id": "K03000001",
+      "published": 762636459.2584901,
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_event.fy2024.great_britain.ggy_betting_remote_horses"
+     }
+    },
+    "stored_per": "year",
+    "unit": "gbp"
+   },
+   "bingo_net_receipts": {
+    "annual_level": 252330000.0,
+    "concept": "hmrc.betting_and_gaming_duty_receipts",
+    "dimensions": {
+     "accounting_basis": "cash",
+     "gambling_duty": "bingo_duty"
+    },
+    "factor": 0.5964124554127893,
+    "frame_annual_total": 252330000.0,
+    "geography_id": "K02000001",
+    "key": "betting_and_gaming",
+    "key_total": 423079695.45229775,
+    "positive_share": 0.019563867703070097,
+    "published": 25233000.0,
+    "rate": {
+     "parameter_path": "gov.hmrc.gambling_duty.bingo.rate",
+     "value": 0.1
+    },
+    "share": 1.0,
+    "source_record_id": "hmrc.betting_gaming_2026_09.receipts.fy2024.united_kingdom.bingo_duty_receipts",
+    "stored_per": "year",
+    "unit": "gbp"
+   },
+   "cider_litres": {
+    "annual_level": 674388250.8241311,
+    "concept": "hmrc.alcohol_clearances",
+    "dimensions": {
+     "abv_band": "all",
+     "alcohol_product": "cider",
+     "duty_point": "all",
+     "duty_relief": "all"
+    },
+    "factor": 0.021096477052521566,
+    "frame_annual_total": 674388250.824131,
+    "geography_id": "K02000001",
+    "key": "alcohol",
+    "key_total": 31966865801.58295,
+    "positive_share": 0.576136105053031,
+    "published": 30347471.2870859,
+    "share": 1.0,
+    "source_record_id": "hmrc.alcohol_bulletin_2026_08.cider.clearances.fy2024.cider.total_clearances",
+    "stored_per": "year",
+    "strength": {
+     "parameter_path": "household.consumption.alcohol.cider_abv",
+     "value": 0.045
+    },
+    "unit": "litre_of_pure_alcohol"
+   },
+   "cigarettes_per_week": {
+    "annual_level": 13577910633.711401,
+    "concept": "hmrc.tobacco_clearances",
+    "dimensions": {
+     "tobacco_product": "cigarettes"
+    },
+    "factor": 3.688916948394991,
+    "frame_annual_total": 13577910633.711401,
+    "geography_id": "K02000001",
+    "key": "tobacco",
+    "key_total": 3680730909.276504,
+    "positive_share": 0.08163306670501938,
+    "published": 13577910633.711401,
+    "share": 1.0,
+    "source_record_id": "hmrc.tobacco_bulletin_2026_08.clearances.fy2024.united_kingdom.cigarettes",
+    "stored_per": "week",
+    "strength": null,
+    "unit": "stick"
+   },
+   "cigars_grams_per_week": {
+    "annual_level": 395122983.72549295,
+    "concept": "hmrc.tobacco_clearances",
+    "dimensions": {
+     "tobacco_product": "cigars"
+    },
+    "factor": 0.10734905470260513,
+    "frame_annual_total": 395122983.7254929,
+    "geography_id": "K02000001",
+    "key": "tobacco",
+    "key_total": 3680730909.276504,
+    "positive_share": 0.08163306670501938,
+    "published": 395122.98372549296,
+    "share": 1.0,
+    "source_record_id": "hmrc.tobacco_bulletin_2026_08.clearances.fy2024.united_kingdom.cigars",
+    "stored_per": "week",
+    "strength": null,
+    "unit": "kilogram"
+   },
+   "hand_rolling_tobacco_grams_per_week": {
+    "annual_level": 4028478686.91037,
+    "concept": "hmrc.tobacco_clearances",
+    "dimensions": {
+     "tobacco_product": "hand_rolling_tobacco"
+    },
+    "factor": 1.0944779138179976,
+    "frame_annual_total": 4028478686.91037,
+    "geography_id": "K02000001",
+    "key": "tobacco",
+    "key_total": 3680730909.276504,
+    "positive_share": 0.08163306670501938,
+    "published": 4028478.68691037,
+    "share": 1.0,
+    "source_record_id": "hmrc.tobacco_bulletin_2026_08.clearances.fy2024.united_kingdom.hand_rolling_tobacco",
+    "stored_per": "week",
+    "strength": null,
+    "unit": "kilogram"
+   },
+   "horse_and_dog_pool_betting_net_losses": {
+    "annual_level": 55219132.22492455,
+    "concept": "hmrc.betting_and_gaming_duty_receipts",
+    "dimensions": {
+     "accounting_basis": "cash",
+     "gambling_duty": "general_betting_duty"
+    },
+    "factor": 0.13051709363147754,
+    "frame_annual_total": 55219132.22492455,
+    "geography_id": "K02000001",
+    "key": "betting_and_gaming",
+    "key_total": 423079695.45229775,
+    "positive_share": 0.019563867703070097,
+    "published": 713858000.0,
+    "rate": {
+     "parameter_path": "gov.hmrc.gambling_duty.general_betting.rates.fixed_odds",
+     "value": 0.15
+    },
+    "remote_horse_racing_share": 0.29097725571746264,
+    "share": 0.011602965623049235,
+    "source_record_id": "hmrc.betting_gaming_2026_09.receipts.fy2024.united_kingdom.general_betting_duty_receipts",
+    "split_by": {
+     "exchange": {
+      "concept": "gambling_commission.gross_gambling_yield",
+      "dimensions": {
+       "betting_event": "all",
+       "gambling_activity": "betting_exchange",
+       "gambling_sector": "betting_remote"
+      },
+      "geography_id": "K03000001",
+      "published": 101354147.86830999,
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_type.fy2024.great_britain.ggy_betting_remote_betting_exchange"
+     },
+     "over_the_counter": {
+      "concept": "gambling_commission.gross_gambling_yield",
+      "dimensions": {
+       "betting_event": "all",
+       "gambling_activity": "off_course_over_the_counter",
+       "gambling_sector": "betting_non_remote"
+      },
+      "geography_id": "K03000001",
+      "published": 1249307207.97355,
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_6.fy2024.great_britain.ggy_betting_non_remote_off_course_over_the_counter"
+     },
+     "pools_non_remote": {
+      "concept": "gambling_commission.gross_gambling_yield",
+      "dimensions": {
+       "betting_event": "all",
+       "gambling_activity": "pool_betting",
+       "gambling_sector": "betting_non_remote"
+      },
+      "geography_id": "K03000001",
+      "published": 21233797.52638,
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_6.fy2024.great_britain.ggy_betting_non_remote_pool_betting"
+     },
+     "pools_remote": {
+      "concept": "gambling_commission.gross_gambling_yield",
+      "dimensions": {
+       "betting_event": "all",
+       "gambling_activity": "pool_betting",
+       "gambling_sector": "betting_remote"
+      },
+      "geography_id": "K03000001",
+      "published": 23919023.715339996,
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_type.fy2024.great_britain.ggy_betting_remote_pool_betting"
+     },
+     "remote_all_events": {
+      "concept": "gambling_commission.gross_gambling_yield",
+      "dimensions": {
+       "betting_event": "all",
+       "gambling_activity": "all",
+       "gambling_sector": "betting_remote"
+      },
+      "geography_id": "K03000001",
+      "published": 2620948697.1002502,
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_1.fy2024.great_britain.ggy_betting_remote"
+     },
+     "remote_fixed_odds": {
+      "concept": "gambling_commission.gross_gambling_yield",
+      "dimensions": {
+       "betting_event": "all",
+       "gambling_activity": "betting",
+       "gambling_sector": "betting_remote"
+      },
+      "geography_id": "K03000001",
+      "published": 2495675525.5166,
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_type.fy2024.great_britain.ggy_betting_remote_betting"
+     },
+     "remote_horses": {
+      "concept": "gambling_commission.gross_gambling_yield",
+      "dimensions": {
+       "betting_event": "horses",
+       "gambling_activity": "all",
+       "gambling_sector": "betting_remote"
+      },
+      "geography_id": "K03000001",
+      "published": 762636459.2584901,
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_event.fy2024.great_britain.ggy_betting_remote_horses"
+     }
+    },
+    "stored_per": "year",
+    "unit": "gbp"
+   },
+   "land_based_casino_net_losses": {
+    "annual_level": 702361489.1692535,
+    "concept": "hmrc.betting_and_gaming_duty_receipts",
+    "dimensions": {
+     "accounting_basis": "cash",
+     "gambling_duty": "gaming_duty"
+    },
+    "factor": 1.6601162776634473,
+    "frame_annual_total": 702361489.1692535,
+    "geography_id": "K02000001",
+    "key": "betting_and_gaming",
+    "key_total": 423079695.45229775,
+    "positive_share": 0.019563867703070097,
+    "published": 165397000.0,
+    "rate": {
+     "parameter_path": "household.consumption.gambling.casino_effective_rate",
+     "value": 0.235487
+    },
+    "share": 1.0,
+    "source_record_id": "hmrc.betting_gaming_2026_09.receipts.fy2024.united_kingdom.gaming_duty_receipts",
+    "stored_per": "year",
+    "unit": "gbp"
+   },
+   "land_based_fixed_odds_betting_net_losses": {
+    "annual_level": 1527826124.9133615,
+    "concept": "hmrc.betting_and_gaming_duty_receipts",
+    "dimensions": {
+     "accounting_basis": "cash",
+     "gambling_duty": "general_betting_duty"
+    },
+    "factor": 3.611201722361134,
+    "frame_annual_total": 1527826124.9133615,
+    "geography_id": "K02000001",
+    "key": "betting_and_gaming",
+    "key_total": 423079695.45229775,
+    "positive_share": 0.019563867703070097,
+    "published": 713858000.0,
+    "rate": {
+     "parameter_path": "gov.hmrc.gambling_duty.general_betting.rates.fixed_odds",
+     "value": 0.15
+    },
+    "remote_horse_racing_share": 0.29097725571746264,
+    "share": 0.3210357224223924,
+    "source_record_id": "hmrc.betting_gaming_2026_09.receipts.fy2024.united_kingdom.general_betting_duty_receipts",
+    "split_by": {
+     "exchange": {
+      "concept": "gambling_commission.gross_gambling_yield",
+      "dimensions": {
+       "betting_event": "all",
+       "gambling_activity": "betting_exchange",
+       "gambling_sector": "betting_remote"
+      },
+      "geography_id": "K03000001",
+      "published": 101354147.86830999,
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_type.fy2024.great_britain.ggy_betting_remote_betting_exchange"
+     },
+     "over_the_counter": {
+      "concept": "gambling_commission.gross_gambling_yield",
+      "dimensions": {
+       "betting_event": "all",
+       "gambling_activity": "off_course_over_the_counter",
+       "gambling_sector": "betting_non_remote"
+      },
+      "geography_id": "K03000001",
+      "published": 1249307207.97355,
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_6.fy2024.great_britain.ggy_betting_non_remote_off_course_over_the_counter"
+     },
+     "pools_non_remote": {
+      "concept": "gambling_commission.gross_gambling_yield",
+      "dimensions": {
+       "betting_event": "all",
+       "gambling_activity": "pool_betting",
+       "gambling_sector": "betting_non_remote"
+      },
+      "geography_id": "K03000001",
+      "published": 21233797.52638,
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_6.fy2024.great_britain.ggy_betting_non_remote_pool_betting"
+     },
+     "pools_remote": {
+      "concept": "gambling_commission.gross_gambling_yield",
+      "dimensions": {
+       "betting_event": "all",
+       "gambling_activity": "pool_betting",
+       "gambling_sector": "betting_remote"
+      },
+      "geography_id": "K03000001",
+      "published": 23919023.715339996,
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_type.fy2024.great_britain.ggy_betting_remote_pool_betting"
+     },
+     "remote_all_events": {
+      "concept": "gambling_commission.gross_gambling_yield",
+      "dimensions": {
+       "betting_event": "all",
+       "gambling_activity": "all",
+       "gambling_sector": "betting_remote"
+      },
+      "geography_id": "K03000001",
+      "published": 2620948697.1002502,
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_1.fy2024.great_britain.ggy_betting_remote"
+     },
+     "remote_fixed_odds": {
+      "concept": "gambling_commission.gross_gambling_yield",
+      "dimensions": {
+       "betting_event": "all",
+       "gambling_activity": "betting",
+       "gambling_sector": "betting_remote"
+      },
+      "geography_id": "K03000001",
+      "published": 2495675525.5166,
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_type.fy2024.great_britain.ggy_betting_remote_betting"
+     },
+     "remote_horses": {
+      "concept": "gambling_commission.gross_gambling_yield",
+      "dimensions": {
+       "betting_event": "horses",
+       "gambling_activity": "all",
+       "gambling_sector": "betting_remote"
+      },
+      "geography_id": "K03000001",
+      "published": 762636459.2584901,
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_event.fy2024.great_britain.ggy_betting_remote_horses"
+     }
+    },
+    "stored_per": "year",
+    "unit": "gbp"
+   },
+   "machine_games_higher_rate_net_takings": {
+    "annual_level": 2384000.0,
+    "concept": "hmrc.machine_games_duty_liabilities",
+    "dimensions": {
+     "mgd_rate": "higher_rate"
+    },
+    "factor": 0.0056348721662271214,
+    "frame_annual_total": 2384000.0,
+    "geography_id": "K02000001",
+    "key": "betting_and_gaming",
+    "key_total": 423079695.45229775,
+    "positive_share": 0.019563867703070097,
+    "published": 596000.0,
+    "rate": {
+     "parameter_path": "gov.hmrc.gambling_duty.machine_games.rates.higher",
+     "value": 0.25
+    },
+    "share": 1.0,
+    "source_record_id": "hmrc.betting_gaming_2026_09.mgd_liabilities.fy2024.united_kingdom.higher_rate_liabilities",
+    "stored_per": "year",
+    "unit": "gbp"
+   },
+   "machine_games_lower_rate_net_takings": {
+    "annual_level": 138420000.0,
+    "concept": "hmrc.machine_games_duty_liabilities",
+    "dimensions": {
+     "mgd_rate": "lower_rate"
+    },
+    "factor": 0.32717240153068716,
+    "frame_annual_total": 138420000.0,
+    "geography_id": "K02000001",
+    "key": "betting_and_gaming",
+    "key_total": 423079695.45229775,
+    "positive_share": 0.019563867703070097,
+    "published": 6921000.0,
+    "rate": {
+     "parameter_path": "gov.hmrc.gambling_duty.machine_games.rates.lower",
+     "value": 0.05
+    },
+    "share": 1.0,
+    "source_record_id": "hmrc.betting_gaming_2026_09.mgd_liabilities.fy2024.united_kingdom.lower_rate_liabilities",
+    "stored_per": "year",
+    "unit": "gbp"
+   },
+   "machine_games_standard_rate_net_takings": {
+    "annual_level": 3023740000.0,
+    "concept": "hmrc.machine_games_duty_liabilities",
+    "dimensions": {
+     "mgd_rate": "standard_rate"
+    },
+    "factor": 7.146974984860569,
+    "frame_annual_total": 3023740000.0,
+    "geography_id": "K02000001",
+    "key": "betting_and_gaming",
+    "key_total": 423079695.45229775,
+    "positive_share": 0.019563867703070097,
+    "published": 604748000.0,
+    "rate": {
+     "parameter_path": "gov.hmrc.gambling_duty.machine_games.rates.standard",
+     "value": 0.2
+    },
+    "share": 1.0,
+    "source_record_id": "hmrc.betting_gaming_2026_09.mgd_liabilities.fy2024.united_kingdom.standard_rate_liabilities",
+    "stored_per": "year",
+    "unit": "gbp"
+   },
+   "national_lottery_ticket_spending": {
+    "annual_level": 7765725000.0,
+    "concept": "hmrc.betting_and_gaming_duty_receipts",
+    "dimensions": {
+     "accounting_basis": "cash",
+     "gambling_duty": "lottery_duty"
+    },
+    "factor": 4.664037411892696,
+    "frame_annual_total": 7765725000.000001,
+    "geography_id": "K02000001",
+    "key": "national_lottery",
+    "key_total": 1665022021.5211823,
+    "positive_share": 0.10681009830639804,
+    "published": 931887000.0,
+    "rate": {
+     "parameter_path": "gov.hmrc.gambling_duty.lottery.rate",
+     "value": 0.12
+    },
+    "share": 1.0,
+    "source_record_id": "hmrc.betting_gaming_2026_09.receipts.fy2024.united_kingdom.lottery_duty_receipts",
+    "stored_per": "year",
+    "unit": "gbp"
+   },
+   "other_fermented_litres": {
+    "annual_level": 239435846.48703998,
+    "concept": "hmrc.alcohol_clearances",
+    "dimensions": {
+     "abv_band": "all",
+     "alcohol_product": "other_fermented_products",
+     "duty_point": "all",
+     "duty_relief": "all"
+    },
+    "factor": 0.007490125806302333,
+    "frame_annual_total": 239435846.48703998,
+    "geography_id": "K02000001",
+    "key": "alcohol",
+    "key_total": 31966865801.58295,
+    "positive_share": 0.576136105053031,
+    "published": 11971792.324352,
+    "share": 1.0,
+    "source_record_id": "hmrc.alcohol_bulletin_2026_08.other_fermented_products.clearances.fy2024.other_fermented_products.total_clearances",
+    "stored_per": "year",
+    "strength": {
+     "parameter_path": "household.consumption.alcohol.other_fermented_abv",
+     "value": 0.05
+    },
+    "unit": "litre_of_pure_alcohol"
+   },
+   "other_tobacco_grams_per_week": {
+    "annual_level": 301465159.32260597,
+    "concept": "hmrc.tobacco_clearances",
+    "dimensions": {
+     "tobacco_product": "other"
+    },
+    "factor": 0.08190361282940482,
+    "frame_annual_total": 301465159.32260597,
+    "geography_id": "K02000001",
+    "key": "tobacco",
+    "key_total": 3680730909.276504,
+    "positive_share": 0.08163306670501938,
+    "published": 301465.159322606,
+    "share": 1.0,
+    "source_record_id": "hmrc.tobacco_bulletin_2026_08.clearances.fy2024.united_kingdom.other",
+    "stored_per": "week",
+    "strength": null,
+    "unit": "kilogram"
+   },
+   "pool_betting_net_receipts": {
+    "annual_level": 54166666.66666667,
+    "concept": "hmrc.betting_and_gaming_duty_receipts",
+    "dimensions": {
+     "accounting_basis": "cash",
+     "gambling_duty": "pool_betting_duty"
+    },
+    "factor": 0.12802946406766044,
+    "frame_annual_total": 54166666.66666668,
+    "geography_id": "K02000001",
+    "key": "betting_and_gaming",
+    "key_total": 423079695.45229775,
+    "positive_share": 0.019563867703070097,
+    "published": 8125000.0,
+    "rate": {
+     "parameter_path": "gov.hmrc.gambling_duty.pool_betting.rate",
+     "value": 0.15
+    },
+    "share": 1.0,
+    "source_record_id": "hmrc.betting_gaming_2026_09.receipts.fy2024.united_kingdom.pool_betting_duty_receipts",
+    "stored_per": "year",
+    "unit": "gbp"
+   },
+   "remote_gaming_net_losses": {
+    "annual_level": 5535900000.0,
+    "concept": "hmrc.betting_and_gaming_duty_receipts",
+    "dimensions": {
+     "accounting_basis": "cash",
+     "gambling_duty": "remote_gaming_duty"
+    },
+    "factor": 13.084768802439902,
+    "frame_annual_total": 5535900000.0,
+    "geography_id": "K02000001",
+    "key": "betting_and_gaming",
+    "key_total": 423079695.45229775,
+    "positive_share": 0.019563867703070097,
+    "published": 1162539000.0,
+    "rate": {
+     "parameter_path": "gov.hmrc.gambling_duty.remote_gaming.rate",
+     "value": 0.21
+    },
+    "share": 1.0,
+    "source_record_id": "hmrc.betting_gaming_2026_09.receipts.fy2024.united_kingdom.remote_gaming_duty_receipts",
+    "stored_per": "year",
+    "unit": "gbp"
+   },
+   "remote_other_betting_net_losses": {
+    "annual_level": 2163978657.2782593,
+    "concept": "hmrc.betting_and_gaming_duty_receipts",
+    "dimensions": {
+     "accounting_basis": "cash",
+     "gambling_duty": "general_betting_duty"
+    },
+    "factor": 5.114825127603525,
+    "frame_annual_total": 2163978657.2782593,
+    "geography_id": "K02000001",
+    "key": "betting_and_gaming",
+    "key_total": 423079695.45229775,
+    "positive_share": 0.019563867703070097,
+    "published": 713858000.0,
+    "rate": {
+     "parameter_path": "gov.hmrc.gambling_duty.general_betting.rates.fixed_odds",
+     "value": 0.15
+    },
+    "remote_horse_racing_share": 0.29097725571746264,
+    "share": 0.45470779705731235,
+    "source_record_id": "hmrc.betting_gaming_2026_09.receipts.fy2024.united_kingdom.general_betting_duty_receipts",
+    "split_by": {
+     "exchange": {
+      "concept": "gambling_commission.gross_gambling_yield",
+      "dimensions": {
+       "betting_event": "all",
+       "gambling_activity": "betting_exchange",
+       "gambling_sector": "betting_remote"
+      },
+      "geography_id": "K03000001",
+      "published": 101354147.86830999,
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_type.fy2024.great_britain.ggy_betting_remote_betting_exchange"
+     },
+     "over_the_counter": {
+      "concept": "gambling_commission.gross_gambling_yield",
+      "dimensions": {
+       "betting_event": "all",
+       "gambling_activity": "off_course_over_the_counter",
+       "gambling_sector": "betting_non_remote"
+      },
+      "geography_id": "K03000001",
+      "published": 1249307207.97355,
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_6.fy2024.great_britain.ggy_betting_non_remote_off_course_over_the_counter"
+     },
+     "pools_non_remote": {
+      "concept": "gambling_commission.gross_gambling_yield",
+      "dimensions": {
+       "betting_event": "all",
+       "gambling_activity": "pool_betting",
+       "gambling_sector": "betting_non_remote"
+      },
+      "geography_id": "K03000001",
+      "published": 21233797.52638,
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_6.fy2024.great_britain.ggy_betting_non_remote_pool_betting"
+     },
+     "pools_remote": {
+      "concept": "gambling_commission.gross_gambling_yield",
+      "dimensions": {
+       "betting_event": "all",
+       "gambling_activity": "pool_betting",
+       "gambling_sector": "betting_remote"
+      },
+      "geography_id": "K03000001",
+      "published": 23919023.715339996,
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_type.fy2024.great_britain.ggy_betting_remote_pool_betting"
+     },
+     "remote_all_events": {
+      "concept": "gambling_commission.gross_gambling_yield",
+      "dimensions": {
+       "betting_event": "all",
+       "gambling_activity": "all",
+       "gambling_sector": "betting_remote"
+      },
+      "geography_id": "K03000001",
+      "published": 2620948697.1002502,
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_1.fy2024.great_britain.ggy_betting_remote"
+     },
+     "remote_fixed_odds": {
+      "concept": "gambling_commission.gross_gambling_yield",
+      "dimensions": {
+       "betting_event": "all",
+       "gambling_activity": "betting",
+       "gambling_sector": "betting_remote"
+      },
+      "geography_id": "K03000001",
+      "published": 2495675525.5166,
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_type.fy2024.great_britain.ggy_betting_remote_betting"
+     },
+     "remote_horses": {
+      "concept": "gambling_commission.gross_gambling_yield",
+      "dimensions": {
+       "betting_event": "horses",
+       "gambling_activity": "all",
+       "gambling_sector": "betting_remote"
+      },
+      "geography_id": "K03000001",
+      "published": 762636459.2584901,
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_event.fy2024.great_britain.ggy_betting_remote_horses"
+     }
+    },
+    "stored_per": "year",
+    "unit": "gbp"
+   },
+   "remote_uk_horseracing_betting_net_losses": {
+    "annual_level": 888079509.7245454,
+    "concept": "hmrc.betting_and_gaming_duty_receipts",
+    "dimensions": {
+     "accounting_basis": "cash",
+     "gambling_duty": "general_betting_duty"
+    },
+    "factor": 2.0990832679293074,
+    "frame_annual_total": 888079509.7245454,
+    "geography_id": "K02000001",
+    "key": "betting_and_gaming",
+    "key_total": 423079695.45229775,
+    "positive_share": 0.019563867703070097,
+    "published": 713858000.0,
+    "rate": {
+     "parameter_path": "gov.hmrc.gambling_duty.general_betting.rates.fixed_odds",
+     "value": 0.15
+    },
+    "remote_horse_racing_share": 0.29097725571746264,
+    "share": 0.18660843817493364,
+    "source_record_id": "hmrc.betting_gaming_2026_09.receipts.fy2024.united_kingdom.general_betting_duty_receipts",
+    "split_by": {
+     "exchange": {
+      "concept": "gambling_commission.gross_gambling_yield",
+      "dimensions": {
+       "betting_event": "all",
+       "gambling_activity": "betting_exchange",
+       "gambling_sector": "betting_remote"
+      },
+      "geography_id": "K03000001",
+      "published": 101354147.86830999,
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_type.fy2024.great_britain.ggy_betting_remote_betting_exchange"
+     },
+     "over_the_counter": {
+      "concept": "gambling_commission.gross_gambling_yield",
+      "dimensions": {
+       "betting_event": "all",
+       "gambling_activity": "off_course_over_the_counter",
+       "gambling_sector": "betting_non_remote"
+      },
+      "geography_id": "K03000001",
+      "published": 1249307207.97355,
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_6.fy2024.great_britain.ggy_betting_non_remote_off_course_over_the_counter"
+     },
+     "pools_non_remote": {
+      "concept": "gambling_commission.gross_gambling_yield",
+      "dimensions": {
+       "betting_event": "all",
+       "gambling_activity": "pool_betting",
+       "gambling_sector": "betting_non_remote"
+      },
+      "geography_id": "K03000001",
+      "published": 21233797.52638,
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_6.fy2024.great_britain.ggy_betting_non_remote_pool_betting"
+     },
+     "pools_remote": {
+      "concept": "gambling_commission.gross_gambling_yield",
+      "dimensions": {
+       "betting_event": "all",
+       "gambling_activity": "pool_betting",
+       "gambling_sector": "betting_remote"
+      },
+      "geography_id": "K03000001",
+      "published": 23919023.715339996,
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_type.fy2024.great_britain.ggy_betting_remote_pool_betting"
+     },
+     "remote_all_events": {
+      "concept": "gambling_commission.gross_gambling_yield",
+      "dimensions": {
+       "betting_event": "all",
+       "gambling_activity": "all",
+       "gambling_sector": "betting_remote"
+      },
+      "geography_id": "K03000001",
+      "published": 2620948697.1002502,
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_1.fy2024.great_britain.ggy_betting_remote"
+     },
+     "remote_fixed_odds": {
+      "concept": "gambling_commission.gross_gambling_yield",
+      "dimensions": {
+       "betting_event": "all",
+       "gambling_activity": "betting",
+       "gambling_sector": "betting_remote"
+      },
+      "geography_id": "K03000001",
+      "published": 2495675525.5166,
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_type.fy2024.great_britain.ggy_betting_remote_betting"
+     },
+     "remote_horses": {
+      "concept": "gambling_commission.gross_gambling_yield",
+      "dimensions": {
+       "betting_event": "horses",
+       "gambling_activity": "all",
+       "gambling_sector": "betting_remote"
+      },
+      "geography_id": "K03000001",
+      "published": 762636459.2584901,
+      "source_record_id": "gambling_commission.industry_statistics_2026_09.sheet_10b_by_event.fy2024.great_britain.ggy_betting_remote_horses"
+     }
+    },
+    "stored_per": "year",
+    "unit": "gbp"
+   },
+   "spirits_litres": {
+    "annual_level": 330123776.919805,
+    "concept": "hmrc.alcohol_clearances",
+    "dimensions": {
+     "abv_band": "all",
+     "alcohol_product": "spirits",
+     "duty_point": "all",
+     "duty_relief": "all"
+    },
+    "factor": 0.01032706111912472,
+    "frame_annual_total": 330123776.919805,
+    "geography_id": "K02000001",
+    "key": "alcohol",
+    "key_total": 31966865801.58295,
+    "positive_share": 0.576136105053031,
+    "published": 132049510.767922,
+    "share": 1.0,
+    "source_record_id": "hmrc.alcohol_bulletin_2026_08.spirits.clearances.fy2024.spirits.total_clearances",
+    "stored_per": "year",
+    "strength": {
+     "parameter_path": "household.consumption.alcohol.spirits_abv",
+     "value": 0.4
+    },
+    "unit": "litre_of_pure_alcohol"
+   },
+   "wine_litres": {
+    "annual_level": 1266891770.4008167,
+    "concept": "hmrc.alcohol_clearances",
+    "dimensions": {
+     "abv_band": "all",
+     "alcohol_product": "wine",
+     "duty_point": "all",
+     "duty_relief": "all"
+    },
+    "factor": 0.039631403912550045,
+    "frame_annual_total": 1266891770.400817,
+    "geography_id": "K02000001",
+    "key": "alcohol",
+    "key_total": 31966865801.58295,
+    "positive_share": 0.576136105053031,
+    "published": 152027012.448098,
+    "share": 1.0,
+    "source_record_id": "hmrc.alcohol_bulletin_2026_08.wine.clearances.fy2024.wine.total_clearances",
+    "stored_per": "year",
+    "strength": {
+     "parameter_path": "household.consumption.alcohol.wine_abv",
+     "value": 0.12
+    },
+    "unit": "litre_of_pure_alcohol"
+   }
+  },
+  "period_type": "fiscal_year",
+  "period_value": 2024,
+  "resource": "excise_facts.json",
+  "weeks_per_year": 52
+ },
+ "excise_shares": {
+  "betting_and_gaming_share_of_other_gambling_stakes": {
+   "donor": {
+    "clipped_at_one": 0,
+    "denominator": [
+     "c94311",
+     "c94312",
+     "c94313",
+     "c94314",
+     "c94315"
+    ],
+    "numerator": [
+     "c94311",
+     "c94312",
+     "c94314"
+    ],
+    "positive_share": 0.035838439975528005,
+    "positive_support": "30+",
+    "share_of_denominator": 0.7286000798018258,
+    "total": "other_gambling_stakes"
+   },
+   "frame": {
+    "draws_outside_unit_interval": 0,
+    "positive_share": 0.019563867703070097,
+    "share_of_total": 0.6958802503779963
+   },
+   "total": "other_gambling_stakes"
+  },
+  "gambling_stakes_share_of_recreation": {
+   "donor": {
+    "clipped_at_one": "<10",
+    "denominator": [
+     "p609"
+    ],
+    "numerator": [
+     "c94311",
+     "c94312",
+     "c94313",
+     "c94314",
+     "c94315",
+     "c94316",
+     "c94319"
+    ],
+    "positive_share": 0.17031459280906752,
+    "positive_support": "30+",
+    "share_of_denominator": 0.01525742406937271,
+    "total": "recreation_consumption"
+   },
+   "frame": {
+    "draws_outside_unit_interval": 0,
+    "positive_share": 0.14629307418887494,
+    "share_of_total": 0.01528611560007584
+   },
+   "total": "recreation_consumption"
+  },
+  "national_lottery_share_of_gambling_stakes": {
+   "donor": {
+    "clipped_at_one": 0,
+    "denominator": [
+     "c94311",
+     "c94312",
+     "c94313",
+     "c94314",
+     "c94315",
+     "c94316",
+     "c94319"
+    ],
+    "numerator": [
+     "c94316",
+     "c94319"
+    ],
+    "positive_share": 0.11424026447367308,
+    "positive_support": "30+",
+    "share_of_denominator": 0.5123176004819209,
+    "total": "gambling_stakes"
+   },
+   "frame": {
+    "draws_outside_unit_interval": 0,
+    "positive_share": 0.10681009830639804,
+    "share_of_total": 0.7325218667121215
+   },
+   "total": "gambling_stakes"
+  },
+  "on_trade_alcohol_share_of_restaurants_and_hotels": {
+   "donor": {
+    "clipped_at_one": "<10",
+    "denominator": [
+     "p611"
+    ],
+    "numerator": [
+     "cb111c",
+     "cb111d",
+     "cb111e",
+     "cb111f",
+     "cb111g",
+     "cb111h",
+     "cb111i",
+     "cb111j"
+    ],
+    "positive_share": 0.310136545477233,
+    "positive_support": "30+",
+    "share_of_denominator": 0.13899575634777211,
+    "total": "restaurants_and_hotels_consumption"
+   },
+   "frame": {
+    "draws_outside_unit_interval": 0,
+    "positive_share": 0.3036569993531277,
+    "share_of_total": 0.18571717484530195
+   },
+   "total": "restaurants_and_hotels_consumption"
+  },
+  "tobacco_share_of_alcohol_and_tobacco": {
+   "donor": {
+    "clipped_at_one": 0,
+    "denominator": [
+     "c21111",
+     "c21211",
+     "c21212",
+     "c21213",
+     "c21214",
+     "c21221",
+     "c21311",
+     "c22111",
+     "c22121",
+     "c22131"
+    ],
+    "numerator": [
+     "c22111",
+     "c22121",
+     "c22131"
+    ],
+    "positive_share": 0.10336413849687878,
+    "positive_support": "30+",
+    "share_of_denominator": 0.2056073057933273,
+    "total": "alcohol_and_tobacco_consumption",
+    "total_beside_lines": "<10"
+   },
+   "frame": {
+    "draws_outside_unit_interval": 0,
+    "positive_share": 0.08163306670501938,
+    "share_of_total": 0.18441130626709198
+   },
+   "total": "alcohol_and_tobacco_consumption"
+  }
+ },
+ "fit_weight_records": [
+  "uk_lcfs_2024_25_consumption:food_and_non_alcoholic_beverages_consumption",
+  "uk_lcfs_2024_25_consumption:alcohol_and_tobacco_consumption",
+  "uk_lcfs_2024_25_consumption:clothing_and_footwear_consumption",
+  "uk_lcfs_2024_25_consumption:housing_water_and_electricity_consumption",
+  "uk_lcfs_2024_25_consumption:household_furnishings_consumption",
+  "uk_lcfs_2024_25_consumption:health_consumption",
+  "uk_lcfs_2024_25_consumption:transport_consumption",
+  "uk_lcfs_2024_25_consumption:communication_consumption",
+  "uk_lcfs_2024_25_consumption:recreation_consumption",
+  "uk_lcfs_2024_25_consumption:education_consumption",
+  "uk_lcfs_2024_25_consumption:restaurants_and_hotels_consumption",
+  "uk_lcfs_2024_25_consumption:miscellaneous_consumption",
+  "uk_lcfs_2024_25_consumption:petrol_spending",
+  "uk_lcfs_2024_25_consumption:diesel_spending",
+  "uk_lcfs_2024_25_consumption:bus_fare_spending",
+  "uk_lcfs_2024_25_consumption:domestic_energy_consumption",
+  "uk_lcfs_2024_25_consumption:electricity_consumption",
+  "uk_lcfs_2024_25_consumption:gas_consumption",
+  "uk_lcfs_2024_25_consumption:liquid_fuel_consumption",
+  "uk_lcfs_2024_25_consumption:solid_fuel_consumption",
+  "uk_lcfs_2024_25_consumption:tobacco_share_of_alcohol_and_tobacco",
+  "uk_lcfs_2024_25_consumption:on_trade_alcohol_share_of_restaurants_and_hotels",
+  "uk_lcfs_2024_25_consumption:gambling_stakes_share_of_recreation",
+  "uk_lcfs_2024_25_consumption:national_lottery_share_of_gambling_stakes",
+  "uk_lcfs_2024_25_consumption:betting_and_gaming_share_of_other_gambling_stakes",
+  "uk_lcfs_2024_25_consumption:road_fuel_total",
+  "uk_lcfs_2024_25_consumption:petrol_share_of_road_fuel",
+  "uk_lcfs_2024_25_consumption:uses_energy_prepayment_meter",
+  "uk_lcfs_2024_25_consumption:gas_payer",
+  "uk_lcfs_2024_25_consumption:gas_payer_amount"
+ ],
+ "gates": {
+  "uk_stage_lcfs_consumption_basis": {
+   "failures": [],
+   "passed": true
+  },
+  "uk_stage_lcfs_consumption_bus_pricing": {
+   "failures": [],
+   "passed": true
+  },
+  "uk_stage_lcfs_consumption_energy_rake": {
+   "failures": [],
+   "passed": true
+  },
+  "uk_stage_lcfs_consumption_excise_quantities": {
+   "failures": [],
+   "passed": true
+  },
+  "uk_stage_lcfs_consumption_recomposed_totals": {
+   "failures": [],
+   "passed": true
+  },
+  "uk_stage_lcfs_consumption_road_fuel_incidence": {
+   "failures": [],
+   "passed": true
+  },
+  "uk_stage_lcfs_consumption_road_fuel_level": {
+   "failures": [],
+   "passed": true
+  },
+  "uk_stage_lcfs_consumption_support": {
+   "failures": [],
+   "passed": true
+  }
+ },
+ "households": 78440,
+ "positive_shares": {
+  "alcohol_and_tobacco_consumption": 0.527291943166678,
+  "beer_draught_share": 1.0,
+  "beer_litres": 0.576136105053031,
+  "betting_exchange_commission": 0.019563867703070097,
+  "bingo_net_receipts": 0.019563867703070097,
+  "bus_fare_spending": 0.7125035103771835,
+  "cider_draught_share": 1.0,
+  "cider_litres": 0.576136105053031,
+  "cigarettes_per_week": 0.08163306670501938,
+  "cigars_grams_per_week": 0.08163306670501938,
+  "clothing_and_footwear_consumption": 0.5076314490748526,
+  "communication_consumption": 0.9152532967962318,
+  "diesel_spending": 0.21835210616092002,
+  "domestic_energy_consumption": 1.0,
+  "education_consumption": 0.043070403031541624,
+  "electricity_consumption": 0.9995995991549779,
+  "food_and_non_alcoholic_beverages_consumption": 0.9966913803743381,
+  "gas_consumption": 0.8378831075116069,
+  "hand_rolling_tobacco_grams_per_week": 0.08163306670501938,
+  "has_fuel_consumption": 0.7400522314477876,
+  "health_consumption": 0.5539447030685003,
+  "horse_and_dog_pool_betting_net_losses": 0.019563867703070097,
+  "household_furnishings_consumption": 0.9344039932588121,
+  "housing_water_and_electricity_consumption": 1.0,
+  "land_based_casino_net_losses": 0.019563867703070097,
+  "land_based_fixed_odds_betting_net_losses": 0.019563867703070097,
+  "liquid_fuel_consumption": 0.030863911640611287,
+  "machine_games_higher_rate_net_takings": 0.019563867703070097,
+  "machine_games_lower_rate_net_takings": 0.019563867703070097,
+  "machine_games_standard_rate_net_takings": 0.019563867703070097,
+  "miscellaneous_consumption": 0.984321067316606,
+  "national_lottery_ticket_spending": 0.10681009830639804,
+  "other_fermented_litres": 0.576136105053031,
+  "other_tobacco_grams_per_week": 0.08163306670501938,
+  "petrol_spending": 0.5660231695059225,
+  "pool_betting_net_receipts": 0.019563867703070097,
+  "recreation_consumption": 0.9898266233694869,
+  "remote_gaming_net_losses": 0.019563867703070097,
+  "remote_other_betting_net_losses": 0.019563867703070097,
+  "remote_uk_horseracing_betting_net_losses": 0.019563867703070097,
+  "restaurants_and_hotels_consumption": 0.7857928118368214,
+  "solid_fuel_consumption": 0.0032579837095080204,
+  "spirits_litres": 0.576136105053031,
+  "transport_consumption": 0.9512208016876837,
+  "uses_energy_prepayment_meter": 0.11896204528198058,
+  "wine_litres": 0.576136105053031
+ },
+ "seconds": 96.2,
+ "spine": "spine-b145-treat.h5",
+ "tree": "populace-1359",
+ "weighted_totals": {
+  "alcohol_and_tobacco_consumption": 19959355984.09308,
+  "beer_draught_share": 11509311.287968487,
+  "beer_litres": 4631940882.095249,
+  "betting_exchange_commission": 123949909.1922428,
+  "bingo_net_receipts": 252330000.0,
+  "bus_fare_spending": 4213319387.928007,
+  "cider_draught_share": 6738290.982352255,
+  "cider_litres": 674388250.8241313,
+  "cigarettes_per_week": 261113666.03291157,
+  "cigars_grams_per_week": 7598518.917797941,
+  "clothing_and_footwear_consumption": 29970951716.317703,
+  "communication_consumption": 24803521172.601994,
+  "diesel_spending": 10457880276.270939,
+  "domestic_energy_consumption": 48755237020.280426,
+  "education_consumption": 15876557691.370522,
+  "electricity_consumption": 29553493457.817688,
+  "food_and_non_alcoholic_beverages_consumption": 113906273128.46979,
+  "gas_consumption": 19201743562.462746,
+  "hand_rolling_tobacco_grams_per_week": 77470743.97904557,
+  "has_fuel_consumption": 21441113.692121513,
+  "health_consumption": 21567398958.325157,
+  "horse_and_dog_pool_betting_net_losses": 55219132.22492455,
+  "household_furnishings_consumption": 73744645926.80603,
+  "housing_water_and_electricity_consumption": 179339989499.86584,
+  "land_based_casino_net_losses": 702361489.1692535,
+  "land_based_fixed_odds_betting_net_losses": 1527826124.9133615,
+  "liquid_fuel_consumption": 1864608748.4273286,
+  "machine_games_higher_rate_net_takings": 2384000.0,
+  "machine_games_lower_rate_net_takings": 138420000.0,
+  "machine_games_standard_rate_net_takings": 3023740000.0,
+  "miscellaneous_consumption": 90368733861.36032,
+  "national_lottery_ticket_spending": 7765725000.000001,
+  "other_fermented_litres": 239435846.48703998,
+  "other_tobacco_grams_per_week": 5797406.910050116,
+  "petrol_spending": 24840485040.255028,
+  "pool_betting_net_receipts": 54166666.66666668,
+  "recreation_consumption": 148697014445.80408,
+  "remote_gaming_net_losses": 5535900000.0,
+  "remote_other_betting_net_losses": 2163978657.2782593,
+  "remote_uk_horseracing_betting_net_losses": 888079509.7245454,
+  "restaurants_and_hotels_consumption": 84473828227.43405,
+  "solid_fuel_consumption": 114067143.27247077,
+  "spirits_litres": 330123776.919805,
+  "transport_consumption": 175429846522.27753,
+  "uses_energy_prepayment_meter": 3446619.8864751486,
+  "wine_litres": 1266891770.400817
+ }
+}

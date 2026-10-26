@@ -473,6 +473,8 @@
       "nithc.public_transport_support": "nithc.public_transport_finances",
       "nrs.households.scotland": "ons.household_composition",
       "obr.attendance_allowance": "obr.efo_expenditure",
+      "obr.beer_and_cider_duties": "obr.efo_receipts",
+      "obr.betting_and_gaming_duties": "obr.efo_receipts",
       "obr.carers_allowance": "obr.efo_expenditure",
       "obr.child_benefit": "obr.efo_expenditure",
       "obr.council_tax": "obr.efo_expenditure",
@@ -487,10 +489,13 @@
       "obr.pension_credit": "obr.efo_expenditure",
       "obr.pip": "obr.efo_expenditure",
       "obr.sdlt": "obr.efo_receipts",
+      "obr.spirits_duties": "obr.efo_receipts",
       "obr.statutory_maternity_pay": "obr.efo_expenditure",
+      "obr.tobacco_duties": "obr.efo_receipts",
       "obr.tv_licence_fee": "obr.efo_expenditure",
       "obr.universal_credit": "obr.efo_expenditure",
       "obr.vat": "obr.efo_receipts",
+      "obr.wine_duties": "obr.efo_receipts",
       "obr.winter_fuel_allowance": "obr.efo_expenditure",
       "ons.household_composition.couple_3_plus_children_households": "ons.household_composition",
       "ons.household_composition.couple_no_children_households": "ons.household_composition",
@@ -839,6 +844,8 @@
       "nithc.public_transport_support": "Bus and rail support",
       "nrs.households.scotland": "Households, Scotland (NRS)",
       "obr.attendance_allowance": "Attendance allowance",
+      "obr.beer_and_cider_duties": "Beer and cider duties (accrued)",
+      "obr.betting_and_gaming_duties": "Betting and gaming duties",
       "obr.carers_allowance": "Carers allowance",
       "obr.child_benefit": "Child benefit",
       "obr.council_tax": "Council tax",
@@ -853,10 +860,13 @@
       "obr.pension_credit": "Pension credit",
       "obr.pip": "Personal Independence Payment",
       "obr.sdlt": "Stamp Duty Land Tax",
+      "obr.spirits_duties": "Spirits duties (accrued)",
       "obr.statutory_maternity_pay": "Statutory maternity pay",
+      "obr.tobacco_duties": "Tobacco duties",
       "obr.tv_licence_fee": "TV licence fee",
       "obr.universal_credit": "Universal Credit expenditure",
       "obr.vat": "VAT",
+      "obr.wine_duties": "Wine duties (accrued)",
       "obr.winter_fuel_allowance": "Winter fuel allowance",
       "ons.household_composition.couple_3_plus_children_households": "Couple 3 plus children households",
       "ons.household_composition.couple_no_children_households": "Couple no children households",
@@ -24799,6 +24809,148 @@
         "source_period_policy": "exact_observation"
       },
       "value_operation": "sum",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "obr.beer_and_cider_duties",
+      "ledger_selector": {
+        "source_name": "obr",
+        "source_concept": "obr.beer_and_cider_duties",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "period_value": 2024,
+        "dimension_values": {
+          "accounting_basis": "accrual"
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "household",
+      "measure": "obr/beer_and_cider_duties",
+      "family": "obr",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "obr.beer_and_cider_duties",
+        "measure_kind": "prepared_column",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "sum",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "obr.wine_duties",
+      "ledger_selector": {
+        "source_name": "obr",
+        "source_concept": "obr.wine_duties",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "period_value": 2024,
+        "dimension_values": {
+          "accounting_basis": "accrual"
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "household",
+      "measure": "obr/wine_duties",
+      "family": "obr",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "obr.wine_duties",
+        "measure_kind": "prepared_column",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "sum",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "obr.spirits_duties",
+      "ledger_selector": {
+        "source_name": "obr",
+        "source_concept": "obr.spirits_duties",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "period_value": 2024,
+        "dimension_values": {
+          "accounting_basis": "accrual"
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "household",
+      "measure": "obr/spirits_duties",
+      "family": "obr",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "obr.spirits_duties",
+        "measure_kind": "prepared_column",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "assertion_policy": "allow_source_projection",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "obr.tobacco_duties",
+      "ledger_selector": {
+        "source_name": "obr",
+        "source_concept": "obr.tobacco_duties",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "period_value": 2024,
+        "dimension_values": {
+          "accounting_basis": "cash"
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "household",
+      "measure": "obr/tobacco_duties",
+      "family": "obr",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "obr.tobacco_duties",
+        "measure_kind": "prepared_column",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "assertion_policy": "allow_source_projection",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "obr.betting_and_gaming_duties",
+      "ledger_selector": {
+        "source_name": "obr",
+        "source_concept": "obr.betting_and_gaming_duties",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "period_value": 2024,
+        "dimension_values": {
+          "accounting_basis": "cash"
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "household",
+      "measure": "obr/betting_and_gaming_duties",
+      "family": "obr",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "obr.betting_and_gaming_duties",
+        "measure_kind": "prepared_column",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "assertion_policy": "allow_source_projection",
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },

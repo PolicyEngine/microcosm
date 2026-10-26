@@ -680,6 +680,8 @@ class TestE3ManifestLockstep:
             "redraw_zero_road_fuel",
             "level_road_fuel",
             "recompose_from_remainder",
+            "top_up_gambling_participation",
+            "level_excise_quantities",
             "record_mass_conservation_receipt",
         ]
         assert [op.kind for op in stages["etb_vat"].operations] == [
@@ -817,6 +819,9 @@ class TestE3ManifestLockstep:
             UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS,
             UK_LCFS_CONSUMPTION_PREDICTORS,
             UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
+            UK_LCFS_EXCISE_DECLARED_OUTPUTS,
+            UK_LCFS_EXCISE_GAMBLING_OUTPUTS,
+            UK_LCFS_EXCISE_SHARES,
         )
         from microcosm.build.uk_runtime.uc_reporter_redraw import (
             UC_REPORTER_AGGREGATES,
@@ -887,15 +892,27 @@ class TestE3ManifestLockstep:
             tuple(lcfs_ops["fit_weighted_qrf_chain"].parameters["predictors"])
             == UK_LCFS_CONSUMPTION_PREDICTORS
         )
-        assert (
-            tuple(lcfs_ops["fit_weighted_qrf_chain"].parameters["targets"])
-            == UK_LCFS_CONSUMPTION_TARGET_COLUMNS
+        # The spend targets, then the excise shares, which are scratch and no
+        # output (microcosm#1359).
+        assert tuple(lcfs_ops["fit_weighted_qrf_chain"].parameters["targets"]) == (
+            *UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
+            *UK_LCFS_EXCISE_SHARES,
         )
+        assert not set(UK_LCFS_EXCISE_SHARES) & set(UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS)
         assert UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS == (
             *UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
             "has_fuel_consumption",
             "uses_energy_prepayment_meter",
+            *UK_LCFS_EXCISE_DECLARED_OUTPUTS,
         )
+        # The declared excise step writes exactly those inputs: its quantity
+        # outputs, its draught shares and every gambling base.
+        excise = lcfs_ops["level_excise_quantities"].parameters
+        assert {
+            *excise["outputs"],
+            *excise["draught_shares"],
+            *UK_LCFS_EXCISE_GAMBLING_OUTPUTS,
+        } == set(UK_LCFS_EXCISE_DECLARED_OUTPUTS)
         assert (
             tuple(stages["etb_vat"].operations[2].parameters["predictors"])
             == UK_ETB_VAT_ENGINE_PREDICTORS
@@ -1049,6 +1066,8 @@ class TestE3ManifestLockstep:
             "redraw_zero_road_fuel": 0,
             # The prepayment-meter flag (microcosm#1110).
             "impute_prepayment_meter": 0,
+            # The gambling participation top-up (microcosm#1359).
+            "top_up_gambling_participation": 0,
         }
         assert stages["etb_vat"].operations[3].parameters["seed"] == 0
         assert stages["etb_vat"].operations[3].parameters["salt"] == "etb_vat"

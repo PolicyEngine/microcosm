@@ -1,11 +1,11 @@
 {
-  "source_fact_feed": "chronicle-uk-abf0921-consumer-facts",
+  "source_fact_feed": "chronicle-uk-272c987-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1358,
-  "contract_target_count": 376,
-  "active_reference_count": 1336,
+  "candidate_count": 1363,
+  "contract_target_count": 381,
+  "active_reference_count": 1341,
   "status_counts": {
-    "active": 1336,
+    "active": 1341,
     "no_fact_at_or_before_period": 5,
     "signed_excluded": 17
   },
@@ -2121,6 +2121,26 @@
       "geography_id": "K02000001"
     },
     "ons.household_road_fuel_expenditure": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "obr.beer_and_cider_duties": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "obr.wine_duties": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "obr.spirits_duties": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "obr.tobacco_duties": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "obr.betting_and_gaming_duties": {
       "geography_level": "country",
       "geography_id": "K02000001"
     },
@@ -4478,6 +4498,8 @@
     "dfi_ni.bus.passenger_receipts",
     "dwp.workplace_pension.employer_contributions",
     "nithc.public_transport_support",
+    "obr.beer_and_cider_duties",
+    "obr.wine_duties",
     "ons.household_road_fuel_expenditure",
     "ons.population.age_0",
     "ons.population.age_0_9_by_region@E12000001",
@@ -7199,6 +7221,31 @@
     },
     {
       "name": "ons.household_road_fuel_expenditure",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "obr.beer_and_cider_duties",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "obr.wine_duties",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "obr.spirits_duties",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "obr.tobacco_duties",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "obr.betting_and_gaming_duties",
       "from": "2024",
       "to": "2025"
     },
@@ -19941,9 +19988,9 @@
           "matched_fact_count_overall": 6,
           "matched_fact_count_at_or_before_period": 6,
           "resolved_period": 2025,
-          "resolved_value": 26522000000.0,
+          "resolved_value": 28840000000.0,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_643fd0413421fbcff9ea2bb5"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f3cf2a0e3e5ab3e4771086f2"
         }
       ]
     },
@@ -19956,9 +20003,9 @@
           "matched_fact_count_overall": 6,
           "matched_fact_count_at_or_before_period": 6,
           "resolved_period": 2025,
-          "resolved_value": 15339000000.0,
+          "resolved_value": 18958000000.0,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_03c5f13d5fbab023177a1aea"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_9bf03b93645200761324e994"
         }
       ]
     },
@@ -19971,9 +20018,84 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 37025000000.0,
+          "resolved_value": 35460000000.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_d5c11a14d2062955b622275a"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e29f3ad312cbfa894a9c965b"
+        }
+      ]
+    },
+    "obr.beer_and_cider_duties": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "obr.beer_and_cider_duties",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 3746000000.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_2b1263596a9b42f4b005a8d0"
+        }
+      ]
+    },
+    "obr.wine_duties": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "obr.wine_duties",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 4686000000.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_67c9f0d563a51c2d2eeab120"
+        }
+      ]
+    },
+    "obr.spirits_duties": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "obr.spirits_duties",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 4113000000.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c565bfe8e68552c52db1955b"
+        }
+      ]
+    },
+    "obr.tobacco_duties": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "obr.tobacco_duties",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 7927000000.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_68c2ea5b72b4e6e8e6e467fd"
+        }
+      ]
+    },
+    "obr.betting_and_gaming_duties": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "obr.betting_and_gaming_duties",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 3616000000.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_9d811dc85cfdf4ee96cef49a"
         }
       ]
     },

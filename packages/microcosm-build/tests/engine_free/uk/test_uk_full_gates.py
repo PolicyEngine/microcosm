@@ -109,6 +109,9 @@ def evidence(monkeypatch):
             "geography_id": "E14000001",
             "family": "population",
             "materialization": "uk_local_surface",
+            # A local row names its contract target (Vahid's third review of
+            # #1383, item 33); this one ties to no family.
+            "contract_target_id": "fixture.population",
         },
     )
     ordered = OrderedProblem(

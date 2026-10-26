@@ -246,8 +246,9 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # nursery age 3; the age-4 cells are signed out, as the bound rows fix
     # them). The next policyengine-uk bump retires the OBR welfare-cap split
     # and the England postgraduate repayments to registry_parity.excluded
-    # (microcosm#1095).
-    assert len(resource["targets"]) == 435
+    # (microcosm#1095); microcosm#1359 adds five OBR excise receipts rows,
+    # measured at FY2024-25 and held out of the objective.
+    assert len(resource["targets"]) == 440
 
     providers = resource["hierarchy"]["providers"]
     categories = resource["hierarchy"]["categories"]
@@ -261,10 +262,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     target_ids = [target["target_id"] for target in resource["targets"]]
     registry_scope = resource["registry_parity"]["scope_target_ids"]
     profile_scope = resource["profile_parity"]["scope_target_ids"]
-    assert len(registry_scope) == 376
+    assert len(registry_scope) == 381
     assert len(profile_scope) == 59
-    assert target_ids[:376] == registry_scope
-    assert target_ids[376:] == profile_scope
+    assert target_ids[:381] == registry_scope
+    assert target_ids[381:] == profile_scope
 
     parity = resource["registry_parity"]
     assert parity["pinned_ref"] == "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3"
@@ -286,9 +287,11 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # the childcare costing fixes add (UK 3 to 6, England 0 to 6), nor the
     # five DfE funded-childcare single-age rows. The next policyengine-uk bump
     # retires the OBR welfare-cap split and the England postgraduate
-    # repayments to the excluded rows (microcosm#1095).
+    # repayments to the excluded rows (microcosm#1095). microcosm#1359's five
+    # OBR excise rows have no uk-data metric (uk-data never measured excise
+    # duty).
     assert len(mapped_target_ids) == 183
-    assert len(unmapped_declarations) == 193
+    assert len(unmapped_declarations) == 198
     suppressed_ancestors = parity["suppressed_ancestors"]
     assert len(suppressed_ancestors) == 5
     assert set(suppressed_ancestors).isdisjoint(parity["mapped"])
@@ -795,7 +798,7 @@ def test_uk_population_targets_have_unique_target_ids() -> None:
     resource = _load()
 
     target_ids = [target["target_id"] for target in resource["targets"]]
-    assert len(target_ids) == 435
+    assert len(target_ids) == 440
     assert len(target_ids) == len(set(target_ids))
 
 
@@ -1298,7 +1301,7 @@ def test_uc_payment_bands_share_administrative_family_but_keep_source_window() -
 
 def test_paid_joint_diagnostics_do_not_add_active_targets() -> None:
     targets = _load()["targets"]
-    assert len(targets) == 435
+    assert len(targets) == 440
     assert not any(
         f.get("variable") == "uc_calibration_child_entitlement"
         for target in targets
