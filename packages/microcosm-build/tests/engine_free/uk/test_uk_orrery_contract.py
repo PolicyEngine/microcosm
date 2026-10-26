@@ -328,12 +328,16 @@ def _brma_problem(n: int = 12, level: str = "brma"):
 
 
 @pytest.mark.parametrize("level", ["brma", "statistical_scope", "constituency"])
-def test_a_size_summary_keeps_its_all_row_totals(level):
-    """María's ruling of 2026-10-26 dropped the withholding of microcosm#1262,
-    so the size summary keeps the losses over every row, whatever it binds."""
+def test_a_size_summary_keeps_its_all_row_totals_but_no_rows_figure(level):
+    """The size summary keeps the losses over every row, whatever it binds,
+    but not the largest change in one row, which may rest on fewer than ten
+    source households (Vahid's review of #1396, M1)."""
     from types import SimpleNamespace
 
-    from microcosm.build.uk_runtime.orrery_contract import _size_summary
+    from microcosm.build.uk_runtime.orrery_contract import (
+        _size_summary,
+        public_summary_findings,
+    )
 
     _, ordered, payload = _brma_problem(level=level)
     receipt = {
@@ -348,19 +352,21 @@ def test_a_size_summary_keeps_its_all_row_totals(level):
         payload=json.dumps(receipt).encode(),
         input_payload=lambda name: payload,
     )
-    overview = _size_summary(context)["overview"]
+    data = _size_summary(context)
+    overview = data["overview"]
     assert overview["requested_households"] == 4
-    assert (
-        overview["dense_loss"],
-        overview["compact_loss"],
-        overview["max_target_scaled_change"],
-    ) == (0.2, 0.3, 0.4)
+    assert (overview["dense_loss"], overview["compact_loss"]) == (0.2, 0.3)
+    assert "max_target_scaled_change" not in overview
+    assert public_summary_findings([{"data": data}]) == []
+    overview["max_target_scaled_change"] = 0.4
+    assert public_summary_findings([{"node": "size", "artifact": "size", "data": data}])
 
 
 @pytest.mark.parametrize("level", ["brma", "statistical_scope"])
-def test_the_registered_result_provider_keeps_a_thin_rows_figures(level, monkeypatch):
-    """The BRMA row rests on four source households and keeps its figures
-    through the registered provider (María's ruling of 2026-10-26)."""
+def test_the_registered_result_provider_publishes_no_rows_figures(level, monkeypatch):
+    """The BRMA row rests on four source households. Since María's ruling of
+    2026-10-26 the build no longer marks such rows, so the registered provider
+    projects no row's figures, thin or not (Vahid's review of #1396, M1)."""
     from types import SimpleNamespace
 
     import numpy as np
@@ -415,9 +421,67 @@ def test_the_registered_result_provider_keeps_a_thin_rows_figures(level, monkeyp
         (RESULT_TYPE.name, RESULT_TYPE.schema_version)
     ]
     data = provider(context)
-    published, thin = data["tables"]["targets"]
-    assert published["achieved"] == 4.0
-    assert thin["achieved"] == 4.0 and thin["relative_error"] == pytest.approx(-0.9)
-    assert "model_figures_withheld" not in thin
-    assert "model_figures_withheld" not in data["overview"]
+    rows = data["tables"]["targets"]
+    assert [row["target"] for row in rows] == [4.0, 40.0]
+    for row in rows:
+        assert not {
+            "initial",
+            "achieved",
+            "residual",
+            "relative_error",
+            "within_tolerance",
+        } & set(row)
     assert data["overview"]["final_loss"] == 0.45
+    assert "model figures" in data["overview"]["record_scope"]
+    summary = {"node": "uk.full.dense", "artifact": "result", "data": data}
+    assert orrery_contract.public_summary_findings([summary]) == []
+    rows[1]["achieved"] = 4.0
+    assert orrery_contract.public_summary_findings([summary]) == [
+        "uk.full.dense/result carries achieved"
+    ]
+
+
+def test_a_gate_summary_counts_failure_lines_without_carrying_them():
+    """A failure line can state a row's figures or an area's support, so the
+    summary keeps each gate's verdict and the number of its lines (Vahid's
+    review of #1396, M1)."""
+    from types import SimpleNamespace
+
+    from microcosm.build.uk_runtime.orrery_contract import (
+        _gate_report_summary,
+        public_summary_findings,
+    )
+
+    def outcome(gate, status, failures):
+        return {
+            "id": gate,
+            "gate": gate,
+            "phase": "calibrated",
+            "criticality": "release_blocking",
+            "status": status,
+            "reason": None,
+            "failures": failures,
+            "evidence_sha256": "0" * 64,
+        }
+
+    report = {
+        "schema_version": 1,
+        "phase": "calibrated",
+        "gates_manifest_sha256": "1" * 64,
+        "outcomes": [
+            outcome("uk_area_support", "failed", ["E14000001: rows 3 < 10"]),
+            outcome("uk_target_fit", "passed", []),
+        ],
+    }
+    data = _gate_report_summary(SimpleNamespace(payload=json.dumps(report).encode()))
+    support, fit = data["tables"]["gates"]
+    assert (support["status"], support["failure_count"]) == ("failed", 1)
+    assert (fit["status"], fit["failure_count"]) == ("passed", 0)
+    assert "failures" not in support and "E14000001" not in json.dumps(data)
+    assert data["overview"]["status_counts"]["failed"] == 1
+    summary = {"node": "uk.full.gates.calibrated", "artifact": "gate_report"}
+    assert public_summary_findings([{**summary, "data": data}]) == []
+    support["failures"] = ["E14000001: rows 3 < 10"]
+    assert public_summary_findings([{**summary, "data": data}]) == [
+        "uk.full.gates.calibrated/gate_report carries gate failure lines"
+    ]

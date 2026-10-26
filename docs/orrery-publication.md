@@ -59,13 +59,25 @@ credentials and caches and use fake HTTP or explicit loopback services.
 A build exports locally without remote submission unless `--publish-orrery`
 enables it (María's ruling of 2026-10-26), whatever its staging:
 `--no-publish-orrery` states the default, and `--publish-orrery` submits even
-when dataset staging is local-only. The calibration summaries carry every
-target row's model figures, those of rows resting on fewer than ten source
-households included, and the gate summaries carry the gates' failure lines,
-per-area support figures included, since the build no longer withholds any
-(the same ruling), so check them against the UKDS licence before passing
-`--publish-orrery`. A publication failure does not replace the dataset's
-validation result or prevent HF artifact staging.
+when dataset staging is local-only. A publication failure does not replace
+the dataset's validation result or prevent HF artifact staging.
+
+Since the same ruling the build no longer withholds the figures of target rows
+resting on fewer than ten source households, or the per-area support figures
+in the gates' failure lines, so the summaries never carry them:
+
+- a calibration summary keeps each target row's target, tolerance and source,
+  but no row's estimates or errors, and the size summary keeps the losses but
+  not the largest change in one row;
+- a gate summary keeps each gate's verdict and its count of failure lines, but
+  not the lines.
+
+The build's private diagnostics and gate reports keep all of them. Before it
+preserves anything for publication, the export checks the summaries and stops,
+with the `unpublishable_summary` error code, if one carries a row's estimates
+or a failure line. With no `orrery.upload.json` inventory written, neither the
+build nor the retry command below can submit them (Vahid's review of
+microcosm#1396).
 
 Failed builds preserve recorded graph evidence before temporary-file cleanup.
 They publish it, with an `orrery.failure.json` marker, to `orrery-failure/` in
