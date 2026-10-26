@@ -1573,13 +1573,64 @@ def test_the_gate_kernel_keys_the_solve_without_the_high_value_homes_code(
         ).implementation_hash()
         assert not hashed[-1] & high_value, kernel.__name__
     # The hash is memoised per process; its undecorated body hashes the two
-    # high-value homes modules.
+    # high-value homes modules (and the diagnostics publication code, next
+    # test).
     graph_terminal.uk_terminal_only_code_hash.__wrapped__()
-    assert hashed[-1] == high_value
+    assert high_value <= hashed[-1]
     first = graph_terminal.uk_terminal_only_code_hash()
     calls = len(hashed)
     assert graph_terminal.uk_terminal_only_code_hash() == first
     assert len(hashed) == calls
+
+
+def test_the_calibrated_node_keys_on_the_schema_9_publication_code_not_the_solve(
+    monkeypatch,
+):
+    # The calibrated gates publish their calibration_diagnostics output as
+    # schema 9: catalog_calibration_diagnostics with the UK label choices,
+    # dumped from CalibrationDiagnosticsV9. An edit to any of those modules
+    # changes the output's bytes, so it must re-key the calibrated node (through
+    # its terminal_code parameter); otherwise a store run with resume="auto"
+    # serves the old labels. Like the high-value homes code, it stays out of
+    # the kernels' code hash, so it never re-keys the preflight or the solve.
+    import microcosm.calibrate.geography_constants as geography_constants_module
+    import microcosm.calibrate.hierarchy_labels as hierarchy_labels_module
+    import microcosm.diagnostics.catalogs as catalogs_module
+    import microcosm.diagnostics.schema as diagnostics_schema_module
+    from microcosm.build.uk_runtime import (
+        graph_terminal,
+        high_value_home_gates,
+        high_value_homes,
+    )
+
+    hashed_module_names: list[set[str]] = []
+    real_source_hash = graph_terminal.source_hash
+
+    def record_hashed_modules(*objects, **dependencies):
+        hashed_module_names.append({obj.__name__ for obj in objects})
+        return real_source_hash(*objects, **dependencies)
+
+    monkeypatch.setattr(graph_terminal, "source_hash", record_hashed_modules)
+    publication = {
+        catalogs_module.__name__,
+        diagnostics_schema_module.__name__,
+        hierarchy_labels_module.__name__,
+        geography_constants_module.__name__,
+    }
+    for kernel in (
+        graph_terminal.UKFullGateKernel,
+        graph_terminal.UKFullPreflightGateKernel,
+    ):
+        kernel(
+            coverage_engine=object(), engine_identity="fixture"
+        ).implementation_hash()
+        assert not hashed_module_names[-1] & publication, kernel.__name__
+    graph_terminal.uk_terminal_only_code_hash.__wrapped__()
+    assert hashed_module_names[-1] == {
+        high_value_home_gates.__name__,
+        high_value_homes.__name__,
+        *publication,
+    }
 
 
 def test_the_calibrated_gates_refuse_a_stale_terminal_code() -> None:

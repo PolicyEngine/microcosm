@@ -193,6 +193,33 @@ def test_transport_diagnostics_match_the_published_json_schema(toy_run) -> None:
     assert published_json_schema_errors(load_strict_json(payload)) == []
 
 
+def test_the_diagnostics_kernel_keys_on_its_catalog_and_label_choice_code(
+    monkeypatch,
+) -> None:
+    # The node's output is the schema 9 document that
+    # catalog_calibration_diagnostics builds with the registry country's label
+    # choices, so an edit to the catalogs or to a chosen label must re-key the
+    # node; otherwise a store run with resume="auto" serves the old labels.
+    import microcosm.calibrate.geography_constants as geography_constants_module
+    import microcosm.calibrate.hierarchy_labels as hierarchy_labels_module
+    import microcosm.diagnostics.catalogs as catalogs_module
+    from microcosm.build.transport import terminal_kernels
+
+    hashed_modules: list[object] = []
+
+    def record_hashed_modules(*objects, **_dependencies) -> str:
+        hashed_modules.extend(objects)
+        return "recorded"
+
+    monkeypatch.setattr(terminal_kernels, "source_hash", record_hashed_modules)
+    DIAGNOSTICS_CALIBRATION.implementation_hash()
+
+    assert catalogs_module in hashed_modules
+    assert hierarchy_labels_module in hashed_modules
+    # The UK choices take an area's label from UK_GEOGRAPHY_ID_TO_LABEL.
+    assert geography_constants_module in hashed_modules
+
+
 def _diagnostics_artifacts(run, **overrides) -> dict[str, ArtifactValue]:
     artifacts = {
         alias: _value(run.artifact(producer, name), kind)
