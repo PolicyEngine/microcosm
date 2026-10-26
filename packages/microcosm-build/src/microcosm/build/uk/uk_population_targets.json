@@ -33898,9 +33898,18 @@
         "record_set_spec_id": "uk.local_geography.council_tax.england_ctb.line_08_single_adult_discount_dwellings.v1",
         "source_measure_id": "total"
       },
-      "selector_note": "MHCLG Council Taxbase line 8, all bands, per billing authority, from the return the national row takes (the feed labels the count 2025-10): the authority cells of mhclg.council_tax_stock.single_adult_discount (microcosm#953, microcosm#1095). Each cell counts the authority's households at policyengine-uk's council_tax_discount_rate of 0.25 (pe-uk#1864: one adult who is not disregarded), as the national row does; the cells share its measurement, so the England row is their control (an exact signature with no region tier). Absent cells are signed deferrals; the household proxy is the band rows' (voa_dwellings_vs_household_frame).",
+      "selector_note": "MHCLG Council Taxbase line 8, all bands, per billing authority, from the return the national row takes (the feed labels the count 2025-10): the authority cells of mhclg.council_tax_stock.single_adult_discount (microcosm#953, microcosm#1095). Each cell counts the authority's households at policyengine-uk's council_tax_discount_rate of 0.25 (pe-uk#1864: one adult who is not disregarded), as the national row does; the cells share its measurement, so the England row is their control (an exact signature with no region tier). Line 8's total is the cells' one operand, so each cell takes the latest return across its authority's codes, as the band cells do: Barnsley and Sheffield carry their earlier returns under their former codes (E08000016, E08000019). Absent cells are signed deferrals; the household proxy is the band rows' (voa_dwellings_vs_household_frame).",
       "category_id": "mhclg.council_tax_stock",
       "label": "Single adult discount",
+      "value_operation": "linear_combination",
+      "value_operands": [
+        {
+          "weight": 1,
+          "source_concept": "mhclg.council_taxbase.single_adult_discount_dwellings",
+          "source_measure_id": "total",
+          "label": "line_08[total]"
+        }
+      ],
       "area_scope": {
         "local_authority": {
           "gss_prefixes": [

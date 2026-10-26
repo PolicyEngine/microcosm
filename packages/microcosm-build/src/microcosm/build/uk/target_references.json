@@ -23555,7 +23555,8 @@
       "metadata": {
         "contract_target_id": "ons.savings_interest_income",
         "measure_kind": "prepared_column"
-      }
+      },
+      "value_operation": "sum"
     },
     {
       "name": "ons.public_sector_employment",

@@ -447,6 +447,19 @@
       "expires_on": "2026-12-11"
     },
     {
+      "scope": "local",
+      "kind": "in_year_snapshot",
+      "target_ids": [
+        "mhclg.council_tax_stock.by_area.single_adult_discount"
+      ],
+      "reason": "England's dwellings entitled to the single adult household 25% discount by billing authority at the taxbase date (MHCLG Council Taxbase line 8, all bands; the feed labels the count 2025-10): a stock counted inside the calibration year, as the national row's and the band cells' are (microcosm#1095).",
+      "tracking": "microcosm#1095",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-25",
+      "status": "approved",
+      "expires_on": "2026-12-11"
+    },
+    {
       "scope": "national",
       "kind": "in_year_snapshot",
       "target_ids": [
