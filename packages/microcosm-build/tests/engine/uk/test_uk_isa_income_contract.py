@@ -29,7 +29,7 @@ from microcosm.frame.adapters.policyengine_uk import (
 )
 
 
-def _frame():
+def _frame(time_period: str = "2025"):
     # One saver with 1,000 of gross interest, 300 of it in an ISA, and one
     # whose only interest is 300 in an ISA.
     person = pd.DataFrame(
@@ -58,7 +58,7 @@ def _frame():
         household=household,
         household_weights=np.ones(2),
         weight_kind=WeightKind.DESIGN,
-        time_period="2025",
+        time_period=time_period,
     )
 
 
@@ -84,3 +84,22 @@ def test_a_written_frame_declares_the_contract_and_reads_the_same(tmp_path) -> N
     simulation = Microsimulation(dataset=str(path))
     interest = simulation.calculate("savings_interest_income", 2025).values
     assert interest == pytest.approx([700.0, 0.0])
+
+
+def test_a_2024_frame_read_at_2025_grows_gross_interest_less_a_flat_isa_part(
+    tmp_path,
+) -> None:
+    """The build's frame is FRS 2024-25, read at 2025. Under legacy_gross the
+    engine grows the gross interest (by per-capita GDP, 1.0474 to 2025) and takes
+    off the stored ISA part unchanged, so the saver reads 1,000 x 1.0474 - 300 and
+    the ISA-only saver keeps 300 x 0.0474 as interest outside ISAs. The count
+    rows exclude that saver, as they read the frame; the amount rows do not.
+    Moving the frame to the additive contract (microcosm#1095) changes both
+    values (Vahid's review of #1400, round 3)."""
+
+    from policyengine_uk import Microsimulation
+
+    path = write_uk_national_frame(_frame("2024"), tmp_path / "frame.h5")
+    simulation = Microsimulation(dataset=str(path))
+    interest = simulation.calculate("savings_interest_income", 2025).values
+    assert interest == pytest.approx([747.4, 14.22], abs=0.01)
