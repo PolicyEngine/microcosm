@@ -16,8 +16,9 @@ each variant its own effective interval companion. Declare the NZ national
 (237 bands) and age (183 bands) taxable-income tables under Microcosm's declared
 convention; the 474 IRD references stay parked.
 
-Require the first cut explicitly. Zero is nil under either closure, so with a
-nil band and a zero first cut the first positive band starts above zero. Report below-first-cut mass and floored negative records, including
+Require the first cut explicitly. When a nil band is present, zero is nil under
+either closure, so with a zero first cut the first positive band starts above
+zero. Report below-first-cut mass and floored negative records, including
 weighted counts and signed pre-floor amounts by destination. These diagnostics
 describe fixed weights before fitting; reporting later weight changes on
 unfitted records remains G8-r2c/G8-x work.
