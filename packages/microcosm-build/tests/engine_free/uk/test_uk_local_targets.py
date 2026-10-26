@@ -40,7 +40,7 @@ def test_metric_names_match_expected_constituency_surface() -> None:
     )
     assert "age/0_10" in names
     assert "age/70_80" in names
-    assert names[-9:] == (
+    assert names[-12:] == (
         "uc_hh_0_children",
         "uc_hh_1_child",
         "uc_hh_2_children",
@@ -52,6 +52,10 @@ def test_metric_names_match_expected_constituency_surface() -> None:
         "high_value_homes/over_1m",
         "high_value_homes/over_1_5m",
         "high_value_homes/over_2m",
+        # microcosm#1095: DESNZ's energy split onto constituencies, appended.
+        "energy/electricity_kwh",
+        "energy/gas_kwh",
+        "energy/gas_connected_households",
     )
 
 
@@ -84,7 +88,9 @@ def test_metric_names_match_expected_la_surface() -> None:
         # microcosm#1095: England's single adult discount by authority.
         "council_tax/single_adult_discount",
     )
-    assert not any(name.startswith("energy/") for name in metric_names("constituency"))
+    # Both grains carry the energy family in the same order (microcosm#1095);
+    # the single adult discount stays local-authority only.
+    assert metric_names("constituency")[-3:] == names[-4:-1]
     assert "council_tax/single_adult_discount" not in metric_names("constituency")
 
 
@@ -243,6 +249,10 @@ def test_uc_child_bands_sum_uc_benefit_units_to_household(
                 True,
             ],
             "tenure_type": ["RENT_PRIVATELY"],
+            # The constituency grain reads the energy spend too (microcosm#1095).
+            "electricity_consumption": [0.0],
+            "gas_consumption": [0.0],
+            "region": ["LONDON"],
         },
         person_benunit=[0, 0, 1, 1, 1, 1, 2, 2, 2],
         person_household=[0] * people,

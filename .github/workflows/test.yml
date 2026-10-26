@@ -19,7 +19,9 @@ env:
 # Every job sets timeout-minutes (GitHub's default is 360) so a hung test
 # frees its runner from the org's shared 60-runner pool. The engine-free and
 # engine-us caps are about 1.5x their slowest successful leg on 2026-10-07..08;
-# shorter jobs get at least 5 minutes and at least twice their slowest run.
+# the engine-uk cap is about twice its slowest successful leg after the
+# policyengine-uk 2.162.3 bump (29 minutes, microcosm#1400); shorter jobs get
+# at least 5 minutes and at least twice their slowest run.
 
 jobs:
   select-countries:
@@ -115,7 +117,7 @@ jobs:
     needs: select-countries
     if: needs['select-countries'].outputs.run_uk == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
