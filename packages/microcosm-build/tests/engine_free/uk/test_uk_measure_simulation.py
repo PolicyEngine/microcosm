@@ -12,6 +12,7 @@ import pytest
 from microcosm.build.uk_runtime import measure_simulation
 from microcosm.build.uk_runtime.income_tax_rate_classes import UK_RATE_CLASS_ALLOCATION
 from microcosm.build.uk_runtime.measure_simulation import (
+    UK_SAVINGS_INTEREST_OUTSIDE_ISAS,
     UKMeasureResolver,
     apply_uk_calibration_measure_exclusions,
     compute_uk_measure_input,
@@ -1952,6 +1953,76 @@ def test_the_resolver_routes_high_value_home_measures_to_households(
         assert resolver.entity_for(name) == "household"
         assert resolver.knows("household", name)
         assert not resolver.knows("person", name)
+
+
+def _savings_frame() -> FrameStub:
+    """Gross interest with its ISA part: a saver, an ISA-only saver, a non-saver."""
+
+    frame = FrameStub()
+    frame._tables["person"] = frame._tables["person"].assign(
+        savings_interest_income=[1_000.0, 300.0, 0.0],
+        tax_free_savings_income=[300.0, 300.0, 0.0],
+    )
+    return frame
+
+
+def test_savings_interest_outside_isas_is_the_stored_gross_less_its_isa_part():
+    """SPI Table 3.7 counts recipients of taxable interest (microcosm#1095)."""
+
+    # No engine: the stored columns are read off the frame, never uprated.
+    values, route = compute_uk_measure_input(
+        _savings_frame(), None, "person", UK_SAVINGS_INTEREST_OUTSIDE_ISAS, 2025
+    )
+    assert values.tolist() == [700.0, 0.0, 0.0]
+    assert route == "frame_columns:savings_interest_income_less_tax_free_savings_income"
+    with pytest.raises(KeyError, match="person-only"):
+        compute_uk_measure_input(
+            _savings_frame(), None, "household", UK_SAVINGS_INTEREST_OUTSIDE_ISAS, 2025
+        )
+
+
+def test_the_spi_interest_count_counts_recipients_of_interest_outside_isas():
+    targets = measure_simulation._uk_contract_targets()
+    filters = targets["hmrc.spi.savings_interest_income.count_by_total_income_band"][
+        "bindings"
+    ]["policyengine"]["filters"]
+    assert {
+        "variable": UK_SAVINGS_INTEREST_OUTSIDE_ISAS,
+        "operator": ">",
+        "value": 0,
+    } in (filters)
+    assert "savings_interest_income" not in {f["variable"] for f in filters}
+
+
+def test_the_resolver_routes_interest_outside_isas_to_persons(
+    monkeypatch, tmp_path: Path
+):
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_uk",
+        SimpleNamespace(
+            __version__="9.9.9", Microsimulation=lambda *, dataset: SimulationStub({})
+        ),
+    )
+    resolver = UKMeasureResolver(
+        simulation_source=tmp_path / "input.h5",
+        scratch_dir=tmp_path,
+        year=2025,
+        frame=_savings_frame(),
+    )
+    assert resolver.entity_for(UK_SAVINGS_INTEREST_OUTSIDE_ISAS) == "person"
+    assert resolver.knows("person", UK_SAVINGS_INTEREST_OUTSIDE_ISAS)
+    assert not resolver.knows("household", UK_SAVINGS_INTEREST_OUTSIDE_ISAS)
+
+    frame = _savings_frame()
+    frame._tables["person"][UK_SAVINGS_INTEREST_OUTSIDE_ISAS] = [700.0, 0.0, 0.0]
+    with pytest.raises(ValueError, match="must not be persisted"):
+        UKMeasureResolver(
+            simulation_source=tmp_path / "input.h5",
+            scratch_dir=tmp_path,
+            year=2025,
+            frame=frame,
+        )
 
 
 def _stub_engine_term_calendar(monkeypatch) -> None:

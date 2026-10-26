@@ -250,6 +250,33 @@ def household_high_value_home(frame: Any, variable: str) -> np.ndarray:
     ).astype(float)
 
 
+#: Savings interest outside ISAs, from the frame's stored columns: the frame
+#: stores savings_interest_income gross, ISA interest included, with the ISA
+#: part in tax_free_savings_income. SPI Table 3.7 counts the recipients of
+#: taxable interest, so its count rows filter on this, read at the frame as a
+#: filter's stored columns are (microcosm#1095). A reserved name: a persisted
+#: column would bypass the difference.
+UK_SAVINGS_INTEREST_OUTSIDE_ISAS = "savings_interest_income_outside_isas"
+
+
+def savings_interest_outside_isas(frame: Any) -> np.ndarray:
+    """Each person's stored gross savings interest less its ISA part, not below zero."""
+
+    person = frame.table("person")
+    if "savings_interest_income" not in person:
+        raise ValueError(
+            f"{UK_SAVINGS_INTEREST_OUTSIDE_ISAS} needs the stored person column "
+            "savings_interest_income."
+        )
+    gross = person["savings_interest_income"].to_numpy(dtype=float)
+    tax_free = (
+        person["tax_free_savings_income"].to_numpy(dtype=float)
+        if "tax_free_savings_income" in person
+        else np.zeros(len(person))
+    )
+    return np.maximum(gross - tax_free, 0.0)
+
+
 #: The named terms the resolver computes: measures declared once as
 #: expressions of the binding interpreter's grammar, evaluated from their
 #: leaves wherever a binding names them (a value, a band or a filter, on the
@@ -491,6 +518,14 @@ def compute_uk_measure_input(
         return (
             household_high_value_home(frame, variable),
             f"frame_columns:high_value_home_mask:{_HIGH_VALUE_HOME_MEASURES[variable]}",
+        )
+
+    if variable == UK_SAVINGS_INTEREST_OUTSIDE_ISAS:
+        if entity != "person":
+            raise KeyError(f"{variable} is person-only: {entity}")
+        return (
+            savings_interest_outside_isas(frame),
+            "frame_columns:savings_interest_income_less_tax_free_savings_income",
         )
 
     if variable in DFE_SPRING_TERM_MEASURES:
@@ -990,6 +1025,11 @@ class UKMeasureResolver:
                 "High-value home measures must not be persisted as source inputs: "
                 f"{persisted_high_value}"
             )
+        if UK_SAVINGS_INTEREST_OUTSIDE_ISAS in set(map(str, frame.table("person"))):
+            raise ValueError(
+                f"{UK_SAVINGS_INTEREST_OUTSIDE_ISAS} must not be persisted as a "
+                "source input."
+            )
         persisted_spring_term = sorted(
             set(DFE_SPRING_TERM_MEASURES) & set(map(str, frame.table("person")))
         )
@@ -1109,6 +1149,10 @@ class UKMeasureResolver:
             return entity == "benunit" and self.knows("person", _CHILD_BENEFIT_CHILD)
         if variable in _BUS_BOARDING_MEASURES or variable in _HIGH_VALUE_HOME_MEASURES:
             return entity == "household"
+        if variable == UK_SAVINGS_INTEREST_OUTSIDE_ISAS:
+            return entity == "person" and "savings_interest_income" in set(
+                map(str, self.frame.table("person"))
+            )
         if variable in DFE_SPRING_TERM_MEASURES:
             return entity == "person" and all(
                 self.knows("person", name) for name in DFE_SPRING_TERM_ENGINE_INPUTS
@@ -1153,6 +1197,8 @@ class UKMeasureResolver:
             return "household"
         if variable == UK_CHILD_BENEFIT_CHILD_COUNT:
             return "benunit"
+        if variable == UK_SAVINGS_INTEREST_OUTSIDE_ISAS:
+            return "person"
         if _cgt_model_measure(variable, self.year) is not None:
             return "person"
         if variable in UK_NAMED_TERMS or variable in DFE_SPRING_TERM_MEASURES:

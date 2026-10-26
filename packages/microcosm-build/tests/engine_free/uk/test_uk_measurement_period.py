@@ -499,7 +499,10 @@ REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
         "region",
         "relation_type",
         "savings_credit",
-        "savings_interest_income",
+        # The stored gross interest less its ISA part, read at the frame by the
+        # resolver; a sign filter, so its sign holds under uprating
+        # (microcosm#1095).
+        "savings_interest_income_outside_isas",
         "self_employment_income_after_loss_relief",
         "state_pension",
         "state_pension_type",
