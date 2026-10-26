@@ -213,13 +213,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "045302b0fa324442d610f1d9a129720472964297119ec9c2143961dae1f47f6f"
+    "2501837a968eb1711a7f81d9807f163ac508aff22a724b3a910f35767d4caf3d"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "f9d96de1607b82ac8df8afc0a206d248c99fbbb98deb901b1264ceff28c16cb7"
+    "bfb0af58fd3ece15102875a18c4cb4e991ae16bf0f1dbffb7dd765dcf0ff9073"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "15531b5080b4837217ff29a08d99cbf04190e1f5f8f73203f4a4ffdf66803541"
+    "723bc27b25335ad3220647e78ec3cc4b1359cffa4407a946b1a9c1f2231e4a0f"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "6a179222c6b6058ad9caacfd347f7bdb8cb98a62237b50d1fc1136df09337251"
@@ -263,6 +263,16 @@ UK_GATE_BATTERY_ENTRIES = {
     ),
     "uk_stage_lcfs_consumption_road_fuel_level": ("stage_health", "transferred", None),
     "uk_stage_lcfs_consumption_recomposed_totals": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_lcfs_consumption_excise_quantities": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_lcfs_consumption_gambling_participation": (
         "stage_health",
         "transferred",
         None,
@@ -325,6 +335,21 @@ UK_GATE_BATTERY_ENTRIES = {
         None,
     ),
     "uk_stage_student_loans_realization": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_regional_home_values_ranking": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_property_purchases_fit": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_uc_legacy_closure_take_up_contract": (
         "stage_health",
         "transferred",
         None,
@@ -1371,6 +1396,8 @@ def _gate_battery_payload(
         "uk_stage_lcfs_consumption_road_fuel_incidence": "lcfs_consumption",
         "uk_stage_lcfs_consumption_road_fuel_level": "lcfs_consumption",
         "uk_stage_lcfs_consumption_recomposed_totals": "lcfs_consumption",
+        "uk_stage_lcfs_consumption_excise_quantities": "lcfs_consumption",
+        "uk_stage_lcfs_consumption_gambling_participation": "lcfs_consumption",
         "uk_stage_lcfs_consumption_basis": "lcfs_consumption",
         "uk_stage_nts_bus_travel_support": "nts_bus_travel",
         "uk_stage_nts_bus_travel_facts": "nts_bus_travel",
@@ -1395,6 +1422,9 @@ def _gate_battery_payload(
         "uk_stage_cgt_incidence_anchor_composition": "cgt_incidence_anchor",
         "uk_stage_salary_sacrifice_realization": "salary_sacrifice",
         "uk_stage_student_loans_realization": "student_loans",
+        "uk_stage_regional_home_values_ranking": "regional_home_values",
+        "uk_stage_property_purchases_fit": "property_purchases",
+        "uk_stage_uc_legacy_closure_take_up_contract": "uc_legacy_closure_take_up",
         "uk_stage_age_tail_targets": "age_tail",
         "uk_stage_frs_relationships_composition": "frs_relationships",
     }

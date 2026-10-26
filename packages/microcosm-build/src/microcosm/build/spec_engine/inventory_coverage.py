@@ -350,12 +350,12 @@ EXPECTED_HASHES = {
     "acs_person_predictors": "878c788a6f037d7aca12b3586ea034eff04f3034ffa11935a736493042551f25",
     "authority": "9d4a9672a0f03039b1fe874b9fe21ed575be0d29f14afc396d03cdf5c809bdd2",
     "early_families": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd",
-    "full_checkpoint": "3db095ce2d1ef89028d3862f0edc827d704f099c5b3323f9b115642a3c27e007",
+    "full_checkpoint": "030c842261a9f0b2378443633b92f96a876cdbc9cb9e75433967fbf97fdeec1c",
     "gap_fill_schedule": "1c31f9868f7884347cc19cf1ff65da43f950b9114941a715bab168246db414a7",
     "graph_nodes": "40cd51ffdfe2e9d9d08d48c08e8ded9de1e4b134783bab05c4abc6ad5c72ca1e",
     "geography_assignment": "44e7f5f6cd7ceeef85d532c3d46306d03de4f4ee811376e6d29920742746b65c",
     "late_families": "d91f9ff0eb52f43e7b6eed3d5c58c37abe1620c3a11021da15dae9c10e16d382",
-    "late_resource_semantics": "cc34ba11288d01145fc2dc1a669df3f7c4ef2019d73afb02dd8eeee852b16d20",
+    "late_resource_semantics": "531b48cd1f9737c3ba04aaa430a1aaa25d035217b59be9da24844948687e78f1",
     "late_schedule": "e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f",
     "ownership": "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356",
     "primary_tuples": "fdf23da429f8c501e198a2f5b719763d523a41565c2153fdf17b0344f21bcd7c",
@@ -366,12 +366,16 @@ EXPECTED_HASHES = {
     # by default, so no US solve, RNG rule or QRF target changes. microcosm#1301
     # moves both again: calibrate gains budget_search_bracket, whose default
     # keeps the US bracket, and the budget search, which the US solve does
-    # not run, changes its probes, so again no US solve changes.
-    "seed_map": "0db599df419dd16779097361dc72afdefb8df2abf8b134078da9c52d31d8e017",
-    "seed_protocol": "2b7bdc1d6b0da1bdaf54b4cac29f10f2d3c8bed2e177729c2c89e6b33a099cc5",
-    "source_manifest": "f4f8bfeb79268a4043a843b47cec1d1c0e58e9f5dd6bc23417ada95446dd7b8e",
+    # not run, changes its probes, so again no US solve changes. #454: the
+    # meps_esi_premiums stage joins the attested sources and the source
+    # manifest. #1376: the puma_county_vintage draw module joins the seed
+    # protocol's attested kernel modules. #1380: the ACS transfer's
+    # self-employment component step changes acs_transfer's attested bytes.
+    "seed_map": "eb6b685478a35cbbf3295773c8396527d70167a4675432afa7530b0b64b611b2",
+    "seed_protocol": "961eb7d68291fb5ed45fa96f6949af91a315a0c1db6ced1f514898c65fab935f",
+    "source_manifest": "87b1e124969ec11b836740c027d28dc2a9d319d279ed55be1d9fc1523390f634",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
-    "tail": "ac92829c88a1a4fb6460d61190918d5d99c6c377fc8dd8f62f02b332d09bf59c",
+    "tail": "256947cd7c1bbd85f5d1fa3911a07a170ae87830f098110a40ed25d93f78347c",
 }
 
 INVENTORY_REPORT_SCHEMA_VERSION = 1
@@ -451,7 +455,7 @@ EXPECTED_INVENTORY_COUNTS: Mapping[str, int] = {
     "stacked_checkpoint_full_components": 13,
     "stacked_checkpoint_pool_code_components": 19,
     "stacked_checkpoint_static_components": 10,
-    "tail_control_fields": 934,
+    "tail_control_fields": 937,
     "take_up_pipeline_steps": 28,
     "take_up_programs": 17,
     "typed_artifacts": 84,
@@ -1207,7 +1211,7 @@ def build_inventory_coverage(
             "stages": len(_array(sources["stages"], "source stages")),
             "sha256": sha256_json(source_manifest),
         },
-        expected={"stages": 37, "sha256": EXPECTED_HASHES["source_manifest"]},
+        expected={"stages": 38, "sha256": EXPECTED_HASHES["source_manifest"]},
     )
     pipeline = _mapping(spine["pipeline_contract"], "spine pipeline contract")
     operator_order = tuple(
@@ -1419,7 +1423,7 @@ def build_inventory_coverage(
     add(
         "capital_gains_tail_contract_exact",
         clauses={
-            "tail terminal field count differs": tail_count == 934,
+            "tail terminal field count differs": tail_count == 937,
             "resolved calibration tails differ": _json_equal(
                 legacy.get("calibration_tail_contracts"),
                 expected_legacy["calibration_tail_contracts"],
@@ -1447,7 +1451,7 @@ def build_inventory_coverage(
             "legacy_adapter.stacked_checkpoint_static_components",
         ),
         observed={"terminal_fields": tail_count, "sha256": sha256_json(tail_bundle)},
-        expected={"terminal_fields": 934, "sha256": EXPECTED_HASHES["tail"]},
+        expected={"terminal_fields": 937, "sha256": EXPECTED_HASHES["tail"]},
     )
 
     add(

@@ -617,6 +617,20 @@ def test_assembler_stages_a_contract_valid_dense_release(
     manifest = json.loads((release_dir / "release_manifest.json").read_text())
     assert manifest["dataset_role"] == "non_default_local_area"
     assert manifest["default_datasets"] == {} and manifest["is_default"] is False
+    # The fixture's spine ran frs_spine alone, which reads no SPI tape; the
+    # marker is rederived from the stages the provenance names (#1095).
+    assert manifest["licensed_data"]["spi_public_use_tape"] == {
+        "study": "SN 9422",
+        "dependent": False,
+        "stages": [],
+        "conditions": [],
+    }
+    assert (
+        manifest["artifacts"]["microcosm_uk_2024_25_dense"][
+            "spi_public_use_tape_dependent"
+        ]
+        is False
+    )
     assert (
         manifest["artifacts"]["microcosm_uk_2024_25_dense"]["revision"]
         == summary["cut_tag"]

@@ -506,6 +506,11 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
             "CHAMTTST": 10.0,
             "APAMT": 11.0,
             "APDAMT": 12.0,
+            # Alimony for the adult's own keep, the usual amount differing
+            # from the last (#1320).
+            "ALIUS": 2,
+            "ALUAMT": 3.0,
+            "ALIAMT": 4.0,
             "PAREAMT": 13.0,
             "REDAMT": 20.0,
             "SLREPAMT": 2.0,
@@ -660,6 +665,34 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "NATURE": 4,
                 "DIRPERC": 2 if household_id % 10 == 0 else -1,
                 "DIVIDEND": 1000.0 if household_id % 10 == 0 else 0.0,
+                # Every fifth job pays one bonus, given before or after tax by
+                # turn (#1340).
+                **{
+                    f"BONAMT{index}": (
+                        float(500 + 100 * (household_id % 7))
+                        if index == 1 and household_id % 5 == 0
+                        else ""
+                    )
+                    for index in range(1, 7)
+                },
+                **{
+                    f"BONTAX{index}": (
+                        1 + (household_id // 5) % 2
+                        if index == 1 and household_id % 5 == 0
+                        else ""
+                    )
+                    for index in range(1, 7)
+                },
+                **{
+                    f"BONTXAM{index}": (
+                        3.0
+                        if index == 1
+                        and household_id % 5 == 0
+                        and (household_id // 5) % 2 == 1
+                        else ""
+                    )
+                    for index in range(1, 7)
+                },
                 # The annual income stage's job columns: a job under a year old
                 # follows paid employment (WRKPREV 1) on two households in
                 # four; every employee job carries its DV pay (UGRSPAY) and
@@ -904,6 +937,12 @@ def _was_donor() -> pd.DataFrame:
     other_mortgage = np.where(
         ~mortgaged & (other_houses > 0.0) & (position % 2 == 0), 2_000.0 + rows, 0.0
     )
+    # The debt secured on each class of other property, parts of the
+    # mortgages on it and zero where its asset is zero, as on the real tab
+    # (microcosm#1095).
+    other_houses_debt = np.where(other_houses > 0.0, 0.6 * other_mortgage, 0.0)
+    buy_to_let_debt = np.where(buy_to_let > 0.0, 0.1 * other_mortgage, 0.0)
+    buildings_debt = np.where(buildings > 0.0, 0.3 * other_mortgage, 0.0)
     return pd.DataFrame(
         {
             "CASER8": rows + 1.0,
@@ -952,6 +991,9 @@ def _was_donor() -> pd.DataFrame:
             "DVHseValR8_sum": other_houses,
             "DVBltValR8_sum": buy_to_let,
             "DVBlDValR8_sum": buildings,
+            "DVHseDebtR8_sum": other_houses_debt,
+            "DVBLtDebtR8_sum": buy_to_let_debt,
+            "DVBldDebtR8_sum": buildings_debt,
             "DVTotinc_bhcR8": 20_000.0 + rows * 1_000.0,
             "DVSaValR8_aggr": savings,
             "vcarnr8": position % 4,
@@ -1027,6 +1069,42 @@ def _lcfs_donors() -> tuple[pd.DataFrame, pd.DataFrame]:
     # Other motor fuels (c72213): the level_road_fuel step nets the donor's own
     # share of them from ONS 07.2.2 (microcosm#1113), so a few diaries buy some.
     household["c72213"] = np.where(rows.astype(int) % 5 == 0, 0.5, 0.0)
+    # The alcohol and tobacco lines P602 sums, the drinks inside P611 and the
+    # gambling stakes inside P609, which the excise shares read (microcosm#1359): P602 is its ten lines, with
+    # tobacco on a quarter of the diaries (all of P602 on a twelfth), and a
+    # third of the diaries buy drinks away from home.
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_GAMBLING_STAKE_CODES,
+        UK_LCFS_OFF_TRADE_ALCOHOL_CODES,
+        UK_LCFS_ON_TRADE_ALCOHOL_CODES,
+        UK_LCFS_TOBACCO_CODES,
+    )
+
+    p602 = np.asarray(household["p602"], dtype=float)
+    tobacco = np.where(
+        rows.astype(int) % 12 == 0,
+        p602,
+        np.where(rows.astype(int) % 4 == 0, 0.3 * p602, 0.0),
+    )
+    for code, share in zip(UK_LCFS_TOBACCO_CODES, (0.7, 0.0, 0.3), strict=True):
+        household[code] = share * tobacco
+    for code in UK_LCFS_OFF_TRADE_ALCOHOL_CODES:
+        household[code] = (p602 - tobacco) / len(UK_LCFS_OFF_TRADE_ALCOHOL_CODES)
+    on_trade = np.where(
+        rows.astype(int) % 3 == 1,
+        0.25 * np.asarray(household["p611"], dtype=float),
+        0.0,
+    )
+    for code in UK_LCFS_ON_TRADE_ALCOHOL_CODES:
+        household[code] = on_trade / len(UK_LCFS_ON_TRADE_ALCOHOL_CODES)
+    # Gambling stakes inside P609, on a fifth of the diaries.
+    stakes = np.where(
+        rows.astype(int) % 5 == 2,
+        0.05 * np.asarray(household["p609"], dtype=float),
+        0.0,
+    )
+    for code in UK_LCFS_GAMBLING_STAKE_CODES:
+        household[code] = stakes / len(UK_LCFS_GAMBLING_STAKE_CODES)
     person = pd.DataFrame(
         {
             "case": np.arange(1, _DONOR_ROWS + 1),

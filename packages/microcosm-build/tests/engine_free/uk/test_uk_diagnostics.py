@@ -700,6 +700,94 @@ def test_consumption_drift_compares_design_and_final_weights() -> None:
     assert "full_rate_vat_base" not in drift["totals"]
 
 
+def test_consumption_drift_carries_the_heating_fuels_where_the_frame_has_them() -> None:
+    """The liquid and solid fuels the stage draws (pe-uk#2572), read only where
+    the frame carries them, so an older spine keeps its drift block."""
+
+    from microcosm.build.uk_runtime.diagnostics import uk_consumption_drift
+
+    household = pd.DataFrame(_consumption_columns(4))
+    design = np.array([1.0, 1.0, 1.0, 1.0])
+    final = np.array([2.0, 0.0, 1.0, 1.0])
+    assert (
+        "liquid_fuel_consumption"
+        not in uk_consumption_drift(household, design, final)["totals"]
+    )
+    household["liquid_fuel_consumption"] = [100.0, 0.0, 50.0, 0.0]
+    household["solid_fuel_consumption"] = [0.0, 30.0, 0.0, 0.0]
+    totals = uk_consumption_drift(household, design, final)["totals"]
+    assert totals["liquid_fuel_consumption"]["final"] == 250.0
+    assert totals["solid_fuel_consumption"]["relative_change"] == -1.0
+
+
+def test_drift_flags_mark_totals_past_two_percent_and_shares_past_half_a_point() -> (
+    None
+):
+    """Warn-only flags at #1278's R1 thresholds; the payload keeps its shape."""
+
+    from microcosm.build.uk_runtime.diagnostics import (
+        UK_DRIFT_SHARE_FLAG,
+        UK_DRIFT_TOTAL_FLAG,
+        uk_consumption_drift_flags,
+    )
+
+    drift = {
+        "totals": {
+            "moves": {"relative_change": 0.021, "change": 21.0},
+            "edge": {"relative_change": -0.02, "change": -20.0},
+            "none": {"relative_change": None, "change": 0.0},
+        },
+        "shares": {
+            "moves": {"change": -0.0051},
+            "edge": {"change": 0.005},
+        },
+    }
+    flags = uk_consumption_drift_flags(drift)
+    assert flags["total_relative_change_above"] == UK_DRIFT_TOTAL_FLAG == 0.02
+    assert flags["share_change_above"] == UK_DRIFT_SHARE_FLAG == 0.005
+    assert flags["totals"] == ["moves"]
+    assert flags["shares"] == ["moves"]
+
+
+def test_drift_flags_reach_the_payload_as_warnings() -> None:
+    """Vahid's review of #1383, item 11: the flags are wired, not a hand run.
+
+    Each flagged total or share is one warn-only diagnostic warning, naming it
+    and the threshold, never its figures.
+    """
+
+    from microcosm.build.uk_runtime.diagnostics import (
+        UK_CONSUMPTION_DRIFT_WARNING_CODE,
+        uk_consumption_drift_warnings,
+    )
+
+    drift = {
+        "totals": {"solid_fuel_consumption": {"relative_change": -0.3, "change": -1.0}},
+        "shares": {"gas_connected_households": {"change": 0.0001}},
+    }
+    (warning,) = uk_consumption_drift_warnings(drift)
+    assert warning["code"] == UK_CONSUMPTION_DRIFT_WARNING_CODE
+    assert warning["severity"] == "warning"
+    assert "solid_fuel_consumption" in warning["message"]
+    assert "2%" in warning["message"] and "-0.3" not in warning["message"]
+    result, frame, registry, geography = _diagnostics_case(with_consumption=True)
+    payload = uk_calibration_diagnostics_payload(
+        result,
+        frame,
+        target_geography_levels=geography,
+        target_registry=registry,
+        withheld=frozenset(),
+    )
+    flagged = [
+        warning
+        for warning in payload["diagnostic_warnings"]
+        if warning["code"] == UK_CONSUMPTION_DRIFT_WARNING_CODE
+    ]
+    assert flagged == uk_consumption_drift_warnings(
+        payload["uk_diagnostics"]["consumption_drift"]
+    )
+
+
 def test_consumption_drift_carries_the_full_rate_vat_base() -> None:
     """Consumption times the ETB VAT stage's full-rate share (#1207)."""
 
@@ -749,6 +837,35 @@ def test_consumption_drift_carries_the_stage_s_kwh() -> None:
         household.drop(columns="region"), design, final
     )
     assert "electricity_kwh" not in without_region["totals"]
+
+
+def test_consumption_drift_carries_the_excise_quantities() -> None:
+    """Each excise quantity and base as stored, at both weights (#1359)."""
+
+    from microcosm.build.uk_runtime.diagnostics import uk_consumption_drift
+
+    household = pd.DataFrame(_consumption_columns(4))
+    household["beer_litres"] = [100.0, 0.0, 50.0, 10.0]
+    household["cigarettes_per_week"] = [20.0, 0.0, 0.0, 40.0]
+    household["remote_gaming_net_losses"] = [0.0, 30.0, 0.0, 0.0]
+    household["beer_draught_share"] = 0.4
+    design = np.array([1.0, 1.0, 1.0, 1.0])
+    final = np.array([2.0, 0.0, 1.0, 1.0])
+
+    totals = uk_consumption_drift(household, design, final)["totals"]
+
+    assert totals["beer_litres"]["design"] == pytest.approx(160.0)
+    assert totals["beer_litres"]["final"] == pytest.approx(260.0)
+    assert totals["cigarettes_per_week"]["final"] == pytest.approx(80.0)
+    assert totals["remote_gaming_net_losses"]["relative_change"] == -1.0
+    # A draught share is a ratio, not a quantity, and no other input is on
+    # the frame.
+    assert "beer_draught_share" not in totals
+    assert "wine_litres" not in totals
+    plain = uk_consumption_drift(pd.DataFrame(_consumption_columns(4)), design, final)[
+        "totals"
+    ]
+    assert "beer_litres" not in plain
 
 
 def test_payload_carries_the_consumption_drift_when_the_frame_has_it() -> None:
@@ -1386,12 +1503,12 @@ def test_a_thin_national_row_keeps_its_place_but_not_its_model_figures() -> None
     assert payload["loss_trajectory"] == []
 
 
-def test_a_thin_local_area_row_stays_with_the_area_support_rule() -> None:
-    """Constituency and authority rows keep the local line's area-support rule.
+def test_a_thin_row_is_withheld_at_every_level() -> None:
+    """María's rule of 2026-10-21, and her ruling of 2026-10-23 on the local line.
 
-    María's rule of 2026-10-21 on thin rows reaches national, regional and
-    BRMA rows; whether it reaches the local line is still hers to rule, and
-    the report guard matches a withheld local row by its bare area code.
+    A row resting on fewer than ten source households keeps its place without
+    its figures at every level; the area-support rule still decides which
+    constituency and authority rows bind.
     """
 
     from types import SimpleNamespace
@@ -1404,7 +1521,7 @@ def test_a_thin_local_area_row_stays_with_the_area_support_rule() -> None:
     matrix = sparse.csr_array(
         (np.ones(3), (np.zeros(3, dtype=int), np.arange(3))), shape=(1, n)
     )
-    problem = SimpleNamespace(matrix=matrix, names=["thin_row@2025"])
+    problem = SimpleNamespace(matrix=matrix, names=["thin_row@E14000001@2025"])
     frame = Frame(
         {
             "person": pd.DataFrame(
@@ -1417,26 +1534,34 @@ def test_a_thin_local_area_row_stays_with_the_area_support_rule() -> None:
                 {
                     "household_id": np.arange(n, dtype=np.int64),
                     "source_household_id": np.arange(n, dtype=np.int64),
+                    "region": ["LONDON"] * n,
                 }
             ),
         },
         EntitySchema(group_entities=("household",)),
         {"household": Weights(np.ones(n), WeightKind.DESIGN)},
     )
-    rows = [{"name": "thin_row@2025"}]
+    # A local row names its contract target (Vahid's third review of #1383,
+    # item 33); this one ties to no family.
+    rows = [
+        {
+            "name": "thin_row@E14000001@2025",
+            "metadata": {"contract_target_id": "fixture.thin_row"},
+        }
+    ]
     for level, withheld in (
         ("national", True),
         ("region", True),
         ("brma", True),
         ("statistical_scope", True),
-        ("constituency", False),
-        ("local_authority", False),
-        ("la", False),
+        ("constituency", True),
+        ("local_authority", True),
+        ("la", True),
     ):
         found = uk_withheld_rows(
-            problem, np.ones(n), frame, rows, {"thin_row@2025": level}
+            problem, np.ones(n), frame, rows, {"thin_row@E14000001@2025": level}
         )
-        assert (found == {"thin_row@2025"}) is withheld, level
+        assert (found == {"thin_row@E14000001@2025"}) is withheld, level
 
 
 def _withheld_sets(
@@ -1444,12 +1569,19 @@ def _withheld_sets(
     n: int,
     values: dict[str, float | list[float]] | None = None,
     sources: list[float] | None = None,
+    levels: dict[str, str] | None = None,
+    regions: list[str] | None = None,
+    targets: dict[str, str] | None = None,
+    tie_targets: bool = True,
 ) -> tuple[set[str], set[str]]:
     """``uk_withheld_row_sets`` over rows given by the households that carry them.
 
     Every household is its own source household (or ``sources``) and carries
     weight one. A row's entries are one, or its ``values`` (one for all its
-    households, or one each).
+    households, or one each). ``regions`` gives each household's region, and
+    ``targets`` a row's contract target. Any other row gets a contract target
+    no family holds, as a local row must name one; ``tie_targets=False``
+    leaves the other rows without one.
     """
 
     from types import SimpleNamespace
@@ -1479,15 +1611,25 @@ def _withheld_sets(
                         if sources is None
                         else np.asarray(sources)
                     ),
+                    **({} if regions is None else {"region": regions}),
                 }
             ),
         },
         EntitySchema(group_entities=("household",)),
         {"household": Weights(np.ones(n), WeightKind.DESIGN)},
     )
-    return uk_withheld_row_sets(
-        problem, np.ones(n), frame, [{"name": name} for name in names]
-    )
+    tied = {
+        name: (targets or {}).get(name)
+        or (f"test:{name.split('@')[0]}" if tie_targets else None)
+        for name in names
+    }
+    target_rows = [
+        {"name": name}
+        if tied[name] is None
+        else {"name": name, "metadata": {"contract_target_id": tied[name]}}
+        for name in names
+    ]
+    return uk_withheld_row_sets(problem, np.ones(n), frame, target_rows, levels)
 
 
 def test_a_band_its_total_gives_back_withholds_the_next_smallest_band() -> None:
@@ -2511,7 +2653,9 @@ def test_the_report_guard_refuses_any_mention_of_a_withheld_row(capsys) -> None:
     (key,) = keys
 
     def guard(report):
-        uk_refuse_named_withheld_rows(report, names=names, keys=keys)
+        uk_refuse_named_withheld_rows(
+            report, names=names, keys=keys, areas=frozenset({"S33999999"})
+        )
 
     # Counts, published rows and other areas pass.
     guard(
@@ -2602,3 +2746,238 @@ def test_an_explicit_zero_in_a_brma_row_carries_nothing() -> None:
     assert uk_withheld_brma_rows(problem, weights, frame, rows, levels) == {
         "brma_row@2025"
     }
+
+
+def test_the_local_line_withholds_thin_local_rows_by_block() -> None:
+    """María's ruling of 2026-10-23: thin local rows are withheld, by block.
+
+    In one constituency a family total less its published band gives a thin
+    band back, so the next-smallest band is withheld beside it, as nationally.
+    A thin row in another area is withheld on its own, and no row of one area
+    is withheld for a difference with another's that gives nothing back.
+    """
+
+    rows = {
+        "fam.total@E14000001@2025": list(range(30)),
+        "fam.band_1@E14000001@2025": list(range(25)),
+        "fam.band_2@E14000001@2025": list(range(25, 30)),
+        "other.total@E14000002@2025": list(range(30, 35)),
+        "other.total@E14000003@2025": list(range(35, 60)),
+    }
+    levels = {name: "constituency" for name in rows}
+    thin, beside = _withheld_sets(rows, 60, levels=levels, regions=["LONDON"] * 60)
+    assert thin == {"fam.band_2@E14000001@2025", "other.total@E14000002@2025"}
+    assert beside == {"fam.band_1@E14000001@2025"}
+    # The same rows as one national block would give the same verdict; the
+    # block split changes only which differences are looked for.
+    national = _withheld_sets(rows, 60)
+    assert national == (thin, beside)
+
+
+def test_a_region_row_less_its_published_local_cells_withholds_one_more() -> None:
+    """Vahid's review of #1383, item 1: the region and its cells are one block.
+
+    The region row binds beside its local-authority cells, so the region less
+    the published cell gives the thin one back, and the next-smallest giver
+    is withheld beside it. Per area, nothing was withheld beside it.
+    """
+
+    rows = {
+        "fam.region@E12000007@2025": list(range(30)),
+        "fam.cell@E09000001@2025": list(range(25, 30)),
+        "fam.cell@E09000002@2025": list(range(25)),
+        "fam.region@E12000008@2025": list(range(30, 60)),
+    }
+    levels = {
+        "fam.region@E12000007@2025": "region",
+        "fam.region@E12000008@2025": "region",
+        "fam.cell@E09000001@2025": "local_authority",
+        "fam.cell@E09000002@2025": "local_authority",
+    }
+    regions = ["LONDON"] * 30 + ["SOUTH_EAST"] * 30
+    thin, beside = _withheld_sets(rows, 60, levels=levels, regions=regions)
+    assert thin == {"fam.cell@E09000001@2025"}
+    assert beside == {"fam.cell@E09000002@2025"}
+
+
+def test_a_regions_constituencies_less_its_authorities_withhold_one_more() -> None:
+    """Both local grains partition a region, so each gives the other back."""
+
+    rows = {
+        "fam.cell@E14000001@2025": list(range(20)),
+        "fam.cell@E14000002@2025": list(range(20, 40)),
+        "fam.cell@E06000001@2025": list(range(35)),
+        "fam.cell@E06000002@2025": list(range(35, 40)),
+    }
+    levels = {
+        "fam.cell@E14000001@2025": "constituency",
+        "fam.cell@E14000002@2025": "constituency",
+        "fam.cell@E06000001@2025": "local_authority",
+        "fam.cell@E06000002@2025": "local_authority",
+    }
+    thin, beside = _withheld_sets(rows, 40, levels=levels, regions=["WALES"] * 40)
+    assert thin == {"fam.cell@E06000002@2025"}
+    # The constituencies less the larger authority give the thin one back;
+    # the smaller constituency is withheld (ties go by name), and what is left
+    # (the thin cell with it) rests on 25 households.
+    assert beside == {"fam.cell@E14000001@2025"}
+
+
+def _uc_family_rows() -> tuple[dict[str, list[int]], dict[str, str], dict[str, str]]:
+    # The national UC caseload and its constituency cells share one
+    # measurement, so they are one family with its parent (the contract).
+    rows = {
+        "dwp.uc.households@2025": list(range(60)),
+        "dwp.uc.households_by_area@E14000001@2025": list(range(30)),
+        "dwp.uc.households_by_area@E14000002@2025": list(range(30, 55)),
+        "dwp.uc.households_by_area@E14000003@2025": list(range(55, 60)),
+    }
+    levels = {name: "constituency" for name in rows}
+    levels["dwp.uc.households@2025"] = "country"
+    targets = {
+        name: "dwp.uc.households"
+        if name.startswith("dwp.uc.households@")
+        else ("dwp.uc.households_by_area")
+        for name in rows
+    }
+    return rows, levels, targets
+
+
+def test_a_national_row_less_a_familys_published_cells_withholds_one_more() -> None:
+    """A national parent less its family's cells across regions gives one back.
+
+    No region row binds, so no region block sees it: the family's own block
+    with its parent, the contract's national UC caseload, does.
+    """
+
+    rows, levels, targets = _uc_family_rows()
+    regions = ["NORTH_EAST"] * 30 + ["NORTH_WEST"] * 30
+    thin, beside = _withheld_sets(
+        rows, 60, levels=levels, regions=regions, targets=targets
+    )
+    assert thin == {"dwp.uc.households_by_area@E14000003@2025"}
+    assert beside == {"dwp.uc.households_by_area@E14000002@2025"}
+    # Without its contract target a local row would join no family block and
+    # nothing would be withheld beside the thin cell, so it refuses (Vahid's
+    # third review of #1383, item 33).
+    with pytest.raises(ValueError, match="name none"):
+        _withheld_sets(rows, 60, levels=levels, regions=regions, tie_targets=False)
+
+
+def test_no_parentless_local_family_shares_its_measurement_with_a_higher_row() -> None:
+    """A local family with no parent has no higher-grain row of its measurement.
+
+    The family check ties a family to its parents through the cross-grain
+    declarations or a nested measurement. A national or regional row of the
+    same measurement left untied would let a published total less the
+    family's cells give a thin cell back unchecked (Vahid's third review of
+    #1383, item 33). Today the parentless families are the two DESNZ kWh
+    families, the three equivalised income and housing cost families and the
+    two private rent families; the national energy rows are spend, not kWh.
+    """
+
+    from microcosm.build.uk_runtime.cross_grain_declarations import (
+        UK_LOCAL_GEOGRAPHY_LEVELS,
+    )
+    from microcosm.build.uk_runtime.diagnostics import uk_local_family_parents
+    from microcosm.build.uk_runtime.ledger_targets import (
+        uk_cross_grain_contract_signatures,
+    )
+
+    contract = uk_cross_grain_contract_signatures()
+
+    def concept(target_id: str) -> object:
+        return (contract[target_id].get("measurement") or {}).get("concept")
+
+    higher: dict[object, set[str]] = {}
+    for target_id, target in contract.items():
+        if set(target.get("geography_levels") or ()) - UK_LOCAL_GEOGRAPHY_LEVELS:
+            higher.setdefault(concept(target_id), set()).add(target_id)
+    parentless = [
+        members for members, parents in uk_local_family_parents() if not parents
+    ]
+    assert parentless
+    for members in parentless:
+        for target_id in members:
+            assert not higher.get(concept(target_id), set()) - members, target_id
+
+
+def test_a_row_one_block_withholds_stays_hidden_in_another() -> None:
+    """A row withheld beside a thin one is protected in every block holding it.
+
+    The family block withholds the second cell beside the thin third. A row
+    of the region's own, on exactly that cell's households, would give it
+    back, and with it the thin cell, so the region block withholds that too.
+    """
+
+    rows, levels, targets = _uc_family_rows()
+    rows["other.cell@E14000002@2025"] = list(range(30, 55))
+    levels["other.cell@E14000002@2025"] = "constituency"
+    regions = ["NORTH_EAST"] * 30 + ["NORTH_WEST"] * 30
+    thin, beside = _withheld_sets(
+        rows, 60, levels=levels, regions=regions, targets=targets
+    )
+    assert thin == {"dwp.uc.households_by_area@E14000003@2025"}
+    assert beside == {
+        "dwp.uc.households_by_area@E14000002@2025",
+        "other.cell@E14000002@2025",
+    }
+
+
+def test_local_rows_without_household_regions_refuse() -> None:
+    """A local row is checked against its region's rows, so it needs regions."""
+
+    rows = {"fam.cell@E14000001@2025": list(range(20))}
+    with pytest.raises(ValueError, match="household table needs a region column"):
+        _withheld_sets(rows, 20, levels={"fam.cell@E14000001@2025": "constituency"})
+
+
+def test_the_report_guard_matches_a_withheld_local_row_by_its_key(capsys) -> None:
+    """A constituency binds many families, so its bare code names published rows."""
+
+    from microcosm.build.uk_runtime.diagnostics import (
+        UKWithheldRowNamedError,
+        uk_refuse_named_withheld_rows,
+        uk_withheld_gate_areas,
+        uk_withheld_gate_keys,
+    )
+
+    rows = [
+        {
+            "family": "fam",
+            "area_code": "E14000001",
+            "metric": "band_2",
+            "geography_level": "constituency",
+            "model_figures_withheld": True,
+        },
+        {
+            "family": "private_rent",
+            "area_code": "S33999999",
+            "metric": "private_rent_brma",
+            "geography_level": "statistical_scope",
+            "model_figures_withheld": True,
+        },
+        {
+            "family": "other",
+            "area_code": "E14000001",
+            "metric": "total",
+            "geography_level": "constituency",
+        },
+    ]
+    keys = uk_withheld_gate_keys(rows)
+    areas = uk_withheld_gate_areas(rows)
+    assert keys == {"fam/E14000001/band_2", "private_rent/S33999999/private_rent_brma"}
+    assert areas == {"S33999999"}
+
+    def guard(report):
+        uk_refuse_named_withheld_rows(report, names=frozenset(), keys=keys, areas=areas)
+
+    # Another family's published row in the same constituency may be named.
+    guard({"failures": ["other/E14000001/total +30.0%"], "areas": ["E14000001"]})
+    for report in (
+        {"failures": ["fam/E14000001/band_2 +30.0%"]},
+        {"failures": ["S33999999 is beyond the bound"]},
+    ):
+        with pytest.raises(UKWithheldRowNamedError):
+            guard(report)
+        assert "names a withheld row" in capsys.readouterr().err

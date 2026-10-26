@@ -26,8 +26,8 @@
     "pinned_ref": "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3",
     "pinned_version": "1.56.16",
     "registry_rows": 652,
-    "mapped_rows": 619,
-    "excluded_rows": 33,
+    "mapped_rows": 616,
+    "excluded_rows": 36,
     "mapped": {
       "dwp/benefit_capped_households": "dwp.benefit_cap.capped_households",
       "dwp/esa_claimants": "dwp.esa_claimants",
@@ -365,8 +365,6 @@
       "obr/sdlt": "obr.sdlt",
       "obr/statutory_maternity_pay": "obr.statutory_maternity_pay",
       "obr/tv_licence_fee": "obr.tv_licence_fee",
-      "obr/universal_credit_in_cap": "obr.universal_credit_in_cap",
-      "obr/universal_credit_outside_cap": "obr.universal_credit_outside_cap",
       "obr/vat": "obr.vat",
       "obr/winter_fuel_allowance": "obr.winter_fuel_allowance",
       "ons/corporate_land_value": "ons.land.corporate_land_value",
@@ -544,7 +542,6 @@
       "slc/student_loan_repayment/england/plan_1": "slc.repayments.england_plan_1",
       "slc/student_loan_repayment/england/plan_2": "slc.repayments.england_plan_2",
       "slc/student_loan_repayment/england/plan_5": "slc.repayments.england_plan_5",
-      "slc/student_loan_repayment/england/postgraduate": "slc.repayments.england_postgraduate",
       "slc/student_loan_repayment/northern_ireland": "slc.repayments.devolved_total",
       "slc/student_loan_repayment/scotland": "slc.repayments.devolved_total",
       "slc/student_loan_repayment/wales": "slc.repayments.devolved_total",
@@ -682,7 +679,10 @@
       "dwp/pip_dl_enhanced_claimants": "Diagnostic only (María's ruling of 2026-10-10, microcosm#1095): DWP's England-and-Wales PIP daily living caseload (FOI2025/24990, end of January 2025) resolves at K04000001 and fits within 0.1%, but fitting the two rows takes the calibration over the uk_weight_ratio fence. The exact figure is retained only as diagnostic provenance on obr.pip; no source value is adjusted.",
       "ons/female_15_19": "Split, not dropped (María's ruling of 2026-10-13 (microcosm#1095, uk-data#563)): a fit to the five-year band leaves the ages inside it free to drift, so the contract binds ages 15, 16-17 and 18-19 instead (ons.population.female_15, female_16_17 and female_18_19). The three rows partition this row's population and read the same ONS mid-year estimate by single year of age, so they sum to it. No single contract row has this row's definition.",
       "ons/male_15_19": "Split, not dropped (María's ruling of 2026-10-13 (microcosm#1095, uk-data#563)): a fit to the five-year band leaves the ages inside it free to drift, so the contract binds ages 15, 16-17 and 18-19 instead (ons.population.male_15, male_16_17 and male_18_19). The three rows partition this row's population and read the same ONS mid-year estimate by single year of age, so they sum to it. No single contract row has this row's definition.",
-      "dwp/uc/claimants_with_5+_children": "Diagnostic only (María's ruling of 2026-10-16, microcosm#1095): DWP's count of Universal Credit households with five or more children includes families outside the two-child limit, whose third and later children were all born before 6 April 2017 or who meet an exception, and the bound two-child-limit rows leave them out. Fewer than 10 FRS source households carry that difference, so the row cannot be fitted beside the limit rows. The April 2025 figure is retained only as diagnostic provenance on dwp.uc.two_child_limit.households_5_children; no source value is adjusted."
+      "dwp/uc/claimants_with_5+_children": "Diagnostic only (María's ruling of 2026-10-16, microcosm#1095): DWP's count of Universal Credit households with five or more children includes families outside the two-child limit, whose third and later children were all born before 6 April 2017 or who meet an exception, and the bound two-child-limit rows leave them out. Fewer than 10 FRS source households carry that difference, so the row cannot be fitted beside the limit rows. The April 2025 figure is retained only as diagnostic provenance on dwp.uc.two_child_limit.households_5_children; no source value is adjusted.",
+      "obr/universal_credit_in_cap": "Retired (microcosm#1095, the next policyengine-uk bump): OBR splits Universal Credit spending at the welfare cap, a spending limit, and no household-level concept in the model marks that boundary; the benefit-cap status the incumbent maps the split to is another concept, and on every measured spine the pair sat far outside its bound while their sum fits (microcosm#757). obr.universal_credit binds the sum of the two cells.",
+      "obr/universal_credit_outside_cap": "Retired (microcosm#1095, the next policyengine-uk bump): OBR splits Universal Credit spending at the welfare cap, a spending limit, and no household-level concept in the model marks that boundary; the benefit-cap status the incumbent maps the split to is another concept, and on every measured spine the pair sat far outside its bound while their sum fits (microcosm#757). obr.universal_credit binds the sum of the two cells.",
+      "slc/student_loan_repayment/england/postgraduate": "Retired (microcosm#1095, the next policyengine-uk bump): the student-loans stage assigns no postgraduate plan (its domain is NONE, PLAN_1, PLAN_2 and PLAN_5) and policyengine-uk holds one plan a person, while a postgraduate loan is repaid beside the undergraduate plan most of its borrowers hold, so no record carries postgraduate repayments and no weights can reach SLC's figure (microcosm#757)."
     },
     "unmapped_declarations": {
       "hmrc.salary_sacrifice.it_relief_basic_rate": "New declaration backed by chronicle#139 salary-sacrifice facts; the incumbent source CSV is still 410-Gone at 12a1e028 and its rows are silently suppressed by the bare-except drop in build_loss_matrix.py:376-394.",
@@ -876,7 +876,13 @@
       "dfe.funded_childcare.working_parent_children_age_1": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): bind every DfE funded-childcare count the model can carry, even on few records, and sign out only those with a real reason. The working parent registrations at 9 to 11 months and by single year of age (1, 2 and 3) and the universal registrations in nursery at age 3, from the DfE January census, England, measured at the spring term (María's ruling of 2026-10-22); the age-4 cells are signed out, as the bound rows fix them (accounting note dfe_funded_childcare_single_ages). No incumbent row has this row's definition.",
       "dfe.funded_childcare.working_parent_children_age_2": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): bind every DfE funded-childcare count the model can carry, even on few records, and sign out only those with a real reason. The working parent registrations at 9 to 11 months and by single year of age (1, 2 and 3) and the universal registrations in nursery at age 3, from the DfE January census, England, measured at the spring term (María's ruling of 2026-10-22); the age-4 cells are signed out, as the bound rows fix them (accounting note dfe_funded_childcare_single_ages). No incumbent row has this row's definition.",
       "dfe.funded_childcare.working_parent_children_age_3": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): bind every DfE funded-childcare count the model can carry, even on few records, and sign out only those with a real reason. The working parent registrations at 9 to 11 months and by single year of age (1, 2 and 3) and the universal registrations in nursery at age 3, from the DfE January census, England, measured at the spring term (María's ruling of 2026-10-22); the age-4 cells are signed out, as the bound rows fix them (accounting note dfe_funded_childcare_single_ages). No incumbent row has this row's definition.",
-      "dfe.funded_childcare.universal_nursery_children_age_3": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): bind every DfE funded-childcare count the model can carry, even on few records, and sign out only those with a real reason. The working parent registrations at 9 to 11 months and by single year of age (1, 2 and 3) and the universal registrations in nursery at age 3, from the DfE January census, England, measured at the spring term (María's ruling of 2026-10-22); the age-4 cells are signed out, as the bound rows fix them (accounting note dfe_funded_childcare_single_ages). No incumbent row has this row's definition."
+      "dfe.funded_childcare.universal_nursery_children_age_3": "Requested by María on 2026-10-21 for the £100k childcare costing fixes (microcosm#1278, #1095): bind every DfE funded-childcare count the model can carry, even on few records, and sign out only those with a real reason. The working parent registrations at 9 to 11 months and by single year of age (1, 2 and 3) and the universal registrations in nursery at age 3, from the DfE January census, England, measured at the spring term (María's ruling of 2026-10-22); the age-4 cells are signed out, as the bound rows fix them (accounting note dfe_funded_childcare_single_ages). No incumbent row has this row's definition.",
+      "mhclg.council_tax_stock.single_adult_discount": "No incumbent target: uk-data binds no council-tax discount; microcosm#953 binds MHCLG Council Taxbase line 8 now that policyengine-uk applies the single adult discount (pe-uk#1864).",
+      "obr.beer_and_cider_duties": "No incumbent target: uk-data never measured excise duty, which scored zero on its data; microcosm#1359 writes the excise inputs and measures this OBR FY2024-25 line as a held-out diagnostic.",
+      "obr.wine_duties": "No incumbent target: uk-data never measured excise duty, which scored zero on its data; microcosm#1359 writes the excise inputs and measures this OBR FY2024-25 line as a held-out diagnostic.",
+      "obr.spirits_duties": "No incumbent target: uk-data never measured excise duty, which scored zero on its data; microcosm#1359 writes the excise inputs and measures this OBR FY2024-25 line as a held-out diagnostic.",
+      "obr.tobacco_duties": "No incumbent target: uk-data never measured excise duty, which scored zero on its data; microcosm#1359 writes the excise inputs and measures this OBR FY2024-25 line as a held-out diagnostic.",
+      "obr.betting_and_gaming_duties": "No incumbent target: uk-data never measured excise duty, which scored zero on its data; microcosm#1359 writes the excise inputs and measures this OBR FY2024-25 line as a held-out diagnostic."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -937,8 +943,6 @@
       "obr.pip",
       "obr.statutory_maternity_pay",
       "obr.tv_licence_fee",
-      "obr.universal_credit_in_cap",
-      "obr.universal_credit_outside_cap",
       "obr.winter_fuel_allowance",
       "isc.private_school_students",
       "hmrc.salary_sacrifice.it_relief_basic_rate",
@@ -1116,7 +1120,6 @@
       "slc.repayments.england_total_higher_education",
       "slc.repayments.england_plan_1",
       "slc.repayments.england_plan_2",
-      "slc.repayments.england_postgraduate",
       "slc.repayments.england_plan_5",
       "slc.borrowers.plan_2_above_threshold",
       "slc.borrowers.plan_2_liable",
@@ -1162,6 +1165,11 @@
       "ons.household_electricity_expenditure",
       "ons.household_gas_expenditure",
       "ons.household_road_fuel_expenditure",
+      "obr.beer_and_cider_duties",
+      "obr.wine_duties",
+      "obr.spirits_duties",
+      "obr.tobacco_duties",
+      "obr.betting_and_gaming_duties",
       "scotgov.bus.passenger_revenue",
       "scotgov.bus.government_support",
       "welshgov.bus.public_support",
@@ -1291,7 +1299,8 @@
       "dwp.hb.amount_pension_age",
       "microcosm.high_value_homes.over_1m_by_region",
       "microcosm.high_value_homes.over_1_5m_by_region",
-      "microcosm.high_value_homes.over_2m_by_region"
+      "microcosm.high_value_homes.over_2m_by_region",
+      "mhclg.council_tax_stock.single_adult_discount"
     ]
   },
   "profile_parity": {
@@ -2120,7 +2129,7 @@
         "policyengine": {
           "metric_name": "obr/vat",
           "value_variable": "vat",
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Bound again with the next policyengine-uk bump (María's ruling D3 of 2026-10-08, microcosm#1113 and #1278): policyengine-uk#2187, released in 2.135.7, replaced the constant survey-coverage factor, and on #1333's policyengine-uk 2.145.0 arm the row reads about 6 percent above OBR at design weights and about 11 percent above at the calibrated weights while held out. OBR's receipts include VAT on private school fees, charged from 1 January 2025, which policyengine-uk's current-law vat leaves out (private_school_vat is a reform variable until policyengine-uk#2319); the row binds vat alone, so that residual stays in its error."
         },
         "axiom": {
           "metric_name": "obr/vat",
@@ -3073,166 +3082,6 @@
       },
       "category_id": "obr.efo_expenditure",
       "label": "TV licence fee",
-      "value_operation": "calendar_year_window"
-    },
-    {
-      "target_id": "obr.universal_credit_in_cap",
-      "family": "obr",
-      "geography_levels": [
-        "country"
-      ],
-      "measurement": {
-        "entity": "benunit",
-        "concept": "uk.benefits.universal_credit.amount",
-        "map_to": "household",
-        "filters": [
-          {
-            "concept": "uk.benefits.benefit_cap.reduction",
-            "operator": ">",
-            "value": 0
-          },
-          {
-            "concept": "uk.geography.country",
-            "operator": "in",
-            "value": [
-              "england",
-              "scotland",
-              "wales"
-            ]
-          }
-        ]
-      },
-      "bindings": {
-        "policyengine": {
-          "metric_name": "obr/universal_credit_in_cap",
-          "value_variable": "universal_credit",
-          "from_entity": "benunit",
-          "map_to": "household",
-          "filters": [
-            {
-              "variable": "benefit_cap_reduction",
-              "operator": ">",
-              "value": 0
-            }
-          ],
-          "household_conditions": [
-            {
-              "variable": "region",
-              "entity": "household",
-              "reduce": "any",
-              "operator": "in",
-              "value": [
-                "NORTH_EAST",
-                "NORTH_WEST",
-                "YORKSHIRE",
-                "EAST_MIDLANDS",
-                "WEST_MIDLANDS",
-                "EAST_OF_ENGLAND",
-                "LONDON",
-                "SOUTH_EAST",
-                "SOUTH_WEST",
-                "WALES",
-                "SCOTLAND"
-              ],
-              "map_to": "benunit"
-            }
-          ],
-          "notes": "Split of UC spend by benefit-cap status (compute/benefits.py:119-127). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. Since the abf0921 re-pin the Chronicle fact carries the Great Britain code K03000001 (microcosm#1300)."
-        },
-        "axiom": {
-          "metric_name": "obr/universal_credit_in_cap",
-          "status": "pending",
-          "value_rule": "uk.benefits.universal_credit.amount"
-        }
-      },
-      "assertion_policy": "allow_source_projection",
-      "ledger_selector": {
-        "source_name": "obr",
-        "source_concept": "obr.universal_credit_in_cap",
-        "entity_name": "person"
-      },
-      "category_id": "obr.efo_expenditure",
-      "label": "Universal Credit inside the benefit cap",
-      "value_operation": "calendar_year_window"
-    },
-    {
-      "target_id": "obr.universal_credit_outside_cap",
-      "family": "obr",
-      "geography_levels": [
-        "country"
-      ],
-      "measurement": {
-        "entity": "benunit",
-        "concept": "uk.benefits.universal_credit.amount",
-        "map_to": "household",
-        "filters": [
-          {
-            "concept": "uk.benefits.benefit_cap.reduction",
-            "operator": "==",
-            "value": 0
-          },
-          {
-            "concept": "uk.geography.country",
-            "operator": "in",
-            "value": [
-              "england",
-              "scotland",
-              "wales"
-            ]
-          }
-        ]
-      },
-      "bindings": {
-        "policyengine": {
-          "metric_name": "obr/universal_credit_outside_cap",
-          "value_variable": "universal_credit",
-          "from_entity": "benunit",
-          "map_to": "household",
-          "filters": [
-            {
-              "variable": "benefit_cap_reduction",
-              "operator": "==",
-              "value": 0
-            }
-          ],
-          "household_conditions": [
-            {
-              "variable": "region",
-              "entity": "household",
-              "reduce": "any",
-              "operator": "in",
-              "value": [
-                "NORTH_EAST",
-                "NORTH_WEST",
-                "YORKSHIRE",
-                "EAST_MIDLANDS",
-                "WEST_MIDLANDS",
-                "EAST_OF_ENGLAND",
-                "LONDON",
-                "SOUTH_EAST",
-                "SOUTH_WEST",
-                "WALES",
-                "SCOTLAND"
-              ],
-              "map_to": "benunit"
-            }
-          ],
-          "notes": "Split of UC spend by benefit-cap status (compute/benefits.py:119-127). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. Since the abf0921 re-pin the Chronicle fact carries the Great Britain code K03000001 (microcosm#1300)."
-        },
-        "axiom": {
-          "metric_name": "obr/universal_credit_outside_cap",
-          "status": "pending",
-          "value_rule": "uk.benefits.universal_credit.amount"
-        }
-      },
-      "assertion_policy": "allow_source_projection",
-      "ledger_selector": {
-        "source_name": "obr",
-        "source_concept": "obr.universal_credit_outside_cap",
-        "entity_name": "person"
-      },
-      "category_id": "obr.efo_expenditure",
-      "label": "Universal Credit outside the benefit cap",
       "value_operation": "calendar_year_window"
     },
     {
@@ -4438,11 +4287,11 @@
         "country"
       ],
       "measurement": {
-        "entity": "household",
-        "concept": "uk.household.count",
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
         "filters": [
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": ">",
             "value": 0
           },
@@ -4460,15 +4309,17 @@
       "bindings": {
         "policyengine": {
           "metric_name": "dwp/benefit_capped_households",
-          "reduce": "any",
-          "household_conditions": [
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
             {
-              "variable": "benefit_cap_reduction",
-              "entity": "benunit",
-              "reduce": "any",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": ">",
               "value": 0
-            },
+            }
+          ],
+          "notes": "GB benefit units whose Universal Credit award loses an amount to the benefit cap (uc_benefit_cap_reduction_after_floor above zero), against Benefit cap tables to November 2025, Table 4, GB total row (point-in-time UC households capped at November 2025). DWP's 'UC household' is the unit of assessment, so the total binds at benefit-unit grain on the same reduction as the amount bands, which partition it (microcosm#1349); it was a 0/1 household indicator on benefit_cap_reduction, the incumbent's measure (compute/benefits.py:14-21), which also counts the Housing Benefit cap. The publisher's GBP 320.9m total-reduction companion is a computed annualization - excluded per the facts-only ADR. Scoped to Great Britain (microcosm#1095, uk-data#490): the DWP benefit cap statistics cover Great Britain (K03000001), so the model counts Great Britain benefit units only.",
+          "household_conditions": [
             {
               "variable": "region",
               "entity": "household",
@@ -4487,16 +4338,14 @@
                 "WALES",
                 "SCOTLAND"
               ],
-              "map_to": "household"
+              "map_to": "benunit"
             }
-          ],
-          "value_variable": "household_count",
-          "notes": "0/1 household indicator, not a benunit headcount (compute/benefits.py:14-21). The publisher's GBP 320.9m total-reduction companion is a computed annualization - excluded per the facts-only ADR. Scoped to Great Britain (microcosm#1095, uk-data#490): the DWP benefit cap statistics cover Great Britain (K03000001), so the model counts Great Britain households only."
+          ]
         },
         "axiom": {
           "metric_name": "dwp/benefit_capped_households",
           "status": "pending",
-          "value_rule": "uk.household.count"
+          "value_rule": "uk.benefit_unit.count"
         }
       },
       "ledger_selector": {
@@ -15219,67 +15068,6 @@
       "label": "England plan 2"
     },
     {
-      "target_id": "slc.repayments.england_postgraduate",
-      "family": "slc_repayments",
-      "geography_levels": [
-        "country"
-      ],
-      "measurement": {
-        "entity": "person",
-        "map_to": "household",
-        "concept": "uk.finance.student_loan_repayments.amount",
-        "filters": [
-          {
-            "concept": "uk.geography.country",
-            "equals": "england"
-          },
-          {
-            "concept": "uk.finance.student_loan_plan",
-            "equals": "postgraduate"
-          }
-        ]
-      },
-      "bindings": {
-        "policyengine": {
-          "metric_name": "slc/student_loan_repayment/england/postgraduate",
-          "value_variable": "student_loan_repayment",
-          "from_entity": "person",
-          "map_to": "household",
-          "filters": [
-            {
-              "variable": "country",
-              "equals": "ENGLAND"
-            },
-            {
-              "variable": "student_loan_plan",
-              "equals": "POSTGRADUATE"
-            }
-          ],
-          "source_lines": [
-            "plan_3_postgraduate_masters",
-            "plan_3_postgraduate_doctoral"
-          ],
-          "notes": "Publisher splits full-time/part-time (and masters/doctoral) products the model does not distinguish; the listed source lines sum to this target (compute/other.py:116-137)."
-        },
-        "axiom": {
-          "metric_name": "slc/student_loan_repayment/england/postgraduate",
-          "status": "pending",
-          "value_rule": "uk.finance.student_loan_repayments.amount"
-        }
-      },
-      "ledger_selector": {
-        "source_name": "slc",
-        "groupby_dimension": "slc.repayment_plan",
-        "source_measure_id": [
-          "plan_3_postgraduate_masters",
-          "plan_3_postgraduate_doctoral"
-        ],
-        "entity_name": "person"
-      },
-      "category_id": "slc.repayments",
-      "label": "England postgraduate"
-    },
-    {
       "target_id": "slc.repayments.england_plan_5",
       "family": "slc_repayments",
       "geography_levels": [
@@ -17534,18 +17322,18 @@
       ],
       "measurement": {
         "entity": "household",
-        "concept": "uk.consumption.domestic_energy.amount"
+        "concept": "uk.consumption.fuel_light_and_power.amount"
       },
       "bindings": {
         "policyengine": {
           "metric_name": "ons/household_energy_expenditure",
-          "value_variable": "domestic_energy_consumption",
-          "notes": "ONS Consumer Trends COICOP 04.5 electricity, gas and other fuels, current prices, calendar year; the publisher class includes other fuels (heating oil, solid fuel), which the frame's electricity plus gas column does not carry, so the bound total is a few percent wide of the modelled scope (#890 F1). Signed out of calibration once the 04.5.1 electricity and 04.5.2 gas sub-classes were published and bound per fuel (chronicle #271); since microcosm#1113 those per-fuel rows are reviewed measure exclusions, measured on every evaluation and held out of the objective; retained for registry parity."
+          "value_expression": "electricity_consumption + gas_consumption + liquid_fuel_consumption + solid_fuel_consumption",
+          "notes": "ONS Consumer Trends COICOP 04.5 electricity, gas and other fuels, current prices, calendar year, measured on the frame's electricity, gas, liquid fuel and solid fuel spend (María's ruling of 2026-10-22: LPG with liquid, heat in the remainder; the heating fuels are policyengine-uk 2.149.0's inputs, pe-uk#2572). The publisher class also holds 04.5.5 heat energy, which no column carries. Signed out of calibration once the 04.5.1 electricity and 04.5.2 gas sub-classes were published and bound per fuel (chronicle #271); since microcosm#1113 those per-fuel rows are reviewed measure exclusions, measured on every evaluation and held out of the objective; retained for registry parity."
         },
         "axiom": {
           "metric_name": "ons/household_energy_expenditure",
           "status": "pending",
-          "value_rule": "uk.consumption.domestic_energy.amount"
+          "value_rule": "uk.consumption.fuel_light_and_power.amount"
         }
       },
       "ledger_selector": {
@@ -17654,7 +17442,7 @@
         "policyengine": {
           "metric_name": "ons/household_road_fuel_expenditure",
           "value_expression": "petrol_spending + diesel_spending",
-          "notes": "ONS Consumer Trends COICOP 07.2.2 fuels and lubricants for personal transport equipment, current prices, calendar year, bound on the frame's petrol plus diesel spend (microcosm#1113). The publisher class also carries other motor fuels and lubricants, about 0.46 percent of it on the LCFS 2024-25 diary (c72213), which the measure does not. The lcfs_consumption stage levels petrol plus diesel to the calendar-2024 row less that share, so this row reads about 0.5 percent low from scope alone: a known offset, left in place and not scaled into the target (María's ruling of 2026-10-10). ONS publishes the class on the domestic concept (spending on UK territory; PolicyEngine/chronicle#322): it includes non-residents' fuel bought in the UK, which the residents-only frame does not hold, and leaves out residents' fuel bought abroad. Consumer Trends publishes those two flows for total spending only (for 2024, GBP 64.7bn by non-residents in the UK, 3.8 percent of the domestic total, and GBP 78.9bn by residents abroad) and splits them by no class, so no national bridge is applied and their size for road fuel is not known. The row binds ONS's calendar-2024 figure (GBP 37.025bn) on the frame's own 2024 petrol and diesel columns, declared as the frame's period (measurement_period 2024, require_matching_fact_period; microcosm#1324). The fact and the stored columns are then the same year, so the binding does not depend on the engine's 2024-to-2025 fuel projection. Before #1324 the row was compared, as a stored read at 2024, with the calendar-2025 figure (GBP 35.099bn), so its reported fit measured neither year; measuring the 2025 figure through the engine instead would put the engine's fuel projection, which falls faster than ONS's own move, into the weights. Household-scope road fuel replaces the OBR cars receipts as the bound fuel row: those are a fiscal-year duty total that includes business use of cars, which the frame reaches only through the engine's conversion of spend to litres, so they stay measured as a diagnostic (calibration_measure_exclusions.json).",
+          "notes": "ONS Consumer Trends COICOP 07.2.2 fuels and lubricants for personal transport equipment, current prices, calendar year, bound on the frame's petrol plus diesel spend (microcosm#1113). The publisher class also carries other motor fuels and lubricants, about 0.46 percent of it on the LCFS 2024-25 diary (c72213), which the measure does not. The lcfs_consumption stage levels petrol plus diesel to the calendar-2024 row less that share, so this row reads about 0.5 percent low from scope alone: a known offset, left in place and not scaled into the target (María's ruling of 2026-10-10). ONS publishes the class on the domestic concept (spending on UK territory; PolicyEngine/chronicle#322): it includes non-residents' fuel bought in the UK, which the residents-only frame does not hold, and leaves out residents' fuel bought abroad. Consumer Trends publishes those two flows for total spending only (for 2024, GBP 64.7bn by non-residents in the UK, 3.8 percent of the domestic total, and GBP 78.9bn by residents abroad) and splits them by no class, so no national bridge is applied and their size for road fuel is not known. The row binds ONS's calendar-2024 figure (GBP 35.460bn in the September 2026 Consumer Trends edition the feed carries since microcosm#1359; GBP 37.025bn in the June edition before it) on the frame's own 2024 petrol and diesel columns, declared as the frame's period (measurement_period 2024, require_matching_fact_period; microcosm#1324). The fact and the stored columns are then the same year, so the binding does not depend on the engine's 2024-to-2025 fuel projection. Before #1324 the row was compared, as a stored read at 2024, with the calendar-2025 figure (GBP 35.099bn in the June edition), so its reported fit measured neither year; measuring the 2025 figure through the engine instead would put the engine's fuel projection, which falls faster than ONS's own move, into the weights. Household-scope road fuel replaces the OBR cars receipts as the bound fuel row: those are a fiscal-year duty total that includes business use of cars, which the frame reaches only through the engine's conversion of spend to litres, so they stay measured as a diagnostic (calibration_measure_exclusions.json).",
           "measurement_period": 2024,
           "require_matching_fact_period": true
         },
@@ -17680,6 +17468,196 @@
       },
       "category_id": "ons.consumer_trends",
       "label": "Fuels and lubricants for personal transport (COICOP 07.2.2)"
+    },
+    {
+      "target_id": "obr.beer_and_cider_duties",
+      "family": "obr",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.tax.alcohol_duty.beer_and_cider.amount"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "obr/beer_and_cider_duties",
+          "value_expression": "beer_duty + cider_duty + sparkling_cider_duty",
+          "notes": "OBR's FY2024-25 accrued beer and cider duty receipts (EFO March 2026 detailed forecast tables, sheet 3.12), measured as the engine's 2024 beer, cider and sparkling cider duty on the frame's stored beer and cider litres and draught shares (measurement_period 2024, require_matching_fact_period): policyengine-uk charges model year 2024 at the FY2024-25 rates and holds the excise inputs flat after it (PolicyEngine/policyengine-uk#2596), so a later year would read the engine's projection, not the data (María's ruling of 2026-10-23, microcosm#1359). The lcfs_consumption stage levels beer and cider litres to HMRC's FY2024-25 clearances at the engine's strengths and takes their draught shares from the draught-relief clearances, so the row reads the duty those clearances imply under the engine's rates and reliefs against the receipts HMRC accrued: the gap is the spread of strengths about the engine's one strength per product, the small producer relief the engine does not model and sparkling cider, which the clearances count within cider, not the weights. Held out of the objective as a measured diagnostic (calibration_measure_exclusions.json) and measured with tools/diagnose_uk_consumption_taxes.py.",
+          "measurement_period": 2024,
+          "require_matching_fact_period": true
+        },
+        "axiom": {
+          "metric_name": "obr/beer_and_cider_duties",
+          "status": "pending",
+          "value_rule": "uk.tax.alcohol_duty.beer_and_cider.amount"
+        }
+      },
+      "assertion_policy": "allow_source_projection",
+      "ledger_selector": {
+        "source_name": "obr",
+        "source_concept": "obr.beer_and_cider_duties",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "period_value": 2024,
+        "dimension_values": {
+          "accounting_basis": "accrual"
+        }
+      },
+      "category_id": "obr.efo_receipts",
+      "label": "Beer and cider duties (accrued)"
+    },
+    {
+      "target_id": "obr.wine_duties",
+      "family": "obr",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.tax.alcohol_duty.wine.amount"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "obr/wine_duties",
+          "value_expression": "wine_duty + other_fermented_duty",
+          "notes": "OBR's FY2024-25 accrued wine duty receipts, which include other fermented products (EFO March 2026 detailed forecast tables, sheet 3.12), measured as the engine's 2024 wine and other fermented product duty on the frame's stored wine and other fermented litres (measurement_period 2024, require_matching_fact_period): policyengine-uk charges model year 2024 at the FY2024-25 rates and holds the excise inputs flat after it (PolicyEngine/policyengine-uk#2596), so a later year would read the engine's projection, not the data (María's ruling of 2026-10-23, microcosm#1359). The lcfs_consumption stage levels wine and other fermented litres to HMRC's FY2024-25 clearances at the engine's strengths, so the row reads the duty those clearances imply under the engine's rates against the receipts HMRC accrued: the gap is the spread of strengths about the engine's one strength per product and the draught relief the engine leaves at zero for these products, not the weights. Held out of the objective as a measured diagnostic (calibration_measure_exclusions.json) and measured with tools/diagnose_uk_consumption_taxes.py.",
+          "measurement_period": 2024,
+          "require_matching_fact_period": true
+        },
+        "axiom": {
+          "metric_name": "obr/wine_duties",
+          "status": "pending",
+          "value_rule": "uk.tax.alcohol_duty.wine.amount"
+        }
+      },
+      "assertion_policy": "allow_source_projection",
+      "ledger_selector": {
+        "source_name": "obr",
+        "source_concept": "obr.wine_duties",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "period_value": 2024,
+        "dimension_values": {
+          "accounting_basis": "accrual"
+        }
+      },
+      "category_id": "obr.efo_receipts",
+      "label": "Wine duties (accrued)"
+    },
+    {
+      "target_id": "obr.spirits_duties",
+      "family": "obr",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.tax.alcohol_duty.spirits.amount"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "obr/spirits_duties",
+          "value_variable": "spirits_duty",
+          "notes": "OBR's FY2024-25 accrued spirits duty receipts (EFO March 2026 detailed forecast tables, sheet 3.12), measured as the engine's 2024 spirits duty on the frame's stored spirits litres (measurement_period 2024, require_matching_fact_period): policyengine-uk charges model year 2024 at the FY2024-25 rates and holds the excise inputs flat after it (PolicyEngine/policyengine-uk#2596), so a later year would read the engine's projection, not the data (María's ruling of 2026-10-23, microcosm#1359). The lcfs_consumption stage levels spirits litres to HMRC's FY2024-25 clearances at the engine's strength, so the row reads the duty those clearances imply under the engine's rates against the receipts HMRC accrued: the gap is the spread of strengths about the engine's one strength, not the weights, not the weights. Held out of the objective as a measured diagnostic (calibration_measure_exclusions.json) and measured with tools/diagnose_uk_consumption_taxes.py.",
+          "measurement_period": 2024,
+          "require_matching_fact_period": true
+        },
+        "axiom": {
+          "metric_name": "obr/spirits_duties",
+          "status": "pending",
+          "value_rule": "uk.tax.alcohol_duty.spirits.amount"
+        }
+      },
+      "assertion_policy": "allow_source_projection",
+      "ledger_selector": {
+        "source_name": "obr",
+        "source_concept": "obr.spirits_duties",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "period_value": 2024,
+        "dimension_values": {
+          "accounting_basis": "accrual"
+        }
+      },
+      "category_id": "obr.efo_receipts",
+      "label": "Spirits duties (accrued)"
+    },
+    {
+      "target_id": "obr.tobacco_duties",
+      "family": "obr",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.tax.tobacco_duty.amount"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "obr/tobacco_duties",
+          "value_variable": "tobacco_duty",
+          "notes": "OBR's FY2024-25 tobacco duty cash receipts (EFO March 2026 detailed forecast tables, sheet 3.8; OBR publishes tobacco on a cash basis only), measured as the engine's 2024 tobacco duty on the frame's stored cigarettes and grams of tobacco a week (measurement_period 2024, require_matching_fact_period): policyengine-uk charges model year 2024 at the FY2024-25 rates and holds the excise inputs flat after it (PolicyEngine/policyengine-uk#2596), so a later year would read the engine's projection, not the data (María's ruling of 2026-10-23, microcosm#1359). The lcfs_consumption stage levels cigarettes and hand-rolling, cigar and other tobacco to HMRC's FY2024-25 clearances, so the row reads the duty those clearances imply under the engine's specific and ad valorem rates against the cash HMRC received: the gap is the engine's price for the ad valorem element, heated tobacco charged at the other-tobacco rate and the timing of cash against clearances, not the weights. Held out of the objective as a measured diagnostic (calibration_measure_exclusions.json) and measured with tools/diagnose_uk_consumption_taxes.py.",
+          "measurement_period": 2024,
+          "require_matching_fact_period": true
+        },
+        "axiom": {
+          "metric_name": "obr/tobacco_duties",
+          "status": "pending",
+          "value_rule": "uk.tax.tobacco_duty.amount"
+        }
+      },
+      "assertion_policy": "allow_source_projection",
+      "ledger_selector": {
+        "source_name": "obr",
+        "source_concept": "obr.tobacco_duties",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "period_value": 2024,
+        "dimension_values": {
+          "accounting_basis": "cash"
+        }
+      },
+      "category_id": "obr.efo_receipts",
+      "label": "Tobacco duties"
+    },
+    {
+      "target_id": "obr.betting_and_gaming_duties",
+      "family": "obr",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.tax.gambling_duty.amount"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "obr/betting_and_gaming_duties",
+          "value_variable": "gambling_duty",
+          "notes": "OBR's FY2024-25 betting and gaming duty cash receipts (EFO March 2026 detailed forecast tables, sheet 3.8), measured as the engine's 2024 gambling duty on the frame's stored gambling duty bases (policyengine-uk 2.151.0) (measurement_period 2024, require_matching_fact_period): policyengine-uk charges model year 2024 at the FY2024-25 rates and holds the excise inputs flat after it (PolicyEngine/policyengine-uk#2596), so a later year would read the engine's projection, not the data (María's ruling of 2026-10-23, microcosm#1359). The lcfs_consumption stage levels each gambling duty base to HMRC's FY2024-25 receipts for the duty, or Machine Games Duty's liabilities for the band, over the engine's rate, so the row reads the HMRC receipts back by construction, against OBR's total: the gap is spread betting, which has no published base, and the difference between HMRC's receipts series and OBR's, not the weights. Held out of the objective as a measured diagnostic (calibration_measure_exclusions.json) and measured with tools/diagnose_uk_consumption_taxes.py.",
+          "measurement_period": 2024,
+          "require_matching_fact_period": true
+        },
+        "axiom": {
+          "metric_name": "obr/betting_and_gaming_duties",
+          "status": "pending",
+          "value_rule": "uk.tax.gambling_duty.amount"
+        }
+      },
+      "assertion_policy": "allow_source_projection",
+      "ledger_selector": {
+        "source_name": "obr",
+        "source_concept": "obr.betting_and_gaming_duties",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "period_value": 2024,
+        "dimension_values": {
+          "accounting_basis": "cash"
+        }
+      },
+      "category_id": "obr.efo_receipts",
+      "label": "Betting and gaming duties"
     },
     {
       "target_id": "scotgov.bus.passenger_revenue",
@@ -18814,7 +18792,7 @@
               "map_to": "benunit"
             }
           ],
-          "notes": "Total UC expenditure: the sum of the OBR EFO welfare-cap cells (universal_credit_in_cap + universal_credit_outside_cap), bound at the calendar-2025 window of the two cells' fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window over the two-concept selector, one series per concept) so the total and its two components share one basis (Vahid's review of microcosm#1006, item 3) against the model's annual award after the benefit cap and deductions at policy year 2025, UK incl. Northern Ireland. The split rows stay excluded: the model cannot attribute spend to the welfare-cap concept (microcosm#757). Cash advances and third-party payments are not modelled (#882). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. Since the abf0921 re-pin the Chronicle fact carries the Great Britain code K03000001 (microcosm#1300)."
+          "notes": "Total UC expenditure: the sum of the OBR EFO welfare-cap cells (universal_credit_in_cap + universal_credit_outside_cap), bound at the calendar-2025 window of the two cells' fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window over the two-concept selector, one series per concept) so the total and its two components share one basis (Vahid's review of microcosm#1006, item 3) against the model's annual award after the benefit cap and deductions at policy year 2025, UK incl. Northern Ireland. The split rows are retired (registry_parity.excluded): the model cannot attribute spend to the welfare-cap concept (microcosm#757, #1095). Cash advances and third-party payments are not modelled (#882). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. Since the abf0921 re-pin the Chronicle fact carries the Great Britain code K03000001 (microcosm#1300)."
         },
         "axiom": {
           "metric_name": "obr/universal_credit",
@@ -19198,12 +19176,12 @@
         "concept": "uk.benefit_unit.count",
         "filters": [
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": ">",
             "value": 0
           },
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": "<=",
             "value": 1200
           },
@@ -19225,17 +19203,17 @@
           "from_entity": "benunit",
           "filters": [
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": ">",
               "value": 0
             },
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": "<=",
               "value": 1200
             }
           ],
-          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band Up to £100 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "notes": "GB benefit units whose Universal Credit award loses an amount to the benefit cap in the DWP amount band Up to £100 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The rows read uc_benefit_cap_reduction_after_floor, the regulation 81 reduction bounded by the award, because DWP counts Universal Credit households by the amount the award loses; benefit_cap_reduction also counts the Housing Benefit cap and the gross regulation 81 amount (microcosm#1349). The publisher band is a monthly amount; the engine's reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows and the total bind at benefit-unit grain. Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
           "household_conditions": [
             {
               "variable": "region",
@@ -19283,12 +19261,12 @@
         "concept": "uk.benefit_unit.count",
         "filters": [
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": ">",
             "value": 1200
           },
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": "<=",
             "value": 2400
           },
@@ -19310,17 +19288,17 @@
           "from_entity": "benunit",
           "filters": [
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": ">",
               "value": 1200
             },
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": "<=",
               "value": 2400
             }
           ],
-          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £100.01 to £200 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "notes": "GB benefit units whose Universal Credit award loses an amount to the benefit cap in the DWP amount band £100.01 to £200 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The rows read uc_benefit_cap_reduction_after_floor, the regulation 81 reduction bounded by the award, because DWP counts Universal Credit households by the amount the award loses; benefit_cap_reduction also counts the Housing Benefit cap and the gross regulation 81 amount (microcosm#1349). The publisher band is a monthly amount; the engine's reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows and the total bind at benefit-unit grain. Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
           "household_conditions": [
             {
               "variable": "region",
@@ -19368,12 +19346,12 @@
         "concept": "uk.benefit_unit.count",
         "filters": [
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": ">",
             "value": 2400
           },
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": "<=",
             "value": 3600
           },
@@ -19395,17 +19373,17 @@
           "from_entity": "benunit",
           "filters": [
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": ">",
               "value": 2400
             },
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": "<=",
               "value": 3600
             }
           ],
-          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £200.01 to £300 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "notes": "GB benefit units whose Universal Credit award loses an amount to the benefit cap in the DWP amount band £200.01 to £300 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The rows read uc_benefit_cap_reduction_after_floor, the regulation 81 reduction bounded by the award, because DWP counts Universal Credit households by the amount the award loses; benefit_cap_reduction also counts the Housing Benefit cap and the gross regulation 81 amount (microcosm#1349). The publisher band is a monthly amount; the engine's reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows and the total bind at benefit-unit grain. Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
           "household_conditions": [
             {
               "variable": "region",
@@ -19453,12 +19431,12 @@
         "concept": "uk.benefit_unit.count",
         "filters": [
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": ">",
             "value": 3600
           },
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": "<=",
             "value": 4800
           },
@@ -19480,17 +19458,17 @@
           "from_entity": "benunit",
           "filters": [
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": ">",
               "value": 3600
             },
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": "<=",
               "value": 4800
             }
           ],
-          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £300.01 to £400 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "notes": "GB benefit units whose Universal Credit award loses an amount to the benefit cap in the DWP amount band £300.01 to £400 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The rows read uc_benefit_cap_reduction_after_floor, the regulation 81 reduction bounded by the award, because DWP counts Universal Credit households by the amount the award loses; benefit_cap_reduction also counts the Housing Benefit cap and the gross regulation 81 amount (microcosm#1349). The publisher band is a monthly amount; the engine's reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows and the total bind at benefit-unit grain. Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
           "household_conditions": [
             {
               "variable": "region",
@@ -19538,12 +19516,12 @@
         "concept": "uk.benefit_unit.count",
         "filters": [
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": ">",
             "value": 4800
           },
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": "<=",
             "value": 6000
           },
@@ -19565,17 +19543,17 @@
           "from_entity": "benunit",
           "filters": [
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": ">",
               "value": 4800
             },
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": "<=",
               "value": 6000
             }
           ],
-          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £400.01 to £500 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "notes": "GB benefit units whose Universal Credit award loses an amount to the benefit cap in the DWP amount band £400.01 to £500 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The rows read uc_benefit_cap_reduction_after_floor, the regulation 81 reduction bounded by the award, because DWP counts Universal Credit households by the amount the award loses; benefit_cap_reduction also counts the Housing Benefit cap and the gross regulation 81 amount (microcosm#1349). The publisher band is a monthly amount; the engine's reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows and the total bind at benefit-unit grain. Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
           "household_conditions": [
             {
               "variable": "region",
@@ -19623,12 +19601,12 @@
         "concept": "uk.benefit_unit.count",
         "filters": [
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": ">",
             "value": 6000
           },
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": "<=",
             "value": 7200
           },
@@ -19650,17 +19628,17 @@
           "from_entity": "benunit",
           "filters": [
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": ">",
               "value": 6000
             },
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": "<=",
               "value": 7200
             }
           ],
-          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £500.01 to £600 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "notes": "GB benefit units whose Universal Credit award loses an amount to the benefit cap in the DWP amount band £500.01 to £600 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The rows read uc_benefit_cap_reduction_after_floor, the regulation 81 reduction bounded by the award, because DWP counts Universal Credit households by the amount the award loses; benefit_cap_reduction also counts the Housing Benefit cap and the gross regulation 81 amount (microcosm#1349). The publisher band is a monthly amount; the engine's reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows and the total bind at benefit-unit grain. Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
           "household_conditions": [
             {
               "variable": "region",
@@ -19708,12 +19686,12 @@
         "concept": "uk.benefit_unit.count",
         "filters": [
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": ">",
             "value": 7200
           },
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": "<=",
             "value": 8400
           },
@@ -19735,17 +19713,17 @@
           "from_entity": "benunit",
           "filters": [
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": ">",
               "value": 7200
             },
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": "<=",
               "value": 8400
             }
           ],
-          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £600.01 to £700 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "notes": "GB benefit units whose Universal Credit award loses an amount to the benefit cap in the DWP amount band £600.01 to £700 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The rows read uc_benefit_cap_reduction_after_floor, the regulation 81 reduction bounded by the award, because DWP counts Universal Credit households by the amount the award loses; benefit_cap_reduction also counts the Housing Benefit cap and the gross regulation 81 amount (microcosm#1349). The publisher band is a monthly amount; the engine's reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows and the total bind at benefit-unit grain. Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
           "household_conditions": [
             {
               "variable": "region",
@@ -19793,12 +19771,12 @@
         "concept": "uk.benefit_unit.count",
         "filters": [
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": ">",
             "value": 8400
           },
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": "<=",
             "value": 9600
           },
@@ -19820,17 +19798,17 @@
           "from_entity": "benunit",
           "filters": [
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": ">",
               "value": 8400
             },
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": "<=",
               "value": 9600
             }
           ],
-          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £700.01 to £800 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "notes": "GB benefit units whose Universal Credit award loses an amount to the benefit cap in the DWP amount band £700.01 to £800 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The rows read uc_benefit_cap_reduction_after_floor, the regulation 81 reduction bounded by the award, because DWP counts Universal Credit households by the amount the award loses; benefit_cap_reduction also counts the Housing Benefit cap and the gross regulation 81 amount (microcosm#1349). The publisher band is a monthly amount; the engine's reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows and the total bind at benefit-unit grain. Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
           "household_conditions": [
             {
               "variable": "region",
@@ -19878,12 +19856,12 @@
         "concept": "uk.benefit_unit.count",
         "filters": [
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": ">",
             "value": 9600
           },
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": "<=",
             "value": 10800
           },
@@ -19905,17 +19883,17 @@
           "from_entity": "benunit",
           "filters": [
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": ">",
               "value": 9600
             },
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": "<=",
               "value": 10800
             }
           ],
-          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £800.01 to £900 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "notes": "GB benefit units whose Universal Credit award loses an amount to the benefit cap in the DWP amount band £800.01 to £900 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The rows read uc_benefit_cap_reduction_after_floor, the regulation 81 reduction bounded by the award, because DWP counts Universal Credit households by the amount the award loses; benefit_cap_reduction also counts the Housing Benefit cap and the gross regulation 81 amount (microcosm#1349). The publisher band is a monthly amount; the engine's reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows and the total bind at benefit-unit grain. Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
           "household_conditions": [
             {
               "variable": "region",
@@ -19963,12 +19941,12 @@
         "concept": "uk.benefit_unit.count",
         "filters": [
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": ">",
             "value": 10800
           },
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": "<=",
             "value": 12000
           },
@@ -19990,17 +19968,17 @@
           "from_entity": "benunit",
           "filters": [
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": ">",
               "value": 10800
             },
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": "<=",
               "value": 12000
             }
           ],
-          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £900.01 to £1,000 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "notes": "GB benefit units whose Universal Credit award loses an amount to the benefit cap in the DWP amount band £900.01 to £1,000 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The rows read uc_benefit_cap_reduction_after_floor, the regulation 81 reduction bounded by the award, because DWP counts Universal Credit households by the amount the award loses; benefit_cap_reduction also counts the Housing Benefit cap and the gross regulation 81 amount (microcosm#1349). The publisher band is a monthly amount; the engine's reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows and the total bind at benefit-unit grain. Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
           "household_conditions": [
             {
               "variable": "region",
@@ -20048,12 +20026,12 @@
         "concept": "uk.benefit_unit.count",
         "filters": [
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": ">",
             "value": 12000
           },
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": "<=",
             "value": 13200
           },
@@ -20075,17 +20053,17 @@
           "from_entity": "benunit",
           "filters": [
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": ">",
               "value": 12000
             },
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": "<=",
               "value": 13200
             }
           ],
-          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £1,000.01 to £1,100 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "notes": "GB benefit units whose Universal Credit award loses an amount to the benefit cap in the DWP amount band £1,000.01 to £1,100 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The rows read uc_benefit_cap_reduction_after_floor, the regulation 81 reduction bounded by the award, because DWP counts Universal Credit households by the amount the award loses; benefit_cap_reduction also counts the Housing Benefit cap and the gross regulation 81 amount (microcosm#1349). The publisher band is a monthly amount; the engine's reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows and the total bind at benefit-unit grain. Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
           "household_conditions": [
             {
               "variable": "region",
@@ -20133,12 +20111,12 @@
         "concept": "uk.benefit_unit.count",
         "filters": [
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": ">",
             "value": 13200
           },
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": "<=",
             "value": 14400
           },
@@ -20160,17 +20138,17 @@
           "from_entity": "benunit",
           "filters": [
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": ">",
               "value": 13200
             },
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": "<=",
               "value": 14400
             }
           ],
-          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £1,100.01 to £1,200 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "notes": "GB benefit units whose Universal Credit award loses an amount to the benefit cap in the DWP amount band £1,100.01 to £1,200 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The rows read uc_benefit_cap_reduction_after_floor, the regulation 81 reduction bounded by the award, because DWP counts Universal Credit households by the amount the award loses; benefit_cap_reduction also counts the Housing Benefit cap and the gross regulation 81 amount (microcosm#1349). The publisher band is a monthly amount; the engine's reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows and the total bind at benefit-unit grain. Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
           "household_conditions": [
             {
               "variable": "region",
@@ -20218,12 +20196,12 @@
         "concept": "uk.benefit_unit.count",
         "filters": [
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": ">",
             "value": 14400
           },
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": "<=",
             "value": 15600
           },
@@ -20245,17 +20223,17 @@
           "from_entity": "benunit",
           "filters": [
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": ">",
               "value": 14400
             },
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": "<=",
               "value": 15600
             }
           ],
-          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £1,200.01 to £1,300 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "notes": "GB benefit units whose Universal Credit award loses an amount to the benefit cap in the DWP amount band £1,200.01 to £1,300 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The rows read uc_benefit_cap_reduction_after_floor, the regulation 81 reduction bounded by the award, because DWP counts Universal Credit households by the amount the award loses; benefit_cap_reduction also counts the Housing Benefit cap and the gross regulation 81 amount (microcosm#1349). The publisher band is a monthly amount; the engine's reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows and the total bind at benefit-unit grain. Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
           "household_conditions": [
             {
               "variable": "region",
@@ -20303,7 +20281,7 @@
         "concept": "uk.benefit_unit.count",
         "filters": [
           {
-            "concept": "uk.benefits.benefit_cap.reduction",
+            "concept": "uk.benefits.universal_credit.benefit_cap_reduction",
             "operator": ">",
             "value": 15600
           },
@@ -20325,12 +20303,12 @@
           "from_entity": "benunit",
           "filters": [
             {
-              "variable": "benefit_cap_reduction",
+              "variable": "uc_benefit_cap_reduction_after_floor",
               "operator": ">",
               "value": 15600
             }
           ],
-          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £1,300.01 and above per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "notes": "GB benefit units whose Universal Credit award loses an amount to the benefit cap in the DWP amount band £1,300.01 and above per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The rows read uc_benefit_cap_reduction_after_floor, the regulation 81 reduction bounded by the award, because DWP counts Universal Credit households by the amount the award loses; benefit_cap_reduction also counts the Housing Benefit cap and the gross regulation 81 amount (microcosm#1349). The publisher band is a monthly amount; the engine's reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows and the total bind at benefit-unit grain. Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
           "household_conditions": [
             {
               "variable": "region",
@@ -29932,6 +29910,61 @@
       "selector_note": "The English region and Wales rows of the Microcosm-derived stock the constituency and local-authority cells bind (microcosm#1240, fix 2; uk/high_value_home_stock_facts.json), selected by the same record set and measured identically, so each row is the cross-grain control for its area cells and carries the stock of any cell a signed small-cell rule defers. Local line only (microcosm#1301): the national line and the release-cut certifier drop these rows right after the compile, before reconciliation and the measure exclusions, so the national registry is unchanged. Scotland and Northern Ireland have no Price Paid coverage."
     },
     {
+      "target_id": "mhclg.council_tax_stock.single_adult_discount",
+      "family": "council_tax_stock",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.geography.country",
+            "equals": "ENGLAND"
+          },
+          {
+            "concept": "uk.housing.council_tax_discount_rate",
+            "equals": 0.25
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "mhclg/council_tax/single_adult_discount",
+          "reduce": "any",
+          "household_conditions": [
+            {
+              "variable": "country",
+              "operator": "==",
+              "value": "ENGLAND"
+            },
+            {
+              "variable": "council_tax_discount_rate",
+              "operator": "==",
+              "value": 0.25
+            }
+          ],
+          "value_variable": "household_count",
+          "notes": "England dwellings entitled to the single adult household 25% discount from the MHCLG Council Taxbase return, line 8 all bands (microcosm#953): the dwellings in line 7 with one resident adult who is not disregarded, which a household file carries as occupied households. policyengine-uk applies the discount from 2.148.0 (pe-uk#1864, council_tax_discount_rate, 0.25 for one adult not disregarded; the no-resident branch is unreachable on survey data), so the row counts England households at that rate. It binds at the national grain; the billing-authority cells of line 8 bind in the next dense build."
+        },
+        "axiom": {
+          "metric_name": "mhclg/council_tax/single_adult_discount",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "mhclg",
+        "source_concept": "mhclg.council_taxbase.single_adult_discount_dwellings",
+        "source_measure_id": "total",
+        "layout_groupby_value_id": "e92000001"
+      },
+      "selector_note": "MHCLG Council Taxbase line 8, all bands, England row, from the latest return not after the build base period, as the band rows take line 7: Council Taxbase 2025, as at September 2025, in its revision of 21 January 2026 (the feed labels the count 2025-10); the household proxy is the band rows' (voa_dwellings_vs_household_frame).",
+      "category_id": "mhclg.council_tax_stock",
+      "label": "Single adult discount"
+    },
+    {
       "target_id": "hmrc.self_employment_income.amount",
       "family": "hmrc",
       "geography_levels": [
@@ -29953,12 +29986,12 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/self_employment_income/amount",
-          "value_variable": "self_employment_income_after_loss_relief",
+          "value_variable": "self_employment_income_after_loss_relief_annual",
           "from_entity": "person",
           "map_to": "household",
           "filters": [
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             }
@@ -29981,7 +30014,7 @@
           "uk.local_geography.spi_income.by_local_authority.v1"
         ]
       },
-      "selector_note": "The area amount is the published count times the published mean (count_x_mean). SPI 2023-24 area Tables 3.14 (constituency) and 3.15 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (total income, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge). The bridge is gated on source agreement at each grain: the bands over the area cells before either side's index, within 2% (microcosm#1123).",
+      "selector_note": "The area amount is the published count times the published mean (count_x_mean). SPI 2023-24 area Tables 3.15 (constituency) and 3.14 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (total income, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge). The bridge is gated on source agreement at each grain: the bands over the area cells before either side's index, within 2% (microcosm#1123).",
       "category_id": "hmrc.tax_statistics",
       "label": "Amount",
       "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands"
@@ -30018,12 +30051,12 @@
           "map_to": "household",
           "filters": [
             {
-              "variable": "self_employment_income_after_loss_relief",
+              "variable": "self_employment_income_after_loss_relief_annual",
               "operator": "!=",
               "value": 0
             },
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             }
@@ -30046,7 +30079,7 @@
       "category_id": "hmrc.tax_statistics",
       "label": "Count",
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
-      "selector_note": "SPI 2023-24 area Tables 3.14 (constituency) and 3.15 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (taxpayer counts, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge). The bridge is gated on source agreement at each grain: the bands over the area cells before either side's index, within 2% (microcosm#1123)."
+      "selector_note": "SPI 2023-24 area Tables 3.15 (constituency) and 3.14 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (taxpayer counts, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge). The bridge is gated on source agreement at each grain: the bands over the area cells before either side's index, within 2% (microcosm#1123). HMRC counts every taxpayer with a self-employment source, while this row counts nonzero profit after loss relief, so a taxpayer whose losses brought forward wipe out the year's profit is in HMRC's cell and not the model's; the amount row is unaffected."
     },
     {
       "target_id": "hmrc.employment_income.amount",
@@ -30070,12 +30103,12 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/employment_income/amount",
-          "value_variable": "employment_income",
+          "value_variable": "employment_income_annual",
           "from_entity": "person",
           "map_to": "household",
           "filters": [
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             }
@@ -30098,7 +30131,7 @@
           "uk.local_geography.spi_income.by_local_authority.v1"
         ]
       },
-      "selector_note": "The area amount is the published count times the published mean (count_x_mean). SPI 2023-24 area Tables 3.14 (constituency) and 3.15 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (total income, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge). The bridge is gated on source agreement at each grain: the bands over the area cells before either side's index, within 2% (microcosm#1123).",
+      "selector_note": "The area amount is the published count times the published mean (count_x_mean). SPI 2023-24 area Tables 3.15 (constituency) and 3.14 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (total income, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge). The bridge is gated on source agreement at each grain: the bands over the area cells before either side's index, within 2% (microcosm#1123). HMRC's employment income also includes taxable benefits in kind and Incapacity Benefit, contribution-based Employment and Support Allowance and Jobseeker's Allowance, which employment_income_annual leaves out.",
       "category_id": "hmrc.tax_statistics",
       "label": "Amount",
       "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands"
@@ -30135,12 +30168,12 @@
           "map_to": "household",
           "filters": [
             {
-              "variable": "employment_income",
+              "variable": "employment_income_annual",
               "operator": "!=",
               "value": 0
             },
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             }
@@ -30163,7 +30196,7 @@
       "category_id": "hmrc.tax_statistics",
       "label": "Count",
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
-      "selector_note": "SPI 2023-24 area Tables 3.14 (constituency) and 3.15 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (taxpayer counts, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge). The bridge is gated on source agreement at each grain: the bands over the area cells before either side's index, within 2% (microcosm#1123)."
+      "selector_note": "SPI 2023-24 area Tables 3.15 (constituency) and 3.14 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (taxpayer counts, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge). The bridge is gated on source agreement at each grain: the bands over the area cells before either side's index, within 2% (microcosm#1123). HMRC's employment income also includes taxable benefits in kind and Incapacity Benefit, contribution-based Employment and Support Allowance and Jobseeker's Allowance, which employment_income_annual leaves out."
     },
     {
       "target_id": "ons.age.0_10",
@@ -30655,7 +30688,21 @@
       "bindings": {
         "policyengine": {
           "metric_name": "uc_hh_0_children",
-          "value_variable": "household_count"
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "universal_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "uc_calibration_child_count",
+              "operator": "==",
+              "value": 0
+            }
+          ]
         },
         "axiom": {
           "metric_name": "uc_hh_0_children",
@@ -30734,7 +30781,21 @@
       "bindings": {
         "policyengine": {
           "metric_name": "uc_hh_1_child",
-          "value_variable": "household_count"
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "universal_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "uc_calibration_child_count",
+              "operator": "==",
+              "value": 1
+            }
+          ]
         },
         "axiom": {
           "metric_name": "uc_hh_1_child",
@@ -30813,7 +30874,21 @@
       "bindings": {
         "policyengine": {
           "metric_name": "uc_hh_2_children",
-          "value_variable": "household_count"
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "universal_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "uc_calibration_child_count",
+              "operator": "==",
+              "value": 2
+            }
+          ]
         },
         "axiom": {
           "metric_name": "uc_hh_2_children",
@@ -30892,7 +30967,21 @@
       "bindings": {
         "policyengine": {
           "metric_name": "uc_hh_3plus_children",
-          "value_variable": "household_count"
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "universal_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "uc_calibration_child_count",
+              "operator": ">=",
+              "value": 3
+            }
+          ]
         },
         "axiom": {
           "metric_name": "uc_hh_3plus_children",
@@ -31243,8 +31332,6 @@
         "policyengine": {
           "metric_name": "rent/private_rent",
           "value_variable": "benunit_rent",
-          "from_entity": "benunit",
-          "map_to": "household",
           "filters": [
             {
               "variable": "tenure_type",
@@ -31282,8 +31369,6 @@
         "policyengine": {
           "metric_name": "rent/private_rent_brma",
           "value_variable": "benunit_rent",
-          "from_entity": "benunit",
-          "map_to": "household",
           "filters": [
             {
               "variable": "tenure_type",
@@ -33111,12 +33196,12 @@
           "map_to": "household",
           "filters": [
             {
-              "variable": "income_tax",
+              "variable": "income_tax_annual",
               "operator": ">",
               "value": 0
             },
             {
-              "variable": "tax_band",
+              "variable": "tax_band_annual",
               "operator": "==",
               "value": "HIGHER"
             }
@@ -33138,7 +33223,7 @@
       },
       "category_id": "hmrc.tax_statistics",
       "label": "Higher rate taxpayers",
-      "selector_note": "SPI 2023-24 area Tables 3.14 (constituency) and 3.15 (local authority), higher rate taxpayers, the latest edition (2024-25 due early 2027). England, Wales and Northern Ireland only (area_scope): the Scottish cells of 2023-24 predate the Scottish advanced rate, which HMRC counts as additional from 2024-25, so their split cannot be carried to 2025. Each region or nation's Table 2.2 row for calendar 2025 (hmrc.itl.higher_rate_taxpayers) sets the level of its area cells through a per-geography bridge; the cells keep their 2023-24 shares within it (a control_rescaled hold). At source the area cells sum to within 1.2% of each Table 2.2 row for 2023-24, at both grains (microcosm#1123). The additional-rate area cells are not bound: rounded to the thousand and suppressed in 85 constituencies, they cannot sum to their controls."
+      "selector_note": "SPI 2023-24 area Tables 3.15 (constituency) and 3.14 (local authority), higher rate taxpayers, the latest edition (2024-25 due early 2027). England, Wales and Northern Ireland only (area_scope): the Scottish cells of 2023-24 predate the Scottish advanced rate, which HMRC counts as additional from 2024-25, so their split cannot be carried to 2025. Each region or nation's Table 2.2 row for calendar 2025 (hmrc.itl.higher_rate_taxpayers) sets the level of its area cells through a per-geography bridge; the cells keep their 2023-24 shares within it (a control_rescaled hold). At source the area cells sum to within 1.2% of each Table 2.2 row for 2023-24, at both grains (microcosm#1123). The additional-rate area cells are not bound: rounded to the thousand and suppressed in 85 constituencies, they cannot sum to their controls."
     },
     {
       "target_id": "microcosm.high_value_homes.over_1m",
@@ -33169,23 +33254,7 @@
       "bindings": {
         "policyengine": {
           "metric_name": "high_value_homes/over_1m",
-          "value_variable": "household_count",
-          "filters": [
-            {
-              "variable": "tenure_type",
-              "in": [
-                "OWNED_OUTRIGHT",
-                "OWNED_WITH_MORTGAGE"
-              ]
-            },
-            {
-              "variable": "main_residence_value",
-              "operator": ">",
-              "value": 1000000,
-              "price_basis": "2026-04",
-              "input_period": "dataset"
-            }
-          ]
+          "value_variable": "owner_occupied_home_over_gbp_1m"
         },
         "axiom": {
           "metric_name": "high_value_homes/over_1m",
@@ -33245,23 +33314,7 @@
       "bindings": {
         "policyengine": {
           "metric_name": "high_value_homes/over_1_5m",
-          "value_variable": "household_count",
-          "filters": [
-            {
-              "variable": "tenure_type",
-              "in": [
-                "OWNED_OUTRIGHT",
-                "OWNED_WITH_MORTGAGE"
-              ]
-            },
-            {
-              "variable": "main_residence_value",
-              "operator": ">",
-              "value": 1500000,
-              "price_basis": "2026-04",
-              "input_period": "dataset"
-            }
-          ]
+          "value_variable": "owner_occupied_home_over_gbp_1_5m"
         },
         "axiom": {
           "metric_name": "high_value_homes/over_1_5m",
@@ -33321,23 +33374,7 @@
       "bindings": {
         "policyengine": {
           "metric_name": "high_value_homes/over_2m",
-          "value_variable": "household_count",
-          "filters": [
-            {
-              "variable": "tenure_type",
-              "in": [
-                "OWNED_OUTRIGHT",
-                "OWNED_WITH_MORTGAGE"
-              ]
-            },
-            {
-              "variable": "main_residence_value",
-              "operator": ">",
-              "value": 2000000,
-              "price_basis": "2026-04",
-              "input_period": "dataset"
-            }
-          ]
+          "value_variable": "owner_occupied_home_over_gbp_2m"
         },
         "axiom": {
           "metric_name": "high_value_homes/over_2m",
@@ -33465,15 +33502,7 @@
       "bindings": {
         "policyengine": {
           "metric_name": "energy/gas_connected_households",
-          "value_variable": "household_count",
-          "filters": [
-            {
-              "variable": "gas_consumption",
-              "operator": ">",
-              "value": 0,
-              "input_period": "dataset"
-            }
-          ]
+          "value_variable": "domestic_gas_connected"
         },
         "axiom": {
           "metric_name": "energy/gas_connected_households",

@@ -17,12 +17,12 @@
   },
   "source_fact_feed": {
     "source_repo": "PolicyEngine/chronicle",
-    "source_commit": "abf0921b896d29ee0745ed2aefde8d6337ed7164",
+    "source_commit": "272c987af175687aca21f82851ef349521802b12",
     "build": "build-bundle --suite uk -> build-consumer-artifact",
     "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
-    "fact_row_count": 1499301,
-    "facts_sha256": "2b64fecfe746164203dac1726aae6ffdb3e5d8e478bd3d64d118ac76cb00780b",
-    "manifest_sha256": "b90fb1b8f1a910458fac41425360209d101796e6de0b134f952ad93323ca6e21"
+    "fact_row_count": 1503315,
+    "facts_sha256": "084ddf46fa34b1e03b5f0a7287617aeafaf7f614e3619d87a6565409e4adac85",
+    "manifest_sha256": "229afc18d8201bbd59a41777453f487ad750be2802425240ac26ee54849bfafd"
   },
   "selections": [
     {
@@ -105,9 +105,9 @@
   "row_count": 93,
   "rows": [
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_757e464b14a1c434720c155f",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_43c772e5bef43baf904e1755",
       "semantic_fact_key": "ledger_semantic_fact_v2_e7a50fe26f35ce62d4b243c9",
-      "source_record_id": "ons.consumer_trends.04cn_04_5_1.cy2020.coicop_04_5_1.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.04cn_04_5_1.cy2020.coicop_04_5_1.expenditure",
       "concept": "ons.household_expenditure.electricity",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -131,7 +131,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.04cn_04_5_1.cy2020",
+        "record_set_id": "ons.consumer_trends_2026_09.04cn_04_5_1.cy2020",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_04_5_1",
         "table_record_kind": "detail"
@@ -147,18 +147,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 18805000000
+      "value": 20624000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_b1c4a44cee50e6a99a7a044c",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d3fdd3b095323fe9086e3e5c",
       "semantic_fact_key": "ledger_semantic_fact_v2_23563e995e1641ea91b80efc",
-      "source_record_id": "ons.consumer_trends.04cn_04_5_1.cy2021.coicop_04_5_1.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.04cn_04_5_1.cy2021.coicop_04_5_1.expenditure",
       "concept": "ons.household_expenditure.electricity",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -182,7 +182,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.04cn_04_5_1.cy2021",
+        "record_set_id": "ons.consumer_trends_2026_09.04cn_04_5_1.cy2021",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_04_5_1",
         "table_record_kind": "detail"
@@ -198,18 +198,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 20550000000
+      "value": 22834000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_e2685d017e4c31bb21ce6aac",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_db75952e0b49b069478f9538",
       "semantic_fact_key": "ledger_semantic_fact_v2_b2ad70860c88c877990d1812",
-      "source_record_id": "ons.consumer_trends.04cn_04_5_1.cy2022.coicop_04_5_1.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.04cn_04_5_1.cy2022.coicop_04_5_1.expenditure",
       "concept": "ons.household_expenditure.electricity",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -233,7 +233,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.04cn_04_5_1.cy2022",
+        "record_set_id": "ons.consumer_trends_2026_09.04cn_04_5_1.cy2022",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_04_5_1",
         "table_record_kind": "detail"
@@ -249,18 +249,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 27770000000
+      "value": 30505000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_4b05f105923ba1719c248498",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_693c3175b9ea7e4868bcb2ab",
       "semantic_fact_key": "ledger_semantic_fact_v2_36cc0603b81fcae2a361ebea",
-      "source_record_id": "ons.consumer_trends.04cn_04_5_1.cy2023.coicop_04_5_1.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.04cn_04_5_1.cy2023.coicop_04_5_1.expenditure",
       "concept": "ons.household_expenditure.electricity",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -284,7 +284,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.04cn_04_5_1.cy2023",
+        "record_set_id": "ons.consumer_trends_2026_09.04cn_04_5_1.cy2023",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_04_5_1",
         "table_record_kind": "detail"
@@ -300,18 +300,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 30589000000
+      "value": 33651000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_a08fabead329bf8b06fb5c4e",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c8825aa49363757f1b8df415",
       "semantic_fact_key": "ledger_semantic_fact_v2_3a367fa31eb41f7a54a3629d",
-      "source_record_id": "ons.consumer_trends.04cn_04_5_1.cy2024.coicop_04_5_1.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.04cn_04_5_1.cy2024.coicop_04_5_1.expenditure",
       "concept": "ons.household_expenditure.electricity",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -335,7 +335,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.04cn_04_5_1.cy2024",
+        "record_set_id": "ons.consumer_trends_2026_09.04cn_04_5_1.cy2024",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_04_5_1",
         "table_record_kind": "detail"
@@ -351,18 +351,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 26099000000
+      "value": 28129000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_643fd0413421fbcff9ea2bb5",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f3cf2a0e3e5ab3e4771086f2",
       "semantic_fact_key": "ledger_semantic_fact_v2_394f2c58a2fb6fc6347c5a5e",
-      "source_record_id": "ons.consumer_trends.04cn_04_5_1.cy2025.coicop_04_5_1.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.04cn_04_5_1.cy2025.coicop_04_5_1.expenditure",
       "concept": "ons.household_expenditure.electricity",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -386,7 +386,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.04cn_04_5_1.cy2025",
+        "record_set_id": "ons.consumer_trends_2026_09.04cn_04_5_1.cy2025",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_04_5_1",
         "table_record_kind": "detail"
@@ -402,18 +402,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 26522000000
+      "value": 28840000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_32647c12f2c1161ff5203033",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a8621ae8740d374678f6631b",
       "semantic_fact_key": "ledger_semantic_fact_v2_078f45770bf839c60975b947",
-      "source_record_id": "ons.consumer_trends.04cn.cy2020.coicop_04_5.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.04cn.cy2020.coicop_04_5.expenditure",
       "concept": "ons.household_expenditure.electricity_gas_other_fuels",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -437,7 +437,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.04cn.cy2020",
+        "record_set_id": "ons.consumer_trends_2026_09.04cn.cy2020",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_04_5",
         "table_record_kind": "detail"
@@ -453,18 +453,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 31805000000
+      "value": 34492000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_e2cb337c3dfe75524cee2553",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_af456f58e03955757f684f3d",
       "semantic_fact_key": "ledger_semantic_fact_v2_695f33bd9aea33e02703e53d",
-      "source_record_id": "ons.consumer_trends.04cn.cy2021.coicop_04_5.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.04cn.cy2021.coicop_04_5.expenditure",
       "concept": "ons.household_expenditure.electricity_gas_other_fuels",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -488,7 +488,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.04cn.cy2021",
+        "record_set_id": "ons.consumer_trends_2026_09.04cn.cy2021",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_04_5",
         "table_record_kind": "detail"
@@ -504,18 +504,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 34437000000
+      "value": 38643000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_5e18c23bee8020b2c82de1b0",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_33bdb30787892a1145f38b14",
       "semantic_fact_key": "ledger_semantic_fact_v2_8112da34428e09fcf2b80d7b",
-      "source_record_id": "ons.consumer_trends.04cn.cy2022.coicop_04_5.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.04cn.cy2022.coicop_04_5.expenditure",
       "concept": "ons.household_expenditure.electricity_gas_other_fuels",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -539,7 +539,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.04cn.cy2022",
+        "record_set_id": "ons.consumer_trends_2026_09.04cn.cy2022",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_04_5",
         "table_record_kind": "detail"
@@ -555,18 +555,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 49403000000
+      "value": 54246000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_9cde7ccefd77be924921b6bb",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_58c5da183216005ddbd03f9d",
       "semantic_fact_key": "ledger_semantic_fact_v2_0cb1a7ea4c71d4792d40a81f",
-      "source_record_id": "ons.consumer_trends.04cn.cy2023.coicop_04_5.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.04cn.cy2023.coicop_04_5.expenditure",
       "concept": "ons.household_expenditure.electricity_gas_other_fuels",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -590,7 +590,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.04cn.cy2023",
+        "record_set_id": "ons.consumer_trends_2026_09.04cn.cy2023",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_04_5",
         "table_record_kind": "detail"
@@ -606,18 +606,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 52505000000
+      "value": 59413000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_447c0e2734a87cc178535e7b",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4b2ac9208622ae0480a4ee5e",
       "semantic_fact_key": "ledger_semantic_fact_v2_7ad2ee8a8483229d31211fa5",
-      "source_record_id": "ons.consumer_trends.04cn.cy2024.coicop_04_5.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.04cn.cy2024.coicop_04_5.expenditure",
       "concept": "ons.household_expenditure.electricity_gas_other_fuels",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -641,7 +641,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.04cn.cy2024",
+        "record_set_id": "ons.consumer_trends_2026_09.04cn.cy2024",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_04_5",
         "table_record_kind": "detail"
@@ -657,18 +657,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 42288000000
+      "value": 47944000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_a2963d508c2dfd729030e2be",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_93658b6c1ce0fd4d6f94998a",
       "semantic_fact_key": "ledger_semantic_fact_v2_49f9a92169bbce7a467e9471",
-      "source_record_id": "ons.consumer_trends.04cn.cy2025.coicop_04_5.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.04cn.cy2025.coicop_04_5.expenditure",
       "concept": "ons.household_expenditure.electricity_gas_other_fuels",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -692,7 +692,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.04cn.cy2025",
+        "record_set_id": "ons.consumer_trends_2026_09.04cn.cy2025",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_04_5",
         "table_record_kind": "detail"
@@ -708,18 +708,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 43427000000
+      "value": 49322000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_e504779235b7b6f64b0b9a11",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e4a8710f4f5ef04d77186b6c",
       "semantic_fact_key": "ledger_semantic_fact_v2_372753cd716c93e8e33f05f3",
-      "source_record_id": "ons.consumer_trends.04cn_04_5_2.cy2020.coicop_04_5_2.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.04cn_04_5_2.cy2020.coicop_04_5_2.expenditure",
       "concept": "ons.household_expenditure.gas",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -743,7 +743,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.04cn_04_5_2.cy2020",
+        "record_set_id": "ons.consumer_trends_2026_09.04cn_04_5_2.cy2020",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_04_5_2",
         "table_record_kind": "detail"
@@ -759,18 +759,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 11767000000
+      "value": 12613000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_47e26d3fd67b3b979d518f39",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_90f654c39b5ec700ba96eb25",
       "semantic_fact_key": "ledger_semantic_fact_v2_0c3a558c64187053c41a985f",
-      "source_record_id": "ons.consumer_trends.04cn_04_5_2.cy2021.coicop_04_5_2.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.04cn_04_5_2.cy2021.coicop_04_5_2.expenditure",
       "concept": "ons.household_expenditure.gas",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -794,7 +794,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.04cn_04_5_2.cy2021",
+        "record_set_id": "ons.consumer_trends_2026_09.04cn_04_5_2.cy2021",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_04_5_2",
         "table_record_kind": "detail"
@@ -810,18 +810,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 12218000000
+      "value": 14143000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_2370e5dea8fc0b4179c685ac",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8793fb8d25e9b454c5f47856",
       "semantic_fact_key": "ledger_semantic_fact_v2_de44ebfeae661f5f466be743",
-      "source_record_id": "ons.consumer_trends.04cn_04_5_2.cy2022.coicop_04_5_2.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.04cn_04_5_2.cy2022.coicop_04_5_2.expenditure",
       "concept": "ons.household_expenditure.gas",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -845,7 +845,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.04cn_04_5_2.cy2022",
+        "record_set_id": "ons.consumer_trends_2026_09.04cn_04_5_2.cy2022",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_04_5_2",
         "table_record_kind": "detail"
@@ -861,18 +861,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 19459000000
+      "value": 21412000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_8dced1a5ac41962dc6ab396c",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e7ca4ce4487e44e23847be07",
       "semantic_fact_key": "ledger_semantic_fact_v2_4ab12ad7c3894d8a05086dad",
-      "source_record_id": "ons.consumer_trends.04cn_04_5_2.cy2023.coicop_04_5_2.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.04cn_04_5_2.cy2023.coicop_04_5_2.expenditure",
       "concept": "ons.household_expenditure.gas",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -896,7 +896,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.04cn_04_5_2.cy2023",
+        "record_set_id": "ons.consumer_trends_2026_09.04cn_04_5_2.cy2023",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_04_5_2",
         "table_record_kind": "detail"
@@ -912,18 +912,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 20085000000
+      "value": 23826000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_40f17c830f5d71927e9adf5d",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_87253990ee4d5e51c2b1e47d",
       "semantic_fact_key": "ledger_semantic_fact_v2_fc24615029b337f867506c55",
-      "source_record_id": "ons.consumer_trends.04cn_04_5_2.cy2024.coicop_04_5_2.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.04cn_04_5_2.cy2024.coicop_04_5_2.expenditure",
       "concept": "ons.household_expenditure.gas",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -947,7 +947,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.04cn_04_5_2.cy2024",
+        "record_set_id": "ons.consumer_trends_2026_09.04cn_04_5_2.cy2024",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_04_5_2",
         "table_record_kind": "detail"
@@ -963,18 +963,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 14642000000
+      "value": 18298000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_03c5f13d5fbab023177a1aea",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9bf03b93645200761324e994",
       "semantic_fact_key": "ledger_semantic_fact_v2_948fbb40165d556eff8b2990",
-      "source_record_id": "ons.consumer_trends.04cn_04_5_2.cy2025.coicop_04_5_2.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.04cn_04_5_2.cy2025.coicop_04_5_2.expenditure",
       "concept": "ons.household_expenditure.gas",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -998,7 +998,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.04cn_04_5_2.cy2025",
+        "record_set_id": "ons.consumer_trends_2026_09.04cn_04_5_2.cy2025",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_04_5_2",
         "table_record_kind": "detail"
@@ -1014,18 +1014,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 15339000000
+      "value": 18958000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_0ccea060f68d08a99df9a046",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_62c82000b9638d3bb49bf9ba",
       "semantic_fact_key": "ledger_semantic_fact_v2_4e9602b387ebec3cf923a31e",
-      "source_record_id": "ons.consumer_trends.04cn_04_5_3.cy2020.coicop_04_5_3.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.04cn_04_5_3.cy2020.coicop_04_5_3.expenditure",
       "concept": "ons.household_expenditure.liquid_fuels",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -1049,7 +1049,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.04cn_04_5_3.cy2020",
+        "record_set_id": "ons.consumer_trends_2026_09.04cn_04_5_3.cy2020",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_04_5_3",
         "table_record_kind": "detail"
@@ -1065,18 +1065,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 868000000
+      "value": 881000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_7bfeff7f3d7cbb51ac4cc27f",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9a2cf00c328d5601829200ef",
       "semantic_fact_key": "ledger_semantic_fact_v2_d3fd432d67dfc0aa975ef3b0",
-      "source_record_id": "ons.consumer_trends.04cn_04_5_3.cy2021.coicop_04_5_3.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.04cn_04_5_3.cy2021.coicop_04_5_3.expenditure",
       "concept": "ons.household_expenditure.liquid_fuels",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -1100,7 +1100,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.04cn_04_5_3.cy2021",
+        "record_set_id": "ons.consumer_trends_2026_09.04cn_04_5_3.cy2021",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_04_5_3",
         "table_record_kind": "detail"
@@ -1116,18 +1116,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 1186000000
+      "value": 1169000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_efa5e26236915527baa5fb6a",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_92208156bff18282037e7fa3",
       "semantic_fact_key": "ledger_semantic_fact_v2_974e4fd64dac47e2f64ce8ef",
-      "source_record_id": "ons.consumer_trends.04cn_04_5_3.cy2022.coicop_04_5_3.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.04cn_04_5_3.cy2022.coicop_04_5_3.expenditure",
       "concept": "ons.household_expenditure.liquid_fuels",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -1151,7 +1151,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.04cn_04_5_3.cy2022",
+        "record_set_id": "ons.consumer_trends_2026_09.04cn_04_5_3.cy2022",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_04_5_3",
         "table_record_kind": "detail"
@@ -1167,18 +1167,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 1624000000
+      "value": 1781000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_3c997a0aa817f78bb9a3e551",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_990ece8783789a728cd8d90b",
       "semantic_fact_key": "ledger_semantic_fact_v2_6b9a8fb62f53c04efc9ed6a6",
-      "source_record_id": "ons.consumer_trends.04cn_04_5_3.cy2023.coicop_04_5_3.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.04cn_04_5_3.cy2023.coicop_04_5_3.expenditure",
       "concept": "ons.household_expenditure.liquid_fuels",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -1202,7 +1202,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.04cn_04_5_3.cy2023",
+        "record_set_id": "ons.consumer_trends_2026_09.04cn_04_5_3.cy2023",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_04_5_3",
         "table_record_kind": "detail"
@@ -1218,18 +1218,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 1302000000
+      "value": 1406000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_def858f5909802e76a3bd816",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_bbc649362565ce78392ffd21",
       "semantic_fact_key": "ledger_semantic_fact_v2_ac0d85b006807bc73d65b477",
-      "source_record_id": "ons.consumer_trends.04cn_04_5_3.cy2024.coicop_04_5_3.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.04cn_04_5_3.cy2024.coicop_04_5_3.expenditure",
       "concept": "ons.household_expenditure.liquid_fuels",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -1253,7 +1253,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.04cn_04_5_3.cy2024",
+        "record_set_id": "ons.consumer_trends_2026_09.04cn_04_5_3.cy2024",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_04_5_3",
         "table_record_kind": "detail"
@@ -1269,18 +1269,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 1195000000
+      "value": 1180000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_931ecb3b4370f97af488624e",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_fab64d168e8fde17911daaac",
       "semantic_fact_key": "ledger_semantic_fact_v2_eacfe3015761faf8330b4d2d",
-      "source_record_id": "ons.consumer_trends.04cn_04_5_3.cy2025.coicop_04_5_3.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.04cn_04_5_3.cy2025.coicop_04_5_3.expenditure",
       "concept": "ons.household_expenditure.liquid_fuels",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -1304,7 +1304,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.04cn_04_5_3.cy2025",
+        "record_set_id": "ons.consumer_trends_2026_09.04cn_04_5_3.cy2025",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_04_5_3",
         "table_record_kind": "detail"
@@ -1320,18 +1320,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 1254000000
+      "value": 1229000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_d80377763eab7b280fbe50de",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a037eb4bcc19c1f10414427b",
       "semantic_fact_key": "ledger_semantic_fact_v2_2ece6f9e40a4520992e73fea",
-      "source_record_id": "ons.consumer_trends.07cn_07_2_2.cy2020.coicop_07_2_2.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.07cn_07_2_2.cy2020.coicop_07_2_2.expenditure",
       "concept": "ons.household_expenditure.personal_transport_fuels_lubricants",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -1355,7 +1355,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.07cn_07_2_2.cy2020",
+        "record_set_id": "ons.consumer_trends_2026_09.07cn_07_2_2.cy2020",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_07_2_2",
         "table_record_kind": "detail"
@@ -1371,18 +1371,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 23650000000
+      "value": 23889000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_4b7c894cc2dd4843ed56e9df",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e74b6a38e841d9b12f2bac34",
       "semantic_fact_key": "ledger_semantic_fact_v2_020eab7b7f41ded9a27521f4",
-      "source_record_id": "ons.consumer_trends.07cn_07_2_2.cy2021.coicop_07_2_2.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.07cn_07_2_2.cy2021.coicop_07_2_2.expenditure",
       "concept": "ons.household_expenditure.personal_transport_fuels_lubricants",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -1406,7 +1406,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.07cn_07_2_2.cy2021",
+        "record_set_id": "ons.consumer_trends_2026_09.07cn_07_2_2.cy2021",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_07_2_2",
         "table_record_kind": "detail"
@@ -1422,18 +1422,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 31684000000
+      "value": 31357000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_90e61da4c97487740653f2f1",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3732a4669864d58c12eec201",
       "semantic_fact_key": "ledger_semantic_fact_v2_1e714f4857046e33b0762b79",
-      "source_record_id": "ons.consumer_trends.07cn_07_2_2.cy2022.coicop_07_2_2.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.07cn_07_2_2.cy2022.coicop_07_2_2.expenditure",
       "concept": "ons.household_expenditure.personal_transport_fuels_lubricants",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -1457,7 +1457,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.07cn_07_2_2.cy2022",
+        "record_set_id": "ons.consumer_trends_2026_09.07cn_07_2_2.cy2022",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_07_2_2",
         "table_record_kind": "detail"
@@ -1473,18 +1473,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 42154000000
+      "value": 42343000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_4621528f192e3238a2f5b53f",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_84d73542b25681f6d22aa9e9",
       "semantic_fact_key": "ledger_semantic_fact_v2_6e144ac2588818eb11cf817d",
-      "source_record_id": "ons.consumer_trends.07cn_07_2_2.cy2023.coicop_07_2_2.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.07cn_07_2_2.cy2023.coicop_07_2_2.expenditure",
       "concept": "ons.household_expenditure.personal_transport_fuels_lubricants",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -1508,7 +1508,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.07cn_07_2_2.cy2023",
+        "record_set_id": "ons.consumer_trends_2026_09.07cn_07_2_2.cy2023",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_07_2_2",
         "table_record_kind": "detail"
@@ -1524,18 +1524,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 38504000000
+      "value": 38080000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_d5c11a14d2062955b622275a",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e29f3ad312cbfa894a9c965b",
       "semantic_fact_key": "ledger_semantic_fact_v2_52a387587b484beecf404fd5",
-      "source_record_id": "ons.consumer_trends.07cn_07_2_2.cy2024.coicop_07_2_2.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.07cn_07_2_2.cy2024.coicop_07_2_2.expenditure",
       "concept": "ons.household_expenditure.personal_transport_fuels_lubricants",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -1559,7 +1559,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.07cn_07_2_2.cy2024",
+        "record_set_id": "ons.consumer_trends_2026_09.07cn_07_2_2.cy2024",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_07_2_2",
         "table_record_kind": "detail"
@@ -1575,18 +1575,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 37025000000
+      "value": 35460000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_98696a3d0a85269f7b2445ff",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e60aad73d4b47c3e8dfd7d20",
       "semantic_fact_key": "ledger_semantic_fact_v2_b37136996871ae4581a3d8da",
-      "source_record_id": "ons.consumer_trends.07cn_07_2_2.cy2025.coicop_07_2_2.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.07cn_07_2_2.cy2025.coicop_07_2_2.expenditure",
       "concept": "ons.household_expenditure.personal_transport_fuels_lubricants",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -1610,7 +1610,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.07cn_07_2_2.cy2025",
+        "record_set_id": "ons.consumer_trends_2026_09.07cn_07_2_2.cy2025",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_07_2_2",
         "table_record_kind": "detail"
@@ -1626,18 +1626,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 35099000000
+      "value": 33974000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_dc106e0ebfeb201ba1cb2474",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_51dfc90216fe1734e7f614ff",
       "semantic_fact_key": "ledger_semantic_fact_v2_354b1286ee41dbcc6bc7786b",
-      "source_record_id": "ons.consumer_trends.07cn_07_3_2.cy2020.coicop_07_3_2.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.07cn_07_3_2.cy2020.coicop_07_3_2.expenditure",
       "concept": "ons.household_expenditure.road_transport_services",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -1661,7 +1661,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.07cn_07_3_2.cy2020",
+        "record_set_id": "ons.consumer_trends_2026_09.07cn_07_3_2.cy2020",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_07_3_2",
         "table_record_kind": "detail"
@@ -1677,18 +1677,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 5042000000
+      "value": 4935000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_e03a2b5cb6f91f0db018d2fb",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c8fb25170915b9cefa2fb589",
       "semantic_fact_key": "ledger_semantic_fact_v2_56fda94971b8facd80ea42f8",
-      "source_record_id": "ons.consumer_trends.07cn_07_3_2.cy2021.coicop_07_3_2.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.07cn_07_3_2.cy2021.coicop_07_3_2.expenditure",
       "concept": "ons.household_expenditure.road_transport_services",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -1712,7 +1712,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.07cn_07_3_2.cy2021",
+        "record_set_id": "ons.consumer_trends_2026_09.07cn_07_3_2.cy2021",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_07_3_2",
         "table_record_kind": "detail"
@@ -1728,18 +1728,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 5629000000
+      "value": 5930000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_4f3f49d8ecbeddd01fa4c4aa",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_62fa6f291fee8aba4ee14281",
       "semantic_fact_key": "ledger_semantic_fact_v2_5a3c2f8cc65ead94ad6b8b78",
-      "source_record_id": "ons.consumer_trends.07cn_07_3_2.cy2022.coicop_07_3_2.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.07cn_07_3_2.cy2022.coicop_07_3_2.expenditure",
       "concept": "ons.household_expenditure.road_transport_services",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -1763,7 +1763,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.07cn_07_3_2.cy2022",
+        "record_set_id": "ons.consumer_trends_2026_09.07cn_07_3_2.cy2022",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_07_3_2",
         "table_record_kind": "detail"
@@ -1779,18 +1779,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 6928000000
+      "value": 7607000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_d7bad25eb585c8812ae87d42",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8e863d2dd191d5daf71c7f8b",
       "semantic_fact_key": "ledger_semantic_fact_v2_1c59b9ce02e8dae1d57327f0",
-      "source_record_id": "ons.consumer_trends.07cn_07_3_2.cy2023.coicop_07_3_2.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.07cn_07_3_2.cy2023.coicop_07_3_2.expenditure",
       "concept": "ons.household_expenditure.road_transport_services",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -1814,7 +1814,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.07cn_07_3_2.cy2023",
+        "record_set_id": "ons.consumer_trends_2026_09.07cn_07_3_2.cy2023",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_07_3_2",
         "table_record_kind": "detail"
@@ -1830,18 +1830,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 6851000000
+      "value": 8453000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_34d3ea7cd0e9a930fcf04d6d",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_561f5f77506e7c247499fe6e",
       "semantic_fact_key": "ledger_semantic_fact_v2_5f8a7c32ec1a91344a346903",
-      "source_record_id": "ons.consumer_trends.07cn_07_3_2.cy2024.coicop_07_3_2.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.07cn_07_3_2.cy2024.coicop_07_3_2.expenditure",
       "concept": "ons.household_expenditure.road_transport_services",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -1865,7 +1865,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.07cn_07_3_2.cy2024",
+        "record_set_id": "ons.consumer_trends_2026_09.07cn_07_3_2.cy2024",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_07_3_2",
         "table_record_kind": "detail"
@@ -1881,18 +1881,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 8000000000
+      "value": 9021000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_5e2a3124654c1293cd8c0e30",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_38966682466a56d4a924a665",
       "semantic_fact_key": "ledger_semantic_fact_v2_72c298dbb8c9e4116ac54584",
-      "source_record_id": "ons.consumer_trends.07cn_07_3_2.cy2025.coicop_07_3_2.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.07cn_07_3_2.cy2025.coicop_07_3_2.expenditure",
       "concept": "ons.household_expenditure.road_transport_services",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -1916,7 +1916,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.07cn_07_3_2.cy2025",
+        "record_set_id": "ons.consumer_trends_2026_09.07cn_07_3_2.cy2025",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_07_3_2",
         "table_record_kind": "detail"
@@ -1932,18 +1932,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 8603000000
+      "value": 9469000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_0c7d5bd0f03a0a0d5e71173e",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8cd573d1bed1744f03b488a9",
       "semantic_fact_key": "ledger_semantic_fact_v2_569b0881de5a757c5f0effb4",
-      "source_record_id": "ons.consumer_trends.04cn_04_5_4.cy2020.coicop_04_5_4.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.04cn_04_5_4.cy2020.coicop_04_5_4.expenditure",
       "concept": "ons.household_expenditure.solid_fuels",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -1967,7 +1967,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.04cn_04_5_4.cy2020",
+        "record_set_id": "ons.consumer_trends_2026_09.04cn_04_5_4.cy2020",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_04_5_4",
         "table_record_kind": "detail"
@@ -1983,18 +1983,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 365000000
+      "value": 374000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_671d3a9fc0911d443d7f6961",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_78782c4be068c6c6888e9248",
       "semantic_fact_key": "ledger_semantic_fact_v2_2947afe6f603730a6cc3ea07",
-      "source_record_id": "ons.consumer_trends.04cn_04_5_4.cy2021.coicop_04_5_4.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.04cn_04_5_4.cy2021.coicop_04_5_4.expenditure",
       "concept": "ons.household_expenditure.solid_fuels",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -2018,7 +2018,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.04cn_04_5_4.cy2021",
+        "record_set_id": "ons.consumer_trends_2026_09.04cn_04_5_4.cy2021",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_04_5_4",
         "table_record_kind": "detail"
@@ -2034,18 +2034,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 483000000
+      "value": 497000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_d61d8af99838bf61b2c03bac",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c62d3b1d35c95d28c65b3c38",
       "semantic_fact_key": "ledger_semantic_fact_v2_0f4cbd132d23844d6535a131",
-      "source_record_id": "ons.consumer_trends.04cn_04_5_4.cy2022.coicop_04_5_4.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.04cn_04_5_4.cy2022.coicop_04_5_4.expenditure",
       "concept": "ons.household_expenditure.solid_fuels",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -2069,7 +2069,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.04cn_04_5_4.cy2022",
+        "record_set_id": "ons.consumer_trends_2026_09.04cn_04_5_4.cy2022",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_04_5_4",
         "table_record_kind": "detail"
@@ -2085,18 +2085,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 550000000
+      "value": 548000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_9e80f8ce6e17c9f155cf8a93",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_891fb3a35ce35253504d5dec",
       "semantic_fact_key": "ledger_semantic_fact_v2_f69061289be48c35c134428d",
-      "source_record_id": "ons.consumer_trends.04cn_04_5_4.cy2023.coicop_04_5_4.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.04cn_04_5_4.cy2023.coicop_04_5_4.expenditure",
       "concept": "ons.household_expenditure.solid_fuels",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -2120,7 +2120,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.04cn_04_5_4.cy2023",
+        "record_set_id": "ons.consumer_trends_2026_09.04cn_04_5_4.cy2023",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_04_5_4",
         "table_record_kind": "detail"
@@ -2136,18 +2136,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 529000000
+      "value": 530000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_e16a5c15d553955ec50ae5a8",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3c961b9314edf211e9470540",
       "semantic_fact_key": "ledger_semantic_fact_v2_a43402e366adb17edc33c7dd",
-      "source_record_id": "ons.consumer_trends.04cn_04_5_4.cy2024.coicop_04_5_4.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.04cn_04_5_4.cy2024.coicop_04_5_4.expenditure",
       "concept": "ons.household_expenditure.solid_fuels",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -2171,7 +2171,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.04cn_04_5_4.cy2024",
+        "record_set_id": "ons.consumer_trends_2026_09.04cn_04_5_4.cy2024",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_04_5_4",
         "table_record_kind": "detail"
@@ -2187,18 +2187,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 352000000
+      "value": 337000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_bc599354d39c6c27cf134f33",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7b34c1b033c1c8fc6e302cc1",
       "semantic_fact_key": "ledger_semantic_fact_v2_ec6e4441226ad0dd0d777e10",
-      "source_record_id": "ons.consumer_trends.04cn_04_5_4.cy2025.coicop_04_5_4.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.04cn_04_5_4.cy2025.coicop_04_5_4.expenditure",
       "concept": "ons.household_expenditure.solid_fuels",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -2222,7 +2222,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.04cn_04_5_4.cy2025",
+        "record_set_id": "ons.consumer_trends_2026_09.04cn_04_5_4.cy2025",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_04_5_4",
         "table_record_kind": "detail"
@@ -2238,18 +2238,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 312000000
+      "value": 295000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_119dc4e5bc95e324b75733e8",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e687d17b554b29c84030e822",
       "semantic_fact_key": "ledger_semantic_fact_v2_33ce232860767dbacae7736e",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2023.published.coicop_0.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2023.published.coicop_0.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -2273,7 +2273,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2023.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2023.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_0",
         "table_record_kind": "detail"
@@ -2291,18 +2291,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 1630297000000
+      "value": 1635517000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_118a077a27a6f05ec5c8f25b",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d34dde93d0fe9c122b74ebcd",
       "semantic_fact_key": "ledger_semantic_fact_v2_46e7fbda7fed449f4f076f73",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2023.published.coicop_01.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2023.published.coicop_01.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -2326,7 +2326,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2023.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2023.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_01",
         "table_record_kind": "detail"
@@ -2344,18 +2344,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 139909000000
+      "value": 148438000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_ed787ceac10b5b4283c54512",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f574eb1aaf5851602e340f9b",
       "semantic_fact_key": "ledger_semantic_fact_v2_b215b9ba2217814142024645",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2023.published.coicop_02.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2023.published.coicop_02.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -2379,7 +2379,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2023.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2023.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_02",
         "table_record_kind": "detail"
@@ -2397,18 +2397,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 50348000000
+      "value": 49226000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_38803d2247a8b4b1f7f8b6b4",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d22f0f7c85c48947bd456e98",
       "semantic_fact_key": "ledger_semantic_fact_v2_d725cffd694a7f677d62b707",
-      "source_record_id": "ons.consumer_trends.expanded_02cn.cy2023.published.coicop_02_3.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_02cn.cy2023.published.coicop_02_3.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -2432,7 +2432,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_02cn.cy2023.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_02cn.cy2023.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_02_3",
         "table_record_kind": "detail"
@@ -2450,18 +2450,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 3344000000
+      "value": 3208000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_efccc773435308ec534d6162",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c6022041790b774c10cc3d2a",
       "semantic_fact_key": "ledger_semantic_fact_v2_d3fa68fe7ea1be71ee1058bb",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2023.published.coicop_03.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2023.published.coicop_03.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -2485,7 +2485,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2023.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2023.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_03",
         "table_record_kind": "detail"
@@ -2503,18 +2503,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 79913000000
+      "value": 78938000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_9ec24b35db63aefc2bef7d0a",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_03a86017967ac937e4ed52d4",
       "semantic_fact_key": "ledger_semantic_fact_v2_6043d822382edf8c7dc661b1",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2023.published.coicop_04.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2023.published.coicop_04.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -2538,7 +2538,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2023.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2023.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_04",
         "table_record_kind": "detail"
@@ -2556,18 +2556,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 431667000000
+      "value": 435230000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_09d1af38710f23674a931d4f",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4640b047dd114a555cf90706",
       "semantic_fact_key": "ledger_semantic_fact_v2_80fd5a77f8febf7ba1aec86f",
-      "source_record_id": "ons.consumer_trends.expanded_04cn.cy2023.published.coicop_04_2.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_04cn.cy2023.published.coicop_04_2.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -2591,7 +2591,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_04cn.cy2023.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_04cn.cy2023.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_04_2",
         "table_record_kind": "detail"
@@ -2609,18 +2609,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 266330000000
+      "value": 264384000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_17bbb2e670f11d1bdb3bfd45",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_945e031c5b7af0e9217e12d6",
       "semantic_fact_key": "ledger_semantic_fact_v2_d49f272f321fd32568b9e656",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2023.published.coicop_05.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2023.published.coicop_05.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -2644,7 +2644,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2023.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2023.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_05",
         "table_record_kind": "detail"
@@ -2662,18 +2662,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 77105000000
+      "value": 78354000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_09994b1303245de703ff9a96",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_03df26b7269bf095374acb4c",
       "semantic_fact_key": "ledger_semantic_fact_v2_423370078189cfec79111fcc",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2023.published.coicop_06.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2023.published.coicop_06.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -2697,7 +2697,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2023.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2023.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_06",
         "table_record_kind": "detail"
@@ -2715,18 +2715,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 31659000000
+      "value": 32482000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_7007df456ebcacf0a5dcd7fd",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a0feccbd8c004f9b16236865",
       "semantic_fact_key": "ledger_semantic_fact_v2_b01a8dc4c0dc2589cde14303",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2023.published.coicop_07.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2023.published.coicop_07.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -2750,7 +2750,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2023.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2023.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_07",
         "table_record_kind": "detail"
@@ -2768,18 +2768,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 210930000000
+      "value": 212907000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_7ebe9c4469b9ef50cdba0cef",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_23736c9a6342c63343938048",
       "semantic_fact_key": "ledger_semantic_fact_v2_d79a59ea841fb9eda2731977",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2023.published.coicop_08.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2023.published.coicop_08.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -2803,7 +2803,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2023.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2023.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_08",
         "table_record_kind": "detail"
@@ -2821,18 +2821,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 29321000000
+      "value": 29276000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_039f1f1fad554b41eb635f95",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ab6c327f25972468863e15c6",
       "semantic_fact_key": "ledger_semantic_fact_v2_35d89fa006c9d4c99bce256a",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2023.published.coicop_09.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2023.published.coicop_09.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -2856,7 +2856,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2023.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2023.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_09",
         "table_record_kind": "detail"
@@ -2874,18 +2874,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 156163000000
+      "value": 158628000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_ea0704ec2b12857a02ccf2dd",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_25f4aadc38459a431192e615",
       "semantic_fact_key": "ledger_semantic_fact_v2_c5712e2a32a76176bc7517ca",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2023.published.coicop_10.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2023.published.coicop_10.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -2909,7 +2909,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2023.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2023.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_10",
         "table_record_kind": "detail"
@@ -2927,18 +2927,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 39455000000
+      "value": 39755000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_3007c584c41fae874ca5a236",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d41d99dc7d745b311fad9843",
       "semantic_fact_key": "ledger_semantic_fact_v2_01823f63266bf3d594896af9",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2023.published.coicop_11.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2023.published.coicop_11.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -2962,7 +2962,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2023.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2023.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_11",
         "table_record_kind": "detail"
@@ -2980,18 +2980,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 175197000000
+      "value": 159674000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_07d0b1de1b76ace57d954c16",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d5ed081b4afb3d1e63e01649",
       "semantic_fact_key": "ledger_semantic_fact_v2_d867fd60d4268a2e5beeabaa",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2023.published.coicop_12.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2023.published.coicop_12.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -3015,7 +3015,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2023.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2023.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_12",
         "table_record_kind": "detail"
@@ -3033,18 +3033,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 208630000000
+      "value": 212609000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_9b1df9adde8c44efe1ce54b8",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_670641fb254e97fd524b49f4",
       "semantic_fact_key": "ledger_semantic_fact_v2_8acb0636ba59e840eb195e3d",
-      "source_record_id": "ons.consumer_trends.expanded_12cn.cy2023.published.coicop_12_6_1.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_12cn.cy2023.published.coicop_12_6_1.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -3068,7 +3068,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_12cn.cy2023.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_12cn.cy2023.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_12_6_1",
         "table_record_kind": "detail"
@@ -3086,18 +3086,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
       "value": 58452000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_e44e14ff2b8587a47e335448",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_fd491d0806559b73d8301801",
       "semantic_fact_key": "ledger_semantic_fact_v2_9b1c4f5718cf9478b89195fb",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2023.published.national.coicop_nat0.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2023.published.national.coicop_nat0.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -3121,7 +3121,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2023.published.national",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2023.published.national",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_nat0",
         "table_record_kind": "detail"
@@ -3139,18 +3139,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 1652281000000
+      "value": 1655276000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_a9b5d74a1905275b8b8dadae",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b1f89682d673e6877a6737da",
       "semantic_fact_key": "ledger_semantic_fact_v2_a73977aeaa41f815044099fe",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2024.published.coicop_0.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2024.published.coicop_0.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -3174,7 +3174,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2024.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2024.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_0",
         "table_record_kind": "detail"
@@ -3192,18 +3192,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 1685220000000
+      "value": 1692413000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_19b25cb53e05c9f045fb1cec",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_56d74c9095bcb721695e9636",
       "semantic_fact_key": "ledger_semantic_fact_v2_8488ba6ec631b3f828ef2739",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2024.published.coicop_01.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2024.published.coicop_01.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -3227,7 +3227,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2024.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2024.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_01",
         "table_record_kind": "detail"
@@ -3245,18 +3245,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 142184000000
+      "value": 153437000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_1e134fc0c63ee8affdf1c3ba",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e71744217e4a014946f0f928",
       "semantic_fact_key": "ledger_semantic_fact_v2_9f4c3da6794bc0ee887ee82d",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2024.published.coicop_02.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2024.published.coicop_02.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -3280,7 +3280,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2024.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2024.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_02",
         "table_record_kind": "detail"
@@ -3298,18 +3298,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 51116000000
+      "value": 47204000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_a9c2cf60ddc9feb86cd54407",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1e8040a9e05dbd8689711a7b",
       "semantic_fact_key": "ledger_semantic_fact_v2_9a83fd9699b4fb97c9bfc4f0",
-      "source_record_id": "ons.consumer_trends.expanded_02cn.cy2024.published.coicop_02_3.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_02cn.cy2024.published.coicop_02_3.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -3333,7 +3333,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_02cn.cy2024.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_02cn.cy2024.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_02_3",
         "table_record_kind": "detail"
@@ -3351,18 +3351,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 3030000000
+      "value": 3044000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_565438cdaa9a16854138834f",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1e8d7181722851c45b0f44eb",
       "semantic_fact_key": "ledger_semantic_fact_v2_520f95da39f8cb35d288497d",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2024.published.coicop_03.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2024.published.coicop_03.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -3386,7 +3386,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2024.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2024.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_03",
         "table_record_kind": "detail"
@@ -3404,18 +3404,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 78930000000
+      "value": 78065000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_3d2eab52c411caf62b4b327b",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_23f344fac5c163f240644eda",
       "semantic_fact_key": "ledger_semantic_fact_v2_3d923cd09e1028c729eb19b8",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2024.published.coicop_04.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2024.published.coicop_04.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -3439,7 +3439,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2024.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2024.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_04",
         "table_record_kind": "detail"
@@ -3457,18 +3457,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 455559000000
+      "value": 459318000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_9a759bc4b58b961b03999eb6",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_dd7ddf8f9fc14de9d2d3f10e",
       "semantic_fact_key": "ledger_semantic_fact_v2_b6111c445869ba1343ae7c97",
-      "source_record_id": "ons.consumer_trends.expanded_04cn.cy2024.published.coicop_04_2.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_04cn.cy2024.published.coicop_04_2.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -3492,7 +3492,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_04cn.cy2024.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_04cn.cy2024.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_04_2",
         "table_record_kind": "detail"
@@ -3510,18 +3510,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 291755000000
+      "value": 291626000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_77a67bd726abdc70bffe5d1c",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_926a880e957409cfcf8d4993",
       "semantic_fact_key": "ledger_semantic_fact_v2_2ceea72d01dbb3ad0117e019",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2024.published.coicop_05.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2024.published.coicop_05.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -3545,7 +3545,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2024.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2024.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_05",
         "table_record_kind": "detail"
@@ -3563,18 +3563,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 76041000000
+      "value": 78242000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_e536c31570dee9e8aa7c654f",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c564130ad965bdf9ec3d79b0",
       "semantic_fact_key": "ledger_semantic_fact_v2_68c95bad830d0a49f3a12f53",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2024.published.coicop_06.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2024.published.coicop_06.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -3598,7 +3598,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2024.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2024.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_06",
         "table_record_kind": "detail"
@@ -3616,18 +3616,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 33157000000
+      "value": 33769000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_e1618424b63e1e44f5f98fc6",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2a8f9763d220ce525af770ef",
       "semantic_fact_key": "ledger_semantic_fact_v2_639dc1779e5c47a565a12892",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2024.published.coicop_07.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2024.published.coicop_07.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -3651,7 +3651,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2024.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2024.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_07",
         "table_record_kind": "detail"
@@ -3669,18 +3669,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 215510000000
+      "value": 221273000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_331dd633a5e6612464f55409",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2a9f0674192163fbc1d2a463",
       "semantic_fact_key": "ledger_semantic_fact_v2_27081b8e489dbe495915beb6",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2024.published.coicop_08.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2024.published.coicop_08.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -3704,7 +3704,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2024.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2024.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_08",
         "table_record_kind": "detail"
@@ -3722,18 +3722,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 31725000000
+      "value": 30985000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_1baceb48cd8c830a43e2c337",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c2b29138a2cff953183bea47",
       "semantic_fact_key": "ledger_semantic_fact_v2_8cdee0441150b72dc575b2c7",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2024.published.coicop_09.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2024.published.coicop_09.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -3757,7 +3757,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2024.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2024.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_09",
         "table_record_kind": "detail"
@@ -3775,18 +3775,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 164060000000
+      "value": 163561000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_21ada720cc8c4205939a355a",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b3b254dcbd1f72cac61d39eb",
       "semantic_fact_key": "ledger_semantic_fact_v2_2a80ee54018cf4d88c6345cb",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2024.published.coicop_10.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2024.published.coicop_10.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -3810,7 +3810,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2024.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2024.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_10",
         "table_record_kind": "detail"
@@ -3828,18 +3828,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 42334000000
+      "value": 41836000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_c773d9c9e853e850ce3b026d",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_406947e180520feef26304f3",
       "semantic_fact_key": "ledger_semantic_fact_v2_688853034059206a8c2f7478",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2024.published.coicop_11.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2024.published.coicop_11.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -3863,7 +3863,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2024.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2024.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_11",
         "table_record_kind": "detail"
@@ -3881,18 +3881,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 182600000000
+      "value": 168609000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_017640e890c0d4542c4e318f",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7904e662b8c651f09db4cda8",
       "semantic_fact_key": "ledger_semantic_fact_v2_ec80ee0fd14e794642f430f8",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2024.published.coicop_12.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2024.published.coicop_12.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -3916,7 +3916,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2024.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2024.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_12",
         "table_record_kind": "detail"
@@ -3934,18 +3934,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 212004000000
+      "value": 216114000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_be49a987c62579a9fcb89886",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4aaa632ca88a5ce731fca722",
       "semantic_fact_key": "ledger_semantic_fact_v2_13228714785f6dc459e4963f",
-      "source_record_id": "ons.consumer_trends.expanded_12cn.cy2024.published.coicop_12_6_1.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_12cn.cy2024.published.coicop_12_6_1.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -3969,7 +3969,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_12cn.cy2024.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_12cn.cy2024.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_12_6_1",
         "table_record_kind": "detail"
@@ -3987,18 +3987,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
       "value": 55794000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_9cf45d098c7b6040db848411",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c0c11fcb52a57cac2370a700",
       "semantic_fact_key": "ledger_semantic_fact_v2_b5926c7e5559ecea14c0a022",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2024.published.national.coicop_nat0.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2024.published.national.coicop_nat0.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -4022,7 +4022,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2024.published.national",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2024.published.national",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_nat0",
         "table_record_kind": "detail"
@@ -4040,18 +4040,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 1699387000000
+      "value": 1708930000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_ed792b8fd35240decb2a8cf1",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_34ceb1b08d281e77e5eb07b1",
       "semantic_fact_key": "ledger_semantic_fact_v2_684d36f2bed3831081724975",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2025.published.coicop_0.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2025.published.coicop_0.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -4075,7 +4075,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2025.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2025.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_0",
         "table_record_kind": "detail"
@@ -4093,18 +4093,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 1762970000000
+      "value": 1766604000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_1faaa0418f29a4a141a6622a",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_90363cf103e69d271378f934",
       "semantic_fact_key": "ledger_semantic_fact_v2_cc38678c03000ed594a430ac",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2025.published.coicop_01.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2025.published.coicop_01.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -4128,7 +4128,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2025.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2025.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_01",
         "table_record_kind": "detail"
@@ -4146,18 +4146,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 148165000000
+      "value": 160360000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_5e5a13e6602c1a5422627bf0",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_833b21ca88e22993441726b2",
       "semantic_fact_key": "ledger_semantic_fact_v2_118e178c8dd2e668559c913b",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2025.published.coicop_02.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2025.published.coicop_02.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -4181,7 +4181,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2025.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2025.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_02",
         "table_record_kind": "detail"
@@ -4199,18 +4199,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 52880000000
+      "value": 47251000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_61fb174b349f577248108ed2",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ae4b921d48b44da1b5210e7b",
       "semantic_fact_key": "ledger_semantic_fact_v2_1a75184724794d7fa16f9825",
-      "source_record_id": "ons.consumer_trends.expanded_02cn.cy2025.published.coicop_02_3.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_02cn.cy2025.published.coicop_02_3.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -4234,7 +4234,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_02cn.cy2025.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_02cn.cy2025.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_02_3",
         "table_record_kind": "detail"
@@ -4252,18 +4252,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 3058000000
+      "value": 2911000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_8bdd83499c4b6b67e3ce08fd",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2f71542fe17e8b77ee53f26a",
       "semantic_fact_key": "ledger_semantic_fact_v2_09a8fea16cdceb56a1b499ed",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2025.published.coicop_03.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2025.published.coicop_03.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -4287,7 +4287,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2025.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2025.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_03",
         "table_record_kind": "detail"
@@ -4305,18 +4305,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 82340000000
+      "value": 81042000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_715ba2476efc3e5594aff863",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_588bd05e4db3097303a7ddd4",
       "semantic_fact_key": "ledger_semantic_fact_v2_50e5556b8b35f7d427f6c3ce",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2025.published.coicop_04.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2025.published.coicop_04.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -4340,7 +4340,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2025.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2025.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_04",
         "table_record_kind": "detail"
@@ -4358,18 +4358,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 486444000000
+      "value": 491873000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_5a7a7ff5326cedc65125f71d",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_380718aa4a57961a1338ba24",
       "semantic_fact_key": "ledger_semantic_fact_v2_01598fb8c6a0098a8e97faaf",
-      "source_record_id": "ons.consumer_trends.expanded_04cn.cy2025.published.coicop_04_2.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_04cn.cy2025.published.coicop_04_2.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -4393,7 +4393,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_04cn.cy2025.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_04cn.cy2025.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_04_2",
         "table_record_kind": "detail"
@@ -4411,18 +4411,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 313154000000
+      "value": 312051000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_b87304a6051c5c0a917800ad",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_516e7ee4d04f77f73473a5bf",
       "semantic_fact_key": "ledger_semantic_fact_v2_bb9df930ed3545099a7e4354",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2025.published.coicop_05.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2025.published.coicop_05.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -4446,7 +4446,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2025.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2025.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_05",
         "table_record_kind": "detail"
@@ -4464,18 +4464,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 75906000000
+      "value": 77735000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_d08711c664e4d83374c451df",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3a806e75d5b78508320d920b",
       "semantic_fact_key": "ledger_semantic_fact_v2_7cc09b839827a1ddf5de094a",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2025.published.coicop_06.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2025.published.coicop_06.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -4499,7 +4499,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2025.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2025.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_06",
         "table_record_kind": "detail"
@@ -4517,18 +4517,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 35880000000
+      "value": 36129000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_198f412cb804cefeeb26fadb",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_31867c2177996fbf9e17c855",
       "semantic_fact_key": "ledger_semantic_fact_v2_8e62f055806fa3a9ab5aeb50",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2025.published.coicop_07.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2025.published.coicop_07.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -4552,7 +4552,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2025.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2025.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_07",
         "table_record_kind": "detail"
@@ -4570,18 +4570,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 223393000000
+      "value": 230894000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_9a375187cea82a8be5420b30",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_41ac1ed45df0aa6274d42426",
       "semantic_fact_key": "ledger_semantic_fact_v2_c20c7cbc943743239a668c49",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2025.published.coicop_08.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2025.published.coicop_08.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -4605,7 +4605,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2025.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2025.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_08",
         "table_record_kind": "detail"
@@ -4623,18 +4623,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 31619000000
+      "value": 30511000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_b3c1ad05ca7f31c8829cd5c8",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8e68a20cd9471450620a02c3",
       "semantic_fact_key": "ledger_semantic_fact_v2_fa66b21a89f9d80a390ea539",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2025.published.coicop_09.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2025.published.coicop_09.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -4658,7 +4658,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2025.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2025.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_09",
         "table_record_kind": "detail"
@@ -4676,18 +4676,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 171605000000
+      "value": 169961000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_ce5d57216c3b28fe662c6ea3",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_38b6b241ae8a6b3cd5673d76",
       "semantic_fact_key": "ledger_semantic_fact_v2_ba85efbaeaf0e090a7f74be9",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2025.published.coicop_10.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2025.published.coicop_10.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -4711,7 +4711,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2025.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2025.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_10",
         "table_record_kind": "detail"
@@ -4729,18 +4729,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 46028000000
+      "value": 44709000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_6a56cddb7d8e27dc81935c05",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a553958d3dd3e51ce5fd2800",
       "semantic_fact_key": "ledger_semantic_fact_v2_edfe814e6e1fb80420706dbf",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2025.published.coicop_11.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2025.published.coicop_11.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -4764,7 +4764,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2025.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2025.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_11",
         "table_record_kind": "detail"
@@ -4782,18 +4782,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 192883000000
+      "value": 176373000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_77a94b7cb65deb219d254195",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_99c6415f12703254800a7cc5",
       "semantic_fact_key": "ledger_semantic_fact_v2_76307839c9a823112fa8bcd4",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2025.published.coicop_12.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2025.published.coicop_12.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -4817,7 +4817,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2025.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2025.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_12",
         "table_record_kind": "detail"
@@ -4835,18 +4835,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 215827000000
+      "value": 219766000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_b7d4f70b6cada2419c81a171",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_81d2b55d2d3c4b9e9b47953a",
       "semantic_fact_key": "ledger_semantic_fact_v2_62f82c0a4b5cef35953abd2b",
-      "source_record_id": "ons.consumer_trends.expanded_12cn.cy2025.published.coicop_12_6_1.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_12cn.cy2025.published.coicop_12_6_1.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -4870,7 +4870,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_12cn.cy2025.published",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_12cn.cy2025.published",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_12_6_1",
         "table_record_kind": "detail"
@@ -4888,18 +4888,18 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 56934000000
+      "value": 56931000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_a033855d0326c275f294e556",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7d002ae45e2bdccf8e7750cc",
       "semantic_fact_key": "ledger_semantic_fact_v2_c247000f9965d60f2ae14aff",
-      "source_record_id": "ons.consumer_trends.expanded_0cn.cy2025.published.national.coicop_nat0.expenditure",
+      "source_record_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2025.published.national.coicop_nat0.expenditure",
       "concept": "ons.household_final_consumption_expenditure",
       "measure_id": "expenditure",
       "unit": "gbp",
@@ -4923,7 +4923,7 @@
         "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.consumer_trends.expanded_0cn.cy2025.published.national",
+        "record_set_id": "ons.consumer_trends_2026_09.expanded_0cn.cy2025.published.national",
         "groupby_dimension": "ons.coicop",
         "groupby_value_id": "coicop_nat0",
         "table_record_kind": "detail"
@@ -4941,13 +4941,13 @@
       },
       "source": {
         "source_name": "ons",
-        "source_table": "Consumer Trends current price, not seasonally adjusted, 0CN, 01CN-12CN and TOURCN",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, 30 September 2026 release, 0CN, 01CN-12CN and TOURCN",
         "source_file": "cpnsa.xlsx",
-        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
-        "vintage": "2026_06_30_release_2026_q1",
-        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+        "source_sha256": "982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df",
+        "vintage": "2026_09_30_release_2026_q2",
+        "raw_r2_key": "raw/uk/ons/ons-consumer-trends-current-price-september-2026/2026/982307e5fd2a790bf2821df8d920ed708cef55f04dd5d64a2ca2b618674cf7df/cpnsa.xlsx"
       },
-      "value": 1776550000000
+      "value": 1782389000000
     }
   ]
 }

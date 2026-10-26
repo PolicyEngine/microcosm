@@ -464,6 +464,7 @@
       "mhclg.council_tax_stock.band_f": "mhclg.council_tax_stock",
       "mhclg.council_tax_stock.band_g": "mhclg.council_tax_stock",
       "mhclg.council_tax_stock.band_h": "mhclg.council_tax_stock",
+      "mhclg.council_tax_stock.single_adult_discount": "mhclg.council_tax_stock",
       "mhclg.council_tax_stock.total": "mhclg.council_tax_stock",
       "microcosm.high_value_homes.over_1_5m_by_region": "microcosm.high_value_homes",
       "microcosm.high_value_homes.over_1m_by_region": "microcosm.high_value_homes",
@@ -472,6 +473,8 @@
       "nithc.public_transport_support": "nithc.public_transport_finances",
       "nrs.households.scotland": "ons.household_composition",
       "obr.attendance_allowance": "obr.efo_expenditure",
+      "obr.beer_and_cider_duties": "obr.efo_receipts",
+      "obr.betting_and_gaming_duties": "obr.efo_receipts",
       "obr.carers_allowance": "obr.efo_expenditure",
       "obr.child_benefit": "obr.efo_expenditure",
       "obr.council_tax": "obr.efo_expenditure",
@@ -486,12 +489,13 @@
       "obr.pension_credit": "obr.efo_expenditure",
       "obr.pip": "obr.efo_expenditure",
       "obr.sdlt": "obr.efo_receipts",
+      "obr.spirits_duties": "obr.efo_receipts",
       "obr.statutory_maternity_pay": "obr.efo_expenditure",
+      "obr.tobacco_duties": "obr.efo_receipts",
       "obr.tv_licence_fee": "obr.efo_expenditure",
       "obr.universal_credit": "obr.efo_expenditure",
-      "obr.universal_credit_in_cap": "obr.efo_expenditure",
-      "obr.universal_credit_outside_cap": "obr.efo_expenditure",
       "obr.vat": "obr.efo_receipts",
+      "obr.wine_duties": "obr.efo_receipts",
       "obr.winter_fuel_allowance": "obr.efo_expenditure",
       "ons.household_composition.couple_3_plus_children_households": "ons.household_composition",
       "ons.household_composition.couple_no_children_households": "ons.household_composition",
@@ -600,7 +604,6 @@
       "slc.repayments.england_plan_1": "slc.repayments",
       "slc.repayments.england_plan_2": "slc.repayments",
       "slc.repayments.england_plan_5": "slc.repayments",
-      "slc.repayments.england_postgraduate": "slc.repayments",
       "slc.repayments.england_total_higher_education": "slc.repayments",
       "slc.support.adult_dependants_grant_recipients": "slc.student_support",
       "slc.support.adult_dependants_grant_spend": "slc.student_support",
@@ -832,6 +835,7 @@
       "mhclg.council_tax_stock.band_f": "Band f",
       "mhclg.council_tax_stock.band_g": "Band g",
       "mhclg.council_tax_stock.band_h": "Band h",
+      "mhclg.council_tax_stock.single_adult_discount": "Single adult discount",
       "mhclg.council_tax_stock.total": "Total",
       "microcosm.high_value_homes.over_1_5m_by_region": "Owner-occupied homes valued over \u00a31.5 million by region",
       "microcosm.high_value_homes.over_1m_by_region": "Owner-occupied homes valued over \u00a31 million by region",
@@ -840,6 +844,8 @@
       "nithc.public_transport_support": "Bus and rail support",
       "nrs.households.scotland": "Households, Scotland (NRS)",
       "obr.attendance_allowance": "Attendance allowance",
+      "obr.beer_and_cider_duties": "Beer and cider duties (accrued)",
+      "obr.betting_and_gaming_duties": "Betting and gaming duties",
       "obr.carers_allowance": "Carers allowance",
       "obr.child_benefit": "Child benefit",
       "obr.council_tax": "Council tax",
@@ -854,12 +860,13 @@
       "obr.pension_credit": "Pension credit",
       "obr.pip": "Personal Independence Payment",
       "obr.sdlt": "Stamp Duty Land Tax",
+      "obr.spirits_duties": "Spirits duties (accrued)",
       "obr.statutory_maternity_pay": "Statutory maternity pay",
+      "obr.tobacco_duties": "Tobacco duties",
       "obr.tv_licence_fee": "TV licence fee",
       "obr.universal_credit": "Universal Credit expenditure",
-      "obr.universal_credit_in_cap": "Universal Credit inside the benefit cap",
-      "obr.universal_credit_outside_cap": "Universal Credit outside the benefit cap",
       "obr.vat": "VAT",
+      "obr.wine_duties": "Wine duties (accrued)",
       "obr.winter_fuel_allowance": "Winter fuel allowance",
       "ons.household_composition.couple_3_plus_children_households": "Couple 3 plus children households",
       "ons.household_composition.couple_no_children_households": "Couple no children households",
@@ -968,7 +975,6 @@
       "slc.repayments.england_plan_1": "England plan 1",
       "slc.repayments.england_plan_2": "England plan 2",
       "slc.repayments.england_plan_5": "England plan 5",
-      "slc.repayments.england_postgraduate": "England postgraduate",
       "slc.repayments.england_total_higher_education": "England total higher education",
       "slc.support.adult_dependants_grant_recipients": "Adult dependants grant recipients",
       "slc.support.adult_dependants_grant_spend": "Adult dependants grant spend",
@@ -1397,46 +1403,6 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "obr.tv_licence_fee",
-        "measure_kind": "prepared_column"
-      },
-      "assertion_policy": "allow_source_projection",
-      "value_operation": "calendar_year_window"
-    },
-    {
-      "name": "obr.universal_credit_in_cap",
-      "ledger_selector": {
-        "source_name": "obr",
-        "source_concept": "obr.universal_credit_in_cap",
-        "entity_name": "person",
-        "geography_level": "country",
-        "geography_id": "K03000001"
-      },
-      "entity": "benunit",
-      "measure": "obr/universal_credit_in_cap",
-      "family": "obr",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "obr.universal_credit_in_cap",
-        "measure_kind": "prepared_column"
-      },
-      "assertion_policy": "allow_source_projection",
-      "value_operation": "calendar_year_window"
-    },
-    {
-      "name": "obr.universal_credit_outside_cap",
-      "ledger_selector": {
-        "source_name": "obr",
-        "source_concept": "obr.universal_credit_outside_cap",
-        "entity_name": "person",
-        "geography_level": "country",
-        "geography_id": "K03000001"
-      },
-      "entity": "benunit",
-      "measure": "obr/universal_credit_outside_cap",
-      "family": "obr",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "obr.universal_credit_outside_cap",
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection",
@@ -5501,7 +5467,7 @@
         "geography_level": "country",
         "geography_id": "K03000001"
       },
-      "entity": "household",
+      "entity": "benunit",
       "measure": "dwp/benefit_capped_households",
       "family": "dwp_benefit_cap",
       "period": 2025,
@@ -23711,29 +23677,6 @@
       "value_operation": "sum"
     },
     {
-      "name": "slc.repayments.england_postgraduate",
-      "ledger_selector": {
-        "source_name": "slc",
-        "groupby_dimension": "slc.repayment_plan",
-        "source_measure_id": [
-          "plan_3_postgraduate_masters",
-          "plan_3_postgraduate_doctoral"
-        ],
-        "entity_name": "person",
-        "geography_level": "country",
-        "geography_id": "E92000001"
-      },
-      "entity": "person",
-      "measure": "slc/student_loan_repayment/england/postgraduate",
-      "family": "slc_repayments",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "slc.repayments.england_postgraduate",
-        "measure_kind": "prepared_column"
-      },
-      "value_operation": "sum"
-    },
-    {
       "name": "slc.repayments.england_plan_5",
       "ledger_selector": {
         "source_name": "slc",
@@ -24866,6 +24809,148 @@
         "source_period_policy": "exact_observation"
       },
       "value_operation": "sum",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "obr.beer_and_cider_duties",
+      "ledger_selector": {
+        "source_name": "obr",
+        "source_concept": "obr.beer_and_cider_duties",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "period_value": 2024,
+        "dimension_values": {
+          "accounting_basis": "accrual"
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "household",
+      "measure": "obr/beer_and_cider_duties",
+      "family": "obr",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "obr.beer_and_cider_duties",
+        "measure_kind": "prepared_column",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "sum",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "obr.wine_duties",
+      "ledger_selector": {
+        "source_name": "obr",
+        "source_concept": "obr.wine_duties",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "period_value": 2024,
+        "dimension_values": {
+          "accounting_basis": "accrual"
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "household",
+      "measure": "obr/wine_duties",
+      "family": "obr",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "obr.wine_duties",
+        "measure_kind": "prepared_column",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "sum",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "obr.spirits_duties",
+      "ledger_selector": {
+        "source_name": "obr",
+        "source_concept": "obr.spirits_duties",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "period_value": 2024,
+        "dimension_values": {
+          "accounting_basis": "accrual"
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "household",
+      "measure": "obr/spirits_duties",
+      "family": "obr",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "obr.spirits_duties",
+        "measure_kind": "prepared_column",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "assertion_policy": "allow_source_projection",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "obr.tobacco_duties",
+      "ledger_selector": {
+        "source_name": "obr",
+        "source_concept": "obr.tobacco_duties",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "period_value": 2024,
+        "dimension_values": {
+          "accounting_basis": "cash"
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "household",
+      "measure": "obr/tobacco_duties",
+      "family": "obr",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "obr.tobacco_duties",
+        "measure_kind": "prepared_column",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "assertion_policy": "allow_source_projection",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "obr.betting_and_gaming_duties",
+      "ledger_selector": {
+        "source_name": "obr",
+        "source_concept": "obr.betting_and_gaming_duties",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "period_value": 2024,
+        "dimension_values": {
+          "accounting_basis": "cash"
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "household",
+      "measure": "obr/betting_and_gaming_duties",
+      "family": "obr",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "obr.betting_and_gaming_duties",
+        "measure_kind": "prepared_column",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "assertion_policy": "allow_source_projection",
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -47602,6 +47687,27 @@
         "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_WEST\",\"variable\":\"region\"}",
         "cross_grain_grain": "region"
       }
+    },
+    {
+      "name": "mhclg.council_tax_stock.single_adult_discount",
+      "ledger_selector": {
+        "source_name": "mhclg",
+        "source_concept": "mhclg.council_taxbase.single_adult_discount_dwellings",
+        "source_measure_id": "total",
+        "layout_groupby_value_id": "e92000001",
+        "geography_level": "country",
+        "geography_id": "E92000001"
+      },
+      "entity": "household",
+      "measure": "mhclg/council_tax/single_adult_discount",
+      "family": "council_tax_stock",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "mhclg.council_tax_stock.single_adult_discount",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2025-10",
+      "uprating_to_period": 2025
     }
   ]
 }

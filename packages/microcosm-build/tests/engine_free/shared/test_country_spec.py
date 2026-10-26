@@ -940,6 +940,8 @@ class TestUKCountryPackage:
             "hmrc_uprating_engine_pins.json",
             "advani_summers_capital_gains_distribution.json",
             "salary_sacrifice_anchor.json",
+            "bonus_sacrifice_anchor.json",
+            "obr_salary_sacrifice_costing_facts.json",
             "slc_liable_stocks.json",
             "hmrc_income_release_gate_report.json",
             "hmrc_income_replay_report.json",
@@ -1010,6 +1012,8 @@ class TestUKCountryPackage:
             "orr_rail_facts.json",
             "ons_household_expenditure_facts.json",
             "desnz_road_fuel_by_vehicle.json",
+            "excise_facts.json",
+            "gambling_participation_facts.json",
             "dft_bus_journeys.json",
             "nts_trip_rates.json",
             "nts_car_availability.json",
@@ -1092,6 +1096,8 @@ class TestExistingPackagesGeneralize:
             "hmrc_uprating_engine_pins.json",
             "advani_summers_capital_gains_distribution.json",
             "salary_sacrifice_anchor.json",
+            "bonus_sacrifice_anchor.json",
+            "obr_salary_sacrifice_costing_facts.json",
             "slc_liable_stocks.json",
             "hmrc_income_release_gate_report.json",
             "hmrc_income_replay_report.json",
@@ -1162,6 +1168,8 @@ class TestExistingPackagesGeneralize:
             "orr_rail_facts.json",
             "ons_household_expenditure_facts.json",
             "desnz_road_fuel_by_vehicle.json",
+            "excise_facts.json",
+            "gambling_participation_facts.json",
             "dft_bus_journeys.json",
             "nts_trip_rates.json",
             "nts_car_availability.json",
@@ -1178,8 +1186,8 @@ class TestExistingPackagesGeneralize:
 
         references = {reference.name: reference for reference in spec.target_references}
         assert (
-            len(references) == 1338
-        )  # childcare costing fixes: + 5, DfE funded childcare by single age (working parent 9-11 months and 1-3, universal nursery 3; the age-4 cells are signed out); item 6: + 11, the UK's ONS single years 3 to 6 and England's 0 to 6; microcosm#1278: + 3, the ONS single years 0, 1 and 2 for all persons; microcosm#1095: + 4, the two national 15_19 sex bands split into ages 15, 16-17 and 18-19; microcosm#1106: + 13 SPI property amounts; microcosm#1113: + 1 ONS 07.2.2 household road fuel; PolicyEngine/chronicle#280 lane: 705 + 33 HMRC liabilities rows (Table 2.5, three
+            len(references) == 1341
+        )  # microcosm#1359: + 5 OBR excise receipts rows, measured at FY2024-25; microcosm#953: + 1, England's single adult council tax discount; microcosm#1095 (the next policyengine-uk bump): - 3, the OBR welfare-cap split and the England postgraduate repayments retire; childcare costing fixes: + 5, DfE funded childcare by single age (working parent 9-11 months and 1-3, universal nursery 3; the age-4 cells are signed out); item 6: + 11, the UK's ONS single years 3 to 6 and England's 0 to 6; microcosm#1278: + 3, the ONS single years 0, 1 and 2 for all persons; microcosm#1095: + 4, the two national 15_19 sex bands split into ages 15, 16-17 and 18-19; microcosm#1106: + 13 SPI property amounts; microcosm#1113: + 1 ONS 07.2.2 household road fuel; PolicyEngine/chronicle#280 lane: 705 + 33 HMRC liabilities rows (Table 2.5, three
         # measures by eleven bands) + 26 SPI savings-interest rows (two measures by
         # thirteen bands) + 360 SPI Table 3.11 region-tier rows (three measures by
         # ten regional bands over twelve areas); microcosm#905: 424 - 18 country
@@ -1456,6 +1464,8 @@ class TestUKGatesManifest:
             "uk_stage_lcfs_consumption_road_fuel_incidence",
             "uk_stage_lcfs_consumption_road_fuel_level",
             "uk_stage_lcfs_consumption_recomposed_totals",
+            "uk_stage_lcfs_consumption_excise_quantities",
+            "uk_stage_lcfs_consumption_gambling_participation",
             "uk_stage_lcfs_consumption_basis",
             "uk_stage_etb_vat_support",
             "uk_stage_etb_services_support",
@@ -1480,6 +1490,9 @@ class TestUKGatesManifest:
             "uk_stage_student_loans_realization",
             "uk_stage_age_tail_targets",
             "uk_stage_frs_relationships_composition",
+            "uk_stage_regional_home_values_ranking",
+            "uk_stage_property_purchases_fit",
+            "uk_stage_uc_legacy_closure_take_up_contract",
             "uk_release_input_coverage",
             "uk_degenerate_release_surface",
             "uk_zero_weight_strata",
@@ -1581,6 +1594,8 @@ class TestUKGatesManifest:
             "uk_stage_lcfs_consumption_road_fuel_incidence",
             "uk_stage_lcfs_consumption_road_fuel_level",
             "uk_stage_lcfs_consumption_recomposed_totals",
+            "uk_stage_lcfs_consumption_excise_quantities",
+            "uk_stage_lcfs_consumption_gambling_participation",
             "uk_stage_lcfs_consumption_basis",
             "uk_stage_etb_vat_support",
             "uk_stage_etb_services_support",
@@ -1605,6 +1620,9 @@ class TestUKGatesManifest:
             "uk_stage_student_loans_realization",
             "uk_stage_age_tail_targets",
             "uk_stage_frs_relationships_composition",
+            "uk_stage_regional_home_values_ranking",
+            "uk_stage_property_purchases_fit",
+            "uk_stage_uc_legacy_closure_take_up_contract",
             "uk_weights_audit",
             # The #970 projection fence: a seam that cannot project cannot
             # certify the candidate's sub-exempt gainers.
