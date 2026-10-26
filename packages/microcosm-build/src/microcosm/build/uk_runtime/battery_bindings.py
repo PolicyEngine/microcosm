@@ -2269,6 +2269,7 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # The apprentice draw (microcosm#1373).
                 "rate_key",
                 "maximum_relative_realization_deviation",
+                "maximum_implied_relief",
             }
         ),
         artifact_keys=frozenset({"stage_evidence"}),

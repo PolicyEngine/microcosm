@@ -4457,7 +4457,10 @@ def _apprentice_draw_gate(
     flagged), the flagged weight lies within
     ``maximum_relative_realization_deviation`` of the target. A flagged weight
     on fewer than ten source households fails: the receipt withholds it, and a
-    rate realized on so few records would not describe the population.
+    rate realized on so few records would not describe the population. The
+    relief the flags imply at the engine's own Class 1 schedule must stay at or
+    below ``maximum_implied_relief``, HMRC's apprentice relief for every
+    apprentice under 25 (Vahid's review of microcosm#1373, S1).
     """
 
     from microcosm.build.uk_runtime.take_up_contract import load_uk_take_up_contract
@@ -4474,6 +4477,9 @@ def _apprentice_draw_gate(
         raise ValueError(
             f"{stage}: maximum_relative_realization_deviation must be >= 0."
         )
+    ceiling = _finite_number(
+        parameters["maximum_implied_relief"], label=f"{stage}.maximum_implied_relief"
+    )
     rate_key = str(parameters["rate_key"])
     failures: list[str] = []
     if receipt.get("rate_key") != rate_key:
@@ -4567,12 +4573,28 @@ def _apprentice_draw_gate(
                     f"{stage}: the flagged weight is {relative:.4f} of the target "
                     f"away from it, above {tolerance}."
                 )
+    relief = receipt.get("implied_relief")
+    implied: float | None = None
+    if relief is None:
+        failures.append(
+            f"{stage}: the receipt records no implied relief, so the draw cannot be "
+            "held below HMRC's apprentice relief."
+        )
+    elif relief != "<10":
+        implied = _finite_number(relief, label=f"{stage}.implied_relief")
+        if implied > ceiling:
+            failures.append(
+                f"{stage}: the flags imply {implied:,.0f} of relief, above the "
+                f"{ceiling:,.0f} ceiling."
+            )
     details = {
         "rate_key": rate_key,
         "rate": rate,
         "target": target,
         "cap_bound": cap_bound,
         "relative_realization_deviation": relative,
+        "implied_relief": implied,
+        "maximum_implied_relief": ceiling,
     }
     if failures:
         return _fail(stage, check, failures, details)

@@ -3179,6 +3179,7 @@ def _apprentice_receipt(**overrides):
         "flagged_support": "30+",
         "realized_mass": rate * 1_000_000.0 + 500.0,
         "realization_deviation": 500.0,
+        "implied_relief": 200_000_000.0,
     }
     receipt.update(overrides)
     return {"stage": "frs_person_draws", "apprentice_receipt": receipt}
@@ -3213,6 +3214,8 @@ def test_apprentice_gate_holds_the_draw_to_the_contract_rate() -> None:
             "fewer than ten",
         ),
         (_apprentice_receipt(cap_bound=True), "cap_bound is True"),
+        (_apprentice_receipt(implied_relief=400_000_000.0), "above the"),
+        (_apprentice_receipt(implied_relief=None), "no implied relief"),
         (
             _apprentice_receipt(
                 population_support="<10",

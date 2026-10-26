@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from microcosm.build.stochastic_assignment import stable_identity_uniforms
+from microcosm.build.uk_runtime import frs_person_draws
 from microcosm.build.uk_runtime.frs_person_draws import (
     APPRENTICE_OUTPUT,
     APPRENTICE_RATE_KEY,
     UKFRSPersonDrawsStageTransform,
+    apprentice_relief_schedule,
     derive_is_apprentice,
 )
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
@@ -216,7 +220,14 @@ def _two_household_frame(**extra_person_columns):
     )
 
 
-def test_stage_realizes_the_target_at_the_frame_household_weights() -> None:
+@pytest.fixture
+def no_engine(monkeypatch):
+    """Run the stage as the engine-free job does, whatever is installed."""
+
+    monkeypatch.setattr(frs_person_draws, "_installed_uk_system", lambda: None)
+
+
+def test_stage_realizes_the_target_at_the_frame_household_weights(no_engine) -> None:
     stage = UKFRSPersonDrawsStageTransform(contract=_Contract(), stage=None)
 
     stored = stage(_two_household_frame()).table("person")
@@ -244,8 +255,105 @@ def test_stage_has_no_receipt_before_it_runs() -> None:
         stage.checkpoint_metadata()
 
 
-def test_stage_refuses_a_stored_flag() -> None:
+def test_stage_refuses_a_stored_flag(no_engine) -> None:
     frame = _two_household_frame(is_apprentice=False)
 
     with pytest.raises(ValueError, match="already stored"):
         UKFRSPersonDrawsStageTransform(contract=_Contract(), stage=None)(frame)
+
+
+_SCHEDULE = {
+    "period": 2024,
+    "rate": 0.138,
+    "secondary_threshold": 9_100.0,
+    "apprentice_upper_secondary_threshold": 50_270.0,
+}
+
+
+def test_receipt_records_the_relief_the_flags_imply() -> None:
+    pay = np.array([5_000.0, 20_000.0, 60_000.0] * 4)
+    person = _small([22] * 12, ["FT_EMPLOYED"] * 12).assign(employment_income=pay)
+
+    # Every employee is flagged: a rate of one a head is cap-bound.
+    draw = derive_is_apprentice(person, rate=1.0, relief_schedule=_SCHEDULE)
+
+    assert draw.flags.all()
+    relieved = np.clip(np.minimum(pay, 50_270.0) - 9_100.0, 0.0, None)
+    assert draw.receipt["implied_relief"] == pytest.approx(0.138 * relieved.sum())
+    assert draw.receipt["relief_schedule"] == _SCHEDULE
+
+
+def test_receipt_withholds_a_relief_on_fewer_than_ten_households() -> None:
+    person = _small([22] * 5, ["FT_EMPLOYED"] * 5).assign(employment_income=20_000.0)
+
+    draw = derive_is_apprentice(person, rate=1.0, relief_schedule=_SCHEDULE)
+
+    assert draw.receipt["implied_relief"] == "<10"
+
+
+def test_receipt_records_no_relief_without_a_schedule() -> None:
+    person = _small([22] * 12, ["FT_EMPLOYED"] * 12).assign(employment_income=1.0)
+
+    assert "implied_relief" not in derive_is_apprentice(person, rate=0.5).receipt
+
+
+def _system(*, variables, apprentice_threshold=966.73):
+    thresholds = SimpleNamespace()
+    if apprentice_threshold is not None:
+        thresholds.apprentice_upper_secondary_threshold = apprentice_threshold
+    class_1 = SimpleNamespace(
+        employer_scale=SimpleNamespace(
+            components=[None, SimpleNamespace(rate=0.138, threshold=175.0)]
+        ),
+        thresholds=thresholds,
+    )
+    instants = []
+
+    def parameters(instant):
+        instants.append(instant)
+        return SimpleNamespace(
+            gov=SimpleNamespace(
+                hmrc=SimpleNamespace(
+                    national_insurance=SimpleNamespace(class_1=class_1)
+                )
+            )
+        )
+
+    return SimpleNamespace(
+        variables=dict.fromkeys(variables), parameters=parameters
+    ), instants
+
+
+_SPLIT = ("qualifies_for_apprentice_minimum_wage", "is_in_first_year_of_apprenticeship")
+
+
+def test_schedule_reads_the_engine_at_the_start_of_the_stage_year() -> None:
+    system, instants = _system(variables=_SPLIT)
+
+    schedule = apprentice_relief_schedule(system, "2024")
+
+    assert instants == ["2024-01-01"]
+    assert schedule == {
+        "period": 2024,
+        "rate": 0.138,
+        "secondary_threshold": 175.0 * 52,
+        "apprentice_upper_secondary_threshold": 966.73 * 52,
+    }
+
+
+def test_schedule_is_absent_without_an_engine() -> None:
+    assert apprentice_relief_schedule(None, "2024") is None
+
+
+def test_schedule_refuses_an_engine_without_the_minimum_wage_split() -> None:
+    system, _ = _system(variables=())
+
+    with pytest.raises(ValueError, match="2683"):
+        apprentice_relief_schedule(system, "2024")
+
+
+def test_schedule_refuses_an_engine_without_the_apprentice_threshold() -> None:
+    system, _ = _system(variables=_SPLIT, apprentice_threshold=None)
+
+    with pytest.raises(ValueError, match="apprentice_upper_secondary_threshold"):
+        apprentice_relief_schedule(system, "2024")
