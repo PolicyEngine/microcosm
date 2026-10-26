@@ -302,18 +302,28 @@ def prepare_release(
     """
     release_dir = Path(release_dir)
     if parent_h5 is not None or compatibility_wheels:
+        from microcosm.data.compatibility_recertification import (
+            RECERTIFICATION_RELEASE_TYPE,
+        )
         from microcosm.data.source_enrichment import SOURCE_ENRICHMENT_RELEASE_TYPE
 
         manifest_path = release_dir / "release_manifest.json"
         manifest = (
             json.loads(manifest_path.read_text()) if manifest_path.is_file() else {}
         )
-        if (
-            not isinstance(manifest, Mapping)
-            or manifest.get("release_type") != SOURCE_ENRICHMENT_RELEASE_TYPE
+        release_type = (
+            manifest.get("release_type") if isinstance(manifest, Mapping) else None
+        )
+        # A recertification replays its loader under its tested wheels too,
+        # but its H5 is its parent's, so it takes no parent_h5.
+        if not (
+            release_type == SOURCE_ENRICHMENT_RELEASE_TYPE
+            or (release_type == RECERTIFICATION_RELEASE_TYPE and parent_h5 is None)
         ):
             raise ValueError(
-                "parent_h5 and compatibility_wheels require a source_enrichment release."
+                "parent_h5 and compatibility_wheels require a source_enrichment "
+                "release; compatibility_wheels alone also serve a "
+                "compatibility_recertification release."
             )
     contract_warnings: list[str] = []
     if evidence:
@@ -378,6 +388,18 @@ def prepare_release(
                 "enrichment: a published donor, never the national default "
                 "pointer. Pass update_latest=False (publish CLI: --no-latest, "
                 "with --tag-only to leave main untouched)."
+            )
+        from microcosm.data.compatibility_recertification import is_recertification
+
+        if is_recertification(release_dir):
+            # A recertification republishes its parent's data under a wider
+            # compatibility claim, so it never moves the default pointer as a
+            # side effect; consumers reach it by its release id.
+            raise ValueError(
+                f"release {release_id!r} is a compatibility recertification of "
+                "a published release, never the national default pointer. "
+                "Pass update_latest=False (publish CLI: --no-latest, with "
+                "--tag-only to leave main untouched)."
             )
     if tag_only and update_latest:
         raise ValueError(
@@ -659,6 +681,21 @@ def publish_release(
 
     if api is None:
         api = _hf_api()
+    from microcosm.data.compatibility_recertification import (
+        is_recertification,
+        require_parent_publication,
+    )
+
+    if is_recertification(prepared.release_dir):
+        # The offline gates proved the child against the parent manifest it
+        # carries; only the Hub can say that manifest is the published one.
+        # Checked before any branch, commit or upload.
+        require_parent_publication(
+            api,
+            prepared.release_dir,
+            repo_id=repo_id,
+            artifact_root=prepared.artifact_root,
+        )
     if evidence:
         payload = latest_evidence_pointer_payload(
             release_id,

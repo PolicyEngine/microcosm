@@ -25,14 +25,18 @@ from microcosm.frame.concept_mapping import (
 )
 from microcosm.frame.concepts import AlignmentRelation
 
-__all__ = ["POLICYENGINE_UK_CONCEPT_MAPPING", "UK_ENGINE_DEFAULT_TAKE_UP_INPUTS"]
+__all__ = [
+    "POLICYENGINE_UK_CONCEPT_MAPPING",
+    "UK_ENGINE_DEFAULT_INPUTS",
+    "UK_ENGINE_DEFAULT_TAKE_UP_INPUTS",
+]
 
 # ---------------------------------------------------------------------------
 # Concept mapping
 # ---------------------------------------------------------------------------
 #
 # Which PolicyEngine-UK inputs each engine-neutral concept feeds
-# (microcosm.frame.concepts), reviewed against policyengine-uk 2.134.4. Every
+# (microcosm.frame.concepts), reviewed against policyengine-uk 2.151.0. Every
 # target is a pure input (in ``PolicyEngineUKEngine.variables``). The UK
 # loader also accepts some formula-owned variables as overrides
 # (``employment_income``, ``state_pension_reported``, ``is_household_head``);
@@ -185,6 +189,36 @@ _UK_TAKE_UP_EVIDENCE: dict[str, tuple[str, str]] = {
 UK_ENGINE_DEFAULT_TAKE_UP_INPUTS: dict[str, str] = {}
 
 
+#: Other engine inputs the build leaves at the engine's default, each signed as
+#: an approximation with the error it can make (microcosm#1095).
+UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
+    "self_employment_gross_receipts": (
+        "No source of the self-employed's turnover is read yet (the FRS job "
+        "record and the SPI tape are the candidates, as #1145 found landlords' "
+        "receipts). Since policyengine-uk 2.108.0 the trading allowance replaces "
+        "expenses and does not stack on them, so without receipts "
+        "trading_allowance_deduction relieves a profit of GBP 1,000 or less in "
+        "full and gives a larger profit no allowance. Taxable profit is off by at "
+        "most GBP 1,000 a person: too low where receipts above GBP 1,000 leave a "
+        "small profit, too high just above GBP 1,000 where the allowance would "
+        "beat the expenses. Signed as an approximation with the plan for the "
+        "next policyengine-uk bump, approved on 2026-10-23."
+    ),
+    "housing_benefit_residential_capital_exception": (
+        "The working-age residential capital tariff exception (Housing Benefit "
+        "Regulations 2006 reg. 52(4)-(5), (8)-(9); NI reg. 49) covers residents "
+        "of the residential accommodation and saved circumstances it lists, and "
+        "policyengine-uk 2.148.4 asks for it pre-assessed. The FRS samples "
+        "private households, so it holds almost no such resident, and it records "
+        "no assessment of the circumstances, so the input stays False. A "
+        "qualifying working-age resident takes tariff income on capital above "
+        "GBP 6,000 instead of GBP 10,000, so Housing Benefit is understated for "
+        "such residents alone; eligibility, capital and the upper limit do not "
+        "move (Vahid's review of #1383, item 4)."
+    ),
+}
+
+
 def _uk_take_up(program: str, entity: str) -> InputBinding:
     person = entity == "person"
     documentation, build = _UK_TAKE_UP_EVIDENCE[program]
@@ -206,7 +240,7 @@ def _uk_take_up(program: str, entity: str) -> InputBinding:
 
 POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
     engine="policyengine-uk",
-    engine_version="2.134.4",
+    engine_version="2.151.0",
     entity_correspondence={"person": "person", "household": "household"},
     input_declaration=InputDeclaration.ENGINE_TYPED,
     bindings=(
@@ -575,22 +609,31 @@ POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
             "describe a company the person owns, for Universal Credit's "
             "regulation 77 (owned_company_capital, owned_company_holding_value "
             "and owned_company_trade_assets); every one defaults to no such "
-            "company, and the build sets none. savings and corporate_wealth are two of "
-            "Universal Credit's capital sources "
-            "(gov.dwp.universal_credit.means_test.capital.sources), and "
+            "company, and the build sets none. savings and share_like_capital are two "
+            "of Universal Credit's capital sources "
+            "(gov.dwp.universal_credit.means_test.capital.sources); since "
+            "policyengine-uk 2.147.0 share_like_capital is corporate_wealth unless "
+            "its components, the household inputs directly_held_shares and "
+            "unit_and_investment_trusts, add up to more; the WAS stage writes "
+            "both on its corporate_wealth less the stocks-and-shares ISA, so "
+            "they and the ISA sum to it (microcosm#1095). Universal Credit's "
+            "one person-level source is "
             "lifetime_isa_countable_capital, the Lifetime ISA at its surrender "
-            "value, is its one person-level source (capital.person_sources). "
+            "value (capital.person_sources). "
             "uc_reported_capital (benefit unit, default -1) is Universal "
-            "Credit capital. It is formula-owned since policyengine-uk 2.124.0: "
-            "unless set directly it is benunit_reported_capital, a benefit-unit "
-            "input ('Savings and investments of the benefit unit's adults (the "
-            "claimant and any partner) as recorded'). When it is zero or more, "
-            "uc_assessable_capital takes it in place of both the "
-            "household-capital proxy it otherwise sums from the household "
-            "sources, net of capital other benefit units report, and "
-            "apportions by claimant and partner count, and the person-level "
-            "sources of the unit's claimant and partner, so feeding it would be "
-            "a modelling choice for a UK build, not a mapping of this concept."
+            "Credit capital; since policyengine-uk 2.136.1 a value of zero or "
+            "more set directly is the unit's complete countable capital, in "
+            "place of every source, property included. benunit_reported_capital, "
+            "a benefit-unit input ('Savings and investments of the benefit "
+            "unit's adults (the claimant and any partner) as recorded'), "
+            "replaces the financial sources only: the household pool it "
+            "otherwise sums from the household sources, net of what other "
+            "benefit units report or override, and apportions by claimant and "
+            "partner count, and the person-level sources of the unit's "
+            "claimant and partner. Property is valued separately "
+            "(uc_property_capital) and shared across every claimant and "
+            "partner in the household. Feeding either would be a modelling "
+            "choice for a UK build, not a mapping of this concept."
         ),
         "fact:person.public_pension_income": (
             "The State Pension is computed from state_pension_reported, which "

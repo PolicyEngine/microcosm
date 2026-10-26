@@ -5,7 +5,7 @@ from test_support.microcosm_build.uk_spi_income import *
 
 
 def test_spi_disability_refresh_reuses_frs_derivation_for_spi_people() -> None:
-    weeks = 365.25 / 7
+    weeks = 52
     person = pd.DataFrame(
         {
             "attendance_allowance_reported": [0.0, 19 * weeks, 0.0],
@@ -324,6 +324,67 @@ def test_spi_uc_start_up_period_holds_only_while_the_row_stays_self_employed() -
     assert "uc_is_in_startup_period" not in spi_income._refresh_uc_start_up_period(
         bare, spi_people=pd.Series([True], index=[1])
     )
+
+
+def test_a_drawn_rows_annual_income_descriptors_follow_its_drawn_incomes() -> None:
+    """Tape income is the tax year's; a twin's spell stays only beside no draw."""
+
+    person = pd.DataFrame(
+        {
+            # Row 10 drew pay, row 20 drew a record with neither pay nor
+            # profit, row 30 drew a profit only, row 40 is an undrawn copy and
+            # row 50 a base row; the last two keep their descriptors.
+            "employment_income": [30_000.0, 0.0, 0.0, 0.0, 18_000.0],
+            "self_employment_income": [0.0, 0.0, 12_000.0, 0.0, 0.0],
+            "employment_income_annual_share": [0.5, 1.0, 1.0, 0.5, 0.25],
+            "employment_income_other_spells": [4_000.0, 5_000.0, 2_000.0, 6_000.0, 0.0],
+            "self_employment_income_annual_share": [1.0, 1.0, 0.5, 1.0, 1.0],
+            "self_employment_income_other_spells": [0.0, 1_000.0, 3_000.0, 0.0, 0.0],
+            "private_pension_income_annual_share": [1.0, 0.4, 1.0, 0.4, 1.0],
+            "contributory_benefits_annual_share": [1.0, 0.6, 1.0, 0.6, 1.0],
+        },
+        index=[10, 20, 30, 40, 50],
+    )
+    spi_people = pd.Series([True, True, True, False, False], index=person.index)
+
+    result = spi_income._refresh_annual_income_descriptors(
+        person.copy(), spi_people=spi_people
+    )
+
+    for column in (
+        "employment_income_annual_share",
+        "self_employment_income_annual_share",
+        "private_pension_income_annual_share",
+        "contributory_benefits_annual_share",
+    ):
+        assert result[column].tolist()[:3] == [1.0, 1.0, 1.0], column
+        assert result[column].tolist()[3:] == person[column].tolist()[3:], column
+    assert result["employment_income_other_spells"].tolist() == [
+        0.0,
+        5_000.0,
+        2_000.0,
+        6_000.0,
+        0.0,
+    ]
+    assert result["self_employment_income_other_spells"].tolist() == [
+        0.0,
+        1_000.0,
+        0.0,
+        0.0,
+        0.0,
+    ]
+    assert result["employment_income"].tolist() == person["employment_income"].tolist()
+    bare = pd.DataFrame({"employment_income": [0.0]}, index=[1])
+    assert list(
+        spi_income._refresh_annual_income_descriptors(
+            bare, spi_people=pd.Series([True], index=[1])
+        ).columns
+    ) == ["employment_income"]
+    with pytest.raises(ValueError, match="only some annual income descriptors"):
+        spi_income._refresh_annual_income_descriptors(
+            person.drop(columns="contributory_benefits_annual_share"),
+            spi_people=spi_people,
+        )
 
 
 def test_finite_numeric_diagnostic_names_columns_and_counts() -> None:

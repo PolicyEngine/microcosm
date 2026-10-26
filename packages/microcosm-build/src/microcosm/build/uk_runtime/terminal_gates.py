@@ -220,6 +220,34 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     # older engine ignores the column; the incumbent does not carry it yet
     # (uk-data#539).
     "household.uses_energy_prepayment_meter",
+    # microcosm#1359: the LCFS excise step's policyengine-uk inputs (the
+    # alcohol and tobacco ones from 2.145.0, the gambling duty bases from
+    # 2.151.0); an older engine ignores a column it does not know, and the
+    # incumbent carries none of them.
+    "household.beer_litres",
+    "household.cider_litres",
+    "household.wine_litres",
+    "household.spirits_litres",
+    "household.other_fermented_litres",
+    "household.beer_draught_share",
+    "household.cider_draught_share",
+    "household.cigarettes_per_week",
+    "household.hand_rolling_tobacco_grams_per_week",
+    "household.cigars_grams_per_week",
+    "household.other_tobacco_grams_per_week",
+    "household.remote_gaming_net_losses",
+    "household.pool_betting_net_receipts",
+    "household.bingo_net_receipts",
+    "household.national_lottery_ticket_spending",
+    "household.land_based_casino_net_losses",
+    "household.machine_games_lower_rate_net_takings",
+    "household.machine_games_standard_rate_net_takings",
+    "household.machine_games_higher_rate_net_takings",
+    "household.land_based_fixed_odds_betting_net_losses",
+    "household.remote_uk_horseracing_betting_net_losses",
+    "household.remote_other_betting_net_losses",
+    "household.betting_exchange_commission",
+    "household.horse_and_dog_pool_betting_net_losses",
     "household.household_is_capital_gains_clone",
     "household.household_is_cgt_support_copy",
     "household.household_is_spi_income_band_donor",
@@ -269,6 +297,12 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.dla_m_category",
     "person.dla_sc_category",
     "person.employment_sector",
+    "person.contributory_benefits_annual_share",
+    "person.employment_income_annual_share",
+    "person.employment_income_other_spells",
+    "person.private_pension_income_annual_share",
+    "person.self_employment_income_annual_share",
+    "person.self_employment_income_other_spells",
     "person.esa_health_condition_proxy",
     "person.esa_includes_support_component",
     "person.esa_support_group_proxy",
@@ -323,6 +357,7 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.would_claim_carers_allowance",
     "person.would_claim_marriage_allowance",
     "person.would_claim_scp",
+    "person.max_free_entitlement_hours_used",
     "person.person_is_spi_income_band_carrier",
     "person.person_is_spi_income_recipient",
     # microcosm#1063 c9 (ruling 2026-10-02): every declared stage output the
@@ -391,6 +426,31 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "household.itl2_code",
     "household.itl3_code",
     "household.ward_code",
+    # War Widow's or Widower's Pension, split out of bsp_reported (#1222,
+    # pe-uk#2382). The enhanced FRS still adds FRS benefit code 9 into
+    # bsp_reported, so its surface has no such input.
+    "person.war_widows_pension_reported",
+    # Widowed Parent's Allowance, split out of FRS code 6 by rate (#1222,
+    # pe-uk#2572). The enhanced FRS keeps the whole code in bsp_reported.
+    "person.widowed_parents_allowance_reported",
+    # Spousal maintenance (ALIAMT or ALUAMT, and APAMT; #1320, pe-uk#2572).
+    # The enhanced FRS reads no alimony and keeps APAMT a private transfer.
+    "person.spousal_maintenance_income",
+    # Bonus sacrifice (#1340, pe-uk#2572 section 1): the enhanced FRS carries
+    # salary sacrifice only.
+    "person.pension_contributions_via_bonus_sacrifice",
+    # Liquid and solid heating fuels (#1278, pe-uk#2572): the enhanced FRS
+    # draws no fuel beside electricity and gas.
+    "household.liquid_fuel_consumption",
+    "household.solid_fuel_consumption",
+    # The share split inside corporate_wealth (pe-uk#1974) and the debt
+    # secured on other property (UC Regs 2013 reg 49(1)(b)), from the WAS
+    # property draw (microcosm#1095): the enhanced FRS carries corporate_wealth
+    # alone and no secured debt.
+    "household.directly_held_shares",
+    "household.unit_and_investment_trusts",
+    "household.other_residential_property_secured_debt",
+    "household.non_residential_property_secured_debt",
 )
 
 UK_KNOWN_MISSING_REFERENCE_EXPORT_COLUMNS: tuple[str, ...] = (

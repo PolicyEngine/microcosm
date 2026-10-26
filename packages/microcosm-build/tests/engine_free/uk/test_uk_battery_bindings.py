@@ -102,6 +102,54 @@ def test_declared_export_surface_preserves_claimants_and_matches_runtime(uk_gate
     assert outcome.status is GateStatus.PASSED
 
 
+def test_spine_export_surface_is_reference_or_allow_listed(uk_gates):
+    """Every column the spine declares leaves through the release boundary as
+    an enhanced-FRS input, an allow-listed extra or a reviewed drop.
+
+    The export-surface gate runs only at release-cut certification, on a built
+    file; war_widows_pension_reported (#1222) reached main without an
+    allow-list entry and blocked the first certification after it. This runs
+    the same gate on the spine's declared surface through the production
+    export path, against the checked-in enhanced-FRS reference.
+    """
+
+    from microcosm.build.uk_runtime.graph import uk_spine_endpoint, uk_spine_graph
+    from microcosm.build.uk_runtime.national_frame import (
+        uk_national_frame,
+        uk_release_export_frame,
+    )
+    from microcosm.build.uk_runtime.parity_reference import (
+        load_efrs_parity_reference,
+    )
+    from microcosm.build.uk_runtime.terminal_gates import (
+        uk_export_candidate_columns,
+        uk_export_surface_gate,
+    )
+
+    columns = {
+        "person": ["person_id", "person_benunit_id", "person_household_id"],
+        "benunit": ["benunit_id"],
+        "household": ["household_id"],
+    }
+    for cells in uk_spine_endpoint(uk_spine_graph()).inputs:
+        columns[cells.entity] = list(
+            dict.fromkeys([*columns[cells.entity], *cells.columns])
+        )
+    tables = {
+        entity: pd.DataFrame({column: np.array([1]) for column in names})
+        for entity, names in columns.items()
+    }
+    frame = uk_national_frame(**tables, time_period="2024", household_weights=[1.0])
+    candidate = uk_export_candidate_columns(uk_release_export_frame(frame))
+    reference = {
+        f"{entity}.{name}"
+        for name, entity in load_efrs_parity_reference().input_entities.items()
+    }
+    entry = next(entry for entry in uk_gates.gates if entry.id == "uk_export_surface")
+    result = uk_export_surface_gate(candidate, reference, **dict(entry.parameters))
+    assert result.passed, result.failures
+
+
 def _tables(*, n: int = 4, weights=None):
     if weights is None:
         weights = np.ones(n, dtype=float)
@@ -115,6 +163,15 @@ def _tables(*, n: int = 4, weights=None):
     other_property = 1_000.0 * (np.arange(n) % 2)
     non_residential = 500.0 * (np.arange(n) % 2)
     land = 250.0 * (np.arange(n) % 2)
+    # Debt secured on the last unit's property (microcosm#1095): the shares
+    # net it class by class, the non-residential debt above 90% of its
+    # property's value flooring that class at zero.
+    last = np.arange(n) == n - 1
+    other_property_debt = np.where(last, 300.0, 0.0)
+    non_residential_debt = np.where(last, 600.0, 0.0)
+    property_share = np.maximum(0.9 * other_property - other_property_debt, 0.0) + (
+        np.maximum(0.9 * non_residential - non_residential_debt, 0.0)
+    )
     carrier = np.arange(n, dtype=float)
     person = pd.DataFrame(
         {
@@ -136,9 +193,8 @@ def _tables(*, n: int = 4, weights=None):
             "benunit_id": np.arange(201, 201 + n, dtype=np.int64),
             "would_claim_uc": np.asarray([True, False] * n)[:n],
             "frs_benunit_capital": carrier,
-            "uc_reported_capital": carrier + 0.9 * (other_property + non_residential),
-            "pension_credit_reported_capital": carrier
-            + 0.9 * (land + other_property + non_residential),
+            "uc_reported_capital": carrier + property_share,
+            "pension_credit_reported_capital": carrier + 0.9 * land + property_share,
         }
     )
     household = pd.DataFrame(
@@ -150,6 +206,8 @@ def _tables(*, n: int = 4, weights=None):
             "owned_land": land,
             "other_residential_property_value": other_property,
             "non_residential_property_value": non_residential,
+            "other_residential_property_secured_debt": other_property_debt,
+            "non_residential_property_secured_debt": non_residential_debt,
         }
     )
     return person, benunit, household
@@ -170,6 +228,7 @@ def _parity(**overrides) -> SimpleNamespace:
         "candidate_targets": {"ons/population"},
         "reference_targets": {"ons/population"},
         "target_relative_errors": {"ons/population": 0.01},
+        "withheld_targets": frozenset(),
     }
     fields.update(overrides)
     return SimpleNamespace(**fields)
@@ -530,6 +589,54 @@ class TestUKSurfaceAdapter:
         for column in ("uc_reported_capital", "pension_credit_reported_capital"):
             assert columns[f"benunit.{column}"]["same_source_mismatch_count"] == 1
 
+    @pytest.mark.parametrize(
+        ("reference_reports_uc", "expected"),
+        [
+            (False, {"uc_reported_capital": 1, "pension_credit_reported_capital": 1}),
+            (True, {"uc_reported_capital": 0, "pension_credit_reported_capital": 1}),
+        ],
+        ids=["both_schemes", "pension_credit_only"],
+    )
+    def test_uc_column_implication_binding_refuses_a_sentinel_unit_beside_property(
+        self, reference_reports_uc: bool, expected: dict[str, int]
+    ) -> None:
+        # From policyengine-uk 2.136.1 a unit on the sentinel takes its own
+        # share of its household's property, which the recording unit beside
+        # it already holds (Vahid's review of microcosm#1333). Unit 204 joins
+        # household 2 on the sentinel, beside the reference person's unit 202,
+        # which records the property: both schemes' shares, or Pension
+        # Credit's alone where unit 202 reports Universal Credit.
+        person, benunit, household = _tables()
+        person.loc[3, "person_household_id"] = 2
+        person.loc[3, "is_household_head"] = False
+        for column in (
+            "frs_benunit_capital",
+            "uc_reported_capital",
+            "pension_credit_reported_capital",
+        ):
+            benunit.loc[3, column] = -1.0
+        if reference_reports_uc:
+            person.loc[1, "universal_credit_reported"] = 10.0
+            benunit.loc[1, "would_claim_uc"] = True
+            benunit.loc[1, "uc_reported_capital"] = benunit.loc[
+                1, "frs_benunit_capital"
+            ]
+        frame = uk_national_frame(
+            person=person,
+            benunit=benunit,
+            household=household.iloc[:3].copy(),
+            time_period="2023",
+        )
+        entry = self._capital_gate()
+        result = UK_GATE_REGISTRY["column_implication"].evaluate(
+            EvidenceContext(frame=frame), entry.parameters
+        )
+
+        assert not result.passed
+        assert result.details["sentinel_units_beside_recorded_property"] == expected
+        beside = [failure for failure in result.failures if "would count" in failure]
+        assert len(beside) == sum(expected.values())
+
     def test_uc_column_implication_binding_keeps_a_reporters_receipt(
         self,
     ) -> None:
@@ -659,12 +766,15 @@ class TestUKSurfaceAdapter:
         """
 
         from microcosm.build.uk_runtime.salary_sacrifice import (
+            BONUS_SACRIFICE_OUTPUT,
             SALSAC_OUTPUT,
             SALSAC_PRE_CONVERSION_PAY_COLUMN,
         )
 
         person, benunit, household = _tables()
         person[SALSAC_OUTPUT] = [0.0, 10.0, 0.0, 5.0]
+        # The stage's bonus route (#1340) is a declared non-negative output too.
+        person[BONUS_SACRIFICE_OUTPUT] = [0.0, 0.0, 3.0, 0.0]
         person["employee_pension_contributions"] = [1.0, 0.0, 2.0, 0.0]
         release = uk_national_frame(
             person=person.copy(),
@@ -1036,6 +1146,37 @@ class TestBatteryRegressions:
             "uk_export_surface",
             "uk_target_fit",
         } <= failed
+
+    def test_the_fit_gate_decides_on_the_published_national_rows(self) -> None:
+        """María's rule of 2026-10-21: a thin national row is bound, its figures kept.
+
+        The fit gate neither checks nor names a withheld row, and counts it; a
+        published row's breach still fails the gate.
+        """
+
+        thin = "dwp.uc.payment_distribution_single_thin@2025"
+        withheld = _parity(
+            candidate_targets={"ons/population", thin},
+            reference_targets={"ons/population", thin},
+            target_relative_errors={"ons/population": 0.01, thin: -0.60},
+            withheld_targets=frozenset({thin}),
+        )
+        battery = _run_battery(_tables(), parity=withheld)
+        fit = {o.entry.id: o for o in battery.outcomes}["uk_target_fit"]
+        assert fit.status is GateStatus.PASSED, fit.result.failures
+        assert fit.result.details["withheld_targets"] == 1
+        assert thin not in str(fit.result.details)
+        breached = _parity(
+            candidate_targets={"ons/population", thin},
+            reference_targets={"ons/population", thin},
+            target_relative_errors={"ons/population": -0.40, thin: -0.60},
+            withheld_targets=frozenset({thin}),
+        )
+        battery = _run_battery(_tables(), parity=breached)
+        fit = {o.entry.id: o for o in battery.outcomes}["uk_target_fit"]
+        assert fit.status is GateStatus.FAILED
+        assert fit.result.failures
+        assert all(thin not in failure for failure in fit.result.failures)
 
 
 class TestUnevidencedArms:

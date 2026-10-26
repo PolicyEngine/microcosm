@@ -959,6 +959,25 @@ def _prepared_column_values(
     )
 
 
+def prepared_binding_values(
+    adapter: Any,
+    entity: str,
+    binding: Mapping[str, Any],
+    *,
+    period: int | str | None = None,
+) -> np.ndarray:
+    """One binding's masked values at its own grain, as the national rows read it.
+
+    Its value variable or expression, kept where its filters and conditions
+    hold and zero elsewhere, through the same interpreter that materializes
+    every national target. A caller that needs one binding's column (the local
+    line's household metrics) reads it here, so a rebind moves every line
+    that reads the declaration.
+    """
+
+    return _prepared_column_values(adapter, entity, binding, period=period)
+
+
 class MeasurementPeriodError(RuntimeError):
     """A binding declares a measurement period its read route cannot honour.
 
@@ -982,7 +1001,9 @@ def _refuse_ignored_measurement_period(
     read at one of those two and is refused. So is the frame's period on a
     value the frame does not hold at that period: the engine computes it at
     the calibration period, so the row would be measured there under the
-    declared period.
+    declared period. Only the value terms are checked: a filter, condition or
+    band on an engine-computed variable is still read at the calibration
+    period under a declared frame period.
     """
 
     declared = binding.get("measurement_period")
@@ -1014,8 +1035,9 @@ def _value_variables(binding: Mapping[str, Any]) -> tuple[str, ...]:
     """The value variables a plain-column binding reads."""
 
     if "value_expression" in binding:
-        parts = str(binding["value_expression"]).split("+")
-        return tuple(part.strip() for part in parts if part.strip())
+        return tuple(
+            name for _, name in _expression_terms(str(binding["value_expression"]))
+        )
     return (str(binding["value_variable"]),)
 
 
@@ -1086,6 +1108,12 @@ def _entity_reduction(adapter: Any, reduction: Mapping[str, Any]) -> np.ndarray:
     return np.asarray(adapter.entity_reduction(reduction), dtype=float)
 
 
+#: Predicate keys a declaration may carry that this interpreter does not
+#: honour: a predicate naming one would be read at the wrong period or price
+#: basis, so it refuses; such a row binds a measure that applies them instead.
+_UNHONOURED_PREDICATE_KEYS = ("input_period", "price_basis")
+
+
 def _predicate_mask(
     adapter: Any,
     default_entity: str,
@@ -1093,11 +1121,29 @@ def _predicate_mask(
 ) -> np.ndarray:
     if "reduce" in predicate and hasattr(adapter, "household_condition"):
         return np.asarray(adapter.household_condition(predicate), dtype=bool)
+    unhonoured = [key for key in _UNHONOURED_PREDICATE_KEYS if key in predicate]
+    if unhonoured:
+        raise ValueError(
+            f"predicate {dict(predicate)!r} declares {unhonoured}, which the "
+            "binding interpreter does not honour; bind a measure that applies "
+            "them instead."
+        )
     entity = str(predicate.get("entity") or default_entity)
     variable = str(predicate.get("variable") or predicate.get("concept"))
     values = _column(adapter, entity, variable)
     if "operator" in predicate:
         operator, expected = str(predicate["operator"]), predicate["value"]
+    elif "in" in predicate:
+        operator, expected = "in", predicate["in"]
+    elif "lower" in predicate or "upper" in predicate:
+        # A range: the lower bound inclusive, the upper bound exclusive.
+        numeric = values.astype(float)
+        mask = np.ones(numeric.shape, dtype=bool)
+        if predicate.get("lower") is not None:
+            mask &= numeric >= float(predicate["lower"])
+        if predicate.get("upper") is not None:
+            mask &= numeric < float(predicate["upper"])
+        return mask
     else:
         operator, expected = "==", predicate["equals"]
     return _compare(values, operator, expected)
@@ -1123,6 +1169,20 @@ def _compare(values: np.ndarray, operator: str, expected: object) -> np.ndarray:
     raise ValueError(f"unsupported predicate operator {operator!r}")
 
 
+_EXPRESSION_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+def _expression_terms(expression: str) -> tuple[tuple[float, str], ...]:
+    """A value expression's signed terms: names joined by ``+`` or ``-``."""
+
+    tokens = re.split(r"\s*([+-])\s*", expression.strip())
+    names = tokens[0::2]
+    if not names or any(not _EXPRESSION_NAME.fullmatch(name) for name in names):
+        raise ValueError(f"unsupported value_expression {expression!r}")
+    signs = (1.0, *(1.0 if sign == "+" else -1.0 for sign in tokens[1::2]))
+    return tuple(zip(signs, names, strict=True))
+
+
 def _expression(
     adapter: Any,
     entity: str,
@@ -1131,15 +1191,13 @@ def _expression(
     period: int | str | None = None,
     route_stored: bool = False,
 ) -> np.ndarray:
-    parts = [part.strip() for part in expression.split("+")]
-    if not parts or any(not part for part in parts):
-        raise ValueError(f"unsupported value_expression {expression!r}")
     total: np.ndarray | None = None
-    for part in parts:
+    for sign, name in _expression_terms(expression):
         values = _value_column(
-            adapter, entity, part, period=period, route_stored=route_stored
+            adapter, entity, name, period=period, route_stored=route_stored
         )
-        total = values.copy() if total is None else total + values
+        term = values if sign > 0 else -values
+        total = term.copy() if total is None else total + term
     if total is None:
         raise ValueError(f"unsupported value_expression {expression!r}")
     return total

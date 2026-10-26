@@ -1414,17 +1414,16 @@ def _staged_epoch_rows(out) -> list[dict]:
     return rows
 
 
-@pytest.mark.parametrize(
-    "extra,withheld", [((), True), (("--target-geographies", "la"), False)]
-)
-def test_a_request_that_can_bind_brma_rows_stages_its_epochs_without_loss(
-    tmp_path, monkeypatch, capsys, extra, withheld
+@pytest.mark.parametrize("extra", [(), ("--target-geographies", "la")])
+def test_every_request_stages_its_epochs_without_loss(
+    tmp_path, monkeypatch, capsys, extra
 ):
     """The third review of #1305: an epoch's loss covers every row.
 
-    A request that can bind BRMA rows stages its epochs, and sends them to
-    the emitter, with a null loss; only the local stderr line keeps it. A
-    request that binds none keeps the loss in the staged rows.
+    Every request can bind a thin row now (María's rule of 2026-10-21 binds
+    thin national rows as well as BRMA rows), so every request stages its
+    epochs, and sends them to the emitter, with a null loss; only the local
+    stderr line keeps it.
     """
     pytest.importorskip("tables")
     emitted: list[dict] = []
@@ -1442,7 +1441,7 @@ def test_a_request_that_can_bind_brma_rows_stages_its_epochs_without_loss(
     rows = _staged_epoch_rows(out)
     assert rows and emitted
     losses = {row["loss"] for row in rows} | {event["loss"] for event in emitted}
-    assert (losses == {None}) is withheld
+    assert losses == {None}
     # The local stderr line keeps the last epoch's loss either way.
     assert "loss 0.25" in capsys.readouterr().err
 
@@ -1464,42 +1463,43 @@ def test_the_thinned_epochs_null_the_loss_on_request():
 
 
 @pytest.mark.parametrize(
-    "role,localisation,levels,binds",
+    "role,localisation,levels",
     [
-        ("dense", "area", None, True),
-        ("dense", "area", ("la", "brma"), True),
-        ("dense", "area", ("la",), False),
-        ("dense", "none", None, False),
-        ("national", "area", None, False),
+        ("dense", "area", None),
+        ("dense", "area", ("la", "brma")),
+        ("dense", "area", ("la",)),
+        ("dense", "none", None),
+        ("national", "area", None),
     ],
 )
-def test_a_request_binds_brma_rows_only_on_area_brmas_it_selects(
-    role, localisation, levels, binds
-):
+def test_every_request_may_withhold_a_row(role, localisation, levels):
+    """María's rule of 2026-10-21 binds thin national rows as well as BRMA rows."""
+
     from types import SimpleNamespace
 
     args = SimpleNamespace(
         release_role=role, brma_localisation=localisation, target_geographies=levels
     )
-    assert cli._binds_brma_rows(args) is binds
+    assert cli._may_withhold_rows(args) is True
 
 
-def test_a_national_request_stages_its_epochs_with_their_loss(tmp_path, monkeypatch):
-    """The fourth review of #1305: a national run staged a null loss.
+def test_a_national_request_stages_its_epochs_without_their_loss(tmp_path, monkeypatch):
+    """A national run binds thin UC payment and benefit-cap bands now.
 
-    The national role shares the dense role's parser defaults, but binds no
-    BRMA row, so its staged epochs keep their loss.
+    An epoch's loss covers every row, so against the published rows it would
+    give a withheld row back: the staged epochs carry null, as the dense
+    role's have since the third review of #1305.
     """
 
     args = cli.parse_args(_national_argv(tmp_path))
-    assert cli._binds_brma_rows(args) is False
+    assert cli._may_withhold_rows(args) is True
     emitted: list[dict] = []
     monkeypatch.setattr(
         cli, "emit_calibration_progress", lambda event: emitted.append(dict(event))
     )
     observer = cli._solve_observer(args, None)
     observer({"kind": "calibration_epoch", "epoch": 1, "epochs": 1, "loss": 0.25})
-    assert [event["loss"] for event in emitted] == [0.25]
+    assert [event["loss"] for event in emitted] == [None]
 
 
 def test_telemetry_content_refusal_never_aborts_the_solve(

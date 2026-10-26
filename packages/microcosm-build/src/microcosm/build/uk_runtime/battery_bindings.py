@@ -575,6 +575,31 @@ def _evaluate_column_implication(
             "same_source_mismatch_count": int(sum_mismatch.sum()),
             "nonfinite_capital_count": int(nonfinite.sum()),
         }
+    # From policyengine-uk 2.136.1 a unit on the sentinel takes its own share
+    # of its household's property for each scheme, which a recording unit
+    # beside it already holds, so the property would count twice there
+    # (Vahid's review of microcosm#1333). No unit may sit on the sentinel
+    # beside a unit that records a property share for either scheme.
+    person = frame.table("person")
+    unit_household = (
+        person.drop_duplicates("person_benunit_id")
+        .set_index("person_benunit_id")["person_household_id"]
+        .reindex(target[target_id_column])
+        .to_numpy()
+    )
+    on_sentinel = carrier == sentinel
+    sentinel_beside: dict[str, int] = {}
+    for column in property_shares:
+        share = np.asarray(shares.get(column, 0.0), dtype=float)
+        recording = (carrier >= 0.0) & (share > 0.0)
+        beside = on_sentinel & np.isin(unit_household, unit_household[recording])
+        sentinel_beside[column] = int(beside.sum())
+        if beside.any():
+            failures.append(
+                f"{target_entity}: {int(beside.sum())} unit(s) on the "
+                f"{sentinel:g} sentinel beside a unit that records {column}'s "
+                "property share; the engine would count that property twice."
+            )
     return GateResult(
         name="column_implication",
         passed=not failures,
@@ -595,6 +620,7 @@ def _evaluate_column_implication(
                 f"{target_entity}.{column}": counts[column]
                 for column in capital_columns
             },
+            "sentinel_units_beside_recorded_property": sentinel_beside,
         },
     )
 
@@ -607,16 +633,25 @@ def _declared_property_shares(
     from microcosm.build.uk_runtime.uc_capital_coherence import (
         PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES,
         PROPERTY_CAPITAL_OWNERS,
+        PROPERTY_CAPITAL_SECURED_DEBT,
         PROPERTY_CAPITAL_VALUATION,
         UC_PROPERTY_CAPITAL_REPORTER_RULE,
         UC_PROPERTY_CAPITAL_SOURCES,
     )
+
+    def secured_debt(sources: tuple[str, ...]) -> dict[str, str]:
+        return {
+            source: PROPERTY_CAPITAL_SECURED_DEBT[source]
+            for source in sources
+            if source in PROPERTY_CAPITAL_SECURED_DEBT
+        }
 
     rules = {
         "uc_reported_capital": {
             "sources": list(UC_PROPERTY_CAPITAL_SOURCES),
             "owners": PROPERTY_CAPITAL_OWNERS,
             "valuation": PROPERTY_CAPITAL_VALUATION,
+            "secured_debt": secured_debt(UC_PROPERTY_CAPITAL_SOURCES),
             # A unit that reports Universal Credit keeps its receipt.
             "units_reporting_universal_credit": UC_PROPERTY_CAPITAL_REPORTER_RULE,
         },
@@ -624,6 +659,7 @@ def _declared_property_shares(
             "sources": list(PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES),
             "owners": PROPERTY_CAPITAL_OWNERS,
             "valuation": PROPERTY_CAPITAL_VALUATION,
+            "secured_debt": secured_debt(PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES),
         },
     }
     declared = {
@@ -1750,12 +1786,34 @@ def _evaluate_target_fit(
     exclusions, _source = _resolve_target_fit_exclusions(context)
     exclusions, out_of_line = _in_line(exclusions, context)
     parity = context.artifacts["parity_evidence"]
+    # María's rule of 2026-10-21 binds a national row however few source
+    # households carry it, and keeps the figures of one under ten in the
+    # build; the gate decides on the published rows and counts the withheld
+    # ones, as it does for the local rows (her ruling of 2026-10-19). Every
+    # producer states the set, empty or not, so a missing one fails closed.
+    withheld = frozenset(parity.withheld_targets)
+    errors = {
+        name: error
+        for name, error in parity.target_relative_errors.items()
+        if name not in withheld
+    }
+    exclusions = {
+        name: record for name, record in exclusions.items() if name not in withheld
+    }
+    out_of_line = [name for name in out_of_line if name not in withheld]
     result = uk_target_fit_gate(
-        parity.target_relative_errors,
+        errors,
         reviewed_exclusions=exclusions,
         now=_exclusion_clock(context),
         **kwargs,
     )
+    if withheld:
+        result = GateResult(
+            name=result.name,
+            passed=result.passed,
+            failures=result.failures,
+            details={**result.details, "withheld_targets": len(withheld)},
+        )
     return _with_out_of_line(result, context, out_of_line)
 
 
@@ -2097,6 +2155,12 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # microcosm#1069 c7 pension_credit_take_up stage-health check.
                 "maximum_take_up_deviation",
                 "minimum_entitled_units",
+                # microcosm#1334 uc_take_up stage-health check.
+                "maximum_caseload_deviation",
+                # frs_annual_income_spells stage-health check.
+                "pay_concept_ratio_bounds",
+                "annual_over_current_earners_bounds",
+                "minimum_observed_pay_share",
                 # microcosm#1095 spi_benefit_coherence stage-health check.
                 "zeroed_columns",
                 "restored_columns",
@@ -2167,6 +2231,16 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # #1113 road_fuel_level check: the ceiling on the LCFS donor
                 # share of other personal-transport fuels netted off 07.2.2.
                 "maximum_other_fuels_share",
+                # #1359 excise_quantities check: the ceiling on the donor
+                # share whose published total sits beside its diary lines, and
+                # the support band each excise share must rest on.
+                "maximum_parent_residual_share",
+                "required_support_band",
+                # #1359 gambling_participation check: how far a stratum's
+                # topped-up share may sit from its published target, and the
+                # bounds on the scale that anchors the added stakes.
+                "maximum_stratum_shortfall",
+                "amount_scale_bounds",
                 # #1113 road_fuel_incidence check: the ceiling on the chain's
                 # zero share among flagged fuel-car households.
                 "maximum_flagged_zero_share",
@@ -2180,6 +2254,18 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "maximum_rows_receipts_below_profit",
                 "maximum_rows_with_profit_above_band",
                 "maximum_band_error_in_boundary_weights",
+                # #1308's three stages, gated with the next policyengine-uk
+                # bump (María's ruling of 2026-10-17): the purchase kinds and
+                # their fit, the home-value ranking, the Move to UC draw.
+                "kinds",
+                "maximum_transactions_relative_deviation",
+                "maximum_value_shortfall_share",
+                "regions",
+                "maximum_sources_at_cap",
+                "knots_basis_year",
+                "rank_basis",
+                "p_basis",
+                "rate_sources",
             }
         ),
         artifact_keys=frozenset({"stage_evidence"}),

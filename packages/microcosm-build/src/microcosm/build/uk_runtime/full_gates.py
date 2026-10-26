@@ -23,7 +23,7 @@ from microcosm.build.uk_runtime.calibration_run import (
     uk_cgt_projection_artifact,
 )
 from microcosm.build.uk_runtime.cgt_projection import UK_CGT_PROJECTION_ARTIFACT_KEY
-from microcosm.build.uk_runtime.diagnostics import uk_withheld_brma_rows
+from microcosm.build.uk_runtime.diagnostics import uk_withheld_rows
 from microcosm.build.uk_runtime.graph_evidence import uk_spine_gate_artifacts
 from microcosm.build.uk_runtime.national_frame import uk_release_export_frame
 from microcosm.build.uk_runtime.parity_reference import load_efrs_parity_reference
@@ -236,16 +236,28 @@ def build_full_gate_context(
             local_rows.append(row)
         else:
             national_errors[target.row_name] = float(solved_rows[index].relative_error)
-    # A BRMA row's model figures leave the build only when ten distinct source
-    # households carry them (María's ruling of 2026-10-17, microcosm#1262).
-    # The fit gates decide on the published rows and count the withheld ones
-    # (María's ruling of 2026-10-19); the flag tells the bindings and the
-    # writers which rows those are.
-    withheld = uk_withheld_brma_rows(
+    # A row's model figures leave the build only when ten distinct source
+    # households carry them: María's ruling of 2026-10-17 for BRMA rows
+    # (microcosm#1262), extended to national and regional rows by her rule of
+    # 2026-10-21, which binds a thin row rather than leave it out (local rows
+    # keep the area-support rule). The fit gates decide on the published rows
+    # and count the withheld ones (her ruling of 2026-10-19); the flag tells
+    # the bindings and the writers which rows those are.
+    # The withholding ties a local family to its parents by contract target
+    # (Vahid's review of #1383, item 1).
+    withheld = uk_withheld_rows(
         problem,
         solution.weights,
         frame,
-        diagnostics,
+        [
+            {
+                **row,
+                "metadata": {"contract_target_id": metadata.get("contract_target_id")},
+            }
+            for row, metadata in zip(
+                diagnostics, ordered_problem.target_metadata, strict=True
+            )
+        ],
         {str(row["name"]): str(row["geography_level"]) for row in diagnostics},
     )
     for row in diagnostics:
@@ -308,6 +320,7 @@ def build_full_gate_context(
                 candidate_targets=set(national_errors),
                 reference_targets=national_reference,
                 target_relative_errors=national_errors,
+                withheld_targets=frozenset(withheld),
             ),
             "local_target_diagnostics": local_rows,
             "target_diagnostics": diagnostics,

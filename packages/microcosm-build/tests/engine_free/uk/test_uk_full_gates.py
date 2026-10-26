@@ -109,6 +109,9 @@ def evidence(monkeypatch):
             "geography_id": "E14000001",
             "family": "population",
             "materialization": "uk_local_surface",
+            # A local row names its contract target (Vahid's third review of
+            # #1383, item 33); this one ties to no family.
+            "contract_target_id": "fixture.population",
         },
     )
     ordered = OrderedProblem(
@@ -116,14 +119,22 @@ def evidence(monkeypatch):
     )
     solution = OrderedSolution(np.ones(2), (1, 2), "a" * 64, {}, "b" * 64)
     # A real national frame: the context reads it through the release export
-    # boundary, which renumbers identifiers (microcosm#1194).
+    # boundary, which renumbers identifiers (microcosm#1194). The household
+    # region places the constituency row in its region's withholding block.
     ids = np.asarray([1, 2], dtype="int64")
     frame = uk_national_frame(
         person=pd.DataFrame(
             {"person_id": ids, "person_benunit_id": ids, "person_household_id": ids}
         ),
         benunit=pd.DataFrame({"benunit_id": ids}),
-        household=pd.DataFrame({"household_id": ids, "income": [1.0, 1.0]}),
+        household=pd.DataFrame(
+            {
+                "household_id": ids,
+                "source_household_id": ids,
+                "income": [1.0, 1.0],
+                "region": ["SOUTH_EAST", "SOUTH_EAST"],
+            }
+        ),
         time_period="2024",
         weight_kind=weights.kind,
         household_weights=weights.values,

@@ -720,6 +720,30 @@ def test_a_brma_row_without_its_carrier_verdict_is_warned_not_refused() -> None:
     assert failures == []
 
 
+def test_a_brma_row_withheld_beside_a_thin_one_agrees_with_its_verdict() -> None:
+    """Vahid's second review of #1333, item 10: a row withheld beside a thin
+    one meets the floor and says so (``metadata.complementary_withholding``)."""
+
+    beside = _withheld_diagnostics()
+    beside["targets"][1]["metadata"].update(
+        carrier_floor_met=True, complementary_withholding=True
+    )
+    assert dc._uk_brma_floor_verdict_warnings(beside) == []
+    # Flagged as withheld beside a thin row, yet published.
+    published = _withheld_diagnostics()
+    published["targets"][1]["metadata"].update(
+        carrier_floor_met=True, complementary_withholding=True
+    )
+    del published["targets"][1]["metadata"]["model_figures_withheld"]
+    (warning,) = dc._uk_brma_floor_verdict_warnings(published)
+    assert "disagrees with their withheld flag" in warning
+    # A thin row is withheld for itself, never only beside another.
+    thin = _withheld_diagnostics()
+    thin["targets"][1]["metadata"]["complementary_withholding"] = True
+    (warning,) = dc._uk_brma_floor_verdict_warnings(thin)
+    assert "disagrees with their withheld flag" in warning
+
+
 def test_the_dense_validator_runs_the_withheld_checks(tmp_path, monkeypatch) -> None:
     """The candidate cross-check and the verdict warnings run on a release."""
 

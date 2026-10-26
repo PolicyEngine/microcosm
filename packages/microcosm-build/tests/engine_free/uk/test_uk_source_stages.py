@@ -63,6 +63,7 @@ E6_STAGE_NAMES = [
 ]
 E7_STAGE_NAMES = [
     "frs_hmrc_spine_leaves",
+    "frs_annual_income_spells",
     "spi_support_channel",
     "spi_income_band_donors",
     "hmrc_spi_income_spine",
@@ -78,6 +79,12 @@ SPI_BENEFIT_COHERENCE_STAGE_NAMES = [
 ]
 UC_COHERENCE_STAGE_NAMES = [
     "uc_capital_coherence",
+]
+# microcosm#1334: the Universal Credit redraw reads the post-SPI awards and the
+# capital UC capital coherence sets, and writes would_claim_uc before the Move
+# to UC claim draw reads it.
+UC_TAKE_UP_STAGE_NAMES = [
+    "uc_take_up",
 ]
 # microcosm#1095: the Move to UC claim draw reads the final legacy and UC
 # receipts and would_claim_uc (uk-data#534).
@@ -109,6 +116,10 @@ E8_STAGE_NAMES = [
     "hmrc_cgt_asset_type_spine",
     "salary_sacrifice",
     "student_loans",
+    # The copies' childcare re-draw runs after every copy stage, before the
+    # private-school attendance ranks households on net income (which counts
+    # the childcare entitlements).
+    "childcare_copy_take_up",
     # microcosm#1095: the stored private-school attendance runs last.
     "private_school_attendance",
 ]
@@ -126,6 +137,7 @@ UK_SOURCE_STAGE_NAMES = [
     *UC_REPORTER_REDRAW_STAGE_NAMES,
     *SPI_BENEFIT_COHERENCE_STAGE_NAMES,
     *UC_COHERENCE_STAGE_NAMES,
+    *UC_TAKE_UP_STAGE_NAMES,
     *UC_LEGACY_CLOSURE_TAKE_UP_STAGE_NAMES,
     *PENSION_CREDIT_TAKE_UP_STAGE_NAMES,
     *CHILD_BENEFIT_TAKE_UP_STAGE_NAMES,
@@ -199,6 +211,7 @@ class TestUKSourceStagesManifest:
             *UC_REPORTER_REDRAW_STAGE_NAMES,
             *SPI_BENEFIT_COHERENCE_STAGE_NAMES,
             *UC_COHERENCE_STAGE_NAMES,
+            *UC_TAKE_UP_STAGE_NAMES,
             *UC_LEGACY_CLOSURE_TAKE_UP_STAGE_NAMES,
             *PENSION_CREDIT_TAKE_UP_STAGE_NAMES,
             *CHILD_BENEFIT_TAKE_UP_STAGE_NAMES,
@@ -272,6 +285,7 @@ class TestUKSourceStagesManifest:
                     "etb_vat": _identity,
                     "etb_services": _identity,
                     "frs_hmrc_spine_leaves": _identity,
+                    "frs_annual_income_spells": _identity,
                     "spi_support_channel": _identity,
                     "spi_income_band_donors": _identity,
                     "hmrc_spi_income_spine": _identity,
@@ -279,6 +293,7 @@ class TestUKSourceStagesManifest:
                     "uc_reporter_redraw": _identity,
                     "spi_benefit_coherence": _identity,
                     "uc_capital_coherence": _identity,
+                    "uc_take_up": _identity,
                     "uc_legacy_closure_take_up": _identity,
                     "pension_credit_take_up": _identity,
                     "child_benefit_take_up": _identity,
@@ -293,6 +308,7 @@ class TestUKSourceStagesManifest:
                     "salary_sacrifice": _identity,
                     "student_loans": _identity,
                     "private_school_attendance": _identity,
+                    "childcare_copy_take_up": _identity,
                     "age_tail": _identity,
                     "frs_relationships": _identity,
                     "hmrc_spi_income_fallback": _identity,
@@ -376,6 +392,7 @@ class TestDeclaredOutputsAreWrittenColumns:
         from microcosm.build.uk_runtime.frs_take_up import (
             FRS_TAKE_UP_NONNEGATIVE_OUTPUT_COLUMNS,
             FRS_TAKE_UP_OUTPUT_COLUMNS,
+            FRS_TAKE_UP_PERSON_OUTPUT_COLUMNS,
         )
         from microcosm.build.uk_runtime.lcfs_consumption import (
             UK_LCFS_CONSUMPTION_NONNEGATIVE_OUTPUT_COLUMNS,
@@ -394,7 +411,7 @@ class TestDeclaredOutputsAreWrittenColumns:
         )
         from microcosm.build.uk_runtime.was_wealth import (
             UK_WAS_WEALTH_NONNEGATIVE_OUTPUT_COLUMNS,
-            UK_WAS_WEALTH_OUTPUT_COLUMNS,
+            UK_WAS_WEALTH_STAGE_OUTPUT_COLUMNS,
         )
 
         spec = load_country_spec("uk")
@@ -412,7 +429,10 @@ class TestDeclaredOutputsAreWrittenColumns:
         assert (
             stages["frs_education_grant_split"].rewrites == FRS_EDUCATION_GRANT_REWRITES
         )
-        assert stages["frs_take_up"].outputs == FRS_TAKE_UP_OUTPUT_COLUMNS
+        assert stages["frs_take_up"].outputs == (
+            *FRS_TAKE_UP_OUTPUT_COLUMNS,
+            *FRS_TAKE_UP_PERSON_OUTPUT_COLUMNS,
+        )
         assert (
             stages["frs_take_up"].nonnegative_outputs
             == FRS_TAKE_UP_NONNEGATIVE_OUTPUT_COLUMNS
@@ -426,7 +446,7 @@ class TestDeclaredOutputsAreWrittenColumns:
             stages["frs_household_draws"].outputs == FRS_HOUSEHOLD_DRAW_OUTPUT_COLUMNS
         )
         assert stages["frs_brma"].outputs == FRS_BRMA_OUTPUT_COLUMNS
-        assert stages["was_wealth"].outputs == UK_WAS_WEALTH_OUTPUT_COLUMNS
+        assert stages["was_wealth"].outputs == UK_WAS_WEALTH_STAGE_OUTPUT_COLUMNS
         assert (
             stages["was_wealth"].nonnegative_outputs
             == UK_WAS_WEALTH_NONNEGATIVE_OUTPUT_COLUMNS
@@ -519,6 +539,7 @@ class TestDeclaredOutputsAreWrittenColumns:
         assert stages["hmrc_cgt_gains_spine"].rewrites == ("capital_gains",)
         assert stages["salary_sacrifice"].outputs == (
             SALSAC_OUTPUT,
+            "pension_contributions_via_bonus_sacrifice",
             "employee_pension_contributions",
             "employment_income",
             SALSAC_PRE_CONVERSION_PAY_COLUMN,
@@ -591,6 +612,8 @@ class TestE3ManifestLockstep:
             "assign_binary_from_rate",
             "assign_binary_from_banded_rates",
             "assign_clipped_normal",
+            "assign_binary_from_rate",
+            "assign_binary_from_rate",
         ]
         assert [op.kind for op in stages["frs_person_draws"].operations] == [
             "assign_binary_from_rate",
@@ -657,6 +680,8 @@ class TestE3ManifestLockstep:
             "redraw_zero_road_fuel",
             "level_road_fuel",
             "recompose_from_remainder",
+            "top_up_gambling_participation",
+            "level_excise_quantities",
             "record_mass_conservation_receipt",
         ]
         assert [op.kind for op in stages["etb_vat"].operations] == [
@@ -757,8 +782,10 @@ class TestE3ManifestLockstep:
             "classify_cgt_band_facts_with_reviewed_fence",
         ]
         assert [op.kind for op in stages["salary_sacrifice"].operations] == [
+            "verify_vendored_fact_resource",
             "fit_weighted_qrf",
             "convert_donors_to_target_stock",
+            "convert_bonuses_to_bonus_sacrifice",
         ]
         assert [op.kind for op in stages["student_loans"].operations] == [
             "assign_student_loan_plan_cohorts",
@@ -792,6 +819,9 @@ class TestE3ManifestLockstep:
             UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS,
             UK_LCFS_CONSUMPTION_PREDICTORS,
             UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
+            UK_LCFS_EXCISE_DECLARED_OUTPUTS,
+            UK_LCFS_EXCISE_GAMBLING_OUTPUTS,
+            UK_LCFS_EXCISE_SHARES,
         )
         from microcosm.build.uk_runtime.uc_reporter_redraw import (
             UC_REPORTER_AGGREGATES,
@@ -862,15 +892,27 @@ class TestE3ManifestLockstep:
             tuple(lcfs_ops["fit_weighted_qrf_chain"].parameters["predictors"])
             == UK_LCFS_CONSUMPTION_PREDICTORS
         )
-        assert (
-            tuple(lcfs_ops["fit_weighted_qrf_chain"].parameters["targets"])
-            == UK_LCFS_CONSUMPTION_TARGET_COLUMNS
+        # The spend targets, then the excise shares, which are scratch and no
+        # output (microcosm#1359).
+        assert tuple(lcfs_ops["fit_weighted_qrf_chain"].parameters["targets"]) == (
+            *UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
+            *UK_LCFS_EXCISE_SHARES,
         )
+        assert not set(UK_LCFS_EXCISE_SHARES) & set(UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS)
         assert UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS == (
             *UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
             "has_fuel_consumption",
             "uses_energy_prepayment_meter",
+            *UK_LCFS_EXCISE_DECLARED_OUTPUTS,
         )
+        # The declared excise step writes exactly those inputs: its quantity
+        # outputs, its draught shares and every gambling base.
+        excise = lcfs_ops["level_excise_quantities"].parameters
+        assert {
+            *excise["outputs"],
+            *excise["draught_shares"],
+            *UK_LCFS_EXCISE_GAMBLING_OUTPUTS,
+        } == set(UK_LCFS_EXCISE_DECLARED_OUTPUTS)
         assert (
             tuple(stages["etb_vat"].operations[2].parameters["predictors"])
             == UK_ETB_VAT_ENGINE_PREDICTORS
@@ -914,6 +956,8 @@ class TestE3ManifestLockstep:
             "extended_childcare",
             "universal_childcare",
             "targeted_childcare",
+            "extended_childcare_age_0_usage",
+            "extended_childcare_age_1_usage",
             "marriage_allowance",
             "tv_ownership_rate",
             "tv_licence_evasion_rate",
@@ -943,8 +987,10 @@ class TestE3ManifestLockstep:
 
     def test_e5_tenure_strata_and_derived_totals_lockstep(self) -> None:
         from microcosm.build.uk_runtime.was_wealth import (
+            UK_WAS_APPENDED_DRAWN_COLUMNS,
             UK_WAS_DERIVED_TOTALS,
             UK_WAS_DRAWN_ONLY_COLUMNS,
+            UK_WAS_HOLDER_STRATA,
             UK_WAS_INTERNAL_COMPONENT_COLUMNS,
             UK_WAS_NET_FINANCIAL_LIABILITIES,
             UK_WAS_STRATIFIED_TARGETS,
@@ -983,10 +1029,16 @@ class TestE3ManifestLockstep:
         )
         # The chain order names every output and every drawn-only column (the
         # internal components, the dropped share-like component and the
-        # main-residence mortgage) exactly once.
-        assert sorted(qrf.parameters["chain_order"]) == sorted(
+        # main-residence mortgage) exactly once, then the appended draws in
+        # chain order (microcosm#1095).
+        order = list(qrf.parameters["chain_order"])
+        assert sorted(order[: -len(UK_WAS_APPENDED_DRAWN_COLUMNS)]) == sorted(
             {*UK_WAS_WEALTH_OUTPUT_COLUMNS, *UK_WAS_DRAWN_ONLY_COLUMNS}
         )
+        assert tuple(order[-len(UK_WAS_APPENDED_DRAWN_COLUMNS) :]) == (
+            UK_WAS_APPENDED_DRAWN_COLUMNS
+        )
+        assert dict(qrf.parameters["holder_strata"]) == dict(UK_WAS_HOLDER_STRATA)
 
     def test_e5_qrf_operation_declares_integer_seed(self) -> None:
         spec = load_country_spec("uk")
@@ -1014,6 +1066,8 @@ class TestE3ManifestLockstep:
             "redraw_zero_road_fuel": 0,
             # The prepayment-meter flag (microcosm#1110).
             "impute_prepayment_meter": 0,
+            # The gambling participation top-up (microcosm#1359).
+            "top_up_gambling_participation": 0,
         }
         assert stages["etb_vat"].operations[3].parameters["seed"] == 0
         assert stages["etb_vat"].operations[3].parameters["salt"] == "etb_vat"
@@ -1047,8 +1101,9 @@ class TestE3ManifestLockstep:
         assert (
             stages["hmrc_cgt_gains_spine"].operations[4].parameters["seed_base"] == 552
         )
-        assert stages["salary_sacrifice"].operations[0].parameters["seed"] == 42
-        assert stages["salary_sacrifice"].operations[1].parameters["seed"] == 2024
+        assert stages["salary_sacrifice"].operations[1].parameters["seed"] == 42
+        assert stages["salary_sacrifice"].operations[2].parameters["seed"] == 2024
+        assert stages["salary_sacrifice"].operations[3].parameters["seed"] == 2024
         assert [
             operation.parameters["seed"]
             for operation in stages["student_loans"].operations[1:]
