@@ -47,17 +47,22 @@ one, was closed unmerged. Builds still queue uploads as described above. A
 queued job stays pending in the emitter's local queue, its files stay in the
 preserved directory, and no retry can succeed.
 
-The collector will publish Orrery graph files itself instead. Builds will
-submit the files to the collector's artifact intake
-(PolicyEngine/microcosm-collector#12), and the collector's graph worker will
-build and publish the Orrery graph files from them. The direct upload to the
+The collector will build and publish the Orrery graph files itself instead.
+Builds will submit the graph's inputs to the collector's artifact intake
+(PolicyEngine/microcosm-collector#12): `graph.schema.json`,
+`graph.execution.json`, the `upstream-<sha256>.json` files and the native
+evidence files, which the collector keeps private. They will not submit
+`graph.orrery.json`: the collector's Orrery worker will build it from the
+schema and the execution overlay and publish it. The direct upload to the
 runs application will then be removed.
 
-By default, a build queues an upload only when it also stages its artifact
-bundle to Hugging Face, under `staged/<run_id>/`. That bundle holds the same
-files, so the Orrery graph files can be rebuilt from it later. This does not
-hold for an interrupted build, a build run with `--publish-orrery` without
-remote staging, or a build whose Hugging Face staging failed.
+By default, a build queues an upload only when remote staging is enabled, and
+after queuing it stages its artifact bundle to Hugging Face under
+`staged/<run_id>/`. That bundle holds every file of the queued upload, plus
+`graph.execution.json` when execution was recorded, so the Orrery graph files
+can be rebuilt from it later. This does not hold for an interrupted build, a
+build run with `--publish-orrery` while staging is local-only or disabled, or a
+build whose Hugging Face staging failed or did not complete.
 
 ## Configuration
 
