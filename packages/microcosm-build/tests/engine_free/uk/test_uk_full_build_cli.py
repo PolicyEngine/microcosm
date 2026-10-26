@@ -3378,17 +3378,24 @@ def test_thin_row_withholding_is_dense_only_and_needs_no_orrery(tmp_path):
     the public Orrery and is refused on the national role."""
 
     with pytest.raises(SystemExit):
-        arguments(tmp_path, "--withhold-thin-rows-only")
+        arguments(tmp_path, "--withhold-thin-rows-only", "--publish-orrery")
     with pytest.raises(SystemExit):
-        arguments(
-            tmp_path,
-            "--withhold-thin-rows-only",
-            "--no-publish-orrery",
-            role="national",
-        )
+        arguments(tmp_path, "--withhold-thin-rows-only", role="national")
+    assert arguments(tmp_path, "--withhold-thin-rows-only").withhold_thin_rows_only
     args = arguments(tmp_path, "--withhold-thin-rows-only", "--no-publish-orrery")
     assert args.withhold_thin_rows_only is True
     assert arguments(tmp_path).withhold_thin_rows_only is False
+
+
+def test_the_orrery_publication_is_off_unless_asked(tmp_path):
+    """María's ruling of 2026-10-26: no build submits its graph to the public
+    Orrery by default."""
+
+    from microcosm.build.uk_runtime.orrery_publication import publication_enabled
+
+    assert not publication_enabled(arguments(tmp_path))
+    assert not publication_enabled(arguments(tmp_path, "--no-publish-orrery"))
+    assert publication_enabled(arguments(tmp_path, "--publish-orrery"))
 
 
 def test_thin_row_withholding_marks_only_the_calibrated_gates(tmp_path, monkeypatch):

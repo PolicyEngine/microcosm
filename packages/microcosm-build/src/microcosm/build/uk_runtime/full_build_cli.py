@@ -782,7 +782,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "private licensed repository). It applies to the calibrated gates "
             "and the run's evidence summaries; the calibrated gates node "
             "records it, so only that node and what follows it re-key, never "
-            "the solve. Needs --no-publish-orrery."
+            "the solve. Refuses --publish-orrery."
         ),
     )
     parser.add_argument(
@@ -871,13 +871,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--publish-orrery",
         dest="publish_orrery",
         action="store_true",
-        help="Publish the saved graph, including when dataset staging is local-only.",
+        help=(
+            "Publish the saved graph to the public Orrery, including when "
+            "dataset staging is local-only. Off by default."
+        ),
     )
     graph_publication.add_argument(
         "--no-publish-orrery",
         dest="publish_orrery",
         action="store_false",
-        help="Export graph files locally without submitting a publication job.",
+        help=(
+            "Export graph files locally without submitting a publication job "
+            "(the default)."
+        ),
     )
     parser.set_defaults(publish_orrery=None)
     args = parser.parse_args(argv)
@@ -886,9 +892,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     if args.withhold_thin_rows_only:
         if args.release_role != "dense":
             parser.error("--withhold-thin-rows-only is a dense-role option.")
-        if args.publish_orrery is not False:
+        if args.publish_orrery:
             parser.error(
-                "--withhold-thin-rows-only needs --no-publish-orrery: the "
+                "--withhold-thin-rows-only refuses --publish-orrery: the "
                 "public Orrery never takes figures the differencing check "
                 "has not cleared."
             )

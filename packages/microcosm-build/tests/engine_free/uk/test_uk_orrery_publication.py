@@ -254,16 +254,20 @@ def test_no_emitter_delegates_publication_without_a_run_id(tmp_path, monkeypatch
 @pytest.mark.parametrize(
     "explicit,local,disabled,expected",
     [
-        (None, False, False, True),
+        (None, False, False, False),
         (None, True, False, False),
         (None, False, True, False),
+        (True, False, False, True),
         (True, True, True, True),
         (False, False, False, False),
     ],
 )
-def test_publication_has_explicit_local_only_and_opt_out_controls(
+def test_publication_is_opt_in_whatever_the_staging(
     explicit, local, disabled, expected
 ):
+    """María's ruling of 2026-10-26: a build publishes its graph to the
+    public Orrery only on ``--publish-orrery``, staged or not."""
+
     args = Namespace(
         publish_orrery=explicit, staging_local_only=local, no_staging=disabled
     )

@@ -126,8 +126,8 @@ households and skips the differencing check that withholds published rows
 beside them, which on the dense surface ran for hours and then failed to
 converge. The build command arms it at run time and the calibrated gates node
 records it, so a retry with it and `--require-solve-reuse` re-runs only the
-gates and what follows them. It needs `--no-publish-orrery`; the national role
-refuses it. A release built with it carries the figures the differencing check
+gates and what follows them. It refuses `--publish-orrery`, and the national
+role refuses it. A release built with it carries the figures the differencing check
 would have withheld, so it goes only to the private licensed repository.
 
 ### Sized release (microcosm#1124)

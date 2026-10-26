@@ -56,14 +56,14 @@ class GraphFinalization:
 
 
 def publication_enabled(args: Namespace) -> bool:
-    explicit = getattr(args, "publish_orrery", None)
-    if explicit is not None:
-        return explicit
-    return not (
-        getattr(args, "no_staging", False)
-        or getattr(args, "staging_local_only", False)
-        or getattr(args, "no_staged_dataset", False)
-    )
+    """Whether the saved graph goes to the public Orrery: only on request.
+
+    A UK build keeps its graph evidence local unless ``--publish-orrery`` asks
+    for the submission (María's ruling of 2026-10-26), whatever its staging;
+    staging to the private repositories does not depend on it.
+    """
+
+    return getattr(args, "publish_orrery", None) is True
 
 
 def _urls(value: object) -> Iterator[str]:
