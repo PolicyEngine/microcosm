@@ -83,7 +83,7 @@ class _Contract:
         "first_time_buyer_rate": 0.5,
         "property_purchase_rate": 0.5,
         "tax_free_childcare_spend_routed_share": 0.593,
-        "apprenticeship_participation_19_to_24": 0.06,
+        "apprentice_stock_19_to_24": 0.06,
     }
 
     def rate(self, key: str, build_year: int | None = None) -> float:

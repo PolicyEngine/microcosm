@@ -960,7 +960,7 @@ class TestE3ManifestLockstep:
             "extended_childcare_age_0_usage",
             "extended_childcare_age_1_usage",
             "marriage_allowance",
-            "apprenticeship_participation_19_to_24",
+            "apprentice_stock_19_to_24",
             "tv_ownership_rate",
             "tv_licence_evasion_rate",
             "first_time_buyer_rate",

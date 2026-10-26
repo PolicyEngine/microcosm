@@ -3155,3 +3155,111 @@ def test_gambling_participation_gate_recomputes_the_rates_and_checks_the_shares(
         parameters["amount_scale_bounds"] = bounds
         with pytest.raises(ValueError, match="amount_scale_bounds"):
             run(receipt)
+
+
+def _apprentice_receipt(**overrides):
+    """An is_apprentice receipt at the contract's 2024 rate (microcosm#1373)."""
+
+    from microcosm.build.uk_runtime.take_up_contract import load_uk_take_up_contract
+
+    rate = load_uk_take_up_contract().rate("apprentice_stock_19_to_24", 2024)
+    receipt = {
+        "build_year": 2024,
+        "output": "is_apprentice",
+        "rate_key": "apprentice_stock_19_to_24",
+        "rate": rate,
+        "ages": [21, 24],
+        "eligible_statuses": ["FT_EMPLOYED", "PT_EMPLOYED"],
+        "population_mass": 1_000_000.0,
+        "eligible_mass": 600_000.0,
+        "target": rate * 1_000_000.0,
+        "cap_bound": False,
+        "population_support": "30+",
+        "eligible_support": "30+",
+        "flagged_support": "30+",
+        "realized_mass": rate * 1_000_000.0 + 500.0,
+        "realization_deviation": 500.0,
+    }
+    receipt.update(overrides)
+    return {"stage": "frs_person_draws", "apprentice_receipt": receipt}
+
+
+def test_apprentice_gate_holds_the_draw_to_the_contract_rate() -> None:
+    gate_id = "uk_stage_frs_person_draws_apprentices"
+    assert _passed(_gate(gate_id, _apprentice_receipt()))
+    rate = _apprentice_receipt()["apprentice_receipt"]["rate"]
+    far = rate * 1_000_000.0 * 1.06
+    for receipt, fragment in (
+        (
+            _apprentice_receipt(rate_key="apprenticeship_participation_19_to_24"),
+            "reads",
+        ),
+        (_apprentice_receipt(rate=0.05992), "not the contract's"),
+        (_apprentice_receipt(target=1.0), "not the rate times"),
+        (_apprentice_receipt(flagged_support="12"), "printed band"),
+        (
+            _apprentice_receipt(
+                realized_mass=far, realization_deviation=far - rate * 1_000_000.0
+            ),
+            "away from it",
+        ),
+        (_apprentice_receipt(realization_deviation=0.0), "realized minus target"),
+        (
+            _apprentice_receipt(
+                flagged_support="<10",
+                realized_mass="<10",
+                realization_deviation="<10",
+            ),
+            "fewer than ten",
+        ),
+        (_apprentice_receipt(cap_bound=True), "cap_bound is True"),
+        (
+            _apprentice_receipt(
+                population_support="<10",
+                population_mass="<10",
+                target="<10",
+                realization_deviation="<10",
+            ),
+            "population_mass, target",
+        ),
+    ):
+        result = _gate(gate_id, receipt)
+        assert not result.passed
+        assert any(fragment in failure for failure in result.failures), result.failures
+
+
+def test_apprentice_gate_accepts_a_cap_bound_draw_that_flags_every_employee() -> None:
+    gate_id = "uk_stage_frs_person_draws_apprentices"
+    rate = _apprentice_receipt()["apprentice_receipt"]["rate"]
+    short = _apprentice_receipt(
+        eligible_mass=20_000.0,
+        cap_bound=True,
+        realized_mass=20_000.0,
+        realization_deviation=20_000.0 - rate * 1_000_000.0,
+    )
+    assert _passed(_gate(gate_id, short))
+
+    partial = _apprentice_receipt(
+        eligible_mass=20_000.0,
+        cap_bound=True,
+        realized_mass=10_000.0,
+        realization_deviation=10_000.0 - rate * 1_000_000.0,
+    )
+    result = _gate(gate_id, partial)
+    assert not result.passed
+    assert "every eligible employee" in result.failures[0]
+
+
+def test_apprentice_gate_is_a_population_fact_check() -> None:
+    """A synthetic fixture is not the population DfE's rate describes (#1373)."""
+
+    gates = {
+        entry["id"]: entry
+        for entry in json.loads(
+            (_TEST_PATHS.package / "src/microcosm/build/uk/gates.json").read_text()
+        )["gates"]
+    }
+    entry = gates["uk_stage_frs_person_draws_apprentices"]
+    assert entry["population_fact_check"] is True
+    assert entry["criticality"] == "release_blocking"
+    assert entry["evidence_absent_blocks"] is True

@@ -967,16 +967,16 @@
       }
     },
     {
-      "key": "apprenticeship_participation_19_to_24",
+      "key": "apprentice_stock_19_to_24",
       "output": "is_apprentice",
       "entity": "person",
       "values": {
-        "2019-08-01": 0.06017,
-        "2020-08-01": 0.06101,
-        "2021-08-01": 0.06295,
-        "2022-08-01": 0.06244,
-        "2023-08-01": 0.05976,
-        "2024-08-01": 0.05992
+        "2019-08-01": 0.037317,
+        "2020-08-01": 0.037817,
+        "2021-08-01": 0.036728,
+        "2022-08-01": 0.038327,
+        "2023-08-01": 0.036632,
+        "2024-08-01": 0.036887
       },
       "source": {
         "source": "DfE Apprenticeships statistics, academic year 2024/25, data set 'Geography Region - starts, achievements, participation, population by age, level' (app-geography-population-202425-q4.csv), National rows, apps_level Total, age_summary 19-24",
@@ -984,8 +984,8 @@
         "status": "sourced_administrative_derived",
         "url": "https://explore-education-statistics.service.gov.uk/data-catalogue/data-set/e5a4761f-434a-423a-bb0a-73ca3092dfc3",
         "csv_sha256": "be614d4acb481b661623f613df310a5148c1500279bdedd193af5d3571972cf8",
-        "derivation": "participation_rate_per_100000_population / 100000 for England, ages 19 to 24, per academic year (2024/25: 252,960 participants over a population estimate of 4,221,504 gives 5,992 per 100,000)",
-        "citation": "Apprentices per head of population aged 19 to 24 in England. DfE ages are age at the start of the apprenticeship and participation counts everyone in learning at any point in the academic year, so the rate likely overstates the share of 21- to 24-year-olds who are apprentices at a point in time, though age at start works the other way. DfE publishes no single-year split of 19 to 24, so the rate is taken as uniform across those ages, and England's rate is applied UK-wide until the Scottish (SDS Modern Apprenticeships), Welsh (Medr) and Northern Irish (ApprenticeshipsNI) series are added. frs_person_draws converts it to a rate among employees aged 21 to 24 at the frame's weights."
+        "derivation": "(participation - starts) / population_estimate for England, ages 19 to 24, per academic year, rounded to six decimals: the apprentices already in learning when the year began, per head (2024/25: (252,960 - 97,240) / 4,221,504 = 0.036887)",
+        "citation": "Apprentices in learning at a point in time per head of population aged 19 to 24 in England. DfE publishes no point-in-time count: participation counts everyone in learning at any point in the academic year, so the in-year rate (5,992 per 100,000 in 2024/25) overstates how many are apprentices at once. Participation less the year's starts is the number already in learning on 1 August; in a steady state it is also the year's average number in learning, though autumn starts put the year's low near 1 August. Participation takes age at 31 August and starts take age at the start, so the two differ at the band's edges. DfE publishes no single-year split of 19 to 24, so the rate is taken as uniform across those ages; Medr's single-year Welsh rates fall with age, which points to a lower rate at 21 to 24. England's rate is applied UK-wide until the Scottish (SDS Modern Apprenticeships in training), Welsh (Medr) and Northern Irish (ApprenticeshipsNI) series are added; SDS's point-in-time count is lower per head. frs_person_draws realizes it among employees aged 21 to 24 at the frame's weights."
       }
     }
   ],

@@ -1,4 +1,4 @@
-"""is_apprentice on the UK spine: employees aged 21 to 24 at DfE's rate."""
+"""is_apprentice on the UK spine: employees aged 21 to 24, realized to a per-head rate."""
 
 from __future__ import annotations
 
@@ -14,14 +14,13 @@ from microcosm.build.uk_runtime.frs_person_draws import (
     derive_is_apprentice,
 )
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
-from microcosm.build.uk_runtime.take_up_contract import load_uk_take_up_contract
 from test_support.microcosm_build.uk_frs_stochastic import _Contract
 
 _STATUSES = ("FT_EMPLOYED", "PT_EMPLOYED", "FT_SELF_EMPLOYED", "STUDENT")
 
 
 def _people(n_per_cell: int = 2000) -> pd.DataFrame:
-    """Every age from 18 to 30 crossed with four statuses."""
+    """Every age from 18 to 30 crossed with four statuses, one household each."""
 
     ages = np.arange(18, 31)
     rows = [
@@ -29,13 +28,26 @@ def _people(n_per_cell: int = 2000) -> pd.DataFrame:
     ]
     frame = pd.DataFrame(rows, columns=["age", "employment_status"])
     frame.insert(0, "person_id", np.arange(1, len(frame) + 1))
+    frame.insert(1, "person_household_id", frame["person_id"])
     return frame
+
+
+def _small(ages, statuses, *, households=None) -> pd.DataFrame:
+    ids = np.arange(11, 11 + len(ages))
+    return pd.DataFrame(
+        {
+            "person_id": ids,
+            "person_household_id": ids if households is None else households,
+            "age": ages,
+            "employment_status": statuses,
+        }
+    )
 
 
 def test_only_employees_aged_21_to_24_are_flagged() -> None:
     person = _people()
 
-    flags = derive_is_apprentice(person, rate=0.06)
+    flags = derive_is_apprentice(person, rate=0.06).flags
 
     age = person["age"].to_numpy()
     employee = person["employment_status"].isin(["FT_EMPLOYED", "PT_EMPLOYED"])
@@ -45,82 +57,130 @@ def test_only_employees_aged_21_to_24_are_flagged() -> None:
     assert flags[eligible].any()
 
 
-def test_flags_match_the_per_head_rate_over_ages_21_to_24() -> None:
+def test_flagged_weight_is_nearest_the_per_head_target() -> None:
     person = _people()
     rng = np.random.default_rng(0)
     weights = rng.uniform(100.0, 3000.0, len(person))
     rate = 0.06
 
-    flags = derive_is_apprentice(person, rate=rate, person_weights=weights)
+    draw = derive_is_apprentice(person, rate=rate, person_weights=weights)
 
     age = person["age"].to_numpy()
     in_ages = (age >= 21) & (age <= 24)
-    # Half the people aged 21 to 24 are employees, so the rate among them is
-    # about 0.12, and the weighted flags are about 6% of the age group.
-    share = weights[flags].sum() / weights[in_ages].sum()
-    assert share == pytest.approx(rate, rel=0.05)
+    target = rate * weights[in_ages].sum()
+    realized = weights[draw.flags].sum()
+    # The walk stops at the cumulative weight nearest the target, so it misses
+    # by at most half the last person's weight.
+    assert abs(realized - target) <= weights.max() / 2
+    receipt = draw.receipt
+    assert receipt["rate_key"] == APPRENTICE_RATE_KEY
+    assert receipt["population_mass"] == pytest.approx(weights[in_ages].sum())
+    assert receipt["target"] == pytest.approx(target)
+    assert receipt["realized_mass"] == pytest.approx(realized)
+    assert receipt["realization_deviation"] == pytest.approx(realized - target)
+    assert receipt["cap_bound"] is False
+    assert receipt["eligible_support"] == "30+"
+    assert receipt["flagged_support"] == "30+"
 
 
-def test_draw_is_identity_keyed_and_uses_the_conditional_rate() -> None:
-    person = pd.DataFrame(
-        {
-            "person_id": [11, 12, 13, 14],
-            "age": [22, 22, 23, 40],
-            "employment_status": [
-                "FT_EMPLOYED",
-                "STUDENT",
-                "PT_EMPLOYED",
-                "FT_EMPLOYED",
-            ],
-        }
+def test_people_are_flagged_in_the_order_of_their_identity_uniform() -> None:
+    person = _small(
+        [22, 22, 23, 24, 40, 23],
+        [
+            "FT_EMPLOYED",
+            "STUDENT",
+            "PT_EMPLOYED",
+            "FT_EMPLOYED",
+            "FT_EMPLOYED",
+            "FT_EMPLOYED",
+        ],
     )
-    weights = np.array([1.0, 1.0, 2.0, 5.0])
-    rate = 0.2
+    weights = np.array([1.0, 1.0, 1.0, 1.0, 5.0, 1.0])
+    # Five people aged 21 to 24 at 0.4 a head: a target of two people.
+    draw = derive_is_apprentice(person, rate=0.4, person_weights=weights)
 
-    flags = derive_is_apprentice(person, rate=rate, person_weights=weights)
-
-    # W(21 to 24) = 4 and W(eligible) = 3, so p = 0.2 * 4 / 3.
     draws = stable_identity_uniforms(
         person["person_id"].to_numpy(), seed=0, salt=APPRENTICE_OUTPUT
     )
-    expected = np.array([True, False, True, False]) & (draws < 0.2 * 4 / 3)
-    np.testing.assert_array_equal(flags, expected)
+    eligible = np.array([True, False, True, True, False, True])
+    first_two = np.argsort(np.where(eligible, draws, np.inf))[:2]
+    expected = np.zeros(len(person), dtype=bool)
+    expected[first_two] = True
+    np.testing.assert_array_equal(draw.flags, expected)
     reordered = derive_is_apprentice(
         person.iloc[::-1].reset_index(drop=True),
-        rate=rate,
+        rate=0.4,
         person_weights=weights[::-1],
     )
-    np.testing.assert_array_equal(reordered, expected[::-1])
+    np.testing.assert_array_equal(reordered.flags, expected[::-1])
 
 
-def test_conditional_rate_is_capped_at_one() -> None:
-    person = pd.DataFrame(
-        {
-            "person_id": [1, 2, 3],
-            "age": [21, 22, 23],
-            "employment_status": ["FT_EMPLOYED", "UNEMPLOYED", "UNEMPLOYED"],
-        }
-    )
+def test_nobody_is_flagged_when_the_target_is_nearer_zero() -> None:
+    person = _small([22, 30], ["FT_EMPLOYED", "STUDENT"])
 
-    flags = derive_is_apprentice(person, rate=0.9)
+    # A target of 0.1 people sits nearer zero than the one employee's weight.
+    draw = derive_is_apprentice(person, rate=0.1, person_weights=np.ones(2))
 
-    np.testing.assert_array_equal(flags, [True, False, False])
+    assert not draw.flags.any()
+    assert draw.receipt["realized_mass"] == 0.0
+    assert draw.receipt["cap_bound"] is False
+
+
+def test_a_short_eligible_weight_flags_every_eligible_employee() -> None:
+    person = _small([21, 22, 23], ["FT_EMPLOYED", "UNEMPLOYED", "UNEMPLOYED"])
+
+    draw = derive_is_apprentice(person, rate=0.9)
+
+    np.testing.assert_array_equal(draw.flags, [True, False, False])
+    assert draw.receipt["cap_bound"] is True
 
 
 def test_no_eligible_employee_flags_nobody() -> None:
-    person = pd.DataFrame(
-        {
-            "person_id": [1, 2],
-            "age": [22, 30],
-            "employment_status": ["STUDENT", "FT_EMPLOYED"],
-        }
+    person = _small([22, 30], ["STUDENT", "FT_EMPLOYED"])
+
+    draw = derive_is_apprentice(person, rate=0.06)
+
+    assert not draw.flags.any()
+    assert draw.receipt["eligible_support"] == 0
+    assert draw.receipt["cap_bound"] is True
+
+
+def test_receipt_withholds_a_flagged_weight_on_fewer_than_ten_households() -> None:
+    person = _small([22] * 20, ["FT_EMPLOYED"] * 20)
+
+    draw = derive_is_apprentice(person, rate=0.25)
+
+    assert int(draw.flags.sum()) == 5
+    assert draw.receipt["flagged_support"] == "<10"
+    assert draw.receipt["realized_mass"] == "<10"
+    assert draw.receipt["realization_deviation"] == "<10"
+    assert draw.receipt["population_mass"] == 20.0
+
+
+def test_receipt_withholds_a_population_on_fewer_than_ten_households() -> None:
+    # Six people aged 21 to 24 in three households, with a one-person target.
+    person = _small(
+        [22, 23, 21, 24, 22, 23],
+        ["FT_EMPLOYED"] * 6,
+        households=[1, 1, 2, 2, 3, 3],
     )
 
-    assert not derive_is_apprentice(person, rate=0.06).any()
+    draw = derive_is_apprentice(person, rate=1 / 6)
+
+    receipt = draw.receipt
+    assert receipt["population_support"] == "<10"
+    for key in (
+        "population_mass",
+        "eligible_mass",
+        "target",
+        "realized_mass",
+        "realization_deviation",
+    ):
+        assert receipt[key] == "<10", key
 
 
 def test_refuses_a_frame_without_employment_status() -> None:
-    person = pd.DataFrame({"person_id": [1], "age": [22]})
+    person = pd.DataFrame({"person_id": [1], "person_household_id": [1], "age": [22]})
 
     with pytest.raises(ValueError, match="employment_status"):
         derive_is_apprentice(person, rate=0.06)
@@ -156,16 +216,32 @@ def _two_household_frame(**extra_person_columns):
     )
 
 
-def test_stage_flags_use_the_frame_household_weights() -> None:
-    stored = UKFRSPersonDrawsStageTransform(contract=_Contract(), stage=None)(
-        _two_household_frame()
-    ).table("person")
+def test_stage_realizes_the_target_at_the_frame_household_weights() -> None:
+    stage = UKFRSPersonDrawsStageTransform(contract=_Contract(), stage=None)
+
+    stored = stage(_two_household_frame()).table("person")
 
     # Household 1 holds the employees and weighs 1, household 2 the students
-    # and weighs 3, so p = 0.06 * 4 / 1 = 0.24 among the employees.
+    # and weighs 3: the target is 0.06 x (2000 + 6000) = 480 employees.
     flags = stored[APPRENTICE_OUTPUT].to_numpy()
     assert not flags[2000:].any()
-    assert flags[:2000].mean() == pytest.approx(0.24, abs=0.03)
+    assert int(flags[:2000].sum()) == 480
+    receipt = stage.checkpoint_metadata()["evidence"]
+    assert receipt["stage"] == "frs_person_draws"
+    apprentices = receipt["apprentice_receipt"]
+    assert apprentices["build_year"] == 2024
+    assert apprentices["rate"] == 0.06
+    # Two households carry everyone, so the receipt withholds the weights.
+    assert apprentices["population_support"] == "<10"
+    assert apprentices["target"] == "<10"
+    assert apprentices["flagged_support"] == "<10"
+
+
+def test_stage_has_no_receipt_before_it_runs() -> None:
+    stage = UKFRSPersonDrawsStageTransform(contract=_Contract(), stage=None)
+
+    with pytest.raises(RuntimeError, match="completed stage run"):
+        stage.checkpoint_metadata()
 
 
 def test_stage_refuses_a_stored_flag() -> None:
@@ -173,14 +249,3 @@ def test_stage_refuses_a_stored_flag() -> None:
 
     with pytest.raises(ValueError, match="already stored"):
         UKFRSPersonDrawsStageTransform(contract=_Contract(), stage=None)(frame)
-
-
-def test_contract_carries_the_dfe_rate_for_the_build_year() -> None:
-    contract = load_uk_take_up_contract()
-
-    entry = contract.entry(APPRENTICE_RATE_KEY)
-
-    assert entry.raw["output"] == APPRENTICE_OUTPUT
-    assert entry.raw["entity"] == "person"
-    # DfE 2024/25: 252,960 participants aged 19 to 24 over 4,221,504 people.
-    assert contract.rate(APPRENTICE_RATE_KEY, contract.build_year) == 0.05992

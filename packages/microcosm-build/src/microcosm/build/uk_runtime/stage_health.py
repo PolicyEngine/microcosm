@@ -105,6 +105,8 @@ def uk_stage_health_gate(
         return _regional_home_values_gate(stage, evidence, parameters)
     if check == "legacy_closure_take_up":
         return _legacy_closure_take_up_gate(stage, evidence, parameters)
+    if check == "apprentice_draw":
+        return _apprentice_draw_gate(stage, evidence, parameters)
     return GateResult(
         name="stage_health",
         passed=False,
@@ -4436,6 +4438,142 @@ def _legacy_closure_take_up_gate(
         if not 0.0 <= share <= 1.0:
             failures.append(f"{stage}: the share claiming at closure is {share}.")
     details = {"combinations": len(combinations)}
+    if failures:
+        return _fail(stage, check, failures, details)
+    return _pass(stage, check, details)
+
+
+def _apprentice_draw_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """``is_apprentice`` realizes the contract's per-head rate (microcosm#1373).
+
+    The receipt must carry the contract's rate for its build year under the
+    declared key, a target equal to that rate times the weighted population
+    aged 21 to 24, and its support as printed bands. Unless the eligible
+    employees weigh no more than the target (cap-bound: every one of them is
+    flagged), the flagged weight lies within
+    ``maximum_relative_realization_deviation`` of the target. A flagged weight
+    on fewer than ten source households fails: the receipt withholds it, and a
+    rate realized on so few records would not describe the population.
+    """
+
+    from microcosm.build.uk_runtime.take_up_contract import load_uk_take_up_contract
+
+    check = "apprentice_draw"
+    receipt = _mapping(
+        evidence.get("apprentice_receipt"), label=f"{stage}.apprentice_receipt"
+    )
+    tolerance = _finite_number(
+        parameters["maximum_relative_realization_deviation"],
+        label=f"{stage}.maximum_relative_realization_deviation",
+    )
+    if tolerance < 0.0:
+        raise ValueError(
+            f"{stage}: maximum_relative_realization_deviation must be >= 0."
+        )
+    rate_key = str(parameters["rate_key"])
+    failures: list[str] = []
+    if receipt.get("rate_key") != rate_key:
+        failures.append(
+            f"{stage}: the draw reads {receipt.get('rate_key')!r}, not {rate_key!r}."
+        )
+    build_year = receipt.get("build_year")
+    if isinstance(build_year, bool) or not isinstance(build_year, int):
+        raise ValueError(f"{stage}.build_year must be an integer, got {build_year!r}.")
+    declared = load_uk_take_up_contract().rate(rate_key, build_year)
+    rate = _finite_number(receipt.get("rate"), label=f"{stage}.rate")
+    if rate != declared:
+        failures.append(
+            f"{stage}: the draw's rate {rate} is not the contract's {declared} "
+            f"for {build_year}."
+        )
+    withheld = [
+        key
+        for key in (
+            "population_mass",
+            "eligible_mass",
+            "target",
+            "realized_mass",
+            "realization_deviation",
+        )
+        if receipt.get(key) == "<10"
+    ]
+    if withheld:
+        failures.append(
+            f"{stage}: {', '.join(withheld)} rest on fewer than ten source "
+            "households, so the draw cannot be checked against the rate."
+        )
+        return _fail(stage, check, failures, {"rate_key": rate_key, "rate": rate})
+    population = _finite_number(
+        receipt.get("population_mass"), label=f"{stage}.population_mass"
+    )
+    eligible = _finite_number(
+        receipt.get("eligible_mass"), label=f"{stage}.eligible_mass"
+    )
+    target = _finite_number(receipt.get("target"), label=f"{stage}.target")
+    if not math.isclose(target, rate * population, rel_tol=_FLOAT_RELATIVE_TOLERANCE):
+        failures.append(
+            f"{stage}: target {target} is not the rate times the population aged "
+            f"21 to 24 ({rate * population})."
+        )
+    for key in ("population_support", "eligible_support", "flagged_support"):
+        band = receipt.get(key)
+        if band != 0 and band not in _SUPPORT_BANDS:
+            failures.append(f"{stage}: {key} {band!r} is not a printed band.")
+    cap_bound = receipt.get("cap_bound")
+    if not isinstance(cap_bound, bool):
+        raise ValueError(f"{stage}.cap_bound must be a boolean, got {cap_bound!r}.")
+    shortfall = target > 0.0 and eligible <= target
+    if cap_bound != shortfall:
+        failures.append(
+            f"{stage}: cap_bound is {cap_bound} with eligible weight {eligible} "
+            f"against target {target}."
+        )
+    relative: float | None = None
+    if receipt.get("flagged_support") == "<10" or receipt.get("realized_mass") == "<10":
+        failures.append(
+            f"{stage}: the flagged weight rests on fewer than ten source households."
+        )
+    else:
+        realized = _finite_number(
+            receipt.get("realized_mass"), label=f"{stage}.realized_mass"
+        )
+        printed = _finite_number(
+            receipt.get("realization_deviation"),
+            label=f"{stage}.realization_deviation",
+        )
+        if not math.isclose(
+            printed, realized - target, rel_tol=1e-9, abs_tol=1e-6 * max(target, 1.0)
+        ):
+            failures.append(
+                f"{stage}: realization_deviation {printed} is not realized minus "
+                f"target ({realized - target})."
+            )
+        if cap_bound:
+            if not math.isclose(realized, eligible, rel_tol=1e-9):
+                failures.append(
+                    f"{stage}: a cap-bound draw flags every eligible employee, but "
+                    f"{realized} of {eligible} is flagged."
+                )
+        else:
+            relative = (
+                abs(realized - target) / target if target > 0.0 else float(realized > 0)
+            )
+            if relative > tolerance:
+                failures.append(
+                    f"{stage}: the flagged weight is {relative:.4f} of the target "
+                    f"away from it, above {tolerance}."
+                )
+    details = {
+        "rate_key": rate_key,
+        "rate": rate,
+        "target": target,
+        "cap_bound": cap_bound,
+        "relative_realization_deviation": relative,
+    }
     if failures:
         return _fail(stage, check, failures, details)
     return _pass(stage, check, details)

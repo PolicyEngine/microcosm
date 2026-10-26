@@ -6,23 +6,23 @@ to 2024-25 adult tables carry no apprenticeship variable, and ``TRAIN2``,
 apprenticeships. policyengine-uk zero-rates employer Class 1 NICs for a
 relevant apprentice under 25 (SSCBA 1992 s.9B), and a person under 21 already
 gets the s.9A zero rate by age, so the flag changes employer NICs only at ages
-21 to 24. The stage draws it there, for employees only, at DfE's published
-participation rate for apprentices aged 19 to 24 in England per head of
-population (``apprenticeship_participation_19_to_24``), converted to a rate
-among the eligible employees at the frame's own household weights:
-
-    p = min(1, r * W(age 21 to 24) / W(employees aged 21 to 24))
-
-so the weighted flags among 21- to 24-year-olds equal r times their weighted
-population. Ages under 21 and from 25 keep the engine default (False), which
-leaves ``is_in_non_advanced_education`` (child benefit and Universal Credit
-qualifying young person status), ``minimum_wage``, Care to Learn and the 16 to
-19 Bursary Fund unchanged for them.
+21 to 24. The stage draws it there, for employees only. Its target is r times
+the weighted population aged 21 to 24 at the frame's own household weights,
+where r (``apprentice_stock_19_to_24``) is DfE's England apprentices in
+learning at the start of the academic year (participation less starts) per
+head aged 19 to 24, a point-in-time count rather than the in-year one
+(microcosm#1373). Eligible employees are flagged in the order of their
+identity-keyed uniform until their weight is nearest the target, and the
+stage's receipt records how near it came. Ages under 21 and from 25 keep the
+engine default (False), which leaves ``is_in_non_advanced_education`` (child
+benefit and Universal Credit qualifying young person status), ``minimum_wage``,
+Care to Learn and the 16 to 19 Bursary Fund unchanged for them.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
@@ -39,6 +39,7 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
+from microcosm.build.uk_runtime.receipt_counts import distinct_count, support_band
 from microcosm.build.uk_runtime.take_up_contract import UKTakeUpContract
 from microcosm.frame import Frame
 
@@ -54,7 +55,7 @@ FRS_PERSON_DRAW_NONNEGATIVE_OUTPUT_COLUMNS = (
     "tax_free_childcare_spend_routed_share",
 )
 APPRENTICE_OUTPUT = "is_apprentice"
-APPRENTICE_RATE_KEY = "apprenticeship_participation_19_to_24"
+APPRENTICE_RATE_KEY = "apprentice_stock_19_to_24"
 # SSCBA 1992 s.9A gives every earner under 21 the zero rate by age, and s.9B
 # ends the apprentice zero rate at 25, so only ages 21 to 24 are drawn.
 APPRENTICE_MIN_AGE = 21
@@ -77,16 +78,39 @@ class UKFRSPersonDrawsStageTransform:
 
     contract: UKTakeUpContract
     stage: SourceStageSpec
+    last_receipt: Mapping[str, object] | None = field(default=None, init=False)
 
     def __call__(self, frame: Frame) -> Frame:
-        return add_frs_person_draws(frame, contract=self.contract)
+        result, receipt = add_frs_person_draws_with_receipt(
+            frame, contract=self.contract
+        )
+        object.__setattr__(self, "last_receipt", receipt)
+        return result
 
     @staticmethod
     def output_columns() -> tuple[str, ...]:
         return FRS_PERSON_DRAW_OUTPUT_COLUMNS
 
+    def checkpoint_metadata(self) -> dict[str, object]:
+        if self.last_receipt is None:
+            raise RuntimeError("checkpoint metadata requires a completed stage run.")
+        return {
+            "evidence": {
+                "stage": "frs_person_draws",
+                "apprentice_receipt": dict(self.last_receipt),
+            }
+        }
+
 
 def add_frs_person_draws(frame: Frame, *, contract: UKTakeUpContract) -> Frame:
+    return add_frs_person_draws_with_receipt(frame, contract=contract)[0]
+
+
+def add_frs_person_draws_with_receipt(
+    frame: Frame, *, contract: UKTakeUpContract
+) -> tuple[Frame, Mapping[str, object]]:
+    """The stage's frame and the receipt of its ``is_apprentice`` draw."""
+
     period = uk_time_period(frame)
     if int(str(period).split("-", maxsplit=1)[0]) != contract.build_year:
         raise ValueError(
@@ -100,7 +124,7 @@ def add_frs_person_draws(frame: Frame, *, contract: UKTakeUpContract) -> Frame:
             f"{APPRENTICE_OUTPUT!r} is already stored: frs_person_draws is its "
             "only writer."
         )
-    derived = derive_frs_person_draws(
+    derived, receipt = derive_frs_person_draws_with_receipt(
         person, contract=contract, person_weights=uk_person_household_weights(frame)
     )
     for column in FRS_PERSON_DRAW_OUTPUT_COLUMNS:
@@ -115,7 +139,7 @@ def add_frs_person_draws(frame: Frame, *, contract: UKTakeUpContract) -> Frame:
         mass_log=frame.mass_log,
     )
     validate_uk_national_frame(result)
-    return result
+    return result, receipt
 
 
 def derive_frs_person_draws(
@@ -127,8 +151,21 @@ def derive_frs_person_draws(
     """Return the stage's person draws.
 
     ``person_weights`` are each person's household weight, which set
-    ``is_apprentice``'s rate among eligible employees.
+    ``is_apprentice``'s target.
     """
+
+    return derive_frs_person_draws_with_receipt(
+        person, contract=contract, person_weights=person_weights
+    )[0]
+
+
+def derive_frs_person_draws_with_receipt(
+    person: pd.DataFrame,
+    *,
+    contract: UKTakeUpContract,
+    person_weights: np.ndarray,
+) -> tuple[pd.DataFrame, Mapping[str, object]]:
+    """The stage's person draws and the receipt of its ``is_apprentice`` draw."""
 
     ids = person["person_id"].to_numpy()
     values = pd.DataFrame(index=person.index)
@@ -154,12 +191,21 @@ def derive_frs_person_draws(
     values["tax_free_childcare_spend_routed_share"] = contract.rate(
         "tax_free_childcare_spend_routed_share", contract.build_year
     )
-    values[APPRENTICE_OUTPUT] = derive_is_apprentice(
+    apprentices = derive_is_apprentice(
         person,
         rate=contract.rate(APPRENTICE_RATE_KEY, contract.build_year),
         person_weights=person_weights,
     )
-    return values
+    values[APPRENTICE_OUTPUT] = apprentices.flags
+    return values, {"build_year": contract.build_year, **apprentices.receipt}
+
+
+@dataclass(frozen=True)
+class UKApprenticeDraw:
+    """``is_apprentice`` and the receipt of how the draw met its target."""
+
+    flags: np.ndarray
+    receipt: Mapping[str, object]
 
 
 def derive_is_apprentice(
@@ -167,14 +213,16 @@ def derive_is_apprentice(
     *,
     rate: float,
     person_weights: np.ndarray | None = None,
-) -> np.ndarray:
+) -> UKApprenticeDraw:
     """Draw ``is_apprentice`` for employees aged 21 to 24.
 
-    ``rate`` is apprentices per head of population at those ages. It becomes a
-    rate among the eligible employees, ``rate * W(21 to 24) / W(eligible)``,
-    capped at one, so the weighted flags equal ``rate`` times the weighted
-    population aged 21 to 24 unless too few employees carry them. A person is
-    flagged when eligible and their identity-keyed uniform is below that rate.
+    ``rate`` is apprentices per head of population at those ages, so the
+    target is ``rate * W(21 to 24)``. Eligible employees are flagged in the
+    order of their identity-keyed uniform until their weight is nearest the
+    target (uc_take_up's rule, microcosm#1334), so the stage realizes it to
+    within one person's weight rather than only in expectation. When the
+    eligible weight falls short of the target every eligible employee is
+    flagged and the receipt says the draw was cap-bound.
     """
 
     if "employment_status" not in person.columns:
@@ -200,13 +248,71 @@ def derive_is_apprentice(
         .to_numpy()
     )
     eligible = in_ages & employee
+    draws = _draws(person["person_id"].to_numpy(), APPRENTICE_OUTPUT)
+    population_mass = float(weights[in_ages].sum())
     eligible_mass = float(weights[eligible].sum())
-    if eligible_mass <= 0:
-        return np.zeros(len(person), dtype=bool)
-    conditional = min(1.0, float(rate) * float(weights[in_ages].sum()) / eligible_mass)
-    return eligible & assign_binary_from_rate(
-        _draws(person["person_id"].to_numpy(), APPRENTICE_OUTPUT), conditional
+    target = float(rate) * population_mass
+    threshold = _nearest_target_threshold(
+        target, draws=draws[eligible], weights=weights[eligible]
     )
+    flags = eligible & (draws < threshold)
+    realized = float(weights[flags].sum())
+    # Before the support channels every household is its own source household.
+    households = person["person_household_id"].to_numpy()
+    population_support = distinct_count(households, in_ages, weights)
+    eligible_support = distinct_count(households, eligible, weights)
+    flagged_support = distinct_count(households, flags, weights)
+    receipt: dict[str, object] = {
+        "output": APPRENTICE_OUTPUT,
+        "rate_key": APPRENTICE_RATE_KEY,
+        "rate": float(rate),
+        "ages": [APPRENTICE_MIN_AGE, APPRENTICE_MAX_AGE_EXCLUSIVE - 1],
+        "eligible_statuses": list(APPRENTICE_EMPLOYEE_STATUSES),
+        "population_mass": population_mass,
+        "eligible_mass": eligible_mass,
+        "target": target,
+        "cap_bound": bool(target > 0.0 and eligible_mass <= target),
+        "population_support": support_band(population_support),
+        "eligible_support": support_band(eligible_support),
+        "flagged_support": support_band(flagged_support),
+        "realized_mass": realized,
+        "realization_deviation": realized - target,
+    }
+    # A weighted total carried by one to nine households is withheld, with the
+    # figures that would give it back: the target is the rate times the
+    # population, and the deviation is the flagged weight less the target.
+    if 0 < population_support < 10:
+        receipt.update(population_mass="<10", target="<10", realization_deviation="<10")
+    if 0 < eligible_support < 10:
+        receipt["eligible_mass"] = "<10"
+    if 0 < flagged_support < 10:
+        receipt.update(realized_mass="<10", realization_deviation="<10")
+    return UKApprenticeDraw(flags=flags, receipt=receipt)
+
+
+def _nearest_target_threshold(
+    need: float, *, draws: np.ndarray, weights: np.ndarray
+) -> float:
+    """The uniform below which eligible people are flagged.
+
+    People are taken in the order of their uniform until their weight is
+    nearest ``need``; flagging no one is a candidate too, when ``need`` sits
+    nearer zero than the first person's weight. When the eligible weight is no
+    more than ``need``, everyone eligible is flagged.
+    """
+
+    if need <= 0.0 or draws.size == 0:
+        return 0.0
+    if float(weights.sum()) <= need:
+        return 1.0
+    order = np.argsort(draws, kind="stable")
+    cumulative = np.cumsum(weights[order])
+    last = min(int(np.searchsorted(cumulative, need)), len(order) - 1)
+    if last > 0 and abs(cumulative[last - 1] - need) < abs(cumulative[last] - need):
+        last -= 1
+    if last == 0 and abs(need) < abs(cumulative[0] - need):
+        return float(draws[order[0]])
+    return float(np.nextafter(draws[order[last]], 2.0))
 
 
 def uk_person_household_weights(frame: Frame) -> np.ndarray:
