@@ -6083,7 +6083,7 @@ def test_precalibration_ancestry_unreadable_composed_bindings_refuse_upstream(
 
     Its node's stage bindings cannot be read, so on stage A's node or on the
     calibration node the composed pass refuses. ``post`` reads calibration's
-    output, so none of its bindings is read and it faces only the shape
+    output, so none of its bindings is used and it faces only the shape
     checks; round 6 found it refused before the ancestry was known.
     """
     binding = _synthetic_binding("A", "person", ["A_public"])

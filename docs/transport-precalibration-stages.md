@@ -117,7 +117,7 @@ the binding's prepared engine reference, as written, JSON-escaped once, or
 after JSON escapes are decoded, layer by layer, up to 32 layers, as for the
 inventory below. Each layer is one linear pass over a string. Upstream of
 calibration, a parameter still escaped after 32 layers refuses, because its
-node's stage bindings cannot be read; after calibration no binding is read,
+node's stage bindings cannot be read; after calibration no binding is used,
 so such a node faces only the shape checks. A node that names a listed and an
 unlisted benefit-unit binding refuses. A parameter carrying the whole prepared
 `engine_refs` inventory is bookkeeping, not a stage invocation, and still
