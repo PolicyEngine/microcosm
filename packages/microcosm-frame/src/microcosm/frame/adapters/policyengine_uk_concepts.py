@@ -9,7 +9,6 @@ PolicyEngineUKEngine` returns :data:`POLICYENGINE_UK_CONCEPT_MAPPING` from
 
 from microcosm.frame.concept_mapping import (
     ConceptMapping,
-    Fraction,
     GroupRule,
     Identity,
     InputBinding,
@@ -36,7 +35,7 @@ __all__ = [
 # ---------------------------------------------------------------------------
 #
 # Which PolicyEngine-UK inputs each engine-neutral concept feeds
-# (microcosm.frame.concepts), reviewed against policyengine-uk 2.161.0. Every
+# (microcosm.frame.concepts), reviewed against policyengine-uk 2.162.3. Every
 # target is a pure input (in ``PolicyEngineUKEngine.variables``). The UK
 # loader also accepts some formula-owned variables as overrides
 # (``employment_income``, ``state_pension_reported``, ``is_household_head``);
@@ -345,6 +344,58 @@ UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
         ),
         _UK_CHILD_LIMIT_EXCEPTIONS_AT_DEFAULT,
     ),
+    **dict.fromkeys(
+        (
+            "electricity_consumption_kwh",
+            "gas_consumption_kwh",
+            "ni_epg_full_rate_applies",
+        ),
+        "Northern Ireland's Energy Price Guarantee discounts (policyengine-uk "
+        "2.161.1) read each month's kWh and an assertion that the full rates "
+        "apply. The frame stores annual spend, not monthly kWh, so the kWh stay "
+        "unknown (-1), the full rates are not asserted and the discounts are not "
+        "calculated. The guarantee applied in 2022-23 only, so the calibration "
+        "year is unaffected (microcosm#1095; for María's signature).",
+    ),
+    **dict.fromkeys(
+        (
+            "individual_savings_account_dividend_income",
+            "non_cash_isa_cash_interest",
+        ),
+        "ISA dividends and the cash interest held in non-cash ISAs "
+        "(policyengine-uk 2.162.2). The FRS records ISA interest as one total, "
+        "which the frame supplies in tax_free_savings_income, so the of-which "
+        "detail stays zero and changes nothing. It records no ISA dividends "
+        "apart from other dividends, so ISA dividends stay zero: any the "
+        "survey's dividend answer holds are taxed as ordinary dividends "
+        "(microcosm#1095; for María's signature).",
+    ),
+    **dict.fromkeys(
+        (
+            "lifetime_isa_payments",
+            "lifetime_isa_withdrawals",
+            "lifetime_isa_withdrawals_towards_first_home",
+            "lifetime_isa_first_time_buyer",
+            "lifetime_isa_terminally_ill",
+            "lifetime_isa_months_since_first_payment",
+        ),
+        "The Lifetime ISA's flows (policyengine-uk 2.162.2). Neither the FRS nor "
+        "the WAS records payments into or withdrawals from a Lifetime ISA (the "
+        "was_lisa stage draws holdings), so payments and withdrawals stay zero: "
+        "the 25% government bonus and the withdrawal charge are zero for every "
+        "account, and the bonus HM Treasury pays is not modelled "
+        "(microcosm#1095; for María's signature).",
+    ),
+    **dict.fromkeys(
+        (
+            "main_residential_property_purchased_is_in_uk",
+            "main_residential_property_purchased_with_mortgage",
+        ),
+        "Two flags on a main-home purchase (policyengine-uk 2.162.2) that only "
+        "the Lifetime ISA withdrawal charge's first-home exemption reads. With no "
+        "Lifetime ISA withdrawals they change nothing, so they stay false "
+        "(microcosm#1095; for María's signature).",
+    ),
 }
 
 
@@ -369,7 +420,7 @@ def _uk_take_up(program: str, entity: str) -> InputBinding:
 
 POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
     engine="policyengine-uk",
-    engine_version="2.161.0",
+    engine_version="2.162.3",
     entity_correspondence={"person": "person", "household": "household"},
     input_declaration=InputDeclaration.ENGINE_TYPED,
     bindings=(
@@ -465,24 +516,16 @@ POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
             Identity(),
             AlignmentRelation.NARROW_MATCH,
             (
-                "Engine documentation: 'Income from interest on savings, gross "
-                "of tax', ISA interest included (taxable savings interest "
-                "subtracts tax_free_savings_income from it). Securities and "
-                "National Savings interest belong to other_investment_income, "
-                "which stays uncovered."
-            ),
-        ),
-        bind(
-            "individual_savings_account_interest_income",
-            "person",
-            "fact:person.interest_income",
-            Fraction(parameter="uk.isa_interest_fraction"),
-            AlignmentRelation.NARROW_MATCH,
-            (
-                "Engine label 'Amount received in interest from Individual "
-                "Savings Accounts': a tax-free part of the interest "
-                "savings_interest_income already holds in full, read through "
-                "tax_free_savings_income."
+                "Engine label from 2.162.2: 'Savings interest outside tax-free "
+                "accounts'. The frame stores it gross, ISA interest included, "
+                "with the ISA part in tax_free_savings_income; it carries no "
+                "ISA income contract, so policyengine-uk reads it as legacy "
+                "gross and subtracts tax_free_savings_income when it loads the "
+                "file. Securities and National Savings interest belong to "
+                "other_investment_income, which stays uncovered. ISA interest "
+                "(individual_savings_account_interest_income) is no longer an "
+                "engine input from 2.162.2: a formula supplies it, and the "
+                "frame's tax_free_savings_income overrides it."
             ),
         ),
         bind(

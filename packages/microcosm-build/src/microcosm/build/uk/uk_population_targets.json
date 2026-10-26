@@ -14708,10 +14708,10 @@
       "bindings": {
         "policyengine": {
           "metric_name": "ons/savings_interest_income",
-          "value_variable": "savings_interest_income",
+          "value_expression": "savings_interest_income + tax_free_savings_income",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "uk-data holds the last actual flat for later years - a populace-side declaration (sources/ons_savings.py:39-44)."
+          "notes": "uk-data holds the last actual flat for later years - a populace-side declaration (sources/ons_savings.py:39-44). The row measures cash interest in and outside tax-free accounts. From policyengine-uk 2.162.2 savings_interest_income is the interest outside them: the engine takes the frame's tax_free_savings_income out of the frame's gross interest when it loads the frame. The ISA part, tax_free_savings_income, is added back (microcosm#1095)."
         },
         "axiom": {
           "metric_name": "ons/savings_interest_income",
@@ -21511,7 +21511,7 @@
           "map_to": "household",
           "groupby_variable": "total_income_after_loss_relief_annual",
           "band_filter_dimension": "total_income",
-          "notes": "Taxable interest from banks and building societies of taxpayers by total-income band (SPI Table 3.7; ISA interest excluded), the taxpayer-concept anchor microcosm#866 asked for in place of the ONS D.41 row. Banded by person-level total income; band edges come from the fact dimension.",
+          "notes": "Taxable interest from banks and building societies of taxpayers by total-income band (SPI Table 3.7; ISA interest excluded), the taxpayer-concept anchor microcosm#866 asked for in place of the ONS D.41 row. Banded by person-level total income; band edges come from the fact dimension. From policyengine-uk 2.162.2 the engine's savings_interest_income leaves ISA interest out, as Table 3.7 does: the engine takes the frame's tax_free_savings_income out of the frame's gross interest when it loads the frame. Through 2.161.0 the measure was gross of ISA interest (microcosm#1095).",
           "filters": [
             {
               "variable": "income_tax_before_winter_fuel_payment_charge_annual",
