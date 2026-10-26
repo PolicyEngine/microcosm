@@ -64,8 +64,28 @@ TELEMETRY_REPO = "policyengine/populace-uk-staging"
 STAGING_BRANCH = f"release-staging/{RELEASE_ID}"
 
 
+#: The steps that sign gate reports (spine, national, certify) or verify them
+#: (assembly and publication). Every other step and check runs without the key.
+KEY_STEPS = frozenset(
+    {"spine", "national", "certify", "assemble", "publish-preflight", "publish"}
+)
+
+
 class CutError(RuntimeError):
     """A refusal the operator must act on; the message says how."""
+
+
+def step_environment(
+    step: str, *, environ: Mapping[str, str] | None = None
+) -> dict[str, str]:
+    """The environment for one step: the signing key only where it is used."""
+
+    from microcosm.data.gate_signing_keys import UK_GATE_SIGNING_KEY_ENV
+
+    env = dict(os.environ if environ is None else environ)
+    if step not in KEY_STEPS:
+        env.pop(UK_GATE_SIGNING_KEY_ENV, None)
+    return env
 
 
 # --------------------------------------------------------------------------- #
@@ -1228,6 +1248,7 @@ def contract_pin_check(python: str) -> Check:
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
+        env=step_environment("contract-pin-check"),
         check=False,
     )
     return Check(
@@ -1240,7 +1261,10 @@ def contract_pin_check(python: str) -> Check:
 def surfaces_check(python: str, chronicle_dir: Path) -> Check:
     """The feed-gated surface tests that skip in CI (runbook: stale receipts)."""
 
-    env = {**os.environ, "CHRONICLE_UK_FACTS": str(chronicle_dir)}
+    env = {
+        **step_environment("surface-check"),
+        "CHRONICLE_UK_FACTS": str(chronicle_dir),
+    }
     run = subprocess.run(
         [
             python, "-m", "pytest", "-q", "-p", "no:cacheprovider",
@@ -1283,7 +1307,7 @@ class Runner:
     paths: CutPaths
     sources: Mapping[str, InputSource]
     python: str = sys.executable
-    execute: Callable[[list[str], Path, Path], int] | None = None
+    execute: Callable[[list[str], Path, Path, dict[str, str]], int] | None = None
     log: Callable[[str], None] = print
 
     def __post_init__(self) -> None:
@@ -1311,7 +1335,7 @@ class Runner:
         started = time.monotonic()
         self.record(step, status="running", started_at=_now(), argv=argv)
         self.log(f"[{step}] {shlex.join(argv)}")
-        code = self.execute(argv, cwd, log_path)
+        code = self.execute(argv, cwd, log_path, step_environment(step))
         seconds = round(time.monotonic() - started, 1)
         if code != 0:
             self.record(step, status="failed", exit_code=code, seconds=seconds)
@@ -1323,7 +1347,7 @@ def _now() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _execute(argv: list[str], cwd: Path, log_path: Path) -> int:
+def _execute(argv: list[str], cwd: Path, log_path: Path, env: dict[str, str]) -> int:
     """Run one step, teeing its output to the console and its log."""
 
     with log_path.open("a") as log:
@@ -1332,6 +1356,7 @@ def _execute(argv: list[str], cwd: Path, log_path: Path) -> int:
         process = subprocess.Popen(
             argv,
             cwd=cwd,
+            env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,

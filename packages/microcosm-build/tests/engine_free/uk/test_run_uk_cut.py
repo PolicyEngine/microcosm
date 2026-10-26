@@ -417,6 +417,7 @@ class FakeBuild:
         self.paths = paths
         self.calls: list[str] = []
         self.argv: dict[str, list[str]] = {}
+        self.env: dict[str, dict[str, str]] = {}
         self.fail = fail or set()
         self.signer = signer
 
@@ -427,7 +428,9 @@ class FakeBuild:
             payload["attestation"] = {"signing_key_sha256": self.signer}
         return json.dumps(payload)
 
-    def __call__(self, argv: list[str], cwd: Path, log_path: Path) -> int:
+    def __call__(
+        self, argv: list[str], cwd: Path, log_path: Path, env: dict[str, str]
+    ) -> int:
         tool = Path(argv[1]).name if argv[1] != "-m" else argv[2]
         step = {
             "build_uk_frs_spine.py": "spine",
@@ -441,6 +444,7 @@ class FakeBuild:
         }[tool]
         self.calls.append(step)
         self.argv[step] = argv
+        self.env[step] = env
         if step in self.fail:
             return 1
         getattr(self, step.replace("-", "_"))(log_path)
@@ -753,7 +757,7 @@ def test_a_stale_stage1_comparison_is_redone_and_kept(tmp_path):
     previous.write_bytes(b"previous")
     output = runner.paths.diagnostics / "stage1_comparison.json"
 
-    def stage1(argv, cwd, log_path):
+    def stage1(argv, cwd, log_path, env):
         fake.calls.append("stage1")
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(
@@ -972,3 +976,45 @@ def test_the_reservation_tool_is_asked_about_the_caller(tmp_path, caller, allowe
 def test_a_reservation_needs_both_its_tool_and_its_caller(flags):
     with pytest.raises(SystemExit):
         cut._parse(["preflight", "--label", "t", *flags])
+
+
+def test_the_signing_key_reaches_only_the_steps_that_sign_or_verify(
+    tmp_path, monkeypatch
+):
+    from microcosm.data.gate_signing_keys import UK_GATE_SIGNING_KEY_ENV
+
+    monkeypatch.setenv(UK_GATE_SIGNING_KEY_ENV, "key-under-test")
+    monkeypatch.setenv("HF_TOKEN", "hf-under-test")
+    runner, fake = _runner(tmp_path)
+    cut.run_spine(runner, staging_local_only=True)
+    cut.run_national(runner, retry=False, logbook_prev_row_digest=None)
+    # Make the score step run, so its environment is seen too.
+    (runner.paths.run_dir / "score_vs_incumbent.json").unlink(missing_ok=True)
+    cut.run_score(runner)
+    cut.run_certify(runner)
+    cut.run_assemble(runner)
+    with_key = {
+        step for step, env in fake.env.items() if UK_GATE_SIGNING_KEY_ENV in env
+    }
+    assert with_key == {"spine", "national", "certify", "assemble"}
+    assert {"national-dry-run", "score"} <= set(fake.env) - with_key
+    assert all(env["HF_TOKEN"] == "hf-under-test" for env in fake.env.values())
+
+
+def test_the_preflight_test_runs_never_get_the_key(monkeypatch):
+    from microcosm.data.gate_signing_keys import UK_GATE_SIGNING_KEY_ENV
+
+    monkeypatch.setenv(UK_GATE_SIGNING_KEY_ENV, "key-under-test")
+    seen = []
+    monkeypatch.setattr(
+        cut.subprocess,
+        "run",
+        lambda argv, **kw: (
+            seen.append(kw["env"]) or cut.subprocess.CompletedProcess(argv, 0, "", "")
+        ),
+    )
+    cut.contract_pin_check("py")
+    cut.surfaces_check("py", Path("/facts"))
+    assert len(seen) == 2
+    assert all(UK_GATE_SIGNING_KEY_ENV not in env for env in seen)
+    assert seen[1]["CHRONICLE_UK_FACTS"] == "/facts"

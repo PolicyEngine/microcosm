@@ -65,6 +65,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from microcosm.data.gate_signing_keys import UK_GATE_SIGNING_KEY_ENV
+
 PEPY_REPO = "PolicyEngine/policyengine.py"
 CUT_REPO = "policyengine/populace-uk-private"
 NATIONAL_RELEASE = "microcosm-uk-2024-25-national"
@@ -420,15 +422,20 @@ def run_logged(argv: list[str], *, cwd: Path, env: dict[str, str], handle):
     return subprocess.CompletedProcess(argv, returncode, "".join(output), "")
 
 
-#: The caller's environment selectors that must not reach policyengine.py's
-#: commands: uv would sync, install into or run another project's venv.
-CALLER_ENVIRONMENT = frozenset({"UV_PROJECT_ENVIRONMENT", "VIRTUAL_ENV"})
+#: What policyengine.py's commands never get from this process: the caller's
+#: environment selectors (uv would sync, install into or run another
+#: project's venv) and Microcosm's gate signing key, which no policyengine.py
+#: step signs or verifies with, while its install and test steps run
+#: third-party code.
+WITHHELD_ENVIRONMENT = frozenset(
+    {"UV_PROJECT_ENVIRONMENT", "VIRTUAL_ENV", UK_GATE_SIGNING_KEY_ENV}
+)
 
 
 def policyengine_py_environment() -> dict[str, str]:
-    """This process's environment without the caller's environment selectors."""
+    """This process's environment, less what policyengine.py must not see."""
 
-    return {k: v for k, v in os.environ.items() if k not in CALLER_ENVIRONMENT}
+    return {k: v for k, v in os.environ.items() if k not in WITHHELD_ENVIRONMENT}
 
 
 class Shell:

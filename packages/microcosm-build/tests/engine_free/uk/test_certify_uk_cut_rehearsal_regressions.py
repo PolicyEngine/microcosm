@@ -631,12 +631,14 @@ class RunnerTests(unittest.TestCase):
             )
         self.assertNotIn("certify-data", [k.get("step") for _, k in details])
 
-    def test_policyengine_py_commands_never_see_the_callers_venv(self):
+    def test_policyengine_py_commands_never_see_the_callers_venv_or_key(self):
         with tempfile.TemporaryDirectory() as tmp:
             shell = runner.Shell(Path(tmp), Path(tmp) / "run.log")
             caller = {
                 "UV_PROJECT_ENVIRONMENT": "/microcosm/.venv",
                 "VIRTUAL_ENV": "/microcosm/.venv",
+                runner.UK_GATE_SIGNING_KEY_ENV: "key-under-test",
+                "HF_TOKEN": "hf-under-test",
                 "KEEP_ME": "1",
             }
             with (
@@ -652,6 +654,8 @@ class RunnerTests(unittest.TestCase):
             env = spawn.call_args.kwargs["env"]
             self.assertNotIn("UV_PROJECT_ENVIRONMENT", env)
             self.assertNotIn("VIRTUAL_ENV", env)
+            self.assertNotIn(runner.UK_GATE_SIGNING_KEY_ENV, env)
+            self.assertEqual(env["HF_TOKEN"], "hf-under-test")
             self.assertEqual((env["KEEP_ME"], env["EXTRA"]), ("1", "2"))
 
     def test_pytest_configuration_error_is_failure_without_failed_lines(self):
