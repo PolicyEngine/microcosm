@@ -1,0 +1,1 @@
+The UK take-up contract refuses a nested rate (`nested_under`) unless its fitting receipt is from childcare fitter tool version 5 or later, the first to fit the conditional rate; an earlier receipt fitted the marginal rate.

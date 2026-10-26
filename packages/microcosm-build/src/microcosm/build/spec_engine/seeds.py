@@ -327,6 +327,7 @@ _DIRECT_KERNEL_MODULES = (
     "microcosm.build.us_runtime.puf_qrf_chain",
     "microcosm.build.us_runtime.puf_source_agi",
     "microcosm.build.us_runtime.puf_support",
+    "microcosm.build.us_runtime.puma_county_vintage",
     "microcosm.build.us_runtime.puma_ladder",
     "microcosm.build.us_runtime.retirement_contributions",
     "microcosm.build.us_runtime.retirement_distributions",

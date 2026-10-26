@@ -1,6 +1,6 @@
 {
- "feed": "consumer_facts_us_c5e5bf8.jsonl",
- "feed_sha256": "b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801",
+ "feed": "consumer_facts_us_cf9ece2.jsonl",
+ "feed_sha256": "054e5684005a7b143dcb84eabac634135ce9b2b33bb57b540602e474a4ba7c57",
  "families": {
   "bea_nipa.business_current_transfer_receipts": 1,
   "bea_nipa.defined_contribution_actual_contributions": 1,
@@ -22,6 +22,7 @@
   "bea_nipa.personal_outlays": 1,
   "bea_nipa.personal_saving": 1,
   "bea_nipa.personal_saving_rate": 1,
+  "bea_nipa.private_group_health_insurance": 3,
   "bea_nipa.proprietors_income": 1,
   "bea_nipa.rental_income_of_persons": 1,
   "bea_nipa.social_security_benefits": 1,
@@ -60,7 +61,7 @@
   "irs_soi.form_w2_401k_elective_deferrals": 1,
   "irs_soi.form_w2_designated_roth_401k_contributions": 1,
   "irs_soi.form_w2_social_security_tips": 6,
-  "irs_soi.historic_table_2": 5654,
+  "irs_soi.historic_table_2": 6674,
   "irs_soi.roth_ira_contributions": 2,
   "irs_soi.state_2022": 4,
   "irs_soi.table_1_1": 160,

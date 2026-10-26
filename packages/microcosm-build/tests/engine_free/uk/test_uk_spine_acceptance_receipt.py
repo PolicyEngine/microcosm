@@ -99,6 +99,13 @@ def _apply_pending_roster_transformations(
     del roster[start : start + len(spi_block)]
     brma = roster.index("frs_brma")
     roster[brma + 1 : brma + 1] = spi_block
+    # Annual income re-mint pending: the descriptors of each adult's year are
+    # read from the raw FRS tabs right after the HMRC leaves, before the SPI
+    # channel clones the rows that carry them.
+    assert "frs_annual_income_spells" not in roster
+    roster.insert(
+        roster.index("frs_hmrc_spine_leaves") + 1, "frs_annual_income_spells"
+    )
     # SPI housing shell re-mint pending: the SPI households' housing is imputed
     # from their own incomes right after the SPI income chain.
     assert "spi_housing_shell" not in roster
@@ -107,14 +114,47 @@ def _apply_pending_roster_transformations(
     # household draws, so they run right after was_wealth.
     assert "was_lisa" not in roster
     roster.insert(roster.index("was_wealth") + 1, "was_lisa")
+    # microcosm#1240 re-mint pending: the high-value home support copies run
+    # on the uprated values, before the property components read them.
+    assert "high_value_home_support" not in roster
+    roster.insert(
+        roster.index("regional_property_uprating") + 1, "high_value_home_support"
+    )
+    # microcosm#1106 re-mint pending: landlords' receipts and finance costs
+    # follow the uprated rental property values.
+    assert "property_components" not in roster
+    roster.insert(roster.index("high_value_home_support") + 1, "property_components")
+    # microcosm#1112 re-mint pending: the regions' home values replace the
+    # owners' values after the support copies, before the components.
+    assert "regional_home_values" not in roster
+    roster.insert(roster.index("high_value_home_support") + 1, "regional_home_values")
+    # microcosm#1095 re-mint pending: the annual property purchases read the
+    # uprated stocks after the support copies (uk-data#573).
+    assert "property_purchases" not in roster
+    roster.insert(roster.index("property_components") + 1, "property_purchases")
     # microcosm#1069 re-mint pending: the Pension Credit take-up redraw reads
     # the post-SPI incomes, so it runs right after UC capital coherence.
     assert "pension_credit_take_up" not in roster
     roster.insert(roster.index("uc_capital_coherence") + 1, "pension_credit_take_up")
+    # microcosm#1095 re-mint pending: the Move to UC claim draw reads the final
+    # legacy and UC receipts, after UC capital coherence (uk-data#534).
+    assert "uc_legacy_closure_take_up" not in roster
+    roster.insert(
+        roster.index("uc_capital_coherence") + 1, "uc_legacy_closure_take_up"
+    )
+    # microcosm#1334 re-mint pending: the Universal Credit redraw reads the
+    # post-SPI awards right after UC capital coherence, before the Move to UC
+    # claim draw reads would_claim_uc.
+    assert "uc_take_up" not in roster
+    roster.insert(roster.index("uc_capital_coherence") + 1, "uc_take_up")
     # microcosm#1063 re-mint pending: the Child Benefit redraw reads the same
     # post-SPI incomes, right after the Pension Credit redraw.
     assert "child_benefit_take_up" not in roster
     roster.insert(roster.index("pension_credit_take_up") + 1, "child_benefit_take_up")
+    # microcosm#1319 re-mint pending: the Carer's Allowance draw reads the
+    # post-SPI earnings, right after the Child Benefit redraw.
+    assert "carers_allowance_take_up" not in roster
+    roster.insert(roster.index("child_benefit_take_up") + 1, "carers_allowance_take_up")
     # microcosm#1095 re-mint pending: the SPI benefit pass runs after the last
     # UC report writer and before every UC, PC and CB consumer.
     assert "spi_benefit_coherence" not in roster
@@ -128,6 +168,14 @@ def _apply_pending_roster_transformations(
         "cgt_residential_split",
         "hmrc_cgt_asset_type_spine",
     ]
+    # Re-mint pending: the copies' childcare re-draw runs after every copy
+    # stage, before the private-school attendance.
+    assert "childcare_copy_take_up" not in roster
+    roster.append("childcare_copy_take_up")
+    # microcosm#1095 re-mint pending: the stored private-school attendance is
+    # the last stage of the spine.
+    assert "private_school_attendance" not in roster
+    roster.append("private_school_attendance")
     return tuple(roster)
 
 

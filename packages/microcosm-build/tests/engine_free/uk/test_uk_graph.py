@@ -52,9 +52,15 @@ def test_uk_spine_graph_contains_every_manifest_stage() -> None:
     # pension_credit_take_up and the microcosm#1063 child_benefit_take_up; the
     # frs_hmrc_retained_leaves / hmrc_spi_income certified-pair alternatives
     # are retired (#901), so the manifest roster is the graph roster.
-    # microcosm#1063 also adds cgt_residential_split after the anchor, and
-    # microcosm#1095 the spi_benefit_coherence pass after uc_reporter_redraw.
-    assert len(expected) == 39
+    # microcosm#1063 also adds cgt_residential_split after the anchor,
+    # microcosm#1095 the spi_benefit_coherence pass after uc_reporter_redraw,
+    # microcosm#1106 property_components after the regional uprating, and
+    # microcosm#1240 high_value_home_support between those two; microcosm#1095
+    # adds property_purchases and uc_legacy_closure_take_up, microcosm#1112
+    # regional_home_values, microcosm#1319 carers_allowance_take_up, the
+    # copies' childcare re-draw childcare_copy_take_up, and microcosm#1334
+    # uc_take_up and frs_annual_income_spells.
+    assert len(expected) == 49
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(expected)
     assert set(expected) <= ids
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(ids)
@@ -93,7 +99,11 @@ def test_uk_spine_compile_order_is_derived_from_declared_inputs() -> None:
     assert compile_graph(reversed_declaration).order == compiled.order
     assert "frs_employment" in compiled.predecessors["frs_legacy_proxies"]
     assert "was_wealth" in compiled.predecessors["regional_property_uprating.boundary"]
-    assert "regional_property_uprating" in compiled.predecessors["lcfs_consumption"]
+    assert (
+        "regional_property_uprating" in compiled.predecessors["high_value_home_support"]
+    )
+    assert "high_value_home_support" in compiled.predecessors["property_components"]
+    assert "property_components" in compiled.predecessors["lcfs_consumption"]
     assert "spi_support_channel" in compiled.predecessors["spi_income_band_donors"]
     assert "spi_income_band_donors" in compiled.predecessors["hmrc_spi_income_spine"]
 
@@ -179,6 +189,35 @@ def test_uc_relationship_helper_changes_affected_kernel_hashes(monkeypatch) -> N
     for ref in affected_refs:
         assert registry.implementation_hash(ref) != before[ref]
     assert registry.implementation_hash(control_ref) == before[control_ref]
+
+
+def test_spi_income_source_changes_invalidate_the_stages_that_run_it(monkeypatch):
+    # The SPI income stage's module only imports the imputation, the band-donor
+    # resample and its receipt from spi_income, so spi_income is bound as the
+    # stage's helper; the landlords' stage already binds it (microcosm#1278).
+    from microcosm.build.uk_runtime import spi_income
+
+    graph = uk_spine_graph()
+    registry = uk_registry(graph=graph)
+    affected = [
+        graph.node(stage).kernel
+        for stage in ("hmrc_spi_income_spine", "property_components")
+    ]
+    control = graph.node("frs_council_tax").kernel
+    before = {ref: registry.implementation_hash(ref) for ref in (*affected, control)}
+    helper_path = Path(spi_income.__file__).resolve()
+    original = Path.read_bytes
+
+    def changed_helper_bytes(path: Path) -> bytes:
+        content = original(path)
+        if path.resolve() == helper_path:
+            return content + b"\n# A helper-only source change.\n"
+        return content
+
+    monkeypatch.setattr(Path, "read_bytes", changed_helper_bytes)
+    for ref in affected:
+        assert registry.implementation_hash(ref) != before[ref]
+    assert registry.implementation_hash(control) == before[control]
 
 
 def test_uk_adapter_source_changes_invalidate_all_consuming_stages(monkeypatch):
@@ -374,3 +413,19 @@ def test_zero_row_expand_still_refuses_a_shift_across_household_sizes() -> None:
             _zero_row_expand_node(),
             _zero_row_expand_result([0.5, 2.5], total=3.0),
         )
+
+
+def test_property_components_reads_cover_the_stage_inputs() -> None:
+    """A node receives its declared cells alone, so the declaration must name
+    every person column the landlord stage requires (the recipient flag joined
+    them with microcosm#840; the 13 October twin build failed at the node
+    before the declaration followed)."""
+    from microcosm.build.uk_runtime.graph import _STAGE_CONSUMES
+    from microcosm.build.uk_runtime.property_components import (
+        PROPERTY_COMPONENTS_PERSON_INPUTS,
+    )
+
+    declared = _STAGE_CONSUMES["property_components"]
+    assert declared is not None
+    required = {("person", column) for column in PROPERTY_COMPONENTS_PERSON_INPUTS}
+    assert required <= declared, sorted(required - declared)

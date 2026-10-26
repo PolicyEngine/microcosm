@@ -50,7 +50,9 @@ def housing_shell_tables(n_frs: int = 600, n_spi: int = 200, seed: int = 0):
             "tenure_type": tenure,
             "accommodation_type": accommodation,
             "num_bedrooms": np.where(high, 4, 2).astype(np.int64),
-            "council_tax_band": np.where(high, "F", "B"),
+            # Northern Ireland pays domestic rates; the FRS spine stores the
+            # placeholder band there.
+            "council_tax_band": np.where(ni, "D", np.where(high, "F", "B")),
             "council_tax": np.where(ni, 0.0, np.where(high, 2800.0, 1300.0)),
             "council_tax_reported": np.where(ni, 0.0, np.where(high, 2800.0, 1300.0)),
             "rent": np.where(rented, 0.1 * income + 3000.0, 0.0),

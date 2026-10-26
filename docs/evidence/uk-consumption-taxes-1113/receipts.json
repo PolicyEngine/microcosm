@@ -1,0 +1,41 @@
+{
+ "pull_request": "PolicyEngine/microcosm#1167",
+ "issue": "PolicyEngine/microcosm#1113",
+ "measured": {
+  "stage_runs_spine": {
+   "name": "spine-head-r3.h5 (microcosm#1121 head, arm head-r3)",
+   "sha256": "75ce1c5eb097cc05073b1568d8103378957894df3d30174a5aaca34cae590386",
+   "households": 63956
+  },
+  "masked_resolve_problem": "2026-09-30 national build (c5a1cba87), 1,090 rows",
+  "engine": "policyengine-uk 2.122.2 on policyengine-core 3.32.19"
+ },
+ "stage_run_trees": {
+  "stage_dev_run.json": "Group A's head, before the rebase (ad333964e)",
+  "stage_dev_run.group-b.json": "Group B's head, before the rebase (4151db48d)",
+  "stage_dev_run.base-7f235941c.json": "main at 7f235941c, the branch base",
+  "stage_dev_run.review-r2.json": "the review-round-2 fix commit"
+ },
+ "not_committed": [
+  "household dumps (*.households.parquet): unit records",
+  "solved weight vectors (weights_*.npy)",
+  "the stage's donor_floor receipt: exact donor minima"
+ ],
+ "files_sha256": {
+  "README.md": "5bec794ea0940a45ca8629f4a0912eaffc9222ed964088e62d0b1ed0ea41ed8d",
+  "outputs/m2_m3_desk.json": "41b77035b5faca02cfaddced99e1d1914d05d39842d6e2355f78f7b85544bc30",
+  "outputs/m4_report.json": "afe27650f9861fd629764ae6a33895eed4173e390c4110409853cb0972be1394",
+  "outputs/solve_base.json": "dda47083fd542e51b3fd453efbec045e2202113319c8be31a0b1f98885a07ade",
+  "outputs/solve_drop4.json": "29188a6a68214ac6c27eb3e33449b77ffb01ee9858d89054736d02f74d3799e3",
+  "outputs/stage_dev_run.base-7f235941c.json": "4c4896060f44c7c0910014567de2165ce31272a11ab8889f548f6503951e5ef8",
+  "outputs/stage_dev_run.group-b.json": "b26f3454e23a46d57fccde3caa1e21cd9ca2403266130e3fea5fc3b94001f022",
+  "outputs/stage_dev_run.json": "8d5a8c7215c356d5dcafb20ba989c6f88a012cee3573d99569cfad55cd79a06b",
+  "outputs/stage_dev_run.review-r2.json": "2f751c9a629cd454b24e5f07709feba53519d457a009b3dfa7c31635486ef88a",
+  "scripts/m2_m3_desk.py": "1726bbe4dc5a8bf32264e135a9248d406528e88e584ba2e0eb3800d42d573fd2",
+  "scripts/m4_resolve.py": "02c0f52238e27a186c9e533399f5bddd3ca14bd2fe794027ccea3d68ebc85bf8",
+  "scripts/run_m4.sh": "739e2086ab726ded6238267d407ce1118f89a68385213c469eff24923469d348",
+  "scripts/run_stage_dev_at.sh": "ac482f1384a155792fadd0fc44c4a73a41b8cacd81f3dd893c9a2c3212cce064",
+  "scripts/sanitize_outputs.py": "6cc8d611e9fbe1f4f6a1a64c427e6a642fd6fbf5600c090db8442612f0e34396",
+  "scripts/stage_dev_run.py": "5467ac084d58b67ed680ef456be0d0a388a15d943390bc2054226dc20b2163a7"
+ }
+}

@@ -6,6 +6,8 @@ from __future__ import annotations
 import argparse
 import json
 from collections.abc import Mapping
+from dataclasses import replace
+from importlib import resources as importlib_resources
 from pathlib import Path
 from typing import Any
 
@@ -15,8 +17,12 @@ from microcosm.build.target_reference_authoring import (
     author_area_target_references,
     target_references_resource,
 )
-from microcosm.build.uk_runtime.weighted_integrity import (
-    load_uk_local_area_support_exclusion_register,
+from microcosm.build.uk_runtime.high_value_homes import (
+    load_uk_high_value_home_stock_facts,
+)
+from microcosm.build.uk_runtime.ledger_targets import (
+    UK_UPRATING_APPLIERS,
+    uk_small_cell_rule_is_signed,
 )
 
 DESCRIPTION = (
@@ -30,7 +36,11 @@ DESCRIPTION = (
     "explicitly reviewed. Deferred area absences are recorded in the membership "
     "report."
 )
-LOCAL_GEOGRAPHY_LEVELS = frozenset({"constituency", "local_authority"})
+#: ``statistical_scope`` is Scotland's BRMA grain, where PIPR publishes its
+#: Scottish rents (microcosm#1090, #1262).
+LOCAL_GEOGRAPHY_LEVELS = frozenset(
+    {"constituency", "local_authority", "statistical_scope"}
+)
 
 POLICYENGINE_BINDING_KEYS = frozenset(
     {
@@ -43,6 +53,24 @@ POLICYENGINE_BINDING_KEYS = frozenset(
     }
 )
 UK_PACKAGE_ROOT = Path("packages/microcosm-build/src/microcosm/build/uk")
+# The local authorities whose own local-authority cells are signed-deferred
+# because they miss the support floor at every K measured: the Isles of Scilly
+# and the City of London (microcosm#762 A4, as amended by A14). These are
+# solve-scoped and live here, not in uk/local_area_support_exclusions.json,
+# which only the area-support gate reads since microcosm#1301, so signing an
+# area gate-only never changes the compiled problem. Lockstep tests hold them
+# inside that register's local_authority/* exclusion keys.
+SUPPORT_FLOOR_DEFERRED_AREA_IDS: tuple[str, ...] = ("E06000053", "E09000001")
+# The families that bind in those areas despite the floor (microcosm#887),
+# lockstep-tested equal to the register's bound_despite_support_floor block.
+SUPPORT_FLOOR_BOUND_FAMILIES: frozenset[str] = frozenset({"census_households"})
+# The high-value homes area targets whose constituency level is deferred whole
+# (microcosm#1301); their region rows bind in target_references.json instead.
+HIGH_VALUE_HOMES_LOCAL_TARGET_IDS: tuple[str, ...] = (
+    "microcosm.high_value_homes.over_1m",
+    "microcosm.high_value_homes.over_1_5m",
+    "microcosm.high_value_homes.over_2m",
+)
 
 
 def main() -> None:
@@ -60,25 +88,48 @@ def main() -> None:
         area_scope_by_target_id=_area_scope_by_target_id(contract, crosswalk),
         area_id_aliases=_area_id_aliases(crosswalk),
         reference_metadata_by_target_id={
-            "ons.rent.private_rent": {
+            target_id: {
                 "fact_aggregation": "time_mean",
                 "period_basis_note": (
                     "Calendar-year average of the available 2025 PIPR monthly "
                     "area price levels; approved by María on 2026-09-05."
                 ),
             }
+            for target_id in ("ons.rent.private_rent", "ons.rent.private_rent_brma")
         },
         binding_vocabulary=POLICYENGINE_BINDING_KEYS,
+        uprating_appliers=UK_UPRATING_APPLIERS,
         # Keep the explicit display-name option and default to an artifact-relative
         # name, never the operator's absolute local path.
         source_fact_feed=args.source_fact_feed
         or f"{args.ledger_facts.resolve().parent.name}/{args.ledger_facts.name}",
     )
-    authored = author_area_target_references(
-        contract,
-        _read_jsonl(args.ledger_facts),
-        config,
-    )
+    facts = list(_read_jsonl(args.ledger_facts))
+    derived_resources: list[dict[str, Any]] = []
+    if not args.no_derived_facts:
+        # microcosm#1240: the high-value homes family selects Microcosm-derived
+        # facts (HM Land Registry stock counts) carried in the committed resource.
+        derived = load_uk_high_value_home_stock_facts(args.derived_facts)
+        facts.extend(dict(row) for row in derived.rows)
+        derived_resources.append(
+            {
+                "resource": "high_value_home_stock_facts.json",
+                "rows": len(derived.rows),
+                "rows_sha256": derived.rows_sha256,
+                "inputs_sha256": derived.inputs_sha256,
+            }
+        )
+    authored = author_area_target_references(contract, facts, config)
+    # microcosm#1123 item 7: a second pass defers, by rule, the cells the
+    # first pass found below the small-cell floor.
+    small_cells = _small_cell_deferrals(authored.membership_report)
+    if small_cells:
+        config = replace(
+            config,
+            area_signed_deferrals=(*config.area_signed_deferrals, *small_cells),
+        )
+        authored = author_area_target_references(contract, facts, config)
+    authored.membership_report["derived_fact_resources"] = derived_resources
     resource = target_references_resource(
         country="uk",
         description=DESCRIPTION,
@@ -94,6 +145,64 @@ def main() -> None:
     print(
         f"active_reference_count={authored.membership_report['active_reference_count']}"
     )
+
+
+def _small_cell_deferrals(
+    membership_report: Mapping[str, Any],
+    rule_path: Path | None = None,
+) -> tuple[AreaSignedDeferral, ...]:
+    """Deferrals for every active cell a rule's floor puts out of reach.
+
+    Read from the first authoring pass, so the rule names the cells by their
+    published values, never by hand; each carries the rule's expiry.
+    """
+
+    register = json.loads(
+        rule_path.read_text(encoding="utf-8")
+        if rule_path is not None
+        else importlib_resources.files("microcosm.build.uk")
+        .joinpath("local_small_cell_rule.json")
+        .read_text(encoding="utf-8")
+    )
+    if register.get("schema_version") != 1:
+        raise ValueError("UK local small-cell rule schema_version must be 1.")
+    deferrals: list[AreaSignedDeferral] = []
+    for rule in register["rules"]:
+        if not uk_small_cell_rule_is_signed(rule):
+            # A proposed rule defers nothing: its cells stay bound until the
+            # floor is signed (approved_by, approved_on, no longer proposed).
+            continue
+        floor = float(rule["absolute_floor"])
+        prefixes = tuple(str(prefix) for prefix in rule["target_id_prefixes"])
+        for target_id, target in sorted(membership_report["targets"].items()):
+            if not target_id.startswith(prefixes):
+                continue
+            for level, payload in sorted(target["geography_levels"].items()):
+                areas = sorted(
+                    str(candidate["geography_id"])
+                    for candidate in payload["candidates"]
+                    if candidate.get("status") == "active"
+                    and abs(float(candidate["resolved_value"])) < floor
+                )
+                if not areas:
+                    continue
+                deferrals.append(
+                    AreaSignedDeferral(
+                        target_id=target_id,
+                        geography_level=level,
+                        reason_id=str(rule["rule_id"]),
+                        rationale=(
+                            f"{rule['reason']} Rule {rule['rule_id']} in "
+                            "uk/local_small_cell_rule.json: published value "
+                            f"below {floor:g}; approved by "
+                            f"{rule['approved_by']} on {rule['approved_on']}."
+                        ),
+                        area_ids=tuple(areas),
+                        defer_if_compiles=True,
+                        expires_on=rule.get("expires_on"),
+                    )
+                )
+    return tuple(deferrals)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -112,6 +221,20 @@ def _parser() -> argparse.ArgumentParser:
         "--crosswalk", type=Path, default=UK_PACKAGE_ROOT / "local_area_crosswalk.json"
     )
     parser.add_argument("--period", type=int, default=2025)
+    parser.add_argument(
+        "--derived-facts",
+        type=Path,
+        default=None,
+        help=(
+            "Microcosm-derived facts resource merged beside the feed (default: the "
+            "committed uk/high_value_home_stock_facts.json)."
+        ),
+    )
+    parser.add_argument(
+        "--no-derived-facts",
+        action="store_true",
+        help="Diagnostics only: author the surface from the Chronicle feed alone.",
+    )
     parser.add_argument(
         "--output", type=Path, default=UK_PACKAGE_ROOT / "local_target_references.json"
     )
@@ -231,14 +354,17 @@ def _value_operation_by_target_id(contract: Mapping[str, Any]) -> dict[str, str]
             "hmrc.employment_income.amount",
         }:
             operations[target_id] = "count_x_mean"
-        if target_id == "dwp.uc.households_by_area_children_3plus":
+        if target_id == "dwp.uc.households_by_area_children_3plus" and declared is None:
+            # The May-snapshot spelling summed the three published child
+            # counts; the calendar-2025 window declares its own monthly sum
+            # (microcosm#1123).
             operations[target_id] = "sum"
         if target_id in {
             "ons.tenure.private_rent",
             "ons.tenure.social_rent",
         }:
             operations[target_id] = "sum"
-        if target_id == "ons.rent.private_rent":
+        if target_id in {"ons.rent.private_rent", "ons.rent.private_rent_brma"}:
             operations[target_id] = "calendar_year_average"
     return operations
 
@@ -266,6 +392,9 @@ def _area_signed_deferrals(
     welsh_local_authorities = tuple(
         area_id for area_id in local_authority_ids if area_id[:1] == "W"
     )
+    england_and_wales_constituencies = tuple(
+        area_id for area_id in constituency_ids if area_id[:1] in {"E", "W"}
+    )
     if len(scottish_local_authorities) != 32:
         raise ValueError(
             "Scottish council-tax deferral mask expected 32 crosswalk local "
@@ -285,6 +414,12 @@ def _area_signed_deferrals(
         raise ValueError(
             "English council-tax Band H deferral mask expected 296 crosswalk "
             f"local authorities; measured {len(english_local_authorities)}."
+        )
+    if len(england_and_wales_constituencies) != 575:
+        raise ValueError(
+            "England and Wales high-value homes constituency deferral mask "
+            "expected 575 crosswalk constituencies; measured "
+            f"{len(england_and_wales_constituencies)}."
         )
     support_floor_excluded_area_ids, support_floor_binding_families = (
         _support_floor_register_scope()
@@ -384,6 +519,7 @@ def _area_signed_deferrals(
         "hmrc.self_employment_income.count",
         "hmrc.employment_income.amount",
         "hmrc.employment_income.count",
+        "hmrc.higher_rate_taxpayers.count",
     ):
         add(
             target_id=target_id,
@@ -443,6 +579,33 @@ def _area_signed_deferrals(
         area_ids=("S12000027",),
         defer_if_compiles=True,
     )
+    # microcosm#1301: the high-value homes family is controlled by its region
+    # rows on the local line and binds its local-authority cells down to the
+    # signed hvcts_la_household_floor rule, so its constituency level is
+    # deferred whole, as the English band-H level is. The rule's second pass
+    # then finds no active constituency cell to defer.
+    for target_id in HIGH_VALUE_HOMES_LOCAL_TARGET_IDS:
+        add(
+            target_id=target_id,
+            geography_level="constituency",
+            reason_id="high_value_homes_constituency_grain_deferred",
+            rationale=(
+                "The derived high-value homes stock binds at the nine English "
+                "regions and Wales (microcosm.high_value_homes.over_*_by_region, "
+                "local line only) and at local-authority grain down to the "
+                "hvcts_la_household_floor rule (uk/local_small_cell_rule.json). "
+                "At constituency grain most cells hold fewer than 400 homes "
+                "(289 of the 575 seats over £1m, 448 over £1.5m, 512 over £2m), "
+                "about two household weights at the ruled 150,000 households, so "
+                "their fit would be noise. The level is deferred whole rather "
+                "than cell by cell, and the region rows control the stock the "
+                "seats share. The seat rank correlations of the "
+                "uk_high_value_homes_benchmarks diagnostic read the "
+                "constituency stock out of sample (microcosm#1301)."
+            ),
+            area_ids=england_and_wales_constituencies,
+            defer_if_compiles=True,
+        )
     add(
         target_id="ons.rent.private_rent",
         geography_level="local_authority",
@@ -454,15 +617,45 @@ def _area_signed_deferrals(
         target_id="ons.rent.private_rent",
         geography_level="local_authority",
         reason_id="private_rent_pipr_scotland_brma_grain",
-        rationale="The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred.",
+        rationale="PIPR publishes Scotland's rents for its 18 Broad Rental Market Areas only, and they bind at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262). The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so a council has no published rent of its own, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. All 32 council cells remain deferred.",
         area_ids=scottish_local_authorities,
     )
     add(
         target_id="ons.rent.private_rent",
         geography_level="local_authority",
         reason_id="private_rent_pipr_ni_absent",
-        rationale="The pinned PIPR monthly series contains zero Northern Ireland rows at any geography level, so all 11 Northern Ireland local-authority cells remain signed absent.",
+        rationale="PIPR publishes Northern Ireland only as a country mean (every month of 2025, beside the UK, Great Britain, nation and region means), with no district rows, so all 11 Northern Ireland local-authority cells remain signed absent. A nation or region mean is no higher control for the district cells: a mean is not additive, and the rents' level comes from the FRS (microcosm#1262).",
         area_ids=ni_local_authorities,
+    )
+    # microcosm#1207: Orkney and Shetland have no mains gas network, so DESNZ
+    # publishes no domestic gas for them; neither cell is bound at zero.
+    gas_network_absent_area_ids = ("S12000023", "S12000027")
+    add(
+        target_id="desnz.subnational.gas_kwh",
+        geography_level="local_authority",
+        reason_id="desnz_gas_no_mains_network",
+        rationale=(
+            "DESNZ's sub-national gas statistics carry no domestic consumption "
+            "for Orkney (S12000023) or Shetland (S12000027), which have no "
+            "mains gas network; the cells are signed absent rather than bound "
+            "at zero (never_fabricate; microcosm#1207)."
+        ),
+        area_ids=gas_network_absent_area_ids,
+    )
+    add(
+        target_id="desnz.subnational.gas_connected_households",
+        geography_level="local_authority",
+        reason_id="desnz_gas_no_mains_network",
+        rationale=(
+            "Orkney (S12000023) and Shetland (S12000027) have no mains gas "
+            "network and DESNZ publishes no gas meters for them, so no meter "
+            "share puts their census households on the gas network. The "
+            "census base compiles there, so the cells are deferred by this "
+            "adjudication (defer_if_compiles) rather than bound at zero "
+            "(microcosm#1207)."
+        ),
+        area_ids=gas_network_absent_area_ids,
+        defer_if_compiles=True,
     )
     for target in contract.get("targets", ()):
         if "local_authority" not in target.get("geography_levels", ()):
@@ -476,8 +669,8 @@ def _area_signed_deferrals(
             rationale=(
                 "E06000053 and E09000001 are reviewed exclusions of the "
                 "local-authority support floor (uk/local_area_support_"
-                "exclusions.json, microcosm#762 A4): respectively 7 and 14 "
-                "positive-weight rows at K=4, and 17 and 49 at K=10. Their own "
+                "exclusions.json, microcosm#762 A4): each misses the floor at "
+                "every K measured. Their own "
                 "local-authority cells are signed-deferred on the same "
                 "evidence; their rows stay in the solve through the "
                 "constituency families and the national rows (A14 amendment "
@@ -492,22 +685,13 @@ def _area_signed_deferrals(
 
 
 def _support_floor_register_scope() -> tuple[tuple[str, ...], frozenset[str]]:
-    """Return generator masks from the signed local-area support register."""
+    """Return the support-floor deferral masks: the areas and bound families.
 
-    register = load_uk_local_area_support_exclusion_register(None)
-    area_ids: list[str] = []
-    for key in register["exclusions"]:
-        level, separator, area_id = key.partition("/")
-        if separator != "/" or level != "local_authority" or not area_id:
-            raise ValueError(
-                "local-area support exclusion keys used by the generator must "
-                f"have local_authority/<area_id> shape, got {key!r}."
-            )
-        area_ids.append(area_id)
-    return (
-        tuple(sorted(area_ids)),
-        frozenset(register["bound_despite_support_floor"]),
-    )
+    Both are this module's constants, never read from the gate-only
+    local-area support register (microcosm#1301).
+    """
+
+    return SUPPORT_FLOOR_DEFERRED_AREA_IDS, SUPPORT_FLOOR_BOUND_FAMILIES
 
 
 if __name__ == "__main__":

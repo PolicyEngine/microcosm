@@ -28,23 +28,20 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
     UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
     UK_INPUT_MASS_REFERENCE_REGISTRY,
-    UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE,
     UKInputMassParityPolicy,
     UKInputMassReference,
     UKInputMassReferenceDescriptor,
-    UKQRFTailConcentrationPolicy,
     UKReviewedExclusion,
     coerce_input_mass_reference_registry,
+    coerce_reviewed_exclusions,
     load_uk_input_mass_reference,
     load_uk_local_area_support_exclusion_register,
     load_uk_reference_scoped_exclusion_register,
     load_uk_reviewed_exclusion_register,
     uk_default_input_mass_reviewed_exclusions,
-    uk_default_qrf_tail_reviewed_exclusions,
     uk_input_mass_parity_gate,
     uk_input_mass_totals,
     uk_qrf_tail_concentration_columns,
-    uk_qrf_tail_concentration_gate,
 )
 
 #: A synthetic approval window. The gates compare it with the real date when a
@@ -471,188 +468,68 @@ def test_qrf_columns_check_every_declared_output_regardless_of_density() -> None
     assert "density_filter" in surface
     # Declared outputs the fixture does not carry are reported, not invented.
     assert "dividend_income" in surface["absent_columns"]
-    assert surface["declared_qrf_outputs"] >= 47
+    # The 57 declared outputs (since microcosm#1095, stage 2's trading_loss and
+    # six owner-manager inputs, and stage 1's two loss draws, which the stage
+    # moves into loss_relief and drops, so a frame never carries them), less
+    # the ten spi_benefit_coherence replaces on every SPI-channel row
+    # (microcosm#1100); they hold no forest draw.
+    assert surface["declared_qrf_outputs"] == 47
+    assert surface["superseded_by_spi_benefit_coherence"] == [
+        "income_support_reported",
+        "working_tax_credit_reported",
+        "child_tax_credit_reported",
+        "sda_reported",
+        "iidb_reported",
+        "afcs_reported",
+        "bsp_reported",
+        "war_widows_pension_reported",
+        "widowed_parents_allowance_reported",
+        "jsa_contrib_reported",
+        "jsa_income_reported",
+        "esa_income_reported",
+    ]
+    assert not set(surface["superseded_by_spi_benefit_coherence"]) & set(values)
 
 
-def test_declared_absent_qrf_output_is_a_named_gate_failure() -> None:
-    values, weights, surface = uk_qrf_tail_concentration_columns(
-        _frame(),
-        output_columns=("declared_but_absent",),
+def test_the_superseded_columns_are_the_coherence_stage_declaration() -> None:
+    """The gate reads the stage's declaration, which names the same columns
+    the stage's transform zeroes and restores."""
+
+    from microcosm.build.uk_runtime.hmrc_source_contract import (
+        uk_spi_coherence_superseded_columns,
+    )
+    from microcosm.build.uk_runtime.spi_benefit_coherence import (
+        SPI_RESTORED_REPORT_COLUMNS,
+        SPI_ZEROED_REPORT_COLUMNS,
     )
 
-    assert set(values) == {"declared_but_absent"}
-    assert set(weights) == {"declared_but_absent"}
-    gate = uk_qrf_tail_concentration_gate(
-        values,
-        weights,
-        policy=UKQRFTailConcentrationPolicy(
-            top_k=1,
-            max_top_share=0.5,
-            min_nonzero_records=2,
-        ),
-        surface=surface,
+    assert uk_spi_coherence_superseded_columns() == (
+        *SPI_ZEROED_REPORT_COLUMNS,
+        *SPI_RESTORED_REPORT_COLUMNS,
     )
 
-    assert not gate.passed
-    assert gate.details["columns_checked"] == 0
-    assert gate.details["surface"]["absent_columns"] == ["declared_but_absent"]
-    assert "declared_but_absent" in gate.failures[0]
-    assert "absent" in gate.failures[0]
 
+def test_release_lines_scope_a_receipt_without_moving_unscoped_payloads() -> None:
+    plain = coerce_reviewed_exclusions({"x": _entry("r")}, label="t")["x"]
+    # Unscoped receipts keep the pre-scope payload, so pinned digests hold.
+    assert set(plain.policy_payload()) == set(_entry("r"))
+    assert plain.applies_on("local") and plain.applies_on(None)
 
-def test_declared_nonnumeric_qrf_output_is_a_named_gate_failure() -> None:
-    values, weights, surface = uk_qrf_tail_concentration_columns(
-        _frame(person_columns={"declared_nonnumeric": ["x"] * 4}),
-        output_columns=("declared_nonnumeric",),
-    )
+    scoped = coerce_reviewed_exclusions(
+        {"x": {**_entry("r"), "release_lines": ["national"]}}, label="t"
+    )["x"]
+    assert scoped.policy_payload()["release_lines"] == ["national"]
+    assert scoped.applies_on("national") and not scoped.applies_on("local")
+    # A scoped entry fails closed where no line is declared.
+    assert not scoped.applies_on(None)
 
-    assert set(values) == {"declared_nonnumeric"}
-    assert set(weights) == {"declared_nonnumeric"}
-    gate = uk_qrf_tail_concentration_gate(
-        values,
-        weights,
-        policy=UKQRFTailConcentrationPolicy(
-            top_k=1,
-            max_top_share=0.5,
-            min_nonzero_records=2,
-        ),
-        surface=surface,
-    )
-
-    assert not gate.passed
-    assert gate.details["columns_checked"] == 0
-    assert gate.details["surface"]["non_numeric_columns"] == ["declared_nonnumeric"]
-    assert "declared_nonnumeric" in gate.failures[0]
-    assert "not numeric" in gate.failures[0]
-
-
-def test_qrf_surface_rejects_partially_omitted_declared_outputs() -> None:
-    gate = uk_qrf_tail_concentration_gate(
-        {"self_employment_income": np.ones(4)},
-        {"self_employment_income": np.ones(4)},
-        policy=UKQRFTailConcentrationPolicy(
-            top_k=1,
-            max_top_share=0.75,
-            min_nonzero_records=2,
-        ),
-        surface={
-            "declared_qrf_outputs": 2,
-            "checked_columns": ["self_employment_income"],
-            "absent_columns": [],
-            "non_numeric_columns": [],
-            "density_filter": "none: every declared output is checked (#609)",
-        },
-    )
-
-    assert not gate.passed
-    assert "QRF surface declarations must reconcile exactly" in gate.failures[0]
-
-
-def test_concentrated_qrf_column_fails_by_name() -> None:
-    n = 10
-    concentrated = np.ones(n)
-    concentrated[0] = 1_000.0
-    frame = _frame(n=n, person_columns={"self_employment_income": concentrated})
-    values, weights, surface = uk_qrf_tail_concentration_columns(frame)
-
-    gate = uk_qrf_tail_concentration_gate(
-        values,
-        weights,
-        policy=UKQRFTailConcentrationPolicy(
-            top_k=1,
-            max_top_share=0.5,
-            min_nonzero_records=2,
-        ),
-        surface=surface,
-    )
-
-    assert gate.name == "qrf_tail_concentration"
-    assert not gate.passed
-    assert "self_employment_income" in gate.failures[0]
-    assert gate.details["surface"]["declared_qrf_outputs"] >= 47
-
-
-def test_thin_qrf_column_is_reported_not_checked() -> None:
-    n = 4
-    frame = _frame(n=n, person_columns={"self_employment_income": np.ones(n)})
-    values, weights, _surface = uk_qrf_tail_concentration_columns(frame)
-
-    gate = uk_qrf_tail_concentration_gate(
-        values,
-        weights,
-        policy=UKQRFTailConcentrationPolicy(
-            top_k=10,
-            max_top_share=0.5,
-            min_nonzero_records=100,
-        ),
-    )
-
-    assert not gate.passed
-    assert gate.details["thin_columns"]["self_employment_income"] == 4
-    assert "No declared QRF output" in gate.failures[0]
-
-
-def test_thin_qrf_exclusion_is_classified_as_dormant() -> None:
-    values = {"x": np.ones(4)}
-    weights = {"x": np.ones(4)}
-
-    gate = uk_qrf_tail_concentration_gate(
-        values,
-        weights,
-        policy=UKQRFTailConcentrationPolicy(
-            top_k=10,
-            max_top_share=0.5,
-            min_nonzero_records=100,
-            reviewed_exclusions={"x": _entry("Seeded thin entry.")},
-        ),
-    )
-
-    assert not gate.passed
-    assert gate.details["thin_columns"] == {"x": 4}
-    assert gate.details["reviewed_exclusions"] == {}
-    assert gate.details["stale_exclusions"] == []
-    assert gate.details["dormant_exclusions"] == ["x"]
-
-
-def test_qrf_stale_exclusion_fails_and_dormant_is_reported() -> None:
-    n = 10
-    frame = _frame(n=n, person_columns={"self_employment_income": np.ones(n)})
-    values, weights, _surface = uk_qrf_tail_concentration_columns(frame)
-
-    gate = uk_qrf_tail_concentration_gate(
-        values,
-        weights,
-        policy=UKQRFTailConcentrationPolicy(
-            top_k=1,
-            max_top_share=0.5,
-            min_nonzero_records=2,
-            reviewed_exclusions={
-                "self_employment_income": _entry("Seeded stale entry."),
-                "dividend_income": _entry("Seeded dormant entry."),
-            },
-        ),
-    )
-
-    assert not gate.passed
-    assert "Stale reviewed exclusions" in gate.failures[0]
-    assert gate.details["stale_exclusions"] == ["self_employment_income"]
-    assert gate.details["dormant_exclusions"] == ["dividend_income"]
-
-
-def test_qrf_policy_validation() -> None:
-    with pytest.raises(ValueError, match="strict subset"):
-        UKQRFTailConcentrationPolicy(
-            top_k=10, max_top_share=0.5, min_nonzero_records=10
-        )
-    with pytest.raises(ValueError, match=r"in \(0, 1\)"):
-        UKQRFTailConcentrationPolicy(top_k=1, max_top_share=1.0, min_nonzero_records=2)
-    with pytest.raises(ValueError, match="reason must be a non-empty string"):
-        UKQRFTailConcentrationPolicy(
-            top_k=1,
-            max_top_share=0.5,
-            min_nonzero_records=2,
-            reviewed_exclusions={"self_employment_income": _entry("")},
-        )
+    for bad in ([], ["regional"], ["local", "local"], "national"):
+        with pytest.raises(ValueError, match="release_lines"):
+            coerce_reviewed_exclusions(
+                {"x": {**_entry("r"), "release_lines": bad}}, label="t"
+            )
+    with pytest.raises(ValueError, match="optionally with"):
+        coerce_reviewed_exclusions({"x": {**_entry("r"), "scope": "x"}}, label="t")
 
 
 def test_committed_exclusion_registers_load() -> None:
@@ -660,55 +537,90 @@ def test_committed_exclusion_registers_load() -> None:
         None,
         resource=UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
     )
-    qrf_tail = load_uk_reviewed_exclusion_register(
-        None,
-        resource=UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE,
-    )
 
     assert set(input_mass) == {"efrs-post-calibration"}
     # The 2026-09-21 retirements (charitable_investment_gifts and owned_land
     # measured inside the fence on the first national candidate) stand; the
-    # certifier rehearsal on the 2026-09-30 build earned three entries
-    # (microcosm#1063 c9): the two FRS education inputs the enhanced-FRS
-    # reference barely carries, and the sparse charity-gifts leaf back at
-    # the concentration threshold. The gate fails any of them as stale the
-    # day a build brings the column inside the fence, which the 2 October
-    # final build did for adult_ema (+74% against the reference): its entry
-    # is retired. The 3 October final build's certifier earned three more,
-    # signed 2026-10-04: the FRS access-fund outlier at the weight bound
-    # (expiring with the owed period rule) and the SPI channel's two
-    # legacy-benefit leaves. All three are retired with the microcosm#1095
-    # ports: spi_benefit_coherence zeroes income-based JSA and Working Tax
-    # Credit on SPI rows, and on the review-head arm the columns sit at +316%
-    # and +103% of the reference and the access fund at +62%, its household
-    # off the weight bound, all inside the fence, so the gate fails them as
-    # stale.
-    assert set(input_mass["efrs-post-calibration"]) == {"dfe_education_spending"}
-    assert set(qrf_tail) == {"charitable_investment_gifts"}
-    for record in (*input_mass["efrs-post-calibration"].values(), *qrf_tail.values()):
+    # certifier rehearsal on the 2026-09-30 build earned the FRS education
+    # input the enhanced-FRS reference barely carries (microcosm#1063 c9).
+    # The gate fails an entry as stale the day a build brings the column
+    # inside the fence, which the 2 October final build did for adult_ema
+    # (+74% against the reference): its entry is retired. The 3 October final
+    # build's certifier earned three more, signed 2026-10-04: the FRS
+    # access-fund outlier at the weight bound (expiring with the owed period
+    # rule) and the SPI channel's two legacy-benefit leaves. All three are
+    # retired with the microcosm#1095 ports: spi_benefit_coherence zeroes
+    # income-based JSA and Working Tax Credit on SPI rows, and on the
+    # review-head arm the columns sit at +316% and +103% of the reference and
+    # the access fund at +62%, its household off the weight bound, all inside
+    # the fence, so the gate fails them as stale. property_wealth joins with
+    # microcosm#1106 (signed 2026-10-11): the release leaves it to the engine,
+    # so the reference carries a column the candidate no longer ships. The
+    # QRF tail register went with its gate (microcosm#1276).
+    assert set(input_mass["efrs-post-calibration"]) == {
+        "dfe_education_spending",
+        "property_wealth",
+    }
+    for record in input_mass["efrs-post-calibration"].values():
         assert record.approved_by == "juaristi22"
-        assert record.approved_on in {"2026-10-02", "2026-10-04"}
-        assert record.expires_on in {"2027-04-02", "2027-01-04", "2027-04-04"}
-        assert "microcosm#1063" in record.adjudication
+        assert record.approved_on in {"2026-10-02", "2026-10-11"}
+        assert record.expires_on in {"2027-04-02", "2027-04-11"}
+        assert (
+            "microcosm#1063" in record.adjudication
+            or "microcosm#1106" in record.adjudication
+        )
     assert uk_default_input_mass_reviewed_exclusions() is (
         uk_default_input_mass_reviewed_exclusions()
-    )
-    assert uk_default_qrf_tail_reviewed_exclusions() is (
-        uk_default_qrf_tail_reviewed_exclusions()
     )
 
 
 def test_local_area_support_register_loads_both_schema3_blocks() -> None:
     loaded = load_uk_local_area_support_exclusion_register(None)
     assert set(loaded["exclusions"]) == {
+        "constituency/S14000027",
         "local_authority/E06000053",
         "local_authority/E09000001",
+        "local_authority/S12000013",
+        "local_authority/S12000023",
+        "local_authority/S12000027",
     }
     assert set(loaded["bound_despite_support_floor"]) == {"census_households"}
     approval = loaded["bound_despite_support_floor"]["census_households"]
     assert approval.approved_by == "juaristi22"
     assert approval.approved_on == "2026-09-10"
     assert approval.expires_on == "2026-12-10"
+
+
+@pytest.mark.parametrize(
+    ("code", "name"),
+    [("S12000023", "Orkney Islands"), ("S12000027", "Shetland Islands")],
+)
+def test_the_islands_are_pre_signed_gate_only_on_the_local_line(
+    code: str, name: str
+) -> None:
+    # microcosm#1301: Orkney and Shetland missed the local-authority support
+    # floor on every build measured for the release, so they are signed before
+    # the first build. The entries are gate-only (the generator defers nothing
+    # for them) and scoped to the local line, the evidence that earned them.
+    record = load_uk_local_area_support_exclusion_register(None)["exclusions"][
+        f"local_authority/{code}"
+    ]
+    assert record.release_lines == ("local",)
+    assert record.applies_on("local") is True
+    assert record.applies_on("national") is False
+    assert record.approved_by == "juaristi22"
+    assert record.approved_on == "2026-10-16"
+    assert record.expires_on == "2027-01-16"
+    assert "microcosm#1301" in record.adjudication
+    assert f"{name} ({code})" in record.reason
+    assert "Gate-only" in record.reason
+    assert "signed-deferred" not in record.reason
+    # The reason names the builds, never the area's support figures: once the
+    # code and the cited builds are taken out no number is left.
+    residue = record.reason
+    for cited in (code, "K=25", "K=15", "60,000", "100,000", "95,000", "#1301"):
+        residue = residue.replace(cited, "")
+    assert not any(character.isdigit() for character in residue), residue
 
 
 def test_local_area_support_register_refuses_schema2(tmp_path) -> None:
@@ -1001,52 +913,6 @@ def test_uk_input_mass_gate_is_the_shared_gate_plus_recorded_identity() -> None:
         "reference",
         "reference_scope_note",
         "reference_identity",
-    }
-
-
-def test_uk_tail_gate_is_the_shared_gate_under_the_uk_name() -> None:
-    """Exclusion discipline included: the shared US gate already carries it."""
-
-    from microcosm.build.gates import tail_concentration_gate
-
-    n = 12
-    concentrated = np.ones(n)
-    concentrated[0] = 500.0
-    values = {"self_employment_income": concentrated, "dividend_income": np.ones(n)}
-    weights = {name: np.ones(n) for name in values}
-    reason = "Seeded stale entry."
-
-    shared = tail_concentration_gate(
-        values,
-        weights,
-        top_k=1,
-        max_top_share=0.5,
-        min_nonzero_records=2,
-        reviewed_exclusions={"dividend_income": reason},
-    )
-    ported = uk_qrf_tail_concentration_gate(
-        values,
-        weights,
-        policy=UKQRFTailConcentrationPolicy(
-            top_k=1,
-            max_top_share=0.5,
-            min_nonzero_records=2,
-            reviewed_exclusions={"dividend_income": _entry(reason)},
-        ),
-    )
-
-    assert shared.name == "tail_concentration"
-    assert ported.name == "qrf_tail_concentration"
-    assert ported.passed == shared.passed
-    assert ported.failures == shared.failures
-    shared_details = dict(shared.details)
-    assert {
-        key: value for key, value in ported.details.items() if key in shared_details
-    } == shared_details
-    assert set(ported.details) - set(shared_details) == {
-        "expired_exclusions",
-        "premature_exclusions",
-        "exclusions_evaluated_on",
     }
 
 

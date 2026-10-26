@@ -687,7 +687,8 @@ CGT_STOCK_TYPE_FLOOR = 0.2
 
 CGT_RESIDENTIAL_STOCK_SIGNAL = (
     "household other residential property value above zero, or the person's "
-    "property income above zero"
+    "property income above zero, or the person reports rent from other "
+    "property at a profit or a loss"
 )
 CGT_BUSINESS_STOCK_SIGNAL = (
     "household corporate wealth above zero, or the person's self-employment "
@@ -709,6 +710,7 @@ CGT_STOCK_HOUSEHOLD_COLUMNS: tuple[str, ...] = (
 )
 CGT_STOCK_PERSON_COLUMNS: tuple[str, ...] = (
     "property_income",
+    "reports_rent_from_other_property",
     "self_employment_income",
     "dividend_income",
 )
@@ -749,8 +751,12 @@ def _stock_signals(person: pd.DataFrame, household: pd.DataFrame) -> dict[str, o
             column, pd.to_numeric(person[column], errors="raise").to_numpy(dtype=float)
         )
 
-    residential = (hh("other_residential_property_value") > 0) | (
-        pp("property_income") > 0
+    # property_income counts a letting loss as zero, so the landlord carrier
+    # keeps loss-making landlords in the signal (#1081).
+    residential = (
+        (hh("other_residential_property_value") > 0)
+        | (pp("property_income") > 0)
+        | (pp("reports_rent_from_other_property") > 0)
     )
     business = (hh("corporate_wealth") > 0) | (pp("self_employment_income") > 0)
     by_type = {

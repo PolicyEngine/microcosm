@@ -1,0 +1,3726 @@
+{
+  "schema_version": 1,
+  "country": "uk",
+  "kind": "uk_vendored_ledger_facts",
+  "resource": "dwp_move_to_uc_facts.json",
+  "purpose": "DWP Stat-Xplore, households sent a Move to Universal Credit migration notice in Great Britain, notices July 2022 to June 2026, by the legacy benefits they received and their move status (claimed Universal Credit, did not claim as the legacy benefit closed, in progress), with the totals by combination and by status (uk-data#534, microcosm#1095): the uc_legacy_closure_take_up stage's claim rate for a combination is claimed / (claimed + did not claim). No value is derived here.",
+  "consumers": [
+    "uk_runtime.legacy_closure_take_up"
+  ],
+  "planned_consumers": [],
+  "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",
+  "generator": {
+    "tool": "tools/vendor_uk_ledger_facts.py",
+    "version": 1
+  },
+  "source_fact_feed": {
+    "source_repo": "PolicyEngine/chronicle",
+    "source_commit": "272c987af175687aca21f82851ef349521802b12",
+    "build": "build-bundle --suite uk -> build-consumer-artifact",
+    "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+    "fact_row_count": 1503315,
+    "facts_sha256": "084ddf46fa34b1e03b5f0a7287617aeafaf7f614e3619d87a6565409e4adac85",
+    "manifest_sha256": "229afc18d8201bbd59a41777453f487ad750be2802425240ac26ee54849bfafd"
+  },
+  "selections": [
+    {
+      "label": "mtuc_households_by_legacy_benefit_and_move_status",
+      "selector": {
+        "source_name": "dwp",
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06"
+      },
+      "row_count": 57
+    },
+    {
+      "label": "mtuc_households_totals",
+      "selector": {
+        "source_name": "dwp",
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total"
+      },
+      "row_count": 23
+    }
+  ],
+  "row_count": 80,
+  "rows": [
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_88354f51318c4026e1dae3d1",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ea2a5901c5a834fabbe0b5ee",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total.all_households__all_statuses.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "all_households__all_statuses",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "legacy_benefit": "all",
+        "move_status": "all"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 1822966
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_09fd7fc2e84e950299dc154f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f7612b8d4c9f4aa2bdc97cdc",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total.all_households__claimed_uc.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "all_households__claimed_uc",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "legacy_benefit": "all",
+        "move_status": "Claimed UC"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 1580761
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8f8279de060318d3e03e397c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c75e337aeaf397873c98ccad",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total.all_households__did_not_claim_uc___legacy_benefit_closed.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "all_households__did_not_claim_uc___legacy_benefit_closed",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "legacy_benefit": "all",
+        "move_status": "Did not claim UC - Legacy benefit closed"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 241662
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c533c8c8ce6450a936be6988",
+      "semantic_fact_key": "ledger_semantic_fact_v2_76860ce27e5f311472844fc4",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total.all_households__in_progress.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "all_households__in_progress",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "legacy_benefit": "all",
+        "move_status": "In Progress"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 538
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e566a8e8030a3352ed65b980",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f30ba5fb6264bef1b0def972",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total.child_tax_credit_and_employment_support_allowance__all_statuses.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_and_employment_support_allowance__all_statuses",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit and Employment Support Allowance",
+        "move_status": "all"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 11557
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_bda036f4c64f60d6da586e15",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4184546ef6e725f944beb60a",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.child_tax_credit_and_employment_support_allowance__claimed_uc.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_and_employment_support_allowance__claimed_uc",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit and Employment Support Allowance",
+        "move_status": "Claimed UC"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 11171
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2c44a92352ac477b61e7c633",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e0c3e4e1a9fc933e8c8988d9",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.child_tax_credit_and_employment_support_allowance__did_not_claim_uc___legacy_benefit_closed.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_and_employment_support_allowance__did_not_claim_uc___legacy_benefit_closed",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit and Employment Support Allowance",
+        "move_status": "Did not claim UC - Legacy benefit closed"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 381
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1243c63edcb178e6ea35eb1b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e1416c608a459750941df009",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.child_tax_credit_and_employment_support_allowance__in_progress.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_and_employment_support_allowance__in_progress",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit and Employment Support Allowance",
+        "move_status": "In Progress"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 0
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b833dc68908de421984fd0e4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_90b0a238898da693f5fe2ae1",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total.child_tax_credit_and_housing_benefit__all_statuses.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_and_housing_benefit__all_statuses",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit and Housing Benefit",
+        "move_status": "all"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 16685
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7429e056b1b103354fdefee8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d0a886b846fd163bc9fb0f6c",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.child_tax_credit_and_housing_benefit__claimed_uc.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_and_housing_benefit__claimed_uc",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit and Housing Benefit",
+        "move_status": "Claimed UC"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 15646
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_01e35c756659ea74eeb3dc8a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_389a787bf533d2430d628779",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.child_tax_credit_and_housing_benefit__did_not_claim_uc___legacy_benefit_closed.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_and_housing_benefit__did_not_claim_uc___legacy_benefit_closed",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit and Housing Benefit",
+        "move_status": "Did not claim UC - Legacy benefit closed"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 1042
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2b3a2841cb4b7163a01d010e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9a092cfd7c72a00de6db1b08",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.child_tax_credit_and_housing_benefit__in_progress.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_and_housing_benefit__in_progress",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit and Housing Benefit",
+        "move_status": "In Progress"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 0
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a3cc2d0bce752748ad5ca597",
+      "semantic_fact_key": "ledger_semantic_fact_v2_800d74031fb22d6714ac24da",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total.child_tax_credit_and_housing_benefit_and_employment_support_allowance__all_statuses.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_and_housing_benefit_and_employment_support_allowance__all_statuses",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit and Housing Benefit and Employment Support Allowance",
+        "move_status": "all"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 74805
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e3e8038b50dfe2137afafe7e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_267ffc13c71f07c7dcb85108",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.child_tax_credit_and_housing_benefit_and_employment_support_allowance__claimed_uc.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_and_housing_benefit_and_employment_support_allowance__claimed_uc",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit and Housing Benefit and Employment Support Allowance",
+        "move_status": "Claimed UC"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 73859
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_99c4a53ee58d36adb19defe7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9940c5fabeac93e7249f386e",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.child_tax_credit_and_housing_benefit_and_employment_support_allowance__did_not_claim_uc___legacy_benefit_closed.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_and_housing_benefit_and_employment_support_allowance__did_not_claim_uc___legacy_benefit_closed",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit and Housing Benefit and Employment Support Allowance",
+        "move_status": "Did not claim UC - Legacy benefit closed"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 949
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_12e671822a2674c695459434",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c715ca09e4f90292ab66421f",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.child_tax_credit_and_housing_benefit_and_employment_support_allowance__in_progress.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_and_housing_benefit_and_employment_support_allowance__in_progress",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit and Housing Benefit and Employment Support Allowance",
+        "move_status": "In Progress"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 0
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_77fa4815963c08f79414aa33",
+      "semantic_fact_key": "ledger_semantic_fact_v2_78d2bee70b47e8195defda0a",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total.child_tax_credit_and_housing_benefit_and_income_support__all_statuses.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_and_housing_benefit_and_income_support__all_statuses",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit and Housing Benefit and Income Support",
+        "move_status": "all"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 59457
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6f2c963c0567238b9c62bd76",
+      "semantic_fact_key": "ledger_semantic_fact_v2_18d4b89f06ed654baca0d6ab",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.child_tax_credit_and_housing_benefit_and_income_support__claimed_uc.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_and_housing_benefit_and_income_support__claimed_uc",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit and Housing Benefit and Income Support",
+        "move_status": "Claimed UC"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 58764
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_717f17efce5558879855ad33",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2c21d8c6df780323d955985f",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.child_tax_credit_and_housing_benefit_and_income_support__did_not_claim_uc___legacy_benefit_closed.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_and_housing_benefit_and_income_support__did_not_claim_uc___legacy_benefit_closed",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit and Housing Benefit and Income Support",
+        "move_status": "Did not claim UC - Legacy benefit closed"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 691
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e4914d0e2a69221db8c00a9d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_94ea8100770b7e53a4e37ed3",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.child_tax_credit_and_housing_benefit_and_income_support__in_progress.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_and_housing_benefit_and_income_support__in_progress",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit and Housing Benefit and Income Support",
+        "move_status": "In Progress"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 0
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0d684ae01373e40a9a2177d7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0c06db046e0b28008e71276f",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total.child_tax_credit_and_housing_benefit_and_jobseekers_allowance__all_statuses.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_and_housing_benefit_and_jobseekers_allowance__all_statuses",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit and Housing Benefit and Jobseekers Allowance",
+        "move_status": "all"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 2320
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c01118e1ecba208b273068d4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_59227d0505e938d118efe36d",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.child_tax_credit_and_housing_benefit_and_jobseekers_allowance__claimed_uc.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_and_housing_benefit_and_jobseekers_allowance__claimed_uc",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit and Housing Benefit and Jobseekers Allowance",
+        "move_status": "Claimed UC"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 2286
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b741ae699cb2d880eaa2fee4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5129ed024b483ce4eae7d571",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.child_tax_credit_and_housing_benefit_and_jobseekers_allowance__did_not_claim_uc___legacy_benefit_closed.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_and_housing_benefit_and_jobseekers_allowance__did_not_claim_uc___legacy_benefit_closed",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit and Housing Benefit and Jobseekers Allowance",
+        "move_status": "Did not claim UC - Legacy benefit closed"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 30
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b8349ac68ce18ea148b0cdde",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1ac2ab9a8650621f82ccfeb2",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.child_tax_credit_and_housing_benefit_and_jobseekers_allowance__in_progress.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_and_housing_benefit_and_jobseekers_allowance__in_progress",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit and Housing Benefit and Jobseekers Allowance",
+        "move_status": "In Progress"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 0
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_bc5b5a533a3e8a39d6f385ce",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ea553b225b0c05f16c715ca3",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total.child_tax_credit_and_income_support__all_statuses.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_and_income_support__all_statuses",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit and Income Support",
+        "move_status": "all"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 8529
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_27d9bd72581f66ddb576372b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d4cf922aa3f320cddcfc85ee",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.child_tax_credit_and_income_support__claimed_uc.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_and_income_support__claimed_uc",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit and Income Support",
+        "move_status": "Claimed UC"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 8254
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ddb8ca1a5793f0134c567f22",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3ba2cfc05af1f82dd0b20e4f",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.child_tax_credit_and_income_support__did_not_claim_uc___legacy_benefit_closed.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_and_income_support__did_not_claim_uc___legacy_benefit_closed",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit and Income Support",
+        "move_status": "Did not claim UC - Legacy benefit closed"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 276
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_21169cefc9ffadfab2c8dac5",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d240a87f583e1755a49c5375",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.child_tax_credit_and_income_support__in_progress.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_and_income_support__in_progress",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit and Income Support",
+        "move_status": "In Progress"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 0
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_66733bf7c2b58e77b1a6f64f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b81105f1c485c376e57969ac",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total.child_tax_credit_and_jobseekers_allowance__all_statuses.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_and_jobseekers_allowance__all_statuses",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit and Jobseekers Allowance",
+        "move_status": "all"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 388
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a3ed5efb83aa9edebe0b2164",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4bfaa9fdb9b24522476db579",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.child_tax_credit_and_jobseekers_allowance__claimed_uc.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_and_jobseekers_allowance__claimed_uc",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit and Jobseekers Allowance",
+        "move_status": "Claimed UC"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 381
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_64e4d8b4fdde60f4bd61ab0d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0dcb38e312fdab42a28a0b59",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.child_tax_credit_and_jobseekers_allowance__did_not_claim_uc___legacy_benefit_closed.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_and_jobseekers_allowance__did_not_claim_uc___legacy_benefit_closed",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit and Jobseekers Allowance",
+        "move_status": "Did not claim UC - Legacy benefit closed"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 8
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a888931822155bd9882bcc60",
+      "semantic_fact_key": "ledger_semantic_fact_v2_177bf719bdbcee40c72684c1",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.child_tax_credit_and_jobseekers_allowance__in_progress.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_and_jobseekers_allowance__in_progress",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit and Jobseekers Allowance",
+        "move_status": "In Progress"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 0
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e787a908b19d5304462deba9",
+      "semantic_fact_key": "ledger_semantic_fact_v2_edc604950b5b51df4c875676",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total.child_tax_credit_and_working_tax_credit__all_statuses.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_and_working_tax_credit__all_statuses",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit and Working Tax Credit",
+        "move_status": "all"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 490379
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b98603fce5fa339ea19c395d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6ada4d4ee8a0868113df972e",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.child_tax_credit_and_working_tax_credit__claimed_uc.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_and_working_tax_credit__claimed_uc",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit and Working Tax Credit",
+        "move_status": "Claimed UC"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 363984
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_29064d4fb75cf802501e7c57",
+      "semantic_fact_key": "ledger_semantic_fact_v2_dac22838863d9492dcf9192d",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.child_tax_credit_and_working_tax_credit__did_not_claim_uc___legacy_benefit_closed.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_and_working_tax_credit__did_not_claim_uc___legacy_benefit_closed",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit and Working Tax Credit",
+        "move_status": "Did not claim UC - Legacy benefit closed"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 126397
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_28cebe397a3d15cbed0b530d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_64c958ba6e5a7e8b52e3ec7c",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.child_tax_credit_and_working_tax_credit__in_progress.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_and_working_tax_credit__in_progress",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit and Working Tax Credit",
+        "move_status": "In Progress"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 0
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_24bb6781292d4e2abc16ca1a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0c59c10fd1c16dd3bdf0dd36",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total.child_tax_credit_and_working_tax_credit_and_housing_benefit__all_statuses.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_and_working_tax_credit_and_housing_benefit__all_statuses",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit and Working Tax Credit and Housing Benefit",
+        "move_status": "all"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 87309
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_48f983ec44bfcd36f10b21aa",
+      "semantic_fact_key": "ledger_semantic_fact_v2_eb5a4c32d486afc8d9b1bcc2",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.child_tax_credit_and_working_tax_credit_and_housing_benefit__claimed_uc.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_and_working_tax_credit_and_housing_benefit__claimed_uc",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit and Working Tax Credit and Housing Benefit",
+        "move_status": "Claimed UC"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 81962
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2737e8b72993d4b1ab11a707",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0bd61f30e2220b80d45dac59",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.child_tax_credit_and_working_tax_credit_and_housing_benefit__did_not_claim_uc___legacy_benefit_closed.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_and_working_tax_credit_and_housing_benefit__did_not_claim_uc___legacy_benefit_closed",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit and Working Tax Credit and Housing Benefit",
+        "move_status": "Did not claim UC - Legacy benefit closed"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 5352
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3f9bcd40bb2eb9dc04521dc6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7b15cfcd26788ec74676ea68",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.child_tax_credit_and_working_tax_credit_and_housing_benefit__in_progress.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_and_working_tax_credit_and_housing_benefit__in_progress",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit and Working Tax Credit and Housing Benefit",
+        "move_status": "In Progress"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 0
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f19eb0a19729095b0a9206d8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c0c5978b6cf30c6d7422d201",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total.child_tax_credit_only__all_statuses.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_only__all_statuses",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit only",
+        "move_status": "all"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 54454
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0af78af71cf02c75e1227d06",
+      "semantic_fact_key": "ledger_semantic_fact_v2_cafe8e3da63cfe27ef2e046a",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.child_tax_credit_only__claimed_uc.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_only__claimed_uc",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit only",
+        "move_status": "Claimed UC"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 36723
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ebb1d5b1e0100e4d769c33f9",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1429e219345ab102b56772c0",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.child_tax_credit_only__did_not_claim_uc___legacy_benefit_closed.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_only__did_not_claim_uc___legacy_benefit_closed",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit only",
+        "move_status": "Did not claim UC - Legacy benefit closed"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 17733
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d41739b06dda111d4ed18bef",
+      "semantic_fact_key": "ledger_semantic_fact_v2_81b43f10f465b85ec436cdfb",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.child_tax_credit_only__in_progress.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "child_tax_credit_only__in_progress",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Child Tax Credit only",
+        "move_status": "In Progress"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 0
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2c34688c16fea04e638bd2dd",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a9ff954eb58d808f73539a8d",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total.employment_support_allowance_only__all_statuses.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "employment_support_allowance_only__all_statuses",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "legacy_benefit": "Employment Support Allowance only",
+        "move_status": "all"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 335190
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4eee68a8047084fb404286fd",
+      "semantic_fact_key": "ledger_semantic_fact_v2_61da37fa81e1f22b9ebd727c",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.employment_support_allowance_only__claimed_uc.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "employment_support_allowance_only__claimed_uc",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Employment Support Allowance only",
+        "move_status": "Claimed UC"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 321075
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_23f280a8c406d2f2ee723193",
+      "semantic_fact_key": "ledger_semantic_fact_v2_806e3c7da20a635220ed5bea",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.employment_support_allowance_only__did_not_claim_uc___legacy_benefit_closed.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "employment_support_allowance_only__did_not_claim_uc___legacy_benefit_closed",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Employment Support Allowance only",
+        "move_status": "Did not claim UC - Legacy benefit closed"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 13944
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b97711c4c3361018a389f15c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_85d5cd61467df43983f94484",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.employment_support_allowance_only__in_progress.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "employment_support_allowance_only__in_progress",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Employment Support Allowance only",
+        "move_status": "In Progress"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 167
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_204ea8b98cd982e8d51db8fd",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7835d732aee5c1997838d816",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total.housing_benefit_and_employment_support_allowance__all_statuses.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "housing_benefit_and_employment_support_allowance__all_statuses",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "legacy_benefit": "Housing Benefit and Employment Support Allowance",
+        "move_status": "all"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 457466
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9dd889d1fd2e43b68d53c325",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d74288611f2765ea674adf12",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.housing_benefit_and_employment_support_allowance__claimed_uc.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "housing_benefit_and_employment_support_allowance__claimed_uc",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Housing Benefit and Employment Support Allowance",
+        "move_status": "Claimed UC"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 448253
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ad56940381db0dd4219696d8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d055f2c867e02a68053fae84",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.housing_benefit_and_employment_support_allowance__did_not_claim_uc___legacy_benefit_closed.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "housing_benefit_and_employment_support_allowance__did_not_claim_uc___legacy_benefit_closed",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Housing Benefit and Employment Support Allowance",
+        "move_status": "Did not claim UC - Legacy benefit closed"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 9117
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e5dcb1ed674a950796b91303",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3ffb1e185a322f59d8238f3f",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.housing_benefit_and_employment_support_allowance__in_progress.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "housing_benefit_and_employment_support_allowance__in_progress",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Housing Benefit and Employment Support Allowance",
+        "move_status": "In Progress"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 93
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4f15d5e81896a959c7195652",
+      "semantic_fact_key": "ledger_semantic_fact_v2_85ffff61527f36d80ad5dabb",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total.housing_benefit_and_income_support__all_statuses.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "housing_benefit_and_income_support__all_statuses",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "legacy_benefit": "Housing Benefit and Income Support",
+        "move_status": "all"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 31833
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2eed6a6fa0143b30751916fb",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a97c75f47572ef6179883f32",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.housing_benefit_and_income_support__claimed_uc.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "housing_benefit_and_income_support__claimed_uc",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Housing Benefit and Income Support",
+        "move_status": "Claimed UC"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 31087
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9ee637fb65c46dfadae23d67",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e908b82621de21298cb63a69",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.housing_benefit_and_income_support__did_not_claim_uc___legacy_benefit_closed.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "housing_benefit_and_income_support__did_not_claim_uc___legacy_benefit_closed",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Housing Benefit and Income Support",
+        "move_status": "Did not claim UC - Legacy benefit closed"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 750
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c5c3b6a1f72277a57d5ae58c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8d83155d8c5bd8db56a4c2c4",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.housing_benefit_and_income_support__in_progress.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "housing_benefit_and_income_support__in_progress",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Housing Benefit and Income Support",
+        "move_status": "In Progress"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 0
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_16751eefc2acd349b466f647",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1ea7ce6f3a9c6006baa81640",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total.housing_benefit_and_jobseekers_allowance__all_statuses.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "housing_benefit_and_jobseekers_allowance__all_statuses",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "legacy_benefit": "Housing Benefit and Jobseekers Allowance",
+        "move_status": "all"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 11352
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9bdbf0743eb55813ccc6974b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_91f0912def4fdc82e4a02385",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.housing_benefit_and_jobseekers_allowance__claimed_uc.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "housing_benefit_and_jobseekers_allowance__claimed_uc",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Housing Benefit and Jobseekers Allowance",
+        "move_status": "Claimed UC"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 11019
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_deee688a6078a0f606e2cfe8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_62498181270e694fec809d70",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.housing_benefit_and_jobseekers_allowance__did_not_claim_uc___legacy_benefit_closed.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "housing_benefit_and_jobseekers_allowance__did_not_claim_uc___legacy_benefit_closed",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Housing Benefit and Jobseekers Allowance",
+        "move_status": "Did not claim UC - Legacy benefit closed"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 333
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_af43dcb677ce9ce81c467649",
+      "semantic_fact_key": "ledger_semantic_fact_v2_54b3465ef96e4598a5038434",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.housing_benefit_and_jobseekers_allowance__in_progress.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "housing_benefit_and_jobseekers_allowance__in_progress",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Housing Benefit and Jobseekers Allowance",
+        "move_status": "In Progress"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 0
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3fac567a47637d2f2fbc2d25",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a19a0c90c0701e5c0596cb0b",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total.housing_benefit_only__all_statuses.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "housing_benefit_only__all_statuses",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "legacy_benefit": "Housing Benefit only",
+        "move_status": "all"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 41300
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_5849c7514da2144fa2b135b6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d772733cbea3beec5d22aff8",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.housing_benefit_only__claimed_uc.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "housing_benefit_only__claimed_uc",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Housing Benefit only",
+        "move_status": "Claimed UC"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 30900
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f411b53a9c7b7baf4524958c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0e7c0d50f4f6fb92e0b598d9",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.housing_benefit_only__did_not_claim_uc___legacy_benefit_closed.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "housing_benefit_only__did_not_claim_uc___legacy_benefit_closed",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Housing Benefit only",
+        "move_status": "Did not claim UC - Legacy benefit closed"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 10121
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_fd6d41bfe288edec90be1172",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a59905108ed272e356604020",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.housing_benefit_only__in_progress.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "housing_benefit_only__in_progress",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Housing Benefit only",
+        "move_status": "In Progress"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 280
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_971afb0a4d9e9a7456fd124b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_699b13ee613803bfb7db6c86",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total.income_support_only__all_statuses.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "income_support_only__all_statuses",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "legacy_benefit": "Income Support only",
+        "move_status": "all"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 19067
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7db205439284c268c8a86bff",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c3d642b38fdc99848c9f1d26",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.income_support_only__claimed_uc.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "income_support_only__claimed_uc",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Income Support only",
+        "move_status": "Claimed UC"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 17719
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0bb802697b4809951e2c82ec",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ed8fe6928da3b6ee5da1e400",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.income_support_only__did_not_claim_uc___legacy_benefit_closed.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "income_support_only__did_not_claim_uc___legacy_benefit_closed",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Income Support only",
+        "move_status": "Did not claim UC - Legacy benefit closed"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 1351
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a7e307d3c534248f1ea645cf",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2465e14f39d362b9cec54c86",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.income_support_only__in_progress.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "income_support_only__in_progress",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Income Support only",
+        "move_status": "In Progress"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 0
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6b9d0b7aed60246a273ac727",
+      "semantic_fact_key": "ledger_semantic_fact_v2_15cdb75f3a82b317207f31ad",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total.jobseekers_allowance_only__all_statuses.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "jobseekers_allowance_only__all_statuses",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "legacy_benefit": "Jobseekers Allowance only",
+        "move_status": "all"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 6199
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1d3a3ac14e2cf3edaac15c0b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_284086a4d211acd8c11eaa69",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.jobseekers_allowance_only__claimed_uc.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "jobseekers_allowance_only__claimed_uc",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Jobseekers Allowance only",
+        "move_status": "Claimed UC"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 5867
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ac5fd7ac564a0a050d2e0804",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9658c424a5fea44a286ae7cc",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.jobseekers_allowance_only__did_not_claim_uc___legacy_benefit_closed.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "jobseekers_allowance_only__did_not_claim_uc___legacy_benefit_closed",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Jobseekers Allowance only",
+        "move_status": "Did not claim UC - Legacy benefit closed"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 329
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_dae08158212ac37c7b79a985",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4e03587270ad10abf54e30df",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.jobseekers_allowance_only__in_progress.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "jobseekers_allowance_only__in_progress",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Jobseekers Allowance only",
+        "move_status": "In Progress"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 0
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_29762356aa9d435594bae2e5",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a6c81ff96facf8dd3c1d50ff",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total.working_tax_credit_and_housing_benefit__all_statuses.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "working_tax_credit_and_housing_benefit__all_statuses",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "legacy_benefit": "Working Tax Credit and Housing Benefit",
+        "move_status": "all"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 8866
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_12775adbd731c8b2436865a4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b9d1467dba92a6afd0a682fd",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.working_tax_credit_and_housing_benefit__claimed_uc.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "working_tax_credit_and_housing_benefit__claimed_uc",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Working Tax Credit and Housing Benefit",
+        "move_status": "Claimed UC"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 7820
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b522ebe2f5ab99e4adebe604",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7f68a7b05c1193a2d2f502d8",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.working_tax_credit_and_housing_benefit__did_not_claim_uc___legacy_benefit_closed.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "working_tax_credit_and_housing_benefit__did_not_claim_uc___legacy_benefit_closed",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Working Tax Credit and Housing Benefit",
+        "move_status": "Did not claim UC - Legacy benefit closed"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 1042
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_92f4eeec83dc9aac27dc3480",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9b45d4a45633a89de5a1f925",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.working_tax_credit_and_housing_benefit__in_progress.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "working_tax_credit_and_housing_benefit__in_progress",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Working Tax Credit and Housing Benefit",
+        "move_status": "In Progress"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 0
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_387b467c3be2e2d5b540c0b9",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2df90a3a28ac7977f814fab5",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total.working_tax_credit_only__all_statuses.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "working_tax_credit_only__all_statuses",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "legacy_benefit": "Working Tax Credit only",
+        "move_status": "all"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 105802
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d84481517353c7f95b29ac70",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c3d69bd225f0aaa28c552cfe",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.working_tax_credit_only__claimed_uc.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "working_tax_credit_only__claimed_uc",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Working Tax Credit only",
+        "move_status": "Claimed UC"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 53993
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_19046b2b55ed78f664253be8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_32d7dabc08ec4e6383ec4376",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.working_tax_credit_only__did_not_claim_uc___legacy_benefit_closed.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "working_tax_credit_only__did_not_claim_uc___legacy_benefit_closed",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Working Tax Credit only",
+        "move_status": "Did not claim UC - Legacy benefit closed"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 51805
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f032ce0d60c2b2a5ac53b139",
+      "semantic_fact_key": "ledger_semantic_fact_v2_378cae5e868169c382386e11",
+      "source_record_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.working_tax_credit_only__in_progress.households_sent_migration_notice",
+      "concept": "dwp.mtuc_households_sent_migration_notice",
+      "measure_id": "households_sent_migration_notice",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "migration_notice_household"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-06"
+      },
+      "period_coverage": {
+        "start_date": "2022-07-01",
+        "end_date": "2026-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+        "groupby_dimension": "dwp.mtuc_legacy_benefit_move_status",
+        "groupby_value_id": "working_tax_credit_only__in_progress",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "legacy_benefit": "Working Tax Credit only",
+        "move_status": "In Progress"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households invited to Move to Universal Credit by Legacy Benefit and Move Status, notices July 2022 to June 2026",
+        "source_file": "mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json",
+        "source_sha256": "5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f",
+        "vintage": "stat_xplore_extracted_2026_10_15",
+        "raw_r2_key": "raw/uk/dwp/dwp-mtuc-households-legacy-benefit-move-status-july-2022-june-2026/2026/5c238500100b87d136008b5a8ed1a610e628bff43a890763181d4723a463443f/mtuc_households_legacy_benefit_move_status_july_2022_june_2026.json"
+      },
+      "value": 0
+    }
+  ]
+}

@@ -150,13 +150,43 @@
     "annualisation": {
       "weeks_per_year": 52,
       "method_card_row": "MC12",
-      "note": "the conformance harness uses 365/7 weeks (ops main run.py:168); the model states and uses 52"
+      "note": "the conformance harness uses 365/7 weeks (WEEKS_IN_MODEL_YEAR in TheAxiomFoundation/ops nz-lane/emtr_reproduction/run.py at ba6e7d6e); the model states and uses 52"
     },
     "groupings": {
       "method_card_row": "MC3",
       "tables": [
         "income_decile_by_family_type",
         "beneficiary_superannuitant_other"
+      ]
+    },
+    "reporting_cells": {
+      "entity": "family",
+      "measure": "accommodation_supplement",
+      "period": "2026-27",
+      "annualisation_factor": 52,
+      "tables": [
+        {
+          "name": "income_decile_by_family_type",
+          "axes": [
+            {
+              "column": "income_decile",
+              "values": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+            },
+            {
+              "column": "family_type",
+              "values": ["single", "couple", "sole_parent", "couple_with_children"]
+            }
+          ]
+        },
+        {
+          "name": "beneficiary_superannuitant_other",
+          "axes": [
+            {
+              "column": "receipt_group",
+              "values": ["beneficiary", "superannuitant", "other"]
+            }
+          ]
+        }
       ]
     },
     "comparators": {

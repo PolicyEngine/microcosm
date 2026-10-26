@@ -3,7 +3,7 @@
 # ruff: noqa: F403, F405
 from test_support.microcosm_build.uk_uc_capital_coherence import *
 
-RECEIPTS = ("coarsening_levels", "capital_against_investment_income")
+RECEIPTS = ("coarsening_levels", "capital_against_investment_income", "property_shares")
 
 
 def test_manifest_declares_exact_redraw_seed_and_output() -> None:
@@ -63,14 +63,19 @@ def test_stage_orders_after_every_universal_credit_report_writer() -> None:
 
     assert reporter_writers
     assert all(index < coherence_index for index, _ in reporter_writers)
-    # The Pension Credit take-up redraw (microcosm#1069 c7) and the Child
-    # Benefit redraw (microcosm#1063 c8) sit between the coherence stage and
-    # the deduction attributes; neither writes a UC report.
+    # The Universal Credit redraw (microcosm#1334), the Move to UC claim draw
+    # (microcosm#1095), the Pension Credit take-up redraw (microcosm#1069 c7),
+    # the Child Benefit redraw (microcosm#1063 c8) and the Carer's Allowance
+    # draw (microcosm#1319) sit between the coherence stage and the deduction
+    # attributes; none writes a UC report.
     assert [
-        stage.stage for stage in stages[coherence_index + 1 : coherence_index + 4]
+        stage.stage for stage in stages[coherence_index + 1 : coherence_index + 7]
     ] == [
+        "uc_take_up",
+        "uc_legacy_closure_take_up",
         "pension_credit_take_up",
         "child_benefit_take_up",
+        "carers_allowance_take_up",
         "uc_deduction_attributes",
     ]
 
@@ -356,3 +361,271 @@ def test_receipt_counts_capital_below_what_the_income_implies() -> None:
     # 1005 now draws from its income band's donor, 101 (GBP 100).
     assert after["spi"]["benefit_units"] == 1
     assert receipt["after"]["spi_reporters_capital_above_16000"] == 0
+
+
+def _property_tables():
+    """Four households covering the shared-household cases (microcosm#1095).
+
+    1: one couple unit. 2: pensioner parents, one of them the household
+    reference person, with their working-age child's unit. 3: a lone parent
+    with a 17-year-old dependant. 4: two single adults, the second of them the
+    household reference person.
+    """
+
+    members = [
+        # (person, benunit, household, age, is_household_head)
+        (1, 11, 1, 40, True),
+        (2, 11, 1, 38, False),
+        (3, 21, 2, 70, True),
+        (4, 21, 2, 68, False),
+        (5, 22, 2, 30, False),
+        (6, 31, 3, 35, True),
+        (7, 31, 3, 17, False),
+        (8, 41, 4, 50, False),
+        (9, 42, 4, 45, True),
+    ]
+    person = pd.DataFrame(
+        members,
+        columns=[
+            "person_id",
+            "person_benunit_id",
+            "person_household_id",
+            "age",
+            "is_household_head",
+        ],
+    )
+    benunit = pd.DataFrame({"benunit_id": [11, 21, 22, 31, 41, 42]})
+    household = pd.DataFrame(
+        {
+            "household_id": [1, 2, 3, 4],
+            "other_residential_property_value": [
+                100_000.0,
+                90_000.0,
+                40_000.0,
+                10_000.0,
+            ],
+            "non_residential_property_value": [20_000.0, 0.0, 0.0, 2_000.0],
+            "owned_land": [5_000.0, 30_000.0, 0.0, 0.0],
+            "other_residential_property_secured_debt": [0.0, 0.0, 0.0, 0.0],
+            "non_residential_property_secured_debt": [0.0, 0.0, 0.0, 0.0],
+        }
+    )
+    return person, benunit, household
+
+
+def test_the_reference_persons_unit_holds_the_households_property() -> None:
+    person, benunit, household = _property_tables()
+
+    uc = uc_property_capital_share(person, benunit, household)
+    pension_credit = pension_credit_property_capital_share(person, benunit, household)
+
+    # UC counts other residential and non-residential property at 90% of its
+    # value, market value less 10% for the costs of sale. The household
+    # reference person's unit holds all of it: the parents' unit and not their
+    # child's in household 2, and the second adult's in household 4.
+    np.testing.assert_allclose(
+        uc, [108_000.0, 81_000.0, 0.0, 36_000.0, 0.0, 10_800.0], rtol=1e-12
+    )
+    # Pension Credit counts land as well, for the same unit.
+    np.testing.assert_allclose(
+        pension_credit,
+        [112_500.0, 108_000.0, 0.0, 36_000.0, 0.0, 10_800.0],
+        rtol=1e-12,
+    )
+    # No household's units hold more than its property.
+    by_household = pd.Series(uc, index=[1, 2, 2, 3, 4, 4]).groupby(level=0).sum()
+    np.testing.assert_allclose(
+        by_household, [108_000.0, 81_000.0, 36_000.0, 10_800.0], rtol=1e-12
+    )
+
+
+def test_the_property_shares_net_the_debt_secured_on_each_class() -> None:
+    """microcosm#1095: the debt secured on each property class comes off its
+    value after the costs of sale, floored at zero class by class (UC Regs
+    2013 reg 49(1)(b); SPC Regs 2002 reg 19(b)); owned land carries none."""
+
+    person, benunit, household = _property_tables()
+    household["other_residential_property_secured_debt"] = [30_000.0, 0.0, 0.0, 0.0]
+    # 25,000 on buildings worth 20,000: that class floors at zero and takes
+    # nothing off the other residential property.
+    household["non_residential_property_secured_debt"] = [25_000.0, 0.0, 0.0, 0.0]
+
+    uc = uc_property_capital_share(person, benunit, household)
+    pension_credit = pension_credit_property_capital_share(person, benunit, household)
+
+    np.testing.assert_allclose(
+        uc, [60_000.0, 81_000.0, 0.0, 36_000.0, 0.0, 10_800.0], rtol=1e-12
+    )
+    np.testing.assert_allclose(
+        pension_credit,
+        [64_500.0, 108_000.0, 0.0, 36_000.0, 0.0, 10_800.0],
+        rtol=1e-12,
+    )
+    with pytest.raises(ValueError, match="finite and nonnegative"):
+        uc_property_capital_share(
+            person,
+            benunit,
+            household.assign(other_residential_property_secured_debt=-1.0),
+        )
+
+
+def test_a_household_needs_exactly_one_reference_person() -> None:
+    person, benunit, household = _property_tables()
+
+    none = person.assign(
+        is_household_head=person["is_household_head"] & (person["person_id"] != 9)
+    )
+    with pytest.raises(ValueError, match="exactly one household reference person"):
+        uc_property_capital_share(none, benunit, household)
+    two = person.assign(
+        is_household_head=person["is_household_head"] | (person["person_id"] == 8)
+    )
+    with pytest.raises(ValueError, match="exactly one household reference person"):
+        uc_property_capital_share(two, benunit, household)
+    with pytest.raises(ValueError, match="must be a boolean column"):
+        uc_property_capital_share(
+            person.assign(is_household_head=1.0), benunit, household
+        )
+
+
+def test_recorded_capital_keeps_zero_and_the_unavailable_sentinel_distinct() -> None:
+    share = np.asarray([0.0, 40_000.0, 6_000.0])
+    carrier = np.asarray([0.0, 0.0, -1.0])
+
+    np.testing.assert_array_equal(
+        recorded_capital_with_property(carrier, share), [0.0, 40_000.0, -1.0]
+    )
+
+
+def test_a_unit_reporting_universal_credit_records_no_uc_property_share() -> None:
+    person, benunit, household = _property_tables()
+    # The parents' unit in household 2 and the lone parent report Universal
+    # Credit. Each is its household reference person's unit.
+    person["universal_credit_reported"] = np.where(
+        person["person_id"].isin([3, 6]), 4_000.0, 0.0
+    )
+
+    recorded = uc_recorded_property_share(person, benunit, household)
+
+    # A reporting unit keeps its receipt, and no other unit of its household
+    # takes the property it does not record.
+    np.testing.assert_allclose(
+        recorded, [108_000.0, 0.0, 0.0, 0.0, 0.0, 10_800.0], rtol=1e-12
+    )
+    np.testing.assert_allclose(
+        uc_property_capital_share(person, benunit, household),
+        [108_000.0, 81_000.0, 0.0, 36_000.0, 0.0, 10_800.0],
+        rtol=1e-12,
+    )
+
+
+def test_stage_records_capital_with_property_on_both_channels() -> None:
+    frame = _frame()
+    household = frame.table("household")
+    # Base non-reporter 501 and SPI non-reporter 1006 hold other property. So
+    # do base reporter 101 and SPI reporter 1005, who keep their receipt. Base
+    # non-reporter 401 holds land, which is Pension Credit capital only.
+    for household_id, value in (
+        (5, 80_000.0),
+        (7, 20_000.0),
+        (1, 50_000.0),
+        (6, 20_000.0),
+    ):
+        household.loc[
+            household["household_id"].eq(household_id),
+            "other_residential_property_value",
+        ] = value
+    household.loc[household["household_id"].eq(4), "owned_land"] = 30_000.0
+
+    result = cohere_uc_capital(frame, minimum_cell_donors=1)
+    benunit = result.frame.table("benunit").set_index("benunit_id")
+    carrier = benunit["frs_benunit_capital"]
+
+    # Each unit is its household reference person's, and the property counts
+    # at 90% of its value.
+    assert benunit.loc[501, "uc_reported_capital"] == carrier.loc[501] + 72_000.0
+    assert benunit.loc[1006, "uc_reported_capital"] == carrier.loc[1006] + 18_000.0
+    # Land is no UC capital.
+    assert benunit.loc[401, "uc_reported_capital"] == carrier.loc[401]
+    assert (
+        benunit.loc[401, "pension_credit_reported_capital"]
+        == carrier.loc[401] + 27_000.0
+    )
+    # A reporter keeps its receipt for UC; its Pension Credit capital still
+    # holds the property.
+    assert (
+        benunit.loc[101, "pension_credit_reported_capital"]
+        == carrier.loc[101] + 45_000.0
+    )
+    # A unit that reports Universal Credit records the carrier alone.
+    unchanged = ~benunit.index.isin([501, 1006])
+    np.testing.assert_array_equal(
+        benunit.loc[unchanged, "uc_reported_capital"], carrier[unchanged]
+    )
+    receipt = result.property_shares
+    assert receipt["owners"] == "household_reference_person_unit"
+    assert receipt["valuation"] == 0.9
+    assert receipt["universal_credit"]["frs"]["benefit_units_with_share"] == 1
+    assert receipt["universal_credit"]["spi"]["benefit_units_with_share"] == 1
+    # Pension Credit capital holds the property of every unit above, the two
+    # reporters' included, and 401's land.
+    assert receipt["pension_credit"]["frs"]["benefit_units_with_share"] == 3
+    assert receipt["pension_credit"]["spi"]["benefit_units_with_share"] == 2
+    # 101 holds GBP 100 and 1005 draws a reporter's GBP 100 or 200; the
+    # property each would hold would take it over GBP 16,000.
+    assert receipt["uc_reporters_keeping_receipt"] == {
+        "frs": {
+            "benefit_units": 1,
+            "weighted_share_withheld": 45_000.0,
+            "units_kept_at_or_below_16000": 1,
+        },
+        "spi": {
+            "benefit_units": 1,
+            "weighted_share_withheld": 9_000.0,
+            "units_kept_at_or_below_16000": 1,
+        },
+    }
+    assert receipt["uc_reporters_recorded_capital_above_16000"] == {"frs": 0, "spi": 0}
+
+
+def test_stage_passes_the_unavailable_sentinel_through_property() -> None:
+    frame = _frame()
+    benunit_table = frame.table("benunit")
+    benunit_table.loc[benunit_table["benunit_id"].eq(501), "frs_benunit_capital"] = -1.0
+    household = frame.table("household")
+    household.loc[
+        household["household_id"].eq(5), "other_residential_property_value"
+    ] = 80_000.0
+
+    benunit = (
+        cohere_uc_capital(frame, minimum_cell_donors=1)
+        .frame.table("benunit")
+        .set_index("benunit_id")
+    )
+
+    assert benunit.loc[501, "uc_reported_capital"] == -1.0
+    assert benunit.loc[501, "pension_credit_reported_capital"] == -1.0
+
+
+def test_stage_refuses_a_drifted_property_share_declaration() -> None:
+    stage = _stage()
+    operations = tuple(
+        replace(
+            operation,
+            parameters={
+                **operation.parameters,
+                "derived": {
+                    **operation.parameters["derived"],
+                    "uc_reported_capital": "frs_benunit_capital",
+                },
+            },
+        )
+        if operation.kind == "derive"
+        else operation
+        for operation in stage.operations
+    )
+    transform = UKUCCapitalCoherenceStageTransform(
+        stage=replace(stage, operations=operations)
+    )
+    with pytest.raises(ValueError, match="derive operation"):
+        transform(_frame())

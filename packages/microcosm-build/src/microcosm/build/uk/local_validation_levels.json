@@ -5,10 +5,10 @@
   "source_feed": {
     "artifact": ".codex-work/consumer_facts_uk.jsonl",
     "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-    "sha256": "28b7105761be48ff01244bd0e28f4b579bac103f2c4a98473a04e2cc4303eb3d",
-    "manifest_sha256": "6e04a43d7dca4d398e14c0ec59ec983477633ba3e9bef062a8843f554dcb7119",
+    "sha256": "084ddf46fa34b1e03b5f0a7287617aeafaf7f614e3619d87a6565409e4adac85",
+    "manifest_sha256": "229afc18d8201bbd59a41777453f487ad750be2802425240ac26ee54849bfafd",
     "source_repo": "PolicyEngine/chronicle",
-    "source_commit": "825406f98913ab7324c834c3642804e9317a2256"
+    "source_commit": "272c987af175687aca21f82851ef349521802b12"
   },
   "rows": [
     {
@@ -24,9 +24,9 @@
         "reduction": "sum"
       },
       "available_component_selector": {
-        "record_set_id": "ons.pipr.june2026.average_rent_by_area",
+        "record_set_id": "ons.pipr.month2025_12.average_rent_by_area",
         "source_measure_id": "private_rent",
-        "period": "2026-06"
+        "period": "2025-12"
       },
       "needs_facts": "A pinned additive private-rent total for Scotland at or before 2025; PIPR supplies only an average price level and cannot answer the total.",
       "evidence": "uk-data datasets/local_areas/constituencies/devolved_housing.py supplied a fabricated population-share allocation that is deliberately not ported."
@@ -44,9 +44,9 @@
         "reduction": "sum"
       },
       "available_component_selector": {
-        "record_set_id": "ons.pipr.june2026.average_rent_by_area",
+        "record_set_id": "ons.pipr.month2025_12.average_rent_by_area",
         "source_measure_id": "private_rent",
-        "period": "2026-06"
+        "period": "2025-12"
       },
       "needs_facts": "A pinned additive private-rent total for Wales at or before 2025; PIPR supplies only an average price level and cannot answer the total.",
       "evidence": "uk-data datasets/local_areas/constituencies/devolved_housing.py supplied a fabricated population-share allocation that is deliberately not ported."

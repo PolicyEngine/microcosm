@@ -10,6 +10,9 @@ import pandas as pd
 import pytest
 
 from microcosm.build.holdout import summarize_rotations
+from microcosm.build.uk_runtime.ledger_targets import (
+    load_uk_local_target_reference_membership,
+)
 from microcosm.build.uk_runtime.local_doctrine import UK_LOCAL_TARGET_LOSS_CAP
 from microcosm.calibrate import (
     CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
@@ -238,6 +241,120 @@ def test_local_scorer_refuses_a_non_frozen_surface() -> None:
         )
 
 
+def test_the_frozen_count_is_the_committed_active_reference_count() -> None:
+    # The scorer reads the count from the committed membership file
+    # (microcosm#1301), so a regenerated surface needs no scorer edit. Both
+    # sides of that comparison read the same key, so it alone cannot catch
+    # drift: the literal pins the count itself. It moves with the
+    # candidate_targets pin of the committed local references in
+    # test_uk_battery_bindings.py
+    # (test_local_default_target_surface_uses_metric_names_and_signed_deferrals),
+    # since the generator writes both files in one run. microcosm#1262 adds
+    # Scotland's 18 PIPR BRMA cells; microcosm#1095 England's 294 single
+    # adult discount cells.
+    membership = load_uk_local_target_reference_membership()
+    assert membership["active_reference_count"] == 23_298
+    assert _load_scorer().uk_local_active_reference_count() == 23_298
+
+
+@pytest.mark.parametrize("bad", [0, -1, True, "25", None])
+def test_the_reference_count_must_be_a_positive_integer(monkeypatch, bad) -> None:
+    from microcosm.build.uk_runtime import ledger_targets
+
+    monkeypatch.setattr(
+        ledger_targets,
+        "load_uk_local_target_reference_membership",
+        lambda: {"active_reference_count": bad},
+    )
+    with pytest.raises(ValueError, match="positive integer active_reference_count"):
+        _load_scorer().uk_local_active_reference_count()
+
+
+@pytest.mark.parametrize(
+    "holdout",
+    ["absent", None, {"skipped": True}],
+    ids=["no-key", "null", "skip-marker"],
+)
+def test_a_candidate_without_a_requested_holdout_scores_with_none(holdout) -> None:
+    """The rotated holdout is an opt-in diagnostic (microcosm#1301)."""
+    scorer = _load_scorer()
+    registry, candidate, weights, metrics = _case()
+    if holdout == "absent":
+        del candidate["uk_diagnostics"]["rotated_holdout"]
+    else:
+        candidate["uk_diagnostics"]["rotated_holdout"] = holdout
+
+    result = scorer.score_uk_local_candidate(
+        candidate_diagnostics=candidate,
+        incumbent_weights=weights,
+        incumbent_metrics=metrics,
+        target_registry=registry,
+        expected_reference_count=2,
+    )
+
+    assert result["holdout_basis"] == "none_requested"
+    assert result["candidate_holdout_loss"] is None
+    assert result["candidate_holdout"] is None
+    assert result["incumbent_holdout_loss"] is None
+    assert result["rows_compared"] == 2
+
+
+def test_a_malformed_holdout_block_is_refused() -> None:
+    scorer = _load_scorer()
+    registry, candidate, weights, metrics = _case()
+    candidate["uk_diagnostics"]["rotated_holdout"] = ["not", "a", "report"]
+    with pytest.raises(ValueError, match="must be an object"):
+        scorer.score_uk_local_candidate(
+            candidate_diagnostics=candidate,
+            incumbent_weights=weights,
+            incumbent_metrics=metrics,
+            target_registry=registry,
+            expected_reference_count=2,
+        )
+
+
+def test_a_graph_target_selection_scores_its_local_rows(tmp_path) -> None:
+    """A graph build's target selection carries national and local rows; the
+    scorer reads it as written and keeps the local surface."""
+
+    import json
+
+    from microcosm.build.uk_runtime.graph_targets import registry_payload
+
+    scorer = _load_scorer()
+    registry, _candidate, _weights, _metrics = _case()
+    national = TargetSpec(
+        name="obr.income_tax",
+        entity="person",
+        value=1.0,
+        measure="income_tax",
+        period=2025,
+        source="fixture",
+        family="obr",
+        metadata={"geography_level": "country"},
+    )
+    selection = tmp_path / "target_selection.json"
+    selection.write_text(
+        json.dumps(
+            {
+                "receipt": {"schema": "microcosm.calibrate.target-selection.v1"},
+                "registry": registry_payload(
+                    TargetRegistry([*registry.specs, national], country="uk")
+                ),
+                "target_families": [],
+            }
+        )
+    )
+    scored = scorer.load_scored_registry(selection)
+    assert [spec.name for spec in scored.specs] == [
+        spec.name for spec in registry.specs
+    ]
+    # A registry artifact still loads as one.
+    artifact = tmp_path / "registry.json"
+    registry.to_json(artifact)
+    assert len(scorer.load_scored_registry(artifact)) == len(registry)
+
+
 def test_local_scorer_accepts_candidate_superset_with_receipt() -> None:
     scorer = _load_scorer()
     registry, candidate, weights, metrics = _case()
@@ -342,8 +459,8 @@ def test_local_scorer_refuses_duplicate_incumbent_households() -> None:
         )
 
 
-def test_local_scorer_refuses_a_candidate_with_no_measured_holdout() -> None:
-    """The rotation ships in the same payload; scoring without it is refused."""
+def test_local_scorer_refuses_a_candidate_with_no_uk_diagnostics() -> None:
+    """The UK diagnostics block stays required, holdout or not."""
 
     scorer = _load_scorer()
     registry, candidate, weights, metrics = _case()
@@ -550,6 +667,114 @@ def test_local_scorer_receipts_areas_the_incumbent_lacks() -> None:
             incumbent_metrics=metrics,
             target_registry=registry,
             expected_reference_count=2,
+        )
+
+
+def _with_brma_row(*, withheld: bool, estimate: float | None = None):
+    """``_case`` plus a Scottish BRMA rent row on the statistical_scope grain.
+
+    The incumbent never fitted BRMA rows (microcosm#1262), so a published
+    one scores candidate-only; a withheld one carries the note and no
+    estimate.
+    """
+
+    registry, candidate, weights, metrics = _case()
+    spec = TargetSpec(
+        name="rent@S33000001",
+        entity="household",
+        value=50.0,
+        measure="rent",
+        period=2025,
+        source="fixture",
+        family="private_rent",
+        metadata={
+            "ledger_geography_id": "S33000001",
+            "ledger_geography_level": "statistical_scope",
+        },
+        hierarchy=_hierarchy(
+            name="rent@S33000001",
+            label="Private rent",
+            provider_id="ons",
+            provider_label="Office for National Statistics",
+            category_id="ons.rent",
+            category_label="Private rent",
+            geography_id="S33000001",
+            geography_level="brma",
+        ),
+    )
+    registry = TargetRegistry([*registry.specs, spec], country="uk")
+    row = {
+        "name": spec.to_target().row_name,
+        "final_estimate": estimate,
+        "hierarchy": {**asdict(spec.hierarchy), "dimensions": []},
+    }
+    if withheld:
+        row["metadata"] = {"model_figures_withheld": "model figures withheld"}
+    candidate = {**candidate, "targets": [*candidate["targets"], row]}
+    return registry, candidate, weights, metrics, spec.to_target().row_name
+
+
+def test_a_brma_row_scores_candidate_only_on_its_statistical_scope_grain() -> None:
+    scorer = _load_scorer()
+    registry, candidate, weights, metrics, name = _with_brma_row(
+        withheld=False, estimate=55.0
+    )
+    result = scorer.score_uk_local_candidate(
+        candidate_diagnostics=candidate,
+        incumbent_weights=weights,
+        incumbent_metrics=metrics,
+        target_registry=registry,
+        expected_reference_count=3,
+    )
+    assert result["rows_compared"] == 2
+    assert result["rows_candidate_only"] == 1
+    assert result["rows_withheld"] == 0
+    assert result["incumbent_missing_areas"] == {"S33000001": 1}
+    (absent,) = [row for row in result["target_drift"] if row["target"] == name]
+    assert absent["winner"] == "incumbent_absent"
+    assert absent["candidate_relative_error"] == pytest.approx(0.1)
+
+
+def test_a_withheld_brma_row_is_scored_on_neither_side() -> None:
+    """microcosm#1305 re-review: the scorer skips a withheld row and counts it.
+
+    Its error is in no drift row and in no loss, so nothing the score writes
+    can be differenced to recover it.
+    """
+
+    scorer = _load_scorer()
+    registry, candidate, weights, metrics, name = _with_brma_row(withheld=True)
+    result = scorer.score_uk_local_candidate(
+        candidate_diagnostics=candidate,
+        incumbent_weights=weights,
+        incumbent_metrics=metrics,
+        target_registry=registry,
+        expected_reference_count=3,
+    )
+    base_registry, base_candidate, _, _ = _case()
+    base = scorer.score_uk_local_candidate(
+        candidate_diagnostics=base_candidate,
+        incumbent_weights=weights,
+        incumbent_metrics=metrics,
+        target_registry=base_registry,
+        expected_reference_count=2,
+    )
+    assert result["rows_withheld"] == 1
+    assert result["rows_compared"] == 2 and result["rows_candidate_only"] == 0
+    assert name not in {row["target"] for row in result["target_drift"]}
+    assert "private_rent" not in result["target_wins_by_family"]
+    assert (
+        result["candidate_fitted_surface_loss"] == base["candidate_fitted_surface_loss"]
+    )
+    # A withheld row that still carries an estimate is malformed.
+    candidate["targets"][-1]["final_estimate"] = 50.0
+    with pytest.raises(ValueError, match="withhold a row inconsistently"):
+        scorer.score_uk_local_candidate(
+            candidate_diagnostics=candidate,
+            incumbent_weights=weights,
+            incumbent_metrics=metrics,
+            target_registry=registry,
+            expected_reference_count=3,
         )
 
 

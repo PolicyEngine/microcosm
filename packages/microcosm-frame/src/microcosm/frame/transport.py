@@ -19,6 +19,7 @@ from microcosm.frame.concepts import (
     HOUSEHOLD_ID_COLUMN,
     PERSON_HOUSEHOLD_ID_COLUMN,
     PERSON_ID_COLUMN,
+    SOURCE_HOUSEHOLD_ID_COLUMN,
     ContentBasis,
     Unit,
     concept_for_column,
@@ -468,6 +469,9 @@ class DonorBank:
     transport. No destination country or year is inferred by this reader.
     ``dropped_parent_cycle_edges`` counts directed parent pointers removed by
     the reader's age-based two-person-cycle rule, including support copies.
+    The household table carries ``source_household_id`` only when explicit
+    source year and raw household lineage are available. Its typed JSON key
+    merges clones across support channels and distinguishes source vintages.
     """
 
     tables: Mapping[str, pd.DataFrame]
@@ -522,6 +526,47 @@ def _pointed_rows(
     if np.any(present & (rows < 0)):
         raise ValueError(f"Donor {values.name} points to an unknown household line.")
     return present, rows
+
+
+def _source_household_ids(
+    person: pd.DataFrame, household: pd.DataFrame
+) -> pd.arrays.StringArray | None:
+    """Scope raw household lineage by vintage and retain clone identity.
+
+    The pooled donor's raw ``source_household_id`` is vintage-local. Its
+    remapped ``PH_SEQ`` and row ``household_id`` serve different roles and
+    are never substituted. Support channel is excluded because support
+    copies of one original household may live in different channels.
+    """
+    columns = ("source_year", SOURCE_HOUSEHOLD_ID_COLUMN)
+    if not any(column in person for column in columns):
+        return None
+    if not all(column in person for column in columns):
+        raise ValueError("Donor source lineage requires year and household IDs.")
+    try:
+        parts = [_source_id_payloads(person[column]) for column in columns]
+    except ValueError as error:
+        raise ValueError(
+            "Donor source household lineage requires exact IDs."
+        ) from error
+    identities = [
+        json.dumps(items, ensure_ascii=False, separators=(",", ":"))
+        for items in zip(*parts, strict=True)
+    ]
+    by_household = {}
+    for household_id, identity in zip(
+        person[PERSON_HOUSEHOLD_ID_COLUMN], identities, strict=True
+    ):
+        if household_id in by_household and by_household[household_id] != identity:
+            raise ValueError(
+                "Donor source household lineage disagrees within household."
+            )
+        by_household[household_id] = identity
+    try:
+        values = [by_household[value] for value in household[HOUSEHOLD_ID_COLUMN]]
+    except KeyError as error:
+        raise ValueError("Donor source household lineage lacks a household.") from error
+    return pd.array(values, dtype=pd.StringDtype(storage="python"))
 
 
 def _donor_extras(person: pd.DataFrame, household: pd.DataFrame) -> dict:
@@ -676,6 +721,7 @@ def _donor_extras(person: pd.DataFrame, household: pd.DataFrame) -> dict:
         "weights": weights,
         "support_strata": strata,
         "source_person_ids": source_ids,
+        "source_household_ids": _source_household_ids(person, household),
     }
 
 
@@ -806,6 +852,8 @@ def read_populace_us_donor(path: str | Path, *, sha256: str, size: int) -> Donor
         tables["person"][name] = values
     tables["person"]["liquid_financial_assets"] = staged["liquid_financial_assets"]
     tables["household"]["reference_person_id"] = staged["reference_person_id"]
+    if staged["source_household_ids"] is not None:
+        tables["household"][SOURCE_HOUSEHOLD_ID_COLUMN] = staged["source_household_ids"]
     violations = validate_concept_tables(tables)
     dropped = 0
     if violations and all(v.code == "parent_cycle" for v in violations):

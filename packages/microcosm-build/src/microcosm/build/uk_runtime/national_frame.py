@@ -29,6 +29,7 @@ import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 import numpy as np
@@ -46,6 +47,11 @@ from microcosm.frame import (
 )
 
 __all__ = [
+    "UK_BUILD_IDENTIFIER_COLUMNS",
+    "UK_ENGINE_IDENTIFIER_MAX",
+    "UK_ENERGY_PRICE_BASIS",
+    "UK_ENERGY_PRICE_BASIS_ATTR",
+    "UK_ENERGY_PRICE_BASIS_COLUMNS",
     "UK_EXPORTED_WEIGHT_COLUMNS",
     "UK_HOUSEHOLD_WEIGHT_KIND_ATTR",
     "UK_MASS_LOG_ATTR",
@@ -55,8 +61,13 @@ __all__ = [
     "UKNationalStage",
     "UKStagingProvenance",
     "load_uk_national_frame",
+    "uk_build_identifier_frame",
+    "uk_build_identifier_tables",
+    "uk_build_identifiers",
     "uk_household_weight_kind",
+    "uk_identifier_range_failures",
     "uk_national_frame",
+    "uk_release_identifier_tables",
     "uk_household_mass_conservation_receipt",
     "uk_time_period",
     "validate_uk_national_frame",
@@ -71,6 +82,27 @@ UK_TIME_PERIOD_METADATA_KEY = "time_period"
 UK_NATIONAL_H5_TABLES = ("person", "benunit", "household", "time_period")
 UK_HOUSEHOLD_WEIGHT_KIND_ATTR = "populace_household_weight_kind"
 UK_MASS_LOG_ATTR = "populace_mass_log_json"
+#: The root attribute in which policyengine-uk reads the price period of a
+#: dataset's stored energy spending (policyengine-uk 2.148.1,
+#: PolicyEngine/policyengine-uk#2571): a JSON object of ``period_type`` and
+#: ``period_value``. The engine projects declared energy spending from that
+#: period by its consumer price index; spending without a declaration stays
+#: at its stored prices in every later year (PolicyEngine/policyengine-uk#2526).
+UK_ENERGY_PRICE_BASIS_ATTR = "energy_price_basis"
+#: The household spending the declaration describes: the three columns
+#: policyengine-uk projects only from a declared period.
+UK_ENERGY_PRICE_BASIS_COLUMNS = (
+    "domestic_energy_consumption",
+    "electricity_consumption",
+    "gas_consumption",
+)
+#: Their price period. ``lcfs_consumption``, the one stage that writes them,
+#: sets every household spend column at calendar-2024 prices, and the
+#: stage-time gate ``uk_stage_lcfs_consumption_basis`` holds each step that
+#: sets a level to that year (microcosm#1113).
+UK_ENERGY_PRICE_BASIS: Mapping[str, object] = MappingProxyType(
+    {"period_type": "calendar_year", "period_value": 2024}
+)
 
 # The persisted weight columns of the materialized export contract above:
 # real columns on the tables, but plumbing rather than input mass. Consumers
@@ -171,6 +203,49 @@ def _write_weight_metadata(
         file.attrs[UK_MASS_LOG_ATTR] = json.dumps(
             [_mass_change_record_payload(record) for record in mass_log],
             sort_keys=True,
+        )
+
+
+def _write_energy_price_basis(path: Path, household: pd.DataFrame) -> None:
+    """Declare the energy spending's price period in an H5 that stores it.
+
+    The JSON is written as policyengine-uk writes its own declaration, keys
+    sorted, so the engine reads the basis the build priced the columns at.
+    """
+
+    if not any(column in household.columns for column in UK_ENERGY_PRICE_BASIS_COLUMNS):
+        return
+    try:
+        import h5py
+    except ImportError as exc:  # pragma: no cover - UK H5 runtime dependency
+        raise RuntimeError("h5py is required to write UK national metadata.") from exc
+    with h5py.File(path, mode="r+") as file:
+        file.attrs[UK_ENERGY_PRICE_BASIS_ATTR] = json.dumps(
+            dict(UK_ENERGY_PRICE_BASIS), sort_keys=True
+        )
+
+
+def _write_isa_income_contract(path: Path) -> None:
+    """Declare how the H5's savings interest holds ISA interest.
+
+    policyengine-uk 2.162.2 reads the contract from this root attribute and
+    takes the ISA part off gross interest when it loads a ``legacy_gross``
+    dataset, the frame's representation. Written as the engine writes its own
+    declaration, keys sorted (microcosm#1095).
+    """
+
+    from microcosm.frame.adapters.policyengine_uk import (
+        UK_ISA_INCOME_CONTRACT,
+        UK_ISA_INCOME_CONTRACT_ATTR,
+    )
+
+    try:
+        import h5py
+    except ImportError as exc:  # pragma: no cover - UK H5 runtime dependency
+        raise RuntimeError("h5py is required to write UK national metadata.") from exc
+    with h5py.File(path, mode="r+") as file:
+        file.attrs[UK_ISA_INCOME_CONTRACT_ATTR] = json.dumps(
+            dict(UK_ISA_INCOME_CONTRACT), sort_keys=True
         )
 
 
@@ -448,6 +523,8 @@ def _write_uk_single_year_tables(
         _write_weight_metadata(
             temporary_path, weight_kind=weight_kind, mass_log=mass_log
         )
+        _write_energy_price_basis(temporary_path, household)
+        _write_isa_income_contract(temporary_path)
         temporary_path.replace(path)
     finally:
         temporary_path.unlink(missing_ok=True)
@@ -463,6 +540,18 @@ def _write_uk_single_year_tables(
 #: five internal disability carriers (``frs_disability``'s
 #: ``UK_INTERNAL_DISABILITY_REPORTED_COLUMNS``) are stage-internal inputs
 #: that the export registers keep off the release (review of #1089).
+#:
+#: ``household.property_wealth`` (microcosm#1106, the uk-data#543 defect) is
+#: formula-owned in policyengine-uk: it adds ``residential_property_value``
+#: (itself ``main_residence_value`` + ``other_residential_property_value``)
+#: and ``non_residential_property_value``. A persisted copy overrides that
+#: sum, and the variable has no uprating index, so a saved WAS total stays at
+#: its base-year level in every later year while the components grow (the
+#: published aa31bdf6 year files hold it at growth 1.0000 from 2026 to 2030
+#: against 1.1303 for the sum), and it also counts ``owned_land`` and the
+#: ``other_property_value`` remainder the engine sum leaves out. The spine
+#: keeps it (the WAS stage's identity gate, donor-range cap and later
+#: segments read it); the engine derives it from the persisted components.
 UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
     "person": (
         "incapacity_benefit_reported",
@@ -476,8 +565,247 @@ UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
         # the identity receipts can reverse the stage's in-place rewrite of a
         # converted record's pay, and is no engine input.
         "salary_sacrifice_pre_conversion_pay",
+        # The landlord carrier (frs_spine.frs_reports_rent_from_other_property)
+        # that keeps loss-making landlords in the CGT residential signal; it is
+        # no engine input.
+        "reports_rent_from_other_property",
+        # The FRS bonus carrier (frs_spine.FRS_BONUS_CARRIER_COLUMN) the bonus
+        # sacrifice conversion reads (microcosm#1340); it is no engine input.
+        "frs_bonus_amount",
     ),
+    # The value the spine's regional home values replaced (microcosm#1112):
+    # the dense node ranks on it, and it is no engine input.
+    "household": ("property_wealth", "main_residence_value_rank_basis"),
 }
+
+
+#: The largest identifier policyengine-uk stores. Its five identifier
+#: variables (``person_id``, ``benunit_id``, ``household_id``,
+#: ``person_benunit_id``, ``person_household_id``) are 32-bit integers, and a
+#: larger stored value wraps (microcosm#1194, pe-uk#2273).
+UK_ENGINE_IDENTIFIER_MAX = 2_147_483_647
+
+#: The column that keeps each entity's build identifier beside its release
+#: identifier. The clone stages number copies by adding a power of ten per
+#: copy, so a built frame's identifiers run far past the engine's range; every
+#: draw in the build is keyed on them, so the build keeps them and the release
+#: boundary renumbers. The lineage columns (``*_source_id``, the clone
+#: indices) describe the build identifier.
+UK_BUILD_IDENTIFIER_COLUMNS: Mapping[str, str] = {
+    "person": "person_build_id",
+    "benunit": "benunit_build_id",
+    "household": "household_build_id",
+}
+
+_UK_ENTITY_IDENTIFIER_COLUMNS: Mapping[str, str] = {
+    "person": "person_id",
+    "benunit": "benunit_id",
+    "household": "household_id",
+}
+_UK_PERSON_MEMBERSHIP_COLUMNS: Mapping[str, str] = {
+    "benunit": "person_benunit_id",
+    "household": "person_household_id",
+}
+
+
+def _uk_build_identifier_state(tables: Mapping[str, pd.DataFrame]) -> bool:
+    """Whether the tables carry the build-identifier columns: all or none."""
+
+    present = [
+        entity
+        for entity, column in UK_BUILD_IDENTIFIER_COLUMNS.items()
+        if column in tables[entity].columns
+    ]
+    if present and len(present) != len(UK_BUILD_IDENTIFIER_COLUMNS):
+        missing = sorted(set(UK_BUILD_IDENTIFIER_COLUMNS) - set(present))
+        raise ValueError(
+            "UK tables carry a build identifier on some entities only; "
+            f"{missing} lack theirs."
+        )
+    return bool(present)
+
+
+def _uk_mapped_identifiers(
+    values: np.ndarray, source: np.ndarray, target: np.ndarray, *, label: str
+) -> np.ndarray:
+    """``values`` read through the one-to-one map ``source[i] -> target[i]``."""
+
+    order = np.argsort(source, kind="stable")
+    ordered = source[order]
+    if len(ordered) > 1 and (ordered[1:] == ordered[:-1]).any():
+        raise ValueError(f"UK {label} identifiers are not unique.")
+    position = np.searchsorted(ordered, values)
+    inside = position < len(ordered)
+    if not inside.all() or not (ordered[position[inside]] == values[inside]).all():
+        raise ValueError(f"UK {label} memberships name an identifier with no row.")
+    return target[order][position]
+
+
+def uk_release_identifier_tables(
+    tables: Mapping[str, pd.DataFrame],
+    *,
+    universe: Mapping[str, pd.DataFrame] | None = None,
+) -> dict[str, pd.DataFrame]:
+    """The three tables with identifiers inside the engine's range (microcosm#1194).
+
+    Per entity the release identifier is one plus the rank of the build
+    identifier among the entity's rows, so row order is untouched and the
+    numbering depends on nothing but the identifiers themselves. The person
+    table's two memberships map through the same arrays. The build identifier
+    stays beside each release identifier (``UK_BUILD_IDENTIFIER_COLUMNS``).
+
+    ``universe`` is the tables the release holds when ``tables`` are a subset
+    of their rows (a per-clone engine block): the rank is then taken in the
+    universe, so each row gets the identifier it has in the release.
+
+    Idempotent: tables that already carry the build identifiers are returned
+    as they are.
+    """
+
+    if _uk_build_identifier_state(tables):
+        return dict(tables)
+    whole = tables if universe is None else universe
+    result: dict[str, pd.DataFrame] = {}
+    whole_build: dict[str, np.ndarray] = {}
+    whole_release: dict[str, np.ndarray] = {}
+    for entity, column in _UK_ENTITY_IDENTIFIER_COLUMNS.items():
+        whole_build[entity] = whole[entity][column].to_numpy(dtype=np.int64)
+        order = np.argsort(whole_build[entity], kind="stable")
+        ordered = whole_build[entity][order]
+        if len(ordered) > 1 and (ordered[1:] == ordered[:-1]).any():
+            raise ValueError(f"UK {entity} identifiers are not unique.")
+        whole_release[entity] = np.empty(len(order), dtype=np.int64)
+        whole_release[entity][order] = np.arange(1, len(order) + 1, dtype=np.int64)
+        table = tables[entity]
+        build = table[column].to_numpy(dtype=np.int64)
+        release = (
+            whole_release[entity]
+            if universe is None
+            else _uk_mapped_identifiers(
+                build, whole_build[entity], whole_release[entity], label=entity
+            )
+        )
+        renumbered = table.copy()
+        renumbered[column] = release.astype(table[column].dtype)
+        renumbered.insert(
+            renumbered.columns.get_loc(column) + 1,
+            UK_BUILD_IDENTIFIER_COLUMNS[entity],
+            build,
+        )
+        result[entity] = renumbered
+    person = result["person"]
+    for entity, column in _UK_PERSON_MEMBERSHIP_COLUMNS.items():
+        person[column] = _uk_mapped_identifiers(
+            person[column].to_numpy(dtype=np.int64),
+            whole_build[entity],
+            whole_release[entity],
+            label=entity,
+        ).astype(tables["person"][column].dtype)
+    return result
+
+
+def uk_build_identifier_tables(
+    tables: Mapping[str, pd.DataFrame],
+) -> dict[str, pd.DataFrame]:
+    """The inverse of :func:`uk_release_identifier_tables`.
+
+    A reader that replays the build's identifier-keyed draws, or joins a
+    release to its spine, needs the build identifiers back. Tables that
+    carry none are returned as they are.
+    """
+
+    if not _uk_build_identifier_state(tables):
+        return dict(tables)
+    result: dict[str, pd.DataFrame] = {}
+    build: dict[str, np.ndarray] = {}
+    release: dict[str, np.ndarray] = {}
+    for entity, column in _UK_ENTITY_IDENTIFIER_COLUMNS.items():
+        table = tables[entity]
+        carrier = UK_BUILD_IDENTIFIER_COLUMNS[entity]
+        build[entity] = table[carrier].to_numpy(dtype=np.int64)
+        release[entity] = table[column].to_numpy(dtype=np.int64)
+        restored = table.drop(columns=[carrier])
+        restored[column] = build[entity].astype(table[column].dtype)
+        result[entity] = restored
+    person = result["person"]
+    for entity, column in _UK_PERSON_MEMBERSHIP_COLUMNS.items():
+        person[column] = _uk_mapped_identifiers(
+            person[column].to_numpy(dtype=np.int64),
+            release[entity],
+            build[entity],
+            label=entity,
+        ).astype(tables["person"][column].dtype)
+    return result
+
+
+def uk_identifier_range_failures(tables: Mapping[str, pd.DataFrame]) -> list[str]:
+    """Why written identifiers would not survive policyengine-uk, if they would not.
+
+    The engine stores them as 32-bit integers: a value above
+    ``UK_ENGINE_IDENTIFIER_MAX`` wraps, and two that wrap to the same value
+    merge. The messages name the column only: never an identifier, and never a
+    count of rows.
+    """
+
+    failures: list[str] = []
+    columns = [
+        *(
+            (entity, column, True)
+            for entity, column in _UK_ENTITY_IDENTIFIER_COLUMNS.items()
+        ),
+        *(
+            ("person", column, False)
+            for column in _UK_PERSON_MEMBERSHIP_COLUMNS.values()
+        ),
+    ]
+    for entity, column, unique in columns:
+        if column not in tables[entity].columns:
+            failures.append(f"Written {entity} table lacks {column!r}.")
+            continue
+        values = pd.to_numeric(tables[entity][column], errors="coerce")
+        if values.isna().any() or (values != np.floor(values)).any():
+            failures.append(f"Written {column!r} is not a whole number on every row.")
+            continue
+        if (values < 1).any():
+            failures.append(f"Written {column!r} has a value below 1.")
+        if (values > UK_ENGINE_IDENTIFIER_MAX).any():
+            failures.append(
+                f"Written {column!r} has a value above the 32-bit range "
+                "policyengine-uk stores."
+            )
+        if unique and values.duplicated().any():
+            failures.append(f"Written {column!r} repeats a value.")
+    return failures
+
+
+def uk_build_identifiers(table: pd.DataFrame, entity: str) -> np.ndarray:
+    """One entity table's build identifiers, whether or not it was renumbered."""
+
+    carrier = UK_BUILD_IDENTIFIER_COLUMNS[entity]
+    column = (
+        carrier if carrier in table.columns else _UK_ENTITY_IDENTIFIER_COLUMNS[entity]
+    )
+    return table[column].to_numpy(dtype=np.int64)
+
+
+def uk_build_identifier_frame(frame: Frame) -> Frame:
+    """A loaded release frame back on its build identifiers; others unchanged."""
+
+    tables = {
+        entity: frame.table(entity) for entity in ("person", "benunit", "household")
+    }
+    if not _uk_build_identifier_state(tables):
+        return frame
+    restored = uk_build_identifier_tables(tables)
+    return uk_national_frame(
+        person=restored["person"],
+        benunit=restored["benunit"],
+        household=restored["household"],
+        time_period=uk_time_period(frame),
+        weight_kind=uk_household_weight_kind(frame),
+        household_weights=frame.weights_for("household").values,
+        mass_log=frame.mass_log,
+    )
 
 
 def uk_release_export_frame(frame: Frame) -> Frame:
@@ -485,7 +813,10 @@ def uk_release_export_frame(frame: Frame) -> Frame:
 
     The three area codes leave under the consumers' names (microcosm#1114,
     ``geography_ladder.UK_EXPORT_AREA_CODE_COLUMNS``); a national frame
-    carries none and passes unchanged.
+    carries none. The identifiers leave inside the 32-bit range the engine
+    stores, with the build identifiers beside them (microcosm#1194,
+    :func:`uk_release_identifier_tables`). A frame that already left passes
+    unchanged.
     """
 
     from .geography_ladder import export_area_code_columns
@@ -508,6 +839,9 @@ def uk_release_export_frame(frame: Frame) -> Frame:
                 table = renamed
                 changed = True
         tables[entity] = table
+    if not _uk_build_identifier_state(tables):
+        tables = uk_release_identifier_tables(tables)
+        changed = True
     if not changed:
         return frame
     return uk_national_frame(
