@@ -365,7 +365,10 @@ UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
         "ISA dividends and the cash interest held in non-cash ISAs "
         "(policyengine-uk 2.162.2). The FRS records ISA interest as one total, "
         "which the frame supplies in tax_free_savings_income, so the of-which "
-        "detail stays zero and changes nothing. It records no ISA dividends "
+        "detail stays zero. Until 2027-28 that changes nothing; from 2027-28 the "
+        "detail sets isa_cash_interest_flat_rate_charge, the final charge on cash "
+        "interest in non-cash ISAs, so projections from that year show no such "
+        "charge. It records no ISA dividends "
         "apart from other dividends, so ISA dividends stay zero: any the "
         "survey's dividend answer holds are taxed as ordinary dividends "
         "(microcosm#1095; for María's signature).",
