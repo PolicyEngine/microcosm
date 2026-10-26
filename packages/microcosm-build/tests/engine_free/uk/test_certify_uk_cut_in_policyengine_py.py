@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import json
+import subprocess
 
 import pytest
 from hypothesis import given, settings
@@ -389,3 +391,64 @@ def test_the_resource_limits_are_the_operators_to_set(monkeypatch, tmp_path):
     with pytest.raises(handoff.CertifyError, match="maximum 8"):
         shell(["heavy"])
     assert not spawned
+
+
+def _writer_listing(monkeypatch, *, prs=(), heads=(), ls_remote_code=0):
+    """Fake ``gh pr list`` and ``git ls-remote`` for the one-writer check."""
+
+    calls = []
+
+    def run(argv, **kwargs):
+        calls.append(argv)
+        if argv[:3] == ["gh", "pr", "list"]:
+            return subprocess.CompletedProcess(argv, 0, json.dumps(list(prs)), "")
+        lines = "".join(f"{'0' * 40}\trefs/heads/{head}\n" for head in heads)
+        return subprocess.CompletedProcess(argv, ls_remote_code, lines, "no access")
+
+    monkeypatch.setattr(handoff.subprocess, "run", run)
+    return calls
+
+
+@pytest.mark.parametrize(
+    "head",
+    [
+        "certify-uk-a858c100",
+        "certify-uk-a858c100-national",
+        "hub/certify-uk-a858c100",
+    ],
+)
+def test_any_branch_naming_the_cut_is_another_writer(monkeypatch, tmp_path, head):
+    _writer_listing(monkeypatch, heads=["main", head])
+    assert handoff.writer_check(NATIONAL, tmp_path) == [
+        f"branch {head} exists on origin"
+    ]
+
+
+def test_an_open_pull_request_naming_the_cut_is_another_writer(monkeypatch, tmp_path):
+    prs = [
+        {"number": 1, "title": "x", "body": "", "headRefName": "certify-uk-a858c100-b"},
+        {"number": 2, "title": f"Certify {NATIONAL}", "body": "", "headRefName": "y"},
+        {"number": 3, "title": "z", "body": f"uses {NATIONAL}", "headRefName": "z"},
+        {
+            "number": 4,
+            "title": "other",
+            "body": "",
+            "headRefName": "certify-uk-ffff0000",
+        },
+    ]
+    calls = _writer_listing(monkeypatch, prs=prs)
+    found = handoff.writer_check(NATIONAL, tmp_path)
+    assert [line.split()[0] for line in found] == ["#1", "#2", "#3"]
+    listing = calls[0]
+    assert listing[listing.index("--limit") + 1] == "1000"
+
+
+def test_another_cuts_branch_is_not_a_writer(monkeypatch, tmp_path):
+    _writer_listing(monkeypatch, heads=["certify-uk-ffff0000", "main"])
+    assert handoff.writer_check(NATIONAL, tmp_path) == []
+
+
+def test_an_unreadable_branch_listing_refuses(monkeypatch, tmp_path):
+    _writer_listing(monkeypatch, ls_remote_code=128)
+    with pytest.raises(handoff.CertifyError, match="could not list policyengine.py"):
+        handoff.writer_check(NATIONAL, tmp_path)

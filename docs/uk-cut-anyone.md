@@ -268,8 +268,11 @@ on a new branch from policyengine.py's main.
 
 **Before writing anything:**
 
-- It refuses if an open pull request or branch is already certifying the cut
-  (one writer per cut).
+- It refuses if another writer is already certifying the cut: an open pull
+  request that names the tag, or any open pull request or branch whose name
+  contains `certify-uk-<id>`, including suffixed ones such as
+  `certify-uk-a133f37a-national`. If it cannot read either listing, it
+  refuses rather than passing.
 - It reads both manifests at their tags.
 - It refuses a regional cut built on another policyengine-uk, naming the
   routes.

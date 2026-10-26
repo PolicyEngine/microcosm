@@ -485,13 +485,21 @@ class Shell:
 
 
 def writer_check(national_tag: str, pepy_repo: Path) -> list[str]:
-    """Open pull requests or branches already certifying this cut."""
+    """Open pull requests or branches already certifying this cut.
 
+    A writer is an open pull request that names the tag, or any open pull
+    request or remote branch whose name contains ``certify-uk-<id>``: this
+    handoff's own branch, a suffixed one such as
+    ``certify-uk-a133f37a-national``, or one under a namespace. A listing
+    that cannot be read refuses rather than passing.
+    """
+
+    marker = f"certify-uk-{national_tag.rsplit('-', 1)[-1]}"
     found = []
     result = subprocess.run(
         [
             "gh", "pr", "list", "--repo", PEPY_REPO, "--state", "open",
-            "--search", national_tag, "--json", "number,title,headRefName",
+            "--limit", "1000", "--json", "number,title,body,headRefName",
         ],
         capture_output=True,
         text=True,
@@ -504,18 +512,26 @@ def writer_check(national_tag: str, pepy_repo: Path) -> list[str]:
             f"writer ({result.stderr.strip()[:200]}); retry, or ask the UK hub."
         )
     for pr in json.loads(result.stdout or "[]"):
-        found.append(f"#{pr['number']} {pr['title']} ({pr['headRefName']})")
-    branch = f"certify-uk-{national_tag.rsplit('-', 1)[-1]}"
+        text = f"{pr.get('title') or ''}\n{pr.get('body') or ''}"
+        if national_tag in text or marker in (pr.get("headRefName") or ""):
+            found.append(f"#{pr['number']} {pr['title']} ({pr['headRefName']})")
     remote = subprocess.run(
-        ["git", "ls-remote", "--heads", "origin", branch],
+        ["git", "ls-remote", "--heads", "origin"],
         cwd=pepy_repo,
         capture_output=True,
         text=True,
         check=False,
         timeout=120,
     )
-    if remote.stdout.strip():
-        found.append(f"branch {branch} exists on origin")
+    if remote.returncode != 0:
+        raise CertifyError(
+            "could not list policyengine.py branches to check for another "
+            f"writer ({remote.stderr.strip()[:200]}); retry, or ask the UK hub."
+        )
+    for line in remote.stdout.splitlines():
+        branch = line.split("\t", 1)[-1].removeprefix("refs/heads/")
+        if marker in branch:
+            found.append(f"branch {branch} exists on origin")
     return found
 
 
