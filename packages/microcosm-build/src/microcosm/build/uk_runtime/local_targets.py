@@ -60,10 +60,11 @@ LA_EXTRA_METRICS = (
     "tenure/social_rent",
     "rent/private_rent",
 )
-#: DESNZ sub-national domestic energy by local authority (microcosm#1207):
-#: electricity and gas kWh, and the gas-connected households. DESNZ publishes
-#: no constituency cut, so the family is local-authority only.
-LA_ENERGY_METRICS = (
+#: DESNZ sub-national domestic energy (microcosm#1207): electricity and gas
+#: kWh, and the gas-connected households. Local authorities bind DESNZ's own
+#: rows; DESNZ publishes no constituency cut, so constituencies bind its
+#: authority totals split by its small-area figures (microcosm#1095).
+ENERGY_METRICS = (
     "energy/electricity_kwh",
     "energy/gas_kwh",
     "energy/gas_connected_households",
@@ -168,10 +169,10 @@ def metric_names(
     # microcosm#1240: owner-occupied homes above value thresholds, both grains,
     # appended after every earlier family under the same append-only rule.
     names.extend(uk_high_value_home_metric_names())
-    # microcosm#1207: DESNZ sub-national domestic energy, local authorities
-    # only, appended after every earlier family under the same rule.
-    if area_type == "la":
-        names.extend(LA_ENERGY_METRICS)
+    # microcosm#1207: DESNZ sub-national domestic energy, appended after every
+    # earlier family under the same rule; the constituency grain joined with
+    # the split of the authorities' totals (microcosm#1095).
+    names.extend(ENERGY_METRICS)
     # microcosm#1095: England's single adult council tax discount by billing
     # authority, local authorities only, appended under the same rule.
     if area_type == "la":
