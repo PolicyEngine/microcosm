@@ -1907,15 +1907,15 @@
       },
       {
         "target_id": "desnz.subnational.electricity_kwh",
-        "basis": "microcosm#1207; DESNZ sub-national domestic electricity consumption by local authority (Great Britain), levelled onto the lcfs stage's Energy Trends level by one factor per fuel"
+        "basis": "microcosm#1207, #1095; DESNZ sub-national domestic electricity consumption by local authority (Great Britain) and its split onto constituencies by DESNZ's small-area figures (the committed derived-facts resource), levelled onto the lcfs stage's Energy Trends level by one factor per fuel"
       },
       {
         "target_id": "desnz.subnational.gas_kwh",
-        "basis": "microcosm#1207; DESNZ sub-national domestic gas consumption by local authority (Great Britain), levelled onto the lcfs stage's Energy Trends level by one factor per fuel"
+        "basis": "microcosm#1207, #1095; DESNZ sub-national domestic gas consumption by local authority (Great Britain) and its split onto constituencies by DESNZ's small-area figures (the committed derived-facts resource), levelled onto the lcfs stage's Energy Trends level by one factor per fuel"
       },
       {
         "target_id": "desnz.subnational.gas_connected_households",
-        "basis": "microcosm#1207; DESNZ sub-national domestic gas and electricity meter counts by local authority (Great Britain), whose ratio puts a share of each authority's census households on the gas network"
+        "basis": "microcosm#1207, #1095; DESNZ sub-national domestic gas and electricity meter counts by local authority (Great Britain) and their split onto constituencies by DESNZ's small-area figures, whose ratio puts a share of each area's census households on the gas network"
       },
       {
         "target_id": "ons.rent.private_rent_brma",
@@ -33734,6 +33734,7 @@
       "target_id": "desnz.subnational.electricity_kwh",
       "family": "domestic_energy",
       "geography_levels": [
+        "constituency",
         "local_authority"
       ],
       "measurement": {
@@ -33752,10 +33753,20 @@
         }
       },
       "ledger_selector": {
-        "source_name": "desnz",
+        "source_name": [
+          "desnz",
+          "microcosm"
+        ],
         "source_concept": "desnz.subnational.domestic_electricity_consumption"
       },
       "area_scope": {
+        "constituency": {
+          "gss_prefixes": [
+            "E",
+            "W",
+            "S"
+          ]
+        },
         "local_authority": {
           "gss_prefixes": [
             "E",
@@ -33767,12 +33778,13 @@
       "category_id": "desnz.domestic_energy",
       "label": "Domestic electricity consumption (kWh)",
       "uprating_index": "desnz.energy_trends.gb_domestic_level",
-      "selector_note": "DESNZ sub-national domestic electricity consumption by local authority, calendar 2024 (non-half-hourly meters read 31 January 2024 to 30 January 2025 and half-hourly meters over calendar 2024, both counted, as reported), levelled onto the lcfs stage's Energy Trends level by one Great Britain factor per fuel (desnz.energy_trends.gb_domestic_level): the cells keep DESNZ's split between authorities and bind as a distribution, with Northern Ireland's part of the UK level taken out at its share of DESNZ's sub-national domestic consumption (the Northern Ireland row, all domestic meters, read as published; microcosm#1278). The frame reads each household's stored electricity_consumption at the dataset period and turns it back into kWh at the stage's declared QEP prices. Local-authority grain only: the region rows are the authorities' sums, and DESNZ publishes no constituency cut (microcosm#1207)."
+      "selector_note": "DESNZ sub-national domestic electricity consumption by local authority, calendar 2024 (non-half-hourly meters read 31 January 2024 to 30 January 2025 and half-hourly meters over calendar 2024, both counted, as reported), levelled onto the lcfs stage's Energy Trends level by one Great Britain factor per fuel (desnz.energy_trends.gb_domestic_level): the cells keep DESNZ's split between areas and bind as a distribution, with Northern Ireland's part of the UK level taken out at its share of DESNZ's sub-national domestic consumption (the Northern Ireland row, all domestic meters, read as published; microcosm#1278). DESNZ publishes no constituency cut: the constituency cells are Microcosm's split of each authority's total over its constituencies by DESNZ's LSOA and data zone figures for the same year (uk/desnz_constituency_energy_facts.json, microcosm#1095), so every authority keeps its total and the two grains agree. The frame reads each household's stored electricity_consumption at the dataset period and turns it back into kWh at the stage's declared QEP prices. The region rows are the authorities' sums and are not bound (microcosm#1207)."
     },
     {
       "target_id": "desnz.subnational.gas_kwh",
       "family": "domestic_energy",
       "geography_levels": [
+        "constituency",
         "local_authority"
       ],
       "measurement": {
@@ -33791,10 +33803,20 @@
         }
       },
       "ledger_selector": {
-        "source_name": "desnz",
+        "source_name": [
+          "desnz",
+          "microcosm"
+        ],
         "source_concept": "desnz.subnational.domestic_gas_consumption"
       },
       "area_scope": {
+        "constituency": {
+          "gss_prefixes": [
+            "E",
+            "W",
+            "S"
+          ]
+        },
         "local_authority": {
           "gss_prefixes": [
             "E",
@@ -33806,12 +33828,13 @@
       "category_id": "desnz.domestic_energy",
       "label": "Domestic gas consumption (kWh)",
       "uprating_index": "desnz.energy_trends.gb_domestic_level",
-      "selector_note": "DESNZ sub-national domestic gas consumption by local authority, gas year 2024 (mid-May 2024 to mid-May 2025, weather-corrected; Chronicle stamps it gas_year since the abf0921 re-pin and Microcosm pairs gas year 2024 with calendar 2024, energy_pricing.SUBNATIONAL_PERIOD_TYPES, microcosm#1300), levelled onto the lcfs stage's Energy Trends level by one Great Britain factor per fuel (desnz.energy_trends.gb_domestic_level): the cells keep DESNZ's split between authorities and bind as a distribution, with Northern Ireland's part of the UK level taken out at its share of DESNZ's sub-national domestic consumption (the Northern Ireland row, all domestic meters, read as published; microcosm#1278). The frame reads each household's stored gas_consumption at the dataset period and turns it back into kWh at the stage's declared QEP prices. Local-authority grain only: the region rows are the authorities' sums, and DESNZ publishes no constituency cut (microcosm#1207)."
+      "selector_note": "DESNZ sub-national domestic gas consumption by local authority, gas year 2024 (mid-May 2024 to mid-May 2025, weather-corrected; Chronicle stamps it gas_year since the abf0921 re-pin and Microcosm pairs gas year 2024 with calendar 2024, energy_pricing.SUBNATIONAL_PERIOD_TYPES, microcosm#1300), levelled onto the lcfs stage's Energy Trends level by one Great Britain factor per fuel (desnz.energy_trends.gb_domestic_level): the cells keep DESNZ's split between areas and bind as a distribution, with Northern Ireland's part of the UK level taken out at its share of DESNZ's sub-national domestic consumption (the Northern Ireland row, all domestic meters, read as published; microcosm#1278). DESNZ publishes no constituency cut: the constituency cells are Microcosm's split of each authority's total over its constituencies by DESNZ's LSOA and data zone figures for the same gas year (uk/desnz_constituency_energy_facts.json, microcosm#1095), so every authority keeps its total and the two grains agree. The frame reads each household's stored gas_consumption at the dataset period and turns it back into kWh at the stage's declared QEP prices. The region rows are the authorities' sums and are not bound (microcosm#1207)."
     },
     {
       "target_id": "desnz.subnational.gas_connected_households",
       "family": "domestic_energy",
       "geography_levels": [
+        "constituency",
         "local_authority"
       ],
       "measurement": {
@@ -33837,9 +33860,19 @@
       },
       "ledger_selector": {
         "source_measure_id": "households",
-        "record_set_spec_id": "uk.local_geography.households.by_local_authority.v1"
+        "record_set_spec_id": [
+          "uk.local_geography.households.by_constituency.v1",
+          "uk.local_geography.households.by_local_authority.v1"
+        ]
       },
       "area_scope": {
+        "constituency": {
+          "gss_prefixes": [
+            "E",
+            "W",
+            "S"
+          ]
+        },
         "local_authority": {
           "gss_prefixes": [
             "E",
@@ -33851,7 +33884,7 @@
       "category_id": "desnz.domestic_energy",
       "label": "Gas-connected households",
       "uprating_index": "desnz.subnational.gas_meter_share",
-      "selector_note": "Each authority's census households (the ons.census.households cell) times its DESNZ domestic gas meters over its domestic electricity meters, 2024 (desnz.subnational.gas_meter_share), the share the lcfs stage imposes by region, here by authority. A member of the census household partition (census_gas_connected_share): the household controls set its level, the meters its share. Orkney and Shetland have no mains gas and are signed deferrals; a gas-connected household is one whose stored gas_consumption is positive (microcosm#1207)."
+      "selector_note": "Each area's census households (the ons.census.households cell of the authority or constituency) times its DESNZ domestic gas meters over its domestic electricity meters, 2024 (desnz.subnational.gas_meter_share), the share the lcfs stage imposes by region, here by area. A constituency's meter counts are Microcosm's split of its authorities' counts by DESNZ's LSOA and data zone figures (uk/desnz_constituency_energy_facts.json, microcosm#1095). A member of the census household partition (census_gas_connected_share): the household controls set its level, the meters its share. Orkney and Shetland (the two councils and their seat) have no mains gas and are signed deferrals; a gas-connected household is one whose stored gas_consumption is positive (microcosm#1207)."
     },
     {
       "target_id": "mhclg.council_tax_stock.by_area.single_adult_discount",

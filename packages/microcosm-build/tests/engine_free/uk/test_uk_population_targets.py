@@ -1095,7 +1095,7 @@ def test_uk_population_targets_preserve_local_metric_ordering_contract() -> None
         "constituency"
     )
     assert metric_names_from_target_profile(resource, "la") == metric_names("la")
-    assert len(metric_names_from_target_profile(resource, "constituency")) == 22
+    assert len(metric_names_from_target_profile(resource, "constituency")) == 25
     assert len(metric_names_from_target_profile(resource, "la")) == 39
 
 
