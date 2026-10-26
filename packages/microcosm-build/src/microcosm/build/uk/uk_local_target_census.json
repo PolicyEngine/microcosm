@@ -82,11 +82,11 @@
       "rule": "No local target family may bind facts banded by SPI Total Income: the FRS instrument cannot materialize complete Total Income, so band membership is unassignable. This is the census's application of the national adjudication that holds all 208 published banded facts as fenced exclusions (the canonical fence text lives with the national constants); minting banded local variants is forbidden."
     },
     {
-      "authority": "microcosm.build.uk_runtime.local_targets.compute_household_metrics (in_spi_frame definition); microcosm#495 scoping.",
+      "authority": "uk_population_targets.json declarations hmrc.employment_income.amount, hmrc.employment_income.count, hmrc.self_employment_income.amount, hmrc.self_employment_income.count and hmrc.higher_rate_taxpayers.count (their income_tax_annual filter); microcosm#495 scoping.",
       "enforcement": "review_required_before_binding",
       "fence_id": "hmrc_spi_frame_model_proxy",
       "fenced_fact_count": null,
-      "rule": "The in-code HMRC area metrics gate frame membership on modeled income_tax > 0 \u2014 a model-output proxy for 'taxpayer in the SPI frame', not a source-faithful frame. Binding any HMRC area family requires an explicit adjudication accepting or replacing that proxy before targets enter a solve."
+      "rule": "The declared HMRC area metrics gate frame membership on modeled income_tax_annual > 0 (each person's income tax over the 12 months before their FRS interview, a proxy for the tax year) \u2014 a model-output proxy for 'taxpayer in the SPI frame', not a source-faithful frame. Binding any HMRC area family requires an explicit adjudication accepting or replacing that proxy before targets enter a solve."
     },
     {
       "authority": "ONS income estimates for small areas QMI (FRS-based method); microcosm#495 scoping.",
@@ -103,11 +103,11 @@
       "rule": "The runtime's ons/equiv_housing_costs metric has no declared supplier: ONS states its small-area BHC and AHC income estimates are independently modelled and should not be directly compared, so their difference is not a publishable housing-costs target. Binding the equivalised-income family must target the published BHC and AHC measures separately or document a different housing-costs source."
     },
     {
-      "authority": "DWP Universal Credit official statistics Stat-Xplore user guide (household definition); microcosm.build.uk_runtime.local_targets.compute_household_metrics (benunit-to-household mapping); microcosm#495 scoping (cross-family review finding).",
+      "authority": "DWP Universal Credit official statistics Stat-Xplore user guide (household definition); uk_population_targets.json declarations dwp.uc.households_by_area and dwp.uc.households_by_area_children_{0,1,2,3plus} (benefit-unit bindings mapped to households, which local_targets.compute_household_metrics sums); microcosm#495 scoping (cross-family review finding).",
       "enforcement": "review_required_before_binding",
       "fence_id": "uc_unit_vs_household_grain",
       "fenced_fact_count": null,
-      "rule": "The runtime maps benefit-unit-level UC receipt and each UC benefit unit's num_children band onto household rows by sum: a physical household containing two UC benefit units contributes 2 to uc_households and one contribution to each unit's child band. This aligns the runtime with DWP UC claim households, which correspond to benefit units rather than physical FRS households; binding must preserve this reviewed grain crosswalk."
+      "rule": "The runtime maps benefit-unit-level UC receipt and each UC benefit unit's uc_calibration_child_count band (the FRS-role UC child count) onto household rows by sum: a physical household containing two UC benefit units contributes 2 to uc_households and one contribution to each unit's child band. This aligns the runtime with DWP UC claim households, which correspond to benefit units rather than physical FRS households; binding must preserve this reviewed grain crosswalk."
     },
     {
       "authority": "ONS/NRS/NISRA statistical disclosure control documentation; microcosm#495 scoping (cross-family review measurement).",
@@ -224,7 +224,7 @@
       "adjudications": [
         "uc_unit_vs_household_grain"
       ],
-      "description": "Universal Credit benefit units summed onto household rows, and (constituency only) their split by benefit-unit num_children.",
+      "description": "Universal Credit benefit units summed onto household rows, and (constituency only) their split by each benefit unit's uc_calibration_child_count (the FRS-role UC child count).",
       "family": "uc_households",
       "sources": [
         "dwp_stat_xplore_uc"
@@ -1128,7 +1128,7 @@
     }
   ],
   "status_definitions": {
-    "bound_in_code": "The household-side metric is computed by local_targets.compute_household_metrics today.",
+    "bound_in_code": "The household-side metric is computed today by local_targets.compute_household_metrics from its declaration's policyengine binding in uk_population_targets.json.",
     "documented_unpinned": "The official product exists and was verified at the recorded URL on verified_on, but no exact table, vintage, or hash is pinned; binding work pins it per family.",
     "pinned_in_derived_resource": "The official product is registered raw-only in Chronicle (its bytes are pinned by sha256 but parsed into no fact) and Microcosm's committed derived-facts resource, built by the recorded tool from those pins, carries the target values; derived_resource_pin records the resource and its row digest.",
     "pinned_in_ledger_facts": "The official product's target facts are present in the sha-pinned Ledger consumer fact feed recorded on the source row.",

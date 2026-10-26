@@ -287,3 +287,35 @@ def test_deprecated_shim_warns_and_delegates_arguments(
         assert shim.main(argv) == 0
 
     assert captured == [argv]
+
+
+class _SelfEmploymentFrame:
+    def __init__(self, person: pd.DataFrame) -> None:
+        self._person = person
+
+    def table(self, entity: str) -> pd.DataFrame:
+        assert entity == "person"
+        return self._person
+
+
+def test_staging_refuses_self_employment_stacked_on_semp() -> None:
+    legacy = _load_shim_module()._legacy
+    person = pd.DataFrame(
+        {
+            "person_spine": ["acs_2024_1yr", "asec_puf"],
+            "SEMP": [400.0, np.nan],
+            "ADJINC": [1_000_000.0, np.nan],
+            "self_employment_income_before_lsr": [400.0, 8_000.0],
+            "sstb_self_employment_income_before_lsr": [0.0, 1_000.0],
+            "farm_operations_income": [0.0, 0.0],
+            "partnership_self_employment_net_earnings": [0.0, 0.0],
+        }
+    )
+
+    gate = legacy._require_acs_self_employment_identity(_SelfEmploymentFrame(person))
+    assert gate.passed
+    assert gate.details["acs_person_rows"] == 1
+
+    person.loc[0, "farm_operations_income"] = -1_200.0
+    with pytest.raises(SystemExit, match="counts that income twice"):
+        legacy._require_acs_self_employment_identity(_SelfEmploymentFrame(person))

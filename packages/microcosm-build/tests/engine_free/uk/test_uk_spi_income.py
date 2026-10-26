@@ -5,7 +5,7 @@ from test_support.microcosm_build.uk_spi_income import *
 
 
 def test_spi_disability_refresh_reuses_frs_derivation_for_spi_people() -> None:
-    weeks = 365.25 / 7
+    weeks = 52
     person = pd.DataFrame(
         {
             "attendance_allowance_reported": [0.0, 19 * weeks, 0.0],

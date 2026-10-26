@@ -230,7 +230,12 @@ def prepare_transport_build(
     inventory_store: ContentStore | str | Path | None = None,
     resume: ResumePolicy = "auto",
 ) -> PreparedTransportBuild:
-    """Check activation, build the registry and CREATE inventory, then compose.
+    """Check factor currency and activation, then compose the prepared graph.
+
+    A new run (``auto`` or ``forbid``) first requires every factor the default
+    and scenario views select to be current on today's UTC date; ``require``
+    only verifies stored work. This is the run-entry check for every caller,
+    the CLI included. Composition and execution stay clock-free.
 
     Before registry preparation, CREATE or graph source reads, activation
     checks declaration resource paths, non-null selected roots and encoding
@@ -248,9 +253,10 @@ def prepare_transport_build(
     CREATE sources and reuses the stored inventory without running the probe.
     """
 
-    validate_transport_activation(spec)
     if resume not in {"auto", "require", "forbid"}:
         raise ValueError("resume must be 'auto', 'require' or 'forbid'.")
+    _require_current_run_factors(spec, resume=resume)
+    validate_transport_activation(spec)
     if resume == "require":
         root = (
             inventory_store.root
@@ -473,6 +479,9 @@ def execute_transport_graph(
     later checkpoints reuse this invocation's work. The skeleton H5 is
     rewritten only when the export descriptor changed; an unchanged H5 must
     pass readback, and under ``require`` it must already exist.
+
+    Execution is clock-free. It runs a graph that :func:`prepare_transport_build`
+    checked; a caller that composes a graph itself owns the currency check.
     """
 
     if resume not in {"auto", "require", "forbid"}:
@@ -666,8 +675,8 @@ def _require_current_run_factors(
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the CLI; return 0 on success and 1 on a refused build.
 
-    The currency check guards new runs only (``auto`` and ``forbid``), before
-    preparation can run CREATE. ``require`` verifies existing stored work.
+    Preparation's currency check guards new runs only (``auto`` and
+    ``forbid``), before CREATE. ``require`` verifies existing stored work.
     """
 
     try:
@@ -689,7 +698,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "--resume require refuses a cold transport graph store."
             )
         spec = load_transport_spec(args.spec_dir if args.spec_dir else args.country)
-        _require_current_run_factors(spec, resume=args.resume)
         prepared = prepare_transport_build(
             spec, sources=sources, inventory_store=store_root, resume=args.resume
         )

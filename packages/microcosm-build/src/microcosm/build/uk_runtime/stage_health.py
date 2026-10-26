@@ -95,6 +95,12 @@ def uk_stage_health_gate(
         return _bus_support_pricing_gate(stage, evidence, parameters)
     if check == "property_components":
         return _property_components_gate(stage, evidence, parameters)
+    if check == "property_purchases":
+        return _property_purchases_gate(stage, evidence, parameters)
+    if check == "regional_home_values":
+        return _regional_home_values_gate(stage, evidence, parameters)
+    if check == "legacy_closure_take_up":
+        return _legacy_closure_take_up_gate(stage, evidence, parameters)
     return GateResult(
         name="stage_health",
         passed=False,
@@ -2495,6 +2501,9 @@ _WEALTH_IDENTITY_ZERO_KEYS = (
     "gross_financial_wealth_violation_rows",
     "net_financial_wealth_violation_rows",
     "mortgage_debt_violation_rows",
+    # The share split and the secured debts (microcosm#1095).
+    "share_split_violation_rows",
+    "secured_debt_violation_rows",
 )
 
 
@@ -2512,8 +2521,10 @@ def _wealth_coherence_gate(
     re-reads the receipt so the battery, not only the transform, holds that
     no household off a mortgaged tenure carries a main-residence mortgage,
     none off an owner tenure carries a main-residence value, every total
-    equals its components, and owners without a main-residence value are no
-    more common than on the donor beyond the reviewed excess.
+    equals its components, the share split and the ISA sum to corporate
+    wealth, every secured debt sits on a held asset within the mortgages on
+    other property, and owners without a main-residence value are no more
+    common than on the donor beyond the reviewed excess.
     """
 
     check = "wealth_coherence"
@@ -3053,6 +3064,82 @@ def _consumption_basis_gate(
     )
 
 
+def _division_levelling_factors(
+    stage: str,
+    levelling: object,
+    declared: Mapping[str, object],
+    failures: list[str],
+) -> dict[str, float]:
+    """Check the receipt's division levelling against the declaration.
+
+    Returns each division's factor (none where the stage declares no
+    levelling), appending a failure for a missing or undeclared levelling, a
+    rule or division list other than the declared one, a factor outside
+    [0, 1], or a division that moves though it is not above the shared ratio.
+    """
+
+    expected = declared.get("level_division_excess")
+    if expected is None:
+        if levelling is not None:
+            failures.append(
+                f"{stage}: records a division levelling the stage does not declare."
+            )
+        return {}
+    if not isinstance(levelling, Mapping):
+        failures.append(
+            f"{stage}: records no division levelling; the stage declares "
+            f"{expected['rule']!r}."
+        )
+        return {}
+    if (levelling.get("rule"), levelling.get("basis")) != (
+        expected["rule"],
+        expected["basis"],
+    ):
+        failures.append(
+            f"{stage}: levels the divisions by {levelling.get('rule')!r} on "
+            f"{levelling.get('basis')!r}, not the declared levelling."
+        )
+    shared = _finite_number(
+        levelling.get("shared_ratio"), label=f"{stage}.division_levelling.shared_ratio"
+    )
+    if not shared > 0:
+        failures.append(
+            f"{stage}: the divisions' shared ratio {shared} is not positive."
+        )
+    divisions = _mapping(
+        levelling.get("divisions"), label=f"{stage}.division_levelling.divisions"
+    )
+    if sorted(divisions) != sorted(expected["divisions"]):
+        failures.append(
+            f"{stage}: levels {sorted(divisions)}, not the declared "
+            f"{sorted(expected['divisions'])}."
+        )
+    factors: dict[str, float] = {}
+    for division, entry in divisions.items():
+        entry = _mapping(entry, label=f"{stage}.division_levelling.{division}")
+        factor = _finite_number(
+            entry.get("factor"), label=f"{stage}.division_levelling.{division}.factor"
+        )
+        ratio = entry.get("ratio")
+        if not 0.0 <= factor <= 1.0:
+            failures.append(
+                f"{stage}: {division} levelling factor {factor} is not in [0, 1]."
+            )
+        if factor != 1.0 and (
+            ratio is None
+            or _finite_number(
+                ratio, label=f"{stage}.division_levelling.{division}.ratio"
+            )
+            <= shared
+        ):
+            failures.append(
+                f"{stage}: {division} moves by {factor} though its ratio {ratio!r} "
+                f"is not above the shared {shared}."
+            )
+        factors[str(division)] = factor
+    return factors
+
+
 def _recomposed_totals_gate(
     stage: str,
     evidence: Mapping[str, object],
@@ -3068,14 +3155,18 @@ def _recomposed_totals_gate(
     ``maximum_relative_deviation``, the weighted remainder equals the drawn
     total less the drawn parts plus the floored mass, and the weighted total
     the remainder plus the components less the mass held at the maximum; and
-    the uncarried ONS spend is recomputed from the vendored rows through the
-    stage's own declaration.
+    the published ONS heating-fuel spend is recomputed from the vendored rows
+    through the stage's own declaration. Where the stage declares
+    ``level_division_excess`` (microcosm#1278), the receipt carries the
+    declared rule over the declared divisions, every factor is in [0, 1], no
+    division at or below the shared ratio moves, and each recomposed total's
+    remainder moves by its division's factor.
     """
 
     from microcosm.build.country_spec import load_country_spec
     from microcosm.build.uk_runtime.lcfs_consumption import (
+        published_fuel_spend,
         recompose_from_remainder_operation,
-        uncarried_spend,
     )
 
     check = "recomposed_totals"
@@ -3096,6 +3187,9 @@ def _recomposed_totals_gate(
     )
     declared_parents = declared["parents"]
     failures: list[str] = []
+    division_factors = _division_levelling_factors(
+        stage, receipt.get("division_levelling"), declared, failures
+    )
     if set(parents) != set(declared_parents):
         failures.append(
             f"{stage}: recomposed {sorted(parents)}, not the declared "
@@ -3138,8 +3232,22 @@ def _recomposed_totals_gate(
         def number(key: str, parent: str = parent, entry=entry) -> float:
             return _finite_number(entry.get(key), label=f"{stage}.{parent}.{key}")
 
+        # The declared levelling of the divisions' excess (microcosm#1278)
+        # scales a recomposed total's remainder by a factor in [0, 1].
+        factor = (
+            1.0 if entry.get("levelling_factor") is None else number("levelling_factor")
+        )
+        if not 0.0 <= factor <= 1.0:
+            failures.append(
+                f"{stage}: {parent} levelling factor {factor} is not in [0, 1]."
+            )
+        if factor != division_factors.get(parent, 1.0):
+            failures.append(
+                f"{stage}: {parent} levelling factor {factor} is not its "
+                f"division's {division_factors.get(parent, 1.0)}."
+            )
         remainder = number("weighted_remainder")
-        split = (
+        split = factor * (
             number("weighted_drawn_total")
             - number("weighted_drawn_subtracts")
             + number("weighted_floored_mass")
@@ -3147,7 +3255,7 @@ def _recomposed_totals_gate(
         if abs(remainder - split) > tolerance * max(1.0, abs(remainder)):
             failures.append(
                 f"{stage}: {parent} remainder {remainder} is not its draw less the "
-                f"drawn parts plus the floored mass ({split})."
+                f"drawn parts plus the floored mass, at its levelling factor ({split})."
             )
         total = number("weighted_total")
         held_mass = number("weighted_held_mass")
@@ -3161,20 +3269,30 @@ def _recomposed_totals_gate(
                 f"{stage}: {parent} weighted total {total} is not its remainder plus "
                 f"components less the mass held at the maximum ({parts})."
             )
-    uncarried = uncarried_spend(declared)
-    observed = _mapping(receipt.get("uncarried"), label=f"{stage}.uncarried")
+    published = published_fuel_spend(declared)
+    observed = _mapping(
+        receipt.get("published_fuels"), label=f"{stage}.published_fuels"
+    )
+    observed_classes = observed.get("classes")
+    published_keys = ("coicop", "concept", "column", "source_record_id", "value")
     if (
-        observed.get("classes") != uncarried["classes"]
-        or observed.get("total") != uncarried["total"]
+        not isinstance(observed_classes, list)
+        or [
+            {key: entry.get(key) for key in published_keys}
+            for entry in observed_classes
+            if isinstance(entry, Mapping)
+        ]
+        != published["classes"]
+        or observed.get("total") != published["total"]
     ):
         failures.append(
-            f"{stage}: the uncarried spend {observed.get('total')!r} is not the vendored "
-            f"{uncarried['total']}."
+            f"{stage}: the published fuel spend {observed.get('total')!r} is not the "
+            f"vendored {published['total']}."
         )
     details = {
         "maximum_relative_deviation": tolerance,
         "parents": sorted(parents),
-        "uncarried_total": uncarried["total"],
+        "published_fuels_total": published["total"],
     }
     return (
         _fail(stage, check, failures, details)
@@ -3671,6 +3789,214 @@ def _high_value_home_support_gate(
         "mass_deviation": deviation,
         "regions_with_owners": regions_with_owners,
     }
+    if failures:
+        return _fail(stage, check, failures, details)
+    return _pass(stage, check, details)
+
+
+def _property_purchases_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """Each purchase kind meets HMRC's Stamp Tax totals as the stage contracts (#1308).
+
+    Every declared kind is drawn once. Its transactions meet HMRC's count
+    within the declared deviation (the events are drawn, so the count is near,
+    not exact); its value is HMRC's less the recorded shortfall, which the
+    stage refuses past one fifth, so the gate refuses past the declared share;
+    and the individuals' shares that carry the all-buyers totals onto
+    households are proper shares.
+    """
+
+    check = "property_purchases"
+    expected = sorted(str(kind) for kind in parameters["kinds"])
+    deviation = _finite_number(
+        parameters["maximum_transactions_relative_deviation"],
+        label=f"{stage}.maximum_transactions_relative_deviation",
+    )
+    maximum_shortfall = _finite_number(
+        parameters["maximum_value_shortfall_share"],
+        label=f"{stage}.maximum_value_shortfall_share",
+    )
+    failures: list[str] = []
+    details: dict[str, object] = {}
+    kinds = evidence.get("kinds")
+    if not isinstance(kinds, list):
+        kinds = []
+    drawn = sorted(
+        str(_mapping(kind, label=f"{stage}.kinds[]").get("property_type"))
+        for kind in kinds
+    )
+    if drawn != expected:
+        failures.append(f"{stage}: the receipt draws kinds {drawn}, not {expected}.")
+    for kind in kinds:
+        name = str(kind.get("property_type"))
+        target = _finite_number(
+            kind.get("target_transactions"), label=f"{stage}.{name}.target_transactions"
+        )
+        fitted = _finite_number(
+            kind.get("fitted_transactions"), label=f"{stage}.{name}.fitted_transactions"
+        )
+        shortfall = _finite_number(
+            kind.get("value_shortfall_share"),
+            label=f"{stage}.{name}.value_shortfall_share",
+        )
+        target_value = _finite_number(
+            kind.get("target_value"), label=f"{stage}.{name}.target_value"
+        )
+        fitted_value = _finite_number(
+            kind.get("fitted_value"), label=f"{stage}.{name}.fitted_value"
+        )
+        relative = fitted / target - 1.0 if target > 0 else math.inf
+        details[name] = {
+            "transactions_relative_deviation": relative,
+            "value_shortfall_share": shortfall,
+        }
+        if abs(relative) > deviation:
+            failures.append(
+                f"{stage}: {name} draws {relative:+.4f} of HMRC's transactions "
+                f"(limit {deviation})."
+            )
+        if not 0.0 <= shortfall <= maximum_shortfall:
+            failures.append(
+                f"{stage}: {name} falls {shortfall:.4f} short of HMRC's value "
+                f"(limit {maximum_shortfall})."
+            )
+        expected_value = target_value * (1.0 - shortfall)
+        if not math.isclose(fitted_value, expected_value, rel_tol=1e-9, abs_tol=1e-6):
+            failures.append(
+                f"{stage}: {name} fits value {fitted_value:.6g}, not HMRC's less "
+                f"the recorded shortfall ({expected_value:.6g})."
+            )
+    derivation = evidence.get("derivation")
+    shares = {}
+    if isinstance(derivation, Mapping):
+        shares = {
+            key: value for key, value in derivation.items() if key.endswith("_share")
+        }
+    if not shares:
+        failures.append(f"{stage}: the receipt carries no individuals' shares.")
+    for key, value in shares.items():
+        share = _finite_number(value, label=f"{stage}.derivation.{key}")
+        if not 0.0 < share <= 1.0:
+            failures.append(f"{stage}: derivation {key} is {share}, not a share.")
+    if failures:
+        return _fail(stage, check, failures, details)
+    return _pass(stage, check, details)
+
+
+def _regional_home_values_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """Home values are re-ranked in every region on the declared knots (#1308).
+
+    Every declared region has rewritten rows and no more than the stage's
+    rows; no source sits at the value cap beyond the declared count; the knots
+    are the declared basis year and the ranking the declared basis; and the
+    weighted value stays positive on both sides of the stage.
+    """
+
+    check = "regional_home_values"
+    regions = sorted(str(region) for region in parameters["regions"])
+    failures: list[str] = []
+    rewritten = evidence.get("rows_rewritten_by_region")
+    if not isinstance(rewritten, Mapping):
+        rewritten = {}
+    if sorted(rewritten) != regions:
+        failures.append(
+            f"{stage}: the receipt rewrites regions {sorted(rewritten)}, not {regions}."
+        )
+    counts = {str(region): int(count) for region, count in rewritten.items()}
+    empty = sorted(region for region, count in counts.items() if count <= 0)
+    if empty:
+        failures.append(f"{stage}: no row is rewritten in {empty}.")
+    rows = int(evidence.get("rows", 0))
+    if sum(counts.values()) > rows:
+        failures.append(f"{stage}: more rows are rewritten than the stage carries.")
+    at_cap = int(evidence.get("sources_at_cap", -1))
+    maximum_at_cap = int(parameters["maximum_sources_at_cap"])
+    if not 0 <= at_cap <= maximum_at_cap:
+        failures.append(
+            f"{stage}: {at_cap} sources sit at the value cap (limit {maximum_at_cap})."
+        )
+    if evidence.get("knots_basis_year") != parameters["knots_basis_year"]:
+        failures.append(
+            f"{stage}: the knots' basis year is {evidence.get('knots_basis_year')!r}, "
+            f"not {parameters['knots_basis_year']!r}."
+        )
+    ranking = evidence.get("ranking")
+    basis = ranking.get("rank_basis") if isinstance(ranking, Mapping) else None
+    if basis != parameters["rank_basis"]:
+        failures.append(
+            f"{stage}: the ranking basis is {basis!r}, not {parameters['rank_basis']!r}."
+        )
+    for side in ("weighted_value_before", "weighted_value_after"):
+        value = _finite_number(evidence.get(side), label=f"{stage}.{side}")
+        if value <= 0.0:
+            failures.append(f"{stage}: {side} is not positive.")
+    details = {"regions": regions, "sources_at_cap": at_cap}
+    if failures:
+        return _fail(stage, check, failures, details)
+    return _pass(stage, check, details)
+
+
+#: The support bands the take-up receipts print (receipt_counts).
+_SUPPORT_BANDS = frozenset({"<10", "10-29", "30+"})
+
+
+def _legacy_closure_take_up_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """The Move to UC draw records a rate and its basis for every combination (#1308).
+
+    The receipt withholds what a thin combination realizes, so the gate holds
+    the contract it can read: the share is measured on the declared basis,
+    every combination's rate is a probability from a declared source, its
+    support is a printed band, and its unreachable flag is a boolean, a
+    withheld "<10" or absent; the share claiming at closure is a share.
+    """
+
+    check = "legacy_closure_take_up"
+    sources = {str(source) for source in parameters["rate_sources"]}
+    failures: list[str] = []
+    if evidence.get("p_basis") != parameters["p_basis"]:
+        failures.append(
+            f"{stage}: the share is measured on {evidence.get('p_basis')!r}, not "
+            f"{parameters['p_basis']!r}."
+        )
+    combinations = evidence.get("combinations")
+    if not isinstance(combinations, Mapping) or not combinations:
+        failures.append(f"{stage}: the receipt carries no combinations.")
+        combinations = {}
+    for name, combination in combinations.items():
+        combination = _mapping(combination, label=f"{stage}.combinations.{name}")
+        rate = _finite_number(combination.get("rate"), label=f"{stage}.{name}.rate")
+        if not 0.0 <= rate <= 1.0:
+            failures.append(f"{stage}: {name} draws at rate {rate}.")
+        if combination.get("rate_source") not in sources:
+            failures.append(
+                f"{stage}: {name} takes its rate from "
+                f"{combination.get('rate_source')!r}."
+            )
+        if combination.get("support") not in _SUPPORT_BANDS:
+            failures.append(f"{stage}: {name} prints no support band.")
+        flag = combination.get("rate_unreachable")
+        if not (flag is None or isinstance(flag, bool) or flag == "<10"):
+            failures.append(f"{stage}: {name} flags {flag!r} as unreachable.")
+    # A drawn cohort on fewer than ten sources prints the share withheld.
+    printed = evidence.get("great_britain_weighted_share_claiming_at_closure")
+    if printed != "<10":
+        share = _finite_number(
+            printed, label=f"{stage}.great_britain_weighted_share_claiming_at_closure"
+        )
+        if not 0.0 <= share <= 1.0:
+            failures.append(f"{stage}: the share claiming at closure is {share}.")
+    details = {"combinations": len(combinations)}
     if failures:
         return _fail(stage, check, failures, details)
     return _pass(stage, check, details)

@@ -1,0 +1,46 @@
+{
+ "new": {
+  "file": "consumer_facts_us_cf9ece2.jsonl",
+  "rows": 40181,
+  "sha256": "054e5684005a7b143dcb84eabac634135ce9b2b33bb57b540602e474a4ba7c57"
+ },
+ "previous": {
+  "file": "consumer_facts_us_51aa40f.jsonl",
+  "rows": 40178,
+  "sha256": "965a29ac9458edb58a05184917ee4a19772fd3dc7b4588db6eb6da5803641aac"
+ },
+ "previous_rows_changed": 0,
+ "previous_rows_missing": 0,
+ "rows_added": [
+  {
+   "aggregate_fact_key": "ledger.aggregate_fact.v2:45595c3331d5f2486d15838e",
+   "period": {
+    "type": "calendar_year",
+    "value": 2024
+   },
+   "record_set_id": "bea_nipa.cy2024.private_group_health_insurance",
+   "source_sha256": "de1c34e37da9b8b8d765efc0611cc653102373fe522fe9218c7689067b29b7fd",
+   "value": 977034000000
+  },
+  {
+   "aggregate_fact_key": "ledger.aggregate_fact.v2:4950df5409fe51cd6d7afba6",
+   "period": {
+    "type": "calendar_year",
+    "value": 2023
+   },
+   "record_set_id": "bea_nipa.cy2023.private_group_health_insurance",
+   "source_sha256": "de1c34e37da9b8b8d765efc0611cc653102373fe522fe9218c7689067b29b7fd",
+   "value": 923195000000
+  },
+  {
+   "aggregate_fact_key": "ledger.aggregate_fact.v2:c78f781d8aaf93cad7570d3f",
+   "period": {
+    "type": "calendar_year",
+    "value": 2025
+   },
+   "record_set_id": "bea_nipa.cy2025.private_group_health_insurance",
+   "source_sha256": "de1c34e37da9b8b8d765efc0611cc653102373fe522fe9218c7689067b29b7fd",
+   "value": 1027929000000
+  }
+ ]
+}

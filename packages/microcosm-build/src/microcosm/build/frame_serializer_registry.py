@@ -220,6 +220,17 @@ HDF_WRITE_EXCLUSIONS = (
         reason="Adds weight-kind and mass-log root attributes only.",
     ),
     HdfWriteExclusion(
+        exclusion_id="uk_energy_price_basis_root_attr",
+        writer=HdfWriteSite(
+            "packages/microcosm-build/src/microcosm/build/uk_runtime/national_frame.py",
+            "_write_energy_price_basis",
+        ),
+        reason=(
+            "Adds the energy spending's price-period root attribute only "
+            "(pe-uk#2571)."
+        ),
+    ),
+    HdfWriteExclusion(
         exclusion_id="uk_smoke_non_release_root_attrs",
         writer=HdfWriteSite(
             "packages/microcosm-build/src/microcosm/build/uk_runtime/spine_build.py",

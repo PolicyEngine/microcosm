@@ -633,16 +633,25 @@ def _declared_property_shares(
     from microcosm.build.uk_runtime.uc_capital_coherence import (
         PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES,
         PROPERTY_CAPITAL_OWNERS,
+        PROPERTY_CAPITAL_SECURED_DEBT,
         PROPERTY_CAPITAL_VALUATION,
         UC_PROPERTY_CAPITAL_REPORTER_RULE,
         UC_PROPERTY_CAPITAL_SOURCES,
     )
+
+    def secured_debt(sources: tuple[str, ...]) -> dict[str, str]:
+        return {
+            source: PROPERTY_CAPITAL_SECURED_DEBT[source]
+            for source in sources
+            if source in PROPERTY_CAPITAL_SECURED_DEBT
+        }
 
     rules = {
         "uc_reported_capital": {
             "sources": list(UC_PROPERTY_CAPITAL_SOURCES),
             "owners": PROPERTY_CAPITAL_OWNERS,
             "valuation": PROPERTY_CAPITAL_VALUATION,
+            "secured_debt": secured_debt(UC_PROPERTY_CAPITAL_SOURCES),
             # A unit that reports Universal Credit keeps its receipt.
             "units_reporting_universal_credit": UC_PROPERTY_CAPITAL_REPORTER_RULE,
         },
@@ -650,6 +659,7 @@ def _declared_property_shares(
             "sources": list(PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES),
             "owners": PROPERTY_CAPITAL_OWNERS,
             "valuation": PROPERTY_CAPITAL_VALUATION,
+            "secured_debt": secured_debt(PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES),
         },
     }
     declared = {
@@ -2234,6 +2244,18 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "maximum_rows_receipts_below_profit",
                 "maximum_rows_with_profit_above_band",
                 "maximum_band_error_in_boundary_weights",
+                # #1308's three stages, gated with the next policyengine-uk
+                # bump (María's ruling of 2026-10-17): the purchase kinds and
+                # their fit, the home-value ranking, the Move to UC draw.
+                "kinds",
+                "maximum_transactions_relative_deviation",
+                "maximum_value_shortfall_share",
+                "regions",
+                "maximum_sources_at_cap",
+                "knots_basis_year",
+                "rank_basis",
+                "p_basis",
+                "rate_sources",
             }
         ),
         artifact_keys=frozenset({"stage_evidence"}),

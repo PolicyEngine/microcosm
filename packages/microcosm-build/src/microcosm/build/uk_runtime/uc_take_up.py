@@ -78,6 +78,7 @@ from microcosm.build.uk_runtime.frs_take_up import (
 )
 from microcosm.build.uk_runtime.legacy_closure_take_up import (
     LEGACY_CLOSURE_RESOURCE,
+    _reported_by_benunit,
     legacy_benefit_combinations,
     legacy_closure_claim_probabilities,
     load_move_to_uc_claim_rates,
@@ -159,6 +160,17 @@ UC_TAKE_UP_ENTITLEMENT_YEAR_RULE = "calibration_year"
 UC_TAKE_UP_DATASET_YEAR_RULE = "survey_year"
 UC_TAKE_UP_SOLVE_SCOPE = "great_britain"
 _OUTSIDE_SOLVE_REGION = "NORTHERN_IRELAND"
+#: The legacy award a unit keeps off a Universal Credit claim: policyengine-uk
+#: ends a claimant's or partner's income-related ESA once the family claims
+#: Universal Credit (from 2.149.0; pe-uk#2563), so a unit on that award at the
+#: interview claims none (microcosm#1095).
+UC_TAKE_UP_KEPT_ESA_COLUMN = "esa_income_reported"
+UC_TAKE_UP_KEPT_ESA_RULE = (
+    "a unit whose claimant or partner reports income-related ESA "
+    "(esa_income_reported), and that neither reports Universal Credit nor is "
+    "moved off its legacy benefits, claims no Universal Credit, since "
+    "policyengine-uk ends that award once the family claims it"
+)
 #: The calibration measure's family types with DWP's Stat-Xplore labels.
 UC_FAMILY_TYPES: tuple[tuple[str, str], ...] = (
     ("SINGLE", "Single, no children"),
@@ -677,7 +689,21 @@ def redraw_uc_take_up(
         .to_numpy(dtype=bool)
     )
     population = uc_age_eligible_benunits(person, benunit, population_policy)
-    previous = benunit[UK_UC_TAKE_UP_OUTPUT].fillna(False).to_numpy(dtype=bool)
+    stored = benunit[UK_UC_TAKE_UP_OUTPUT].fillna(False).to_numpy(dtype=bool)
+    # policyengine-uk ends a claimant's or partner's income-related ESA once
+    # the family claims Universal Credit (esa_income_report_closed, from
+    # 2.149.0; pe-uk#2563). A unit whose claimant or partner reports the award,
+    # and that neither reports Universal Credit nor is moved off its legacy
+    # benefits, was on that award at the interview, so it claims no Universal
+    # Credit: a reported receipt is a fact (microcosm#1095). The closure draw
+    # reads the flag this stage writes, so the closure probabilities below use
+    # it too.
+    esa_kept = (
+        _reported_by_benunit(person, benunit, UC_TAKE_UP_KEPT_ESA_COLUMN)
+        & ~moved
+        & ~reporter
+    )
+    previous = stored & ~esa_kept
     weights = _household_to_benunit_weights(
         benunit,
         person=person,
@@ -734,12 +760,23 @@ def redraw_uc_take_up(
         minimum_pool_sources=minimum_pool_sources,
         legacy_kept=(combination != "") & ~moved & ~reporter,
     )
+    kept_off = esa_kept & stored & great_britain
+    esa_kept_receipt = {
+        "scope": "great_britain",
+        "column": UC_TAKE_UP_KEPT_ESA_COLUMN,
+        "rule": UC_TAKE_UP_KEPT_ESA_RULE,
+        "units_kept_off_universal_credit": small_cell_share(
+            float(weights[kept_off].sum()),
+            distinct_count(source_ids, kept_off, weights),
+        ),
+        "kept_off_support": support_band(distinct_count(source_ids, kept_off, weights)),
+    }
     working_age_hb = working_age_housing_benefit_receipt(
         person=person,
         benunit=benunit,
         population=population,
         moved=moved,
-        uc_before=previous | reporter,
+        uc_before=stored | reporter,
         uc_after=would_claim | reporter,
         weights=weights,
         great_britain=great_britain,
@@ -762,6 +799,7 @@ def redraw_uc_take_up(
             **receipt,
             "population_state_pension_age": int(population_policy.state_pension_age),
             "working_age_housing_benefit": working_age_hb,
+            "income_related_esa_kept": esa_kept_receipt,
         },
         entitlement_year=entitlement_year,
     )
@@ -925,12 +963,17 @@ def uc_take_up_operation_parameters() -> tuple[tuple[str, dict[str, object]], ..
                 "undrawn_claims": (
                     "a reporter at 1, a moved unit at the claim probability "
                     "uc_legacy_closure_take_up's rule gives it "
-                    f"({LEGACY_CLOSURE_RESOURCE}), any other at its stored flag"
+                    f"({LEGACY_CLOSURE_RESOURCE}), a unit keeping income-related "
+                    "ESA at 0, any other at its stored flag"
                 ),
+                "kept_legacy_award": UC_TAKE_UP_KEPT_ESA_RULE,
                 "weight_mapping": "household_to_benunit",
                 "residual_rate": UC_TAKE_UP_RESIDUAL_RATE,
                 "solve_scope": UC_TAKE_UP_SOLVE_SCOPE,
-                "not_drawn": "keeps its stored flag",
+                "not_drawn": (
+                    "keeps its stored flag, except a unit keeping income-related "
+                    "ESA, which claims none"
+                ),
             },
         ),
     )
