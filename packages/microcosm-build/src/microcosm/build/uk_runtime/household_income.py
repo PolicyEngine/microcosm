@@ -30,10 +30,14 @@ from microcosm.frame import Frame
 #: ``hbai_household_net_income`` (its ``HBAI_HOUSEHOLD_NET_INCOME_SUBTRACTS``),
 #: less the ones the gross income does not add back; an engine-lane test fails
 #: if the two lists together part from the engine's.
+#: ``isa_cash_interest_flat_rate_charge`` (policyengine-uk 2.162.2) is a tax on
+#: the cash interest in non-cash ISAs, like income tax; it is zero before
+#: 2027-28.
 UK_HBAI_GROSS_INCOME_DEDUCTIONS = (
     "council_tax",
     "domestic_rates",
     "income_tax",
+    "isa_cash_interest_flat_rate_charge",
     "national_insurance",
     "student_loan_repayments",
     "employee_pension_contributions",

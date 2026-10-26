@@ -63,7 +63,7 @@ def test_metric_names_match_expected_la_surface() -> None:
     assert "tenure/private_rent" in names
     assert "rent/private_rent" in names
     assert "uc_hh_0_children" not in names
-    assert names[-17:] == (
+    assert names[-18:] == (
         "households",
         "council_tax/band_a",
         "council_tax/band_b",
@@ -81,8 +81,11 @@ def test_metric_names_match_expected_la_surface() -> None:
         "energy/electricity_kwh",
         "energy/gas_kwh",
         "energy/gas_connected_households",
+        # microcosm#1095: England's single adult discount by authority.
+        "council_tax/single_adult_discount",
     )
     assert not any(name.startswith("energy/") for name in metric_names("constituency"))
+    assert "council_tax/single_adult_discount" not in metric_names("constituency")
 
 
 def test_metric_names_can_come_from_ledger_target_profile() -> None:
@@ -224,6 +227,7 @@ def test_uc_child_bands_sum_uc_benefit_units_to_household(
             "loss_relief": [0.0] * people,
             "employment_income": [0.0] * people,
             "income_tax": [0.0] * people,
+            "income_tax_before_winter_fuel_payment_charge": [0.0] * people,
             "tax_band": ["NONE"] * people,
             "age": [35, 10, 40, 3, 6, 9, 45, 19, 18],
             "universal_credit": [100.0, 50.0, 0.0],
@@ -280,6 +284,24 @@ def test_compute_la_household_metrics(tmp_path, monkeypatch) -> None:
     assert metrics["council_tax/band_a"].tolist() == [1.0, 0.0, 0.0]
     assert metrics["council_tax/band_d"].tolist() == [0.0, 0.0, 1.0]
     assert metrics["council_tax/band_h"].tolist() == [0.0, 1.0, 0.0]
+    # Every household takes the discount; only the first is in England.
+    assert metrics["council_tax/single_adult_discount"].tolist() == [1.0, 0.0, 0.0]
+
+
+def test_la_single_adult_discount_counts_english_households_at_the_rate(
+    tmp_path, monkeypatch
+) -> None:
+    """The national row's two conditions, read on each household (#1095)."""
+
+    engine = three_household_engine(
+        country=["ENGLAND", "ENGLAND", "ENGLAND"],
+        council_tax_discount_rate=[0.25, 0.0, 0.25],
+    )
+    metrics = compute_household_metrics(
+        three_household_resolver(tmp_path, monkeypatch, engine=engine), "la"
+    )
+
+    assert metrics["council_tax/single_adult_discount"].tolist() == [1.0, 0.0, 1.0]
 
 
 def test_la_energy_metrics_read_the_stored_spend_back_into_kwh(
@@ -323,7 +345,7 @@ def test_the_local_hmrc_rows_read_each_persons_tax_year() -> None:
                 binding["value_variable"],
                 *(predicate["variable"] for predicate in binding["filters"]),
             ]
-            assert "income_tax_annual" in read, name
+            assert "income_tax_before_winter_fuel_payment_charge_annual" in read, name
             assert all(
                 variable == "person_count" or variable.endswith("_annual")
                 for variable in read

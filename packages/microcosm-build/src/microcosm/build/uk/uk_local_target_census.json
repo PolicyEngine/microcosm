@@ -65,7 +65,8 @@
       "high_value_homes/over_2m",
       "energy/electricity_kwh",
       "energy/gas_kwh",
-      "energy/gas_connected_households"
+      "energy/gas_connected_households",
+      "council_tax/single_adult_discount"
     ]
   },
   "area_types": [
@@ -82,11 +83,11 @@
       "rule": "No local target family may bind facts banded by SPI Total Income: the FRS instrument cannot materialize complete Total Income, so band membership is unassignable. This is the census's application of the national adjudication that holds all 208 published banded facts as fenced exclusions (the canonical fence text lives with the national constants); minting banded local variants is forbidden."
     },
     {
-      "authority": "uk_population_targets.json declarations hmrc.employment_income.amount, hmrc.employment_income.count, hmrc.self_employment_income.amount, hmrc.self_employment_income.count and hmrc.higher_rate_taxpayers.count (their income_tax_annual filter); microcosm#495 scoping.",
+      "authority": "uk_population_targets.json declarations hmrc.employment_income.amount, hmrc.employment_income.count, hmrc.self_employment_income.amount, hmrc.self_employment_income.count and hmrc.higher_rate_taxpayers.count (their income_tax_before_winter_fuel_payment_charge_annual filter); microcosm#495 scoping.",
       "enforcement": "review_required_before_binding",
       "fence_id": "hmrc_spi_frame_model_proxy",
       "fenced_fact_count": null,
-      "rule": "The declared HMRC area metrics gate frame membership on modeled income_tax_annual > 0 (each person's income tax over the 12 months before their FRS interview, a proxy for the tax year) \u2014 a model-output proxy for 'taxpayer in the SPI frame', not a source-faithful frame. Binding any HMRC area family requires an explicit adjudication accepting or replacing that proxy before targets enter a solve."
+      "rule": "The declared HMRC area metrics gate frame membership on modeled income_tax_before_winter_fuel_payment_charge_annual > 0 (each person's income tax over the 12 months before their FRS interview, a proxy for the tax year, before the Winter Fuel Payment charge) \u2014 a model-output proxy for 'taxpayer in the SPI frame', not a source-faithful frame. Binding any HMRC area family requires an explicit adjudication accepting or replacing that proxy before targets enter a solve."
     },
     {
       "authority": "ONS income estimates for small areas QMI (FRS-based method); microcosm#495 scoping.",
@@ -288,7 +289,7 @@
       "adjudications": [
         "voa_dwellings_vs_household_frame"
       ],
-      "description": "Dwellings charged council tax by band at local-authority grain, from the councils' taxbase returns (England A-H, Wales A-I, Scotland A-H), represented on the household frame (microcosm#929). The nine composed English region controls sum all 296 authority facts, including the two support-floor-deferred authorities (Isles of Scilly in the South West, City of London in London), so the cross-grain operator rescales those regions' bound cells by the whole-region sum over the bound sum: about a thousand dwellings on the South West's band A, the same shape the VOA basis had.",
+      "description": "Dwellings charged council tax by band at local-authority grain, from the councils' taxbase returns (England A-H, Wales A-I, Scotland A-H), represented on the household frame (microcosm#929). The nine composed English region controls sum all 296 authority facts, including the two support-floor-deferred authorities (Isles of Scilly in the South West, City of London in London), so the cross-grain operator rescales those regions' bound cells by the whole-region sum over the bound sum: about a thousand dwellings on the South West's band A, the same shape the VOA basis had. England's authorities also bind line 8, the dwellings with the single adult household 25% discount (microcosm#1095): the cells share the national single adult row's measurement, so the England row is their control.",
       "family": "council_tax",
       "retired_deferrals": [
         {
@@ -470,6 +471,14 @@
       ],
       "family": "council_tax",
       "name": "council_tax/band_i",
+      "status": "bound_in_code"
+    },
+    {
+      "area_types": [
+        "la"
+      ],
+      "family": "council_tax",
+      "name": "council_tax/single_adult_discount",
       "status": "bound_in_code"
     },
     {
@@ -980,7 +989,7 @@
         "source_commit": "272c987af175687aca21f82851ef349521802b12",
         "source_repo": "PolicyEngine/chronicle"
       },
-      "notes": "The pinned feed record-set specs uk.local_geography.council_tax.england_ctb.line_07_chargeable_dwellings_adjusted_for_disabled_relief.v1, line_11_second_homes.v1 and line_15_empty_dwellings.v1 supply the 296 English billing authorities by band A-, A-H at the October 2025 count. Each cell binds line 7 minus line 11 minus line 15 (band A adds line 7's A- column): the dwellings charged as someone's sole or main residence, the universe a household frame carries. Bands A-G bind 294 authorities after E06000053 and E09000001 are support-floor excluded; the 296-cell band H family stays signed deferred on spine support (microcosm#762 A14). Barnsley and Sheffield bind through the crosswalk's declared aliases of their April 2025 codes. The family is scoped to the 296 English authorities: Wales and Scotland bind their own returns below and Northern Ireland levies domestic rates.",
+      "notes": "The pinned feed record-set specs uk.local_geography.council_tax.england_ctb.line_07_chargeable_dwellings_adjusted_for_disabled_relief.v1, line_11_second_homes.v1 and line_15_empty_dwellings.v1 supply the 296 English billing authorities by band A-, A-H at the October 2025 count. Each cell binds line 7 minus line 11 minus line 15 (band A adds line 7's A- column): the dwellings charged as someone's sole or main residence, the universe a household frame carries. Bands A-G bind 294 authorities after E06000053 and E09000001 are support-floor excluded; the 296-cell band H family stays signed deferred on spine support (microcosm#762 A14). Barnsley and Sheffield bind through the crosswalk's declared aliases of their April 2025 codes. The family is scoped to the 296 English authorities: Wales and Scotland bind their own returns below and Northern Ireland levies domestic rates. The spec line_08_single_adult_discount_dwellings.v1 (all bands) supplies the same authorities' single adult discount cells (microcosm#1095), under the same support floor.",
       "product": "Council Taxbase 2025 in England: local-authority level data, CTB lines by valuation band (chronicle#262 / #264).",
       "publisher": "Ministry of Housing, Communities and Local Government",
       "source_id": "mhclg_council_taxbase_la",

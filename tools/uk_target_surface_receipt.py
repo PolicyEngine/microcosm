@@ -41,6 +41,7 @@ from typing import Any
 
 import numpy as np
 
+from microcosm.build.uk_runtime import communal_residents
 from microcosm.build.uk_runtime.cross_grain_declarations import uk_cross_grain_grain
 from microcosm.build.uk_runtime.full_targets import load_uk_full_target_inputs
 from microcosm.build.uk_runtime.graph_targets import (
@@ -186,73 +187,21 @@ def _national_reconciliation_summary(
     }
 
 
-#: Census residence-type tables the communal receipt reads (#1123, #1278): ONS
-#: RM120 for England and Wales and NRS UV101a for Scotland carry both residence
-#: types by age at constituency and local-authority grain. Areas whose
-#: communal residents make up at least STUDENT_COMMUNAL_SHARE of their 18-24
-#: residents are listed as student areas, where the age-band targets count
-#: residents the household frame cannot hold.
-_COMMUNAL_TABLES = {
-    "ons.census2021_residents": (
-        "C2021_AGE_24_NAME",
-        "C2021_RESTYPE_3_NAME",
-        "C_SEX_NAME",
-    ),
-    "nrs.census2022_residents": ("Age", "Residence Type Indicator", "Sex"),
-}
-#: Northern Ireland: NISRA CT0105 counts communal residents by district, age
-#: band, sex and position (no household count), and the only district
-#: population by age in the feed is NISRA's mid-2025 estimate. Its shares
-#: spread each CT0105 band evenly over its single years and divide by that
-#: estimate, so they are marked approximate.
-_NI_COMMUNAL_CONCEPT = "nisra.census2021_communal_residents"
-_NI_POPULATION_CONCEPT = "ons.mid_year_population_estimate"
-_NI_OLDEST_SINGLE_YEAR = 90
+#: Areas whose communal residents make up at least STUDENT_COMMUNAL_SHARE of
+#: their 18-24 residents are listed as student areas, where the age-band
+#: targets count residents the household frame cannot hold. The census
+#: residence-type tables, the age bands and the cells the receipt sums live in
+#: ``uk_runtime.communal_residents`` (#1123, #1278), which the incumbent
+#: evaluation reads too (microcosm#1095).
 STUDENT_COMMUNAL_SHARE = 0.10
-#: The local age cells' ten-year bands, then 80 and over (the region tier's
-#: 80-89 row; every census residence-type table stops at 85 and over).
-COMMUNAL_AGE_BANDS: tuple[tuple[int, int | None], ...] = (
-    *((lower, lower + 10) for lower in range(0, 80, 10)),
-    (80, None),
-)
+COMMUNAL_AGE_BANDS = communal_residents.COMMUNAL_AGE_BANDS
+_band_key = communal_residents.band_key
+_band_of = communal_residents.band_of
+_age_range = communal_residents.age_range
 #: A band whose communal share is s puts the private-household target a
 #: fraction s below the total-resident row the incumbent evaluation gates at
 #: 25% (microcosm#1278 sizing of the age-universe change).
 SIZING_SHARES = (0.20, 0.25)
-
-
-def _band_key(band: tuple[int, int | None]) -> str:
-    lower, upper = band
-    return f"{lower}_plus" if upper is None else f"{lower}_{upper}"
-
-
-def _band_of(ages: tuple[int, int]) -> str | None:
-    """The ten-year band a census age category falls wholly inside, if any."""
-
-    low, high = ages
-    for band in COMMUNAL_AGE_BANDS:
-        lower, upper = band
-        if low >= lower and (upper is None or high < upper):
-            return _band_key(band)
-    return None
-
-
-def _age_range(label: str) -> tuple[int, int] | None:
-    import re
-
-    numbers = [int(value) for value in re.findall(r"\d+", str(label))]
-    text = str(label).lower()
-    if "under 1" in text:
-        return (0, 0)
-    if "and under" in text and len(numbers) == 1:
-        return (0, numbers[0])
-    if len(numbers) == 2:
-        return (numbers[0], numbers[1])
-    if len(numbers) == 1 and ("over" in text or "+" in text):
-        return (numbers[0], 200)
-    if len(numbers) == 1:
-        return (numbers[0], numbers[0])
-    return None
 
 
 def _share_summary(shares: dict[str, float], *, threshold_list: bool) -> dict[str, Any]:
@@ -285,81 +234,14 @@ def _communal_validation(
     path = (
         ledger_facts / "consumer_facts.jsonl" if ledger_facts.is_dir() else ledger_facts
     )
-    totals: dict[tuple[str, str], dict[str, float]] = {}
-    ni_communal: dict[str, dict[int, float]] = {}
-    ni_population: dict[str, dict[int, float]] = {}
     with path.open() as handle:
-        for line in handle:
-            census = "census2021_residents" in line or "census2022_residents" in line
-            ni = _NI_COMMUNAL_CONCEPT in line or (
-                _NI_POPULATION_CONCEPT in line and "lgd_2014" in line
-            )
-            if not census and not ni:
-                continue
-            fact = json.loads(line)
-            concept = str((fact.get("observed_measure") or {}).get("source_concept"))
-            geography = fact.get("geography") or {}
-            dimensions = fact.get("dimensions") or {}
-            value = float(fact.get("value") or 0.0)
-            if concept == _NI_COMMUNAL_CONCEPT:
-                if str(geography.get("level")) != "local_authority":
-                    continue
-                ages = _age_range(str(dimensions.get("Age", "")))
-                if ages is None:
-                    continue
-                low, high = ages[0], min(ages[1], _NI_OLDEST_SINGLE_YEAR)
-                per_year = value / (high - low + 1)
-                cell = ni_communal.setdefault(str(geography.get("id")), {})
-                for age in range(low, high + 1):
-                    cell[age] = cell.get(age, 0.0) + per_year
-                continue
-            if concept == _NI_POPULATION_CONCEPT:
-                if str(geography.get("vintage")) != "lgd_2014":
-                    continue
-                if (fact.get("period") or {}).get("value") != 2025:
-                    continue
-                ages = _age_range(str(dimensions.get("age", "")))
-                if ages is None:
-                    continue
-                cell = ni_population.setdefault(str(geography.get("id")), {})
-                age = min(ages[0], _NI_OLDEST_SINGLE_YEAR)
-                cell[age] = cell.get(age, 0.0) + value
-                continue
-            keys = _COMMUNAL_TABLES.get(concept)
-            if keys is None:
-                continue
-            age_label, residence, sex = (str(dimensions.get(key, "")) for key in keys)
-            if not sex.lower().startswith("all"):
-                continue
-            level = str(geography.get("level"))
-            if level not in {"constituency", "local_authority"}:
-                continue
-            cell = totals.setdefault((level, str(geography.get("id"))), {})
-            residence_key = (
-                "communal"
-                if "communal" in residence.lower()
-                else "household"
-                if "household" in residence.lower()
-                else "all"
-            )
-            if age_label.lower() == "total":
-                cell[f"{residence_key}_all_ages"] = (
-                    cell.get(f"{residence_key}_all_ages", 0.0) + value
-                )
-                continue
-            ages = _age_range(age_label)
-            if ages is None:
-                continue
-            if 18 <= ages[0] and ages[1] <= 24:
-                cell[f"{residence_key}_18_24"] = (
-                    cell.get(f"{residence_key}_18_24", 0.0) + value
-                )
-            band = _band_of(ages)
-            if band is not None:
-                cell[f"{residence_key}_{band}"] = (
-                    cell.get(f"{residence_key}_{band}", 0.0) + value
-                )
-    band_keys = [_band_key(band) for band in COMMUNAL_AGE_BANDS]
+        cells = communal_residents.communal_cells(
+            json.loads(line)
+            for line in handle
+            if communal_residents.is_communal_fact_line(line)
+        )
+    totals = cells.totals
+    band_keys = list(communal_residents.BAND_KEYS)
     receipt: dict[str, Any] = {
         "basis": (
             "Census 2021 (England and Wales, RM120) and 2022 (Scotland, UV101a) "
@@ -371,9 +253,8 @@ def _communal_validation(
         "student_communal_share": STUDENT_COMMUNAL_SHARE,
         "sizing_shares": list(SIZING_SHARES),
     }
-    for level in ("constituency", "local_authority"):
+    for level in communal_residents.COMMUNAL_LEVELS:
         rows = []
-        band_shares: dict[str, dict[str, float]] = {key: {} for key in band_keys}
         for (cell_level, area), cell in sorted(totals.items()):
             if cell_level != level:
                 continue
@@ -390,14 +271,7 @@ def _communal_validation(
                     "communal_share_18_24": young_communal / young if young else None,
                 }
             )
-            for key in band_keys:
-                band_total = cell.get(f"communal_{key}", 0.0) + cell.get(
-                    f"household_{key}", 0.0
-                )
-                if band_total:
-                    band_shares[key][area] = (
-                        cell.get(f"communal_{key}", 0.0) / band_total
-                    )
+        band_shares = communal_residents.band_shares(cells, level)
         shares = [
             row["communal_share"] for row in rows if row["communal_share"] is not None
         ]
@@ -421,22 +295,8 @@ def _communal_validation(
                 for key in band_keys
             },
         }
-    ni_shares: dict[str, dict[str, float]] = {key: {} for key in band_keys}
-    ni_counts: dict[str, dict[str, tuple[float, float]]] = {}
-    for area, communal_by_age in sorted(ni_communal.items()):
-        population = ni_population.get(area)
-        if not population:
-            continue
-        for band in COMMUNAL_AGE_BANDS:
-            lower, upper = band
-            last = _NI_OLDEST_SINGLE_YEAR if upper is None else upper - 1
-            communal = sum(
-                communal_by_age.get(age, 0.0) for age in range(lower, last + 1)
-            )
-            total = sum(population.get(age, 0.0) for age in range(lower, last + 1))
-            ni_counts.setdefault(area, {})[_band_key(band)] = (communal, total)
-            if total:
-                ni_shares[_band_key(band)][area] = communal / total
+    ni_shares = communal_residents.ni_band_shares(cells)
+    ni_counts = communal_residents.ni_band_counts(cells)
     receipt["northern_ireland_local_authority"] = {
         "approximate": True,
         "basis": (

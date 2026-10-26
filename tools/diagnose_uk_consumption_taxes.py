@@ -2,8 +2,9 @@
 
 The levels of these rows are set by the build or the engine, not by the
 weights (microcosm#1113, microcosm#1123 item 3): ``obr.vat`` by an engine
-coverage factor until policyengine-uk 2.135.7 (policyengine-uk#1996, #2187;
-bound again since the next bump), ``obr.fuel_duties_cars`` by fuel
+coverage factor (policyengine-uk#1996, #2187; held as a diagnostic, and
+measured with VAT on private school fees from policyengine-uk 2.157.1),
+``obr.fuel_duties_cars`` by fuel
 that includes business-paid car fuel, and the ONS electricity and gas rows
 by a published-source residual against the stage's DESNZ volume at QEP
 prices, and OBR's excise receipts by the clearances and bases the stage
@@ -33,7 +34,7 @@ from microcosm.build.uk_runtime.lcfs_consumption import UK_LCFS_COICOP_DIVISION_
 #: The held-out rows and the bound road-fuel row that replaced the cars
 #: receipts, with the engine variables whose weighted sum measures each.
 ROWS: Mapping[str, tuple[str, ...]] = {
-    "obr.vat": ("vat",),
+    "obr.vat": ("vat", "private_school_vat"),
     "obr.fuel_duties_cars": ("fuel_duty",),
     "ons.household_electricity_expenditure": ("electricity_consumption",),
     "ons.household_gas_expenditure": ("gas_consumption",),

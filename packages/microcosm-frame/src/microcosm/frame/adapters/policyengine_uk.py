@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from importlib import metadata
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Protocol
 
 import numpy as np
@@ -28,11 +29,25 @@ __all__ = [
     "PolicyEngineUKEngine",
     "ProjectingRulesEngine",
     "SUPPLIED_ROLE_INPUTS",
+    "UK_ISA_INCOME_CONTRACT",
+    "UK_ISA_INCOME_CONTRACT_ATTR",
     "UK_SCHEMA",
     "validate_uc_claimant_input",
 ]
 
 UK_SCHEMA = EntitySchema(group_entities=("benunit", "household"))
+#: How the frame's savings interest holds ISA interest, declared to
+#: policyengine-uk (its ``isa_income_contract``, from 2.162.2): the frame
+#: stores ``savings_interest_income`` gross, ISA interest included, with the
+#: ISA part in ``tax_free_savings_income``. policyengine-uk reads that as
+#: ``legacy_gross`` and takes the ISA part off when it loads the dataset;
+#: declaring it keeps that reading if the engine's default for a dataset that
+#: declares nothing changes (microcosm#1095).
+UK_ISA_INCOME_CONTRACT: Mapping[str, object] = MappingProxyType(
+    {"version": 1, "representation": "legacy_gross", "projection": "legacy_gross"}
+)
+#: The H5 root attribute policyengine-uk reads that contract from.
+UK_ISA_INCOME_CONTRACT_ATTR = "policyengine_uk.isa_income_contract"
 _PERSON_TABLE = "person"
 _GROUP_TABLES = ("benunit", "household")
 _DTYPE_KIND_BY_VALUE_TYPE: dict[type, str] = {
@@ -212,6 +227,7 @@ class PolicyEngineUKEngine:
             benunit=tables["benunit"].copy(),
             household=tables["household"].copy(),
             fiscal_year=int(period),
+            isa_income_contract=dict(UK_ISA_INCOME_CONTRACT),
         )
 
 

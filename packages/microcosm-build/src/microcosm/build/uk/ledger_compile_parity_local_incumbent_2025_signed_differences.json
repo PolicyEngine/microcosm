@@ -1,11 +1,11 @@
 {
- "compiled_count": 23004,
+ "compiled_count": 23298,
  "counts_by_kind": {
   "calibration_drift": 19274,
   "fixture_only": 4267,
-  "ledger_only": 3726
+  "ledger_only": 4020
  },
- "difference_count": 27267,
+ "difference_count": 27561,
  "differences": [
   {
    "fixture_value": 70.0,
@@ -42270,6 +42270,2064 @@
    "kind": "ledger_only",
    "ledger_value": 9686.648501362399,
    "name": "hmrc.self_employment_income.count@N09000011",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 16392.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000001",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 23996.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000002",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 26062.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000003",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 33793.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000004",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 19697.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000005",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 20532.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000006",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 32261.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000007",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 21857.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000008",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 30776.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000009",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 49754.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000010",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 56224.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000011",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 27408.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000012",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 26261.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000013",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 28906.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000014",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 39493.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000015",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 41611.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000016",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 5715.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000017",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 54839.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000018",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 28415.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000019",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 27076.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000020",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 41682.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000021",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 26771.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000022",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 64746.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000023",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 34061.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000024",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 38167.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000025",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 42813.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000026",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 24970.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000027",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 32229.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000030",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 28873.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000031",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 24118.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000032",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 28651.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000033",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 19661.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000034",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 38106.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000035",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 17157.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000036",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 21580.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000037",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 24175.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000038",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 14738.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000039",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 20233.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000040",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 19526.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000041",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 39065.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000042",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 46130.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000043",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 33020.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000044",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 40357.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000045",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 25662.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000046",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 100594.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000047",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 64347.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000049",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 56152.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000050",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 51420.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000051",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 94367.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000052",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 72394.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000054",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 27256.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000055",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 42127.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000056",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 59659.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000057",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 65774.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000058",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 60566.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000059",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 66442.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000060",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 52977.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000061",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 59580.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000062",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 51716.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000063",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 40246.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000064",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 100181.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000065",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 91768.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E06000066",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 19231.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000008",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 12248.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000009",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 15939.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000010",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 26011.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000011",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 21074.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000012",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 19542.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000032",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 13015.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000033",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 20277.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000034",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 11660.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000035",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 19017.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000036",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 15818.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000037",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 16692.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000038",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 16681.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000039",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 24276.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000040",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 19869.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000041",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 12319.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000042",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 16155.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000043",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 14690.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000044",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 22427.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000045",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 10933.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000046",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 9075.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000047",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 18778.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000061",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 17841.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000062",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 16185.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000063",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 15940.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000064",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 23462.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000065",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 25374.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000066",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 22271.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000067",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 10989.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000068",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 11692.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000069",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 26204.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000070",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 28323.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000071",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 17656.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000072",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 13347.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000073",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 9313.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000074",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 11152.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000075",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 26302.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000076",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 11551.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000077",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 21466.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000078",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 13488.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000079",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 12392.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000080",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 21251.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000081",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 18423.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000082",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 15251.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000083",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 25414.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000084",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 17071.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000085",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 19315.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000086",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 15212.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000087",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 13722.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000088",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 11804.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000089",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 19254.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000090",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 26813.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000091",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 13348.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000092",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 17254.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000093",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 17558.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000094",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 14024.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000095",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 22356.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000096",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 13796.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000098",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 18793.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000099",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 11237.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000102",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 13150.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000103",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 17355.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000105",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 23271.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000106",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 15832.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000107",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 19823.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000108",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 13254.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000109",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 24520.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000110",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 15778.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000111",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 18598.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000112",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 20964.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000113",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 26847.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000114",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 16884.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000115",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 17451.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000116",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 17176.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000117",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 18686.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000118",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 15248.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000119",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 14500.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000120",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 23743.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000121",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 15185.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000122",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 23274.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000123",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 9540.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000124",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 11865.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000125",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 18362.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000126",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 17018.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000127",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 19861.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000128",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 14054.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000129",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 23408.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000130",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 14032.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000131",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 17606.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000132",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 8321.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000133",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 15550.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000134",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 7645.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000135",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 10230.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000136",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 24159.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000137",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 17066.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000138",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 17704.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000139",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 14004.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000140",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 22500.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000141",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 15188.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000142",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 20549.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000143",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 19510.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000144",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 17577.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000145",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 23785.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000146",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 18400.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000147",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 28164.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000148",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 21607.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000149",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 20077.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000170",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 19137.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000171",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 17234.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000172",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 19240.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000173",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 18319.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000174",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 19635.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000175",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 17133.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000176",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 21476.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000177",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 17646.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000178",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 19389.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000179",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 18555.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000180",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 15836.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000181",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 15424.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000192",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 19085.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000193",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 15304.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000194",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 20293.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000195",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 15355.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000196",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 20988.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000197",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 14982.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000198",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 11422.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000199",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 13979.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000200",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 22287.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000202",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 14803.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000203",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 17621.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000207",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 9263.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000208",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 18509.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000209",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 12574.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000210",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 18868.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000211",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 11671.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000212",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 13324.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000213",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 10185.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000214",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 11650.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000215",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 17859.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000216",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 12922.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000217",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 10013.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000218",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 21210.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000219",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 17409.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000220",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 21721.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000221",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 24239.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000222",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 10055.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000223",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 27007.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000224",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 20125.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000225",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 14190.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000226",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 20367.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000227",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 21935.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000228",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 18977.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000229",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 13927.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000234",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 12770.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000235",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 13323.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000236",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 17026.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000237",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 19490.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000238",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 17541.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000239",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 18268.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000240",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 15847.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000241",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 20883.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000242",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 13061.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000243",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 41564.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000244",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 26351.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E07000245",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 45108.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E08000001",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 30845.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E08000002",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 87772.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E08000003",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 34681.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E08000004",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 35968.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E08000005",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 50544.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E08000006",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 46830.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E08000007",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 38629.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E08000008",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 33928.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E08000009",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 53586.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E08000010",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 26559.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E08000011",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 91139.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E08000012",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 30322.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E08000013",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 47756.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E08000014",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 57930.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E08000015",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 42247.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E08000016",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 48701.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E08000017",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 41794.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E08000018",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 93082.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E08000019",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 50377.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E08000021",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 40099.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E08000022",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 30769.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E08000023",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 52599.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E08000024",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 151280.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E08000025",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 50152.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E08000026",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 47805.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E08000027",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 45381.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E08000028",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 31005.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E08000029",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 40427.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E08000030",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 40529.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E08000031",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 76848.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E08000032",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 37735.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E08000033",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 69890.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E08000034",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 135804.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E08000035",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 58606.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E08000036",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 36725.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E08000037",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 22004.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E09000002",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 46685.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E09000003",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 30120.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E09000004",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 37624.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E09000005",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 44982.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E09000006",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 41036.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E09000007",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 52317.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E09000008",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 37005.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E09000009",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 39630.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E09000010",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 41536.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E09000011",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 43545.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E09000012",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 30033.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E09000013",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 38828.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E09000014",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 23796.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E09000015",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 32647.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E09000016",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 30396.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E09000017",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 30265.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E09000018",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 39431.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E09000019",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 30908.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E09000020",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 18723.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E09000021",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 48077.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E09000022",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 49132.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E09000023",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 23414.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E09000024",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 36499.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E09000025",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 26625.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E09000026",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 26870.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E09000027",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 49985.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E09000028",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 25471.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E09000029",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 44199.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E09000030",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 31875.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E09000031",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 47418.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E09000032",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 42703.0,
+   "name": "mhclg.council_tax_stock.by_area.single_adult_discount@E09000033",
    "period": 2025,
    "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
   },
