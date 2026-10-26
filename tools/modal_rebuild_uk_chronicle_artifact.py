@@ -14,20 +14,24 @@ The container clones Chronicle at the pinned commit, syncs its own
 files against the pin. Results go to the ``microcosm-uk-chronicle`` Modal
 volume under ``<commit>/<facts sha256>/``, with a receipt beside them.
 
-Check the pin and print the plan (free)::
+Check the pin and print the plan (plain Python; contacts no Modal service
+and sends nothing)::
 
-    modal run tools/modal_rebuild_uk_chronicle_artifact.py
+    python tools/modal_rebuild_uk_chronicle_artifact.py
 
-Rebuild (paid, a few hours)::
+Rebuild (paid, a few hours; no credential goes to Modal)::
 
     modal run --detach tools/modal_rebuild_uk_chronicle_artifact.py --build
 
 Rebuild and upload to the private Hugging Face repo when the digests match
-the pin (``HF_TOKEN`` must be exported locally with write access to
-``policyengine/microcosm-uk-build-inputs``; it is passed to this run only,
-never stored as a Modal secret)::
+the pin. ``modal run`` creates the app before its entrypoint runs, so the
+token is attached only when ``MICROCOSM_UK_CHRONICLE_MODAL_UPLOAD=1`` says
+the upload is deliberate. ``HF_TOKEN`` needs write access to
+``policyengine/microcosm-uk-build-inputs``; give it to this one command. It
+goes to Modal as an ephemeral secret for this run only: Modal holds it for
+the run, but no named workspace secret keeps it::
 
-    modal run --detach tools/modal_rebuild_uk_chronicle_artifact.py --build --upload
+    HF_TOKEN=… MICROCOSM_UK_CHRONICLE_MODAL_UPLOAD=1 modal run --detach tools/modal_rebuild_uk_chronicle_artifact.py --build --upload
 
 An artifact whose digests differ from the pin is never uploaded under the
 pinned path; with ``--upload`` its receipt and bundle reports go to
@@ -42,6 +46,7 @@ import os
 import resource
 import shutil
 import subprocess
+import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -71,11 +76,17 @@ def _load_pin() -> dict:
 PIN = _load_pin() if modal.is_local() else json.loads(os.environ["CHRONICLE_PIN"])
 
 
+#: The launcher's opt-in for attaching HF_TOKEN to a ``modal run``.
+UPLOAD_OPT_IN = "MICROCOSM_UK_CHRONICLE_MODAL_UPLOAD"
+
+
 def _secrets() -> list[modal.Secret]:
-    # An ephemeral secret for this run only; nothing is stored in the
-    # workspace. Absent locally, the build runs and simply cannot upload.
-    # The container must declare the same dependencies as the launcher, and
-    # there the secret itself supplies HF_TOKEN, so both sides agree.
+    # An ephemeral secret for one deliberate upload run only: modal run sends
+    # the app's secrets before the entrypoint can refuse. The container must
+    # declare the same dependencies as the launcher, and there the secret
+    # itself supplies HF_TOKEN, so both sides agree.
+    if modal.is_local() and os.environ.get(UPLOAD_OPT_IN) != "1":
+        return []
     token = os.environ.get("HF_TOKEN")
     return [modal.Secret.from_dict({"HF_TOKEN": token})] if token else []
 
@@ -277,9 +288,10 @@ def _upload(out: Path, receipt: dict) -> dict:
     return {"uploaded": True, "path_in_repo": prefix, "commit": result.oid}
 
 
-@app.local_entrypoint()
-def main(build: bool = False, upload: bool = False) -> None:
-    plan = {
+def plan(*, upload: bool = False) -> dict:
+    """Print what a rebuild would do; contacts no Modal service."""
+
+    summary = {
         "chronicle_commit": PIN["source_commit"],
         "expected_facts_sha256": PIN["facts_sha256"],
         "expected_manifest_sha256": PIN["manifest_sha256"],
@@ -288,11 +300,42 @@ def main(build: bool = False, upload: bool = False) -> None:
         "upload_repo": HF_REPO if upload else None,
         "hf_token_present": bool(os.environ.get("HF_TOKEN")),
     }
-    print(json.dumps(plan, indent=2))
+    print(json.dumps(summary, indent=2))
+    return summary
+
+
+@app.local_entrypoint()
+def main(build: bool = False, upload: bool = False) -> None:
+    sent = os.environ.get(UPLOAD_OPT_IN) == "1" and bool(os.environ.get("HF_TOKEN"))
     if not build:
-        print("Plan only; pass --build to rebuild (paid).")
-        return
-    if upload and not os.environ.get("HF_TOKEN"):
-        raise SystemExit("--upload needs HF_TOKEN exported locally.")
+        raise SystemExit(
+            "modal run is only for a paid rebuild: pass --build. To plan, run "
+            "`python tools/modal_rebuild_uk_chronicle_artifact.py`, which "
+            "contacts no Modal service."
+            + (
+                f" HF_TOKEN was already sent to Modal ({UPLOAD_OPT_IN}=1)."
+                if sent
+                else ""
+            )
+        )
+    if upload and not sent:
+        raise SystemExit(
+            f"--upload needs {UPLOAD_OPT_IN}=1 and HF_TOKEN given to this command "
+            "(HF_TOKEN=… VAR=1 modal run …), not exported to the shell."
+        )
+    if sent and not upload:
+        print(
+            f"HF_TOKEN was sent to Modal ({UPLOAD_OPT_IN}=1) but this run does "
+            "not upload; drop the variable when not uploading."
+        )
+    plan(upload=upload)
     receipt = rebuild.remote(upload)
     print(json.dumps(receipt, indent=2, sort_keys=True))
+
+
+if __name__ == "__main__":
+    plan(upload="--upload" in sys.argv[1:])
+    print(
+        "Plan only. To rebuild (paid): modal run --detach "
+        "tools/modal_rebuild_uk_chronicle_artifact.py --build [--upload]"
+    )

@@ -15,8 +15,8 @@ from microcosm.data.gate_signing_keys import UK_GATE_SIGNING_KEY_ENV
 ROOT = Path(__file__).resolve().parents[5]
 
 
-def _load_app(monkeypatch):
-    """The wrapper as the launcher sees it: ``modal.is_local()`` is true."""
+def _load_app(monkeypatch, tool="modal_uk_cut.py"):
+    """A Modal tool as the launcher sees it: ``modal.is_local()`` is true."""
 
     stub = MagicMock(name="modal")
     stub.is_local.return_value = True
@@ -26,7 +26,7 @@ def _load_app(monkeypatch):
     stub.App.return_value.local_entrypoint.side_effect = lambda **_: lambda f: f
     monkeypatch.setitem(sys.modules, "modal", stub)
     spec = importlib.util.spec_from_file_location(
-        "modal_uk_cut_under_test", ROOT / "tools" / "modal_uk_cut.py"
+        f"{tool.removesuffix('.py')}_under_test", ROOT / "tools" / tool
     )
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
@@ -93,3 +93,80 @@ def test_the_registry_loads_from_a_bare_copy(monkeypatch, tmp_path):
     loaded = module.load_gate_signing_keys(copy)
     assert loaded.UK_GATE_SIGNING_KEY_ENV == UK_GATE_SIGNING_KEY_ENV
     assert set(loaded.UK_GATE_SIGNING_KEYS) == set(module.registry.UK_GATE_SIGNING_KEYS)
+
+
+def test_an_opted_in_run_without_run_says_the_credentials_were_sent(monkeypatch):
+    monkeypatch.setenv("HF_TOKEN", "hf-test")
+    monkeypatch.setenv("MICROCOSM_UK_CUT_MODAL_RUN", "1")
+    module, _ = _load_app(monkeypatch)
+    with pytest.raises(SystemExit, match="already sent to Modal"):
+        module.main("a" * 40, "t")
+
+
+def test_missing_credentials_are_asked_for_one_command(monkeypatch):
+    monkeypatch.setenv("MICROCOSM_UK_CUT_MODAL_RUN", "1")
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    monkeypatch.delenv(UK_GATE_SIGNING_KEY_ENV, raising=False)
+    module, _ = _load_app(monkeypatch)
+    monkeypatch.setattr(
+        module.subprocess,
+        "run",
+        lambda argv, **kw: module.subprocess.CompletedProcess(argv, 0),
+    )
+    with pytest.raises(SystemExit, match="to this command") as refusal:
+        module.main("a" * 40, "t", run=True)
+    assert "export " not in str(refusal.value).replace("exported", "")
+
+
+def test_the_container_syncs_without_credentials(monkeypatch):
+    monkeypatch.setenv("HF_TOKEN", "hf-test")
+    monkeypatch.setenv(UK_GATE_SIGNING_KEY_ENV, "key-test")
+    module, _ = _load_app(monkeypatch)
+    synced, ran = [], []
+    monkeypatch.setattr(
+        module, "_sh", lambda argv, **kw: synced.append((argv, kw.get("env")))
+    )
+    monkeypatch.setattr(
+        module.subprocess,
+        "run",
+        lambda argv, **kw: (
+            ran.append(kw["env"]) or module.subprocess.CompletedProcess(argv, 0)
+        ),
+    )
+    assert module.cut("a" * 40, "t", False, []) == 0
+    sync_env = next(env for argv, env in synced if argv[:2] == ["uv", "sync"])
+    assert "HF_TOKEN" not in sync_env and UK_GATE_SIGNING_KEY_ENV not in sync_env
+    assert ran[0]["HF_TOKEN"] == "hf-test"
+    assert ran[0][UK_GATE_SIGNING_KEY_ENV] == "key-test"
+
+
+CHRONICLE = "modal_rebuild_uk_chronicle_artifact.py"
+
+
+def test_the_chronicle_rebuild_sends_no_token_without_the_opt_in(monkeypatch):
+    monkeypatch.setenv("HF_TOKEN", "hf-test")
+    monkeypatch.delenv("MICROCOSM_UK_CHRONICLE_MODAL_UPLOAD", raising=False)
+    module, stub = _load_app(monkeypatch, CHRONICLE)
+    stub.Secret.from_dict.assert_not_called()
+    assert module.rebuild.modal_options["secrets"] == []
+    with pytest.raises(SystemExit, match="paid rebuild"):
+        module.main()
+    with pytest.raises(SystemExit, match="MICROCOSM_UK_CHRONICLE_MODAL_UPLOAD"):
+        module.main(build=True, upload=True)
+
+
+def test_an_opted_in_chronicle_upload_attaches_the_token(monkeypatch):
+    monkeypatch.setenv("HF_TOKEN", "hf-test")
+    monkeypatch.setenv("MICROCOSM_UK_CHRONICLE_MODAL_UPLOAD", "1")
+    module, stub = _load_app(monkeypatch, CHRONICLE)
+    stub.Secret.from_dict.assert_called_once_with({"HF_TOKEN": "hf-test"})
+    with pytest.raises(SystemExit, match="already sent to Modal"):
+        module.main()
+
+
+def test_chronicle_planning_contacts_no_modal_service(monkeypatch, capsys):
+    module, stub = _load_app(monkeypatch, CHRONICLE)
+    stub.reset_mock()
+    summary = module.plan()
+    assert summary["chronicle_commit"] == module.PIN["source_commit"]
+    assert stub.mock_calls == []

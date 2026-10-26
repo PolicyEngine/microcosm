@@ -206,15 +206,20 @@ credentials are needed. The bundle needs tens of gigabytes, so it runs on
 Modal:
 
 ```bash
-modal run tools/modal_rebuild_uk_chronicle_artifact.py                                       # plan, free
-HF_TOKEN=… modal run --detach tools/modal_rebuild_uk_chronicle_artifact.py --build --upload  # rebuild
+python tools/modal_rebuild_uk_chronicle_artifact.py                          # plan, sends nothing
+HF_TOKEN=… MICROCOSM_UK_CHRONICLE_MODAL_UPLOAD=1 \
+  modal run --detach tools/modal_rebuild_uk_chronicle_artifact.py --build --upload   # rebuild and host
 ```
 
 The artifact is uploaded under `chronicle-uk/<commit>/` only when both of its
 digests match `chronicle_feed.json`. The 2026-10-22 rebuild reproduced both
 (bundle 2h24m, artifact 30 min, peak memory 35.5 GB). Otherwise only the receipt and the bundle
-reports go to `diagnostic/`, so the difference can be traced. The token is
-passed for that run only and is never stored as a Modal secret.
+reports go to `diagnostic/`, so the difference can be traced. `modal run`
+creates the app before its entrypoint runs, so the token, which can write to
+the private repositories, is attached only with
+`MICROCOSM_UK_CHRONICLE_MODAL_UPLOAD=1`. It then goes to Modal as an
+ephemeral secret for that run; no named workspace secret keeps it. A rebuild
+without `--upload` sends no credential at all.
 
 ### Regenerating the input-mass reference
 

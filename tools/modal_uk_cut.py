@@ -139,10 +139,13 @@ def cut(commit: str, label: str, publish: bool, extra: list[str]) -> int:
     _sh(["git", "clone", "--quiet", REPO_URL, CHECKOUT])
     _sh(["git", "-C", CHECKOUT, "checkout", "--quiet", commit])
     env = {**os.environ, "UV_PROJECT_ENVIRONMENT": f"{CHECKOUT}/.venv"}
+    # The sync installs third-party packages and needs no credential; the
+    # runner itself scopes the signing key to the steps that use it.
+    credentials = {"HF_TOKEN", registry.UK_GATE_SIGNING_KEY_ENV}
     _sh(
         ["uv", "sync", "--all-packages", "--locked", "--extra", "uk"],
         cwd=CHECKOUT,
-        env=env,
+        env={k: v for k, v in env.items() if k not in credentials},
     )
     argv = [
         f"{CHECKOUT}/.venv/bin/python",
@@ -206,16 +209,26 @@ def main(
     publish: bool = False,
     retry_national: bool = False,
 ) -> None:
-    if not run or os.environ.get(RUN_OPT_IN) != "1":
+    opted_in = os.environ.get(RUN_OPT_IN) == "1"
+    if not run or not opted_in:
         raise SystemExit(
             "modal run is only for a deliberate, paid run: set "
             f"{RUN_OPT_IN}=1 and pass --run. To plan, run "
             "`python tools/modal_uk_cut.py --commit <sha> --label <label>`, "
             "which contacts no Modal service."
+            + (
+                f" The credentials in this environment were already sent to "
+                f"Modal ({RUN_OPT_IN}=1); nothing was built."
+                if opted_in
+                else ""
+            )
         )
     missing = plan(commit, label, publish=publish)
     if missing:
-        raise SystemExit(f"export {', '.join(missing)} before --run.")
+        raise SystemExit(
+            f"give {', '.join(missing)} to this command (VAR=… modal run …), "
+            "not exported to the shell, then --run again."
+        )
     extra = ["--retry-national"] if retry_national else []
     code = cut.remote(commit, label, publish, extra)
     raise SystemExit(code)
