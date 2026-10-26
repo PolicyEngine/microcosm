@@ -875,6 +875,23 @@ def test_signed_policy_closed_keys_and_exact_decimal_refusals(key, value):
         replace(reference, value_operands=operands)
 
 
+@pytest.mark.parametrize("value", ["1", "1.0", "0.999"])
+def test_signed_relative_bound_accepts_values_up_to_one(value):
+    _, reference = _signed_case()
+    operands = deepcopy(reference.value_operands)
+    operands[2]["discrepancy_policy"]["max_relative"] = value
+    replace(reference, value_operands=operands)
+
+
+@pytest.mark.parametrize("value", ["1.000000000000000001", "1.5", "5"])
+def test_signed_relative_bound_refuses_values_above_one(value):
+    _, reference = _signed_case()
+    operands = deepcopy(reference.value_operands)
+    operands[2]["discrepancy_policy"]["max_relative"] = value
+    with pytest.raises(ValueError, match="max_relative must be at most 1"):
+        replace(reference, value_operands=operands)
+
+
 @pytest.mark.parametrize(
     "change",
     [

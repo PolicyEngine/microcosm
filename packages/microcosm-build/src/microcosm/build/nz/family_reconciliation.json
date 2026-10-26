@@ -7,7 +7,7 @@
     "max_relative": "0.001",
     "combine": "either",
     "ruling": "d1932",
-    "disclosure": "Census family-type counts in each region are scaled to that region's published family total. The published type counts and family totals are independently rounded to base 3, so they can differ by up to 3 families; the scaling is a modelling adjustment for that rounding noise, not an observed category (Max ruling d1932). Region 99 has +3 families (2.0% of its published family total; 2.04% of its stated type leaves), admitted through the absolute bound."
+    "disclosure": "Census family-type counts in each region are scaled to that region's published family total. The published type counts and family totals are independently rounded to base 3, so their sums need not agree; the observed regional gaps are at most 3 families, and the scaling is a modelling adjustment for that rounding noise, not an observed category (Max ruling d1932). Region 99 has +3 families (2.0% of its published family total; 2.04% of its stated type leaves), admitted through the absolute bound."
   },
   "type_labels": {
     "1": "Couple Without Children",

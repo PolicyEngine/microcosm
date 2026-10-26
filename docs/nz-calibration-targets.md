@@ -58,8 +58,9 @@ with sizes eight and above sharing the final category.
 **d1932 signed family reconciliation, 24 October 2026.** Census family-type
 counts in each region are scaled to that region's published family total. The
 published type counts and family totals are independently rounded to base 3,
-so they can differ by up to 3 families; the scaling is a modelling adjustment
-for that rounding noise, not an observed category (Max ruling d1932). The
+so their sums need not agree; the observed regional gaps are at most 3
+families, and the scaling is a modelling adjustment for that rounding noise,
+not an observed category (Max ruling d1932). The
 declared policy in `build/nz/family_reconciliation.json` admits an absolute
 discrepancy of at most 3 families **or** a discrepancy of at most 0.1% of the
 stated type leaves. Region 99's +3 is 2.0% of its published family total

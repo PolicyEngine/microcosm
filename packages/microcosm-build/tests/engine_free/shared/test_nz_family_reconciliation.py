@@ -55,9 +55,10 @@ _POLICY_KEYS = {"kind", "max_abs", "max_relative", "combine", "ruling", "disclos
 _DISCLOSURE = (
     "Census family-type counts in each region are scaled to that region's "
     "published family total. The published type counts and family totals are "
-    "independently rounded to base 3, so they can differ by up to 3 families; "
-    "the scaling is a modelling adjustment for that rounding noise, not an "
-    "observed category (Max ruling d1932)."
+    "independently rounded to base 3, so their sums need not agree; the "
+    "observed regional gaps are at most 3 families, and the scaling is a "
+    "modelling adjustment for that rounding noise, not an observed category "
+    "(Max ruling d1932)."
 )
 
 
@@ -598,5 +599,5 @@ def test_family_receipts_are_byte_deterministic_and_digest_pinned():
     assert len(receipts) == 34
     assert (
         hashlib.sha256(canonical_json(receipts)).hexdigest()
-        == "ea900729878c4b6e8529d7d3b06099d30ade071e66e7fa8947ec64d7a4939181"
+        == "8a83c526da697a1e47f6c273579792f3cb03c11678c2cb74158d035f7669d43b"
     )

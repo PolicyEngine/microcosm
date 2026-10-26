@@ -2548,6 +2548,8 @@ def validate_signed_discrepancy_policy(policy: object) -> dict[str, object]:
         raise ValueError(
             "Signed discrepancy max_relative must be an exact decimal string."
         )
+    if Fraction(decimal) > 1:
+        raise ValueError("Signed discrepancy max_relative must be at most 1.")
     if policy["combine"] != "either":
         raise ValueError("Signed discrepancy bounds must combine as 'either'.")
     if any(
