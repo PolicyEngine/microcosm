@@ -622,6 +622,41 @@ class RunnerTests(unittest.TestCase):
         self.assertIn("local_bus_uncapped_single_fare", body)
         self.assertIn("audited by A Reviewer", body)
 
+    def test_package_steps_get_no_hugging_face_token(self):
+        details = []
+        self.run_mock_pipeline(evidence=EVIDENCE, call_details=details)
+        package_steps = {
+            "initial-sync",
+            "audit-model-install",
+            "lock",
+            "certified-sync",
+            "check-pytest-xdist",
+        }
+        by_step = {kwargs.get("step"): kwargs for _, kwargs in details}
+        for step in package_steps:
+            self.assertIs(by_step[step].get("credentials"), False, step)
+        for step in ("regional-input-audit", "certify-data", "UC-floor", "tests"):
+            self.assertIsNot(by_step[step].get("credentials"), False, step)
+
+    def test_a_credential_free_step_sees_no_hugging_face_token(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            shell = runner.Shell(Path(tmp), Path(tmp) / "run.log")
+            with (
+                patch.dict(os.environ, {"HF_TOKEN": "a", "HUGGING_FACE_TOKEN": "b"}),
+                patch.object(runner, "resource_guard", return_value={}),
+                patch.object(
+                    runner,
+                    "run_logged",
+                    return_value=subprocess.CompletedProcess(["uv"], 0, "", ""),
+                ) as spawn,
+            ):
+                shell(["uv", "sync"], credentials=False)
+                quiet = spawn.call_args.kwargs["env"]
+                shell(["python", "scripts/bundle.py"])
+                loud = spawn.call_args.kwargs["env"]
+            self.assertFalse({"HF_TOKEN", "HUGGING_FACE_TOKEN"} & set(quiet))
+            self.assertEqual((loud["HF_TOKEN"], loud["HUGGING_FACE_TOKEN"]), ("a", "b"))
+
     def test_an_audit_reporting_drops_refuses_before_certify_data(self):
         details = []
         with self.assertRaisesRegex(runner.CertifyError, "would lose them: age"):

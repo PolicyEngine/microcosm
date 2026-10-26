@@ -432,10 +432,29 @@ WITHHELD_ENVIRONMENT = frozenset(
 )
 
 
-def policyengine_py_environment() -> dict[str, str]:
-    """This process's environment, less what policyengine.py must not see."""
+#: Hugging Face tokens: policyengine.py's scripts and tests read the private
+#: cut repositories with them, but package installs and syncs never need one.
+HF_TOKEN_ENVIRONMENT = frozenset(
+    {
+        "HF_TOKEN",
+        "HUGGING_FACE_TOKEN",
+        "HUGGINGFACE_HUB_TOKEN",
+        "HUGGING_FACE_HUB_TOKEN",
+    }
+)
 
-    return {k: v for k, v in os.environ.items() if k not in WITHHELD_ENVIRONMENT}
+
+def policyengine_py_environment(*, credentials: bool = True) -> dict[str, str]:
+    """This process's environment, less what policyengine.py must not see.
+
+    ``credentials=False`` also withholds the Hugging Face tokens, for steps
+    that only install or resolve packages.
+    """
+
+    withheld = WITHHELD_ENVIRONMENT | (
+        frozenset() if credentials else HF_TOKEN_ENVIRONMENT
+    )
+    return {k: v for k, v in os.environ.items() if k not in withheld}
 
 
 class Shell:
@@ -465,6 +484,7 @@ class Shell:
         env: dict[str, str] | None = None,
         check=True,
         step: str | None = None,
+        credentials: bool = True,
     ) -> subprocess.CompletedProcess:
         line = shlex.join(argv)
         self.commands.append(line)
@@ -486,7 +506,10 @@ class Shell:
                 result = run_logged(
                     argv,
                     cwd=self.cwd,
-                    env={**policyengine_py_environment(), **(env or {})},
+                    env={
+                        **policyengine_py_environment(credentials=credentials),
+                        **(env or {}),
+                    },
                     handle=handle,
                 )
             timing["returncode"] = result.returncode
@@ -1165,7 +1188,7 @@ def certify(args: argparse.Namespace) -> int:
     python = str(worktree / ".venv/bin/python")
     sync = ["uv", "sync", "--frozen", "--extra", "uk", "--extra", "dev",
             "--python", PEPY_PYTHON]  # fmt: skip
-    run(sync, step="initial-sync")
+    run(sync, step="initial-sync", credentials=False)
     evidence = None
     if mismatch:
         # The audit reads the target model in process, so the worktree's
@@ -1176,6 +1199,7 @@ def certify(args: argparse.Namespace) -> int:
              "https://pypi.org/simple", "--python", python,
              f"policyengine-uk=={model}", f"policyengine-core=={core}"],
             step="audit-model-install",
+            credentials=False,
         )  # fmt: skip
         evidence_path = worktree.parent / f"{worktree.name}.regional-input-surface.json"
         # An earlier attempt's evidence must not stand in for this audit.
@@ -1222,8 +1246,9 @@ def certify(args: argparse.Namespace) -> int:
     run(
         ["uv", "lock", "--no-config", "--no-sources", "--default-index",
          "https://pypi.org/simple", "--python", python], step="lock",
+        credentials=False,
     )  # fmt: skip
-    run(sync, step="certified-sync")
+    run(sync, step="certified-sync", credentials=False)
     run([python, "scripts/release_lock.py"], step="release-lock")
     run([python, "scripts/bundle.py", "generate", "--include-tros"], step="TROs")
     new_bundle = json.loads(
@@ -1284,12 +1309,16 @@ def certify(args: argparse.Namespace) -> int:
     tests_summary, tests_failed, tests_returncode = "skipped", [], 0
     if not args.skip_tests:
         xdist = run(
-            [python, "-c", "import xdist"], check=False, step="check-pytest-xdist"
+            [python, "-c", "import xdist"],
+            check=False,
+            step="check-pytest-xdist",
+            credentials=False,
         )
         if xdist.returncode:
             run(
                 ["uv", "pip", "install", "--python", python, "pytest-xdist"],
                 step="install-pytest-xdist",
+                credentials=False,
             )
         tests = run(
             pytest_command(python, ["-n", str(args.test_workers), "-vv",
