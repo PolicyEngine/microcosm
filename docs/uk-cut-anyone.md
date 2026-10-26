@@ -144,7 +144,7 @@ ever left at an input's path.
 | HMRC personal incomes ODS | gov.uk URL pinned in `source_stages.json` | fetched, matches |
 | Incumbent enhanced FRS | `policyengine-uk-data-private` `enhanced_frs_2024_25.h5` @ `a9e52499` | fetched, matches |
 | Input-mass reference | `policyengine/microcosm-uk-build-inputs` (private) `input-mass-reference/fd41cb5f…/` | fetched, matches |
-| Chronicle UK consumer artifact (about 7.4 GB) | `policyengine/microcosm-uk-build-inputs` `chronicle-uk/<the feed's source commit>/`, read at main | the path follows `chronicle_feed.json`, so a re-pin needs its artifact hosted (below); abf0921's was rebuilt on Modal and both digests reproduced the pin byte for byte |
+| Chronicle UK consumer artifact (about 7.4 GB) | `policyengine/microcosm-uk-build-inputs` `chronicle-uk/<the feed's source commit>/`, read at main | fetched, both files match the feed pin. The path follows `chronicle_feed.json`, so each re-pin needs its artifact hosted (below). 272c987's (main's pin) was uploaded on 2026-10-26 from the build #1359 pinned; abf0921's was rebuilt on Modal and reproduced the pin byte for byte |
 | NTS 2002-2024 (5 tabs) | `policyengine-uk-data-private` `nts_2002_24.zip` @ `559b69e9` | fetched, every member matches its pin |
 | LCFS 2024-25 (2 tabs) | `policyengine-uk-data-private` `lcfs_2024_25.zip` @ `11051052` (a repack of the extracted files) | fetched, every member matches its pin |
 
