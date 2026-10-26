@@ -138,34 +138,105 @@ WATCHED_PATHS = ("tools", "packages")
 #: Reads of a file that keeps changing while it is read, before it is
 #: recorded as unstable.
 _STABLE_READ_ATTEMPTS = 3
+#: Opening a path never blocks (a FIFO put there after the lstat) and never
+#: follows a link put there; what was opened is checked before it is read.
+_READ_FLAGS = (
+    os.O_RDONLY
+    | getattr(os, "O_NONBLOCK", 0)
+    | getattr(os, "O_NOFOLLOW", 0)
+    | getattr(os, "O_CLOEXEC", 0)
+)
+#: What a directory that is not the top of a git repository is recorded as.
+_PLAIN_DIRECTORY = ("040000", "", "directory, not read")
 
 
-def _nested_repository_head(path: Path) -> str | None:
-    """The commit checked out in a git repository whose top level is
-    ``path`` (a submodule, or a clone left under a watched path), or
-    ``None`` when ``path`` is not the top of one."""
-    if not (path / ".git").exists():
-        return None
+def _nested_repository(path: Path) -> tuple[str, str]:
+    """What the directory ``path`` holds, as ``(kind, detail)``:
+
+    - ``("repository", commit)`` at the top of a git repository with a
+      commit checked out (a submodule, or a clone left under a watched path);
+    - ``("directory", "")`` with no ``.git`` entry (so also a submodule that
+      is not checked out);
+    - ``("unidentified", why)`` with a ``.git`` entry git does not resolve to
+      a commit checked out at ``path``: a broken or unborn repository, a
+      ``.git`` below the top of one, or a lookup that failed.
+
+    Git's output is parsed as bytes, so no path is decoded or resolved.
+    """
     try:
-        out = subprocess.run(
+        os.lstat(path / ".git")
+    except FileNotFoundError:
+        return ("directory", "")
+    except OSError as error:
+        return ("unidentified", f"errno {error.errno}")
+    try:
+        run = subprocess.run(
             [
                 "git",
                 "--no-optional-locks",
                 "-C",
                 str(path),
                 "rev-parse",
-                "--show-toplevel",
+                "--show-prefix",
+                "--verify",
                 "HEAD",
             ],
             capture_output=True,
-            text=True,
-            check=True,
-        ).stdout.splitlines()
-    except (OSError, subprocess.CalledProcessError, UnicodeDecodeError):
-        return None
-    if len(out) < 2 or Path(out[0]).resolve() != path.resolve():
-        return None
-    return out[1].strip() or None
+        )
+    except OSError as error:
+        return ("unidentified", f"errno {error.errno}")
+    if run.returncode:
+        return ("unidentified", f"git exit {run.returncode}")
+    prefix, _, head = run.stdout.partition(b"\n")
+    if prefix:
+        return ("unidentified", "not the top of its repository")
+    try:
+        return ("repository", head.strip().decode("ascii"))
+    except UnicodeDecodeError:
+        return ("unidentified", "HEAD not ascii")
+
+
+def _spelled(root: Path, path: bytes, listings: dict) -> bytes:
+    """``path`` as the directory entries on disk spell it.
+
+    On a case-insensitive file system ``tools/A.py`` opens the entry
+    ``tools/a.py``, and git may list either spelling, by what HEAD and the
+    index hold. Naming what is there makes a case-only rename a difference
+    whatever git lists or has staged. A component with no entry of its exact
+    spelling takes the entry it opens (the same device and inode; one equal
+    ignoring case first, then in byte order). An absent path is returned as
+    given. Names that differ only in Unicode normalization are different
+    names here, as they are on disk. ``listings`` caches each directory's
+    entries for one state.
+    """
+    spelled: list[bytes] = []
+    parent = os.fsencode(root)
+    for part in path.split(b"/"):
+        if parent not in listings:
+            try:
+                listings[parent] = frozenset(os.listdir(parent))
+            except OSError:
+                listings[parent] = None
+        names = listings[parent]
+        if names is not None and part not in names:
+            try:
+                target = os.lstat(os.path.join(parent, part))
+            except OSError:
+                return path  # nothing there by any spelling
+            folded = os.fsdecode(part).casefold()
+            for name in sorted(
+                names, key=lambda name: (os.fsdecode(name).casefold() != folded, name)
+            ):
+                try:
+                    info = os.lstat(os.path.join(parent, name))
+                except OSError:
+                    continue
+                if (info.st_dev, info.st_ino) == (target.st_dev, target.st_ino):
+                    part = name
+                    break
+        spelled.append(part)
+        parent = os.path.join(parent, part)
+    return b"/".join(spelled)
 
 
 def _worktree_entry(path: Path, object_format: str) -> tuple[str, str, str] | None:
@@ -178,9 +249,15 @@ def _worktree_entry(path: Path, object_format: str) -> tuple[str, str, str] | No
       read again; after :data:`_STABLE_READ_ATTEMPTS` reads it is recorded as
       ``unstable``, which never matches HEAD. A change within one timestamp
       tick that keeps the inode and the size is not detected.
-    - A directory (a nested repository) is recorded by the commit checked
-      out in it, if any; its files are not read.
-    - A FIFO, socket or device is recorded by its type and never opened.
+    - A path replaced after its lstat (by a FIFO, a socket, a device or a
+      link) is never read as a file: it is opened without blocking or
+      following a link, the opened descriptor's type is checked before any
+      read, and the path is read again as what it now is.
+    - A directory is recorded as a repository (mode ``160000``, the commit
+      checked out, as a submodule is compared with HEAD), a plain directory
+      or an unidentified repository (:func:`_nested_repository`); its files
+      are not read.
+    - A FIFO, socket or device is recorded by its type and never read.
     - A path that cannot be read is recorded by its errno, size and
       modification time, never as matching HEAD; its bytes are not covered.
     """
@@ -196,9 +273,12 @@ def _worktree_entry(path: Path, object_format: str) -> tuple[str, str, str] | No
         except OSError as error:
             return ("unreadable", "", f"errno {error.errno}")
         if stat.S_ISDIR(before.st_mode):
-            head = _nested_repository_head(path)
-            content = f"repository at {head}" if head else "directory, not read"
-            return ("040000", "", content)
+            kind, detail = _nested_repository(path)
+            if kind == "repository":
+                return ("160000", detail, f"repository at {detail}")
+            if kind == "directory":
+                return _PLAIN_DIRECTORY
+            return ("040000", "", f"repository unidentified: {detail}")
         if not (stat.S_ISREG(before.st_mode) or stat.S_ISLNK(before.st_mode)):
             return ("special", "", f"file type {stat.S_IFMT(before.st_mode):o}")
         blob = hashlib.new(object_format)
@@ -212,8 +292,10 @@ def _worktree_entry(path: Path, object_format: str) -> tuple[str, str, str] | No
                 complete = True
             else:
                 mode = "100755" if before.st_mode & stat.S_IXUSR else "100644"
-                with path.open("rb") as handle:
+                with open(os.open(path, _READ_FLAGS), "rb") as handle:
                     opened = os.fstat(handle.fileno())
+                    if not stat.S_ISREG(opened.st_mode):
+                        continue  # replaced since the lstat: read what is there
                     blob.update(b"blob %d\0" % opened.st_size)
                     size = 0
                     while chunk := handle.read(1 << 20):
@@ -226,6 +308,12 @@ def _worktree_entry(path: Path, object_format: str) -> tuple[str, str, str] | No
         except FileNotFoundError:
             continue  # removed while read: the next attempt sees what is there
         except OSError as error:
+            try:
+                replaced = signature(path.lstat()) != signature(before)
+            except OSError:
+                replaced = True
+            if replaced:
+                continue  # replaced while read (a link put there refuses the open)
             return (
                 "unreadable",
                 "",
@@ -247,16 +335,19 @@ def _git_state(root: Path | None = None) -> tuple[str | None, bool | None, str |
 
     Every path in HEAD's tree, every index entry and every untracked,
     unignored file git lists under those paths (regular files and links; git
-    lists no FIFO, socket or device it cannot track) is compared with HEAD
-    by content: its
-    mode and git object id, computed from the working tree here
+    lists no FIFO, socket or device it cannot track) is named as the
+    directory entries spell it (:func:`_spelled`) and compared with HEAD by
+    content: its mode and git object id, computed from the working tree here
     (:func:`_worktree_entry`), never taken from the index's cached stat
-    data. So staging, a same-bytes rewrite, the assume-unchanged bit and
-    ``core.filemode`` change nothing, and a file staged while this runs is
-    still seen: one ``ls-files`` call lists the index and the untracked files
-    together. A skip-worktree entry missing from the working tree (a sparse
-    checkout) counts as unchanged, as git counts it; a submodule counts as
-    unchanged when it is not checked out or is at the commit HEAD records.
+    data. So staging, a same-bytes rewrite, the assume-unchanged bit,
+    ``core.filemode`` and ``core.ignorecase`` change nothing, a case-only
+    rename is a difference, and a file staged while this runs is still seen:
+    one ``ls-files`` call lists the index and the untracked files together.
+    A skip-worktree entry missing from the working tree (a sparse checkout)
+    counts as unchanged, as git counts it. A submodule counts as unchanged
+    when its directory is at the commit HEAD records or is not checked out
+    (no ``.git``), and as a difference when it is missing, replaced by a
+    file, at another commit or unidentified, as git counts it.
 
     HEAD is resolved once and every read uses it. Only plumbing runs
     (``rev-parse``, ``ls-tree``, ``ls-files``), none of which writes the
@@ -309,26 +400,32 @@ def _git_state(root: Path | None = None) -> tuple[str | None, bool | None, str |
         ValueError,
     ):
         return None, None, None
+    # What is there, by the spelling on disk: a committed path whose entry is
+    # spelled otherwise is absent by its own spelling.
+    worktree: dict[bytes, tuple[str, str, str] | None] = {}
+    listings: dict = {}
+    for path in set(committed) | listed:
+        spelled = _spelled(root, path, listings)
+        if spelled not in worktree:
+            worktree[spelled] = _worktree_entry(
+                root / os.fsdecode(spelled), object_format
+            )
     digest = hashlib.sha256()
     differences = 0
-    for path in sorted(set(committed) | listed):
+    for path in sorted(set(committed) | set(worktree)):
         expected = committed.get(path)
-        full = root / os.fsdecode(path)
-        if expected is not None and expected[0] == "160000":
-            checked_out = _nested_repository_head(full)
-            if checked_out is None or checked_out == expected[1]:
-                continue  # not checked out, or at the commit HEAD records
-            record = f"160000 {checked_out}".encode()
+        entry = worktree.get(path)
+        if entry is None:
+            if expected is None or path in skip_worktree:
+                continue  # staged then deleted, or outside a sparse checkout
+            record = b"deleted"
+        elif expected is not None and (
+            expected == entry[:2]
+            or (expected[0] == "160000" and entry == _PLAIN_DIRECTORY)
+        ):
+            continue  # HEAD's bytes and mode; a submodule not checked out
         else:
-            entry = _worktree_entry(full, object_format)
-            if entry is None:
-                if expected is None or path in skip_worktree:
-                    continue  # staged then deleted, or outside a sparse checkout
-                record = b"deleted"
-            elif expected is not None and expected == entry[:2]:
-                continue  # the committed bytes and mode
-            else:
-                record = f"{entry[0]} {entry[2]}".encode()
+            record = f"{entry[0]} {entry[2]}".encode()
         differences += 1
         digest.update(path + b"\0" + record + b"\0")
     if not differences:
@@ -341,18 +438,20 @@ def _installed_distributions() -> dict[str, object]:
     of the sorted ``name==version`` lines. It is an inventory, so equal
     digests mean the same names and versions, not the same installed bytes.
     A distribution whose metadata cannot be read is listed by its location
-    and error type and counted under ``unreadable``; nothing here raises."""
+    (or ``unknown location``) and error type and counted under
+    ``unreadable``. Lines are encoded with ``surrogatepass``, so a name or
+    location that is not valid UTF-8 (a surrogate-escaped path) is hashed,
+    one-to-one, not raised. No ``Exception`` escapes."""
     import importlib.metadata as metadata
 
     try:
         distributions = list(metadata.distributions())
     except Exception as error:  # the inventory must never stop a run
-        return {
-            "count": None,
-            "sha256": None,
-            "unreadable": None,
-            "error": f"{type(error).__name__}: {error}",
-        }
+        try:
+            why = f"{type(error).__name__}: {error}"
+        except Exception:
+            why = type(error).__name__
+        return {"count": None, "sha256": None, "unreadable": None, "error": why}
     lines: set[str] = set()
     unreadable = 0
     for dist in distributions:
@@ -360,12 +459,17 @@ def _installed_distributions() -> dict[str, object]:
             lines.add(f"{str(dist.metadata['Name'] or '').lower()}=={dist.version}")
         except Exception as error:  # one bad record costs only itself
             unreadable += 1
-            where = getattr(dist, "_path", None)
+            try:
+                where = str(getattr(dist, "_path", None))
+            except Exception:
+                where = "unknown location"
             lines.add(f"!unreadable {where}: {type(error).__name__}")
     ordered = sorted(lines)
     return {
         "count": len(ordered),
-        "sha256": hashlib.sha256("\n".join(ordered).encode()).hexdigest(),
+        "sha256": hashlib.sha256(
+            "\n".join(ordered).encode("utf-8", "surrogatepass")
+        ).hexdigest(),
         "unreadable": unreadable,
     }
 
@@ -380,10 +484,14 @@ def _pin_traceback_source(paths, source: bytes) -> None:
 
 
 # This file's bytes and the repository state, read before the heavy imports
-# below (Python read these bytes milliseconds earlier to compile what runs);
-# tracebacks from this file quote the same bytes. The packages imported later
-# come from whatever the tree holds then: _tool_source_record compares.
-_SOURCE_AT_LOAD = Path(__file__).read_bytes()
+# below. The bytes are the ones a loader that read this file once handed over
+# (the probe's _load_tool), or else this file read now, milliseconds after
+# Python read it to compile what runs; tracebacks from this file quote them.
+# The packages imported later come from whatever the tree holds then:
+# _tool_source_record compares.
+_SOURCE_AT_LOAD = globals().pop("__loaded_source__", None)
+if _SOURCE_AT_LOAD is None:
+    _SOURCE_AT_LOAD = Path(__file__).read_bytes()
 _pin_traceback_source((__file__, sys._getframe(0).f_code.co_filename), _SOURCE_AT_LOAD)
 _STATE_AT_LOAD = _git_state()
 _TOOL_SOURCE: dict[str, object] = {
@@ -483,10 +591,13 @@ def _load_tool(module_name: str, filename: str):
     module = importlib.util.module_from_spec(spec)
     # Read the file once and execute those bytes, so the report's hash is of
     # the code that ran (the loader would read the file again). Tracebacks
-    # quote the same bytes: linecache keeps an entry with no mtime as is.
+    # quote the same bytes: linecache keeps an entry with no mtime as is. A
+    # tool that records its own bytes (the sampler) takes these from
+    # ``__loaded_source__`` instead of reading its file again.
     path = str(_TOOLS / filename)
     source = (_TOOLS / filename).read_bytes()
     module.__loaded_sha256__ = hashlib.sha256(source).hexdigest()
+    module.__loaded_source__ = source
     _pin_traceback_source((path,), source)
     sys.modules[module_name] = module
     try:

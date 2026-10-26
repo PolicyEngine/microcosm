@@ -139,14 +139,22 @@ Before their heavy imports, both tools record:
 
 The working tree is compared with HEAD by reading every watched file and
 recomputing its git object id, not by trusting the index. So staging, a
-same-bytes rewrite, the assume-unchanged and skip-worktree bits and
-`core.filemode` neither add nor hide a change. Untracked files, and a file
-staged while the state is read, are included. When the tools write a
-receipt or report they read the state again and set `moved_since_load` if it
-changed, so an edit within an already dirty tree counts.
+same-bytes rewrite, the assume-unchanged and skip-worktree bits,
+`core.filemode` and `core.ignorecase` neither add nor hide a change. Files
+are named as the directory entries on disk spell them, so on a
+case-insensitive file system a case-only rename is a difference whether or
+not it is staged. Untracked files, and a file staged while the state is read,
+are included. A path replaced by a FIFO or a link between its lstat and its
+open is read again as what it now is; the open never blocks. A submodule
+counts as unchanged when it is at the commit HEAD records or not checked out,
+and as a difference when it is missing, replaced by a file, unidentified or
+at another commit. When the tools write a receipt or report they read the
+state again and set `moved_since_load` if it changed, so an edit within an
+already dirty tree counts.
 
 The probe also records the sha256 of the release tool and sampler it ran,
-taken from the bytes it executed (their tracebacks quote the same bytes).
+taken from the bytes it executed (their tracebacks quote the same bytes); the
+sampler it loads records those same bytes as its own.
 
 What the record cannot show:
 - an edit made and undone between the two moments;
@@ -154,7 +162,11 @@ What the record cannot show:
   and size;
 - the bytes of a file it cannot read (recorded by error, size and time);
 - edits inside a nested repository (recorded by its checked-out commit);
-- the bytes of installed libraries (recorded by name and version).
+- the bytes of installed libraries (recorded by name and version);
+- an ignored file whose name differs only in case from a staged one, which
+  git lists or not by what is staged;
+- names that differ only in Unicode normalization, which count as a rename
+  (as on HFS+, where every non-ASCII name would).
 
 ## Result
 

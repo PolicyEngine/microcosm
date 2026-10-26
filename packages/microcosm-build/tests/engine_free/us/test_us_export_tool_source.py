@@ -11,18 +11,21 @@ Invariants, on real git repositories:
   modes: the digest is ``None`` exactly when they equal HEAD's, equal states
   mean equal watched trees and equal watched trees give equal states, so
   staging, rewriting a file with the same bytes, ignored files and changes
-  outside ``tools/`` and ``packages/`` leave it unchanged, while index flags
-  and ``core.filemode`` hide nothing;
+  outside ``tools/`` and ``packages/`` leave it unchanged, while index flags,
+  ``core.filemode`` and a case-insensitive file system hide nothing;
 - reading it never writes the index, and reading it twice gives the same
   state; the two tools' implementations agree on every state (differential);
 - a file that keeps changing while read, a tracked path replaced by a
-  special file, an unreadable file and a nested repository at another commit
-  each count as a difference, never as HEAD's bytes;
+  special file (also between its lstat and its open, which never blocks), an
+  unreadable file, and a submodule missing, replaced by a file, unidentified
+  or at another commit each count as a difference, never as HEAD's bytes;
 - the load fields are read before the heavy imports, the record keeps them,
   and ``moved_since_load`` is exactly "the state differs from the one at
-  load", ``None`` when either moment has no git state;
+  load", ``None`` when either moment has no git state; the distribution
+  inventory changes with any name or version and raises no ``Exception``;
 - a sibling tool the probe loads runs the bytes it hashes, compiled without
-  the probe's own future flags, and tracebacks quote the bytes that ran.
+  the probe's own future flags, tracebacks quote the bytes that ran, the
+  sampler records those bytes as its own, and a failed load leaves no module.
 
 These tests load both tools without the engine.
 """
@@ -35,8 +38,10 @@ import hashlib
 import importlib.util
 import linecache
 import os
+import shutil
 import subprocess
 import sys
+import threading
 import traceback
 from pathlib import Path
 from types import SimpleNamespace
@@ -336,29 +341,81 @@ def test_git_state_reads_past_the_index(sampler, probe_tool, git_env, tmp_path) 
     assert _both(sampler, probe_tool, repo.root)[1] is True
 
 
+def _rename(repo: Repo, old: str, new: str) -> None:
+    """Rename through a third name, which works for a case-only rename on a
+    case-insensitive file system too."""
+    middle = repo.root / f"{new}.renaming"
+    os.rename(repo.root / old, middle)
+    os.rename(middle, repo.root / new)
+
+
+def test_a_case_only_rename_is_a_difference_whatever_is_staged(
+    sampler, probe_tool, git_env, tmp_path
+) -> None:
+    """On a case-insensitive file system (macOS's default) ``tools/Case.py``
+    still opens a file renamed to ``tools/case.py``, and git, with
+    ``core.ignorecase``, lists only the old spelling until the rename is
+    staged. The state names the entry on disk, so the rename is the same
+    difference before and after it is staged, and renaming back is clean
+    either way. On a case-sensitive file system git lists the new name as
+    untracked, and the same assertions hold."""
+    repo = Repo(tmp_path / "repo")
+    repo.write("tools/Case.py", b"case\n")
+    repo.commit()
+    clean = _both(sampler, probe_tool, repo.root)
+    assert clean[1] is False
+    _rename(repo, "tools/Case.py", "tools/case.py")
+    unstaged = _both(sampler, probe_tool, repo.root)
+    repo.git("rm", "-q", "--cached", "tools/Case.py")
+    repo.git("add", "tools/case.py")
+    staged = _both(sampler, probe_tool, repo.root)
+    assert unstaged[1] is True
+    assert staged == unstaged
+    _rename(repo, "tools/case.py", "tools/Case.py")
+    assert _both(sampler, probe_tool, repo.root) == clean  # the new spelling staged
+    repo.git("reset", "-q")
+    assert _both(sampler, probe_tool, repo.root) == clean
+
+
 def test_git_state_reads_nested_repositories(
     sampler, probe_tool, git_env, tmp_path
 ) -> None:
-    """A submodule counts as unchanged when it is not checked out or is at
-    the commit HEAD records, and as a difference at any other commit; an
+    """A submodule counts as unchanged when its directory is not checked out
+    (no ``.git``) or is at the commit HEAD records, and as a difference when
+    the directory is missing or replaced by a file, when its ``.git`` does
+    not resolve to a commit, or at any other commit, as git counts each; an
     untracked clone under a watched path is recorded by its commit."""
     nested = Repo(tmp_path / "nested")
     first = _head(nested)
     repo = Repo(tmp_path / "repo")
     repo.git("update-index", "--add", "--cacheinfo", f"160000,{first},tools/sub")
     repo.git("commit", "-q", "-m", "submodule")
+    sub = repo.root / "tools/sub"
+    states = {"missing": _both(sampler, probe_tool, repo.root)}
+    sub.mkdir()
     clean = _both(sampler, probe_tool, repo.root)
     assert clean[1] is False  # recorded, not checked out
+    sub.rmdir()
+    sub.write_bytes(b"not a repository\n")
+    states["a file"] = _both(sampler, probe_tool, repo.root)
+    sub.unlink()
+    sub.mkdir()
+    subprocess.run(["git", "init", "-q", str(sub)], check=True, capture_output=True)
+    states["unborn"] = _both(sampler, probe_tool, repo.root)
+    shutil.rmtree(sub)
     subprocess.run(
-        ["git", "clone", "-q", str(nested.root), str(repo.root / "tools/sub")],
+        ["git", "clone", "-q", str(nested.root), str(sub)],
         check=True,
         capture_output=True,
     )
     assert _both(sampler, probe_tool, repo.root) == clean  # at the recorded commit
     moved = Repo.__new__(Repo)
-    moved.root = repo.root / "tools/sub"
+    moved.root = sub
     moved.git("commit", "-q", "--allow-empty", "-m", "later")
-    assert _both(sampler, probe_tool, repo.root)[1] is True
+    states["another commit"] = _both(sampler, probe_tool, repo.root)
+    for name, state in states.items():
+        assert state[1] is True, name
+    assert len({state[2] for state in states.values()}) == len(states)
 
     untracked = repo.root / "packages/clone"
     subprocess.run(
@@ -448,6 +505,70 @@ def test_git_state_never_reads_special_or_unreadable_files_as_head(
         finally:
             tracked.chmod(0o644)
     assert _both(sampler, probe_tool, repo.root) == clean
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="no FIFOs here")
+def test_a_path_replaced_by_a_fifo_after_its_lstat_is_never_read(
+    sampler, tmp_path, monkeypatch
+) -> None:
+    """A path whose lstat saw a regular file and which is a FIFO by the time
+    it is opened: the open does not block, the descriptor's type is checked
+    before any read, and the path is read again as the FIFO it now is. A
+    blocking open would wait here for a writer that never comes."""
+    pipe = tmp_path / "pipe"
+    os.mkfifo(pipe)
+    regular = tmp_path / "regular"
+    regular.write_bytes(b"x\n")
+    real_lstat = Path.lstat
+    seen: list[bool] = []
+
+    def lstat(self, *args, **kwargs):
+        if self == pipe and not seen:
+            seen.append(True)
+            return real_lstat(regular)  # the file that was there before
+        return real_lstat(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "lstat", lstat)
+    result: list = []
+    reader = threading.Thread(
+        target=lambda: result.append(sampler._worktree_entry(pipe, "sha1")),
+        daemon=True,
+    )
+    reader.start()
+    reader.join(timeout=10)
+    if reader.is_alive():
+        os.close(os.open(pipe, os.O_WRONLY | os.O_NONBLOCK))  # release the reader
+        reader.join(timeout=5)
+        pytest.fail("opening a path replaced by a FIFO blocked")
+    kind = os.lstat(pipe).st_mode & 0o170000
+    assert result == [("special", "", f"file type {kind:o}")]
+
+
+def test_a_path_replaced_by_a_link_after_its_lstat_is_read_as_the_link(
+    sampler, tmp_path, monkeypatch
+) -> None:
+    """The open refuses to follow a link put there after the lstat, and the
+    path is read again as the link it now is, not recorded as unreadable."""
+    link = tmp_path / "link"
+    link.symlink_to("target.py")
+    (tmp_path / "target.py").write_bytes(b"x\n")
+    regular = tmp_path / "regular"
+    regular.write_bytes(b"x\n")
+    real_lstat = Path.lstat
+    seen: list[bool] = []
+
+    def lstat(self, *args, **kwargs):
+        if self == link and not seen:
+            seen.append(True)
+            return real_lstat(regular)  # the file that was there before
+        return real_lstat(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "lstat", lstat)
+    assert sampler._worktree_entry(link, "sha1") == (
+        "120000",
+        _blob("sha1", b"target.py"),
+        hashlib.sha256(b"target.py").hexdigest(),
+    )
 
 
 @pytest.mark.parametrize("tool_name", ["sampler", "probe_tool"])
@@ -582,25 +703,43 @@ def test_the_load_state_is_read_before_the_heavy_imports(
 def test_the_distribution_inventory_never_raises(
     tool_name, request, monkeypatch
 ) -> None:
-    """A distribution whose metadata cannot be read costs only its own line,
-    and a failure to list distributions is recorded, not raised."""
+    """The digest changes with any distribution's name or version; a
+    distribution whose metadata cannot be read costs only its own line, also
+    when its location is not valid UTF-8 or cannot be read itself; and a
+    failure to list distributions is recorded, not raised."""
     import importlib.metadata as metadata
 
     tool = request.getfixturevalue(tool_name)
 
+    def inventory_of(*distributions):
+        monkeypatch.setattr(metadata, "distributions", lambda: list(distributions))
+        return tool._installed_distributions()
+
+    digests = {
+        inventory_of(SimpleNamespace(metadata={"Name": name}, version=version))[
+            "sha256"
+        ]
+        for name, version in (("Readable", "1"), ("Readable", "2"), ("Other", "1"))
+    }
+    assert len(digests) == 3
+
     class Unreadable:
-        _path = "/nowhere/broken.dist-info"
+        _path = os.fsdecode(b"/nowhere/\xff-broken.dist-info")  # a lone surrogate
         version = "1"
 
         @property
         def metadata(self):
             raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
 
+    class Unlocatable(Unreadable):
+        @property
+        def _path(self):
+            raise PermissionError(13, "Permission denied")
+
     readable = SimpleNamespace(metadata={"Name": "Readable"}, version="2.0")
-    monkeypatch.setattr(metadata, "distributions", lambda: [readable, Unreadable()])
-    inventory = tool._installed_distributions()
-    assert inventory["count"] == 2
-    assert inventory["unreadable"] == 1
+    inventory = inventory_of(readable, Unreadable(), Unlocatable())
+    assert inventory["count"] == 3
+    assert inventory["unreadable"] == 2
     assert len(inventory["sha256"]) == 64
 
     def unavailable():
@@ -713,11 +852,56 @@ def test_load_tool_compiles_without_the_probes_future_flags(
 def test_load_tool_leaves_no_module_behind_on_failure(
     probe_tool, tmp_path, monkeypatch
 ) -> None:
+    """Also when the failure is not an ``Exception`` (an interrupt)."""
     monkeypatch.setattr(probe_tool, "_TOOLS", tmp_path)
-    (tmp_path / "broken.py").write_bytes(b"raise RuntimeError('boom')\n")
-    with pytest.raises(RuntimeError, match="boom"):
-        probe_tool._load_tool("probe_tool_source_broken", "broken.py")
-    assert "probe_tool_source_broken" not in sys.modules
+    for name, source, raised in (
+        ("probe_tool_source_broken", b"raise RuntimeError('boom')\n", RuntimeError),
+        (
+            "probe_tool_source_interrupted",
+            b"raise KeyboardInterrupt\n",
+            KeyboardInterrupt,
+        ),
+    ):
+        (tmp_path / f"{name}.py").write_bytes(source)
+        with pytest.raises(raised):
+            probe_tool._load_tool(name, f"{name}.py")
+        assert name not in sys.modules
+
+
+def test_the_sampler_loaded_by_the_probe_records_the_bytes_that_ran(
+    probe_tool, sampler, tmp_path, monkeypatch
+) -> None:
+    """The probe reads the sampler once and runs those bytes; the sampler
+    records and pins the same bytes rather than reading its file again. Its
+    file is edited right after the probe's read here, so a sampler that read
+    itself again would record the edit's hash and quote the edit."""
+    original = Path(sampler.__file__).read_bytes()
+    copy = tmp_path / "sample_us_export_households.py"
+    copy.write_bytes(original)
+    edited = original + b"\n# edited after the probe read this file\n"
+    monkeypatch.setattr(probe_tool, "_TOOLS", tmp_path)
+    real_read = Path.read_bytes
+
+    def read_then_edit(self):
+        data = real_read(self)
+        if self == copy:
+            copy.write_bytes(edited)
+        return data
+
+    monkeypatch.setattr(Path, "read_bytes", read_then_edit)
+    name = "probe_tool_source_real_sampler"
+    try:
+        module = probe_tool._load_tool(name, copy.name)
+        monkeypatch.setattr(Path, "read_bytes", real_read)
+        assert copy.read_bytes() == edited
+        loaded = hashlib.sha256(original).hexdigest()
+        assert module.__loaded_sha256__ == loaded
+        assert module._TOOL_SOURCE["sha256"] == loaded
+        assert "__loaded_source__" not in vars(module)  # handed over, not kept
+        assert linecache.getlines(str(copy)) == original.decode().splitlines(True)
+    finally:
+        sys.modules.pop(name, None)
+        linecache.cache.pop(str(copy), None)
 
 
 def test_a_module_passed_in_is_hashed_at_write(probe_tool, tmp_path) -> None:
