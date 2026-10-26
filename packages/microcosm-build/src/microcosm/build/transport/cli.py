@@ -263,7 +263,7 @@ def prepare_transport_build(
     if rules_source not in paths:
         raise ValueError(f"Source {rules_source!r} (the RuleSpec tree) needs a path.")
     create = skeleton_create_declaration(spec)
-    rule = BenefitUnitRule.from_dict(json.loads(create.params["unit_rule"]))
+    rule = BenefitUnitRule.from_spec(json.loads(create.params["unit_rule"]))
     registry = build_transport_registry(
         transport_resource(spec, "axiom_rules_bindings"),
         paths[rules_source],

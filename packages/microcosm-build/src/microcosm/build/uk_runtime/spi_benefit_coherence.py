@@ -39,6 +39,10 @@ qualifying-young-person status and the taxable benefits:
   it for the FRS units: a unit with a Universal Credit reporter claims, and the
   other units in the Universal Credit age population claim as the residual of
   the take-up contract's rate, on draws keyed on the SPI unit's own identity.
+  That draw stands for a unit with no award: ``uc_take_up`` redraws every
+  entitled unit of both channels by award band and family type once
+  ``uc_capital_coherence`` has set the capital the engine assesses
+  (microcosm#1334).
 
 Contributory ESA, the disability benefits, Carer's Allowance, State Pension
 and Winter Fuel Payment keep their draws, and FRS base rows are never
@@ -69,6 +73,7 @@ from microcosm.build.uk_runtime.frs_education import (
 from microcosm.build.uk_runtime.frs_take_up import (
     UK_UC_AGE_ELIGIBLE_AGGREGATE,
     UK_UC_AGE_ELIGIBLE_METHOD,
+    UK_UC_AGE_ELIGIBLE_ROLE,
     UK_UC_AGE_ELIGIBLE_SOURCE,
     UK_UC_TAKE_UP_OUTPUT,
     UKTakeUpPopulationPolicy,
@@ -119,7 +124,13 @@ SPI_ZEROED_REPORT_REASON = (
 )
 #: Reports that follow an injury, service or a death, not income: the SPI row
 #: keeps the FRS twin's value.
-SPI_RESTORED_REPORT_COLUMNS = ("iidb_reported", "afcs_reported", "bsp_reported")
+SPI_RESTORED_REPORT_COLUMNS = (
+    "iidb_reported",
+    "afcs_reported",
+    "bsp_reported",
+    "war_widows_pension_reported",
+    "widowed_parents_allowance_reported",
+)
 SPI_RESTORED_REPORT_REASON = "follows an injury, service or a death, not income"
 SPI_TWIN_LINKAGE = "person_source_id -> FRS-channel person_id"
 SPI_BENEFITS_IN_OWN_RIGHT_OUTPUT = "receives_benefits_in_own_right"
@@ -195,6 +206,7 @@ def spi_benefit_coherence_operations() -> tuple[tuple[str, dict[str, object]], .
                 "method": UK_UC_AGE_ELIGIBLE_METHOD,
                 "consumed_only": True,
                 "aggregates": {UK_UC_AGE_ELIGIBLE_AGGREGATE: UK_UC_AGE_ELIGIBLE_SOURCE},
+                "role_column": UK_UC_AGE_ELIGIBLE_ROLE,
             },
         ),
         (

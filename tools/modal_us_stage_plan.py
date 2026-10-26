@@ -42,7 +42,7 @@ import signal
 import subprocess
 import sys
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from itertools import zip_longest
 from pathlib import Path, PurePosixPath
 
@@ -259,7 +259,29 @@ LIGHT = Resources("light", cpu=2.0, memory_mib=48 * 1024, timeout_s=4 * 3600)
 BASE = Resources(
     "base", cpu=4.0, memory_mib=112 * 1024, timeout_s=16_500, cpu_limit=4.0
 )
-RESOURCE_CLASSES = {item.name: item for item in (CHECK, HEAVY, LIGHT, BASE)}
+# full-staging-a3 (MEASURED): 103,104.6 CPU-s / 7,218.1 wall-s = 14.3
+# cores on average. ACS transfer fits use QRF n_jobs=-1 by default (qrf.py
+# _fit_n_jobs), so request 16 cores, with a limit of 16 to bound billed CPU.
+# 42.37 GB = 39.5 GiB peak locally; adding the 24 GB (22.4 GiB) excess RSS
+# seen on Modal's release materialize leaves 18.2 GiB headroom at 80 GiB.
+# That excess was measured on another stage, not a staging measurement.
+# Memory remains request-only, as in the other classes, to keep the runner
+# alive to mirror state and write a receipt if the tool fails.
+# 7,218.1 * 7.6 = 54,857.6 s (15.24 h), using the worst per-chunk slowdown
+# seen for release materialize, not a measured staging slowdown. The 17 h
+# timeout allows a 16 h tool budget, 30 min staging and 30 min runner reserve.
+# No larger ephemeral_disk: the default quota is 512 GiB (Modal resources
+# docs, checked 2026-10-13); the stage checks 40 GiB free before staging.
+ACS_STAGING = Resources(
+    "acs-staging",
+    cpu=16.0,
+    memory_mib=80 * 1024,
+    timeout_s=17 * 3600,
+    cpu_limit=16.0,
+)
+RESOURCE_CLASSES = {
+    item.name: item for item in (CHECK, HEAVY, LIGHT, BASE, ACS_STAGING)
+}
 #: Max's cap for the base run (2026-09-29: non-preemptible, 4 hours, "about
 #: $15"). The base class's ceiling at its request (its timeout,
 #: non-preemptible, at list price) must not exceed it; a test holds this.
@@ -288,6 +310,12 @@ BASE_RUNNER_OVERHEAD_SECONDS = 30 * 60
 # (_link_all_stage_checkpoint), which the mirror copies as a second file. An
 # allowance from the local figures, not a measurement.
 BASE_MIRRORED_STATE_GIB = 50
+# Staging has no frame checkpoints: its 10.7 GB H5 (~10 GiB), summary and
+# logs fit in a 12 GiB mirror allowance. Thirty minutes reserves 60 s for
+# stopping, 120 s for the receipt, and 1,620 s for hashing/copying the state.
+# The check's write probe refuses a slower volume (about 8 MB/s required).
+ACS_STAGING_RUNNER_OVERHEAD_SECONDS = 30 * 60
+ACS_STAGING_MIRRORED_STATE_GIB = 12
 # How long the runner waits after SIGTERM before SIGKILL (stop_process_group).
 STOP_GRACE_SECONDS = 60
 # Of the runner's reserve, the part kept after the mirror for the runner's
@@ -314,6 +342,13 @@ _ACS_974 = (
     "run-resources-and-staging-excerpt.json (#974, totals SOI surface)"
 )
 MEASURED = {
+    ("us-acs-multispine-staging", "all"): Measured(
+        42_370_498_560,
+        7218.1,
+        103104.6,
+        "experiments/us-acs-local-hours-rebuild-20260922/"
+        "run-resources-and-staging-excerpt.json (full-staging-a3)",
+    ),
     ("us-acs-local-release", "materialize"): Measured(
         74_760_110_080, 5067.1, 4990.4, _ACS_974
     ),
@@ -464,6 +499,22 @@ class HomeSeed:
 
 
 @dataclass(frozen=True)
+class InputLink:
+    """A pinned volume input linked into a tool's shared cache directory.
+
+    ``path`` is relative to WORK_ROOT, outside state and the per-input
+    directories. The runner verifies staged files before creating links;
+    expected sizes additionally match the source fetcher's cache contract.
+    These inputs must be on the volume: no archive download in a container.
+    """
+
+    input: str
+    path: str
+    sha256: str
+    size_bytes: int
+
+
+@dataclass(frozen=True)
 class ToolSpec:
     name: str
     # Path of the tool in the pinned tree; None for an inline ``-c`` tool.
@@ -473,11 +524,13 @@ class ToolSpec:
     options: Mapping[str, OptionFlag]
     owned_flags: frozenset[str]
     argv_builder: Callable[[Plan, Mapping[str, str], str], list[str]]
-    # Name of the tool's own argparse entry point, called by the check to
-    # validate the built argv against the pinned commit without running.
+    # Name (or dotted attribute path through a shim) of the tool's own
+    # argparse entry point, called by the check to validate the built argv
+    # against the pinned commit without running.
     parse_function: str | None = None
     tree_files: Mapping[str, TreeFile] = field(default_factory=dict)
     home_seeds: tuple[HomeSeed, ...] = ()
+    input_links: tuple[InputLink, ...] = ()
     # The PYTHONHASHSEED the tool gives its stage interpreters when its own
     # environment has none (read from the pinned tool), for the receipt's
     # hash-seed record; None when it sets none.
@@ -835,9 +888,139 @@ US_PUF_SUPPORT_BASE = ToolSpec(
     stage_hash_seed_default=HASH_SEED,
 )
 
+# Keep the historical registration and its local comparison reference pinned to
+# 4b57d15a2. The 2026-10-18 rerun uses main's reviewed NC crosswalk correction
+# (d8d96d926), with the same base command, inputs and resource budget.
+CD_VINTAGE_CROSSWALK_RERUN = TreeFile(
+    path=CD_VINTAGE_CROSSWALK.path,
+    sha256="a347303fff3fea145f758488c43cb94355df5a8cb5e512552b2ee3791d2aa233",
+)
+US_PUF_SUPPORT_BASE_RERUN = replace(
+    US_PUF_SUPPORT_BASE,
+    name="us-puf-support-base-rerun",
+    tree_files={"cd_vintage_crosswalk": CD_VINTAGE_CROSSWALK_RERUN},
+)
+
+# --- The retained ACS local-release staging builder -----------------------
+# The shim delegates to tools/_legacy/build_us_acs_multispine_base.py. It
+# accepts no --stage: "all" is the runner's single stage, not a builder flag.
+# Both Census archives are required volume inputs. acs_sources uses digest
+# directories and verifies both size and sha256 even for cached files, so
+# link them into that exact layout before launching the unchanged builder.
+ACS_MULTISPINE_STAGING_ARTIFACT = "acs_multispine_staging.h5"
+ACS_MULTISPINE_STAGING_SUMMARY = "acs_multispine_staging.summary.json"
+ACS_MULTISPINE_STAGING_INPUTS_DIR = "acs-pums"
+ACS_MULTISPINE_SOURCE_MANIFEST = TreeFile(
+    "packages/microcosm-build/src/microcosm/build/us_runtime/acs_2024_1yr_sources.json",
+    "41701024bf2b6461cb264878243adb4c4b4d1b8ebcf4ae8953fb22872f0debd5",
+)
+ACS_MULTISPINE_ARCHIVE_LINKS = (
+    InputLink(
+        "acs_household_zip",
+        f"{ACS_MULTISPINE_STAGING_INPUTS_DIR}/"
+        "8281008e53de98f0ef81e7a2ee5a8725991dda1ecfd2713ead73246425e515d0/csv_hus.zip",
+        "8281008e53de98f0ef81e7a2ee5a8725991dda1ecfd2713ead73246425e515d0",
+        251_500_587,
+    ),
+    InputLink(
+        "acs_person_zip",
+        f"{ACS_MULTISPINE_STAGING_INPUTS_DIR}/"
+        "afdc6d90c6e2f0bab365ed32d95ba4c4d8ac651162f46ac7861295b2dc469894/csv_pus.zip",
+        "afdc6d90c6e2f0bab365ed32d95ba4c4d8ac651162f46ac7861295b2dc469894",
+        602_847_146,
+    ),
+)
+ACS_MULTISPINE_STAGING_INPUTS = (
+    "base_h5",
+    "donor_release_manifest",
+    "acs_household_zip",
+    "acs_person_zip",
+    "puma_ladder",
+)
+
+
+def _acs_multispine_staging_argv(
+    plan: Plan, input_paths: Mapping[str, str], state_dir: str
+) -> list[str]:
+    state = PurePosixPath(state_dir)
+    return [
+        "--base-h5",
+        input_paths["base_h5"],
+        "--donor-release-manifest",
+        input_paths["donor_release_manifest"],
+        "--inputs-dir",
+        str(state.parent / ACS_MULTISPINE_STAGING_INPUTS_DIR),
+        "--source-manifest",
+        str(PurePosixPath(IMAGE_REPO_ROOT) / ACS_MULTISPINE_SOURCE_MANIFEST.path),
+        "--puma-ladder",
+        input_paths["puma_ladder"],
+        "--out-h5",
+        str(state / ACS_MULTISPINE_STAGING_ARTIFACT),
+        "--summary",
+        str(state / ACS_MULTISPINE_STAGING_SUMMARY),
+    ]
+
+
+US_ACS_MULTISPINE_STAGING = ToolSpec(
+    name="us-acs-multispine-staging",
+    script="tools/build_us_acs_multispine_base.py",
+    inputs=ACS_MULTISPINE_STAGING_INPUTS,
+    stages={
+        "all": StageSpec(
+            "all",
+            ACS_STAGING,
+            ACS_MULTISPINE_STAGING_INPUTS,
+            runner_overhead_seconds=ACS_STAGING_RUNNER_OVERHEAD_SECONDS,
+            # full-staging-a3's recorded admission floor was 40 GiB. This
+            # covers staged donor + 0.8 GiB of archives (links add no copy),
+            # the ~10 GiB export and headroom; ZIP CSVs stream, not extract.
+            min_free_disk_gib=40,
+            mirrored_state_gib=ACS_STAGING_MIRRORED_STATE_GIB,
+            mirror_first=(
+                ACS_MULTISPINE_STAGING_ARTIFACT,
+                ACS_MULTISPINE_STAGING_SUMMARY,
+                "logs",
+            ),
+        )
+    },
+    options={
+        "acs_share": OptionFlag("--acs-share", float),
+        "n_estimators": OptionFlag("--n-estimators", int),
+        "max_targets_per_fit": OptionFlag("--max-targets-per-fit", int),
+        "seed": OptionFlag("--seed", int),
+        "geography_seed": OptionFlag("--geography-seed", int),
+        "chunksize": OptionFlag("--chunksize", int),
+        "donor_channel": OptionFlag("--donor-channel", str),
+        "hours_under15_policy": OptionFlag("--hours-under15-policy", str),
+        "max_households": OptionFlag("--max-households", int),
+        "period": OptionFlag("--period", int),
+    },
+    owned_flags=frozenset(
+        {
+            "--base-h5",
+            "--donor-release-manifest",
+            "--inputs-dir",
+            "--source-manifest",
+            "--puma-ladder",
+            "--out-h5",
+            "--summary",
+        }
+    ),
+    argv_builder=_acs_multispine_staging_argv,
+    parse_function="_legacy._parse_args",
+    tree_files={"acs_source_manifest": ACS_MULTISPINE_SOURCE_MANIFEST},
+    input_links=ACS_MULTISPINE_ARCHIVE_LINKS,
+)
+
 TOOLS: dict[str, ToolSpec] = {
     tool.name: tool
-    for tool in (US_ACS_LOCAL_RELEASE, RUNNER_SMOKE, US_PUF_SUPPORT_BASE)
+    for tool in (
+        US_ACS_LOCAL_RELEASE,
+        RUNNER_SMOKE,
+        US_PUF_SUPPORT_BASE,
+        US_PUF_SUPPORT_BASE_RERUN,
+        US_ACS_MULTISPINE_STAGING,
+    )
 }
 
 
@@ -1088,6 +1271,20 @@ def parse_plan(data: object) -> Plan:
             raise PlanError(
                 f"input {seed.input!r} is sha256 {ref.sha256}, but the runner seeds "
                 f"~/{seed.path} with it and the tool pins that file to {seed.sha256}"
+            )
+    for link, _ in _input_link_paths(tool):
+        ref = inputs.get(link.input)
+        if ref is None:
+            raise PlanError(f"input directory link requires input {link.input!r}")
+        if ref.kind != "volume":
+            raise PlanError(
+                f"input {link.input!r} must be a volume:// staged archive; "
+                "the container must not download it"
+            )
+        if ref.sha256 != link.sha256:
+            raise PlanError(
+                f"input {link.input!r} is sha256 {ref.sha256}, but the tool's "
+                f"pinned archive cache requires {link.sha256}"
             )
 
     raw_options = data.get("options", {})
@@ -1498,6 +1695,99 @@ def seed_home_cache(
             {"input": seed.input, "path": str(target), "sha256": sha, "bytes": size}
         )
     return seeded
+
+
+def _input_link_paths(tool: ToolSpec) -> list[tuple[InputLink, PurePosixPath]]:
+    """Validate the registry's shared-cache layout before creating links."""
+
+    paths = []
+    for link in tool.input_links:
+        rel = _safe_relative_path(link.path, f"input link for {link.input!r}")
+        if rel.parts[0] in {"state", "inputs", "hf", "hf-check", "write-probe"}:
+            raise PlanError(f"input link {link.path!r} overlaps runner-owned work")
+        _require_sha256(link.sha256, f"input link {link.input!r} sha256")
+        if type(link.size_bytes) is not int or link.size_bytes <= 0:
+            raise PlanError(f"input link {link.input!r} needs a positive byte size")
+        for _, other in paths:
+            if rel == other or rel in other.parents or other in rel.parents:
+                raise PlanError(
+                    f"input link {link.path!r} collides with {str(other)!r}"
+                )
+        paths.append((link, rel))
+    return paths
+
+
+def input_link_problems(plan: Plan, inputs_verified: Sequence[Mapping]) -> list[str]:
+    """Check archive sizes as well as digests before the builder can fetch."""
+
+    rows = {row["name"]: row for row in inputs_verified}
+    problems = []
+    for link, _ in _input_link_paths(plan.tool):
+        row = rows.get(link.input)
+        if row is None:
+            problems.append(f"input link {link.input!r}: input was not verified")
+        elif "problem" not in row:
+            if row.get("sha256") != link.sha256:
+                problems.append(f"input {link.input!r}: pinned archive sha256 mismatch")
+            if row.get("bytes") != link.size_bytes:
+                problems.append(
+                    f"input {link.input!r}: archive size {row.get('bytes')} differs "
+                    f"from the pinned source manifest's {link.size_bytes} bytes"
+                )
+    return problems
+
+
+def link_staged_inputs(
+    plan: Plan, input_paths: Mapping[str, str], work_root: Path | str
+) -> list[dict[str, object]]:
+    """Link already digest-verified inputs into the tool's cache, without copies.
+
+    Only registration-owned paths may be used. Refuse existing foreign files
+    or linked parents rather than replacing them or writing through them.
+    The links live outside state, so receipts mirror outputs, not archives.
+    """
+
+    work = Path(work_root)
+    if plan.tool.input_links and work.is_symlink():
+        raise PlanError(f"input link work root {str(work)!r} is a symlink")
+    linked = []
+    for link, rel in _input_link_paths(plan.tool):
+        if link.input not in input_paths:
+            raise PlanError(f"no staged path for input link {link.input!r}")
+        try:
+            source = Path(input_paths[link.input]).resolve(strict=True)
+        except OSError as error:
+            raise PlanError(
+                f"input {link.input!r}: cannot read staged archive: {error}"
+            ) from error
+        if not source.is_file() or source.stat().st_size != link.size_bytes:
+            raise PlanError(
+                f"input {link.input!r}: staged archive must be a file of "
+                f"{link.size_bytes} bytes (pinned source manifest)"
+            )
+        parent = work
+        for part in rel.parts[:-1]:
+            parent = parent / part
+            if parent.is_symlink():
+                raise PlanError(f"input link parent {str(parent)!r} is a symlink")
+            parent.mkdir(parents=True, exist_ok=True)
+        target = work.joinpath(*rel.parts)
+        if target.is_symlink():
+            if target.resolve() != source:
+                raise PlanError(f"input link {str(target)!r} points at another file")
+        elif target.exists():
+            raise PlanError(f"input link {str(target)!r} already exists")
+        else:
+            target.symlink_to(source)
+        linked.append(
+            {
+                "input": link.input,
+                "path": str(target),
+                "sha256": link.sha256,
+                "bytes": link.size_bytes,
+            }
+        )
+    return linked
 
 
 def work_disk_problem(stage: StageSpec, free_bytes: int) -> str | None:
@@ -2489,6 +2779,16 @@ def summarize(plan: Plan) -> dict[str, object]:
             {"input": seed.input, "path": f"~/{seed.path}", "sha256": seed.sha256}
             for seed in plan.tool.home_seeds
             if seed.input in plan.inputs
+        ]
+    if plan.tool.input_links:
+        summary["input_links"] = [
+            {
+                "input": link.input,
+                "path": str(PurePosixPath(WORK_ROOT) / link.path),
+                "sha256": link.sha256,
+                "bytes": link.size_bytes,
+            }
+            for link in plan.tool.input_links
         ]
     if measured is not None:
         summary["measured_locally"] = {

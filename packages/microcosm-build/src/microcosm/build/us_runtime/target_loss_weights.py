@@ -317,7 +317,10 @@ ACS_LOCAL_POPULATION_PREFIXES: Mapping[str, tuple[str, int]] = {
 #:
 #: - ``ledger_fact_label`` and ``ledger_layout_groupby_value_label``: the
 #:   human-readable labels the ledger compiler (``ledger_targets.py``) stamps
-#:   on every row, which name the district ("WV congressional district 1").
+#:   on every row, which name the district. A translated IRS SOI row's group
+#:   value label is the current district's Census name ("Congressional
+#:   District 1 (119th Congress), West Virginia"); its fact label is the
+#:   label of a source-plan fact, which the translation does not change.
 #:   :data:`US_FISCAL_TARGET_CONCEPT_METADATA_EXCLUSIONS` does not list them,
 #:   so under the national mapping every compiled district row is its own
 #:   group; the national mapping is kept as it is here.

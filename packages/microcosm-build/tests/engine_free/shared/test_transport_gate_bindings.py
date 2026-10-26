@@ -97,6 +97,7 @@ from microcosm.calibrate.matrix import build_constraint_matrix
 from microcosm.calibrate.registry import TargetSpec
 from microcosm.frame import Frame, WeightKind, Weights
 from microcosm.graph import ContentStore, compile_graph, run_graph
+from microcosm.graph.canonical import canonical_json
 from test_support.microcosm_build.transport_graph import (
     PERIOD,
     TOY_POPULATION,
@@ -501,7 +502,10 @@ def _evaluate(gate: str, parameters: dict, evidence: dict, *, drop=()):
 class TestRegistry:
     def test_extends_the_default_registry_with_the_bound_gates(self) -> None:
         assert set(TRANSPORT_GATE_REGISTRY) == (
-            set(DEFAULT_REGISTRY) | set(BOUND) | set(PENDING)
+            set(DEFAULT_REGISTRY)
+            | set(BOUND)
+            | set(PENDING)
+            | {"cell_support", "cell_support_target"}
         )
         for name in DEFAULT_REGISTRY:
             if name not in BOUND:
@@ -1055,6 +1059,149 @@ class TestAggregateAdmin:
         assert "has no hierarchy" in outcome.result.failures[0]
 
 
+class TestNZReviewedFitGates:
+    @staticmethod
+    def _parameters(gate_id: str) -> dict:
+        return dict(
+            next(
+                gate
+                for gate in load_country_spec("nz").gates.gates
+                if gate.id == gate_id
+            ).parameters
+        )
+
+    @pytest.mark.parametrize(
+        ("gate_id", "boundary"),
+        [
+            ("calibration_per_family_fit", 0.05),
+            ("demography_per_family_fit", 0.02),
+        ],
+    )
+    def test_real_declarations_include_boundaries_and_refuse_one_target_misses(
+        self, gate_id: str, boundary: float
+    ) -> None:
+        parameters = self._parameters(gate_id)
+        families = parameters["families"]
+        for error, expected in (
+            (boundary, GateStatus.PASSED),
+            (math.nextafter(boundary, math.inf), GateStatus.FAILED),
+        ):
+            # Exactly one target per declared family: the hard policy cannot
+            # exempt small families or tolerate a share below one.
+            diagnostics = _diagnostics(
+                (family, f"anchor_{family}", error) for family in families
+            )
+            outcome = _evaluate(
+                "per_family_fit", parameters, {"artifacts": {DIAGNOSTICS: diagnostics}}
+            )
+            assert outcome.status is expected
+
+    @pytest.mark.parametrize(
+        "gate_id", ["calibration_per_family_fit", "demography_per_family_fit"]
+    )
+    def test_real_fit_declarations_require_each_named_family(
+        self, gate_id: str
+    ) -> None:
+        parameters = self._parameters(gate_id)
+        diagnostics = _diagnostics(
+            (family, f"anchor_{family}", 0.0) for family in parameters["families"][1:]
+        )
+        outcome = _evaluate(
+            "per_family_fit", parameters, {"artifacts": {DIAGNOSTICS: diagnostics}}
+        )
+        assert outcome.status is GateStatus.FAILED
+
+    def _admin_evidence(self, *, achieved: float = 105.0, zero: bool = False):
+        parameters = self._parameters("national_and_region_admin_aggregates")
+        value = 0.0 if zero else 100.0
+        specs = [
+            _spec(
+                f"anchor_{family}",
+                family=family,
+                value=value,
+                tolerance=0.05,
+                hierarchy=_hierarchy(
+                    f"anchor_{family}", "country" if index == 0 else "region"
+                ),
+            )
+            for index, family in enumerate(parameters["families"])
+        ]
+        surface = _surface(specs)
+        diagnostics = _diagnostics(
+            [(spec.family, spec.name, 0.0, value, achieved) for spec in specs],
+            surface=surface,
+        )
+        return parameters, surface, diagnostics
+
+    @pytest.mark.parametrize(
+        ("achieved", "expected"),
+        [
+            (105.0, GateStatus.PASSED),
+            (math.nextafter(105.0, math.inf), GateStatus.FAILED),
+        ],
+    )
+    def test_admin_uses_declared_relative_boundary_over_absolute_reference_tolerance(
+        self, achieved: float, expected: GateStatus
+    ) -> None:
+        parameters, surface, diagnostics = self._admin_evidence(achieved=achieved)
+        outcome = _evaluate(
+            "aggregate_admin",
+            parameters,
+            {"artifacts": {SURFACE: surface, DIAGNOSTICS: diagnostics}},
+        )
+        assert outcome.status is expected
+        assert all(spec.tolerance == 0.05 for spec in surface.registry.specs)
+
+    @pytest.mark.parametrize(
+        ("achieved", "expected"),
+        [
+            (0.05, GateStatus.PASSED),
+            (math.nextafter(0.05, math.inf), GateStatus.FAILED),
+        ],
+    )
+    def test_zero_anchor_uses_unit_scale_residual_convention(
+        self, achieved: float, expected: GateStatus
+    ) -> None:
+        # aggregate_admin divides by max(abs(target), 1). For a zero anchor,
+        # this is an absolute residual on a unit scale, not a percentage.
+        parameters, surface, diagnostics = self._admin_evidence(
+            achieved=achieved, zero=True
+        )
+        outcome = _evaluate(
+            "aggregate_admin",
+            parameters,
+            {"artifacts": {SURFACE: surface, DIAGNOSTICS: diagnostics}},
+        )
+        assert outcome.status is expected
+
+    @pytest.mark.parametrize(
+        "missing", ["family", "hierarchy", "measurement", "surface_identity"]
+    )
+    def test_real_admin_policy_refuses_incomplete_evidence(self, missing: str) -> None:
+        parameters, surface, diagnostics = self._admin_evidence(achieved=100.0)
+        if missing == "family":
+            surface = _surface(surface.registry.specs[1:])
+            diagnostics["build"]["surface_sha256"] = surface.sha256
+        elif missing == "hierarchy":
+            surface = _surface(
+                [
+                    replace(surface.registry.specs[0], hierarchy=None),
+                    *surface.registry.specs[1:],
+                ]
+            )
+            diagnostics["build"]["surface_sha256"] = surface.sha256
+        elif missing == "measurement":
+            diagnostics["targets"].pop()
+        else:
+            diagnostics.pop("build")
+        outcome = _evaluate(
+            "aggregate_admin",
+            parameters,
+            {"artifacts": {SURFACE: surface, DIAGNOSTICS: diagnostics}},
+        )
+        assert outcome.status is GateStatus.FAILED
+
+
 class TestCalibrationReferenceCoverage:
     @PROPERTY
     @given(
@@ -1341,6 +1488,63 @@ def _is_nearest_float(value: float, exact: Fraction) -> bool:
 
 
 class TestWeightGates:
+    @pytest.mark.parametrize(
+        ("gate", "parameters", "failures"),
+        [
+            ("weight_ess", {"minimum_ess_fraction": 0.5}, ()),
+            (
+                "weight_ess",
+                {"minimum_ess_fraction": 1.0},
+                ("ESS fraction 0.833333 is below the reviewed minimum 1.",),
+            ),
+            ("weight_ratio", {"maximum_max_to_median_ratio": 1.0}, ()),
+            (
+                "weight_ratio",
+                {"maximum_max_to_median_ratio": 0.5},
+                (
+                    "Max/positive-median weight ratio 1.0 exceeds the reviewed "
+                    "maximum 0.5.",
+                ),
+            ),
+        ],
+    )
+    def test_legacy_row_gate_results_remain_byte_identical(
+        self, gate, parameters, failures
+    ) -> None:
+        # The existing row gates accept design weights with no lineage. Pin
+        # every recorded field and failure line, including zero-row semantics.
+        frame = toy_frame(weights=[0, 1, 1, 1, 1, 1], kind=WeightKind.DESIGN)
+        result = _evaluate(gate, parameters, {"frame": frame}).result
+        actual = canonical_json(
+            {
+                "name": result.name,
+                "passed": result.passed,
+                "failures": result.failures,
+                "details": dict(result.details),
+            }
+        )
+        expected = canonical_json(
+            {
+                "name": gate,
+                "passed": not failures,
+                "failures": failures,
+                "details": {
+                    "n_records": 6,
+                    "positive_weight_records": 5,
+                    "zero_weight_records": 1,
+                    "total_weight": 5.0,
+                    "effective_sample_size": 5.0,
+                    "ess_fraction": 5 / 6,
+                    "median_positive_weight": 1.0,
+                    "max_weight": 1.0,
+                    "max_to_median_positive_weight": 1.0,
+                    **parameters,
+                    "weight_entity": "household",
+                },
+            }
+        )
+        assert actual == expected
+
     @pytest.mark.parametrize(
         ("weights", "gate", "keyword", "threshold", "summary_field", "expected"),
         [

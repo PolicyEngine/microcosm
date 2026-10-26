@@ -11,7 +11,8 @@ from microcosm.build.country_spec import CountrySpec, load_country_spec
 from microcosm.calibrate.artifacts import RESULT_TYPE, decode_problem
 from microcosm.calibrate.graph_evidence import (
     CALIBRATION_SUMMARY_PROVIDERS,
-    result_summary,
+    result_summary_data,
+    summary_result,
 )
 from microcosm.graph import (
     compile_graph,
@@ -26,13 +27,151 @@ from microcosm.graph.presentation import PRESENTATION_PROTOCOL
 from .graph import _manifest_stages, uk_spine_operation_inventory
 from .graph_calibration import SIZE_DRAW_TYPE, SIZE_RECEIPT_TYPE, SIZE_SEARCH_TYPE
 from .graph_evidence import SPINE_GATE_REPORT_TYPE
-from .graph_national import NATIONAL_GATE_REPORT_TYPE, NATIONAL_TARGET_TYPE
+from .graph_national import (
+    NATIONAL_EVIDENCE_TYPE,
+    NATIONAL_GATE_REPORT_TYPE,
+    NATIONAL_TARGET_TYPE,
+)
 from .graph_targets import TARGET_SELECTION_TYPE, registry_from_payload
-from .graph_terminal import FULL_GATE_REPORT_TYPE
+from .graph_terminal import FULL_DIAGNOSTICS_TYPE, FULL_GATE_REPORT_TYPE
+
+#: A summary row's fields that the result's weights produce.
+_SUMMARY_MODEL_FIELDS = (
+    "initial",
+    "achieved",
+    "residual",
+    "relative_error",
+    "within_tolerance",
+)
+
+
+#: The outputs in which a gate on a result records the rows it withheld: the
+#: national gates flag each row of their calibration evidence, and the full
+#: build's terminal gate notes each withheld row in its diagnostics' metadata.
+_RECORDED_WITHHELD = {
+    "calibration_evidence": (
+        NATIONAL_EVIDENCE_TYPE,
+        "diagnostics",
+        lambda row: row.get("model_figures_withheld") is True,
+    ),
+    "calibration_diagnostics": (
+        FULL_DIAGNOSTICS_TYPE,
+        "targets",
+        lambda row: bool((row.get("metadata") or {}).get("model_figures_withheld")),
+    ),
+}
+
+
+def _recorded_withheld(
+    context: ArtifactSummaryContext,
+) -> tuple[frozenset[str], frozenset[str]] | None:
+    """The rows a gate on this result saw, and those it recorded as withheld.
+
+    Only a gate that reads this result directly counts. The summary takes its
+    set rather than count it again, so a build computes the withholding once
+    (Vahid's third review of #1383, item 32). None when no such gate has run.
+    """
+
+    found: set[tuple[frozenset[str], frozenset[str]]] = set()
+    for node_id, predecessors in context.run.compiled.predecessors.items():
+        if context.node_id not in predecessors:
+            continue
+        receipt = context.run.manifest.nodes.get(node_id)
+        if receipt is None:
+            continue
+        for name, descriptor in receipt.typed_artifacts.get("outputs", {}).items():
+            reader = _RECORDED_WITHHELD.get(name)
+            if reader is None or name not in receipt.opaque_artifacts:
+                continue
+            type_, table, flagged = reader
+            if descriptor["type"] != {
+                "name": type_.name,
+                "schema_version": type_.schema_version,
+            }:
+                continue
+            rows = json.loads(context.store.load_bytes(descriptor["key"]))[table]
+            found.add(
+                (
+                    frozenset(str(row["name"]) for row in rows),
+                    frozenset(str(row["name"]) for row in rows if flagged(row)),
+                )
+            )
+    if len(found) > 1:
+        raise ValueError("Gates on one result recorded different withheld rows.")
+    return next(iter(found), None)
+
+
+def _withhold_summary_rows(
+    data: dict,
+    result,
+    ordered,
+    recorded: tuple[frozenset[str], frozenset[str]] | None = None,
+) -> None:
+    """Keep a thin row's figures out of the published summary (#1262).
+
+    María's ruling of 2026-10-17: a BRMA row's model figures leave a build
+    only when ten distinct source households carry them, here counted on this
+    result's own weights; her rule of 2026-10-21 extends it to national and
+    regional rows (local rows keep the area-support rule). A withheld row
+    keeps its target and its place, and the final loss covers the published
+    rows (her ruling of 2026-10-18). ``recorded`` is a gate's
+    (:func:`_recorded_withheld`): taken as it is when that gate saw every
+    summary row, and counted here otherwise.
+    """
+
+    from .diagnostics import _restate_totals_over_published_rows, uk_withheld_rows
+
+    rows = data["tables"]["targets"]
+    metadata_by_row = {
+        target.row_name: metadata
+        for target, metadata in zip(
+            ordered.problem.targets, ordered.target_metadata, strict=True
+        )
+    }
+    if recorded is not None and {row["name"] for row in rows} <= recorded[0]:
+        withheld = set(recorded[1])
+    else:
+        # The withholding ties a local family to its parents by contract
+        # target (Vahid's review of #1383, item 1).
+        withheld = uk_withheld_rows(
+            ordered.problem,
+            result.weights,
+            result.frame,
+            [
+                {
+                    **row,
+                    "metadata": {
+                        key: metadata_by_row.get(row["name"], {}).get(key)
+                        for key in ("contract_target_id", "geography_id")
+                    },
+                }
+                for row in rows
+            ],
+            {
+                name: metadata.get("geography_level", "")
+                for name, metadata in metadata_by_row.items()
+            },
+        )
+    if not withheld:
+        return
+    for row in rows:
+        if row["name"] in withheld:
+            for field in _SUMMARY_MODEL_FIELDS:
+                row[field] = None
+            row["model_figures_withheld"] = True
+    totals: dict = {}
+    _restate_totals_over_published_rows(totals, result, frozenset(withheld))
+    data["overview"]["final_loss"] = totals["final_loss"]
+    data["overview"]["model_figures_withheld"] = {
+        "targets": len(withheld),
+        "totals_basis": "published_rows",
+    }
 
 
 def _uk_result_summary(context: ArtifactSummaryContext) -> dict:
-    data = result_summary(context)
+    result, ordered = summary_result(context)
+    data = result_summary_data(result, ordered)
+    _withhold_summary_rows(data, result, ordered, _recorded_withheld(context))
     ancestors, pending = set(), [context.node_id]
     while pending:
         current = pending.pop()
@@ -130,6 +269,13 @@ def _size_summary(context: ArtifactSummaryContext) -> dict:
         "pi_hi",
     )
     summary = {key: value[key] for key in fields if key in value}
+    # Totals over every row: with a row withheld they would give it back by
+    # difference (microcosm#1262). Without the weights behind them this
+    # summary cannot tell which rows are thin, and since María's rule of
+    # 2026-10-21 any problem may bind one, so it publishes none.
+    for key in ("dense_loss", "compact_loss", "max_target_scaled_change"):
+        if key in summary:
+            summary[key] = None
     summary["problem_sha256"] = problem.sha256
     for key in ("support", "protected", "household_ids", "pool_row_indices"):
         if key in value:
@@ -332,6 +478,10 @@ _FULL_BUILD_GROUPS = {
         "uk.full.geography.assign",
         "uk.full.geography.derive",
         "uk.full.geography.local_authority",
+        "uk.full.geography.brma",
+        "uk.full.private_rent",
+        "uk.full.property.value",
+        "uk.full.property.band",
         "uk.full.geography.gate",
     ),
     "targets": (

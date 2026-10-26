@@ -15,14 +15,13 @@ from microcosm.build.uk_runtime.terminal_gates import (
     UK_DEFAULT_ZERO_WEIGHT_STRATA,
     UKInputMassParityPolicy,
     UKInputMassReference,
-    UKQRFTailConcentrationPolicy,
     UKZeroWeightStratumDeclaration,
     uk_default_degenerate_reviewed_exclusions,
+    uk_default_local_target_fit_reviewed_exclusions,
     uk_default_target_fit_reviewed_exclusions,
     uk_degenerate_release_surface_gate,
     uk_export_surface_gate,
     uk_input_mass_parity_gate,
-    uk_qrf_tail_concentration_gate,
     uk_target_fit_gate,
     uk_target_surface_gate,
     uk_weight_ess_gate,
@@ -361,11 +360,13 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
     import pandas as pd
 
     from microcosm.build.uk_runtime.national_frame import (
+        UK_BUILD_IDENTIFIER_COLUMNS,
         UK_RELEASE_EXPORT_DROPPED_COLUMNS,
         uk_national_frame,
         uk_release_export_frame,
     )
     from microcosm.build.uk_runtime.terminal_gates import (
+        UK_ALLOWED_EXTRA_EXPORT_COLUMNS,
         UK_REVIEWED_EXPORT_EXCLUSIONS,
         uk_export_candidate_columns,
     )
@@ -381,7 +382,14 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
             }
         ),
         benunit=pd.DataFrame({"benunit_id": [1, 2]}),
-        household=pd.DataFrame({"household_id": [1, 2], "region": ["LONDON"] * 2}),
+        household=pd.DataFrame(
+            {
+                "household_id": [1, 2],
+                "region": ["LONDON"] * 2,
+                "main_residence_value": [300_000.0, 0.0],
+                "property_wealth": [350_000.0, 0.0],
+            }
+        ),
         time_period="2024",
         household_weights=np.asarray([1.0, 2.0]),
     )
@@ -389,22 +397,40 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
         "person.age",
         "person.incapacity_benefit_reported",
         "household.region",
+        "household.main_residence_value",
+        "household.property_wealth",
         "household.household_weight",
     }
     exported = uk_release_export_frame(frame)
+    # microcosm#1106: the WAS total leaves; its engine components stay.
+    # microcosm#1194: the build identifiers stay beside the renumbered ones,
+    # as reviewed extras of the export surface.
+    carriers = {
+        f"{entity}.{column}" for entity, column in UK_BUILD_IDENTIFIER_COLUMNS.items()
+    }
     assert uk_export_candidate_columns(exported) == {
         "person.age",
         "household.region",
+        "household.main_residence_value",
         "household.household_weight",
+        *carriers,
     }
+    assert carriers <= set(UK_ALLOWED_EXTRA_EXPORT_COLUMNS)
     assert exported.weights_for("household").values.tolist() == [1.0, 2.0]
     assert exported.mass_log == frame.mass_log
     # The boundary drops the reviewed export exclusions, the internal
-    # disability carriers and the salary-sacrifice pre-conversion pay
-    # carrier, and nothing else.
+    # disability carriers, the salary-sacrifice pre-conversion pay carrier,
+    # the landlord carrier, the FRS bonus carrier (microcosm#1340) and the
+    # value the regional home values replaced (microcosm#1112), and nothing
+    # else.
     from microcosm.build.uk_runtime.frs_disability import (
         UK_INTERNAL_DISABILITY_REPORTED_COLUMNS,
     )
+    from microcosm.build.uk_runtime.frs_spine import (
+        FRS_BONUS_CARRIER_COLUMN,
+        FRS_LANDLORD_CARRIER_COLUMN,
+    )
+    from microcosm.build.uk_runtime.property_localisation import RANK_BASIS_COLUMN
     from microcosm.build.uk_runtime.salary_sacrifice import (
         SALSAC_PRE_CONVERSION_PAY_COLUMN,
     )
@@ -418,9 +444,33 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
         set(UK_REVIEWED_EXPORT_EXCLUSIONS)
         | {f"person.{column}" for column in UK_INTERNAL_DISABILITY_REPORTED_COLUMNS}
         | {f"person.{SALSAC_PRE_CONVERSION_PAY_COLUMN}"}
+        | {f"person.{FRS_LANDLORD_CARRIER_COLUMN}"}
+        | {f"person.{FRS_BONUS_CARRIER_COLUMN}"}
+        | {f"household.{RANK_BASIS_COLUMN}"}
     )
     # A frame without the column passes through untouched.
     assert uk_release_export_frame(exported) is exported
+
+
+def test_no_spine_column_writes_an_input_signed_at_the_engine_default() -> None:
+    """A signed engine default (microcosm#1095) holds only while no stage writes it."""
+
+    import json
+
+    from microcosm.frame.adapters.policyengine_uk_concepts import (
+        UK_ENGINE_DEFAULT_INPUTS,
+    )
+    from test_support.paths import paths_for
+
+    schema = json.loads(
+        (
+            paths_for("microcosm-graph").tests
+            / "fixtures/parity/uk_spine/sources/schema.json"
+        ).read_text()
+    )
+    written = {column for dtypes in schema["dtypes"].values() for column in dtypes}
+    assert "self_employment_income" in written
+    assert not written & set(UK_ENGINE_DEFAULT_INPUTS)
 
 
 def _target_fit_exclusion(
@@ -550,17 +600,126 @@ def test_committed_target_fit_register_retains_only_live_deferrals() -> None:
     # regional cells slice on the engine's total_income, which leaves out the
     # other investment income that income tax charges, and on policyengine-uk
     # 2.122.2 the solver's pull on the cell stops at +27.4 %. The fix is
-    # upstream in policyengine-uk's total_income (pe-uk#2174).
+    # upstream in policyengine-uk's total_income (pe-uk#2174). It is retired
+    # with microcosm#1106 (2026-10-11): on that head the cell sits at +23.1 %
+    # to +23.4 % across the C3 and final arms, inside the bound, and the gate
+    # fails the deferral as stale.
     assert set(register) == {
-        "hmrc.spi_region.income_tax_by_region_12570_15000@E12000005@2025"
+        "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_0_to_1_200@2025",
+        "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_1_200_to_2_400@2025",
+        "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_2_400_to_3_600@2025",
+        "dwp/uc_payment_dist/SINGLE_annual_payment_2_400_to_3_600@2025",
+        "hmrc.itl.taxpayers_by_total_income_band.band_2000000_plus@2025",
+        "hmrc.spi.savings_interest_income.count_by_total_income_band.band_150000@2025",
+        "hmrc.spi_region.taxpayers_by_region_200000_plus@E12000004@2025",
+        "hmrc/dividend_income_income_band_15_000_to_20_000@2025",
+        "hmrc/dividend_income_income_band_20_000_to_30_000@2025",
+        "hmrc/dividend_income_income_band_30_000_to_40_000@2025",
+        "hmrc/dividend_income_income_band_40_000_to_50_000@2025",
+        "hmrc/private_pension_income_income_band_12_570_to_15_000@2025",
+        "hmrc/private_pension_income_income_band_15_000_to_20_000@2025",
+        "hmrc/property_income_income_band_12_570_to_15_000@2025",
+        "hmrc/property_income_income_band_15_000_to_20_000@2025",
     }
-    deferral = register[
-        "hmrc.spi_region.income_tax_by_region_12570_15000@E12000005@2025"
-    ]
-    assert deferral.approved_on == "2026-10-06"
-    assert deferral.expires_on == "2026-11-03"
-    assert "microcosm#1095" in deferral.adjudication
-    assert "pe-uk#2174" in deferral.reason
+    assert {record.release_lines for record in register.values()} == {("local",)}
+
+
+def test_committed_local_target_fit_register_is_empty_and_well_formed() -> None:
+    # The local cells' register (microcosm#1301) starts empty; a sign-off after
+    # a build adds its entries and edits this pin in the same reviewed change.
+    # Whatever it holds must name a cell the uk_local_target_fit gate reports,
+    # family/area_code/metric over a crosswalk area, and its reasons carry no
+    # figures: no per-area support figure and no cell estimate.
+    from microcosm.build.uk_runtime.battery_bindings import _local_area_roster
+
+    register = uk_default_local_target_fit_reviewed_exclusions()
+    roster = _local_area_roster(
+        "local_area_crosswalk.json", ("constituency", "local_authority")
+    )
+    area_codes = {code for codes in roster.values() for code in codes}
+    for key, record in register.items():
+        pieces = key.split("/", 2)
+        assert len(pieces) == 3 and all(pieces), key
+        assert pieces[1] in area_codes, key
+        assert "%" not in record.reason, key
+    assert uk_default_local_target_fit_reviewed_exclusions() is register
+    assert set(register) == {
+        "age_structure/E07000008/age/20_30",
+        "age_structure/E14001080/age/20_30",
+        "age_structure/E14001081/age/20_30",
+        "age_structure/E14001086/age/20_30",
+        "age_structure/E14001096/age/20_30",
+        "age_structure/E14001120/age/20_30",
+        "age_structure/E14001131/age/20_30",
+        "age_structure/E14001149/age/20_30",
+        "age_structure/E14001182/age/20_30",
+        "age_structure/E14001319/age/20_30",
+        "age_structure/E14001338/age/20_30",
+        "age_structure/E14001352/age/20_30",
+        "age_structure/E14001353/age/20_30",
+        "age_structure/E14001412/age/20_30",
+        "age_structure/E14001467/age/20_30",
+        "age_structure/S14000085/age/20_30",
+        "age_structure/W07000091/age/20_30",
+        "council_tax/E06000014/council_tax/band_a",
+        "council_tax/E09000033/council_tax/band_g",
+        "council_tax/S12000013/council_tax/band_a",
+        "domestic_energy/S12000013/energy/gas_connected_households",
+        "domestic_energy/S12000017/energy/gas_connected_households",
+        "domestic_energy/S12000023/energy/electricity_kwh",
+        "domestic_energy/S12000027/energy/electricity_kwh",
+        "hmrc_income_by_area/E14001538/hmrc/self_employment_income/count",
+        "private_rent/E06000043/rent/private_rent",
+        "private_rent/E08000003/rent/private_rent",
+        "private_rent/E09000033/rent/private_rent",
+        "tenure/E09000012/tenure/private_rent",
+        "tenure/E09000019/tenure/private_rent",
+        "tenure/E09000019/tenure/social_rent",
+    }
+    assert {record.release_lines for record in register.values()} == {("local",)}
+
+
+def _national_line_register() -> dict[str, UKReviewedExclusion]:
+    """The committed target-fit register as the national line reads it.
+
+    A gate-only sign-off between the two dense builds (microcosm#1301) adds
+    entries scoped ``release_lines: ["local"]`` and approved after the fixed
+    clocks below. The national line sets them aside, as
+    ``battery_bindings._in_line`` does, so these national-row checks keep
+    reading only the entries that apply to them.
+    """
+
+    return {
+        name: record
+        for name, record in uk_default_target_fit_reviewed_exclusions().items()
+        if record.applies_on("national")
+    }
+
+
+def test_national_line_register_sets_local_sign_offs_aside(monkeypatch) -> None:
+    # A local-line sign-off approved after the fixed clocks would read as
+    # premature there and fail every national-row check.
+    signed = UKReviewedExclusion(
+        **{
+            **_entry("Synthetic local-line sign-off."),
+            "approved_on": "2026-10-22",
+            "expires_on": "2026-11-19",
+        },
+        release_lines=("local",),
+    )
+    monkeypatch.setitem(
+        globals(),
+        "uk_default_target_fit_reviewed_exclusions",
+        lambda: {"dwp.uc.households_children_1@2025": signed},
+    )
+
+    assert _national_line_register() == {}
+    fit = uk_target_fit_gate(
+        {"dwp.uc.households_children_1@2025": -0.1},
+        reviewed_exclusions=_national_line_register(),
+        now=date(2026, 10, 6),
+    )
+    assert fit.passed
 
 
 # Aggregate errors from the fresh UC #882 development run: 1,500 epochs with
@@ -584,7 +743,7 @@ def test_restored_fit_checks_leave_empty_payment_tail_cells_blocked() -> None:
             **_RESTORED_TARGET_FIT_ERRORS,
             **empty_tail,
         },
-        reviewed_exclusions=uk_default_target_fit_reviewed_exclusions(),
+        reviewed_exclusions=_national_line_register(),
         now=date(2026, 10, 6),
     )
 
@@ -606,7 +765,7 @@ def test_restored_fit_checks_apply_if_a_later_run_breaches_again(
     # a default 256/uniform or any override run must have no old deferral.
     fit = uk_target_fit_gate(
         {name: relative_error},
-        reviewed_exclusions=uk_default_target_fit_reviewed_exclusions(),
+        reviewed_exclusions=_national_line_register(),
         now=date(2026, 10, 6),
     )
 
@@ -621,7 +780,7 @@ def test_observed_liability_has_no_retired_cash_exemption() -> None:
     assert "hmrc.cgt.liability_total@2025" not in register
     fit = uk_target_fit_gate(
         {"hmrc.cgt.liability_total@2025": 0.30},
-        reviewed_exclusions=register,
+        reviewed_exclusions=_national_line_register(),
         now=date(2026, 10, 6),
     )
     assert not fit.passed
@@ -668,12 +827,6 @@ def _input_mass_policy(**overrides) -> UKInputMassParityPolicy:
     fields = {"relative_tolerance": 0.5, "minimum_reference_total": 0.0}
     fields.update(overrides)
     return UKInputMassParityPolicy(**fields)
-
-
-def _qrf_tail_policy(**overrides) -> UKQRFTailConcentrationPolicy:
-    fields = {"top_k": 1, "max_top_share": 0.5, "min_nonzero_records": 2}
-    fields.update(overrides)
-    return UKQRFTailConcentrationPolicy(**fields)
 
 
 def _input_mass_gate(candidate_totals, reference=None, *, policy=None):
@@ -726,35 +879,21 @@ def test_weighted_integrity_type_errors_are_named() -> None:
             descriptor=_input_mass_descriptor(),
             policy=_input_mass_policy(),
         )
-    with pytest.raises(TypeError, match="policy must be UKQRFTailConcentrationPolicy"):
-        uk_qrf_tail_concentration_gate(
-            {"self_employment_income": [1.0, 2.0]},
-            {"self_employment_income": [1.0, 1.0]},
-            policy=object(),
-        )
-
-
-def test_concentrated_qrf_output_fails_by_name() -> None:
-    values = np.ones(10)
-    values[0] = 1_000.0
-
-    gate = uk_qrf_tail_concentration_gate(
-        {"self_employment_income": values},
-        {"self_employment_income": np.ones(10)},
-        policy=_qrf_tail_policy(),
-    )
-
-    assert not gate.passed
-    assert gate.name == "qrf_tail_concentration"
-    assert "self_employment_income" in gate.failures[0]
 
 
 def test_committed_degenerate_register_is_the_policy_of_record() -> None:
     register = uk_default_degenerate_reviewed_exclusions()
     assert set(register) == {
+        "household.atomic_area_basis",
         "household.source_year",
         "person.tax_free_childcare_spend_routed_share",
     }
+    basis = register["household.atomic_area_basis"]
+    assert basis.approved_by == "juaristi22"
+    assert basis.approved_on == "2026-10-13"
+    assert basis.expires_on == "2027-04-13"
+    # Constant by construction only on the local line's K-clone pool.
+    assert basis.release_lines == ("local",)
     record = register["household.source_year"]
     assert record.adjudication == "microcosm#630"
     assert record.approved_by == "juaristi22"

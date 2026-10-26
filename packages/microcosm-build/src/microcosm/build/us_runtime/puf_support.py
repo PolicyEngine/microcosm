@@ -607,6 +607,23 @@ _PUF_MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS = {
 }
 # The omitted 13.7% E17500 share represented reported Medicare Part B premiums.
 # Do not redistribute it: the engine computes its distinct singular Part B output.
+# Raw-PUF inputs of the archived partnership self-employment derivation
+# (:func:`_puf_partnership_se_net_earnings_from_raw_columns`). All eight are
+# required: a raw PUF carrying only some of them derives nothing, so the donor
+# build fails closed instead of substituting a different quantity.
+_PUF_PARTNERSHIP_SE_RAW_COLUMNS = (
+    "E30400",
+    "E30500",
+    "E00900",
+    "E02100",
+    "E25920",
+    "E25940",
+    "E25960",
+    "E25980",
+)
+# The archived pipeline's ``SE_DEDUCTION_FACTOR``: it treats E30400 and E30500
+# as already multiplied by this factor and divides it back out.
+_PUF_SE_NET_EARNINGS_FACTOR = 0.9235
 _PUF_PREDICTOR_PREFIX = "puf_predictor_"
 
 
@@ -1894,6 +1911,8 @@ def finalize_us_puf_tax_detail_predictions(
     retain the recipient tax-unit index.  Clipping, snapping, reconciliation,
     placement, and sparsification happen only here, after every target has
     drawn; later targets therefore always condition on raw predecessor draws.
+    CPS Social Security reporters retain their source components after
+    placement; only nonreporters receive the PUF Social Security imputation.
 
     The module tail-bound configuration is validated against the canonical
     production surface and applies whenever a configured target is present.
@@ -2147,6 +2166,11 @@ def finalize_us_puf_tax_detail_predictions(
                 person_clone_index=person_clone_index,
                 tax_unit_clone_index=tax_unit_clone_index,
             )
+    _preserve_cps_reported_social_security(
+        tables["person"],
+        source_person=frame.table("person"),
+        requested_components=person_outputs,
+    )
     return Frame(
         tables,
         frame.schema,
@@ -4159,6 +4183,66 @@ def _calibrate_tax_unit_person_output_signed_mass_to_donor(
     )
 
 
+def _preserve_cps_reported_social_security(
+    person: pd.DataFrame,
+    *,
+    source_person: pd.DataFrame,
+    requested_components: Sequence[str],
+) -> None:
+    """Keep CPS reporters' person-level benefits on the PUF support arm (#1178).
+
+    ``SS_VAL > 0`` is the explicit source-receipt rule. The upstream
+    CPS-carried producer splits that reported amount into the four engine
+    leaves. Restore those components exactly after all PUF placement, even
+    when a PUF draw is larger: the donor observes tax-unit gross benefits
+    (E02400), not this host person's benefit or its receipt status. Taxable
+    Social Security is calculated by the engine from the resulting inputs;
+    it is not a persisted PUF tax-unit output that needs reconciliation.
+
+    Nonreporters keep the existing PUF imputation, allowing donor support for
+    survey underreporting. A frame without SS_VAL supplies no explicit CPS
+    receipt evidence and keeps that same imputation. The ASEC arm is never
+    selected. This changes finalized inputs, not the raw QRF predecessor
+    draws used to condition subsequent targets. Invalid reporter source
+    components fail explicitly rather than restoring an erased benefit.
+    """
+
+    components = tuple(
+        component
+        for component in PUF_TAX_DETAIL_SOCIAL_SECURITY_COMPONENT_OUTPUTS
+        if component in requested_components
+    )
+    if not components or "SS_VAL" not in source_person:
+        return
+    reporters = puf_tax_detail_clone_mask(source_person, entity="person") & (
+        pd.to_numeric(source_person["SS_VAL"], errors="coerce").fillna(0.0) > 0.0
+    )
+    if not reporters.any():
+        return
+    source_components = (
+        source_person.loc[reporters]
+        .reindex(columns=list(components))
+        .apply(pd.to_numeric, errors="coerce")
+        .to_numpy(dtype=np.float64)
+    )
+    reported = pd.to_numeric(source_person.loc[reporters, "SS_VAL"]).to_numpy(
+        dtype=np.float64
+    )
+    source_totals = source_components.sum(axis=1)
+    valid = (
+        np.isfinite(source_components).all(axis=1)
+        & (source_components >= 0.0).all(axis=1)
+        & (source_totals >= reported)
+    )
+    if not valid.all():
+        raise ValueError(
+            "CPS-reported Social Security preservation requires nonnegative "
+            "source components covering SS_VAL; "
+            f"{int((~valid).sum())} PUF reporter row(s) violate the source contract."
+        )
+    person.loc[reporters, list(components)] = source_components
+
+
 def _reconcile_puf_social_security_components(
     predictions: pd.DataFrame,
     person: pd.DataFrame,
@@ -4265,11 +4349,10 @@ def _person_source_values(
         return _numeric_array(arrays["E25980"]) - _numeric_array(arrays["E25960"])
     if output == "s_corp_income" and {"E26190", "E26180"}.issubset(arrays):
         return _numeric_array(arrays["E26190"]) - _numeric_array(arrays["E26180"])
-    if output == "partnership_self_employment_net_earnings" and {
-        "E25960",
-        "E26180",
-    }.issubset(arrays):
-        return _numeric_array(arrays["E25960"]) + _numeric_array(arrays["E26180"])
+    if output == "partnership_self_employment_net_earnings" and set(
+        _PUF_PARTNERSHIP_SE_RAW_COLUMNS
+    ).issubset(arrays):
+        return _puf_partnership_se_net_earnings_from_raw_columns(arrays)
     if output in _PUF_MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS and "E17500" in arrays:
         return (
             _numeric_array(arrays["E17500"])
@@ -4294,6 +4377,56 @@ def _person_source_values(
             if source in arrays:
                 return _numeric_array(arrays[source])
     return None
+
+
+def _puf_partnership_se_net_earnings_from_raw_columns(
+    arrays: Mapping[str, Sequence[Any]],
+) -> np.ndarray:
+    """Derive partnership self-employment net earnings from raw PUF columns.
+
+    This ports, operation for operation, the derivation the archived
+    processed-PUF pipeline used for this leaf (the retired enhanced-CPS
+    repository at 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe,
+    ``datasets/puf/puf.py`` lines 723-746), which matches ``part_se`` in Yale
+    Budget Lab Tax-Data's ``src/process_puf.R``. It is a
+    residual, not a read of a Schedule K-1 box 14 field: gross self-employment
+    earnings less the Schedule C and Schedule F amounts.
+
+    The column meanings below are the archived pipeline's own; this module does
+    not check them against the PUF documentation:
+
+    * ``E30400`` and ``E30500``: the taxpayer's and the spouse's taxable
+      self-employment income, already multiplied by 0.9235. Their sum is
+      divided by that factor to recover gross self-employment earnings.
+    * ``E00900`` and ``E02100``: Schedule C net profit or loss and Schedule F
+      farm income, subtracted from the gross amount.
+    * ``E25940 + E25980 - E25920 - E25960``: net partnership income. A record
+      where it is exactly zero has no partnership activity and gets zero.
+
+    No S corporation column (``E26180``, ``E26190``) enters the derivation. A
+    missing value counts as zero, as the archived ``fillna(0)`` did.
+    ``_numeric_array`` also turns a nonnumeric value into zero, where the
+    archived arithmetic would raise; on numeric float64 arrays the result
+    equals the archived formula bit for bit.
+
+    Args:
+        arrays: Mapping carrying every column of
+            ``_PUF_PARTNERSHIP_SE_RAW_COLUMNS`` at one common grain.
+
+    Returns:
+        Partnership self-employment net earnings, one value per input row.
+    """
+
+    raw = {
+        column: _numeric_array(arrays[column])
+        for column in _PUF_PARTNERSHIP_SE_RAW_COLUMNS
+    }
+    gross_se = (raw["E30400"] + raw["E30500"]) / _PUF_SE_NET_EARNINGS_FACTOR
+    schedule_c_f_income = raw["E00900"] + raw["E02100"]
+    has_partnership = (
+        raw["E25940"] + raw["E25980"] - raw["E25920"] - raw["E25960"]
+    ) != 0
+    return np.where(has_partnership, gross_se - schedule_c_f_income, 0.0)
 
 
 _TAX_UNIT_ROLE_COLUMN = "tax_unit_role_input"

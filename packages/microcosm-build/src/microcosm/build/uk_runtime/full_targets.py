@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import date
+from itertools import chain
 from pathlib import Path
 from typing import Any
 
@@ -21,16 +22,37 @@ from microcosm.build.uk_runtime.chronicle_feed import (
     load_uk_chronicle_feed,
     require_committed_uk_chronicle_feed_pin,
 )
+from microcosm.build.uk_runtime.derived_facts import (
+    load_uk_derived_facts,
+    uk_derived_fact_rows,
+)
 from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
 from microcosm.build.uk_runtime.ledger_targets import (
+    _uk_contract_targets,
+    assert_uk_local_deferrals_in_force,
     compile_uk_local_target_registry,
     compile_uk_target_registry,
     load_uk_local_area_crosswalk,
+    load_uk_local_target_reference_membership,
+    uk_cross_grain_coverage_receipt,
+    uk_registry_on_calibration_line,
 )
 from microcosm.build.uk_runtime.local_target_census import _LEDGER_FACT_FEED_PIN
 from microcosm.build.uk_runtime.measure_simulation import (
     apply_uk_calibration_measure_exclusions,
     load_uk_calibration_measure_exclusions,
+)
+from microcosm.build.uk_runtime.national_reconciliation import (
+    assert_uk_subset_relations,
+    reconcile_uk_national_registry,
+)
+from microcosm.build.uk_runtime.support_floor import (
+    assert_uk_support_floor_units,
+    load_uk_support_floor_declaration,
+    uk_support_floor_from_payload,
+)
+from microcosm.build.uk_runtime.uprating_holds import (
+    assert_uk_uprating_holds_declared,
 )
 from microcosm.build.uk_runtime.weighted_integrity import exclusion_evaluation_date
 from microcosm.calibrate import TargetRegistry
@@ -57,11 +79,36 @@ def load_uk_local_chronicle_pin() -> dict[str, Any]:
     return dict(_LEDGER_FACT_FEED_PIN)
 
 
-#: Historical target periods compiled beside the calibration year so the
-#: terminal surface and the certifier can compare against them; skipped, not
-#: fatal, when the pinned feed no longer carries their facts.
-_VALIDATION_PERIODS: frozenset[int] = frozenset({2023, 2025})
+#: Target periods compiled beside the calibration year so the terminal
+#: surface and the certifier can compare against them; skipped, not fatal,
+#: when the pinned feed no longer carries their facts. The 2023 production
+#: surface left this set with its gate (María's ruling of 2026-10-13): no
+#: build reads a 2023 target.
+#:
+#: While this set is the calibration year alone, the full build compiles one
+#: period and is fail-closed there, so its unsupported report at the gated
+#: period is always empty and the "recorded, not fatal" path below does not
+#: fire. The release-cut producer (tools/certify_uk_release_cut.py) compiles
+#: the same period without refusing, hands the report to the parity gates and
+#: reuses the registry as the calibration reference. So the two producers
+#: treat an unresolved calibration-year reference differently: this one
+#: refuses the build, that one leaves the verdict to the gates.
+_VALIDATION_PERIODS: frozenset[int] = frozenset({2025})
 _LOCAL_VALIDATION_PERIODS: frozenset[int] = frozenset({2025})
+
+
+def _derived_fact_provenance(derived: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Each derived resource the compile read beside the feed, by identity."""
+
+    return {
+        stem: {
+            "rows": len(facts.rows),
+            "rows_sha256": facts.rows_sha256,
+            "inputs_sha256": facts.inputs_sha256,
+            "generator": dict(facts.generator),
+        }
+        for stem, facts in derived.items()
+    }
 
 
 def _unsupported_names(unsupported: object) -> tuple[str, ...]:
@@ -70,6 +117,27 @@ def _unsupported_names(unsupported: object) -> tuple[str, ...]:
         name = item.get("name") if isinstance(item, Mapping) else None
         names.append(str(name if name is not None else item))
     return tuple(names)
+
+
+def _support_floor_input(
+    measure_exclusions: str | Path | None, evaluated_on: date
+) -> dict[str, Any] | None:
+    """The register's signed support floor and the date it is evaluated on.
+
+    The problem nodes apply it to the compiled matrix (microcosm#1095 U3); a
+    floor outside its window, or with a scope labelled in a unit its targets
+    are not counted in, refuses here, before any engine runs.
+    """
+
+    declaration = load_uk_support_floor_declaration(
+        None if measure_exclusions is None else Path(measure_exclusions)
+    )
+    if declaration is None:
+        return None
+    floor = uk_support_floor_from_payload(declaration)
+    floor.assert_in_force(evaluated_on)
+    assert_uk_support_floor_units(floor, _uk_contract_targets(national_only=False))
+    return {"declaration": declaration, "evaluated_on": evaluated_on.isoformat()}
 
 
 def load_uk_full_target_inputs(
@@ -81,8 +149,13 @@ def load_uk_full_target_inputs(
     register_json: str | Path | None = None,
     calibration_year: int | None = None,
     exclusions_evaluated_on: date | None = None,
+    include_validation_periods: bool = True,
 ) -> dict[str, Any]:
     """Compile the full target surface with both reviewed source contracts.
+
+    ``include_validation_periods=False`` compiles the calibration year alone,
+    for receipts that read the surface (``tools/uk_target_surface_receipt.py``);
+    the graph node always compiles the validation periods too.
 
     Default hashes are the reviewed national feed pins. Explicit hashes must
     agree with those pins as well: a target-scope filter does not authorize a
@@ -138,12 +211,31 @@ def load_uk_full_target_inputs(
     # recorded below instead of blocking the build.
     national_registries = {}
     local_registries = {}
+    # The compile's full report for every period, beside the registries: the
+    # compile-parity gates classify a fixture row whose reference did not
+    # resolve as ledger_absent, and need the report to do it.
+    national_unsupported: dict[int, tuple[Mapping[str, object], ...]] = {}
+    local_unsupported: dict[int, tuple[Mapping[str, object], ...]] = {}
     unsupported_validation: dict[str, dict[int, tuple[str, ...]]] = {
         "national": {},
         "local": {},
     }
-    for period in sorted({*_VALIDATION_PERIODS, year}):
-        compilation = compile_uk_target_registry(artifact.facts, target_period=period)
+    national_periods = (
+        sorted({*_VALIDATION_PERIODS, year}) if include_validation_periods else [year]
+    )
+    local_periods = (
+        sorted({*_LOCAL_VALIDATION_PERIODS, year})
+        if include_validation_periods
+        else [year]
+    )
+    # Microcosm-derived facts compile beside the Chronicle feed: the high-value
+    # homes stock (HM Land Registry counts, microcosm#1240) at local grain and
+    # its region rows (microcosm#1301) at national grain, and DESNZ's domestic
+    # energy split onto constituencies (microcosm#1095).
+    derived = load_uk_derived_facts()
+    facts = (*artifact.facts, *uk_derived_fact_rows(derived))
+    for period in national_periods:
+        compilation = compile_uk_target_registry(facts, target_period=period)
         if compilation.unsupported:
             if period == year:
                 raise ValueError(
@@ -154,9 +246,10 @@ def load_uk_full_target_inputs(
                 compilation.unsupported
             )
         national_registries[period] = compilation.registry
-    for period in sorted({*_LOCAL_VALIDATION_PERIODS, year}):
+        national_unsupported[period] = tuple(compilation.unsupported)
+    for period in local_periods:
         compilation = compile_uk_local_target_registry(
-            artifact.facts, target_period=period, crosswalk=crosswalk
+            facts, target_period=period, crosswalk=crosswalk
         )
         if compilation.unsupported:
             if period == year:
@@ -168,7 +261,19 @@ def load_uk_full_target_inputs(
                 compilation.unsupported
             )
         local_registries[period] = compilation.registry
-    band_edges = national_registries[year]
+        local_unsupported[period] = tuple(compilation.unsupported)
+    # microcosm#1123: reconcile the compiled national register across its own
+    # grains before the exclusions, so a control's excluded members still
+    # count, and the register the solve binds (and the frozen scoring register
+    # it is checked against) carries the reconciled values. The validation
+    # periods stay as compiled: compile parity measures the facts themselves.
+    # The solve surface first drops what the local line does not bind
+    # (``calibration_lines``, microcosm#1301); today no target narrows it.
+    line_registry, calibration_line = uk_registry_on_calibration_line(
+        national_registries[year], line="local"
+    )
+    compiled_version = line_registry.version
+    band_edges, national_reconciliation = reconcile_uk_national_registry(line_registry)
     frozen_version = None
     if register_json is not None:
         frozen = TargetRegistry.from_json(Path(register_json))
@@ -189,6 +294,25 @@ def load_uk_full_target_inputs(
         band_edge_registry=band_edges,
         exclusion_receipt=exclusion_receipt,
     )
+    assert_uk_local_deferrals_in_force(
+        load_uk_local_target_reference_membership(), evaluated_on
+    )
+    uprating_holds = {
+        # The full compiled register, not the approved one: a measure
+        # exclusion expires, and its target re-enters already declared.
+        "national": assert_uk_uprating_holds_declared(
+            band_edges,
+            calibration_period=year,
+            evaluated_on=evaluated_on,
+            scope="national",
+        ),
+        "local": assert_uk_uprating_holds_declared(
+            local_registries[year],
+            calibration_period=year,
+            evaluated_on=evaluated_on,
+            scope="local",
+        ),
+    }
     by_name = {spec.name: spec for spec in band_edges.specs}
     reviewed_unbound = {
         str(by_name[name].metadata.get("contract_target_id", name)): record
@@ -199,14 +323,19 @@ def load_uk_full_target_inputs(
         "calibration_year": year,
         "national_registry": national_registry,
         "band_edge_registry": band_edges,
+        "national_reconciliation": national_reconciliation,
+        "uprating_holds": uprating_holds,
         "local_registry": local_registries[year],
         "measure_exclusions": exclusion_receipt,
+        "support_floor": _support_floor_input(measure_exclusions, evaluated_on),
         "reviewed_unbound_higher_targets": reviewed_unbound,
         "national_source_pin": pin.to_dict(),
         "local_source_pin": local_pin,
         "ledger_provenance": _ledger_provenance(artifact),
+        "derived_fact_provenance": _derived_fact_provenance(derived),
         "register_completeness": {
-            "compiled_registry_version": band_edges.version,
+            "compiled_registry_version": compiled_version,
+            "reconciled_registry_version": band_edges.version,
             "approved_registry_version": national_registry.version,
             "frozen_registry_version": frozen_version,
             "compiled_reference_count": len(band_edges.specs),
@@ -214,6 +343,7 @@ def load_uk_full_target_inputs(
             "measure_exclusion_count": len(exclusion_receipt),
             "exclusions_evaluated_on": evaluated_on.isoformat(),
             "band_edge_registry_reconciled": True,
+            "calibration_line": calibration_line,
             "compiled_local_reference_count": len(local_registries[year].specs),
             "local_registry_version": local_registries[year].version,
             "validation_periods": {
@@ -227,6 +357,8 @@ def load_uk_full_target_inputs(
         },
         "uk_ledger_compiled_registries": national_registries,
         "uk_ledger_compiled_local_registries": local_registries,
+        "uk_ledger_compile_unsupported": national_unsupported,
+        "uk_ledger_compile_local_unsupported": local_unsupported,
     }
 
 
@@ -249,7 +381,10 @@ def load_uk_national_target_inputs(
     diagnostic run; the compiled register less the measure exclusions is the
     solve surface and the full compiled register keeps the band edges;
     ``register_json`` requires the re-derived scoring surface to be the frozen
-    one. No local registry and no ladder: the national line has neither.
+    one. No local registry and no ladder: the national line has neither. The
+    references whose contract target binds on the local line only
+    (``calibration_lines``) compile but leave the surface before
+    reconciliation; ``register_completeness.calibration_line`` receipts them.
     """
 
     artifact = load_ledger_consumer_artifact(
@@ -270,22 +405,47 @@ def load_uk_national_target_inputs(
     if type(year) is not int or year <= 0:
         raise ValueError("calibration_year must be a positive integer.")
     evaluated_on = exclusion_evaluation_date(exclusions_evaluated_on)
-    compilation = compile_uk_target_registry(artifact.facts, target_period=year)
+    # Every committed reference compiles here, the high-value homes region rows
+    # on their Microcosm-derived facts included (microcosm#1301); those rows
+    # bind on the local line only, so the national surface drops them before
+    # reconciliation, the exclusions and the frozen-register check, and its
+    # registry is the one it was without them.
+    derived = load_uk_derived_facts()
+    compilation = compile_uk_target_registry(
+        chain(artifact.facts, uk_derived_fact_rows(derived)), target_period=year
+    )
     if compilation.unsupported:
         raise ValueError(
             f"{len(compilation.unsupported)} national target references failed "
             f"to compile for {year}: {compilation.unsupported!r}."
         )
+    line_registry, calibration_line = uk_registry_on_calibration_line(
+        compilation.registry, line="national"
+    )
     exclusions = load_uk_calibration_measure_exclusions(
         None if measure_exclusions is None else Path(measure_exclusions)
     )
+    reconciled, national_reconciliation = reconcile_uk_national_registry(line_registry)
+    # The joint path runs the coverage check on its local surface; the
+    # national line has none, so it runs the same check here.
+    national_reconciliation = {
+        **national_reconciliation,
+        "coverage": uk_cross_grain_coverage_receipt(),
+        "subset_relations": assert_uk_subset_relations(reconciled),
+    }
     registry, exclusion_receipt = apply_uk_calibration_measure_exclusions(
-        compilation.registry, exclusions, now=evaluated_on
+        reconciled, exclusions, now=evaluated_on
     )
     _validate_band_edge_registry(
         register_registry=registry,
-        band_edge_registry=compilation.registry,
+        band_edge_registry=reconciled,
         exclusion_receipt=exclusion_receipt,
+    )
+    uprating_holds = assert_uk_uprating_holds_declared(
+        reconciled,
+        calibration_period=year,
+        evaluated_on=evaluated_on,
+        scope="national",
     )
     frozen_version = None
     if register_json is not None:
@@ -303,19 +463,25 @@ def load_uk_national_target_inputs(
         "artifact": artifact,
         "calibration_year": year,
         "national_registry": registry,
-        "band_edge_registry": compilation.registry,
+        "band_edge_registry": reconciled,
+        "national_reconciliation": national_reconciliation,
+        "uprating_holds": uprating_holds,
         "measure_exclusions": exclusion_receipt,
+        "support_floor": _support_floor_input(measure_exclusions, evaluated_on),
         "chronicle_feed_pin": pin.to_dict(),
         "chronicle_provenance": artifact.provenance(),
         "ledger_provenance": _ledger_provenance(artifact),
+        "derived_fact_provenance": _derived_fact_provenance(derived),
         "register_completeness": {
-            "compiled_registry_version": compilation.registry.version,
+            "compiled_registry_version": line_registry.version,
+            "reconciled_registry_version": reconciled.version,
             "approved_registry_version": registry.version,
             "frozen_registry_version": frozen_version,
-            "compiled_reference_count": len(compilation.registry.specs),
+            "compiled_reference_count": len(line_registry.specs),
             "approved_reference_count": len(registry.specs),
             "measure_exclusion_count": len(exclusion_receipt),
             "exclusions_evaluated_on": evaluated_on.isoformat(),
             "band_edge_registry_reconciled": True,
+            "calibration_line": calibration_line,
         },
     }
