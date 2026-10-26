@@ -54,6 +54,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -857,12 +858,24 @@ def pr_body(context: dict[str, Any]) -> str:
             "- [ ] **Failing tests** to update for the new pair: "
             + ", ".join(context["tests_failed"][:20])
         )
-    lines += [
-        "- [ ] One writer: the UK hub and María know this PR exists.",
-        "",
-        "🤖 Generated with [Claude Code](https://claude.com/claude-code)",
-    ]
+    lines.append("- [ ] One writer: the UK hub and María know this PR exists.")
+    if context.get("footer"):
+        lines += ["", context["footer"]]
     return "\n".join(lines) + "\n"
+
+
+#: A commit trailer's co-author: one line, ``Name <email>``.
+CO_AUTHOR_PATTERN = re.compile(r"^[^<>\n]+ <[^<>\s@]+@[^<>\s]+>$")
+
+
+def commit_message(national_tag: str, *, co_authors: Sequence[str] = ()) -> str:
+    """The certification commit's message, crediting only the named co-authors."""
+
+    message = f"Certify Microcosm UK cut {national_tag}"
+    if co_authors:
+        trailers = "\n".join(f"Co-Authored-By: {author}" for author in co_authors)
+        message += f"\n\n{trailers}"
+    return message
 
 
 def parse(argv: list[str] | None) -> argparse.Namespace:
@@ -927,9 +940,24 @@ def parse(argv: list[str] | None) -> argparse.Namespace:
     )
     parser.add_argument("--open-pr", action="store_true", help="draft; needs --push")
     parser.add_argument("--dry-run", action="store_true", help="print the plan only")
+    parser.add_argument(
+        "--co-author",
+        action="append",
+        default=[],
+        metavar="NAME <EMAIL>",
+        help="add a Co-Authored-By trailer to the certification commit (repeatable)",
+    )
+    parser.add_argument(
+        "--pr-body-footer",
+        metavar="TEXT",
+        help="a closing line for the pull request body, such as an agent's credit",
+    )
     args = parser.parse_args(argv)
     if args.open_pr and not args.push:
         parser.error("--open-pr needs --push.")
+    for author in args.co_author:
+        if not CO_AUTHOR_PATTERN.match(author):
+            parser.error(f"--co-author must be one line, 'Name <email>': {author!r}")
     if not 1 <= args.test_workers <= 4:
         parser.error("--test-workers must be between 1 and 4.")
     check_tag(args.national_tag, "national")
@@ -1228,6 +1256,7 @@ def certify(args: argparse.Namespace) -> int:
         "constants": ", ".join(constants),
         "dropped_overlays": overlay_diff(old_bundle, new_bundle),
         "warnings": warnings,
+        "footer": args.pr_body_footer,
         "input_surface": surface,
         "regional_model": dense.model if dense is not None else None,
     }
@@ -1239,8 +1268,7 @@ def certify(args: argparse.Namespace) -> int:
         run(["git", "add", "--", *staged_paths], step="stage-certification")
     run(
         ["git", "commit", "-q", "-m",
-         f"Certify Microcosm UK cut {args.national_tag}\n\n"
-         "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"]
+         commit_message(args.national_tag, co_authors=args.co_author)]
     )  # fmt: skip
     print(f"\ncommitted on {branch} in {worktree}; PR body draft: {body}")
     if args.push:

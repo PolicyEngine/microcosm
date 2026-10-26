@@ -263,6 +263,12 @@ Each heavy step first checks the host. The disk floor defaults to 55 GB
 (`--min-free-gb`). There is no load limit unless you set one with
 `--max-load1`, because a sensible limit depends on the machine.
 
+The certification commit and the pull request body credit nobody but the
+git identity that commits. An agent session adds its own credit:
+`--co-author "Claude Opus 5.5 <noreply@anthropic.com>"` (repeatable) for the
+commit trailer, and `--pr-body-footer "🤖 Generated with [Claude Code](https://claude.com/claude-code)"`
+for the body.
+
 The script does the mechanical part of what policyengine.py#685 did by hand,
 on a new branch from policyengine.py's main.
 

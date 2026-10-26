@@ -532,3 +532,46 @@ def test_any_json_receipt_summarizes_or_fails_operationally(receipt):
         assert "failed operationally" in str(error)
     else:
         assert isinstance(passed, bool) and summary
+
+
+def test_the_certification_commit_credits_only_named_co_authors():
+    assert handoff.commit_message(NATIONAL) == f"Certify Microcosm UK cut {NATIONAL}"
+    message = handoff.commit_message(
+        NATIONAL, co_authors=["A Person <a@example.org>", "B <b@example.org>"]
+    )
+    assert message.splitlines()[2:] == [
+        "Co-Authored-By: A Person <a@example.org>",
+        "Co-Authored-By: B <b@example.org>",
+    ]
+
+
+@pytest.mark.parametrize(
+    "author", ["no email", "Name <a@b>\nCo-Authored-By: x <y@z>", "<a@b.org>"]
+)
+def test_a_co_author_must_be_one_name_and_email(author):
+    with pytest.raises(SystemExit):
+        handoff.parse(
+            [
+                "--national-tag",
+                NATIONAL,
+                "--drop-regional-release",
+                "--pepy-repo",
+                "p",
+                "--co-author",
+                author,
+            ]
+        )
+
+
+def test_the_pr_body_footer_is_the_operators_choice():
+    context = {
+        "national_tag": NATIONAL,
+        "model": "2.162.3",
+        "core": "3.33.3",
+        "regional_summary": "`--drop-regional-release`",
+        "microcosm_commit": "a" * 40,
+        "commands": [],
+    }
+    assert "Claude" not in handoff.pr_body(context)
+    footer = "🤖 Generated with [Claude Code](https://claude.com/claude-code)"
+    assert handoff.pr_body({**context, "footer": footer}).rstrip().endswith(footer)
