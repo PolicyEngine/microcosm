@@ -271,15 +271,21 @@ records that signer, whoever resumed it.
 1. On macOS, run `uv run --no-sync python -m microcosm.data.gate_signing_keys
    generate --keychain-service microcosm-uk-gate-signing-key`. It stores the
    key in your login keychain through `security -i` on stdin, so the key is
-   in no process list, reads it back, and prints only its fingerprint.
-   Elsewhere, pipe `generate`'s stdout straight into a secret store: it
-   refuses to print a key to a terminal, where scrollback and agent
-   transcripts would keep it.
+   in no process list, reads it back, and prints only its fingerprint. It
+   never replaces an item that is already there. Elsewhere, pipe
+   `generate`'s stdout straight into a secret store: it refuses to print a
+   key to a terminal, where scrollback and agent transcripts would keep it.
 2. Never commit, post or print the key.
 3. Open a pull request that adds the fingerprint as `active`.
-4. To rotate, set the old entry to `retired` with a `retired_on` date, in
-   the same or a later PR. Its cuts still verify, but only for someone who
-   holds that key.
+4. To rotate, store the new key under a new `--keychain-service` name, so
+   the old key stays held. Then set the old entry to `retired` with a
+   `retired_on` date, in the same or a later PR. Its cuts still verify, but
+   only for someone who still holds that key.
+
+A key stored this way is readable, with no prompt, by any process running
+as your user that asks `security find-generic-password -w`, which is how the
+recipes above read it. The login keychain, like Max's agent store, shields
+the key from other users, not from your own agent sessions.
 
 **Revoke a leaked key.** Set it to `revoked`. Every cut it signed then fails
 verification, so re-sign or withdraw those cuts.

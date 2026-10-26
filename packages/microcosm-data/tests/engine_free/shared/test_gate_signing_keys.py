@@ -247,6 +247,8 @@ def test_generate_stores_the_key_without_it_in_any_argv(capsys, monkeypatch):
         if argv[:2] == ["security", "-i"]:
             store["value"] = kwargs["input"].split(" -w ", 1)[1].strip()
             return subprocess.CompletedProcess(argv, 0, "", "")
+        if "-w" not in argv:  # the existence check: no item yet
+            return subprocess.CompletedProcess(argv, 44, "", "not found")
         return subprocess.CompletedProcess(argv, 0, store["value"] + "\n", "")
 
     monkeypatch.setattr(registry.subprocess, "run", run)
@@ -259,15 +261,33 @@ def test_generate_stores_the_key_without_it_in_any_argv(capsys, monkeypatch):
     assert store["value"] not in printed
     for argv, _ in calls:
         assert store["value"] not in " ".join(argv)
-    assert calls[0][1].startswith("add-generic-password -U -a builder -s uk-gate-key ")
+    add = next(entry for argv, entry in calls if argv[:2] == ["security", "-i"])
+    assert add.startswith("add-generic-password -a builder -s uk-gate-key -w ")
+
+
+def test_an_existing_keychain_item_is_never_replaced(capsys, monkeypatch):
+    calls = []
+
+    def run(argv, **kwargs):
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 0, "attributes only", "")
+
+    monkeypatch.setattr(registry.subprocess, "run", run)
+    monkeypatch.setattr(registry.getpass, "getuser", lambda: "builder")
+    assert registry.main(["generate", "--keychain-service", "uk-gate-key"]) == 1
+    assert "already holds a key" in capsys.readouterr().err
+    assert calls == [
+        ["security", "find-generic-password", "-a", "builder", "-s", "uk-gate-key"]
+    ]
 
 
 def test_a_key_that_does_not_read_back_is_reported(capsys, monkeypatch):
-    monkeypatch.setattr(
-        registry.subprocess,
-        "run",
-        lambda argv, **kw: subprocess.CompletedProcess(argv, 0, "other\n", ""),
-    )
+    def run(argv, **kwargs):
+        if argv[:2] == ["security", "find-generic-password"] and "-w" not in argv:
+            return subprocess.CompletedProcess(argv, 44, "", "not found")
+        return subprocess.CompletedProcess(argv, 0, "other\n", "")
+
+    monkeypatch.setattr(registry.subprocess, "run", run)
     monkeypatch.setattr(registry.getpass, "getuser", lambda: "builder")
     assert registry.main(["generate", "--keychain-service", "uk-gate-key"]) == 1
     assert "did not read back" in capsys.readouterr().err

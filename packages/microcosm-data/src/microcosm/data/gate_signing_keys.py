@@ -275,16 +275,30 @@ def store_in_keychain(key: bytes, *, service: str, account: str) -> None:
 
     ``security`` reads the command from stdin (``security -i``), so the key
     never appears in a process list. The stored value is then read back and
-    compared, and is never printed.
+    compared, and is never printed. An existing item is never replaced: a
+    retired key's cuts verify only for whoever still holds it, so rotating
+    stores the new key under a new service name.
     """
 
     for name in (service, account):
         if not _KEYCHAIN_NAME.match(name):
             raise GateSigningKeyError(f"keychain name {name!r} must be plain.")
+    existing = subprocess.run(
+        ["security", "find-generic-password", "-a", account, "-s", service],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if existing.returncode == 0:
+        raise GateSigningKeyError(
+            f"keychain service {service} already holds a key for {account}; it "
+            "is left as it is. Store a new key under a new --keychain-service "
+            "name, so the old key, and the cuts it signed, stay verifiable."
+        )
     encoded = base64.b64encode(key).decode()
     subprocess.run(
         ["security", "-i"],
-        input=f"add-generic-password -U -a {account} -s {service} -w {encoded}\n",
+        input=f"add-generic-password -a {account} -s {service} -w {encoded}\n",
         capture_output=True,
         text=True,
         check=True,
