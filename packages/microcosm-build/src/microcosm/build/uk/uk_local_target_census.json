@@ -1098,10 +1098,10 @@
     },
     {
       "derived_resource_pin": {
-        "inputs_sha256": "d9101beaa519148bd63089989859ebfe71016e5a9775d0bb3d0f6f5037eb68d4",
+        "inputs_sha256": "13f539117113f5a333dfd74afb925b710767cb659a3475427298bba8d519bbb1",
         "resource": "desnz_constituency_energy_facts.json",
         "rows": 2526,
-        "rows_sha256": "4858c6c470a78c0dc9bdaaac0071b8d398501443b16fbf8ce3e2b32c94f0917c"
+        "rows_sha256": "0112c2dbf4095d8ae6d0994c2fc0dc0060ccac74c2f326bd0f942993dfe1ab69"
       },
       "geographies": [
         "constituency"
@@ -1110,11 +1110,11 @@
       "ledger_fact_pin": {
         "artifact": ".codex-work/consumer_facts_uk.jsonl",
         "build": "build-bundle --suite uk -> build-consumer-artifact",
-        "fact_row_count": 1499301,
-        "facts_sha256": "2b64fecfe746164203dac1726aae6ffdb3e5d8e478bd3d64d118ac76cb00780b",
+        "fact_row_count": 1503315,
+        "facts_sha256": "084ddf46fa34b1e03b5f0a7287617aeafaf7f614e3619d87a6565409e4adac85",
         "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-        "manifest_sha256": "b90fb1b8f1a910458fac41425360209d101796e6de0b134f952ad93323ca6e21",
-        "source_commit": "abf0921b896d29ee0745ed2aefde8d6337ed7164",
+        "manifest_sha256": "229afc18d8201bbd59a41777453f487ad750be2802425240ac26ee54849bfafd",
+        "source_commit": "272c987af175687aca21f82851ef349521802b12",
         "source_repo": "PolicyEngine/chronicle"
       },
       "notes": "The pinned feed record sets desnz.lsoa.electricity.cy2024 and desnz.lsoa.gas.gy2024 (LSOA_domestic_elec_2010-2024.xlsx and LSOA_domestic_gas_2010-2024.xlsx, December 2025) carry DESNZ's domestic consumption and meter counts for every England and Wales LSOA and Scottish data zone it publishes, on the same periods and temperature bases as the authority rows. tools/build_uk_desnz_constituency_energy_facts.py shares each authority's total among its constituency pieces in proportion to them, an LSOA in two seats by its output areas' census households, so every authority keeps its total and DESNZ's unallocated meters follow the split. The seat cells take the authority cells' factor per fuel and read their meter share off the split. Northern Ireland publishes no small areas and is outside the family.",
