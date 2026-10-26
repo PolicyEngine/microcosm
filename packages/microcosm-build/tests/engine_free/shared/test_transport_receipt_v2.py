@@ -1107,6 +1107,48 @@ def test_v2_person_table_must_match_argument(mismatch):
         )
 
 
+@pytest.mark.parametrize("design", ["view", "seam"])
+def test_declared_unit_extension_only_widens_values(monkeypatch, design):
+    """Widening a reserved unit, as BE's extension will, needs no rewrite here.
+
+    ``payee`` becomes household after validation. Either a person-aligned
+    household view, or a native household table broadcast at the dispatch seam,
+    must assign, matching ids through ``person_household_id``.
+    """
+    validate = receipt_module.validate_receipt_v2
+    dispatch = receipt_module.receipt_dispatch_tables
+    person = _people((20, 21, 22)).drop(columns="payment")
+    person["person_household_id"] = [10, 10, 20]
+    household = pd.DataFrame({"household_id": [10, 20], "payment": [1.0, 1.0]})
+
+    def to_people(table):
+        members = person["person_household_id"].to_numpy()
+        return table.set_index("household_id").loc[members].reset_index()
+
+    def widened(contract):
+        seed, rows, groups = validate(contract)
+        return seed, [{**row, "payee": "household"} for row in rows], groups
+
+    def broadcast(tables, row):
+        return {**dispatch(tables, row), "payee": to_people(tables["household"])}
+
+    monkeypatch.setattr(receipt_module, "validate_receipt_v2", widened)
+    if design == "seam":
+        monkeypatch.setattr(receipt_module, "receipt_dispatch_tables", broadcast)
+        tables = {"person": person, "household": household}
+    else:
+        tables = {"person": person, "household": to_people(household)}
+    out, _ = receipt_module.assign_receipts_v2(
+        person,
+        _contract(),
+        weights=np.ones(3),
+        targets={"alpha_total": 3},
+        knobs={"assignment": "central"},
+        tables=tables,
+    )
+    assert out["receives_alpha"].tolist() == [True, True, True]
+
+
 @pytest.mark.parametrize("target", [np.int64(1), np.float32(1), np.float64(1)])
 def test_v2_numpy_real_targets_are_accepted(target):
     out, audit = _assign(_people((20,)), targets={"alpha_total": target})

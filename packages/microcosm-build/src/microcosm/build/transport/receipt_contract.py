@@ -376,6 +376,29 @@ def _refuse_assignment(message, audit, out):
     raise ReceiptAssignmentRefused(message, audit)
 
 
+def _unit_views_align(tables, row, person):
+    """Check what the [BE] dispatch seam returns, not the raw unit tables.
+
+    Each unit's ids are matched through the person table's membership column, so
+    a declared unit broadcast to person rows at the seam aligns.
+    """
+    if any(row[field] not in tables for field in RECEIPT_UNIT_FIELDS):
+        return False
+    for field, view in receipt_dispatch_tables(tables, row).items():
+        entity = row[field]
+        membership = "person_id" if entity == "person" else f"person_{entity}_id"
+        if (
+            len(view) != len(person)
+            or f"{entity}_id" not in view
+            or membership not in person
+            or not np.array_equal(
+                view[f"{entity}_id"].to_numpy(), person[membership].to_numpy()
+            )
+        ):
+            return False
+    return True
+
+
 def assign_receipts_v2(
     person,
     contract,
@@ -417,20 +440,8 @@ def assign_receipts_v2(
         if tables is not None
         else {row[field]: person for row in rows for field in RECEIPT_UNIT_FIELDS}
     )
-    for entity in {row[field] for row in rows for field in RECEIPT_UNIT_FIELDS}:
-        table = tables.get(entity)
-        id_column = f"{entity}_id"
-        if (
-            table is None
-            or len(table) != len(person)
-            or id_column not in table
-            or not np.array_equal(
-                table[id_column].to_numpy(), person[id_column].to_numpy()
-            )
-        ):
-            raise ValueError(
-                "Receipt entity tables must align with person length and ids."
-            )
+    if not all(_unit_views_align(tables, row, person) for row in rows):
+        raise ValueError("Receipt entity tables must align with person length and ids.")
     eligible, masks, target_values = {}, {}, {}
     before_payment = {}
     for row in rows:
