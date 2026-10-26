@@ -26,6 +26,7 @@ from microcosm.graph import (
     KernelContext,
     Node,
     Owned,
+    SourceRef,
     StructuralDelta,
     compile_graph,
 )
@@ -443,7 +444,7 @@ def test_direct_comparison_request_for_exempt_row_refuses(tmp_path):
             "references": canonical_json(_document()).decode(),
             "references_sha256": SHA,
             "reference_selection": canonical_json(_selection()).decode(),
-            "entities": ("person",),
+            "entities": ("person", "household"),
             "weight_entity": "person",
         },
         artifact_outputs=(ArtifactOutput("comparison", COMPARISON_TYPE),),
@@ -610,11 +611,12 @@ def test_legacy_selection_path_changed_mutant_frozen_surface_params_and_keys(
     for node in (before_node, after_node):
         graph = Graph(
             country,
-            (),
+            (SourceRef("seed", "raw-bytes-v1"),),
             (
                 Node(
                     "open",
                     "fixture.create@1",
+                    sources=("seed",),
                     structural=StructuralDelta.CREATE,
                     outputs=CONFIG.create_outputs,
                 ),
