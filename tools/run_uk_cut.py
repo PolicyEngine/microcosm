@@ -961,23 +961,117 @@ def environment_checks() -> list[Check]:
     return checks
 
 
-def signing_key_check() -> Check:
+def cut_signed_reports(paths: CutPaths) -> list[Path]:
+    """The signed reports of the steps this cut has finished, in step order.
+
+    A step's report counts only once the step's done-check passes, so an
+    unfinished attempt about to be moved aside (``--retry-spine``,
+    ``--retry-national``) never binds the key. These are the reports the
+    assembler collects.
+    """
+
+    reports: list[Path] = []
+    if not spine_done(paths)[0]:
+        return reports
+    reports.append(paths.spine_h5.with_suffix(".spine_gates.json"))
+    if not national_done(paths)[0]:
+        return reports
+    reports.append(paths.run_dir / f"{CANDIDATE_NAME}.terminal_gates.json")
+    if certify_done(paths)[0]:
+        reports += [
+            paths.run_dir / f"{CANDIDATE_NAME}.release_cut_gates.json",
+            paths.run_dir / f"{CANDIDATE_NAME}.release_certification.json",
+        ]
+    return reports
+
+
+def signed_report_fingerprints(reports: Sequence[Path]) -> dict[str, str]:
+    """Each signed report's ``attestation.signing_key_sha256``, by file name.
+
+    An unsigned report (no attestation, or a null fingerprint) is left out.
+    """
+
+    found: dict[str, str] = {}
+    for report in reports:
+        payload = _read_json(report)
+        if payload is None:
+            raise CutError(f"{report} is not a readable JSON report.")
+        fingerprint = (payload.get("attestation") or {}).get("signing_key_sha256")
+        if fingerprint:
+            found[report.name] = str(fingerprint)
+    return found
+
+
+def reports_signing_key(reports: Sequence[Path]) -> str | None:
+    """The fingerprint of the one key that signed these reports, if any."""
+
+    fingerprints = signed_report_fingerprints(reports)
+    signers = set(fingerprints.values())
+    if len(signers) > 1:
+        raise CutError(
+            "this cut's reports were signed by more than one key "
+            f"({fingerprints}); certification verifies every part with one "
+            "key, so start a fresh cut with a new --label."
+        )
+    return signers.pop() if signers else None
+
+
+def cut_signing_key(paths: CutPaths) -> str | None:
+    """The fingerprint of the one key that signed this cut so far, if any."""
+
+    return reports_signing_key(cut_signed_reports(paths))
+
+
+def signing_key_check(
+    *, paths: CutPaths | None = None, environ: Mapping[str, str] | None = None
+) -> Check:
+    """The key in the environment is registered and is this cut's signer.
+
+    HMAC verification needs the secret that signed, and certification
+    verifies the spine and seam reports with the one key in the environment,
+    so a cut resumes only under the key its reports carry. Once certified,
+    the remaining steps only verify, so a signer retired since then still
+    finishes the cut.
+    """
+
     from microcosm.data.gate_signing_keys import (
         UK_GATE_SIGNING_KEY_ENV,
         GateSigningKeyError,
         decode_gate_signing_key,
         gate_signing_key_fingerprint,
+        registered_gate_signing_key,
         require_registered_gate_signing_key,
     )
 
+    environ = os.environ if environ is None else environ
+    try:
+        reports = cut_signed_reports(paths) if paths is not None else []
+        signer = reports_signing_key(reports)
+    except CutError as error:
+        return Check("signing key registered", False, str(error))
+    certified = any(r.name.endswith(".release_certification.json") for r in reports)
     try:
         key = decode_gate_signing_key(
-            os.environ.get(UK_GATE_SIGNING_KEY_ENV), env=UK_GATE_SIGNING_KEY_ENV
+            environ.get(UK_GATE_SIGNING_KEY_ENV), env=UK_GATE_SIGNING_KEY_ENV
         )
-        require_registered_gate_signing_key("uk", key, purpose="sign")
+        require_registered_gate_signing_key(
+            "uk", key, purpose="verify" if certified else "sign"
+        )
     except GateSigningKeyError as error:
         return Check("signing key registered", False, str(error))
-    return Check("signing key registered", True, gate_signing_key_fingerprint(key))
+    fingerprint = gate_signing_key_fingerprint(key)
+    if signer is not None and signer != fingerprint:
+        entry = registered_gate_signing_key("uk", signer)
+        holder = f"{entry.label}, held by {entry.custodian}" if entry else "a key"
+        return Check(
+            "signing key registered",
+            False,
+            f"this cut was signed by {holder} ({signer}), not the key in "
+            f"{UK_GATE_SIGNING_KEY_ENV} ({fingerprint}); resume it with that "
+            "key, or start a fresh cut with a new --label.",
+        )
+    detail = fingerprint + ("; this cut's signer" if signer else "")
+    return Check("signing key registered", True, detail)
 
 
 def hub_checks() -> list[Check]:
@@ -1513,15 +1607,7 @@ def run_publish(runner: Runner, tag: str, *, publish: bool) -> None:
 
 
 def write_receipt(runner: Runner, extra: Mapping[str, Any]) -> None:
-    from microcosm.data.gate_signing_keys import (
-        UK_GATE_SIGNING_KEY_ENV,
-        gate_signing_key_fingerprint,
-    )
-
     paths = runner.paths
-    key = os.environ.get(UK_GATE_SIGNING_KEY_ENV)
-    import base64
-
     receipt = {
         "schema_version": 1,
         "kind": "microcosm.uk_cut_receipt",
@@ -1529,9 +1615,8 @@ def write_receipt(runner: Runner, extra: Mapping[str, Any]) -> None:
         "label": paths.label,
         "code": {"repository": "PolicyEngine/microcosm", "commit": paths.commit},
         "engine": _engine_version(),
-        "signing_key_sha256": gate_signing_key_fingerprint(base64.b64decode(key))
-        if key
-        else None,
+        # The key that signed the cut's reports, whoever resumed it.
+        "signing_key_sha256": cut_signing_key(paths),
         "inputs": {
             source.key: {
                 "repo_id": source.repo_id,
@@ -1658,7 +1743,7 @@ def _print_fetch(results: Sequence[FetchResult]) -> bool:
 def preflight(args: argparse.Namespace, paths: CutPaths) -> list[Check]:
     checks = git_checks(allow_off_main=args.allow_off_main)
     checks += environment_checks()
-    checks.append(signing_key_check())
+    checks.append(signing_key_check(paths=paths))
     checks += hub_checks()
     checks.append(register_expiry_check(date.today()))
     checks += host_checks(

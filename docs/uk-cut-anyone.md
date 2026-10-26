@@ -78,7 +78,7 @@ derive from licensed data:
 | `cuts/<label>-<sha9>/national/` | the calibration run |
 | `cuts/<label>-<sha9>/release/` | the assembled release |
 | `cuts/<label>-<sha9>/logs/` | one log per step |
-| `cuts/<label>-<sha9>/cut_receipt.json` | commit, engine, key fingerprint, input pins, step timings, tag |
+| `cuts/<label>-<sha9>/cut_receipt.json` | commit, engine, the signing key's fingerprint (from the signed reports), input pins, step timings, tag |
 
 On Max's machine, protect the work directory from disk-guard for the length
 of a run (runbook §1).
@@ -225,7 +225,10 @@ Every UK signer refuses an unregistered or retired key:
 
 HMAC verification needs the secret that signed. So a cut is signed,
 certified and published by one key holder, and the registry holds one key
-per builder rather than one shared secret.
+per builder rather than one shared secret. The runner holds a cut to that:
+its preflight refuses to resume a cut under any key but the one its signed
+reports name (`attestation.signing_key_sha256`), and `cut_receipt.json`
+records that signer, whoever resumed it.
 
 | Label | Fingerprint | Held by | Status |
 |---|---|---|---|

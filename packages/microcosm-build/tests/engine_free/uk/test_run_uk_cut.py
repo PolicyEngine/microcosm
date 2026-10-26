@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import dataclasses
 import hashlib
 import io
 import json
@@ -406,11 +408,24 @@ BUILD_ROW = "d" * 64
 class FakeBuild:
     """Stands in for the five tools: writes what each step writes."""
 
-    def __init__(self, paths: cut.CutPaths, fail: set[str] | None = None) -> None:
+    def __init__(
+        self,
+        paths: cut.CutPaths,
+        fail: set[str] | None = None,
+        signer: str | None = None,
+    ) -> None:
         self.paths = paths
         self.calls: list[str] = []
         self.argv: dict[str, list[str]] = {}
         self.fail = fail or set()
+        self.signer = signer
+
+    def _report(self, **payload) -> str:
+        """A gate report, signed by ``signer``'s fingerprint when one is set."""
+
+        if self.signer:
+            payload["attestation"] = {"signing_key_sha256": self.signer}
+        return json.dumps(payload)
 
     def __call__(self, argv: list[str], cwd: Path, log_path: Path) -> int:
         tool = Path(argv[1]).name if argv[1] != "-m" else argv[2]
@@ -436,7 +451,7 @@ class FakeBuild:
         h5.write_bytes(b"spine")
         h5.with_name(h5.name + ".sha256").write_text(f"{_sha(b'spine')}  {h5.name}\n")
         h5.with_suffix(".build.json").write_text("{}")
-        h5.with_suffix(".spine_gates.json").write_text('{"shippable": true}')
+        h5.with_suffix(".spine_gates.json").write_text(self._report(shippable=True))
 
     def national_dry_run(self, log_path):
         log_path.write_text('{"dry_run": true}')
@@ -447,11 +462,11 @@ class FakeBuild:
         self.paths.candidate_h5.write_bytes(b"candidate")
         for name in (
             "calibration_diagnostics.json",
-            f"{cut.CANDIDATE_NAME}.terminal_gates.json",
             "national_target_registry.json",
             "national_contract_registry.json",
         ):
             (run / name).write_text("{}")
+        (run / f"{cut.CANDIDATE_NAME}.terminal_gates.json").write_text(self._report())
         (run / "build_record.json").write_text(
             json.dumps({"artifacts": {"staging_h5": {"sha256": _sha(b"candidate")}}})
         )
@@ -469,10 +484,12 @@ class FakeBuild:
         )
 
     def certify(self, log_path):
-        (
-            self.paths.run_dir / f"{cut.CANDIDATE_NAME}.release_certification.json"
-        ).write_text(
-            json.dumps({"shippable": True, "candidate": {"sha256": _sha(b"candidate")}})
+        run = self.paths.run_dir
+        (run / f"{cut.CANDIDATE_NAME}.release_cut_gates.json").write_text(
+            self._report(shippable=True)
+        )
+        (run / f"{cut.CANDIDATE_NAME}.release_certification.json").write_text(
+            self._report(shippable=True, candidate={"sha256": _sha(b"candidate")})
         )
 
     def assemble(self, log_path):
@@ -487,9 +504,9 @@ class FakeBuild:
         pass
 
 
-def _runner(tmp_path, fake=None):
+def _runner(tmp_path, fake=None, signer=None):
     paths = _paths(tmp_path)
-    fake = fake or FakeBuild(paths)
+    fake = fake or FakeBuild(paths, signer=signer)
     sources = {s.key: s for s in cut.load_input_sources()}
     runner = cut.Runner(
         paths=paths, sources=sources, python="py", execute=fake, log=lambda _: None
@@ -777,3 +794,138 @@ def test_the_cache_never_trusts_bytes_it_did_not_hash(tmp_path):
     os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
     assert path.stat().st_mtime_ns == stat.st_mtime_ns
     assert not cache.matches(path, pin)
+
+
+# --------------------------------------------------------------------------- #
+# Signing key: a cut resumes only under the key that signed it                  #
+# --------------------------------------------------------------------------- #
+
+KEY_A, KEY_B = b"\xa1" * 32, b"\xb2" * 32
+
+
+def _fp(key: bytes) -> str:
+    return hashlib.sha256(key).hexdigest()
+
+
+def _env(key: bytes) -> dict[str, str]:
+    from microcosm.data.gate_signing_keys import UK_GATE_SIGNING_KEY_ENV
+
+    return {UK_GATE_SIGNING_KEY_ENV: base64.b64encode(key).decode()}
+
+
+@pytest.fixture
+def two_builders(monkeypatch):
+    """Two registered, active builders' keys, each with its own label."""
+
+    from microcosm.data import gate_signing_keys as registry
+
+    table = {
+        _fp(key): registry.GateSigningKey(
+            key_sha256=_fp(key),
+            label=label,
+            status="active",
+            custodian=f"{label}'s holder",
+            held_in="the test",
+            registered="2026-10-26",
+            evidence="test",
+        )
+        for key, label in ((KEY_A, "builder-a"), (KEY_B, "builder-b"))
+    }
+    monkeypatch.setattr(
+        registry, "_registry", lambda country: table if country == "uk" else None
+    )
+    return table
+
+
+def test_a_resumed_cut_needs_the_key_that_signed_it(tmp_path, two_builders):
+    runner, _ = _runner(tmp_path, signer=_fp(KEY_A))
+    cut.run_spine(runner, staging_local_only=True)
+    cut.run_national(runner, retry=False, logbook_prev_row_digest=None)
+    other = cut.signing_key_check(paths=runner.paths, environ=_env(KEY_B))
+    assert not other.ok
+    assert "builder-a" in other.detail and _fp(KEY_A) in other.detail
+    assert cut.signing_key_check(paths=runner.paths, environ=_env(KEY_A)).ok
+
+
+def test_an_unfinished_attempt_does_not_bind_the_key(tmp_path, two_builders):
+    runner, _ = _runner(tmp_path, signer=_fp(KEY_A))
+    cut.run_spine(runner, staging_local_only=True)
+    run = runner.paths.run_dir
+    run.mkdir(parents=True)
+    (run / f"{cut.CANDIDATE_NAME}.terminal_gates.json").write_text(
+        json.dumps({"attestation": {"signing_key_sha256": _fp(KEY_B)}})
+    )
+    # No build record: --retry-national moves this attempt aside before it runs.
+    assert cut.signing_key_check(paths=runner.paths, environ=_env(KEY_A)).ok
+
+
+def test_a_cut_signed_by_two_keys_is_refused(tmp_path, two_builders):
+    runner, fake = _runner(tmp_path, signer=_fp(KEY_A))
+    cut.run_spine(runner, staging_local_only=True)
+    fake.signer = _fp(KEY_B)
+    cut.run_national(runner, retry=False, logbook_prev_row_digest=None)
+    check = cut.signing_key_check(paths=runner.paths, environ=_env(KEY_A))
+    assert not check.ok and "more than one key" in check.detail
+
+
+def test_a_signer_retired_after_certification_still_finishes(tmp_path, two_builders):
+    runner, _ = _runner(tmp_path, signer=_fp(KEY_A))
+    cut.run_spine(runner, staging_local_only=True)
+    cut.run_national(runner, retry=False, logbook_prev_row_digest=None)
+    cut.run_score(runner)
+    two_builders[_fp(KEY_A)] = dataclasses.replace(
+        two_builders[_fp(KEY_A)], status="retired", retired_on="2026-10-26"
+    )
+    # The certification still has to be signed, which a retired key may not do.
+    assert not cut.signing_key_check(paths=runner.paths, environ=_env(KEY_A)).ok
+    cut.run_certify(runner)
+    # Assembly and publication only verify.
+    assert cut.signing_key_check(paths=runner.paths, environ=_env(KEY_A)).ok
+
+
+def test_the_receipt_names_the_cut_signer(tmp_path, two_builders, monkeypatch):
+    runner, _ = _runner(tmp_path, signer=_fp(KEY_A))
+    _all(runner)
+    for name, value in _env(KEY_B).items():
+        monkeypatch.setenv(name, value)
+    cut.write_receipt(runner, {"tag": "t", "published": False})
+    receipt = json.loads(runner.paths.receipt.read_text())
+    assert receipt["signing_key_sha256"] == _fp(KEY_A)
+
+
+def test_the_signed_reports_are_the_ones_assembly_reads(tmp_path):
+    runner, _ = _runner(tmp_path)
+    _all(runner)
+    argv = cut.assemble_argv(runner.paths, python="py")
+
+    def value(flag: str) -> Path:
+        return Path(argv[argv.index(flag) + 1])
+
+    assert set(cut.cut_signed_reports(runner.paths)) == {
+        value("--spine-h5").with_suffix(".spine_gates.json"),
+        value("--seam-gate-report"),
+        value("--release-cut-gate-json"),
+        value("--certification-json"),
+    }
+
+
+@settings(max_examples=60, deadline=None)
+@given(signers=st.lists(st.sampled_from([None, "a", "b"]), min_size=1, max_size=4))
+def test_reports_bind_one_key_or_none(tmp_path_factory, signers):
+    root = tmp_path_factory.mktemp("reports")
+    fingerprints = {"a": _fp(KEY_A), "b": _fp(KEY_B)}
+    reports = []
+    for index, signer in enumerate(signers):
+        attestation = (
+            {} if signer is None else {"signing_key_sha256": fingerprints[signer]}
+        )
+        report = root / f"report{index}.json"
+        report.write_text(json.dumps({"attestation": attestation}))
+        reports.append(report)
+    named = {signer for signer in signers if signer}
+    if len(named) > 1:
+        with pytest.raises(cut.CutError, match="more than one key"):
+            cut.reports_signing_key(reports)
+    else:
+        expected = fingerprints[named.pop()] if named else None
+        assert cut.reports_signing_key(reports) == expected
