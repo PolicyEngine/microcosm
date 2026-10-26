@@ -2048,9 +2048,10 @@ def test_verify_fails_a_build_2_that_did_not_stand_on_the_sign_off(
     assert any(message in line for line in result["failures"]), result["failures"]
 
 
-def test_verify_warns_on_a_support_figure_in_the_signed_report(build_1, repo, tmp_path):
-    """The signed local report gets the release's disclosure walk, which
-    warns rather than fails, as the release contract does (microcosm#1301)."""
+def test_verify_no_longer_walks_the_signed_report(build_1, repo, tmp_path):
+    """María's ruling of 2026-10-26: a release ships per-area support figures,
+    so a figure in the signed local report draws no warning; the drafted
+    entries, which go into a public PR, keep their own walk."""
     registers = _signed_off(build_1, repo, tmp_path)
     build_registers = json.loads(json.dumps(registers))
     _figure_in_reason(build_registers)
@@ -2063,10 +2064,9 @@ def test_verify_warns_on_a_support_figure_in_the_signed_report(build_1, repo, tm
     )
     status, result = verify(build_2, repo, tmp_path)
     assert status == 0, result["failures"]
-    assert any(
-        line.startswith("contract: ") and "measured support" in line
-        for line in result["warnings"]
-    ), result["warnings"]
+    assert not any("measured support" in line for line in result["warnings"]), result[
+        "warnings"
+    ]
 
 
 def test_verify_surfaces_a_tampered_local_report(build_1, repo, tmp_path):

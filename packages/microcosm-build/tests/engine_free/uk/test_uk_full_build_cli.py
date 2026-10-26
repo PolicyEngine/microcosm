@@ -649,6 +649,14 @@ def test_dense_run_projects_the_rowwise_candidate_manifest(tmp_path):
     manifest = json.loads((out / "rowwise_candidate_manifest.json").read_text())
     assert manifest["schema_version"] == 4
     assert manifest["build_kind"] == "uk_rowwise_calibrated_candidate"
+    # The support block counts areas and states the minima (María's ruling
+    # of 2026-10-26 dropped their withholding, microcosm#1301).
+    support = manifest["support"]
+    assert (support["areas_checked"], support["min_nonzero_households"]) == (4, 1)
+    assert (
+        support["by_geography_level"]["constituency"]["min_nonzero_source_households"]
+        == 1
+    )
     assert manifest["release_role"] == "dense"
     assert manifest["release_id"] == UK_DENSE_RELEASE_ID
     assert manifest["parameters"]["release_role"] == "dense"

@@ -4551,8 +4551,8 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> list[s
     the incumbent files ship all together or not at all, and the manifest's
     reviewed limitations must say what the release does not claim.
     Artifacts pin to the release id or to one of its immutable per-cut tags.
-    A shipped JSON document carrying a per-area support figure is a warning,
-    returned rather than refused (microcosm#1301).
+    Per-area support figures ship (María's ruling of 2026-10-26 dropped their
+    withholding, microcosm#1301), so the line returns no warnings.
     """
 
     failures: list[str] = []
@@ -4645,9 +4645,6 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> list[s
                 coverage, failures, incumbent_attached=incumbent_attached
             )
             _check_uk_measure_exclusions(coverage.get("measure_exclusions"), failures)
-    # Warned, not refused: the walk runs only after both builds, so a finding
-    # is weighed rather than paid for with a rebuild (microcosm#1301).
-    disclosure_warnings = _uk_dense_disclosure_warnings(release_dir)
     # The core joins run whether or not the incumbent comparison is attached.
     candidate_identity = _check_uk_dense_surface_files(
         release_dir, release_manifest or {}, failures
@@ -4680,7 +4677,7 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> list[s
     _check_local_artifact_hashes(release_dir, release_manifest, failures)
     if failures:
         raise ReleaseContractError(release_dir, failures)
-    return disclosure_warnings
+    return []
 
 
 def _check_uk_dense_gate_report(
@@ -5094,12 +5091,13 @@ def _check_area_support_block(
         )
 
 
-# Per-area support figures a dense release withholds (microcosm#1301): an
-# area's rows, Kish ESS and distinct source households, under each name the
-# support table, the support gate, the diagnostics and the size evaluation
-# have used for them, and the plain synonyms a converted table would carry.
-# Weights and per-cell estimates are not support figures and ship as they are.
-# Names match whatever their case.
+# Per-area support figures (microcosm#1301): an area's rows, Kish ESS and
+# distinct source households, under each name the support table, the support
+# gate, the diagnostics and the size evaluation have used for them, and the
+# plain synonyms a converted table would carry. A release ships them since
+# María's ruling of 2026-10-26; the sign-off drafter still walks the entries
+# it drafts for them, since those go into a public pull request. Weights and
+# per-cell estimates are not support figures. Names match whatever their case.
 _UK_AREA_SUPPORT_FIGURE_KEYS = frozenset(
     {
         "rows",
@@ -5231,7 +5229,11 @@ def _uk_names_only_regions(value: object) -> bool:
 
 
 def _uk_dense_disclosure_findings(name: str, payload: object) -> list[str]:
-    """Per-area support figures in one shipped JSON document (microcosm#1301).
+    """Per-area support figures in one JSON document (microcosm#1301).
+
+    The sign-off drafter walks the entries it drafts with it, since they go
+    into a public pull request; a release no longer withholds these figures
+    (María's ruling of 2026-10-26).
 
     An area's rows, Kish ESS or distinct sources (a number, or a number
     written as text with or without thousands separators, under its name in
@@ -5358,46 +5360,11 @@ def _uk_dense_disclosure_findings(name: str, payload: object) -> list[str]:
         "text": "string(s) stating an area's measured support",
     }
     return [
-        f"{name} carries {len(paths)} {wording[kind]}, which a dense release "
-        "should withhold (microcosm#1301); first at "
+        f"{name} carries {len(paths)} {wording[kind]} (microcosm#1301); first at "
         f"{paths[:_UK_DISCLOSURE_PATHS_SHOWN]}."
         for kind, paths in found.items()
         if paths
     ]
-
-
-def _uk_dense_disclosure_file_warnings(path: Path) -> list[str]:
-    """The disclosure walk's warnings for one JSON file (microcosm#1301).
-
-    The file is read as the contract reads JSON, refusing NaN and the
-    infinities. A file the walk cannot read, parse or walk to the bottom of
-    (a nesting too deep to recurse) is reported, since a figure in it could
-    not be ruled out. The release pre-flight walks a run's files with it too.
-    """
-
-    try:
-        payload = json.loads(path.read_bytes(), parse_constant=_reject_json_constant)
-        return _uk_dense_disclosure_findings(path.name, payload)
-    except (OSError, ValueError, RecursionError):
-        return [
-            f"{path.name} cannot be read and walked as JSON, so the disclosure "
-            "walk cannot rule out a per-area support figure in it "
-            "(microcosm#1301)."
-        ]
-
-
-def _uk_dense_disclosure_warnings(release_dir: Path) -> list[str]:
-    """Shipped JSON documents carrying a per-area support figure (microcosm#1301).
-
-    Every ``*.json`` in the release directory is walked, the signed gate
-    report and the release manifest's strings included. A document the walk
-    cannot read is reported too, since a figure in it could not be ruled out.
-    """
-
-    warnings: list[str] = []
-    for path in sorted(release_dir.glob("*.json")):
-        warnings.extend(_uk_dense_disclosure_file_warnings(path))
-    return warnings
 
 
 def _check_local_area_release_manifest(
@@ -6682,8 +6649,9 @@ def validate_release_dir(
 
     Returns:
         The contract's warnings, each a sentence naming the file, for the
-        caller to print. Only the dense UK line has any: its disclosure walk
-        reports per-area support figures (microcosm#1301), without refusing.
+        caller to print; they never refuse a release. No line returns any
+        since María's ruling of 2026-10-26 dropped the dense line's
+        disclosure walk (microcosm#1301).
 
     Raises:
         ReleaseContractError: Naming every violation found — missing files,

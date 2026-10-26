@@ -1974,16 +1974,26 @@ def rowwise_candidate_manifest_from_graph(
             ),
             "rotated_holdout": diagnostics["uk_diagnostics"].get("rotated_holdout"),
         },
-        # Area counts only: the manifest ships in a release, and a level's
-        # minima would be one area's support figures (microcosm#1301). The
-        # figures stay in the area-support table.
+        # The counts and the minima: María's ruling of 2026-10-26 dropped the
+        # withholding of per-area support figures (microcosm#1301).
         "support": {
             "areas_checked": int(len(support)),
             "areas_below_floor": int(support["support_below_floor"].sum()),
+            "min_assigned_households": int(support["assigned_households"].min()),
+            "min_nonzero_households": int(support["nonzero_households"].min()),
+            "min_effective_sample_size": float(support["effective_sample_size"].min()),
             "by_geography_level": {
                 str(level): {
                     "areas_checked": int(len(rows)),
                     "areas_below_floor": int(rows["support_below_floor"].sum()),
+                    "min_assigned_households": int(rows["assigned_households"].min()),
+                    "min_nonzero_households": int(rows["nonzero_households"].min()),
+                    "min_effective_sample_size": float(
+                        rows["effective_sample_size"].min()
+                    ),
+                    "min_nonzero_source_households": int(
+                        rows["nonzero_source_households"].min()
+                    ),
                 }
                 for level, rows in support.groupby("geography_level", sort=True)
             },

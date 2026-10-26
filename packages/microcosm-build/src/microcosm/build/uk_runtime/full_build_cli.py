@@ -860,7 +860,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Publish the saved graph to the public Orrery, including when "
             "dataset staging is local-only. Off by default. Its summaries "
             "carry every target row's model figures, those of rows resting on "
-            "fewer than ten source households included, so check them against "
+            "fewer than ten source households included, and the gates' failure "
+            "lines, per-area support figures included, so check them against "
             "the UKDS licence before passing it."
         ),
     )
